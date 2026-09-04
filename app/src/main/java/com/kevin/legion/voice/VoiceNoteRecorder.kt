@@ -11,6 +11,9 @@ import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -88,6 +91,23 @@ sealed interface VoiceNoteStopResult {
 }
 
 /**
+ * The recorder's own live state, observable rather than remembered per-screen (recordings-UI
+ * follow-up ticket: "Neither surface queries `VoiceNoteRecorder` for its actual live state when it
+ * mounts - each only knows about a recording IT started"). Exactly two values because [start]/
+ * [stop]/[onMicPreempted] together only ever hold one recording at a time (this class's own class
+ * doc: "a single active capture at a time").
+ *
+ * [Recording.startedAt] is the row's real [VoiceNote.startedAt] - the SAME timestamp written to
+ * Room, not a second clock a composable starts on its own mount. A surface deriving its elapsed
+ * clock from this rather than from "now minus when I first saw this composable" cannot restart at
+ * zero on navigating away and back, because it is reading the recording's actual start, not its own.
+ */
+sealed interface VoiceNoteRecordingState {
+    data object Idle : VoiceNoteRecordingState
+    data class Recording(val noteId: Long, val startedAt: Long) : VoiceNoteRecordingState
+}
+
+/**
  * One process's worth of recording state - a single active capture at a time, matching
  * [MicArbiter]'s own one-holder model. Not a singleton (unlike [MicArbiter]): the caller (ticket
  * 04's `voice/VoiceNoteController.kt`) owns the instance and its lifetime.
@@ -113,6 +133,19 @@ class VoiceNoteRecorder(
     private val lock = Any()
     private var activeCapture: AudioCapture? = null
     private var activeNoteId: Long? = null
+
+    /** Backing field for [recordingState] - see that sealed interface's own doc comment for why
+     * this exists at all. Written under [lock] alongside [activeCapture]/[activeNoteId] so the
+     * flow's published value and this recorder's own internal notion of "is something active"
+     * never disagree with each other. */
+    private val _recordingState = MutableStateFlow<VoiceNoteRecordingState>(VoiceNoteRecordingState.Idle)
+
+    /** The one source of truth for whether THIS process's recorder is currently recording, and
+     * since [VoiceNoteController] holds exactly one [VoiceNoteRecorder] per process (that object's
+     * own class doc), this is the one source of truth full stop - collected by both
+     * `ui/MetersScreen.kt`'s RECORDINGS pane and `ui/voicenotes/VoiceNotesScreen.kt`'s record
+     * control so either surface reports the truth regardless of which one started the recording. */
+    val recordingState: StateFlow<VoiceNoteRecordingState> = _recordingState.asStateFlow()
 
     /**
      * True from the moment [start] claims the mic until it publishes [activeCapture]. That window
@@ -159,9 +192,13 @@ class VoiceNoteRecorder(
         }
 
         val file = File(voiceNotesDir(), "${UUID.randomUUID()}.m4a")
+        // Captured once and reused for the Room row AND for recordingState below - two calls to
+        // now() here would let the flow's elapsed-clock anchor drift from the row's own
+        // VoiceNote.startedAt by whatever real time passed between them.
+        val startedAt = now()
         val noteId = dao.insert(
             VoiceNote(
-                startedAt = now(),
+                startedAt = startedAt,
                 title = titleHint,
                 audioPath = file.absolutePath,
                 kind = kind,
@@ -188,6 +225,7 @@ class VoiceNoteRecorder(
             } else {
                 activeCapture = capture
                 activeNoteId = noteId
+                _recordingState.value = VoiceNoteRecordingState.Recording(noteId, startedAt)
                 false
             }
         }
@@ -262,7 +300,10 @@ class VoiceNoteRecorder(
     }
 
     /** Atomically reads and clears the active capture/note pair, or returns null if nothing is
-     * active. Shared by [stop] and [onMicPreempted] so both agree on what "active" means. */
+     * active. Shared by [stop] and [onMicPreempted] so both agree on what "active" means -
+     * including [recordingState], published back to [VoiceNoteRecordingState.Idle] in the same
+     * locked section so no observer can ever see a stale [VoiceNoteRecordingState.Recording] after
+     * this returns. */
     private fun takeActive(): Pair<AudioCapture, Long>? = synchronized(lock) {
         val capture = activeCapture
         val noteId = activeNoteId
@@ -271,6 +312,7 @@ class VoiceNoteRecorder(
         } else {
             activeCapture = null
             activeNoteId = null
+            _recordingState.value = VoiceNoteRecordingState.Idle
             capture to noteId
         }
     }

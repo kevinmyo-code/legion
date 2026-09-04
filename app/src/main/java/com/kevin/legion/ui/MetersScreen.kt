@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
+import com.kevin.legion.data.local.VoiceNoteKind
 import com.kevin.legion.grocery.GroceryController
 import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.BudgetLine
@@ -64,11 +65,14 @@ import com.kevin.legion.ui.fleet.buildDueRows
 import com.kevin.legion.ui.media.MediaMiniBar
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.voicenotes.RecordControlRow
 import com.kevin.legion.ui.world.AreaCard
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
+import com.kevin.legion.voice.VoiceNoteController
+import com.kevin.legion.voice.VoiceNoteStartResult
 import com.kevin.legion.weather.WeatherController
 import kotlinx.coroutines.launch
 import java.time.YearMonth
@@ -120,6 +124,11 @@ fun MetersScreen(
     // parameter) - the media control panel nested under `settings/spotify/media`. Defaults to a
     // no-op, matching every other `onOpen*` default this screen and the deleted screen both used.
     onOpenMedia: () -> Unit = {},
+    // The recordings-UI ticket's own relocation (2026-09-04): the RECORDINGS pane's count row
+    // taps through to `ui/voicenotes/VoiceNotesScreen.kt` - defaults to a no-op, matching every
+    // other `onOpen*` default on this screen, so existing previews/tests that construct
+    // [MetersContent] directly do not all need updating for a param they never exercise.
+    onOpenVoiceNotes: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(MetersUiState()) }
@@ -166,6 +175,11 @@ fun MetersScreen(
         val persistentOpenCount = NotesController.openItemCount(context)
         val groceriesOpenCount = GroceryController.items(context).count { !it.done }
 
+        // RECORDINGS: same one-shot read `VoiceNotesScreen.kt`'s own list makes - this pane only
+        // ever needs the count, not the rows themselves, so `.size` is fine at this list's real
+        // scale (a driver dictating notes, not importing a call-centre archive).
+        val voiceNotesCount = VoiceNoteController.listNotes(context).size
+
         // Weather (rehomed from `ui/TodayScreen.kt`, one-today ticket 07): the same
         // WeatherController the foreground service and the sitrep already read - `refresh()` is a
         // no-op past its own 30-minute TTL and returns the cached value with no GPS fix, so this
@@ -186,12 +200,16 @@ fun MetersScreen(
             maintenanceUnknownCount = maintenanceUnknownCount,
             persistentOpenCount = persistentOpenCount,
             groceriesTripOpenCount = groceriesOpenCount,
+            voiceNotesCount = voiceNotesCount,
             weather = weather,
             nowMs = now,
         )
     }
 
-    MetersContent(state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry, onOpenGroceriesList, onOpenMedia)
+    MetersContent(
+        state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry, onOpenGroceriesList,
+        onOpenMedia, onOpenVoiceNotes,
+    )
 }
 
 /** One-shot suspend reads only - see [MetersScreen]'s own `LaunchedEffect`. [connectionState] is
@@ -212,6 +230,8 @@ data class MetersUiState(
     val maintenanceUnknownCount: Int = 0,
     val persistentOpenCount: Int = 0,
     val groceriesTripOpenCount: Int = 0,
+    /** The RECORDINGS pane's own count row - see [MetersScreen]'s "RECORDINGS" read comment. */
+    val voiceNotesCount: Int = 0,
     /** Rehomed from `TodayUiState.weather` (one-today ticket 07) - `null` until the first
      * successful Open-Meteo fetch, rendered by [weatherLine] as its own honest sentence rather
      * than a blank line. */
@@ -230,11 +250,22 @@ fun MetersContent(
     onOpenPantry: () -> Unit,
     onOpenGroceriesList: () -> Unit,
     onOpenMedia: () -> Unit = {},
+    onOpenVoiceNotes: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     val connectionState by ObdBluetoothManager.connectionState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // ---------------------------------------------------------- RECORDINGS record control
+    // Observable, not remembered (recordings-UI follow-up ticket - the defect this fixes: start a
+    // recording here, navigate to CALENDAR and back, and this pane used to report idle while the
+    // microphone was still live, because it only knew about a recording IT started). Both this
+    // pane and `VoiceNotesScreen.kt`'s own record button now collect the SAME
+    // [com.kevin.legion.voice.VoiceNoteRecordingState] flow off [VoiceNoteController], so either
+    // surface shows the truth regardless of which one started or is showing the recording.
+    val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
+    var startRefusalHere by remember { mutableStateOf<String?>(null) }
 
     // ---------------------------------------------------------- ASK (generated views, ADR 0035)
     // The hands path to `show_generated_view` (`.scratch/one-today/issues/06-*.md`): the SAME
@@ -543,6 +574,52 @@ fun MetersContent(
                 // grocery trip list itself (see [onOpenGroceriesList]'s own doc comment above).
                 modifier = Modifier.clickable(onClick = onOpenGroceriesList),
             )
+        }
+
+        // ---------------------------------------------------------------- RECORDINGS
+        // The recordings-UI ticket (2026-09-04, Kevin: "it needs a place on the home screen"):
+        // a count that taps through to the full list/detail screen, plus the RECORD control
+        // itself so starting a recording is one tap from a home tab, not a three-tap navigation
+        // into Settings the way it used to be (see `ui/settings/DataPrivacyScreen.kt`'s own
+        // comment on the move). [RecordControlRow] is the exact composable
+        // `ui/voicenotes/VoiceNotesScreen.kt`'s own record button uses - see that function's own
+        // doc comment for why it is shared rather than reimplemented here.
+        DeckPane(header = "Recordings", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            DeckRow(
+                label = "Recordings",
+                value = "${state.voiceNotesCount} saved",
+                modifier = Modifier.clickable(onClick = onOpenVoiceNotes),
+            )
+            RecordControlRow(
+                state = recordingState,
+                onStart = {
+                    scope.launch {
+                        when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
+                            is VoiceNoteStartResult.Started -> {
+                                startRefusalHere = null
+                            }
+                            is VoiceNoteStartResult.Refused -> {
+                                startRefusalHere = started.reason
+                            }
+                        }
+                    }
+                },
+                onStop = {
+                    scope.launch {
+                        // Same outcome-verb posture VoiceNotesScreen's own stop button carries:
+                        // never claims the note is ready, only that it saved and is transcribing.
+                        VoiceNoteController.stop(context)
+                    }
+                },
+            )
+            startRefusalHere?.let { reason ->
+                Text(
+                    reason,
+                    style = LegionType.stamp,
+                    color = sem.estimated,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
         }
 
         // ---------------------------------------------------------------- ASK

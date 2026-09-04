@@ -255,6 +255,54 @@ class VoiceNoteControllerTest {
             fakeBackend.upserts[1].first)
     }
 
+    // -------------------------------------------------------------------- listInRange (calendar
+    // day-view RECORDED section - `ui/CalendarScreen.kt`)
+
+    @Test
+    fun `listInRange buckets a late-evening note into its own day, never the next`() = runTest {
+        // The exact day/dayEndExclusive construction ui/CalendarScreen.kt's own effect uses:
+        // local midnight, plus com.kevin.legion.ui.notes.DAY_FILTER_WINDOW_MS (24h) exclusive.
+        val zone = java.time.ZoneId.systemDefault()
+        val day = java.time.LocalDate.of(2026, 9, 4).atStartOfDay(zone).toInstant().toEpochMilli()
+        val dayEndExclusive = day + 24L * 60 * 60 * 1000
+
+        val lateEvening = java.time.LocalDate.of(2026, 9, 4).atTime(23, 59, 0)
+            .atZone(zone).toInstant().toEpochMilli()
+        // Exactly the NEXT day's local midnight - the first instant this window must exclude.
+        val nextDayMidnight = dayEndExclusive
+
+        val lateId = dao().insert(VoiceNote(startedAt = lateEvening, kind = VoiceNoteKind.SOLO, audioPath = null))
+        val nextId = dao().insert(VoiceNote(startedAt = nextDayMidnight, kind = VoiceNoteKind.SOLO, audioPath = null))
+
+        val result = VoiceNoteController.listInRange(context, day, dayEndExclusive)
+        assertTrue(result is VoiceNoteController.VoiceNotesForDayResult.Loaded)
+        val notes = (result as VoiceNoteController.VoiceNotesForDayResult.Loaded).notes
+
+        assertTrue("a note recorded at 23:59 must land on its own day, not roll into the next",
+            notes.any { it.id == lateId })
+        assertTrue("a note starting exactly at the next day's local midnight must not land on " +
+            "the previous day", notes.none { it.id == nextId })
+    }
+
+    @Test
+    fun `listInRange excludes a note from the day before, at the exact start boundary it must include instead`() = runTest {
+        val zone = java.time.ZoneId.systemDefault()
+        val day = java.time.LocalDate.of(2026, 9, 4).atStartOfDay(zone).toInstant().toEpochMilli()
+        val dayEndExclusive = day + 24L * 60 * 60 * 1000
+        val previousDayLastMs = day - 1
+
+        val startOfDayId = dao().insert(VoiceNote(startedAt = day, kind = VoiceNoteKind.SOLO, audioPath = null))
+        val previousDayId = dao().insert(VoiceNote(startedAt = previousDayLastMs, kind = VoiceNoteKind.SOLO, audioPath = null))
+
+        val notes = (VoiceNoteController.listInRange(context, day, dayEndExclusive)
+            as VoiceNoteController.VoiceNotesForDayResult.Loaded).notes
+
+        assertTrue("startedAt exactly at local midnight is the FIRST instant this day must include",
+            notes.any { it.id == startOfDayId })
+        assertTrue("one millisecond before local midnight belongs to the previous day, never this one",
+            notes.none { it.id == previousDayId })
+    }
+
     @Test
     fun `reconcileAfterProcessDeath runs through the shared recorder instance`() = runTest {
         val id = dao().insert(VoiceNote(startedAt = 1_000L, kind = VoiceNoteKind.SOLO, audioPath = "/tmp/x.m4a"))

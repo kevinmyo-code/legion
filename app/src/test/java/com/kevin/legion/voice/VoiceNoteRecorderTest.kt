@@ -53,6 +53,9 @@ class VoiceNoteRecorderTest {
 
         override suspend fun getById(id: Long): VoiceNote? = rows[id]
         override suspend fun getAll(): List<VoiceNote> = rows.values.sortedByDescending { it.startedAt }
+        override suspend fun getInRange(startInclusive: Long, endExclusive: Long): List<VoiceNote> =
+            rows.values.filter { it.startedAt >= startInclusive && it.startedAt < endExclusive }
+                .sortedBy { it.startedAt }
         override suspend fun getUnended(): List<VoiceNote> = rows.values.filter { it.endedAt == null }
         override suspend fun getAllAudioPaths(): List<String> = rows.values.mapNotNull { it.audioPath }
         override suspend fun deleteById(id: Long) {
@@ -286,6 +289,103 @@ class VoiceNoteRecorderTest {
         recorder.reconcileAfterProcessDeath()
 
         assertFalse("an .m4a with no row claiming it must be deleted on the next start", orphan.exists())
+    }
+
+    // -------------------------------------------------------------------- recordingState (the
+    // recordings-UI follow-up ticket's own defect fix: "recording state must be observable, not
+    // remembered per-screen"). [recordingState] is the one thing both `ui/MetersScreen.kt` and
+    // `ui/voicenotes/VoiceNotesScreen.kt` now collect instead of a per-screen local boolean.
+
+    @Test
+    fun `recordingState is Idle before anything starts`() = runTest {
+        val recorder = newRecorder()
+
+        assertEquals(VoiceNoteRecordingState.Idle, recorder.recordingState.value)
+    }
+
+    @Test
+    fun `a successful start publishes Recording with the row's own noteId and startedAt`() = runTest {
+        val recorder = newRecorder()
+
+        val started = recorder.start(VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
+
+        val state = recorder.recordingState.value
+        assertTrue("recordingState must flip to Recording once the capture is actually running",
+            state is VoiceNoteRecordingState.Recording)
+        state as VoiceNoteRecordingState.Recording
+        assertEquals(started.noteId, state.noteId)
+        // The SAME startedAt written to the Room row (fixedNow at the moment start() ran), not a
+        // second clock a composable would start on its own mount - see
+        // VoiceNoteRecordingState.Recording's own doc comment for why this equality is the point.
+        assertEquals(1_000L, state.startedAt)
+        assertEquals(1_000L, dao.getById(started.noteId)!!.startedAt)
+    }
+
+    @Test
+    fun `a deliberate stop publishes Idle`() = runTest {
+        val recorder = newRecorder()
+        recorder.start(VoiceNoteKind.SOLO)
+        assertTrue(recorder.recordingState.value is VoiceNoteRecordingState.Recording)
+
+        recorder.stop()
+
+        assertEquals(VoiceNoteRecordingState.Idle, recorder.recordingState.value)
+    }
+
+    @Test
+    fun `a mic preemption publishes Idle, same as a deliberate stop`() = runTest {
+        val recorder = newRecorder(scope = CoroutineScope(Dispatchers.Unconfined))
+        recorder.start(VoiceNoteKind.MEETING)
+        assertTrue(recorder.recordingState.value is VoiceNoteRecordingState.Recording)
+
+        assertTrue(MicArbiter.request(MicArbiter.Claimant.RING_LISTENING))
+
+        assertEquals("a recorder losing the mic must publish Idle - a screen collecting this " +
+            "flow must never keep reporting a recording that is no longer actually running",
+            VoiceNoteRecordingState.Idle, recorder.recordingState.value)
+    }
+
+    @Test
+    fun `a failed capture start never publishes Recording`() = runTest {
+        val recorder = VoiceNoteRecorder(
+            context = context,
+            dao = dao,
+            audioCaptureFactory = { path ->
+                FakeAudioCapture(path).apply { failOnStart = RuntimeException("no audio hardware") }
+            },
+            now = { fixedNow },
+        )
+
+        recorder.start(VoiceNoteKind.SOLO)
+
+        assertEquals("a start that never actually opened the microphone must never claim it did",
+            VoiceNoteRecordingState.Idle, recorder.recordingState.value)
+    }
+
+    @Test
+    fun `a preemption landing during start leaves recordingState at Idle, never a stale Recording`() = runTest {
+        // Same startInFlight window the existing "preemption landing during start" test above
+        // exercises - recordingState must never be published as Recording for a capture that lost
+        // the mic before start() ever got to publish it.
+        val recorder = VoiceNoteRecorder(
+            context = context,
+            dao = dao,
+            audioCaptureFactory = { path ->
+                FakeAudioCapture(path).also {
+                    createdCaptures += it
+                    it.onStart = {
+                        fixedNow = 5_000L
+                        MicArbiter.request(MicArbiter.Claimant.RING_LISTENING)
+                    }
+                }
+            },
+            now = { fixedNow },
+            scope = CoroutineScope(Dispatchers.Unconfined),
+        )
+
+        recorder.start(VoiceNoteKind.SOLO)
+
+        assertEquals(VoiceNoteRecordingState.Idle, recorder.recordingState.value)
     }
 
     @Test

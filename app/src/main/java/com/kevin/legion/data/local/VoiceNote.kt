@@ -116,6 +116,16 @@ interface VoiceNoteDao {
     @Query("SELECT * FROM voice_notes ORDER BY startedAt DESC")
     suspend fun getAll(): List<VoiceNote>
 
+    /** Every note whose [VoiceNote.startedAt] falls in `[startInclusive, endExclusive)` - the day
+     * view's RECORDED section join (`ui/CalendarScreen.kt`). A new `@Query`, not a schema change:
+     * no column added or dropped, so no migration or version bump follows this (CLAUDE.md §5). A
+     * recording is bucketed by when it genuinely started, the same real-epoch-millis convention
+     * every other timestamp column on this table already uses - unlike [Event.startsAt]'s all-day
+     * UTC-midnight convention, there is no separate zone handling to get wrong here, only the
+     * ordinary caller-supplied window. */
+    @Query("SELECT * FROM voice_notes WHERE startedAt >= :startInclusive AND startedAt < :endExclusive ORDER BY startedAt ASC")
+    suspend fun getInRange(startInclusive: Long, endExclusive: Long): List<VoiceNote>
+
     /** Every row whose recording never observed a stop - the crash-recovery scan
      * [VoiceNoteRecorder.reconcileAfterProcessDeath] runs once at startup. See [VoiceNote]'s own
      * doc comment for why this is [VoiceNote.endedAt], not [VoiceNote.interrupted]: a row already

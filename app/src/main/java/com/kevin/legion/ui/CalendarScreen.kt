@@ -20,10 +20,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.ListItem
+import com.kevin.legion.data.local.VoiceNote
 import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.ui.agenda.MonthCalendar
@@ -40,6 +42,10 @@ import com.kevin.legion.util.documentDateCompact
 import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.voicenotes.VoiceNoteDetailScreen
+import com.kevin.legion.ui.voicenotes.formatVoiceNoteDuration
+import com.kevin.legion.util.clockTime
+import com.kevin.legion.voice.VoiceNoteController
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -101,6 +107,25 @@ import kotlinx.coroutines.launch
  * `.scratch/one-today/issues/08-events-are-not-todos.md` point 4 for the density-dot audit this
  * screen's own [MonthCell.eventCount]/[eventDotCount] were checked against (they count workload,
  * not completion, and were left as an honest "how busy" figure rather than folded into this rule).
+ *
+ * **RECORDED (Kevin, 2026-09-04: "i do want it to link to the claneadr too, together with its own
+ * ui") - a fourth section, a read-time join, never a write into [Event]/`events`.** A voice note is
+ * not an event and copying it into that table would recreate exactly the mess ticket 08 exists to
+ * fix: two different kinds of thing sharing one discriminator that cannot tell them apart. Instead
+ * [selectedDayStart]'s own [LaunchedEffect] separately queries [VoiceNoteController.listInRange]
+ * and [recordedRows] renders alongside, never merged into [dayRows]/[scheduleRows]. Same two
+ * ticket-08 constraints SCHEDULE already honours, restated for a different table: **no checkbox** -
+ * a recording already happened, it is not an obligation to meet or miss, ticket 08's reasoning for
+ * an event applies unchanged - and **excluded from the completion ratio** ([notDone]/[done] below
+ * are built from [dayRows] alone; [recordedRows] never touches either). Tapping a row opens the
+ * SAME [VoiceNoteDetailScreen] `ui/voicenotes/VoiceNotesScreen.kt`'s own list opens - one detail
+ * implementation, not a second copy.
+ *
+ * **An empty day and a failed voice-notes read are not the same sentence** - the calendar-briefing
+ * failure (`calendar/OpenerCalendarBriefing.kt`) in a new place: a refused permission and a clear
+ * day must never render identically. [recordedLoadFailed] is set from
+ * [VoiceNoteController.VoiceNotesForDayResult.Failed] and rendered as its own sentence, distinct
+ * from the ordinary "nothing recorded this day" [recordedRows]-is-empty case.
  */
 @Composable
 fun CalendarScreen() {
@@ -134,6 +159,13 @@ fun CalendarScreen() {
     // [dayRows] - an event has no [InboxRowView.done]/[InboxRowView.tickable] question to answer,
     // so it does not belong in the same list a checkbox-driven filter later splits.
     var scheduleRows by remember { mutableStateOf(emptyList<InboxRowView>()) }
+    // RECORDED section (this screen's own file doc comment) - a read-time join against
+    // `voice_notes`, never merged into [scheduleRows]/[dayRows]: no checkbox, no completion ratio.
+    var recordedRows by remember { mutableStateOf(emptyList<VoiceNote>()) }
+    // Distinct from "recordedRows is empty" - see [VoiceNoteController.VoiceNotesForDayResult]'s
+    // own doc comment for why these two must never render as the same sentence.
+    var recordedLoadFailed by remember { mutableStateOf(false) }
+    var selectedRecordingId by remember { mutableStateOf<Long?>(null) }
     var reloadNonce by remember { mutableStateOf(0) }
 
     LaunchedEffect(displayedMonth, reloadNonce) {
@@ -194,6 +226,25 @@ fun CalendarScreen() {
                 instantMs = event.startsAt,
             )
         }
+        // RECORDED - a read-time join against `voice_notes`, same [day, dayEndExclusive) window
+        // the SCHEDULE/task queries above use. [VoiceNote.startedAt] is a real epoch-millis
+        // timestamp (when the recording genuinely started), not an all-day UTC-midnight
+        // convention like [Event.startsAt] can be - so this needs no [zone] parameter the way
+        // [activeByKindInLocalWindow] does; [day]/[dayEndExclusive] are already device-zone
+        // instants from [selectedDayStart]'s own construction.
+        when (val result = VoiceNoteController.listInRange(context, day, dayEndExclusive)) {
+            is VoiceNoteController.VoiceNotesForDayResult.Loaded -> {
+                recordedRows = result.notes
+                recordedLoadFailed = false
+            }
+            is VoiceNoteController.VoiceNotesForDayResult.Failed -> {
+                // Degrade with words, never with a silently empty list - an empty [recordedRows]
+                // here would read identically to a day with nothing recorded on it, which is
+                // exactly the calendar-briefing failure this screen's own file doc comment names.
+                recordedRows = emptyList()
+                recordedLoadFailed = true
+            }
+        }
     }
 
     // Only ever called from [dayRows] (reminders + tasks) - [scheduleRows] rows carry no checkbox
@@ -216,6 +267,24 @@ fun CalendarScreen() {
             }
             reloadNonce++
         }
+    }
+
+    // RECORDED drill-down: opens the SAME [VoiceNoteDetailScreen]
+    // `ui/voicenotes/VoiceNotesScreen.kt`'s own list opens - one detail implementation, not a
+    // second copy, matching this screen's own file doc comment. [recordedRows] is scoped to this
+    // day only, but it holds the real [VoiceNote] row (transcript, summary, audio path included),
+    // never a copy - so nothing about the detail view differs from opening the same note from the
+    // Recordings screen. Mirrors [VoiceNotesScreen]'s own "early-return the whole screen" drill-down
+    // convention.
+    val selectedRecording = recordedRows.firstOrNull { it.id == selectedRecordingId }
+    if (selectedRecording != null) {
+        VoiceNoteDetailScreen(
+            note = selectedRecording,
+            onBack = { selectedRecordingId = null },
+            onRenamed = { reloadNonce++ },
+            onDeleted = { selectedRecordingId = null; reloadNonce++ },
+        )
+        return
     }
 
     val sem = LocalLegionSemantics.current
@@ -287,6 +356,22 @@ fun CalendarScreen() {
             } else {
                 scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
             }
+            // RECORDED - a read-time join, no checkbox, excluded from the completion ratio below
+            // (this screen's own file doc comment). [recordedLoadFailed] renders its own distinct
+            // sentence, never folded into the ordinary empty-list case.
+            DeckSectionRule("Recorded")
+            if (recordedLoadFailed) {
+                Text(
+                    "Couldn't load recordings for this day.",
+                    style = LegionType.stamp,
+                    color = sem.estimated,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+            } else if (recordedRows.isEmpty()) {
+                Text("Nothing recorded this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
+            } else {
+                recordedRows.forEach { note -> RecordedDayRow(note = note, onClick = { selectedRecordingId = note.id }) }
+            }
             DeckSectionRule("Yet to do")
             if (notDone.isEmpty()) {
                 Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
@@ -334,6 +419,37 @@ private fun CalendarDayRow(row: InboxRowView, onToggle: () -> Unit) {
             if (row.recurring) {
                 Text("Recurring - not tickable", style = LegionType.stamp, color = sem.faint)
             }
+        }
+    }
+}
+
+/**
+ * One RECORDED row: title (same unnamed fallback `ui/voicenotes/VoiceNotesScreen.kt`'s own list
+ * uses), time, duration. **No checkbox** - a recording already happened; it is not an obligation to
+ * meet or miss, same reasoning [CalendarDayRow] already applies to a SCHEDULE row, restated here
+ * for a different table (this screen's own file doc comment). Deliberately narrower than
+ * [com.kevin.legion.ui.voicenotes.VoiceNoteRow] - no state word, no derived-summary preview, no
+ * interrupted callout - because a driver scanning a day's rows wants only enough to decide whether
+ * to open one; the fuller disclosures live in [VoiceNoteDetailScreen] itself, one tap away.
+ */
+@Composable
+private fun RecordedDayRow(note: VoiceNote, onClick: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp)) {
+        // Empty leading column, same width as [CalendarDayRow]'s own non-tickable branch, so a
+        // RECORDED row's label lines up with a SCHEDULE row's rather than starting flush left.
+        Column(Modifier.padding(start = 12.dp, end = 12.dp)) {}
+        Column {
+            Text(
+                note.title ?: "Untitled recording",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                "${clockTime(note.startedAt)} - ${formatVoiceNoteDuration(note.startedAt, note.endedAt)}",
+                style = LegionType.stamp,
+                color = sem.faint,
+            )
         }
     }
 }

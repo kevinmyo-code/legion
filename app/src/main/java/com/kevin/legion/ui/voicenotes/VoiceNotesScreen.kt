@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.data.local.VoiceNote
 import com.kevin.legion.data.local.VoiceNoteKind
 import com.kevin.legion.ui.common.DeckScreenHeader
@@ -39,6 +40,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.voice.VoiceNoteController
+import com.kevin.legion.voice.VoiceNoteRecordingState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -71,8 +73,9 @@ fun VoiceNotesScreen(onBack: () -> Unit) {
     var notes by remember { mutableStateOf(emptyList<VoiceNote>()) }
     var reloadNonce by remember { mutableStateOf(0) }
     var selectedId by remember { mutableStateOf<Long?>(null) }
-    var recording by remember { mutableStateOf(false) }
-    var recordStartedAt by remember { mutableStateOf(0L) }
+    // Observable, not remembered - see RecordControlRow's own doc comment for why this is a
+    // collected flow rather than a local boolean this screen only updates when IT starts/stops.
+    val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
     var startRefusal by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reloadNonce) {
@@ -96,14 +99,11 @@ fun VoiceNotesScreen(onBack: () -> Unit) {
             DeckScreenHeader(title = "Voice notes", onBack = onBack)
 
             RecordControlRow(
-                recording = recording,
-                recordStartedAt = recordStartedAt,
+                state = recordingState,
                 onStart = {
                     scope.launch {
                         when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
                             is com.kevin.legion.voice.VoiceNoteStartResult.Started -> {
-                                recording = true
-                                recordStartedAt = System.currentTimeMillis()
                                 startRefusal = null
                             }
                             is com.kevin.legion.voice.VoiceNoteStartResult.Refused -> {
@@ -118,7 +118,6 @@ fun VoiceNotesScreen(onBack: () -> Unit) {
                         // never claims the note is ready, only that it saved and is transcribing -
                         // see the toast-equivalent text below.
                         VoiceNoteController.stop(context)
-                        recording = false
                         reloadNonce++
                     }
                 },
@@ -131,7 +130,7 @@ fun VoiceNotesScreen(onBack: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
             }
-            if (!recording) {
+            if (recordingState == VoiceNoteRecordingState.Idle) {
                 // The stop button already reads before its own outcome verb - this line is what a
                 // driver sees right after tapping stop, so it carries the same "saved and being
                 // transcribed, never ready" wording the voice tool's own result string does.
@@ -173,17 +172,34 @@ fun VoiceNotesScreen(onBack: () -> Unit) {
     }
 }
 
+/**
+ * Not `private` - `ui/MetersScreen.kt`'s own RECORDINGS pane (the recordings-UI ticket's "a RECORD
+ * control in the pane, so starting is one tap from a home tab rather than a navigation") reuses
+ * this exact composable rather than reimplementing the elapsed-clock/refusal/button wiring a second
+ * time. Both call sites drive it off [VoiceNoteController.start]/[VoiceNoteController.stop]
+ * themselves - this stays presentation-only, no controller reference of its own.
+ *
+ * **Takes [state] straight from [VoiceNoteController.recordingState] - never a per-screen local
+ * boolean.** The recordings-UI follow-up ticket's own defect report: a screen that only knows about
+ * a recording IT started reports idle for one it did not, which is worse than no recorder at all
+ * once there are two surfaces that can start one. Both call sites collect the SAME
+ * [com.kevin.legion.voice.VoiceNoteRecordingState] flow, so this row shows the truth regardless of
+ * which surface tapped RECORD. The elapsed clock is derived from
+ * [com.kevin.legion.voice.VoiceNoteRecordingState.Recording.startedAt] - the recording's own real
+ * start timestamp, the same one written to [com.kevin.legion.data.local.VoiceNote.startedAt] - so
+ * navigating away and back does not restart it at zero.
+ */
 @Composable
-private fun RecordControlRow(
-    recording: Boolean,
-    recordStartedAt: Long,
+fun RecordControlRow(
+    state: VoiceNoteRecordingState,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
-    var elapsedMs by remember(recordStartedAt) { mutableStateOf(0L) }
-    LaunchedEffect(recording, recordStartedAt) {
-        while (recording) {
-            elapsedMs = System.currentTimeMillis() - recordStartedAt
+    val startedAt = (state as? VoiceNoteRecordingState.Recording)?.startedAt
+    var elapsedMs by remember(startedAt) { mutableStateOf(startedAt?.let { System.currentTimeMillis() - it } ?: 0L) }
+    LaunchedEffect(startedAt) {
+        while (startedAt != null) {
+            elapsedMs = System.currentTimeMillis() - startedAt
             delay(500)
         }
     }
@@ -192,10 +208,9 @@ private fun RecordControlRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (recording) {
-            val totalSeconds = elapsedMs / 1000
+        if (startedAt != null) {
             Text(
-                "Recording - ${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}",
+                "Recording - ${formatMmSs(elapsedMs)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LocalLegionSemantics.current.debit,
             )
@@ -216,6 +231,7 @@ private fun RecordControlRow(
 @Composable
 fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
     val sem = LocalLegionSemantics.current
+    val rowState = voiceNoteRowState(note)
     Column(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
@@ -226,9 +242,22 @@ fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             val kindWord = if (note.kind == VoiceNoteKind.MEETING) "Meeting" else "Solo"
-            Text("$kindWord - ${shortDate(note.startedAt)} ${clockTime(note.startedAt)}",
-                style = LegionType.stamp, color = sem.faint)
+            Text(
+                "$kindWord - ${shortDate(note.startedAt)} ${clockTime(note.startedAt)} - " +
+                    formatVoiceNoteDuration(note.startedAt, note.endedAt),
+                style = LegionType.stamp, color = sem.faint,
+            )
         }
+        // The state word (recorded/transcribing/ready/interrupted) reads as its own line, colour
+        // matched to how much trust the row deserves - never folded into the summary text below,
+        // which is worded to be readable on its own even when [note.summary] is still null.
+        val stateColor = when (rowState) {
+            VoiceNoteRowState.INTERRUPTED -> sem.estimated
+            VoiceNoteRowState.TRANSCRIBING -> sem.ghost
+            VoiceNoteRowState.RECORDED -> sem.debit
+            VoiceNoteRowState.READY -> sem.faint
+        }
+        Text(voiceNoteRowStateLabel(rowState), style = LegionType.stamp, color = stateColor)
         if (note.summary != null) {
             Text(
                 "AI-generated summary: ${note.summary}",
@@ -240,7 +269,9 @@ fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
             Text("Not transcribed yet", style = LegionType.stamp, color = sem.ghost)
         }
         // Load-bearing per the list-row rule above: never folded behind the summary line's own
-        // truncation, always its own visible line.
+        // truncation, always its own visible line - kept even though the state word above already
+        // says "Interrupted", because this is the fuller sentence a driver reads to know what it
+        // means, matching [VoiceNoteDetail]'s own longer sentence for the same fact.
         if (note.interrupted) {
             Text(
                 "Interrupted - this recording may be incomplete",
@@ -254,9 +285,14 @@ fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
 /**
  * Detail: full transcript, summary, playback, rename, delete. Every write here - rename, delete -
  * calls [VoiceNoteController] directly, same call the voice tools make.
+ *
+ * Not `private` - `ui/CalendarScreen.kt`'s RECORDED section (the calendar-day-view follow-up
+ * ticket, "tapping one opens the same detail view the Recordings screen opens - one detail
+ * implementation, not a second copy") opens this exact composable rather than reimplementing the
+ * transcript/summary/playback/rename/delete surface a second time.
  */
 @Composable
-private fun VoiceNoteDetailScreen(
+fun VoiceNoteDetailScreen(
     note: VoiceNote,
     onBack: () -> Unit,
     onRenamed: () -> Unit,
@@ -363,8 +399,11 @@ fun VoiceNoteDetail(note: VoiceNote, playing: Boolean, onTogglePlayback: () -> U
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
         val kindWord = if (note.kind == VoiceNoteKind.MEETING) "Meeting" else "Solo"
-        Text("$kindWord recording - ${shortDate(note.startedAt)} ${clockTime(note.startedAt)}",
-            style = LegionType.stamp, color = sem.faint)
+        Text(
+            "$kindWord recording - ${shortDate(note.startedAt)} ${clockTime(note.startedAt)} - " +
+                formatVoiceNoteDuration(note.startedAt, note.endedAt),
+            style = LegionType.stamp, color = sem.faint,
+        )
 
         if (note.interrupted) {
             Text(

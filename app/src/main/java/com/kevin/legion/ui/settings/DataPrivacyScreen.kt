@@ -47,7 +47,7 @@ private const val MEMORY_SETTINGS_SCAN = 200
  * words a user reads, not the engineering prose that governs it.
  */
 @Composable
-fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit, onOpenVoiceNotes: () -> Unit) {
+fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -111,19 +111,13 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit, onOpenVoiceN
                     onClick = onOpenMemory,
                 )
 
-                Spacer(Modifier.height(16.dp))
-
-                // The hands path for the four voice-note tools (ADR 0035), wired 2026-09-01 - the
-                // screen existed but nothing opened it. It sits on Data & privacy rather than
-                // Assistant deliberately: ADR 0041 made a recording Kevin starts first-party
-                // content that IS persisted and synced, other people's speech included, so the
-                // screen that lists and deletes those recordings belongs beside Memory - the other
-                // place retained personal content is reviewed and removed.
-                SettingsNavRow(
-                    label = "Recordings",
-                    status = "Voice notes, their transcripts and summaries",
-                    onClick = onOpenVoiceNotes,
-                )
+                // Recordings moved off this screen 2026-09-04 (Kevin: "it needs a place on the
+                // home screen... recordings needs its own ui") - three taps into a privacy screen
+                // was the wrong home for something meant to be started in one tap. It now lives on
+                // `ui/MetersScreen.kt`'s own RECORDINGS pane, with a RECORD control alongside it,
+                // same pattern that pane's LISTS section already uses for the persistent list and
+                // the grocery trip. [LegionRoute.SETTINGS_VOICE_NOTES] is unchanged - only what
+                // navigates to it moved.
 
                 // Mission-control ticket 16: re-homed from CRED's own root (ticket 12's ruling - "a
                 // destructive purge does not belong on a surface you open daily"). Kept last on

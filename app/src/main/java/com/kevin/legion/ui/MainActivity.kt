@@ -709,6 +709,12 @@ private fun LegionShell(
                     onOpenMedia = {
                         navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
                     },
+                    // The recordings-UI ticket's own relocation (2026-09-04): the RECORDINGS
+                    // pane's count row taps through to the same LegionRoute.SETTINGS_VOICE_NOTES
+                    // screen the old Data & privacy row used to open - only the entry point moved.
+                    onOpenVoiceNotes = {
+                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
+                    },
                 )
             }
             // `ui/TodayScreen.kt`, its composable(LegionRoute.TODAY) registration, and the TODAY
@@ -847,7 +853,9 @@ private fun LegionShell(
                 com.kevin.legion.ui.settings.DataPrivacyScreen(
                     onBack = { navController.popBackStack() },
                     onOpenMemory = { navController.navigate(LegionRoute.SETTINGS_MEMORY) },
-                    onOpenVoiceNotes = { navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) },
+                    // onOpenVoiceNotes dropped 2026-09-04 - Recordings moved off this screen onto
+                    // `ui/MetersScreen.kt`'s own RECORDINGS pane, see that pane's own call site
+                    // below for the still-registered LegionRoute.SETTINGS_VOICE_NOTES navigation.
                 )
             }
             composable(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) {

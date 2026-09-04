@@ -5132,3 +5132,41 @@ only... roughly the last 30 days", named as `FleetSync.OBD_PULL_WINDOW_DAYS`. Ol
 server-side; the phone is a cache for this table, not the archive, and `FleetSync.PullReport`
 reports pulled-this-run alongside the server's own unwindowed `countObdSamples()` total side by
 side so neither number is mistaken for the whole history.
+
+## 2026-09-04 - Voice notes sync, but not Realtime, and the device copy stays primary
+
+**Kevin:** *"voice notes would be via sync not realtime. keep on device first"*
+
+Every aspect that went live during the 2026-09-02/03 backend cutover got the same four-part
+treatment - write-through, backfill, merge pull, Realtime trigger - and eight of them now carry all
+four. Voice notes deliberately get **three**. The Realtime half is dropped, and `voice_notes` does
+not join the `supabase_realtime` publication.
+
+**Why this is not an omission.** Realtime exists so a change made on one client reaches another
+without a poll. Its cost is a socket that wakes a pull on every server-side change. That trade is
+worth it for a ledger row, a goal, or an event - small rows, edited from more than one place, where
+staleness is visible and the pull is cheap. A voice note is the opposite shape on every axis: it is
+created in exactly one place (the phone holding the microphone), it is rarely edited after the
+transcript lands, and the row it would drag down is the largest in the schema. Subscribing would buy
+freshness nobody is waiting for at the highest per-event cost of any table.
+
+**"Keep on device first" is the load-bearing half, and it is a different posture from the other
+aspects.** For fleet, body, ledger and the rest, the 2026-09-02 pivot made Supabase the system of
+record and the phone a client - `obd_samples` went as far as being explicitly a 30-day CACHE with
+the archive server-side. Voice notes invert that: **the device copy is primary.** The audio file
+does not leave the phone unless something later says it should. What syncs is the row - title,
+timestamps, transcript, summary, kind, provenance - so a second device can read what was recorded
+without carrying the recording.
+
+This is consistent with ADR 0041 rather than in tension with it. That ADR's guarantee is that the
+three artefacts are anchored to each other and deleted together; it says nothing about where they
+live. A transcript on the server whose audio sits on the phone is still anchored - what would break
+the anchoring is deleting one without the others, which is the delete path's problem and is handled
+there.
+
+**What this leaves owed**, and it should be written down rather than discovered later: a phone wipe
+now loses voice-note audio permanently, because the row survives server-side and the file does not.
+That is the accepted cost today (the recordings are few and none are load-bearing), but it is the
+same shape as the fleet gap found on 2026-09-03 - upload is not sync, and a thing that only ever
+travels one way is not backed up. If audio ever needs to survive a wipe it goes to storage as its
+own decision, not as a side effect of this one.

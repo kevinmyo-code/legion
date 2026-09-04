@@ -214,6 +214,15 @@ object LegionRoute {
      * which shipped with that feature but was left unrouted, making those tools voice-only in
      * practice. ADR 0035 does not allow that, so it is registered here (2026-09-01). Same shape as
      * [SETTINGS_MEMORY]: a leaf, no sub-routes.
+     *
+     * **Reached from `ui/MetersScreen.kt`'s own RECORDINGS pane since 2026-09-04, not from
+     * Settings.** Kevin: "hiding in settings. it needs a place on the home screen." The route
+     * NAME still starts with `settings/` (renaming it would touch every reference for no behaviour
+     * change, and the constant is not user-facing) but nothing under Settings navigates here
+     * anymore - `ui/settings/DataPrivacyScreen.kt`'s own doc comment records the move on that side.
+     * Recording itself is now also possible without leaving the pane (a RECORD/STOP control lives
+     * on METERS directly); this route stays for the list, detail, rename and delete affordances a
+     * home-screen pane has no room for.
      */
     const val SETTINGS_VOICE_NOTES = "settings/voice-notes"
 

@@ -14,6 +14,7 @@ import com.kevin.legion.data.local.VoiceNoteStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -102,6 +103,19 @@ object VoiceNoteController {
      * function adds nothing beyond routing to the one shared [VoiceNoteRecorder]. */
     suspend fun start(context: Context, kind: String, titleHint: String? = null): VoiceNoteStartResult =
         recorder(context).start(kind, titleHint)
+
+    /**
+     * The one live-recording truth both hands-path surfaces collect (recordings-UI follow-up
+     * ticket: "recording state must be observable, not remembered per-screen"). Backed by the SAME
+     * singleton [VoiceNoteRecorder] every other function on this object routes through - see
+     * [recorder]'s own doc comment - so a recording started on METERS and observed from
+     * `VoiceNotesScreen` (or the reverse) reads identically, and navigating away and back never
+     * loses track of it. Not `suspend`: [recorder] only touches [Context]/[VoiceNoteDao]
+     * construction, which is cheap and synchronous, so a composable can call this directly inside
+     * `remember` without a coroutine.
+     */
+    fun recordingState(context: Context): StateFlow<VoiceNoteRecordingState> =
+        recorder(context.applicationContext).recordingState
 
     /** What [stop] hands back - deliberately NOT a note the caller can read a summary off of.
      * [Saved.noteId] is only ever a routing hint (e.g. so a screen can highlight the right row); it
@@ -222,6 +236,31 @@ object VoiceNoteController {
      * the screen itself may pass a larger one or none. */
     suspend fun listNotes(context: Context, limit: Int = 200): List<VoiceNote> =
         dao(context).getAll().take(limit)
+
+    /** What [listInRange] hands back - the day view's own "an empty day and a failed read are not
+     * the same sentence" requirement (the calendar-briefing failure this mirrors: a refused
+     * permission must never render identically to a clear day). [Loaded] with an empty list IS the
+     * quiet-day case; [Failed] is the other one, and a caller must say so in words rather than
+     * falling back to an empty list that would look the same. */
+    sealed interface VoiceNotesForDayResult {
+        data class Loaded(val notes: List<VoiceNote>) : VoiceNotesForDayResult
+        data class Failed(val reason: String) : VoiceNotesForDayResult
+    }
+
+    /** Every note whose [VoiceNote.startedAt] falls in `[startInclusive, endExclusive)` - the
+     * RECORDED section's read-time join in `ui/CalendarScreen.kt`. Deliberately a plain Room read
+     * wrapped in [runCatching] rather than assumed infallible: a `@Query` against a local SQLite
+     * database can still throw (a corrupt page, a full disk), and per this function's own
+     * [VoiceNotesForDayResult] doc, that failure must read differently from a day with nothing
+     * recorded on it. */
+    suspend fun listInRange(context: Context, startInclusive: Long, endExclusive: Long): VoiceNotesForDayResult =
+        runCatching { dao(context).getInRange(startInclusive, endExclusive) }.fold(
+            onSuccess = { VoiceNotesForDayResult.Loaded(it) },
+            onFailure = {
+                Log.w(TAG, "listInRange: query failed for [$startInclusive, $endExclusive)", it)
+                VoiceNotesForDayResult.Failed(it.message ?: "unknown error")
+            },
+        )
 
     suspend fun get(context: Context, id: Long): VoiceNote? = dao(context).getById(id)
 

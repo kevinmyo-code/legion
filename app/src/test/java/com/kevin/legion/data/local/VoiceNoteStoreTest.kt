@@ -47,6 +47,10 @@ class VoiceNoteStoreTest {
 
         override suspend fun getAll(): List<VoiceNote> = rows.values.sortedByDescending { it.startedAt }
 
+        override suspend fun getInRange(startInclusive: Long, endExclusive: Long): List<VoiceNote> =
+            rows.values.filter { it.startedAt >= startInclusive && it.startedAt < endExclusive }
+                .sortedBy { it.startedAt }
+
         override suspend fun getUnended(): List<VoiceNote> = rows.values.filter { it.endedAt == null }
 
         override suspend fun getAllAudioPaths(): List<String> = rows.values.mapNotNull { it.audioPath }
