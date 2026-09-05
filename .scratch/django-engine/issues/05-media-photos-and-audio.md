@@ -4,6 +4,7 @@ ticket: "05"
 title: "Media: receipt photos and voice-note audio on a volume, served only to a token"
 type: build
 status: open
+status-detail: "Repointed 2026-09-05: media goes to Cloudflare R2 (S3 API), not a local MEDIA_ROOT on the box. Ticket 07."
 blockers: ["04"]
 blocked-by: ["[[04-domain-api-and-changes-feed]]"]
 open-blockers: 1
@@ -37,3 +38,11 @@ it (audio, transcript and summary kept together, deleted together).
 - [ ] GET with no token: 401. With a revoked token: 401.
 - [ ] Deleting a `VoiceNote` row removes its audio file; the test asserts the path is gone.
 - [ ] An 11 MB upload: 413, nothing written.
+
+## Repointed 2026-09-05
+
+Ticket 07 decided the compute box is a household machine behind Cloudflare Tunnel, and media on a
+single home disk dies with the box. Photos and audio go to **Cloudflare R2** (10 GB free, no egress
+fees, S3-compatible) through `django-storages`' S3 backend; `MEDIA_ROOT` is dev-only. R2 credentials
+are environment variables like every other secret, never in the tree. The §4 posture is unchanged: a
+receipt photo is the evidence behind its rows and is deleted with them.

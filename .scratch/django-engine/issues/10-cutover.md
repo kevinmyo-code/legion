@@ -4,6 +4,7 @@ ticket: "10"
 title: "Cutover: one evening, counted, reversible for thirty days"
 type: build
 status: open
+status-detail: "Narrowed 2026-09-05: no data migration. The rows stay in the Supabase Postgres; cutover is Django becoming the only writer and the phone switching transports. Ticket 07."
 blockers: ["03", "04", "05", "06", "07", "09"]
 blocked-by: ["[[03-the-gate-in-python]]", "[[04-domain-api-and-changes-feed]]", "[[05-media-photos-and-audio]]", "[[06-worker-backups-first]]", "[[07-where-it-runs]]", "[[09-android-http-backends]]"]
 open-blockers: 5
@@ -52,3 +53,11 @@ are re-entered by hand; the window is one evening, and the count is on the debug
 - [ ] Ticket 06's `backup_nightly` has run once against the loaded server and `restore_backup`
       drilled against it before step 7.
 - [ ] Thirty days later: step 8 done, and `grep -r supabase app/src server/ --exclude-dir=legacy` empty.
+
+## Narrowed 2026-09-05
+
+Ticket 07 kept the database where the data already is. Cutover therefore moves **no rows**. It is:
+(1) Django models column-exact over the existing schema (ticket 02), (2) the phone talking HTTP to
+Django instead of PostgREST (ticket 09), (3) revoke the `anon` key, disable Realtime and Auth on the
+project, drop `supabase-kt`, (4) the two users' Django ids set to their former `auth.uid` so every row
+that references a user keeps referencing it. A `pg_dump` is taken before step 3 regardless.
