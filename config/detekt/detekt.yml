@@ -1,0 +1,60 @@
+# detekt config (architecture ticket 05, Kevin 2026-09-05: "1000 lines, add detekt").
+#
+# `app/build.gradle.kts` sets `buildUponDefaultConfig = true`, so this file only needs to STATE
+# what it changes from detekt's own default ruleset - it is a diff, not a copy. The full default
+# file (861 lines, every rule detekt ships, every default threshold spelled out) was generated once
+# with `./gradlew :app:detektGenerateConfig` to see what existed, then trimmed to this: the four
+# thresholds this ticket asked for, and nothing else touched. Every rule not named below runs at
+# detekt's own default active/inactive state and default threshold.
+#
+# **detekt-formatting is OFF by omission, not by a config line.** It ships as a separate Gradle
+# module/dependency (`dev.detekt:detekt-formatting`) that this project never adds - there is no
+# `formatting:` section in detekt's own default config to disable, confirmed by generating that
+# default file and grepping it (empty result). No ktlint in this repo, not adopting one today.
+#
+# **Source scope (app/build/** and generated sources) is excluded in `app/build.gradle.kts`'s
+# `detekt { source.setFrom(...) }`, not here** - pointing `source` at the two real roots
+# (`src/main/java`, `src/test/java`) is narrower and less fragile than the default glob plus an
+# exclude pattern trying to describe everything KSP/Room generate under `app/build/`.
+#
+# **File-length ceiling, and why LargeClass stands in for it (CLAUDE.md's "1000 lines" rule,
+# same number `tools/hooks/warn_long_kotlin.py`'s CEILING constant warns on at commit time).**
+# detekt ships no rule that measures a FILE's line count directly - confirmed by generating the
+# full default config and grepping every rule name for "File"/"Line": the only line-count-shaped
+# rules are `MaxLineLength` (a single line's character width, unrelated) and `LargeClass`, whose
+# `allowedLines` counts a CLASS BODY's lines, not the file's. This repo's convention is one
+# top-level class (or object) per file, so LargeClass at the same 1000-line threshold is the
+# closest available proxy for the file ceiling, not an exact measure of it - a file with a large
+# top-level class and little else will trip LargeClass at almost the same point it would trip a
+# real file-length rule, but a file padded with multiple smaller top-level declarations could
+# still exceed 1000 lines without LargeClass ever firing. Flagged here so the gap is visible
+# rather than silently assumed.
+complexity:
+  LargeClass:
+    active: true
+    allowedLines: 1000
+  LongMethod:
+    active: true
+    # detekt's own default is 60; kept explicit here (not just inherited) because ticket 05 names
+    # LongMethod as one of the four rules this repo is deliberately setting, not leaving to chance.
+    allowedLines: 60
+  LongParameterList:
+    active: true
+    allowedFunctionParameters: 5
+    allowedConstructorParameters: 6
+    ignoreDefaultParameters: false
+    ignoreDataClasses: true
+    ignoreAnnotatedParameter: []
+  TooManyFunctions:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**']
+    allowedFunctionsPerFile: 11
+    allowedFunctionsPerClass: 11
+    allowedFunctionsPerInterface: 11
+    allowedFunctionsPerObject: 11
+    allowedFunctionsPerEnum: 11
+    ignoreDeprecated: false
+    ignorePrivate: false
+    ignoreInternal: false
+    ignoreOverridden: false
+    ignoreAnnotatedFunctions: []

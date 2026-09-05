@@ -114,6 +114,20 @@ ktor = "3.5.1"
 # maven-metadata.xml rather than assumed from the `kotlin` ref below, which is stale for those two
 # plugins and reflects an earlier version of this catalog.
 ksp = "2.2.10-2.0.2"
+# detekt (architecture ticket 05, Kevin 2026-09-05: "1000 lines, add detekt"). Pinned to
+# "2.0.0-alpha.0", NOT the last 1.x stable (1.23.8), because detekt is "tightly coupled to the
+# Kotlin compiler" (its own gradle.mdx docs, verbatim) and a mismatch fails outright at runtime
+# with "detekt was compiled with Kotlin X but is currently running with Y" - confirmed by reading
+# that page, not guessed. Checked every 2.0.0 release's own GitHub release notes for the Kotlin
+# version each was "built against": alpha.6 -> 2.4.10, alpha.4 -> 2.4.0, alpha.3 -> 2.3.21,
+# alpha.2 -> 2.3.0, alpha.1 -> 2.2.20, alpha.0 -> **2.2.10 exactly** - the same Kotlin release this
+# project pins in the root build.gradle.kts (not the catalog's stale `kotlin = "2.1.0"` ref above,
+# which is its own unrelated follow-up). 1.23.8 (2025-02-21) predates Kotlin 2.2 entirely. The 2.0
+# line also renamed the group/plugin id from `io.gitlab.arturbosch.detekt` to `dev.detekt` -
+# confirmed against Maven Central's own maven-metadata.xml for both coordinates, the old group has
+# no 2.x releases. alpha.0 is a real alpha (pre-1.0 API surface can still move), accepted here
+# because the ticket's own instruction is exact-Kotlin-compatibility, not release-channel maturity.
+detekt = "2.0.0-alpha.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -209,3 +223,6 @@ roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 # KSP (architecture ticket 01, Room moves off kapt).
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+# detekt (architecture ticket 05). Plugin id `dev.detekt`, the 2.0 line's renamed id - see the
+# `detekt` version entry above for why this project is on an alpha rather than 1.23.8.
+detekt = { id = "dev.detekt", version.ref = "detekt" }

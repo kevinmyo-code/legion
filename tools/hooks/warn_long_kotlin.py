@@ -11,8 +11,13 @@ mid-edit, and the warning names the file either way). Exit 0 always. The list go
 `additionalContext` and to the user as `systemMessage`. Nothing staged, or nothing over: silent.
 
 The ceiling is one number in one place - CEILING below - and `thermo-review` flags the same
-threshold in review. If detekt's `MaxLineLength`/`TooManyFunctions`-style config in the build
-names a different number, that config wins and this constant is wrong.
+threshold in review. Confirmed against the actual config (architecture ticket 05): detekt has no
+rule that measures a FILE's line count directly, so `config/detekt/detekt.yml` uses `LargeClass`
+(a CLASS BODY's line count) as the closest available proxy, at the same 1000-line threshold - see
+that file's own comment for the gap this leaves. This paragraph used to guess at
+"`MaxLineLength`/`TooManyFunctions`-style config" before that ticket landed and the real rule was
+read rather than guessed; if `config/detekt/detekt.yml`'s `LargeClass.allowedLines` ever names a
+different number, that config wins and this constant is wrong.
 
 Idea from everything-claude-code's `rules/common/coding-style.md` (MIT, (c) 2026 Affaan Mustafa),
 which sets a file-size ceiling (800 lines there) as a rule in prose. Here it is a hook plus a

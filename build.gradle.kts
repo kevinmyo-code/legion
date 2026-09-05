@@ -12,4 +12,8 @@ plugins {
     // Plugin Portal's own maven-metadata.xml for com.google.devtools.ksp, not guessed: 2.2.10 has
     // exactly one published KSP release, 2.2.10-2.0.2.
     alias(libs.plugins.ksp) apply false
+    // detekt (architecture ticket 05): applied for real in app/build.gradle.kts, declared here
+    // apply-false per the usual root-catalog convention. See libs.versions.toml's `detekt` entry
+    // for why 2.0.0-alpha.0.
+    alias(libs.plugins.detekt) apply false
 }

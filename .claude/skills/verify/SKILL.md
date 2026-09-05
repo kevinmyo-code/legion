@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Run LEGION's full pre-commit verification in one pass - compile with no baked key, the unit suite with totals read from the JUnit XML, the docs, voice-guide, decision-debt and SQL checks - and print READY or NOT READY with the failing step named. Use before claiming work is done, before a commit, and before merging dev into main.
+description: Run LEGION's full pre-commit verification in one pass - compile with no baked key, detekt against its baseline, the unit suite with totals read from the JUnit XML, the docs, voice-guide, decision-debt and SQL checks - and print READY or NOT READY with the failing step named. Use before claiming work is done, before a commit, and before merging dev into main.
 ---
 
 <!--
@@ -47,7 +47,20 @@ agent is building here. Take a worktree or wait. Never report a verdict from a c
 `-Pnokey` is the no-baked-key path, the one a stranger's clone takes. A compile that only passes
 with a key in `local.properties` is not green.
 
-## 2. Unit suite, totals from the XML
+## 2. detekt, baseline-gated
+
+```
+./gradlew :app:detekt
+```
+
+CLAUDE.md's "Code health" ruling (Kevin, 2026-09-05): detekt joins the build with a baseline, so
+this goes red only on debt that was NOT already there the day the baseline was cut
+(`config/detekt/baseline.xml`). A failure here names real rule violations in the diff - paste the
+rule name and file:line verbatim, same as a compiler error. Regenerating the baseline
+(`./gradlew :app:detektBaseline`) to make a new finding disappear is amnesty, not a fix, and is not
+this skill's call to make.
+
+## 3. Unit suite, totals from the XML
 
 Record the time, then run:
 
@@ -77,7 +90,7 @@ Three things make this step FAIL: `failures + errors > 0`; `files == 0`; or the 
 older than the run you just started (a stale directory from a previous run reads as a pass). Name
 the failing test classes from the XML (`<testcase>` elements with a `<failure>` child).
 
-## 3. Docs paths and ADR links
+## 4. Docs paths and ADR links
 
 ```
 python tools/docs_check.py
@@ -86,7 +99,7 @@ python tools/docs_check.py
 Fails on a source path named in `docs/` that no longer exists, on bad ADR frontmatter, on a
 one-sided supersession link, on a dead wikilink.
 
-## 4. Voice surface drift
+## 5. Voice surface drift
 
 ```
 python tools/voice_guide.py --check
@@ -97,7 +110,7 @@ when the generated `docs/voice.html`, `ui/help/VoiceGuideData.kt` or the README 
 from what the copy would produce. A drift is fixed by editing the copy file and running the script
 without `--check`, never by editing the generated file.
 
-## 5. Decision debt
+## 6. Decision debt
 
 ```
 python tools/decision_debt.py --quiet
@@ -106,7 +119,7 @@ python tools/decision_debt.py --quiet
 Fails when a resolved decision ticket has no build ticket behind it (CLAUDE.md section 12). The
 commit hook runs this too; a READY verdict that then trips the hook was a lie.
 
-## 6. SQL parse check, when it applies
+## 7. SQL parse check, when it applies
 
 ```
 python tools/sql_check.py
@@ -117,7 +130,7 @@ every migration with Postgres's own grammar. It does NOT check plpgsql bodies or
 run means "well formed", never "will apply". If it exits 2 with "pglast is not installed", the step
 is SKIPPED (say so, with the install line it prints), not passed and not failed.
 
-## 7. The diff, once
+## 8. The diff, once
 
 ```
 git status --short
@@ -132,12 +145,13 @@ Every file listed is one you meant to change. A generated file (`docs/index.html
 ```
 VERIFY
   1 compile -Pnokey        PASS | FAIL
-  2 testDebugUnitTest      PASS | FAIL   files=N tests=N failures=N errors=N skipped=N   newest=<time>
-  3 docs_check             PASS | FAIL
-  4 voice_guide --check    PASS | FAIL
-  5 decision_debt          PASS | FAIL
-  6 sql_check              PASS | FAIL | SKIPPED (why)
-  7 diff                   N files: <list>
+  2 detekt                 PASS | FAIL
+  3 testDebugUnitTest      PASS | FAIL   files=N tests=N failures=N errors=N skipped=N   newest=<time>
+  4 docs_check             PASS | FAIL
+  5 voice_guide --check    PASS | FAIL
+  6 decision_debt          PASS | FAIL
+  7 sql_check              PASS | FAIL | SKIPPED (why)
+  8 diff                   N files: <list>
 
 READY | NOT READY
 ```

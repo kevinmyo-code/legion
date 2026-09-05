@@ -17,6 +17,10 @@ plugins {
     // generator, not just the kotlinx-serialization-core dependency already on the classpath
     // (that alone gives the runtime types with no annotation processor behind them).
     alias(libs.plugins.kotlin.serialization)
+    // detekt (architecture ticket 05, Kevin 2026-09-05: "1000 lines, add detekt"). Config,
+    // baseline and the LargeClass-as-file-length-proxy reasoning live in
+    // config/detekt/detekt.yml; version choice is explained in libs.versions.toml.
+    alias(libs.plugins.detekt)
 }
 
 // Secrets are kept out of source control - set them in local.properties
@@ -247,6 +251,25 @@ ksp {
 // LLM evals.
 roborazzi {
     outputDir.set(file("src/test/snapshots"))
+}
+
+// detekt (architecture ticket 05). `config/detekt/detekt.yml` carries the rule thresholds and its
+// own comment on why LargeClass stands in for a file-length ceiling detekt has no direct rule for.
+// `buildUponDefaultConfig = true` so the yml only needs to STATE what it changes from detekt's own
+// defaults, not restate the whole rule set - the opposite of `detektGenerateConfig`'s raw output,
+// which is the full default file and was hand-trimmed down after generating it once.
+// `source.setFrom` is pinned to the two real source roots rather than left at the plugin's own
+// default glob, which is how `app/build/**` (KSP's generated sources, Room's generated schema
+// helpers) and any `app/schemas/` JSON get excluded - narrowing to the source you meant beats
+// widening the default and then excluding what you didn't.
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+    baseline = file("$rootDir/config/detekt/baseline.xml")
+    source.setFrom(
+        "src/main/java",
+        "src/test/java",
+    )
 }
 
 dependencies {
