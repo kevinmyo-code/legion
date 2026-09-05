@@ -76,12 +76,20 @@ import com.kevin.legion.gmail.GmailToolLogic
 import com.kevin.legion.grocery.GroceryController
 import com.kevin.legion.grocery.GroceryMatch
 import com.kevin.legion.grocery.buildGroceryRows
+import com.kevin.legion.checklists.ChecklistController
+import com.kevin.legion.checklists.ChecklistItemMatch
+import com.kevin.legion.checklists.checklistScheduleLabel
+import com.kevin.legion.checklists.matchChecklistItem
+import com.kevin.legion.checklists.measureValueDisplay
+import com.kevin.legion.data.local.Checklist
+import com.kevin.legion.data.local.MeasureDirection
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.ui.notes.buildInboxRows
 import com.kevin.legion.ui.notes.ScheduleIntentResolver
 import com.kevin.legion.notes.ItemMatch
 import com.kevin.legion.notes.RepeatEnd
 import com.kevin.legion.notes.RepeatRule
+import com.kevin.legion.notes.formatWeekdays
 import com.kevin.legion.notes.parseWeekdays
 import com.kevin.legion.vehicle.ColdStartAgent
 import com.kevin.legion.vehicle.DiagnosticAgent
@@ -1335,6 +1343,49 @@ object LiveToolbox {
             required = listOf("action"),
         ))
 
+        // Checklists (one-today ticket 09's voice slice, 2026-09-05): user-authored named lists -
+        // "bio", "morning routine" - each optionally on a daily/weekly schedule, each line
+        // optionally MEASURED (a number, not just a tick). ONE tool with an `action` parameter,
+        // same rationale as manage_item/manage_grocery above. Deliberately separate from BOTH:
+        // manage_item is the one persistent list of car-tasks/errands/reminders/notes, and
+        // manage_grocery is the one short-lived shopping trip - a checklist is neither of those,
+        // it is a named, repeatable routine the user builds themselves, and folding it into either
+        // existing tool would force the model to guess a destination the same way a fuzzy-
+        // destination guess once filed an F150 recall onto the "Car" list (manage_grocery's own
+        // doc comment).
+        fns.put(fn(
+            name = "manage_checklist",
+            description = "Manage a user-authored, reusable CHECKLIST like \"bio\" or \"morning " +
+                "routine\" - named lines ticked off, optionally daily/weekly, optionally MEASURED " +
+                "(a number against a target, e.g. '8,400 of 10,000 steps') instead of a plain tick. " +
+                "NOT the one persistent list (manage_item) and NOT the shopping trip " +
+                "(manage_grocery) - never route a to-do or grocery item here, or a checklist there. " +
+                "No schedule ('none') means done once ever, the first tick; 'daily' resets each " +
+                "day, 'weekly' only applies on its named days - a list created today has nothing " +
+                "for yesterday, that is expected. A measured line needs a real number to tick - " +
+                "with none given, refuse and ask, via 'value'; never invent one. 'item' fuzzily " +
+                "matches an existing line, never a position. 'lists' reads back every name and " +
+                "schedule.",
+            params = obj(
+                "action" to schema("string", "What to do.",
+                    enum = listOf("create", "add", "tick", "untick", "remove", "read", "lists")),
+                "list" to schema("string", "The checklist's name, e.g. 'bio' - required except for 'lists'."),
+                "schedule" to schema("string", "Only for 'create'. Omit or 'none' for a plain, done-once list.",
+                    enum = listOf("none", "daily", "weekly")),
+                "days" to schema("string", "'create' with schedule 'weekly' only: comma-separated days, e.g. 'MON,WED,FRI'."),
+                "text" to schema("string", "'add' only: the new line's text, e.g. '3 sets goblet squats'."),
+                "unit" to schema("string", "'add' only, if MEASURED: the unit, e.g. 'steps', 'kg', 'min'. Omit for a plain tick line."),
+                "target" to schema("number", "'add' with 'unit' set only, if a goal number was given."),
+                "direction" to schema("string", "'add' with 'target' set: at least it, or at most it.",
+                    enum = listOf("at_least", "at_most")),
+                "item" to schema("string", "'tick'/'untick'/'remove': which existing line to match, in the user's words."),
+                "value" to schema("number", "'tick' on a MEASURED line only: the number reported, e.g. 8400 for '8,400 steps'. Required for a measured line - omitting it refuses the tick."),
+                "day" to schema("string", "'tick'/'untick' only. Omit for today.",
+                    enum = listOf("today", "yesterday")),
+            ),
+            required = listOf("action"),
+        ))
+
         fns.put(fn(
             name = "read_list",
             description = "Read back the user's list - every open item, soonest due date first, " +
@@ -2546,6 +2597,7 @@ object LiveToolbox {
             "manage_item" -> manageItem(context, args)
             "read_list" -> readList(context)
             "manage_grocery" -> manageGrocery(context, args)
+            "manage_checklist" -> manageChecklist(context, args)
             "log_build_entry" -> withResolvedVehicle(context, args) { logBuildEntry(context, args, it.obdMac) }
             "list_build_history" -> withResolvedVehicle(context, args) { listBuildHistory(context, args.optString("type"), it.obdMac) }
             "get_spend" -> getSpend(context, args.optString("category"))
@@ -2648,7 +2700,7 @@ object LiveToolbox {
     private val MUTATING_TOOLS = setOf(
         "clear_codes", "set_reminder", "tag_place", "forget_place", "set_odometer", "log_service",
         "log_past_service", "set_maintenance_interval", "register_vehicle", "remember",
-        "manage_item", "manage_grocery", "log_build_entry", "activate_garage",
+        "manage_item", "manage_grocery", "manage_checklist", "log_build_entry", "activate_garage",
         "categorize_transactions", "set_category", "log_pending_transaction",
         "clear_pending_transaction", "create_workout_plan", "log_workout_set", "log_bodyweight",
         "log_meal", "set_meal_target", "set_budget", "log_sleep", "set_sleep_target",
@@ -5458,6 +5510,199 @@ object LiveToolbox {
                 }
                 else -> result(false, "I don't know how to do that with the shopping list.")
             }
+        }
+    }
+
+    /** Case-insensitive, trimmed match on [Checklist.name] - deliberately NOT fuzzy (unlike
+     * [matchChecklistItem] for a line within a list): the brief calls for exact-modulo-case-and-
+     * whitespace addressing of the list itself, so "bio" and "Bio " resolve the same checklist but
+     * a near-miss name is reported unknown rather than silently guessed at. Archived checklists are
+     * excluded, matching [ChecklistController.allChecklists]'s own default. */
+    private suspend fun resolveChecklistByName(context: Context, name: String): Checklist? =
+        ChecklistController.allChecklists(context).firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+
+    /** `today`/`yesterday` (the only two the tool declares) -> a local epoch day, matching
+     * [ChecklistController.tick]/[ChecklistController.untick]'s own `day` parameter. Anything
+     * else (blank, or a value the model was not offered) defaults to today rather than failing the
+     * whole call over an unrecognised word here - the tool schema is a closed enum, so this branch
+     * only ever sees a value outside it if a caller bypasses the declared schema entirely. */
+    private fun resolveChecklistDay(spec: String): Int = when (spec.trim().lowercase()) {
+        "yesterday" -> ChecklistController.today() - 1
+        else -> ChecklistController.today()
+    }
+
+    /**
+     * Dispatches `manage_checklist`: create / add / tick / untick / remove / read / lists on a
+     * user-authored named checklist (one-today ticket 09's voice slice). Follows manageItem/
+     * manageGrocery's own shape immediately above - one `action` enum, one dispatch branch - and
+     * calls straight into [ChecklistController], never re-implementing any of its rules (§7
+     * "not a second implementation").
+     */
+    private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject {
+        val action = args.optString("action").trim().lowercase()
+        val listArg = args.optString("list").trim()
+
+        if (action == "lists") {
+            val lists = ChecklistController.allChecklists(context)
+            if (lists.isEmpty()) {
+                return result(true, "No checklists yet - say 'create a checklist called bio' to start one.")
+            }
+            val arr = JSONArray()
+            for (cl in lists) {
+                arr.put(JSONObject().put("name", cl.name).put("schedule", checklistScheduleLabel(cl)))
+            }
+            return JSONObject()
+                .put("success", true)
+                .put("count", lists.size)
+                .put("lists", arr)
+        }
+
+        if (listArg.isBlank()) return result(false, "Which checklist?")
+
+        if (action == "create") {
+            val existing = resolveChecklistByName(context, listArg)
+            if (existing != null) {
+                return result(
+                    false,
+                    "There's already a checklist called \"${existing.name}\" - pick a different name or add to that one.",
+                )
+            }
+            val scheduleArg = args.optString("schedule", "none").trim().lowercase()
+            val scheduleKind: String?
+            val scheduleEvery: Int?
+            val scheduleDaysOfWeek: String?
+            val scheduleWords: String
+            when (scheduleArg) {
+                "daily" -> {
+                    scheduleKind = "DAILY"; scheduleEvery = 1; scheduleDaysOfWeek = null
+                    scheduleWords = "daily"
+                }
+                "weekly" -> {
+                    val daysRaw = args.optString("days").trim()
+                    val days = parseWeekdays(daysRaw)
+                    if (daysRaw.isBlank() || days.isNullOrEmpty()) {
+                        return result(false, "A weekly checklist needs which days - say something like 'Monday, Wednesday, Friday'.")
+                    }
+                    scheduleKind = "WEEKLY"; scheduleEvery = 1; scheduleDaysOfWeek = formatWeekdays(days)
+                    scheduleWords = "weekly, on ${scheduleDaysOfWeek.replace(",", ", ")}"
+                }
+                else -> {
+                    scheduleKind = null; scheduleEvery = null; scheduleDaysOfWeek = null
+                    scheduleWords = "with no schedule - it's done once you tick anything on it"
+                }
+            }
+            ChecklistController.createChecklist(
+                context,
+                name = listArg,
+                scheduleKind = scheduleKind,
+                scheduleEvery = scheduleEvery,
+                scheduleDaysOfWeek = scheduleDaysOfWeek,
+            )
+            return result(true, "Created the \"$listArg\" checklist, $scheduleWords.")
+        }
+
+        // Every action from here on addresses an EXISTING checklist by name.
+        val checklist = resolveChecklistByName(context, listArg)
+            ?: return result(false, "No checklist named \"$listArg\" - say 'lists' to hear them.")
+
+        when (action) {
+            "add" -> {
+                val textArg = args.optString("text").trim()
+                if (textArg.isBlank()) return result(false, "What should I add to \"${checklist.name}\"?")
+                val unit = args.optString("unit").trim().ifBlank { null }
+                val target = if (args.has("target") && !args.isNull("target")) args.optDouble("target") else null
+                val direction = when (args.optString("direction").trim().lowercase()) {
+                    "at_least" -> MeasureDirection.AT_LEAST.name
+                    "at_most" -> MeasureDirection.AT_MOST.name
+                    else -> null
+                }
+                val sortOrder = ChecklistController.itemsFor(context, checklist.id).size
+                val added = ChecklistController.addItem(
+                    context,
+                    checklistId = checklist.id,
+                    text = textArg,
+                    sortOrder = sortOrder,
+                    measureUnit = unit,
+                    measureTarget = target,
+                    measureDirection = direction,
+                )
+                return result(true, "Added \"${added.text}\" to \"${checklist.name}\".")
+            }
+
+            "read" -> {
+                return when (val loaded = ChecklistController.itemsWithTickState(context, checklist.id)) {
+                    is ChecklistController.ChecklistItemsResult.Failed ->
+                        result(false, "Couldn't read \"${checklist.name}\" just now - try again in a sec.")
+                    is ChecklistController.ChecklistItemsResult.Loaded -> {
+                        if (loaded.items.isEmpty()) {
+                            return result(true, "\"${checklist.name}\" has no items yet.")
+                        }
+                        val arr = JSONArray()
+                        for (state in loaded.items) {
+                            val line = JSONObject()
+                                .put("text", state.item.text)
+                                .put("ticked", state.ticked)
+                            if (state.item.measureUnit != null) {
+                                // Same phrasing the checklist screen itself renders
+                                // (checklists/ChecklistDayViewLogic.kt) - "8,400 / 10,000 steps" -
+                                // so the number spoken and the number shown never drift apart
+                                // (ADR 0035: one implementation, not a second one for voice).
+                                line.put(
+                                    "measured",
+                                    if (state.value != null) measureValueDisplay(state.item, state.value)
+                                    else "not recorded yet, in ${state.item.measureUnit}",
+                                )
+                            }
+                            arr.put(line)
+                        }
+                        JSONObject()
+                            .put("success", true)
+                            .put("list", checklist.name)
+                            .put("count", loaded.items.size)
+                            .put("items", arr)
+                    }
+                }
+            }
+
+            "tick", "untick", "remove" -> {
+                val itemArg = args.optString("item").trim()
+                if (itemArg.isBlank()) return result(false, "Which item on \"${checklist.name}\"?")
+                val items = ChecklistController.itemsFor(context, checklist.id)
+                return when (val match = matchChecklistItem(itemArg, items)) {
+                    is ChecklistItemMatch.NoMatch ->
+                        result(false, "I don't see \"$itemArg\" on \"${checklist.name}\" - add it?")
+                    is ChecklistItemMatch.Ambiguous -> result(
+                        false,
+                        "Which one on \"${checklist.name}\"? " + match.candidates.joinToString(", ") { it.text },
+                    )
+                    is ChecklistItemMatch.Resolved -> when (action) {
+                        "tick" -> {
+                            val day = resolveChecklistDay(args.optString("day"))
+                            val value = if (args.has("value") && !args.isNull("value")) args.optDouble("value") else null
+                            when (val outcome = ChecklistController.tick(context, match.item.id, day = day, value = value)) {
+                                // Verbatim - the controller's own message already says what did NOT
+                                // happen (§7's outcome-verb rule: nothing was recorded, and this
+                                // must not paraphrase that into something that reads like success).
+                                is ChecklistController.TickOutcome.Refused -> result(false, outcome.message)
+                                ChecklistController.TickOutcome.Ticked ->
+                                    result(true, "Ticked \"${match.item.text}\" on \"${checklist.name}\".")
+                            }
+                        }
+                        "untick" -> {
+                            val day = resolveChecklistDay(args.optString("day"))
+                            ChecklistController.untick(context, match.item.id, day = day)
+                            result(true, "Unticked \"${match.item.text}\" on \"${checklist.name}\".")
+                        }
+                        "remove" -> {
+                            ChecklistController.deleteItem(context, match.item.id)
+                            result(true, "Removed \"${match.item.text}\" from \"${checklist.name}\".")
+                        }
+                        else -> result(false, "I don't know how to do that with a checklist.")
+                    }
+                }
+            }
+
+            else -> return result(false, "I don't know how to do that with a checklist.")
         }
     }
 

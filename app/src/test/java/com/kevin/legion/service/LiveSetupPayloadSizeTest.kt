@@ -86,8 +86,17 @@ class LiveSetupPayloadSizeTest {
      * The headroom is now ~2% rather than ~23%, which is the real cost of this decision: the next
      * tool addition trips this test. That is the intended behaviour, not a problem to pre-empt -
      * re-measure and justify again, or trim, at that point.
+     *
+     * **Raised to 22,000 on 2026-09-05 (one-today ticket 09's voice slice, `manage_checklist`).**
+     * Measured that day: 86 declarations, 77,749 chars of tools JSON plus 7,879 chars of system
+     * instruction = 85,628 chars, ~21,407 estimated tokens. `manage_checklist` alone (create/add/
+     * tick/untick/remove/read/lists, plus measured-item support) was already trimmed once - 2,787
+     * down to 2,262 chars, ~565 tokens, the single largest declaration in this surface - before this
+     * raise, the same order the 2026-08-17 `manage_item` trim went in; trimming it further would
+     * cost the schedule/measured-item rules an `action`-dispatched tool like this genuinely needs,
+     * not decoration. Exactly the "next tool addition trips this test" the prior entry predicted.
      */
-    private val ceilingTokens = 21_000
+    private val ceilingTokens = 22_000
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {
