@@ -505,38 +505,46 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 - When a `reasoned` claim proves wrong, file it in `lessons.md` and graduate its rule into an agent
   def or this file. An entry closes only when its rule lives in a surface something reads.
 
-### No framework. Dependencies are parameters. (Kevin, 2026-09-05 - REOPENED the same day)
+### Architecture: Hilt on KSP, constructor injection, a ViewModel per screen (Kevin, 2026-09-05)
 
-**Not binding.** Hours after this was written Kevin said: *"no framework, manual di etc is outdated.
-we have no conflict. we can re-decide anything. no hard blockers."* The text below stays as the
-research position of the morning; the architecture is being re-decided on merit against the
-everything-claude-code survey (`tmp/ecc_proposal.md`, then a ticket), and whatever that lands
-replaces this subsection. Until then, treat nothing here as a rule.
+Decided twice in one day and the second one stands. The morning's research said "no framework,
+manual DI"; Kevin reopened it (*"no framework, manual di etc is outdated... we can re-decide
+anything"*), the everything-claude-code survey re-argued it on merit, and Kevin ruled: **go with
+Hilt.** The morning's text is in `library/decisions.md` 2026-09-05; this is the rule.
 
-Asked whether LEGION should adopt an Android framework, the answer after research was no, and Kevin
-ruled it so. The platform plus Jetpack plus Compose IS the framework; Google's own guidance labels
-Hilt "for complex projects" and manual DI "for simple apps", and this is one developer, one phone.
-What the codebase lacks is two conventions, not a library. Both bind NEW code; the existing 33
-controllers migrate only as they are touched, never in a sweep.
+- **Hilt, on KSP.** Not Koin: Koin's missing binding is a crash on the phone, Hilt's is a compile
+  error, and with one developer and no CI, compile-time is the only CI there is. Not a manual
+  `AppGraph`: 33 `object` controllers reachable statically from 583 files means a convert-as-touched
+  plan stalls with no compiler behind it. Room moves from kapt to KSP first, so Hilt does not double
+  an annotation-processor tax that should not exist.
+- **A controller is a class with constructor injection, never an `object`, and never takes
+  `Context` for anything but a `Context`-shaped need.** Database, backends, clock arrive through the
+  constructor. `Context` threaded through 645 signatures is why 202 of 318 test files need Robolectric
+  and why there is no seam to fake a backend; this is what removes it.
+- **A ViewModel per screen**, exposing one `StateFlow<UiState>`, collected with
+  `collectAsStateWithLifecycle`. Rotation, process death and a Realtime push all re-run a
+  screen-local loader today; that surfaces as "the list flashed empty".
+- **Interfaces only at seams that need a fake.** `LastAspectsBackend` / `SupabaseLastAspectsBackend`
+  is the pattern and it already exists. No interface for a class that has one implementation and no
+  test double.
+- **No use-case layer.** ADR 0042 puts business rules in Postgres; controllers already ARE the
+  application layer. A `FooUseCase` that calls one controller method is ceremony.
+- **Modules later, on a trigger:** when a clean `compileDebugKotlin` is intolerable. First split is
+  `:core:data`. Not before.
 
-- **A controller takes its collaborators as parameters, never `Context`.** The database, a backend,
-  a clock. The caller resolves them once. `Context` threaded through 645 signatures is why 202 of
-  318 test files need Robolectric and why there is no seam to fake a backend - and with a second
-  client arriving (Django, see `docs/adr/` two-clients ADRs) a thin client that calls RPCs is the
-  shape that wants this most.
-- **One `AppGraph`, a plain Kotlin class built in `MidnightApplication.onCreate`**, holding the DB,
-  the Supabase client and the backends. That is what Google calls manual DI. No annotation
-  processor; Room's kapt is already the build's tax and Hilt would double it.
-- **Screen-level state holders for the busiest screens** (calendar, ledger, pantry) as `ViewModel`
-  subclasses exposing one `StateFlow<UiState>`, collected with `collectAsStateWithLifecycle`.
-  `lifecycle-viewmodel-compose` is already on the classpath. Rotation, process death and a Realtime
-  push all re-run a screen-local loader today; that surfaces as "the list flashed empty".
+**Migration order, and it is an order:** (1) Room kapt to KSP; (2) Hilt plugin, `@HiltAndroidApp`,
+entry points; (3) bind the backend interfaces; (4) the three busiest screens (calendar, ledger,
+pantry) get ViewModels and their controllers become injected classes; (5) everything else converts
+as touched, reachable in the meantime through an `@EntryPoint` shim so old `object` callers keep
+compiling; (6) modules on the trigger above. The ticket is `.scratch/architecture/`.
 
-**Adopt later, on a named trigger:** Koin if a DI library is ever wanted (fits the `object` style,
-no codegen; prefer it over Hilt). A `:core:data` module when a clean compile is intolerable - and
-before that, Room kapt to KSP, which is cheaper. Navigation 3 when navigation-compose 2.8 blocks a
-real need. **Never for this app:** Circuit, Decompose, MVI frameworks, a use-case layer, Flutter,
-React Native, KMP. Phone-only is a ruling and there is no second platform to share with.
+**Still never for this app:** Circuit, Decompose, MVI frameworks, Flutter, React Native, KMP.
+Phone-only is a ruling and there is no second platform to share with.
+
+**Code health, decided the same day:** **detekt joins the build** (Kevin: *"1000 lines, add
+detekt"*), with a baseline for what exists today so the build goes red only on new debt. A hook
+warns when a staged `.kt` exceeds **1000 lines**. Neither is a style opinion; both are the
+"check, not a hope" posture §13 already applies to docs.
 
 ### Branching
 

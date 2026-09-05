@@ -5320,3 +5320,30 @@ Android convention. Five rulings, two ADRs (`docs/adr/0042-business-rules-live-i
 
 This reopens a §2 locked decision, on Kevin's own words. CLAUDE.md §2's table row and §7's
 "No Kevin-hosted anything" bullet and checklist line are owed the matching edit.
+
+## 2026-09-05 - Architecture, decided twice: Hilt on KSP, constructor injection, a ViewModel per screen
+
+Morning: a framework survey (Google's architecture guide, Now in Android, Hilt vs Koin vs manual)
+concluded "no framework, manual DI via an AppGraph, ViewModels only on the busiest screens", and it
+was written into CLAUDE.md §8 as a ruling. Afternoon, Kevin: *"no framework, manual di etc is
+outdated. we have no conflict. we can re-decide anything. no hard blockers."* The everything-claude-
+code survey (`tmp/ecc_proposal.md`) was told to re-argue the question on merit and picked Hilt.
+Kevin: *"1000 lines, add detekt. go with hilt, rewrite section 8."*
+
+**The ruling:** Hilt on KSP; controllers become classes with constructor injection and stop taking
+`Context`; a `@HiltViewModel` per screen exposing one `StateFlow<UiState>`; interfaces only at seams
+that need a fake; no use-case layer (ADR 0042 puts business rules in Postgres); modules later on a
+compile-time trigger. detekt joins the build with a baseline; a hook warns on a `.kt` over 1000 lines.
+
+**Why Hilt beat the morning's manual AppGraph:** 33 `object` controllers reachable statically from
+583 files means a convert-as-touched plan with no compiler behind it stalls. **Why Hilt beat Koin:**
+Koin's missing binding is a crash on the phone; Hilt's is a compile error, and with one developer and
+no CI, compile-time is the only CI there is.
+
+**Migration order** is the substance and lives in `.scratch/architecture/`: Room kapt to KSP, then
+Hilt plus an `@EntryPoint` shim so old static callers keep compiling, then bound backend interfaces,
+then calendar / ledger / pantry ViewModels, then convert-as-touched with a written stop condition.
+`grep EntryPoints.get` is the remaining-work list, so the tail cannot hide.
+
+The morning's text survives here, not in CLAUDE.md, per that file's own rule about struck-through
+self-corrections.

@@ -16,6 +16,12 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[02-semantic-recall\|02]] | task | Semantic recall: embeddings in a Room column |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
+| [[.scratch/architecture/map\|architecture]] | [[01-room-kapt-to-ksp\|01]] | build | Room moves from kapt to KSP |
+| [[.scratch/architecture/map\|architecture]] | [[02-hilt-plugin-and-entrypoint-shim\|02]] | build | Hilt plugin, @HiltAndroidApp, and the @EntryPoint shim |
+| [[.scratch/architecture/map\|architecture]] | [[03-bind-the-backend-interfaces\|03]] | build | Bind the backend interfaces |
+| [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected |
+| [[.scratch/architecture/map\|architecture]] | [[05-detekt-with-a-baseline\|05]] | build | detekt joins the build, with a baseline and a 1000-line ceiling |
+| [[.scratch/architecture/map\|architecture]] | [[06-convert-as-touched-and-the-shim-trigger\|06]] | decision | Convert as touched, and when the shim retires |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -149,6 +155,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ai-craft/map\|ai-craft]] | 4 | 3 | [[.scratch/ai-craft/ai-craft.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
+| [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
