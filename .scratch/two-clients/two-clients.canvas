@@ -1,0 +1,77 @@
+{
+  "nodes": [
+    {
+      "id": "6ac48557a199d81a",
+      "type": "file",
+      "file": ".scratch/two-clients/issues/01-schema-ownership-and-django-role.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "028bf393b4a24719",
+      "type": "file",
+      "file": ".scratch/two-clients/issues/02-where-django-runs.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d1bcfac68c1d362b",
+      "type": "file",
+      "file": ".scratch/two-clients/issues/04-first-rules-move-down.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e103e3e5beb7802d",
+      "type": "file",
+      "file": ".scratch/two-clients/issues/03-canvas-poller.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f907f243f63a79dd",
+      "type": "file",
+      "file": ".scratch/two-clients/issues/05-webassign-completion-read.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "bdd8abc5630ad634",
+      "fromNode": "6ac48557a199d81a",
+      "fromSide": "right",
+      "toNode": "e103e3e5beb7802d",
+      "toSide": "left"
+    },
+    {
+      "id": "eeefe65f2621cd92",
+      "fromNode": "028bf393b4a24719",
+      "fromSide": "right",
+      "toNode": "e103e3e5beb7802d",
+      "toSide": "left"
+    },
+    {
+      "id": "0cd9bb8ce52eb1d0",
+      "fromNode": "6ac48557a199d81a",
+      "fromSide": "right",
+      "toNode": "f907f243f63a79dd",
+      "toSide": "left"
+    }
+  ]
+}

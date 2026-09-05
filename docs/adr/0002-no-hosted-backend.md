@@ -1,7 +1,8 @@
 ---
-status: locked
+status: superseded
 decided: 2026-07-30
 decided-by: Kevin
+superseded-by: [0043-django-is-the-second-client]
 source: "CLAUDE.md §2 and §7"
 tags: [adr]
 ---
@@ -9,6 +10,10 @@ tags: [adr]
 # 2. No Kevin-hosted anything
 
 ## Standing
+
+**SUPERSEDED 2026-09-05 by [[0043-django-is-the-second-client]].** The clause is now "no Kevin-hosted
+anything the PHONE depends on to function"; a Django second client may be hosted because the phone
+does not need it to work. Original text below, unchanged.
 
 LOCKED, and still binding in full. **NARROWED 2026-08-25 by
 [[0038-byo-supabase-is-the-system-of-record]]: not superseded.** A household now runs its own

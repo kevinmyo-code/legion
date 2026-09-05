@@ -5289,3 +5289,34 @@ the shape is worth naming: a source that LOOKS authoritative because it is the s
 can still be the wrong anchor for a date if that date is mutable after the fact. The stable source is
 the one that was written once and does not move. That is the syllabus, and for the same reason it is
 the Canvas description for discussion sub-deadlines rather than Canvas's `due_at`.
+
+## 2026-09-05 - Two clients, one Postgres: the rules live in the database
+
+Kevin, asked whether LEGION should adopt an Android framework: *"well, 1 live backend, a django app
+that will consume that, plus our android app."* Then *"go with both"* to writing these rulings and the
+Android convention. Five rulings, two ADRs (`docs/adr/0042-business-rules-live-in-postgres.md`,
+`docs/adr/0043-django-is-the-second-client.md`), one map (`.scratch/two-clients/`).
+
+1. **Business rules live in Postgres, not in either client.** Anything both clients must agree on -
+   a measured tick needs a number, a no-schedule checklist is done once, a discussion parent's
+   `submitted_at` does not complete its sub-deadlines, the §4 gate's anchors - is a CHECK, a trigger
+   or an RPC. Clients call RPCs and render. Kotlin controller logic migrates down as touched, never
+   in a sweep.
+2. **One migration owner: `supabase/migrations/`.** Django models are `managed = False` from
+   `inspectdb`; `manage.py migrate` never touches a LEGION table. Django's own tables live in a
+   `django` schema the phone never references.
+3. **Django connects to Postgres directly** with a dedicated role. Not PostgREST, not supabase-py.
+   Never the phone's anon/authenticated key, never the `service_role` JWT.
+4. **Django does what must run while the phone is asleep, and desk UI.** Scheduled Canvas polling
+   (one-today ticket 08's edge function, absorbed - its discussion and `submitted_at` rules bind
+   Django verbatim), the WebAssign completion read, nightly analysis over checklist ticks, reports and
+   admin. Not a second voice client. Owns no table.
+5. **Hosting is a decision, not an accident.** "No Kevin-hosted anything" (ADR 0002, CLAUDE.md §2
+   and §7) was superseded in practice by the 2026-08-25 Supabase pivot and never on paper. Now on
+   paper: ADR 0043 supersedes ADR 0002, and the rule becomes **no Kevin-hosted anything the PHONE
+   depends on to function.** The phone still clone-and-runs against Supabase alone. Django is
+   additive: down, the phone loses scheduled freshness, never function. Where Django runs is open
+   (`.scratch/two-clients/issues/02-where-django-runs.md`: Fly.io, Railway, a home box).
+
+This reopens a §2 locked decision, on Kevin's own words. CLAUDE.md §2's table row and §7's
+"No Kevin-hosted anything" bullet and checklist line are owed the matching edit.

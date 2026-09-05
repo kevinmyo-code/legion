@@ -18,7 +18,6 @@ Format and the test for whether something deserves an ADR:
 | # | Decision | Status | Decided | Amended |
 |---|---|---|---|---|
 | 0001 | [[0001-phone-only\|Phone-only, and the head-unit constraints go with it]] | locked | 2026-07-30 | - |
-| 0002 | [[0002-no-hosted-backend\|No Kevin-hosted anything]] | locked | 2026-07-30 | - |
 | 0003 | [[0003-clone-and-run\|A stranger must be able to clone, sideload, and use it]] | locked | 2026-07-30 | - |
 | 0004 | [[0004-commercial-model-dead\|There is no commercial model]] | locked | 2026-07-30 | - |
 | 0006 | [[0006-reconciliation-gate\|LLM extraction, allowed only behind a deterministic gate]] | locked | 2026-07-30 | 2026-08-06 |
@@ -53,6 +52,8 @@ Format and the test for whether something deserves an ADR:
 | 0039 | [[0039-per-aspect-typed-tables\|Per-aspect typed tables; the generic engine retires]] | accepted | 2026-08-25 | - |
 | 0040 | [[0040-pc-is-the-primary-surface-phone-is-voice-first\|The PC is the primary surface; the phone is voice-first and minimal]] | accepted | 2026-08-28 | - |
 | 0041 | [[0041-a-recording-kevin-starts-is-first-party\|A recording Kevin starts is first-party, and its transcript is kept]] | accepted | 2026-09-01 | - |
+| 0042 | [[0042-business-rules-live-in-postgres\|Business rules live in Postgres, not in either client]] | accepted | 2026-09-05 | - |
+| 0043 | [[0043-django-is-the-second-client\|Django is the second client, and what it may be hosted for]] | accepted | 2026-09-05 | - |
 
 ## Superseded
 
@@ -60,6 +61,7 @@ Kept with their original text. What was believed before, and why it changed.
 
 | # | Decision | Superseded by |
 |---|---|---|
+| 0002 | [[0002-no-hosted-backend\|No Kevin-hosted anything]] | [[0043-django-is-the-second-client\|0043-django-is-the-second-client]] |
 | 0005 | [[0005-no-llm-extraction\|No LLM extraction from financial documents]] | [[0006-reconciliation-gate\|0006-reconciliation-gate]] |
 | 0010 | [[0010-drive-appdatafolder-only-store\|Drive appDataFolder is the only store]] | [[0038-byo-supabase-is-the-system-of-record\|0038-byo-supabase-is-the-system-of-record]] |
 | 0022 | [[0022-design-language-instrument\|Design language: Instrument on Material 3's machinery]] | [[0023-design-language-mission-control\|0023-design-language-mission-control]] |
