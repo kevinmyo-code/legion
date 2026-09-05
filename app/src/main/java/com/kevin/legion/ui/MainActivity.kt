@@ -698,11 +698,9 @@ private fun LegionShell(
                         navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
                     },
                     onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
-                    onOpenGroceriesList = {
-                        notesStartMode = LogMode.GROCERY
-                        notesStartModeNonce++
-                        navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
-                    },
+                    // onOpenGroceriesList REMOVED (one-today ticket 10 slice B, 2026-09-05) - the
+                    // "Groceries trip" row it fed is gone from [MetersScreen]; the shopping list is
+                    // a checklist now, reached through onOpenChecklists below.
                     // The media mini-bar's own tap-through (rehomed from the deleted
                     // `ui/TodayScreen.kt`, one-today ticket 07) - the media control panel
                     // command-center ticket 04 built, nested under Spotify's own settings route

@@ -10,14 +10,21 @@ import com.kevin.legion.data.local.GroceryStaple
  * The grocery trip: build it, shop it, tear it down (Kevin, 2026-08-11 - "a grocery list, made once
  * and torn down once grocery is complete").
  *
- * Same natural-language-helper shape as [com.kevin.legion.notes.NotesController]: `LiveToolbox`'s
- * voice tool calls these and phrases the returned facts, `ui/notes/GroceryScreen.kt` calls the same
- * functions, and the pure part (matching a spoken item, folding a finished trip into staples) lives
- * in `grocery/GroceryLogic.kt` so it tests without a `Context`.
+ * **CORRECTED 2026-09-05 (one-today ticket 10 slice B): the trip surface is retired.** This used to
+ * say `LiveToolbox`'s voice tool (`manage_grocery`) called these and `ui/notes/GroceryScreen.kt`
+ * called the same functions - both are gone ("everything is a checklist now", a shopping list is a
+ * checklist named "Groceries"; `grocery/GroceryChecklistMigration.kt` carried any open trip over
+ * once). Every function below except the staples half (see [suggestions]/[forgetStaple]) is now
+ * WRITE-DEAD: nothing in the app calls [addItem]/[tick]/[untick]/[removeItem]/[completeTrip]/
+ * [abandonTrip]/[findItem] anymore, and [items]/[tripInProgress] have no caller left either now that
+ * the migration reads `grocery_items` directly through the DAO. Kept, not deleted - §5 forbids
+ * dropping a working table/API alongside a non-destructive change, `grocery_items` itself is
+ * untouched, and the pure matching/folding logic in `grocery/GroceryLogic.kt` still backs the
+ * staples half this object keeps live.
  *
  * **A trip is in progress exactly when [items] is non-empty.** There is no separate active flag -
  * see [GroceryItem]'s doc comment for why a `GroceryTrip` row would only add a state that can
- * disagree with its own contents.
+ * disagree with its own contents. (This fact is now purely historical - see the paragraph above.)
  */
 object GroceryController {
     private fun db(context: Context) = CarDatabase.getDatabase(context)

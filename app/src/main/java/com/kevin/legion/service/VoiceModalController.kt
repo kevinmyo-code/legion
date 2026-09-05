@@ -22,8 +22,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * bit this codebase twice before (`EventReplicaDao.upsert`'s defeated guarantee,
  * `GeneratedFormScreen`'s "PHOTO ON FILE"). If per-list targeting is ever added, the parameter and
  * the name arrive together.
+ *
+ * **`GROCERIES` retired (one-today ticket 10 slice B, 2026-09-05): "everything is a checklist
+ * now".** The grocery trip screen (`ui/notes/GroceryScreen.kt`) and `show_groceries_modal` are gone
+ * with it - a shopping list is a checklist named "Groceries" now, reached through the checklists
+ * screen, not a voice-called modal.
  */
-enum class VoiceModalTarget { AGENDA, WHOLE_LIST, GROCERIES }
+enum class VoiceModalTarget { AGENDA, WHOLE_LIST }
 
 /**
  * [target] plus [shownAt], mirroring [GlanceCardPayload]'s own shape: a bare enum value would

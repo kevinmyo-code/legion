@@ -31,7 +31,6 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.VoiceNoteKind
-import com.kevin.legion.grocery.GroceryController
 import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
@@ -116,12 +115,13 @@ fun MetersScreen(
     onOpenFleet: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenPantry: () -> Unit,
-    // Fixed on-device 2026-09-01 (Kevin: "groceries trip tapping it brings me to not a grocery
-    // list") - the Lists section's "Groceries trip" row used to reuse [onOpenPantry], which lands
-    // on pantry INVENTORY, not the grocery trip list `ui/NotesScreen.kt`'s LogMode.GROCERY mode
-    // actually renders. [onOpenPantry] stays wired to the two budget/breach "Groceries" rows below
-    // (spend, not the list) - those really do mean pantry.
-    onOpenGroceriesList: () -> Unit,
+    // onOpenGroceriesList REMOVED (one-today ticket 10 slice B, 2026-09-05) - it used to open the
+    // "Groceries trip" row (fixed on-device 2026-09-01, Kevin: "groceries trip tapping it brings me
+    // to not a grocery list", because it used to reuse [onOpenPantry], which lands on pantry
+    // INVENTORY, not the grocery trip list `ui/NotesScreen.kt`'s LogMode.GROCERY mode actually
+    // rendered). Both the row and the mode it opened are gone; [onOpenPantry] is untouched here and
+    // stays wired to the two budget/breach "Groceries" rows below (spend, not the list) - those
+    // really do mean pantry.
     // The media mini-bar's own tap-through (rehomed from `ui/TodayScreen.kt`'s identical
     // parameter) - the media control panel nested under `settings/spotify/media`. Defaults to a
     // no-op, matching every other `onOpen*` default this screen and the deleted screen both used.
@@ -174,12 +174,13 @@ fun MetersScreen(
         val maintenanceRows = buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now)
         val maintenanceUnknownCount = items.count { VehicleController.isUnknown(it) }
 
-        // LISTS: open counts off two genuinely different lists - NotesController's own persistent
-        // checklist and GroceryController's short-lived shopping trip (`service/LiveToolbox.kt`'s
-        // own manage_grocery/show_groceries_modal tool copy is explicit that the grocery trip is
-        // "NOT the persistent list" - two structures, not one, so two separate reads here).
+        // LISTS: NotesController's own persistent list count. Used to also read
+        // GroceryController's short-lived shopping trip here (`service/LiveToolbox.kt`'s own
+        // manage_grocery/show_groceries_modal tool copy used to be explicit that the grocery trip
+        // was "NOT the persistent list") - that second read retired with the trip surface itself
+        // (one-today ticket 10 slice B, 2026-09-05): a shopping list is a checklist now, counted by
+        // CHECKLISTS below, not a second read here.
         val persistentOpenCount = NotesController.openItemCount(context)
-        val groceriesOpenCount = GroceryController.items(context).count { !it.done }
 
         // CHECKLISTS: a third, genuinely different list from either of the two above (one-today
         // ticket 09) - the count of non-archived checklists, not a today's-items count, since this
@@ -211,7 +212,6 @@ fun MetersScreen(
             maintenanceRows = maintenanceRows,
             maintenanceUnknownCount = maintenanceUnknownCount,
             persistentOpenCount = persistentOpenCount,
-            groceriesTripOpenCount = groceriesOpenCount,
             checklistCount = checklistCount,
             voiceNotesCount = voiceNotesCount,
             weather = weather,
@@ -220,7 +220,7 @@ fun MetersScreen(
     }
 
     MetersContent(
-        state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry, onOpenGroceriesList,
+        state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry,
         onOpenMedia, onOpenVoiceNotes, onOpenChecklists,
     )
 }
@@ -242,7 +242,9 @@ data class MetersUiState(
     val maintenanceRows: List<DueRowView> = emptyList(),
     val maintenanceUnknownCount: Int = 0,
     val persistentOpenCount: Int = 0,
-    val groceriesTripOpenCount: Int = 0,
+    // groceriesTripOpenCount REMOVED (one-today ticket 10 slice B, 2026-09-05) - it fed the
+    // "Groceries trip" row, retired alongside the trip surface itself; see [MetersScreen]'s own
+    // "LISTS" read comment.
     /** The LISTS pane's third row (one-today ticket 09) - non-archived [Checklist] count, not a
      * today's-tick-state count; see [MetersScreen]'s "CHECKLISTS" read comment. */
     val checklistCount: Int = 0,
@@ -264,7 +266,6 @@ fun MetersContent(
     onOpenFleet: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenPantry: () -> Unit,
-    onOpenGroceriesList: () -> Unit,
     onOpenMedia: () -> Unit = {},
     onOpenVoiceNotes: () -> Unit = {},
     onOpenChecklists: () -> Unit = {},
@@ -584,16 +585,16 @@ fun MetersContent(
                 value = "${state.persistentOpenCount} open",
                 modifier = Modifier.clickable(onClick = onOpenNotes),
             )
-            DeckRow(
-                label = "Groceries trip",
-                value = "${state.groceriesTripOpenCount} open",
-                // Fixed on-device 2026-09-01 - was [onOpenPantry] (pantry inventory), now the
-                // grocery trip list itself (see [onOpenGroceriesList]'s own doc comment above).
-                modifier = Modifier.clickable(onClick = onOpenGroceriesList),
-            )
-            // A third, genuinely different list (one-today ticket 09) - recurring checklists
-            // ("bio", etc), never [state.persistentOpenCount]'s reminders/tasks or
-            // [state.groceriesTripOpenCount]'s shopping trip. Opens the management screen; the
+            // "Groceries trip" row retired (one-today ticket 10 slice B, 2026-09-05) - the grocery
+            // trip surface it opened (`ui/NotesScreen.kt`'s `LogMode.GROCERY`) is gone. A shopping
+            // list is a checklist named "Groceries" now, reached through the "Checklists" row below
+            // (`GroceryChecklistMigration` carries any open trip over on first launch after this
+            // build). [onOpenGroceriesList]/[state.groceriesTripOpenCount] go with it - see their
+            // own removal notes on [MetersScreen]/[MetersUiState].
+            // A second, genuinely different list (one-today ticket 09) from [state.persistentOpenCount]'s
+            // reminders/tasks - recurring checklists ("bio", etc), which now include the shopping
+            // list itself (one-today ticket 10 slice B: the grocery trip's own row above retired,
+            // and "Groceries" is a checklist like any other). Opens the management screen; the
             // per-day tick state itself renders on CalendarScreen's day view, not here - see
             // [ChecklistsScreen]'s own class doc.
             DeckRow(

@@ -4,7 +4,7 @@ ticket: "05"
 title: "The WebAssign completion read"
 type: build
 status: kiv
-status-detail: "KIV 2026-09-05 (Kevin): no Django for now. WebAssign completion is ticked by hand."
+status-detail: "Absorbed 2026-09-05 by django-engine (ADR 0044); see .scratch/django-engine/. Was: KIV 2026-09-05 (Kevin): no Django for now. WebAssign completion is ticked by hand."
 blockers: ["01"]
 blocked-by: ["[[01-schema-ownership-and-django-role]]"]
 open-blockers: 1

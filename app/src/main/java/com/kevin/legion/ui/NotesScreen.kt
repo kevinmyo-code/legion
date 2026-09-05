@@ -3,7 +3,6 @@ package com.kevin.legion.ui
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +33,6 @@ import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.notes.CalendarNotLinkedRow
 import com.kevin.legion.ui.notes.DashedHairline
-import com.kevin.legion.ui.notes.GroceryScreen
 import com.kevin.legion.ui.notes.InboxScreen
 import com.kevin.legion.ui.notes.MissedRow
 import com.kevin.legion.ui.notes.MissedRowView
@@ -73,11 +71,15 @@ import kotlinx.coroutines.launch
  *
  * [startMode]/[startModeNonce] (fixed on-device 2026-09-01, Kevin: "meters > lists are hard to
  * use... groceries trip tapping it brings me to not a grocery list. tapping persistant list also
- * brings me to the old calendar and goals view") let [MetersScreen]'s two Lists rows land on the
- * mode they name - the "Groceries trip" row opens [LogMode.GROCERY], "Persistent list" opens
- * [LogMode.ITEMS] - same nonce-keyed shape [openItemId]/[openItemNonce] already use for the
- * notification deep link, since a repeat tap on the SAME row while already on this screen still
- * has to re-apply (an unchanged nullable value alone would be skipped as a no-op state write).
+ * brings me to the old calendar and goals view") used to let [MetersScreen]'s two Lists rows land
+ * on the mode they name - the "Groceries trip" row opened `LogMode.GROCERY`, "Persistent list"
+ * opens [LogMode.ITEMS]. **CORRECTED 2026-09-05 (one-today ticket 10 slice B): `LogMode.GROCERY`
+ * and the "Groceries trip" row are gone** (a shopping list is a checklist named "Groceries" now,
+ * `GroceryChecklistMigration` carries any open trip over) - [LogMode] has one value left and this
+ * plumbing stays only for [LogMode.ITEMS]'s own "Persistent list" row, same nonce-keyed shape
+ * [openItemId]/[openItemNonce] already use for the notification deep link, since a repeat tap on
+ * the SAME row while already on this screen still has to re-apply (an unchanged nullable value
+ * alone would be skipped as a no-op state write).
  */
 @Composable
 fun NotesScreen(
@@ -288,7 +290,11 @@ fun NotesScreen(
                 // the [monthLoading]/[monthCalendarLinked]/[displayedMonth]/[monthCells]/
                 // [calendarCollapsed]/[selectedDayStart]/[popupDayStart] state feeding it, went with
                 // it - see this function's own state-block doc comment). [LogModeToggle] below is
-                // unaffected; it switches ITEMS/GROCERY, nothing to do with the calendar.
+                // unaffected either way; it used to switch ITEMS/GROCERY, nothing to do with the
+                // calendar. **CORRECTED 2026-09-05 (one-today ticket 10 slice B):** `LogMode.GROCERY`
+                // is gone (see [LogMode]'s own doc comment) - [LogModeToggle] renders a single ITEMS
+                // button now, left in place rather than removed here because that is slice C's own
+                // `LogMode.ITEMS` retirement, not this one's.
 
                 // Ticket 19's GOALS panel - LOG aspect (com.kevin.legion.advisor.playbooks
                 // .LogPlaybook's own doc comment). Same self-contained shape as
@@ -311,25 +317,13 @@ fun NotesScreen(
                 }
             },
         )
-        // Quant-viz ticket 15 point 4: GROCERY is ITEMS-mode furniture's opposite by design - a
-        // shopping list is a fast in-and-out surface, and neither the month calendar nor GoalsPanel
-        // belongs above it. [GroceryScreen] keeps its OWN pre-existing structure untouched (its own
-        // root `LazyColumn`), so this branch stays the ticket-14 shape: a small fixed header (title +
-        // toggle only, ~76dp) above a `Box(Modifier.weight(1f))` - the same structural guarantee
-        // ticket 14 established, just no longer shared with ITEMS mode's now-much-taller furniture.
-        LogMode.GROCERY -> Column(Modifier.fillMaxSize()) {
-            Text(
-                "NOTES",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            )
-            LogModeToggle(mode, onSelect = { mode = it })
-            DashedHairline()
-            Box(Modifier.weight(1f)) {
-                GroceryScreen()
-            }
-        }
+        // LogMode.GROCERY (the grocery trip mode, quant-viz ticket 15 point 4's own branch) retired
+        // one-today ticket 10 slice B: "everything is a checklist now" - a shopping list is a
+        // checklist named "Groceries" (GroceryChecklistMigration carries any open trip onto one on
+        // first launch after this build). LogMode is now a single-value enum kept only because it
+        // still threads a start-mode nonce down from `ui/MetersScreen.kt`'s "Persistent list" row
+        // (see [LogMode]'s own doc comment) - a `when` with one branch stays a `when` rather than
+        // collapsing to a bare call, so a future LogMode.CHECKLISTS or similar has an obvious seam.
     }
 }
 
@@ -339,11 +333,20 @@ fun NotesScreen(
 private const val MISSED_INLINE_LIMIT = 4
 
 /**
- * The two things the LOG tab holds. They are separate MODES, not two views of one dataset (contrast
+ * What the LOG tab holds. Used to be two separate MODES, not two views of one dataset (contrast
  * the LISTS | CALENDAR toggle this replaced, which was two renderings of the same rows): an item on
- * the stream is kept until removed, while a grocery line is expected to be destroyed within the
- * hour. See [com.kevin.legion.data.local.GroceryItem]'s doc comment for why that difference earns a
- * separate table rather than a flag on `list_items`.
+ * the stream is kept until removed, while a grocery line was expected to be destroyed within the
+ * hour - see [com.kevin.legion.data.local.GroceryItem]'s doc comment for why that difference used
+ * to earn a separate table rather than a flag on `list_items`.
+ *
+ * **CORRECTED 2026-09-05 (one-today ticket 10 slice B): `GROCERY` is gone.** "Everything is a
+ * checklist now" (`.scratch/one-today/issues/10-*.md`) - the grocery trip retired onto a
+ * non-recurring checklist named "Groceries" (`grocery/GroceryChecklistMigration.kt` carries any
+ * open trip over once), so [com.kevin.legion.ui.notes.GroceryScreen]/`manage_grocery`/
+ * `show_groceries_modal` are gone with it. `ITEMS` alone survives here on purpose rather than
+ * collapsing this enum away entirely - ticket 10 slice C retires `LogMode.ITEMS` too (the
+ * persistent list, onto a "Todo" checklist), and that is a SEPARATE, not-yet-built step; this enum
+ * is the seam it lands on.
  */
 // Made non-private (fixed on-device 2026-09-01) so `ui/MainActivity.kt`'s LegionShell and
 // `ui/MetersScreen.kt` can reference it too, threading a start mode down from the Meters Lists
@@ -351,7 +354,7 @@ private const val MISSED_INLINE_LIMIT = 4
 // not package-scoped (the same gap this file's own [TodayPane] doc comment already notes for a
 // different symbol), so a plain visibility drop is all that was needed; both callers already sit
 // in the same `com.kevin.legion.ui` package.
-enum class LogMode { ITEMS, GROCERY }
+enum class LogMode { ITEMS }
 
 @Composable
 private fun LogModeToggle(selected: LogMode, onSelect: (LogMode) -> Unit) {

@@ -53,7 +53,7 @@ object VoiceGuideData {
             blurb = "Calendar, lists, reminders and the round-up.",
             entries = listOf(
                 Entry(name = "manage_item", say = "Add milk to the shopping list", does = "Adds, ticks off, or changes an item on any of your lists.", hands = "Notes tab, list screen - add, tick off, or edit a row."),
-                Entry(name = "manage_checklist", say = "Tick off squats on bio", does = "Creates and manages your own reusable checklists - \"bio\", \"morning routine\" - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Not your one shopping or to-do list - a checklist is a routine you name yourself.", hands = "Meters screen's LISTS pane - the checklists screen."),
+                Entry(name = "manage_checklist", say = "Tick off squats on bio", does = "Creates and manages your own reusable checklists - \"bio\", \"morning routine\" - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Not your one to-do list - a checklist is a routine you name yourself. Your grocery/shopping list is a checklist too, named \"Groceries\".", hands = "Meters screen's LISTS pane - the checklists screen."),
                 Entry(name = "read_list", say = "What's on my shopping list?", does = "Reads back a list.", hands = "Notes tab, same list screen."),
                 Entry(name = "set_reminder", say = "Remind me to call the shop at four", does = "Sets a reminder for a time, or for when you arrive somewhere.", hands = "Partial - Notes shows and edits reminders, but there is no add-a-new-reminder dialog by hand."),
                 Entry(name = "read_calendar", say = "What's on today?", does = "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", hands = "Notes tab's LISTS / CALENDAR toggle, and Home's next-event tile."),
@@ -63,7 +63,6 @@ object VoiceGuideData {
                 Entry(name = "open_navigation", say = "Navigate to the hardware store", does = "Hands off to your maps app.", hands = "Fleet > Saved places screen, Navigate button on each place."),
                 Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Notes tab, tap a day on the calendar and choose Show in list."),
                 Entry(name = "show_list_modal", say = "Show me my list", does = "Pops up your whole list on screen without leaving where you are.", hands = "Notes tab, the main list."),
-                Entry(name = "show_groceries_modal", say = "Show me the shopping list", does = "Pops up the current grocery trip on screen without leaving where you are.", hands = "Notes tab, Grocery mode."),
                 Entry(name = "show_generated_view", say = "Show me my grocery spend by month", does = "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", hands = "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
             ),
         ),
@@ -131,7 +130,6 @@ object VoiceGuideData {
             blurb = "Groceries, receipts and meals.",
             entries = listOf(
                 Entry(name = "import_receipt", say = "Scan this receipt", does = "Opens the camera to photograph a grocery receipt.", hands = "Money > Pantry sub-route, scan flow."),
-                Entry(name = "manage_grocery", say = "Add eggs to the pantry", does = "Adds or updates something in the pantry.", hands = "Money > Pantry sub-route, grocery list."),
                 Entry(name = "list_recent_groceries", say = "What did I buy last shop?", does = "Recent grocery purchases.", hands = "Money > Pantry sub-route."),
                 Entry(name = "get_grocery_spend", say = "How much on groceries this month?", does = "Grocery spending.", hands = "Money > Pantry sub-route, spend panel."),
                 Entry(name = "log_meal", say = "I had chicken and rice", does = "Logs a meal. Calories and macros are estimates from the description, not measurements.", hands = "Body tab, log-a-meal dialog."),
@@ -247,6 +245,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 121 as of the last regeneration. */
-    val TOOL_COUNT: Int = 121
+    /** Total entries across every group above - 119 as of the last regeneration. */
+    val TOOL_COUNT: Int = 119
 }

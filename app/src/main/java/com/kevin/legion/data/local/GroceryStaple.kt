@@ -9,6 +9,16 @@ import androidx.room.PrimaryKey
  * What survives a torn-down grocery trip: **how often a thing gets bought, and nothing else**
  * (Kevin's call, 2026-08-11 - the list vanishes, a staples memory persists).
  *
+ * **WRITE-DEAD as of one-today ticket 10 slice B (2026-09-05).** The only writer was
+ * [com.kevin.legion.grocery.GroceryController.completeTrip], and the trip surface that called it
+ * (`ui/notes/GroceryScreen.kt`, `manage_grocery`) is retired - "everything is a checklist now", and
+ * a checklist has no completed-trip event to fold in. This table stays as HISTORY, not deleted: §5
+ * forbids a destructive change here, existing rows are still real purchase-frequency data, and
+ * [com.kevin.legion.grocery.GroceryController.suggestions]/[forgetStaple] still read/prune it - they
+ * simply never grow again from a fresh trip. The ticket's own "what is knowingly lost" section
+ * accepts this: a "Groceries" checklist has no history-derived suggestions until a later analysis
+ * slice reads this table (or a successor) some other way.
+ *
  * This is the one piece of trip history the app keeps, and it is kept deliberately thin. There is
  * no trip archive, no per-trip line items, no dates beyond [lastBoughtAt]: what was actually bought
  * is recorded from the RECEIPT by the pantry aspect, off a real document with a real total that

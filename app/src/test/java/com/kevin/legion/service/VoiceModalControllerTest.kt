@@ -15,8 +15,10 @@ class VoiceModalControllerTest {
     @Test
     fun `show sets the current payload to the requested target`() {
         VoiceModalController.dismiss()
-        VoiceModalController.show(VoiceModalTarget.GROCERIES)
-        assertEquals(VoiceModalTarget.GROCERIES, VoiceModalController.current.value?.target)
+        // GROCERIES retired (one-today ticket 10 slice B, 2026-09-05) - WHOLE_LIST exercises the
+        // identical assignment path.
+        VoiceModalController.show(VoiceModalTarget.WHOLE_LIST)
+        assertEquals(VoiceModalTarget.WHOLE_LIST, VoiceModalController.current.value?.target)
     }
 
     @Test
@@ -39,10 +41,12 @@ class VoiceModalControllerTest {
     fun `repeat show of the same target is still a distinct payload`() {
         // VoiceModalPayload's shownAt (see its own doc comment) is what makes a StateFlow actually
         // re-emit on a same-target repeat call, rather than being swallowed as an unchanged value.
-        VoiceModalController.show(VoiceModalTarget.GROCERIES)
+        // GROCERIES retired (one-today ticket 10 slice B, 2026-09-05) - AGENDA exercises the
+        // identical repeat-call path.
+        VoiceModalController.show(VoiceModalTarget.AGENDA)
         val first = VoiceModalController.current.value
         Thread.sleep(2) // guarantees a distinct shownAt millisecond - see VoiceModalPayload's doc
-        VoiceModalController.show(VoiceModalTarget.GROCERIES)
+        VoiceModalController.show(VoiceModalTarget.AGENDA)
         val second = VoiceModalController.current.value
         assertNotEquals(first, second)
     }

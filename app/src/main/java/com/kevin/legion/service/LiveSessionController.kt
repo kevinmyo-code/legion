@@ -901,11 +901,11 @@ class LiveSessionController(context: Context) {
                                 openVoiceModal()
                                 JSONObject().put("success", true)
                             }
-                            "show_groceries_modal" -> {
-                                VoiceModalController.show(VoiceModalTarget.GROCERIES)
-                                openVoiceModal()
-                                JSONObject().put("success", true)
-                            }
+                            // "show_groceries_modal" retired (one-today ticket 10 slice B, "everything
+                            // is a checklist now") - VoiceModalTarget.GROCERIES/GroceryScreen went
+                            // with it. A model that still calls it by name falls through to the
+                            // `else` branch below, where LiveToolbox.dispatch's own explicit retired-
+                            // tool branch says so in words rather than silently no-opping (§7).
                             // A generated view (`.scratch/one-today/issues/06-*.md`) - the one
                             // tool in this `when` that actually computes something before it can
                             // answer, because "runs a real query and never renders a model value"

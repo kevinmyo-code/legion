@@ -4,7 +4,7 @@ ticket: "01"
 title: "Schema ownership, and a role of Django's own"
 type: build
 status: kiv
-status-detail: "KIV 2026-09-05 (Kevin): no Django for now. Wanted a PC interface to view/edit Supabase data; Supabase Studio's Table Editor is that. Ruling in ADR 0043 stands for when something must run while the phone sleeps."
+status-detail: "Absorbed 2026-09-05 by django-engine (ADR 0044); see .scratch/django-engine/. Was: KIV 2026-09-05 (Kevin): no Django for now. Wanted a PC interface to view/edit Supabase data; Supabase Studio's Table Editor is that. Ruling in ADR 0043 stands for when something must run while the phone sleeps."
 blockers: []
 blocked-by: []
 open-blockers: 0

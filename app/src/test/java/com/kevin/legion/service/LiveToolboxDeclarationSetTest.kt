@@ -108,9 +108,12 @@ class LiveToolboxDeclarationSetTest {
                 )
             }
         }
+        // "show_groceries_modal" removed from this set (one-today ticket 10 slice B, 2026-09-05) -
+        // it is no longer UI-scoped (dispatch() no longer returns null for it, see the retirement
+        // test below) because it is retired outright, not because it moved behind a dispatcher.
         val uiScoped = setOf(
             "import_receipt", "show_saved_places",
-            "show_agenda_modal", "show_list_modal", "show_groceries_modal",
+            "show_agenda_modal", "show_list_modal",
         )
         for ((_, toolNames) in DISPATCHED_FOR_TEST) {
             for (name in uiScoped) {
@@ -130,14 +133,20 @@ class LiveToolboxDeclarationSetTest {
      * Nothing was broken in the sense of throwing: `manage_item` did exactly what it was asked. The
      * defect was in what the live model was TOLD. `manage_item` described itself as "the app's only
      * list ... never ask which list or mention lists in the plural", which is a flat claim that no
-     * other list exists, and `manage_grocery` is hidden behind `ask_pantry` so the model cannot see
-     * it to know better. `ask_pantry` meanwhile led with logged items, macros and spend - it read as
-     * an analytics tool, not somewhere you can add a line to a shopping list.
+     * other list exists, and `manage_grocery` (this test's original grocery tool, since retired -
+     * see below) was hidden behind `ask_pantry` so the model could not see it to know better.
      *
      * Same shape as the 2026-08-17 `ask_goals` mis-route (see that tool's own description): a tool
      * over-claiming its domain while the tool that actually owns the request is invisible. This test
      * is the tripwire for the copy, since no behavioural test can see a routing decision the model
      * makes before any of our code runs.
+     *
+     * **UPDATED one-today ticket 10 slice B, 2026-09-05: `manage_grocery` retired, `manage_checklist`
+     * is the replacement destination** ("everything is a checklist now" - a shopping list is a
+     * checklist named "Groceries"). The regression this test guards against is unchanged in shape:
+     * `manage_item` must still name the real grocery destination and must still disclaim being the
+     * app's only list, and `ask_pantry` must still hand the shopping list off by name rather than
+     * re-claiming it.
      */
     @Test
     fun `the list tools tell the model where groceries actually go`() {
@@ -147,19 +156,20 @@ class LiveToolboxDeclarationSetTest {
                 .first { it.getString("name") == name }
                 .getString("description")
 
-        // The fix that actually held: the model can SEE the grocery tool. Everything below is
-        // secondary to this one assertion.
+        // manage_grocery is gone - manage_checklist is declared directly instead, so the model can
+        // still SEE the real grocery destination (the original fix's load-bearing half).
+        assertFalse("manage_grocery must no longer be declared - it was retired", "manage_grocery" in names(live))
         assertTrue(
-            "manage_grocery must be declared directly to the live session - a model cannot route " +
+            "manage_checklist must be declared directly to the live session - a model cannot route " +
                 "to a tool it cannot see, which is what the description-only fix failed to beat",
-            "manage_grocery" in names(live),
+            "manage_checklist" in names(live),
         )
 
         val manageItem = descriptionOf("manage_item")
         assertTrue(
-            "manage_item must name manage_grocery as the grocery destination, not claim to be the " +
-                "only list there is",
-            manageItem.contains("manage_grocery"),
+            "manage_item must name manage_checklist as the grocery destination, not claim to be " +
+                "the only list there is",
+            manageItem.contains("manage_checklist"),
         )
         assertTrue(
             "manage_item must say out loud that shopping is not its job",
@@ -172,18 +182,42 @@ class LiveToolboxDeclarationSetTest {
             manageItem.contains("the app's only list"),
         )
 
-        // ask_pantry went back to read-only when manage_grocery came out from behind it. If it
-        // ever claims the shopping list again there are two doors to the same place and the
-        // mis-route can return.
+        // ask_pantry went back to read-only when manage_grocery came out from behind it, and stays
+        // read-only now that manage_checklist owns groceries instead. If it ever claims the
+        // shopping list again there are two doors to the same place and the mis-route can return.
         val askPantry = descriptionOf("ask_pantry")
         assertTrue(
             "ask_pantry must say it records nothing now that it holds no mutating tool",
             askPantry.contains("Read-only", ignoreCase = true),
         )
         assertTrue(
-            "ask_pantry must hand the shopping list to manage_grocery by name",
-            askPantry.contains("manage_grocery"),
+            "ask_pantry must hand the shopping list to manage_checklist by name",
+            askPantry.contains("manage_checklist"),
         )
+    }
+
+    /**
+     * `manage_grocery`/`show_groceries_modal` retirement (one-today ticket 10 slice B, 2026-09-05):
+     * neither is declared to the live session anymore, and a model that still calls either by name
+     * (a cached old session, say) gets an explicit retirement message rather than the generic
+     * "Unknown tool" [dispatch] would otherwise fall through to - §7's outcome-verb rule applied to
+     * a retired capability.
+     */
+    @Test
+    fun `manage_grocery and show_groceries_modal are retired, not silently unknown`() = kotlinx.coroutines.runBlocking {
+        val live = names(LiveToolbox.declarations())
+        assertFalse("manage_grocery must not be declared", "manage_grocery" in live)
+        assertFalse("show_groceries_modal must not be declared", "show_groceries_modal" in live)
+
+        for (name in listOf("manage_grocery", "show_groceries_modal")) {
+            val result = LiveToolbox.dispatch(context, name, org.json.JSONObject())
+            assertTrue("$name must return a non-null result even though it is retired", result != null)
+            assertFalse("$name's retirement result must say it failed, not claim success", result!!.getBoolean("success"))
+            assertTrue(
+                "$name's retirement message must name manage_checklist as the replacement",
+                result.getString("message").contains("manage_checklist"),
+            )
+        }
     }
 
     /** ask_mail's whole point is that mail never reaches the live socket by its real name again. */
@@ -269,15 +303,16 @@ class LiveToolboxDeclarationSetTest {
     }
 
     /**
-     * The three voice-called-modal tools (ADR 0040): each must be declared to the live session
-     * with no required params, and [LiveToolbox.dispatch] must return null for all three (the
-     * UI-scoped contract - [LiveSessionController] owns showing the modal, same shape as
-     * `show_saved_places`/`import_receipt`).
+     * The voice-called-modal tools (ADR 0040): each must be declared to the live session with no
+     * required params, and [LiveToolbox.dispatch] must return null for both (the UI-scoped
+     * contract - [LiveSessionController] owns showing the modal, same shape as
+     * `show_saved_places`/`import_receipt`). Used to be three - `show_groceries_modal` retired
+     * (one-today ticket 10 slice B, 2026-09-05), see the retirement test above.
      */
     @Test
-    fun `the three voice-modal tools are declared with no required params`() {
+    fun `the voice-modal tools are declared with no required params`() {
         val live = LiveToolbox.declarations()
-        for (name in listOf("show_agenda_modal", "show_list_modal", "show_groceries_modal")) {
+        for (name in listOf("show_agenda_modal", "show_list_modal")) {
             val decl = (0 until live.length()).map { live.getJSONObject(it) }
                 .first { it.getString("name") == name }
             assertEquals(
@@ -289,8 +324,8 @@ class LiveToolboxDeclarationSetTest {
     }
 
     @Test
-    fun `dispatch returns null for all three voice-modal tools`() = kotlinx.coroutines.runBlocking {
-        for (name in listOf("show_agenda_modal", "show_list_modal", "show_groceries_modal")) {
+    fun `dispatch returns null for both voice-modal tools`() = kotlinx.coroutines.runBlocking {
+        for (name in listOf("show_agenda_modal", "show_list_modal")) {
             val result = LiveToolbox.dispatch(context, name, org.json.JSONObject())
             org.junit.Assert.assertNull(
                 "$name is UI-scoped and must return null from dispatch() - the caller owns the screen",

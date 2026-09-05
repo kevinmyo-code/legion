@@ -73,9 +73,6 @@ import com.kevin.legion.goals.GoalController
 import com.kevin.legion.gmail.GmailAuth
 import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
-import com.kevin.legion.grocery.GroceryController
-import com.kevin.legion.grocery.GroceryMatch
-import com.kevin.legion.grocery.buildGroceryRows
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.checklists.ChecklistItemMatch
 import com.kevin.legion.checklists.checklistScheduleLabel
@@ -1269,9 +1266,9 @@ object LiveToolbox {
                 "occurrence of ONE item on the user's ONE PERSISTENT list: car to-dos, errands, " +
                 "reminders, and notes all live on it, so never ask which of those to use or " +
                 "mention lists in the plural. NOT for shopping: the grocery/shopping list is a " +
-                "separate short-lived trip list with its own tool, so 'add tums to the grocery " +
-                "list', 'put milk on the shopping list' and anything else naming groceries or " +
-                "shopping goes to manage_grocery - never here. A " +
+                "checklist named \"Groceries\" now, so 'add tums to the grocery list', 'put milk " +
+                "on the shopping list' and anything else naming groceries or shopping goes to " +
+                "manage_checklist (list=Groceries) - never here. A " +
                 "dated appointment (see 'kind') goes on the user's calendar instead of this list, " +
                 "and it just passes at its time - it is NEVER tickable or untickable (say so " +
                 "plainly if asked to mark one done or not done, the same way you would for a " +
@@ -1312,54 +1309,38 @@ object LiveToolbox {
             required = listOf("action"),
         ))
 
-        // The grocery trip (2026-08-11). ONE tool with an `action` parameter, matching manage_item's
-        // own rationale - "every tool is prompt tokens on every single live session, on Kevin's own
-        // key" - rather than a registration per verb.
-        //
-        // Deliberately separate from manage_item even though both manage checkable lines: a grocery
-        // line is expected to be destroyed within the hour and a list item is kept until removed,
-        // and one tool covering both would need the model to pick the right destination every time,
-        // which is exactly the fuzzy-destination guess that filed an F150 recall onto the "Car"
-        // list. See GroceryItem's doc comment.
-        fns.put(fn(
-            name = "manage_grocery",
-            description = "Manage the CURRENT grocery/shopping trip - a short-lived list that is " +
-                "thrown away once the shopping is done. Use for 'add milk to the grocery list', " +
-                "'what's on the shopping list', 'got the eggs', 'I'm done shopping'. This is " +
-                "SEPARATE from the user's normal list (manage_item): anything that is not " +
-                "shopping for this trip belongs there instead. " +
-                "'finish' is DESTRUCTIVE - it deletes the whole list and only remembers what was " +
-                "ticked - so it ALWAYS confirms: call with confirmed=false first to ask, then " +
-                "confirmed=true only after the user says yes in the very next turn. " +
-                "'suggest' reads back what they usually buy, for starting a trip.",
-            params = obj(
-                "action" to schema("string", "What to do.",
-                    enum = listOf("add", "tick", "untick", "remove", "read", "suggest", "finish")),
-                "item" to schema("string", "For 'add', what to add. For tick/untick/remove, which " +
-                    "existing item to match, in the user's words - never a position like 'the third one'."),
-                "confirmed" to schema("boolean", "Only for 'finish': false to trigger the confirm prompt, " +
-                    "true only after the user just confirmed."),
-            ),
-            required = listOf("action"),
-        ))
+        // manage_grocery (the grocery trip's own tool, 2026-08-11) RETIRED one-today ticket 10
+        // slice B, 2026-09-05: "everything is a checklist now". The trip surface it managed
+        // (`ui/notes/GroceryScreen.kt`, `LogMode.GROCERY`) is gone - a shopping list is a checklist
+        // named "Groceries" now, managed through `manage_checklist` below (see its own description's
+        // added clause). A model that still calls `manage_grocery` by name (a cached old session,
+        // for instance) gets an explicit retirement message off `dispatch`'s own named branch below
+        // (§7: nothing claims success unless the action ran), never a silent "Unknown tool".
 
         // Checklists (one-today ticket 09's voice slice, 2026-09-05): user-authored named lists -
         // "bio", "morning routine" - each optionally on a daily/weekly schedule, each line
         // optionally MEASURED (a number, not just a tick). ONE tool with an `action` parameter,
-        // same rationale as manage_item/manage_grocery above. Deliberately separate from BOTH:
-        // manage_item is the one persistent list of car-tasks/errands/reminders/notes, and
-        // manage_grocery is the one short-lived shopping trip - a checklist is neither of those,
-        // it is a named, repeatable routine the user builds themselves, and folding it into either
-        // existing tool would force the model to guess a destination the same way a fuzzy-
-        // destination guess once filed an F150 recall onto the "Car" list (manage_grocery's own
-        // doc comment).
+        // same rationale as manage_item above. Deliberately separate from it: manage_item is the
+        // one persistent list of car-tasks/errands/reminders/notes, a checklist is a named,
+        // repeatable routine the user builds themselves, and folding the two together would force
+        // the model to guess a destination the same way a fuzzy-destination guess once filed an
+        // F150 recall onto the "Car" list (see manage_item's own doc comment).
+        //
+        // **The grocery/shopping list is a checklist too, one-today ticket 10 slice B, 2026-09-05**
+        // ("everything is a checklist now") - `manage_grocery`'s own short-lived trip retired, and
+        // any open trip was carried onto a checklist named "Groceries" by
+        // `grocery/GroceryChecklistMigration.kt`. The description below says so explicitly so a
+        // "add milk to the grocery list" request routes here, `list = "Groceries"`, rather than
+        // the model reaching for the now-retired tool by name.
         fns.put(fn(
             name = "manage_checklist",
             description = "Manage a user-authored, reusable CHECKLIST like \"bio\" or \"morning " +
                 "routine\" - named lines ticked off, optionally daily/weekly, optionally MEASURED " +
                 "(a number against a target, e.g. '8,400 of 10,000 steps') instead of a plain tick. " +
-                "NOT the one persistent list (manage_item) and NOT the shopping trip " +
-                "(manage_grocery) - never route a to-do or grocery item here, or a checklist there. " +
+                "NOT the one persistent list (manage_item) - never route a to-do here, or a " +
+                "checklist line there. The grocery/shopping list is a checklist named " +
+                "\"Groceries\": 'add milk to the grocery list' is action=add, list=Groceries, " +
+                "text=milk (create it first with action=create if it doesn't exist yet). " +
                 "No schedule ('none') means done once ever, the first tick; 'daily' resets each " +
                 "day, 'weekly' only applies on its named days - a list created today has nothing " +
                 "for yesterday, that is expected. A measured line needs a real number to tick - " +
@@ -1412,20 +1393,14 @@ object LiveToolbox {
             name = "show_list_modal",
             description = "Bring up the user's whole persistent list (car to-dos, errands, " +
                 "reminders, notes - the same one manage_item/read_list operate on) as an " +
-                "on-screen list. Use for 'show me my list', 'pull up my to-dos'. NOT for the " +
-                "grocery trip - that is show_groceries_modal.",
+                "on-screen list. Use for 'show me my list', 'pull up my to-dos'.",
             params = obj(),
             required = listOf(),
         ))
 
-        fns.put(fn(
-            name = "show_groceries_modal",
-            description = "Bring up the current grocery/shopping trip list on screen. Use for " +
-                "'show me the shopping list', 'pull up my groceries'. NOT the persistent list - " +
-                "that is show_list_modal.",
-            params = obj(),
-            required = listOf(),
-        ))
+        // show_groceries_modal RETIRED one-today ticket 10 slice B, 2026-09-05, alongside
+        // manage_grocery - see that tool's own retirement comment above. There is no checklist
+        // equivalent modal in this slice; the checklists screen itself is the hands path.
 
         // A generated view (`.scratch/one-today/issues/06-*.md`) - a one-off chart for a niche
         // money question no screen was built for. You choose the SHAPE and the QUERY only; the app
@@ -2080,7 +2055,7 @@ object LiveToolbox {
      * math reads back), `activate_garage` (acts on the physical world), `set_goal`/`close_goal`/
      * `accept_proposal` (lifecycle plus an explicit-consent protocol), `set_meal_target`/
      * `set_sleep_target` (config the meters read), `import_receipt`/
-     * `show_saved_places`/`show_agenda_modal`/`show_list_modal`/`show_groceries_modal` (UI-scoped -
+     * `show_saved_places`/`show_agenda_modal`/`show_list_modal` (UI-scoped -
      * [dispatch] returns null for these, and a sub-agent has no screen to hand them to, so
      * dispatching one from inside an investigate loop would be a silent no-op), and every
      * money/notes/media/place/core tool.
@@ -2115,7 +2090,7 @@ object LiveToolbox {
             "list_recent_workouts", "get_workout_gap", "get_health",
         ),
         "goals" to listOf("list_goals", "ask_advisor"),
-        // manage_grocery came BACK OUT of this list on 2026-08-18 and is declared directly to the
+        // manage_grocery came BACK OUT of this list on 2026-08-18 and was declared directly to the
         // live session again. Kevin said "I need to buy tums, add it to groceries list" and it
         // landed on the persistent list; sharpening manage_item's and ask_pantry's descriptions did
         // not fix it on a retry. The model cannot route to a tool it cannot see, and no wording on
@@ -2126,6 +2101,12 @@ object LiveToolbox {
         // at all, so dispatchBoundaryClause tells its sub-agent in as many words that it can record
         // NOTHING, and a grocery add mis-routed to ask_pantry is refused out loud instead of being
         // answered around.
+        //
+        // **RETIRED one-today ticket 10 slice B, 2026-09-05.** manage_grocery itself is gone -
+        // "add tums to the groceries list" now routes to manage_checklist (list=Groceries), which
+        // is also declared directly (not hidden behind `pantry`), for the identical reason. `pantry`
+        // still holds no mutating tool - list_recent_groceries/get_grocery_spend below read pantry
+        // RECEIPTS, never the trip, and never did.
         "pantry" to listOf("list_recent_groceries", "get_grocery_spend"),
         "mail" to listOf("search_mail", "read_mail"),
     )
@@ -2207,7 +2188,7 @@ object LiveToolbox {
                 "A workout, meal, sleep or weigh-in is a RECORD and goes to its own named log tool " +
                 "(log_workout_set, log_meal, log_sleep, log_bodyweight) even when the user " +
                 "mentions a goal in the same breath; reading about the cars goes to ask_fleet; " +
-                "groceries to manage_grocery; and setting or closing a goal is " +
+                "groceries to manage_checklist (list=Groceries); and setting or closing a goal is " +
                 "set_goal/close_goal, not this. Ask a " +
                 "plain-English question; the answer comes back as text to speak.",
             params = DISPATCHER_PARAMS,
@@ -2218,8 +2199,8 @@ object LiveToolbox {
             description = "Grocery HISTORY and spending: items logged from past receipts with " +
                 "their estimated macros, and total grocery spend by currency. Read-only - it " +
                 "records nothing and cannot touch the shopping list. Adding to, ticking off, or " +
-                "reading back the CURRENT shopping trip is manage_grocery, not this. Ask a " +
-                "plain-English question; the answer comes back as text to speak.",
+                "reading back the CURRENT shopping list is manage_checklist (list=Groceries), " +
+                "not this. Ask a plain-English question; the answer comes back as text to speak.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2596,7 +2577,15 @@ object LiveToolbox {
             // (ticket 10) - car items are now just items on the list named "Car".
             "manage_item" -> manageItem(context, args)
             "read_list" -> readList(context)
-            "manage_grocery" -> manageGrocery(context, args)
+            // "manage_grocery" retired one-today ticket 10 slice B, 2026-09-05 - named explicitly
+            // (never falling through to the generic "Unknown tool" branch below) so a model that
+            // still calls it by name is told in words what replaced it, §7's outcome-verb rule
+            // applied to a retired capability rather than an unsuccessful one.
+            "manage_grocery" -> result(
+                false,
+                "manage_grocery was retired - the shopping list is a checklist named \"Groceries\" " +
+                    "now, managed through manage_checklist.",
+            )
             "manage_checklist" -> manageChecklist(context, args)
             "log_build_entry" -> withResolvedVehicle(context, args) { logBuildEntry(context, args, it.obdMac) }
             "list_build_history" -> withResolvedVehicle(context, args) { listBuildHistory(context, args.optString("type"), it.obdMac) }
@@ -2662,7 +2651,14 @@ object LiveToolbox {
             "import_receipt" -> null // caller launches the receipt-import screen and replies
             "show_agenda_modal" -> null // caller shows the voice-called modal and replies
             "show_list_modal" -> null // caller shows the voice-called modal and replies
-            "show_groceries_modal" -> null // caller shows the voice-called modal and replies
+            // "show_groceries_modal" retired one-today ticket 10 slice B, 2026-09-05 - named
+            // explicitly for the same reason "manage_grocery" is above: a retired UI-scoped tool
+            // must still say so in words rather than falling through to "Unknown tool".
+            "show_groceries_modal" -> result(
+                false,
+                "show_groceries_modal was retired - the shopping list is a checklist named " +
+                    "\"Groceries\" now, managed through manage_checklist.",
+            )
             "show_generated_view" -> null // caller validates the spec, runs it, and replies
             else -> result(success = false, message = "Unknown tool: $name")
         }
@@ -2700,7 +2696,9 @@ object LiveToolbox {
     private val MUTATING_TOOLS = setOf(
         "clear_codes", "set_reminder", "tag_place", "forget_place", "set_odometer", "log_service",
         "log_past_service", "set_maintenance_interval", "register_vehicle", "remember",
-        "manage_item", "manage_grocery", "manage_checklist", "log_build_entry", "activate_garage",
+        // "manage_grocery" removed (one-today ticket 10 slice B, 2026-09-05) - its dispatch branch
+        // no longer writes anything, only returns the retirement message.
+        "manage_item", "manage_checklist", "log_build_entry", "activate_garage",
         "categorize_transactions", "set_category", "log_pending_transaction",
         "clear_pending_transaction", "create_workout_plan", "log_workout_set", "log_bodyweight",
         "log_meal", "set_meal_target", "set_budget", "log_sleep", "set_sleep_target",
@@ -5412,106 +5410,16 @@ object LiveToolbox {
             }
         }
 
-    /** Dispatches `manage_grocery`: add / tick / untick / remove / read / suggest / finish. */
-    private suspend fun manageGrocery(context: Context, args: JSONObject): JSONObject {
-        val action = args.optString("action").trim().lowercase()
-        val itemArg = args.optString("item").trim()
-
-        when (action) {
-            "add" -> {
-                if (itemArg.isBlank()) return result(false, "What should I add to the shopping list?")
-                val added = GroceryController.addItem(context, itemArg)
-                val left = GroceryController.items(context).count { !it.done }
-                return result(true, "Added \"${added.text}\" to the shopping list - $left to get.")
-            }
-
-            "read" -> {
-                val items = GroceryController.items(context)
-                if (items.isEmpty()) return result(true, "The shopping list is empty - no trip on right now.")
-                val arr = JSONArray()
-                for (row in buildGroceryRows(items)) {
-                    arr.put(JSONObject().put("text", row.text).put("in_basket", row.done))
-                }
-                return JSONObject()
-                    .put("success", true)
-                    .put("count", items.size)
-                    .put("remaining", items.count { !it.done })
-                    .put("items", arr)
-            }
-
-            "suggest" -> {
-                val staples = GroceryController.suggestions(context)
-                if (staples.isEmpty()) {
-                    return result(true, "Nothing learned yet - I'll start remembering what gets bought after the first finished trip.")
-                }
-                val arr = JSONArray()
-                for (st in staples) {
-                    arr.put(JSONObject().put("item", st.displayName).put("times_bought", st.timesBought))
-                }
-                return JSONObject()
-                    .put("success", true)
-                    .put("count", staples.size)
-                    .put("suggestions", arr)
-                    // Said in words so the model does not read a frequency count as a claim that
-                    // the driver needs the thing right now. It is history, not a prediction.
-                    .put("note", "These are things bought often on past trips, not a claim anything is needed now.")
-            }
-
-            "finish" -> {
-                val items = GroceryController.items(context)
-                if (items.isEmpty()) return result(true, "There's no shopping trip on at the moment.")
-                val bought = items.count { it.done }
-                val skipped = items.size - bought
-                // Destructive: confirm ALWAYS, and name what gets thrown away, not just what is
-                // kept - the same two-step shape manage_list's delete used before it was retired.
-                if (!args.optBoolean("confirmed", false)) {
-                    return result(
-                        true,
-                        if (skipped > 0) {
-                            "Finishing clears the whole list. $bought ticked will be remembered; " +
-                                "$skipped you never ticked will be dropped and not remembered. Say yes to confirm."
-                        } else {
-                            "Finishing clears the list and remembers all $bought item(s). Say yes to confirm."
-                        },
-                    )
-                }
-                val summary = GroceryController.completeTrip(context)
-                return result(
-                    true,
-                    if (summary.skipped > 0) {
-                        "Trip done - ${summary.bought} bought and remembered, ${summary.skipped} dropped unticked."
-                    } else {
-                        "Trip done - all ${summary.bought} bought and remembered."
-                    },
-                )
-            }
-        }
-
-        // Everything below addresses an EXISTING item, so it needs a match first.
-        if (itemArg.isBlank()) return result(false, "Which item on the shopping list?")
-        return when (val match = GroceryController.findItem(context, itemArg)) {
-            is GroceryMatch.NoMatch -> result(false, "I don't see \"$itemArg\" on the shopping list - add it?")
-            is GroceryMatch.Ambiguous -> result(
-                false, "Which one? " + match.candidates.joinToString(", ") { it.text },
-            )
-            is GroceryMatch.Resolved -> when (action) {
-                "tick" -> {
-                    GroceryController.tick(context, match.item)
-                    val left = GroceryController.items(context).count { !it.done }
-                    result(true, "Got \"${match.item.text}\" - $left left.")
-                }
-                "untick" -> {
-                    GroceryController.untick(context, match.item)
-                    result(true, "Put \"${match.item.text}\" back on the list.")
-                }
-                "remove" -> {
-                    GroceryController.removeItem(context, match.item)
-                    result(true, "Took \"${match.item.text}\" off the shopping list.")
-                }
-                else -> result(false, "I don't know how to do that with the shopping list.")
-            }
-        }
-    }
+    // `manageGrocery` (dispatched `manage_grocery`: add / tick / untick / remove / read / suggest /
+    // finish, addressing GroceryController's own short-lived trip table) DELETED one-today ticket
+    // 10 slice B, 2026-09-05 - "everything is a checklist now". `dispatch`'s own "manage_grocery"
+    // branch above returns a retirement message in words rather than calling this; manage_checklist
+    // (list=Groceries) is the replacement, and its own dispatch fn (manageChecklist, just below)
+    // covers the same add/tick/untick/remove/read shape through ChecklistController instead of
+    // GroceryController. "suggest" and destructive "finish"-with-confirm have no checklist
+    // equivalent yet - see GroceryStaple's own class doc for why staples suggestions do not survive
+    // this retirement, and the ticket's own "what is knowingly lost" section for "finish"'s trip
+    // teardown.
 
     /** Case-insensitive, trimmed match on [Checklist.name] - deliberately NOT fuzzy (unlike
      * [matchChecklistItem] for a line within a list): the brief calls for exact-modulo-case-and-

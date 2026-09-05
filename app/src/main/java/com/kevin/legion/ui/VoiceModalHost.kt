@@ -9,7 +9,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.service.VoiceModalController
 import com.kevin.legion.service.VoiceModalTarget
-import com.kevin.legion.ui.notes.GroceryScreen
 import com.kevin.legion.ui.notes.InboxScreen
 
 /**
@@ -54,9 +53,9 @@ fun VoiceModalHost() {
             // (`ui/NotesScreen.kt`'s `LogMode.ITEMS` branch), the same composable with no day
             // filter applied.
             VoiceModalTarget.WHOLE_LIST -> InboxScreen()
-            // The grocery trip screen - reached by hand today as the NOTES tab's GROCERY mode
-            // (`ui/NotesScreen.kt`'s `LogMode.GROCERY` branch), the identical composable.
-            VoiceModalTarget.GROCERIES -> GroceryScreen()
+            // VoiceModalTarget.GROCERIES (the grocery trip screen) retired one-today ticket 10
+            // slice B alongside `ui/notes/GroceryScreen.kt` and `show_groceries_modal` - see
+            // [VoiceModalTarget]'s own doc comment.
         }
     }
 }

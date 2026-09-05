@@ -266,6 +266,18 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_fleet_wave4", it) }
             }
 
+            // One-today ticket 10 slice B: the grocery trip surface retires, so any OPEN trip
+            // sitting in `grocery_items` is carried onto a non-recurring "Groceries" checklist once
+            // (see GroceryChecklistMigration's own class doc for why this is data movement, not a
+            // Room migration, and why it deliberately does not fold into grocery_staples). Guarded
+            // by its own SharedPreferences completion flag, same L12 "runs unconditionally, skips
+            // itself once done" shape as every other one-shot block in this section.
+            appScope.launch {
+                runCatching {
+                    com.kevin.legion.grocery.GroceryChecklistMigration.migrateIfNeeded(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("migrate_grocery_trip_to_checklist", it) }
+            }
+
             // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
             // the retired "this car" sentinel is a magic value masquerading as user data, and the
             // two rows carrying it are both archived and invisible today - which is exactly why

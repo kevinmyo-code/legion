@@ -31,6 +31,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
+| [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
+| [[.scratch/django-engine/map\|django-engine]] | [[07-where-it-runs\|07]] | decision | Where it runs |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
@@ -114,6 +116,15 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The projects tool surface, and its hands path  waiting on [[06-the-azure-devops-sync\|06]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[02-models-column-exact\|02]] | build | The 41 tables as Django models, column-exact, with the integrity SQL shipped by migration  waiting on [[01-server-skeleton\|01]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus  waiting on [[02-models-column-exact\|02]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[04-domain-api-and-changes-feed\|04]] | build | The domain API: one resource shape for 38 tables, a changes feed, idempotent upsert by origin_guid  waiting on [[02-models-column-exact\|02]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[05-media-photos-and-audio\|05]] | build | Media: receipt photos and voice-note audio on a volume, served only to a token  waiting on [[04-domain-api-and-changes-feed\|04]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[06-worker-backups-first\|06]] | build | The worker: a nightly dump with a drilled restore, then Canvas, then WebAssign  waiting on [[02-models-column-exact\|02]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[08-pwa-for-the-second-adult\|08]] | build | The web app: her limb, installable on an iPhone, the desk for both  waiting on [[04-domain-api-and-changes-feed\|04]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[09-android-http-backends\|09]] | build | Android: HTTP implementations of the twelve backend interfaces, behind the Hilt binding  waiting on [[04-domain-api-and-changes-feed\|04]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[06-worker-backups-first\|06]], [[07-where-it-runs\|07]], [[09-android-http-backends\|09]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[11-fresh-clone-end-to-end\|11]] | test | Fresh clone, end to end: the clone-and-run test in its new shape  waiting on [[10-cutover\|10]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[03-the-renderer\|03]] | build | The Compose renderer: validation, components, and worded failure  waiting on [[01-the-response-schema\|01]], [[02-the-tool-binding-contract\|02]] |
@@ -162,6 +173,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
+| [[.scratch/django-engine/map\|django-engine]] | 11 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
