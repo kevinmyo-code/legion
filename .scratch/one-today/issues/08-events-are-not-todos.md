@@ -105,3 +105,21 @@ key and the Drive grant, so clone-and-run survives.
 Open there, not here: which Canvas endpoint (`/api/v1/users/self/todo` vs per-course assignments
 with submission included), poll cadence, how a Canvas task reconciles against a Google-imported row
 describing the same deadline, and what happens to a task whose assignment is deleted upstream.
+
+## A discussion is more than one deadline (Kevin, 2026-09-05)
+
+*"be careful about the canvas events called discussions. the due date in canvas calendar is one thing
+but sometimes it requires a post on wednesday and 2 replies on friday etc."*
+
+Canvas exposes ONE `due_at` per discussion, and it is the LAST obligation (the replies). The initial
+post is a separate, earlier deadline that lives only in the assignment description and the syllabus.
+The 2026-09-04 reconciliation held back 15 MATH 3391 "first post due Wednesday" rows as probable
+duplicates of the Friday discussion; that was wrong, and they are being written as their own task rows
+with `structured_meta.parent_canvas_assignment_id` pointing at the Canvas discussion they belong to.
+
+**Binding on the Canvas edge function when it is built:** a discussion's `due_at` may not be treated
+as the whole story. Parse the description for an initial-post deadline (or read it from the syllabus
+row already present), emit one task per sub-deadline grouped under the parent, and never let a single
+`submitted_at` mark all of them done - Canvas reports the discussion submitted on the FIRST post, so
+the replies row must key on a later signal (reply count, or stay manual) rather than the parent's
+workflow state.

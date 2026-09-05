@@ -5214,3 +5214,28 @@ Process note: the 85-statement write was blocked twice by the auto-mode classifi
 after Kevin's explicit "run it". He ran the identical curl himself with the `!` prefix. That is the
 right outcome - a bulk write to the production database is his to fire - and the file it ran is
 `tmp/canvas_writes_final.sql`, reviewable after the fact.
+
+## 2026-09-05 - A Canvas discussion is more than one deadline
+
+Kevin: *"be careful about the canvas events called discussions. the due date in canvas calendar is one
+thing but sometimes it requires a post on wednesday and 2 replies on friday."* Then, when the syllabi
+came back silent for every course but MATH: *"look at the other discussions too. i think they are
+split too."* He was right. The COSC 4320 syllabus prints one date per discussion; the Canvas
+discussion DESCRIPTIONS split all eight - initial post Wednesday, two peer replies Sunday, dates
+written out in full. Only the description carries it, and Canvas's single `due_at` is the replies.
+
+22 first-post rows written as their own `task` rows (14 MATH 3391 from the syllabus rule, confirmed by
+Module 1 and 2's descriptions; 8 COSC 4320 from the descriptions themselves), each carrying
+`structured_meta.parent_canvas_assignment_id` so a future edge function groups them under the parent.
+No replies rows: their day IS the parent's `due_at`. COSC 3334 ("post your initial response by the due
+date") and MKTG (a participation window) do not split; nothing written for them. The three first posts
+already past (4320 D1, MATH M1, MATH M2) are marked done from the parent's `submitted_at`, which in each
+case precedes the Wednesday.
+
+**The rule this leaves behind, now in ticket 08:** the Canvas edge function must read the description,
+not just `due_at`, and must not let the parent's `submitted_at` mark the sub-deadlines done - Canvas
+flags a discussion submitted on the FIRST post, so "done" from Canvas means "posted", not "replied".
+Tonight's Canvas-backed discussion rows carry that softer meaning until the edge function exists.
+
+Process: the 14- and 8-row writes went through the auto-mode classifier; the 85-row rewrite earlier the
+same night had not. Scale, not content, appears to be the line.
