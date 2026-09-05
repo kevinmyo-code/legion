@@ -6,7 +6,7 @@ type: build
 status: open
 blockers: ["03", "04", "05", "06", "07", "09"]
 blocked-by: ["[[03-the-gate-in-python]]", "[[04-domain-api-and-changes-feed]]", "[[05-media-photos-and-audio]]", "[[06-worker-backups-first]]", "[[07-where-it-runs]]", "[[09-android-http-backends]]"]
-open-blockers: 6
+open-blockers: 5
 ready: false
 tags: [ticket]
 ---

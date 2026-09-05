@@ -5377,3 +5377,33 @@ a second Gemini Live client. Her client is the web app until she needs a mic in 
 
 Map: `.scratch/django-engine/map.md`, eleven tickets. two-clients tickets 01, 02, 03 and 05 are
 absorbed by django-engine 07 and 06.
+
+## 2026-09-05 - Where the engine runs: Supabase Postgres, Django, then the phone and the PWA
+
+Kevin, after the hosting survey (`tmp/` research, every free tier checked against its own pricing
+page): *"i guess best is supabase > django > android/pwa?"* Yes.
+
+**The database stays where it is.** Supabase keeps exactly one job, hosting Postgres on its free
+tier; PostgREST, Auth and Realtime go dark at cutover and the `anon` key is revoked. Django is the
+only writer, `DATABASE_URL` is the session pooler. **Ticket 10 loses its data migration entirely**:
+the rows never move, and django-engine ticket 02's "column-exact" models come from `inspectdb` over
+the schema that already exists.
+
+**Why not Postgres in compose on the home box** (the survey's primary): it is the purer reading of
+ADR 0044 and it is more to run. For a household of two, a managed free Postgres with nightly
+`pg_dump` is the same safety with none of the disk, restarts or upgrades. Considered, rejected for now,
+reversible by changing one URL.
+
+**Why not Neon / Aiven / Render / Railway / Koyeb / Fly / Oracle as the database:** Render's free
+Postgres deletes itself after 30 days; Railway, Fly and Koyeb no longer have a free tier that survives
+a month; Cockroach and Turso are not Postgres and break the SQL triggers; Neon and Aiven are fine but
+would mean moving data to save nothing. Oracle A1 was halved in June 2026 and reclaims idle instances.
+
+**Caveats accepted:** 500 MB ceiling (about 30k rows today); a 7-idle-day pause that the nightly
+worker prevents and that the phone survives by reading Room; no provider backups on the free tier, so
+the nightly dump to R2 (ticket 06) is the backup.
+
+**Compute is still a box**, home laptop or Pi 5 behind Cloudflare Tunnel with Access (Kevin already
+deploys through Cloudflare), Oracle A1 as fallback. Media on Cloudflare R2. Ticket 07 records the
+detail. **Docker stops being the blocker for verifying the server**: pytest runs against the managed
+Postgres given a role that can create the test database.

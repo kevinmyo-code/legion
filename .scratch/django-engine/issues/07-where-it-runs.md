@@ -3,11 +3,12 @@ map: django-engine
 ticket: "07"
 title: "Where it runs"
 type: decision
-status: open
+status: resolved
+status-detail: "Decided 2026-09-05 (Kevin): database = the existing Supabase Postgres (free tier, pooler), Django the only writer; compute = home box behind Cloudflare Tunnel + Access, Oracle A1 fallback; media = Cloudflare R2. See decisions.md 2026-09-05."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -46,3 +47,14 @@ and `MEDIA_ROOT` want a disk).
 
 Home box + Tailscale, today. Move to Hetzner the first time the box being down costs something,
 and the move is `rclone` the backup, `docker compose up`, change one URL on three devices.
+
+
+## Decided 2026-09-05
+
+Kevin: *"i guess best is supabase > django > android/pwa?"* Database: the Supabase Postgres the data is
+already in, free tier, session pooler, Django the only writer, so ticket 10 has no data migration.
+Compute: a home box (old laptop or Pi 5) running Django + worker in compose, reached through
+Cloudflare Tunnel on Kevin's domain with Access in front (two emails); Oracle A1 as fallback. Media:
+Cloudflare R2, so ticket 05 repoints there. Backups: nightly `pg_dump` to R2 (ticket 06), which also
+keeps the free project from pausing. Full reasoning and the rejected alternatives in
+`memory/library/decisions.md`.
