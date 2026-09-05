@@ -5170,3 +5170,47 @@ That is the accepted cost today (the recordings are few and none are load-bearin
 same shape as the fleet gap found on 2026-09-03 - upload is not sync, and a thing that only ever
 travels one way is not backed up. If audio ever needs to survive a wipe it goes to storage as its
 own decision, not as a side effect of this one.
+
+## 2026-09-04 - Coursework is a task, Canvas is its truth, and today's read was manual
+
+Kevin: *"populate the backend please. check my canvas for outstanding assignments, what ive already
+submitted, yet to do etc."* and *"keep track of what ive done and what i need to do."*
+
+Done tonight, by hand, through Canvas's REST API from his logged-in browser session (no token
+generated - he was reluctant on 2026-09-01 and the session cookie answered `/api/v1/courses/{id}/
+assignments?include[]=submission` fine). 95 assignments across 7 courses, matched against the 117
+`semester:canvas:` rows an earlier pass had seeded from syllabi, 79 matched, 1 new, 15 deliberately
+not written (MATH's `Assignment (on Webassign)` placeholders duplicate the seeded WebAssign HW rows
+Kevin already ticks, and Canvas can never mark them submitted). **Zero rows flipped from done to
+open and zero due dates changed** - the syllabus seeding had been right to the day, and every hand
+tick matched a real submission.
+
+Three rulings that stand:
+
+1. **Every coursework row is `kind = task`** (ticket 08's kind, first written tonight), including
+   the 39 unpublished modules Canvas has not released yet. The two MKTG notices ("Letter grades
+   posted", "Last day of course") are `event` - you do not complete a notice.
+2. **`done` on a Canvas-backed row is Canvas's submission state**, `provenance = DETERMINISTIC`,
+   and the evidence rides in `structured_meta` (assignment id, workflow state, submitted_at, score,
+   grade, read_at). §4 rule 8: the verdict travels with what it was decided from. A `not_graded`
+   placeholder is exempt (`manual_completion: true`) because Canvas structurally cannot see it.
+3. **Matched rows keep their `origin_guid` and their seeded titles.** The guid is what the phone's
+   merge and the unique index key on; the titles name the sections and Kevin knows them. Canvas's
+   own id lives in `structured_meta`, so a re-read matches on it next time.
+
+**What this is NOT: sync.** It is a one-shot reconciliation, correct as of 2026-09-05T03:39Z, and it
+will be stale the moment Kevin submits the next assignment. Ticket 08 already says where the real
+thing lives - a Supabase edge function polling Canvas on a schedule, BYO token - and tonight does not
+change that. `tmp/canvas_reconcile.py` is the reusable generator; a fresh `canvas.json` from the same
+API call regenerates the SQL and matches on the stored assignment id. Until the edge function exists,
+"keep track of what I've done" is only as current as the last time someone ran that.
+
+Also settled by the read: the COSC 4320 midterm is 2026-10-11 23:59 online with LockDown Browser, not
+the 2026-10-13 13:00 in-person sitting the syllabus prints - the server row was right and the
+syllabus is stale. And the syllabus-vs-server Module 1 conflicts flagged earlier were all resolved in
+the server's favour by Canvas.
+
+Process note: the 85-statement write was blocked twice by the auto-mode classifier, the second time
+after Kevin's explicit "run it". He ran the identical curl himself with the `!` prefix. That is the
+right outcome - a bulk write to the production database is his to fire - and the file it ran is
+`tmp/canvas_writes_final.sql`, reviewable after the fact.
