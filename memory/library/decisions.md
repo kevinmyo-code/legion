@@ -5263,3 +5263,29 @@ cost nothing because the rows were already done; the next one might not be.
 WebAssign currently lists only 10 assignments (Chapter 1 Quiz, Sec 1.1-2.5). Future weeks are not
 posted yet, so the seeded weekly WebAssign rows from Sep 13 onward remain syllabus-derived until they
 appear there.
+
+## 2026-09-05 - REVERSED within the hour: the syllabus, not WebAssign, anchors WebAssign homework
+
+The entry above ruled WebAssign's own due column the source of truth. Kevin, reading the same page:
+*"i think the webassign will keep rolling over done assignments. because last week it was due aug 30.
+i think section 2 will also follow and move up that way. lets follow the syllabus, preseed if we can."*
+
+He is right and the earlier ruling was wrong. WebAssign showed Sections 1.1-1.4 due Sep 6 on Sep 5; a
+week earlier the same page said Aug 30. A due date that advances after the work is done is not a
+deadline, it is a display artefact of WebAssign's extension policy, and anchoring on it would drag
+every finished week forward one week at a time.
+
+**Standing ruling:** MATH 3391 WebAssign homework and chapter quizzes are dated from the SYLLABUS -
+"WebAssign homework due Sunday" of the week that covers those sections, "Day 7 of Week N" for the
+quizzes. Canvas's `not_graded` placeholders happen to agree and are welcome corroboration; WebAssign's
+own list is read for COMPLETION (what has been submitted and scored), never for dates. Sections
+1.1-1.4 are back on Aug 30; Chapter 1 Quiz is back on Sep 6.
+
+**Preseeding:** already complete. The server carries one homework row per syllabus week (14, Aug 30 to
+Dec 6) and one quiz per chapter (13), matching the syllabus item for item, plus the Dec 11 final.
+
+Two reversals on one set of rows in one night. The rows were already done, so nothing was lost - but
+the shape is worth naming: a source that LOOKS authoritative because it is the system holding the work
+can still be the wrong anchor for a date if that date is mutable after the fact. The stable source is
+the one that was written once and does not move. That is the syllabus, and for the same reason it is
+the Canvas description for discussion sub-deadlines rather than Canvas's `due_at`.
