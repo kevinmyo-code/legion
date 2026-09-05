@@ -14,7 +14,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,17 +28,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.checklists.ChecklistController
+import com.kevin.legion.checklists.checklistScheduleLabel
+import com.kevin.legion.checklists.formatMeasureNumber
 import com.kevin.legion.checklists.historyGroupedByDayDescending
+import com.kevin.legion.checklists.measurePromptLabel
+import com.kevin.legion.checklists.measureTargetResult
+import com.kevin.legion.checklists.measureTargetResultLabel
+import com.kevin.legion.checklists.measureValueDisplay
 import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.ChecklistItem
+import com.kevin.legion.data.local.MeasureDirection
+import com.kevin.legion.notes.formatWeekdays
+import com.kevin.legion.notes.parseWeekdays
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.common.GapEmptyRow
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 /**
@@ -114,9 +125,21 @@ private fun ChecklistListContent(onBack: () -> Unit, onOpenChecklist: (Long) -> 
     if (showCreateDialog) {
         CreateChecklistDialog(
             onDismiss = { showCreateDialog = false },
-            onCreate = { name, recursDaily ->
+            onCreate = { name, scheduleKind, scheduleDaysOfWeek ->
                 scope.launch {
-                    ChecklistController.createChecklist(context, name, recursDaily)
+                    // [Checklist.recursDaily] is deliberately never written here (this ticket's own
+                    // instruction) - it stays at its constructor default (`true`), which is the
+                    // correct reading for every [scheduleKind] this picker can produce: even `null`
+                    // ("no schedule") means "applies every day" per [Checklist.scheduleKind]'s own
+                    // doc comment, so [ChecklistController.itemsWithTickState] should track this
+                    // checklist's ticks per-day regardless of which of the three options was chosen.
+                    ChecklistController.createChecklist(
+                        context,
+                        name,
+                        scheduleKind = scheduleKind,
+                        scheduleEvery = if (scheduleKind != null) 1 else null,
+                        scheduleDaysOfWeek = scheduleDaysOfWeek,
+                    )
                     showCreateDialog = false
                     reloadNonce++
                 }
@@ -194,7 +217,12 @@ private fun ChecklistRow(checklist: Checklist, onClick: () -> Unit, onToggleArch
                     color = if (checklist.archived) sem.faint else MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    if (checklist.recursDaily) "Daily" else "One-off",
+                    // Schedule, in words - one-today ticket 09's third build replaces the old
+                    // recursDaily-driven "Daily"/"One-off" label with [checklistScheduleLabel], which
+                    // reads the same [Checklist.scheduleKind]/[scheduleEvery]/[scheduleDaysOfWeek]
+                    // columns the new schedule picker below writes ("Mon Wed Fri", "Daily", "No
+                    // schedule").
+                    checklistScheduleLabel(checklist),
                     style = LegionType.stamp,
                     color = sem.faint,
                 )
@@ -210,31 +238,92 @@ private fun ChecklistRow(checklist: Checklist, onClick: () -> Unit, onToggleArch
     }
 }
 
+/**
+ * [onCreate]'s second/third arguments are [Checklist.scheduleKind]/[Checklist.scheduleDaysOfWeek] -
+ * one-today ticket 09's third build replaces the old `recursDaily` [Switch] with [SchedulePicker]'s
+ * three states (none / daily / weekly on chosen days), per Kevin's own instruction for the item
+ * editor's sparseness applied here too.
+ */
 @Composable
-private fun CreateChecklistDialog(onDismiss: () -> Unit, onCreate: (String, Boolean) -> Unit) {
+private fun CreateChecklistDialog(onDismiss: () -> Unit, onCreate: (String, String?, String?) -> Unit) {
     var name by remember { mutableStateOf("") }
-    var recursDaily by remember { mutableStateOf(true) }
+    var scheduleKind by remember { mutableStateOf<String?>(null) }
+    var scheduleDaysOfWeek by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("New checklist") },
         text = {
             Column {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Repeats every day")
-                    Switch(checked = recursDaily, onCheckedChange = { recursDaily = it })
+                Column(Modifier.padding(top = 12.dp)) {
+                    Text("Schedule", style = MaterialTheme.typography.bodySmall)
+                    SchedulePicker(
+                        scheduleKind = scheduleKind,
+                        scheduleDaysOfWeek = scheduleDaysOfWeek,
+                        onChange = { kind, days -> scheduleKind = kind; scheduleDaysOfWeek = days },
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onCreate(name.trim(), recursDaily) }) { Text("Create") }
+            TextButton(enabled = name.isNotBlank(), onClick = { onCreate(name.trim(), scheduleKind, scheduleDaysOfWeek) }) { Text("Create") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * none / daily / weekly-on-chosen-days - the three schedule states ticket 09's third build asks
+ * for, shared by [CreateChecklistDialog] and [ChecklistDetailContent]'s own schedule row. Sparse by
+ * design (Kevin's own "not a form" instruction): three stamp-style taps for the kind, a row of
+ * seven day-abbreviation taps underneath ONLY when `"WEEKLY"` is selected. **Always pins
+ * [Checklist.scheduleEvery] to 1 via the caller** - this picker offers no "every N days/weeks"
+ * cadence of its own, only the three states Kevin named; [checklistScheduleLabel] still formats a
+ * wider N correctly for a schedule written some other way, this picker just never produces one.
+ * **Never touches [Checklist.recursDaily]** - see this file's own `onCreate`/schedule-row call-site
+ * comments for why leaving it at its default is the correct read, not an oversight.
+ */
+@Composable
+private fun SchedulePicker(
+    scheduleKind: String?,
+    scheduleDaysOfWeek: String?,
+    onChange: (kind: String?, daysOfWeek: String?) -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    Column {
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            listOf("NONE" to null, "DAILY" to "DAILY", "WEEKLY" to "WEEKLY").forEach { (label, kind) ->
+                Text(
+                    label,
+                    style = LegionType.stamp,
+                    color = if (scheduleKind == kind) MaterialTheme.colorScheme.primary else sem.faint,
+                    modifier = Modifier.clickable {
+                        // Switching away from WEEKLY drops any chosen days rather than keeping them
+                        // around unseen - a NONE/DAILY checklist carrying a stale scheduleDaysOfWeek
+                        // would be a landmine for whoever next flips it back to WEEKLY.
+                        onChange(kind, if (kind == "WEEKLY") scheduleDaysOfWeek else null)
+                    },
+                )
+            }
+        }
+        if (scheduleKind == "WEEKLY") {
+            val days = parseWeekdays(scheduleDaysOfWeek.orEmpty()).orEmpty()
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DayOfWeek.values().sortedBy { it.value }.forEach { day ->
+                    val selected = day in days
+                    Text(
+                        day.getDisplayName(TextStyle.SHORT, Locale.US).uppercase(),
+                        style = LegionType.stamp,
+                        color = if (selected) MaterialTheme.colorScheme.primary else sem.faint,
+                        modifier = Modifier.clickable {
+                            val next = if (selected) days - day else days + day
+                            onChange("WEEKLY", formatWeekdays(next))
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
 // -------------------------------------------------------------------------------- detail
@@ -266,12 +355,21 @@ private fun ChecklistDetailContent(checklistId: Long, onBack: () -> Unit, onOpen
     }
 
     editingItem?.let { item ->
-        EditItemDialog(
+        // ItemEditorDialog, not the plain-text EditItemDialog - an item may optionally declare a
+        // measure (unit/target/direction), one-today ticket 09's third build. [setMeasure] is
+        // always called alongside [editItem], even when [unit] is null: that is how a measure gets
+        // CLEARED, matching [ChecklistController.setMeasure]'s own "all three columns written
+        // together" contract.
+        ItemEditorDialog(
             currentText = item.text,
+            currentUnit = item.measureUnit,
+            currentTarget = item.measureTarget,
+            currentDirection = item.measureDirection,
             onDismiss = { editingItem = null },
-            onSave = { text ->
+            onSave = { text, unit, target, direction ->
                 scope.launch {
                     ChecklistController.editItem(context, item.id, text)
+                    ChecklistController.setMeasure(context, item.id, unit, target, direction)
                     editingItem = null
                     reloadNonce++
                 }
@@ -306,17 +404,26 @@ private fun ChecklistDetailContent(checklistId: Long, onBack: () -> Unit, onOpen
             val current = checklist!!
             val sem = LocalLegionSemantics.current
 
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Repeats every day", style = MaterialTheme.typography.bodySmall)
-                Switch(
-                    checked = current.recursDaily,
-                    onCheckedChange = { checked ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                // Schedule picker, not the old recursDaily [Switch] - one-today ticket 09's third
+                // build. **Never calls [ChecklistController.setRecursDaily]** - the brief's own
+                // instruction ("do not write recursDaily anymore"), and correct besides:
+                // [Checklist.recursDaily] stays at its default `true`, which is the right per-day
+                // tick-state reading for every one of these three schedule states (see
+                // [SchedulePicker]'s own doc comment).
+                Text("Schedule", style = MaterialTheme.typography.bodySmall)
+                SchedulePicker(
+                    scheduleKind = current.scheduleKind,
+                    scheduleDaysOfWeek = current.scheduleDaysOfWeek,
+                    onChange = { kind, days ->
                         scope.launch {
-                            ChecklistController.setRecursDaily(context, checklistId, checked)
+                            ChecklistController.setSchedule(
+                                context,
+                                checklistId,
+                                scheduleKind = kind,
+                                scheduleEvery = if (kind != null) 1 else null,
+                                scheduleDaysOfWeek = days,
+                            )
                             reloadNonce++
                         }
                     },
@@ -396,6 +503,12 @@ private fun ChecklistDetailContent(checklistId: Long, onBack: () -> Unit, onOpen
             }
 
             Hairline()
+            // Quick add stays plain text - a fast way to type "3 sets goblet squats" without a
+            // measure dialog in the way (Kevin's own "not a form" instruction, applied to the
+            // COMMON case rather than the measured one). A unit/target/direction is added
+            // afterward by tapping the item, which opens [ItemEditorDialog] below - the same
+            // editor a rename goes through, so there is exactly one place that ever writes a
+            // measure, not two.
             Row(
                 Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -442,11 +555,13 @@ private fun ChecklistItemEditRow(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                item.text,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f).clickable(onClick = onEdit),
-            )
+            Column(Modifier.weight(1f).clickable(onClick = onEdit)) {
+                Text(item.text, style = MaterialTheme.typography.bodyMedium)
+                // The item's own declared measure, if any - "target: at least 10,000 steps" or
+                // "in kg" - so a glance at the structure editor shows what tapping into it will
+                // find, without opening [ItemEditorDialog] first.
+                measurePromptLabel(item)?.let { Text(it, style = LegionType.stamp, color = sem.faint) }
+            }
             Text(
                 "▲",
                 style = LegionType.stamp,
@@ -484,6 +599,82 @@ private fun EditItemDialog(currentText: String, title: String = "Edit item", onD
     )
 }
 
+/**
+ * An item's text plus its optional measure - one-today ticket 09's third build. All three measure
+ * fields travel together, matching [ChecklistItem]'s own doc comment: a blank [unit] clears the
+ * whole measure (unit/target/direction all null, back to a plain binary item, exactly
+ * [ChecklistController.setMeasure]'s "all three columns written together" contract); a non-blank
+ * unit with a blank target keeps [ChecklistItem.measureTarget]/[ChecklistItem.measureDirection]
+ * null ("just record it", that class's own doc comment); a non-blank unit AND target requires
+ * picking AT LEAST or AT MOST, defaulting to AT LEAST so a target is never silently direction-less.
+ * **Sparse on purpose** (Kevin's own "not a form" instruction) - three stacked fields plus one
+ * two-way picker that only appears once a target is actually typed, nothing shown before it is
+ * needed.
+ */
+@Composable
+private fun ItemEditorDialog(
+    currentText: String,
+    currentUnit: String?,
+    currentTarget: Double?,
+    currentDirection: String?,
+    onDismiss: () -> Unit,
+    onSave: (text: String, unit: String?, target: Double?, direction: String?) -> Unit,
+) {
+    var text by remember { mutableStateOf(currentText) }
+    var unit by remember { mutableStateOf(currentUnit ?: "") }
+    var targetText by remember { mutableStateOf(currentTarget?.let { formatMeasureNumber(it) } ?: "") }
+    var direction by remember { mutableStateOf(currentDirection ?: MeasureDirection.AT_LEAST.name) }
+    val sem = LocalLegionSemantics.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Item") },
+        text = {
+            Column {
+                OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Text") })
+                OutlinedTextField(
+                    value = unit,
+                    onValueChange = { unit = it },
+                    label = { Text("Unit (optional) - steps, kg, min") },
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                if (unit.isNotBlank()) {
+                    OutlinedTextField(
+                        value = targetText,
+                        onValueChange = { targetText = it },
+                        label = { Text("Target (optional)") },
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    if (targetText.isNotBlank()) {
+                        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            listOf(MeasureDirection.AT_LEAST to "AT LEAST", MeasureDirection.AT_MOST to "AT MOST").forEach { (d, label) ->
+                                Text(
+                                    label,
+                                    style = LegionType.stamp,
+                                    color = if (direction == d.name) MaterialTheme.colorScheme.primary else sem.faint,
+                                    modifier = Modifier.clickable { direction = d.name },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = text.isNotBlank(),
+                onClick = {
+                    val trimmedUnit = unit.trim().ifBlank { null }
+                    // A target with no parseable number is treated exactly like no target at all -
+                    // never silently kept as text nobody can read back as a number.
+                    val target = if (trimmedUnit != null) targetText.trim().toDoubleOrNull() else null
+                    onSave(text.trim(), trimmedUnit, target, if (target != null) direction else null)
+                },
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 // -------------------------------------------------------------------------------- history
 
 /** How far back [ChecklistHistoryContent] looks by default - a plain window, not a setting; the
@@ -508,6 +699,12 @@ private fun historyDayLabel(day: Int): String = LocalDate.ofEpochDay(day.toLong(
  * soft-deleted item's line exactly like a live one's (trap 2) - this screen never filters on
  * [ChecklistItem.deleted] and never sees that column at all, since [ChecklistController.checklistHistory]
  * itself already resolved each line's [ChecklistItem.text] before handing it back.
+ *
+ * **A measured line shows its recorded value (ticket 09's third build)** - [measureValueDisplay]
+ * against the target, plus [measureTargetResult] in words (never colour alone), exactly the same
+ * two functions the calendar day view's own ticked row uses, so a value reads identically wherever
+ * it appears. Still shown, never scored: this adds ONE more shown fact per line, not a computed
+ * streak or an average of them.
  */
 @Composable
 private fun ChecklistHistoryContent(checklistId: Long, onBack: () -> Unit) {
@@ -551,7 +748,19 @@ private fun ChecklistHistoryContent(checklistId: Long, onBack: () -> Unit) {
                                     // checked box here would invite editing the past from a grid
                                     // that has no per-line write funnel wired to it.
                                     Checkbox(checked = true, onCheckedChange = null, enabled = false)
-                                    Text(line.item.text, style = MaterialTheme.typography.bodySmall)
+                                    Column {
+                                        Text(line.item.text, style = MaterialTheme.typography.bodySmall)
+                                        val value = line.value
+                                        if (value != null) {
+                                            val resultLabel = measureTargetResult(line.item, value)
+                                                ?.let { " - ${measureTargetResultLabel(it)}" } ?: ""
+                                            Text(
+                                                measureValueDisplay(line.item, value) + resultLabel,
+                                                style = LegionType.stamp,
+                                                color = sem.faint,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

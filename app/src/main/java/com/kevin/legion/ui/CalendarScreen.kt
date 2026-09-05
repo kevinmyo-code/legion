@@ -6,24 +6,32 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.checklists.checklistSectionLabel
+import com.kevin.legion.checklists.measurePromptLabel
+import com.kevin.legion.checklists.measureTargetResult
+import com.kevin.legion.checklists.measureTargetResultLabel
+import com.kevin.legion.checklists.measureValueDisplay
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.Event
@@ -189,6 +197,18 @@ fun CalendarScreen() {
     // [selectedDayStart], each carrying its own items' tick state for that day. See this screen's
     // own file doc comment for why these get their own sections rather than joining [dayRows].
     var checklistsToday by remember { mutableStateOf(emptyList<ChecklistDayEntry>()) }
+    // Collapsed by default, one-today ticket 09's third build (Kevin, "calendar yes" to collapsing
+    // once there are several daily lists - fifteen rows a day would bury the actual todos).
+    // **Session-only, deliberately** - a `remember`ed map, never Room or prefs, so a list opened
+    // while browsing stays open as [selectedDayStart] changes but reopens collapsed on next launch,
+    // per this ticket's own instruction. Keyed by [Checklist.id]; absent means collapsed.
+    val expandedChecklists = remember { mutableStateMapOf<Long, Boolean>() }
+    // A measured item's pending number (keyed by [ChecklistItem.id]) and the last
+    // [ChecklistController.TickOutcome.Refused] message for it, if any - both cleared the moment a
+    // tick actually lands (see [tickMeasuredItem] below). Kevin's ruling: the refusal shows where
+    // the tap happened, in words, never a toast that vanishes.
+    val measureInputs = remember { mutableStateMapOf<Long, String>() }
+    val measureRefusals = remember { mutableStateMapOf<Long, String>() }
     var reloadNonce by remember { mutableStateOf(0) }
 
     LaunchedEffect(displayedMonth, reloadNonce) {
@@ -278,10 +298,17 @@ fun CalendarScreen() {
         // before it existed (trap 1) - nothing here re-checks that, by design.
         val checklistDay = java.time.Instant.ofEpochMilli(day).atZone(zone).toLocalDate().toEpochDay().toInt()
         checklistsToday = ChecklistController.checklistsForDay(context, checklistDay).map { checklist ->
-            ChecklistDayEntry(
-                checklist = checklist,
-                items = ChecklistController.itemsWithTickState(context, checklist.id, checklistDay),
-            )
+            // A collapsed header still has to be honest (this ticket's own ruling): [itemsWithTickState]
+            // carries no failure signal of its own (unlike [VoiceNoteController]'s Loaded/Failed
+            // above), so a thrown read is caught here, per checklist, rather than crashing the whole
+            // day view over one bad list - [entry.loadFailed] then renders its own sentence instead
+            // of a false "0/0".
+            val items = try {
+                ChecklistController.itemsWithTickState(context, checklist.id, checklistDay)
+            } catch (e: Exception) {
+                null
+            }
+            ChecklistDayEntry(checklist = checklist, items = items ?: emptyList(), loadFailed = items == null)
         }
     }
 
@@ -317,6 +344,32 @@ fun CalendarScreen() {
         scope.launch {
             if (ticked) ChecklistController.untick(context, itemId, checklistDay) else ChecklistController.tick(context, itemId, checklistDay)
             reloadNonce++
+        }
+    }
+
+    // Ticks a MEASURED item for [selectedDayStart]'s own calendar day, [rawInput] being whatever
+    // is currently typed into that item's number field. Kevin's ruling, verbatim: "a measured item
+    // with no value entered counts as skipped" - so a blank or unparseable [rawInput] is passed
+    // through as a null value rather than being pre-validated away, and [ChecklistController.tick]
+    // itself refuses the write and returns the message this function surfaces; nothing here
+    // second-guesses that refusal or silently drops it.
+    fun tickMeasuredItem(itemId: Long, rawInput: String) {
+        val checklistDay = java.time.Instant.ofEpochMilli(selectedDayStart).atZone(zone).toLocalDate().toEpochDay().toInt()
+        val value = rawInput.trim().toDoubleOrNull()
+        scope.launch {
+            when (val outcome = ChecklistController.tick(context, itemId, checklistDay, value = value)) {
+                is ChecklistController.TickOutcome.Ticked -> {
+                    measureInputs.remove(itemId)
+                    measureRefusals.remove(itemId)
+                    reloadNonce++
+                }
+                is ChecklistController.TickOutcome.Refused -> {
+                    // Shown where the tap happened (this ticket's own ruling) - [reloadNonce] is
+                    // deliberately NOT bumped, since nothing was written and there is nothing new
+                    // to reload; the message alone is the state change.
+                    measureRefusals[itemId] = outcome.message
+                }
+            }
         }
     }
 
@@ -429,15 +482,38 @@ fun CalendarScreen() {
             // with no items yet gets its own honest "no items yet" line rather than an absent
             // section - it DOES apply to this day (it exists), it simply has nothing in it yet.
             checklistsToday.forEach { entry ->
-                DeckSectionRule(checklistSectionLabel(entry.checklist, entry.items))
-                if (entry.items.isEmpty()) {
-                    Text("No items yet.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-                } else {
-                    entry.items.forEach { itemState ->
-                        ChecklistItemDayRow(
-                            itemState = itemState,
-                            onToggle = { toggleChecklistItem(itemState.item.id, itemState.ticked) },
+                // Collapsed by default (this ticket's third build) - tapping the header expands it,
+                // and [expandedChecklists] remembers that per checklist for the rest of this
+                // screen's lifetime (this file's own state-declaration comment above).
+                val expanded = expandedChecklists[entry.checklist.id] ?: false
+                DeckSectionRule(
+                    checklistSectionLabel(entry.checklist, entry.items, loadFailed = entry.loadFailed),
+                    modifier = Modifier.clickable { expandedChecklists[entry.checklist.id] = !expanded },
+                )
+                if (expanded) {
+                    when {
+                        entry.loadFailed -> Text(
+                            "Couldn't load today's items for this list.",
+                            style = LegionType.stamp,
+                            color = sem.estimated,
+                            modifier = Modifier.padding(vertical = 6.dp),
                         )
+                        entry.items.isEmpty() -> Text(
+                            "No items yet.",
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                        else -> entry.items.forEach { itemState ->
+                            ChecklistItemDayRow(
+                                itemState = itemState,
+                                onToggle = { toggleChecklistItem(itemState.item.id, itemState.ticked) },
+                                measureInput = measureInputs[itemState.item.id] ?: "",
+                                onMeasureInputChange = { measureInputs[itemState.item.id] = it },
+                                onSubmitMeasure = { tickMeasuredItem(itemState.item.id, measureInputs[itemState.item.id] ?: "") },
+                                refusalMessage = measureRefusals[itemState.item.id],
+                            )
+                        }
                     }
                 }
             }
@@ -525,28 +601,100 @@ private fun RecordedDayRow(note: VoiceNote, onClick: () -> Unit) {
 
 /** One [Checklist] applicable to the viewed day, plus its items' tick state for that day - the
  * per-checklist unit [CalendarScreen]'s own `checklistsToday` list holds. See this screen's own
- * file doc comment for why a checklist gets its own section rather than joining [dayRows]. */
-private data class ChecklistDayEntry(val checklist: Checklist, val items: List<ChecklistController.ItemState>)
+ * file doc comment for why a checklist gets its own section rather than joining [dayRows].
+ *
+ * [loadFailed], added one-today ticket 09's third build: true when [ChecklistController.itemsWithTickState]
+ * threw for this checklist on this day - [items] is then always empty, but [loadFailed] is the fact
+ * a caller must render ("couldn't load"), never inferred back out of an empty [items] list, which
+ * would read identically to a genuinely empty checklist.
+ */
+private data class ChecklistDayEntry(val checklist: Checklist, val items: List<ChecklistController.ItemState>, val loadFailed: Boolean = false)
 
 /**
- * One checklist item row for the day view: a real tick checkbox (never absent/disabled the way
- * [CalendarDayRow] renders an event or a recurring occurrence) plus the item's text, struck to
- * [LocalLegionSemantics.faint] once ticked - same "done fades" convention [CalendarDayRow] already
- * uses for a reminder/task row. Deliberately has no date label - a checklist item has no due
- * instant of its own, only a per-day tick state, which the section header's own progress count
- * already carries in aggregate.
+ * One checklist item row for the day view. A plain (non-measured) item keeps the original real tick
+ * checkbox - never absent/disabled the way [CalendarDayRow] renders an event or a recurring
+ * occurrence - plus the item's text, struck to [LocalLegionSemantics.faint] once ticked, same "done
+ * fades" convention [CalendarDayRow] already uses for a reminder/task row.
+ *
+ * **A measured item (one-today ticket 09's third build, [ChecklistItem.measureUnit] non-null) asks
+ * for a number instead of toggling** - Kevin's ruling, verbatim: "a measured item with no value
+ * entered counts as skipped." Ticked and unticked render as genuinely different rows: unticked shows
+ * [measurePromptLabel] beside a number field and a TICK stamp wired to [onSubmitMeasure] (which
+ * calls [CalendarScreen]'s own `tickMeasuredItem`, itself calling [ChecklistController.tick] with
+ * whatever was typed, blank included - the controller's own refusal is what surfaces [refusalMessage]
+ * here, never a client-side validation that would swallow its wording); ticked shows
+ * [measureValueDisplay] against the target, plus [measureTargetResult] in WORDS (never colour alone,
+ * the same rule an UNRECONCILED ledger row follows) and an UNTICK stamp.
+ *
+ * Deliberately has no date label - a checklist item has no due instant of its own, only a per-day
+ * tick state, which the section header's own progress count already carries in aggregate.
  */
 @Composable
-private fun ChecklistItemDayRow(itemState: ChecklistController.ItemState, onToggle: () -> Unit) {
+private fun ChecklistItemDayRow(
+    itemState: ChecklistController.ItemState,
+    onToggle: () -> Unit,
+    measureInput: String,
+    onMeasureInputChange: (String) -> Unit,
+    onSubmitMeasure: () -> Unit,
+    refusalMessage: String?,
+) {
     val sem = LocalLegionSemantics.current
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Checkbox(checked = itemState.ticked, onCheckedChange = { onToggle() })
-        Column {
-            Text(
-                itemState.item.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (itemState.ticked) sem.faint else MaterialTheme.colorScheme.onSurface,
-            )
+    val item = itemState.item
+
+    if (item.measureUnit == null) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Checkbox(checked = itemState.ticked, onCheckedChange = { onToggle() })
+            Column {
+                Text(
+                    item.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (itemState.ticked) sem.faint else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        return
+    }
+
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        val value = itemState.value
+        if (itemState.ticked && value != null) {
+            Row {
+                Column(Modifier.weight(1f)) {
+                    Text(item.text, style = MaterialTheme.typography.bodyMedium, color = sem.faint)
+                    val resultLabel = measureTargetResult(item, value)?.let { " - ${measureTargetResultLabel(it)}" } ?: ""
+                    Text(measureValueDisplay(item, value) + resultLabel, style = LegionType.stamp, color = sem.faint)
+                }
+                Text(
+                    "UNTICK",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    modifier = Modifier.clickable(onClick = onToggle),
+                )
+            }
+        } else {
+            Text(item.text, style = MaterialTheme.typography.bodyMedium)
+            measurePromptLabel(item)?.let { Text(it, style = LegionType.stamp, color = sem.faint) }
+            Row(modifier = Modifier.padding(top = 4.dp)) {
+                OutlinedTextField(
+                    value = measureInput,
+                    onValueChange = onMeasureInputChange,
+                    label = { Text(item.measureUnit) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "TICK",
+                    style = LegionType.stamp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 12.dp).clickable(onClick = onSubmitMeasure),
+                )
+            }
+            // Kevin's ruling on the edge: the controller's own refused message shows in words,
+            // where the tap happened - never a toast that vanishes, never swallowed.
+            if (refusalMessage != null) {
+                Text(refusalMessage, style = LegionType.stamp, color = sem.estimated, modifier = Modifier.padding(top = 2.dp))
+            }
         }
     }
 }
