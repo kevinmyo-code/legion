@@ -91,3 +91,13 @@ tools/evals/runs/
 # Supabase personal access token - never commit
 .supabase-token
 .supabase-conn
+
+# django-engine (ticket 01): the household's own secrets, never Kevin's to
+# ship. .env.example lists every variable; .env holds a real household's.
+deploy/.env
+server/.venv/
+server/**/__pycache__/
+server/.pytest_cache/
+server/.ruff_cache/
+server/*.egg-info/
+

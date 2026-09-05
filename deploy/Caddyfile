@@ -1,0 +1,6 @@
+# A household fills in its own domain (or uses :80 for a bare-IP/LAN
+# install where TLS is handled elsewhere). Caddy issues and renews the
+# certificate automatically once a real domain is set here.
+:80 {
+	reverse_proxy web:8000
+}

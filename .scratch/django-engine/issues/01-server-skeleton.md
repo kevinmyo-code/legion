@@ -3,11 +3,12 @@ map: django-engine
 ticket: "01"
 title: "Server skeleton: Django, Postgres, compose, two users, one token per device"
 type: build
-status: open
+status: built
+status-detail: "Written 2026-09-05: ruff clean, manage.py check passes with no DB, 14 modules import, migrations generated, missing SECRET_KEY fails loudly. OWED, needs Docker on this machine: compose up to /healthz, pytest against Postgres, the auth round-trip."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

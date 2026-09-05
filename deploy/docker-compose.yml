@@ -1,0 +1,66 @@
+# ADR 0044: "clone, docker compose up, make two users, point the app at the
+# URL. Nothing Kevin-hosted is needed; the household hosts its own." Every
+# secret comes from `.env` (copy `.env.example`); nothing here is a default
+# credential meant to survive past a first run.
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ../server
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - media:/app/media
+    expose:
+      - "8000"
+
+  worker:
+    build:
+      context: ../server
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - media:/app/media
+    # Ticket 06 fills /etc/crontab with the nightly pg_dump and whatever
+    # else the worker owns. Empty today, on purpose - there is no scheduled
+    # job yet.
+    entrypoint: ["supercronic", "/etc/crontab"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  media:
+  caddy_data:
+  caddy_config:

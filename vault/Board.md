@@ -30,7 +30,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
-| [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[07-where-it-runs\|07]] | decision | Where it runs |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
@@ -81,6 +80,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[11-small-writes\|11]] | build | Three small writes: memory, proposals, pendings |
 | [[.scratch/command-center/map\|command-center]] | [[12-newsletter-summarizer\|12]] | build | Newsletters summarize themselves, no setup required |
 | [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
+| [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[08-daily-prescription-and-autolog\|08]] | build | The checklist prescribes a day, and a ticked day logs itself |
