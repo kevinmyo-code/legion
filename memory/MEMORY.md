@@ -22,28 +22,33 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-01
+## Where we stopped - 2026-09-05 (session 38bf2e3c)
 
-- **Backend is live and carrying real data.** Every aspect writes to Supabase; fleet finished its
-  cutover 08-29 (nine tables, four identity shapes). Room migrated v49 to v55 on the phone against
-  26k real rows with no loss.
-- **Google Calendar is cut** (09-01). The 261 imported appointments are ordinary rows now, visible
-  on screen for the first time, and tickable. No live `CalendarContract` query remains - a
-  structural test enforces it.
-- **`legion-web` is scaffolded** at `~/projects/legion-web`, two commits, no GitHub remote yet. It
-  is the general client; LEGION is the specialized one (ADR 0040).
-- **Next:** `one-today` tickets 03-05 - the day in review, deleting the dead ALERTS machinery, and
-  the maintenance date axis.
+- **Phone at Room v66, all verified on the A25.** Checklists (named lists, measured lines, none/daily/
+  weekly schedules, per-day or done-once ticks, history) live on `checklists*` tables - **Room only, no
+  server tables yet**, so `bio` and `errands` do not survive a wipe. Recordings moved to METERS;
+  transcription works for the first time (a doubled `/files/files/` URL had 404'd every attempt) and
+  failures are visible with reason and retry. Month grid marks open todos with a square.
+- **Server coursework is truth as of 09-05 03:39Z.** 123 tasks, 80 Canvas-backed with submission
+  evidence in `structured_meta`, 22 discussion first-post rows, titles carry course names. MATH dates
+  come from the SYLLABUS (WebAssign rolls due dates forward; Canvas placeholders are pointers).
+  Refresh = `tmp/canvas_reconcile.py` over a fresh Canvas API read; it is a snapshot, not sync.
+- **Google Calendar rows are frozen at 09-01** (importer retired). 18 all-day rows corrected 09-05.
+  Decision open: two-clients ticket 06.
+- **Django is parked** (Kevin: Supabase Studio is the PC interface he wanted). ADR 0042/0043 stand.
+- **In flight when this session paused:** one-today ticket 10 slice A (`manage_checklist` voice
+  tool), then B (retire grocery trip) and C (retire persistent list). Spotify App Remote refuses the
+  bind; suspected cause is this machine's debug SHA-1 `52:4F:39:...:30:07` not registered in the
+  Spotify dashboard - logcat capture was running.
 
-## Owed by Kevin - none of it is code
+## Owed by Kevin - 2026-09-05
 
-- **The OBD re-run.** 12,807 of 26,059 samples uploaded 08-29 then halted on a placeholder vehicle;
-  the fix landed, so a re-run should carry ~7,989 more.
-- ~~The voice modals have never been tried by voice.~~ **Closed 09-01**: Kevin, in daily use, *"ive been using the phone and voice paths all work"*. The Live socket, `LiveSessionController` and the modals all run.
-- **A second household account**, dashboard-only by design (backend-erp 23). The real test is
-  proving RLS shows her the same rows; an empty result looks identical to a working sign-in.
-- **Two placeholder vehicles** (`default`, an OBD-MAC row) carry year 0, and 5,263 OBD samples plus
-  16 maintenance items hang off cars that do not exist. Give them a year or decide to drop them.
+- **Rotate the Supabase PAT** (`sbp_fce2...`) and the WebAssign login link; both are in the transcript.
+- **Add the debug SHA-1 above to the Spotify dashboard** for `com.kevin.legion`, then retry the link.
+- Recordings note 2 is an accidental capture of a real kitchen conversation; delete or keep.
+- Phone media volume left at 15/15. "Auntie Greta birthday" is a 1-hour 00:00 UTC event in Google.
+- Drive backup guard refuses every upload since the wipe (8k rows vs a 29k baseline); needs a reset.
+- The `last_obd_mac` hint is null on all 3 cars; fleet will not survive a second wipe until set.
 
 ## Read before trusting a green suite
 
