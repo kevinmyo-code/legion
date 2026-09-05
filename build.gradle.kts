@@ -5,4 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.10" apply false
     // Roborazzi (hardening ticket 01): screenshot tests, wired only in app/build.gradle.kts.
     alias(libs.plugins.roborazzi) apply false
+    // KSP (architecture ticket 01, Room moves off kapt): version pinned to "2.2.10-2.0.2" because
+    // the ACTUAL Kotlin compiler this repo runs is 2.2.10 (set above), not the "2.1.0" in
+    // gradle/libs.versions.toml's `kotlin` ref - that ref is stale for this plugin pair and is
+    // only still read by the kotlin-serialization plugin alias. Confirmed against the Gradle
+    // Plugin Portal's own maven-metadata.xml for com.google.devtools.ksp, not guessed: 2.2.10 has
+    // exactly one published KSP release, 2.2.10-2.0.2.
+    alias(libs.plugins.ksp) apply false
 }

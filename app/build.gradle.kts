@@ -4,7 +4,10 @@ plugins {
     alias(libs.plugins.android.application)
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("kotlin-kapt")
+    // KSP (architecture ticket 01): Room's sole annotation processor, replacing kotlin-kapt.
+    // kapt had no other user in this module (confirmed by grepping for `kapt(` before the
+    // switch), so the kapt plugin itself is gone too, not just Room's use of it.
+    alias(libs.plugins.ksp)
     // Roborazzi (hardening ticket 01): Robolectric-native screenshot tests, running inside
     // testDebugUnitTest like every other JVM unit test. Provides the recordRoborazziDebug /
     // compareRoborazziDebug / verifyRoborazziDebug task triple - see the `roborazzi { }` block
@@ -208,10 +211,12 @@ android {
     }
 }
 
-kapt {
-    arguments {
-        arg("room.schemaLocation", "$projectDir/schemas")
-    }
+// Room's exported-schema JSON (architecture ticket 01: this used to be a `kapt { arguments { } }`
+// block, moved here verbatim when Room's annotation processor moved to KSP). `exportSchema` stays
+// on and the output dir is unchanged - `app/schemas/`, the same path MigrationTestHelper's
+// androidTest asset source set (below) and every MigrationNNToMMTest still read from.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // backend-erp Phase 2 (2026-08-26): the Compose `resolutionStrategy.force` that used to live here
@@ -274,7 +279,7 @@ dependencies {
     // Room
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    kapt(libs.room.compiler)
+    ksp(libs.room.compiler)
 
     // Coroutines
     implementation(libs.coroutines.android)

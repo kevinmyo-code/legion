@@ -108,6 +108,12 @@ kotlinxSerializationJson = "1.8.1"
 # further conflict bump needed. Do not bump this independently of supabase-kt without re-running
 # that check - and re-run it again if `supabaseKt` above ever moves off 3.6.0.
 ktor = "3.5.1"
+# KSP (architecture ticket 01, Room moves off kapt). Pinned to "2.2.10-2.0.2" - the release the
+# Gradle Plugin Portal actually publishes for Kotlin 2.2.10 (the version root build.gradle.kts sets
+# for org.jetbrains.kotlin.android/plugin.compose), confirmed against that plugin's own
+# maven-metadata.xml rather than assumed from the `kotlin` ref below, which is stale for those two
+# plugins and reflects an earlier version of this catalog.
+ksp = "2.2.10-2.0.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -201,3 +207,5 @@ roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
 # @Serializable type, which SupabaseSession.kt does not (it reuses UserSession.serializer()
 # directly) - added anyway per the brief's instruction, matching Kotlin 2.1.0.
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+# KSP (architecture ticket 01, Room moves off kapt).
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
