@@ -2707,3 +2707,52 @@ val MIGRATION_64_65 = object : Migration(64, 65) {
         db.execSQL("ALTER TABLE `voice_notes` ADD COLUMN `transcriptionAttemptStartedAt` INTEGER")
     }
 }
+
+/**
+ * v65 -> v66: checklists get measured items and real schedules (one-today ticket 09's second
+ * build, 2026-09-04 - Kevin: "walk 10k steps filled everyday" as the worked example). Two entities
+ * gain plain nullable columns, one gains a NOT-NULL column with a real default; nothing existing is
+ * dropped or renamed, so every ADD COLUMN here is verbatim-safe under §5 with no table rebuild.
+ *
+ * `checklist_items` gets [com.kevin.legion.data.local.ChecklistItem.measureUnit]/
+ * [com.kevin.legion.data.local.ChecklistItem.measureTarget]/
+ * [com.kevin.legion.data.local.ChecklistItem.measureDirection], all three plain-nullable with no
+ * default at all - same "no `DEFAULT NULL` clause" reasoning [MIGRATION_64_65]'s own doc comment
+ * gives, confirmed again here against the live `66.json` (`Migration65To66Test`).
+ *
+ * `checklist_ticks` gets [com.kevin.legion.data.local.ChecklistTick.value] (plain-nullable, same
+ * reasoning) and [com.kevin.legion.data.local.ChecklistTick.source] - NOT NULL, and this one DOES
+ * need a real `DEFAULT` clause, because SQLite's `ALTER TABLE ... ADD COLUMN` refuses a `NOT NULL`
+ * column with no default outright (it would have no value to backfill every existing row with).
+ * The generated `66.json` renders a non-null TEXT default as a SQL string literal wrapped in its
+ * OWN single quotes - `DEFAULT 'USER_REPORTED'`, not `DEFAULT USER_REPORTED` - matching
+ * [Event.kind]'s own `'reminder'` default; every existing tick backfills to `USER_REPORTED`, which
+ * is correct because every tick ever written before this ticket WAS user-reported (nothing else
+ * could report one yet).
+ *
+ * `checklists` gets [com.kevin.legion.data.local.Checklist.scheduleKind]/
+ * [com.kevin.legion.data.local.Checklist.scheduleEvery]/
+ * [com.kevin.legion.data.local.Checklist.scheduleDaysOfWeek], all three plain-nullable - and then a
+ * single backfill `UPDATE`, run AFTER the columns exist, translating every existing
+ * `recursDaily = 1` row into the DAILY special case this ticket's brief names explicitly:
+ * `scheduleKind = 'DAILY', scheduleEvery = 1`. A `recursDaily = 0` row is left with
+ * `scheduleKind = NULL` deliberately - see [Checklist.recursDaily]'s own doc comment for why that
+ * is not a gap: a `NULL` schedule already reads as "applies every day", the same effective listing
+ * behaviour a non-recurring checklist already had before this migration (`checklistsForDay` never
+ * filtered on `recursDaily` in the first place).
+ */
+val MIGRATION_65_66 = object : Migration(65, 66) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `checklist_items` ADD COLUMN `measureUnit` TEXT")
+        db.execSQL("ALTER TABLE `checklist_items` ADD COLUMN `measureTarget` REAL")
+        db.execSQL("ALTER TABLE `checklist_items` ADD COLUMN `measureDirection` TEXT")
+
+        db.execSQL("ALTER TABLE `checklist_ticks` ADD COLUMN `value` REAL")
+        db.execSQL("ALTER TABLE `checklist_ticks` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'USER_REPORTED'")
+
+        db.execSQL("ALTER TABLE `checklists` ADD COLUMN `scheduleKind` TEXT")
+        db.execSQL("ALTER TABLE `checklists` ADD COLUMN `scheduleEvery` INTEGER")
+        db.execSQL("ALTER TABLE `checklists` ADD COLUMN `scheduleDaysOfWeek` TEXT")
+        db.execSQL("UPDATE `checklists` SET `scheduleKind` = 'DAILY', `scheduleEvery` = 1 WHERE `recursDaily` = 1")
+    }
+}

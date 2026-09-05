@@ -31,6 +31,18 @@ import androidx.room.PrimaryKey
  * `ChecklistDao.tick`'s `INSERT OR IGNORE` (never a plain `INSERT`) relies on this constraint to
  * make a double-tick idempotent by construction rather than by an application-level existence
  * check that a second, concurrent caller could still race past.
+ *
+ * **[value]/[source], added one-today ticket 09's second build (2026-09-04).** [value] is the
+ * actual number for a measured [ChecklistItem] ("8,400" against a "walk 10k steps" item whose
+ * [ChecklistItem.measureUnit] is "steps") - null on every binary item's tick, and on a measured
+ * item `ChecklistController.tick` REFUSES to write a tick at all when the caller supplies no
+ * value (Kevin's ruling, verbatim: "a number is the point" - a valueless tick on a measured item
+ * is a skip, never a silent zero or a silent done). [source] is that number's PROVENANCE - CLAUDE.md
+ * §4's posture that a figure's origin travels with it, applied here because everything a user types
+ * today is self-report and a later source (Health Connect steps, a bathroom scale) must be tellable
+ * apart from it for any analysis built on top. [Double], not [Long] cents - a deliberate exception
+ * to §4's money rule, which exists only because the reconciliation gate depends on exact equality;
+ * nothing here reconciles against a printed total, and "22.5 kg" is an ordinary measurement.
  */
 @Entity(
     tableName = "checklist_ticks",
@@ -49,4 +61,16 @@ data class ChecklistTick(
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
     val serverId: String? = null,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    /** The actual measured number, or null on a binary item's tick - see this class's own doc
+     * comment for why a measured item's controller-level write is refused rather than stored null. */
+    val value: Double? = null,
+    /** Provenance of [value] - see [TickSource]. NOT NULL: every tick has a source, binary
+     * items included, because "the user tapped it" is itself a provenance fact worth keeping. */
+    @ColumnInfo(defaultValue = "'USER_REPORTED'") val source: String = TickSource.USER_REPORTED.name,
 )
+
+/** [ChecklistTick.source]'s known values, stored as TEXT with no CHECK constraint (same posture as
+ * [MeasureDirection] - widening this later needs no migration). Only [USER_REPORTED] is written by
+ * anything today; the others are named here so a future Health Connect/scale integration has a
+ * vocabulary to write into rather than inventing one at the call site. */
+enum class TickSource { USER_REPORTED, HEALTH_CONNECT, DEVICE_SENSOR }

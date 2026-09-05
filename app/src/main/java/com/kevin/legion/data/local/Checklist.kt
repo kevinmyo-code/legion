@@ -46,7 +46,14 @@ data class Checklist(
     val name: String,
     /** True: this checklist is read fresh every day (a "today" view). False: it is done once,
      * ever - the moment any tick exists on any of its items, on any day. See this class's own doc
-     * comment for what flipping this later does and does not do. */
+     * comment for what flipping this later does and does not do.
+     *
+     * **DEPRECATED, one-today ticket 09's second build (2026-09-04).** [scheduleKind] now carries
+     * this fact as the special case `scheduleKind = "DAILY", scheduleEvery = 1` - this column is
+     * kept only because §5 forbids a destructive migration, and `MIGRATION_65_66` back-fills the
+     * new columns from it for every existing row. `ChecklistController` reads only
+     * [scheduleKind]/[scheduleEvery]/[scheduleDaysOfWeek] from now on; nothing writes this column
+     * going forward. */
     val recursDaily: Boolean = true,
     /** Manual ordering in a future list-of-checklists screen. Not read by anything yet. */
     val sortOrder: Int = 0,
@@ -65,4 +72,19 @@ data class Checklist(
     // row underneath it and would be invisible to a future sync snapshot, same reasoning
     // [ItemList.deleted]'s doc comment gives.
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    /** null: no schedule, this is a plain todo list that applies every day from [createdAt] until
+     * archived. `"DAILY"`: applies every [scheduleEvery] days. `"WEEKLY"`: applies on the weekdays
+     * in [scheduleDaysOfWeek], every [scheduleEvery] weeks. Stored as TEXT with no CHECK constraint,
+     * same posture as [MeasureDirection]/[TickSource] - a third kind later needs no migration.
+     * `ChecklistController.appliesOnDay` reuses [com.kevin.legion.notes.Recurrence] to decide
+     * whether a given day matches, rather than a second hand-rolled recurrence engine. */
+    val scheduleKind: String? = null,
+    /** Every N days ([scheduleKind] `"DAILY"`) or weeks ([scheduleKind] `"WEEKLY"`). Null when
+     * [scheduleKind] is null. */
+    val scheduleEvery: Int? = null,
+    /** `"WEEKLY"` only - comma-separated [java.time.DayOfWeek] names, the exact encoding
+     * [ListItem.repeatDaysOfWeek] already uses ([com.kevin.legion.notes.formatWeekdays]/
+     * [com.kevin.legion.notes.parseWeekdays]), reused rather than inventing a second one. Null for
+     * every other [scheduleKind]. */
+    val scheduleDaysOfWeek: String? = null,
 )

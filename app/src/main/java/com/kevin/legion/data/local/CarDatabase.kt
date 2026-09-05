@@ -365,7 +365,7 @@ import androidx.room.RoomDatabase
         OutboxEntry::class,
         Checklist::class, ChecklistItem::class, ChecklistTick::class,
     ],
-    version = 65,
+    version = 66,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -516,7 +516,12 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 65
+        const val SCHEMA_VERSION = 66
+        // 2026-09-04: bumped to 66 alongside `@Database(version=)` in the same edit again
+        // (checklists get measured items - measureUnit/measureTarget/measureDirection on
+        // checklist_items, value/source on checklist_ticks - and real schedules -
+        // scheduleKind/scheduleEvery/scheduleDaysOfWeek on checklists, recursDaily deprecated in
+        // place, see [MIGRATION_65_66] for the full account).
         // 2026-09-04: bumped to 65 alongside `@Database(version=)` in the same edit again
         // (voice notes get a failed/in-flight-transcription vocabulary - transcriptionFailureReason/
         // transcriptionAttemptStartedAt added to voice_notes, see [MIGRATION_64_65] for the full
@@ -637,7 +642,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
                         MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61, MIGRATION_61_62,
-                        MIGRATION_62_63, MIGRATION_63_64, MIGRATION_64_65,
+                        MIGRATION_62_63, MIGRATION_63_64, MIGRATION_64_65, MIGRATION_65_66,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

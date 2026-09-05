@@ -34,6 +34,15 @@ interface ChecklistItemDao {
     @Query("UPDATE checklist_items SET sortOrder = :sortOrder, updatedAt = :at WHERE id = :id")
     suspend fun updateSortOrder(id: Long, sortOrder: Int, at: Long)
 
+    /** Sets or clears [ChecklistItem.measureUnit]/[ChecklistItem.measureTarget]/
+     * [ChecklistItem.measureDirection] together - same "one fact, not three columns" reasoning as
+     * [ChecklistDao.setSchedule]. */
+    @Query(
+        "UPDATE checklist_items SET measureUnit = :measureUnit, measureTarget = :measureTarget, " +
+            "measureDirection = :measureDirection, updatedAt = :at WHERE id = :id",
+    )
+    suspend fun setMeasure(id: Long, measureUnit: String?, measureTarget: Double?, measureDirection: String?, at: Long)
+
     // Soft delete only - trap 2 ("editing or deleting an item must not rewrite the past"). Ticks
     // in checklist_ticks are never touched by this call; see ChecklistTick's own class doc.
     @Query("UPDATE checklist_items SET deleted = 1, updatedAt = :at WHERE id = :id")

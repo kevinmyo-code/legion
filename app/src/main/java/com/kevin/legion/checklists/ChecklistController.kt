@@ -5,6 +5,11 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.ChecklistItem
 import com.kevin.legion.data.local.ChecklistTick
+import com.kevin.legion.data.local.TickSource
+import com.kevin.legion.notes.RepeatEnd
+import com.kevin.legion.notes.RepeatRule
+import com.kevin.legion.notes.Recurrence
+import com.kevin.legion.notes.parseWeekdays
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -43,10 +48,48 @@ object ChecklistController {
 
     // ---- checklist CRUD ----------------------------------------------------------------------
 
-    suspend fun createChecklist(context: Context, name: String, recursDaily: Boolean = true): Checklist {
-        val checklist = Checklist(name = name, recursDaily = recursDaily)
+    /**
+     * [recursDaily] is kept for source compatibility and still governs [itemsWithTickState]'s
+     * "done ever" vs "done today" split (see [Checklist.recursDaily]'s own doc comment) - it is
+     * NOT translated into a [scheduleKind] here. A brand-new checklist with no [scheduleKind]
+     * argument gets `scheduleKind = null`, which [checklistsForDay]/[appliesOnDay] read as "applies
+     * every day", exactly the unconditional listing every checklist already got before this ticket.
+     * Only [MIGRATION_65_66] back-fills `scheduleKind = "DAILY", scheduleEvery = 1` for EXISTING
+     * `recursDaily = 1` rows, because that migration has to describe a historical fact about rows
+     * that already exist; a fresh caller who wants a real schedule passes [scheduleKind] directly,
+     * or calls [setSchedule] afterward.
+     */
+    suspend fun createChecklist(
+        context: Context,
+        name: String,
+        recursDaily: Boolean = true,
+        scheduleKind: String? = null,
+        scheduleEvery: Int? = null,
+        scheduleDaysOfWeek: String? = null,
+    ): Checklist {
+        val checklist = Checklist(
+            name = name,
+            recursDaily = recursDaily,
+            scheduleKind = scheduleKind,
+            scheduleEvery = scheduleEvery,
+            scheduleDaysOfWeek = scheduleDaysOfWeek,
+        )
         val id = db(context).checklistDao().insert(checklist)
         return checklist.copy(id = id)
+    }
+
+    /** Sets or clears a checklist's schedule after creation - [scheduleKind] null clears it back to
+     * "applies every day" ([Checklist.scheduleKind]'s own doc comment). All three columns are
+     * always written together; a schedule is one fact, not three independently-settable ones. */
+    suspend fun setSchedule(
+        context: Context,
+        checklistId: Long,
+        scheduleKind: String?,
+        scheduleEvery: Int?,
+        scheduleDaysOfWeek: String?,
+        at: Long = System.currentTimeMillis(),
+    ) {
+        db(context).checklistDao().setSchedule(checklistId, scheduleKind, scheduleEvery, scheduleDaysOfWeek, at)
     }
 
     suspend fun renameChecklist(context: Context, checklistId: Long, name: String, at: Long = System.currentTimeMillis()) {
@@ -90,10 +133,41 @@ object ChecklistController {
     suspend fun itemsFor(context: Context, checklistId: Long): List<ChecklistItem> =
         db(context).checklistItemDao().forChecklist(checklistId)
 
-    suspend fun addItem(context: Context, checklistId: Long, text: String, sortOrder: Int = 0): ChecklistItem {
-        val item = ChecklistItem(checklistId = checklistId, text = text, sortOrder = sortOrder)
+    /** [measureUnit] non-null makes this a measured item ("steps", "kg", "min") - see
+     * [ChecklistItem]'s own doc comment for how [measureTarget]/[measureDirection] travel with it,
+     * and [tick]'s doc comment for what a measured item then requires of every tick against it. */
+    suspend fun addItem(
+        context: Context,
+        checklistId: Long,
+        text: String,
+        sortOrder: Int = 0,
+        measureUnit: String? = null,
+        measureTarget: Double? = null,
+        measureDirection: String? = null,
+    ): ChecklistItem {
+        val item = ChecklistItem(
+            checklistId = checklistId,
+            text = text,
+            sortOrder = sortOrder,
+            measureUnit = measureUnit,
+            measureTarget = measureTarget,
+            measureDirection = measureDirection,
+        )
         val id = db(context).checklistItemDao().insert(item)
         return item.copy(id = id)
+    }
+
+    /** Sets or clears an item's measure - see [ChecklistItem]'s own doc comment for the three
+     * columns this writes together. */
+    suspend fun setMeasure(
+        context: Context,
+        itemId: Long,
+        measureUnit: String?,
+        measureTarget: Double?,
+        measureDirection: String?,
+        at: Long = System.currentTimeMillis(),
+    ) {
+        db(context).checklistItemDao().setMeasure(itemId, measureUnit, measureTarget, measureDirection, at)
     }
 
     suspend fun editItem(context: Context, itemId: Long, text: String, at: Long = System.currentTimeMillis()) {
@@ -113,10 +187,21 @@ object ChecklistController {
 
     // ---- tick / untick -------------------------------------------------------------------------
 
+    /** What [tick] actually did. */
+    sealed class TickOutcome {
+        object Ticked : TickOutcome()
+        /** The item is measured ([ChecklistItem.measureUnit] non-null) and the caller supplied no
+         * [ChecklistTick.value] - Kevin's ruling, verbatim: "a number is the point". Nothing is
+         * written; a valueless tick on a measured item is a SKIP, never a silent done. [message] is
+         * for whatever surface called this (a tool result, a screen's toast) to show in words. */
+        data class Refused(val message: String) : TickOutcome()
+    }
+
     /**
      * Ticks [itemId] for [day] (defaults to [today]). Idempotent: ticking an already-ticked
-     * `(itemId, day)` is a no-op that leaves the original [ChecklistTick.tickedAt] untouched -
-     * double-tap does not overwrite when the user actually first tapped.
+     * `(itemId, day)` is a no-op that leaves the original [ChecklistTick.tickedAt] (and its
+     * [ChecklistTick.value]/[ChecklistTick.source]) untouched - double-tap does not overwrite when
+     * the user actually first tapped or what they first reported.
      *
      * Retroactive by construction: passing yesterday's [day] this morning writes a tick whose
      * [ChecklistTick.day] is yesterday and whose [ChecklistTick.tickedAt] is the real "now" -
@@ -127,16 +212,34 @@ object ChecklistController {
      * do nothing (see [com.kevin.legion.data.local.ChecklistTickDao.insert]'s own doc comment) -
      * this checks for that tombstone first and revives it via
      * [com.kevin.legion.data.local.ChecklistTickDao.retick] with a fresh [ChecklistTick.tickedAt]
-     * instead of leaving the tick lost.
+     * (and the caller's fresh [value]/[source]) instead of leaving the tick lost.
+     *
+     * **Refuses outright on a measured item with a null [value]** - see [TickOutcome.Refused]. This
+     * check happens BEFORE any lookup of the existing tick row, so a refusal never touches the
+     * table at all, revival included.
      */
-    suspend fun tick(context: Context, itemId: Long, day: Int = today(), at: Long = System.currentTimeMillis()) {
+    suspend fun tick(
+        context: Context,
+        itemId: Long,
+        day: Int = today(),
+        at: Long = System.currentTimeMillis(),
+        value: Double? = null,
+        source: String = TickSource.USER_REPORTED.name,
+    ): TickOutcome {
+        val item = db(context).checklistItemDao().getByIdIncludingDeleted(itemId)
+        if (item?.measureUnit != null && value == null) {
+            return TickOutcome.Refused(
+                "\"${item.text}\" is measured in ${item.measureUnit} - give a number to tick it, nothing was recorded.",
+            )
+        }
         val dao = db(context).checklistTickDao()
         val existing = dao.getForItemOnDayIncludingDeleted(itemId, day)
         when {
-            existing == null -> dao.insert(ChecklistTick(itemId = itemId, day = day, tickedAt = at))
-            !existing.deleted -> Unit // already ticked - idempotent no-op, tickedAt untouched
-            else -> dao.retick(itemId, day, at)
+            existing == null -> dao.insert(ChecklistTick(itemId = itemId, day = day, tickedAt = at, value = value, source = source))
+            !existing.deleted -> Unit // already ticked - idempotent no-op, tickedAt/value/source untouched
+            else -> dao.retick(itemId, day, at, value, source)
         }
+        return TickOutcome.Ticked
     }
 
     /** Unticks `(itemId, day)` - a soft delete, so the row (and its [ChecklistTick.tickedAt])
@@ -148,8 +251,9 @@ object ChecklistController {
     // ---- reads ---------------------------------------------------------------------------------
 
     /** One item plus whether it is ticked for [day]/[checklist] - the per-day read a screen
-     * renders directly. */
-    data class ItemState(val item: ChecklistItem, val ticked: Boolean, val tickedAt: Long?)
+     * renders directly. [value] is the measured tick's actual number ([ChecklistTick.value]) -
+     * null on a binary item, and null on a measured item that has not been ticked yet. */
+    data class ItemState(val item: ChecklistItem, val ticked: Boolean, val tickedAt: Long?, val value: Double? = null)
 
     /**
      * A checklist's items with their tick state for [day] (defaults to [today]).
@@ -176,29 +280,78 @@ object ChecklistController {
                 .associateBy { it.itemId }
             items.map { item ->
                 val tick = ticks[item.id]
-                ItemState(item, ticked = tick != null, tickedAt = tick?.tickedAt)
+                ItemState(item, ticked = tick != null, tickedAt = tick?.tickedAt, value = tick?.value)
             }
         } else {
             items.map { item ->
                 val ticks = db(context).checklistTickDao().allForItem(item.id)
                 val latest = ticks.maxByOrNull { it.tickedAt }
-                ItemState(item, ticked = ticks.isNotEmpty(), tickedAt = latest?.tickedAt)
+                ItemState(item, ticked = ticks.isNotEmpty(), tickedAt = latest?.tickedAt, value = latest?.value)
             }
         }
     }
 
     /** Every checklist that applies to [day] (defaults to [today]) - trap 1's gate again, this
      * time over the LIST of checklists rather than one checklist's items: a checklist created
-     * after [day] is excluded entirely, never returned with an implied "everything unticked". */
+     * after [day] is excluded entirely, never returned with an implied "everything unticked".
+     * On top of that, [appliesOnDay] applies [Checklist.scheduleKind] - a `WEEKLY MON,WED,FRI`
+     * checklist is excluded from a Tuesday just as surely as one that did not exist yet. */
     suspend fun checklistsForDay(context: Context, day: Int = today(), includeArchived: Boolean = false): List<Checklist> =
-        db(context).checklistDao().getAll(includeArchived).filter { day >= dayOf(it.createdAt) }
+        db(context).checklistDao().getAll(includeArchived)
+            .filter { day >= dayOf(it.createdAt) && appliesOnDay(it, day) }
+
+    /**
+     * Whether [checklist]'s schedule applies on [day] - one-today ticket 09's second build (Slice
+     * 2). Reuses [Recurrence] (a pure day-generator already handling daily/weekly/every-N) rather
+     * than a second hand-rolled recurrence engine, per this ticket's own brief.
+     *
+     * `null` [Checklist.scheduleKind] (or a malformed schedule - a missing [Checklist.scheduleEvery],
+     * an unrecognised kind, an empty/unparseable [Checklist.scheduleDaysOfWeek] on a `"WEEKLY"`
+     * checklist) all degrade to "applies every day" - the plain-todo-list default this ticket's
+     * brief describes, and the same posture [Recurrence.ruleIsWellFormed] takes internally (a
+     * malformed rule produces no occurrences rather than throwing); here a malformed SCHEDULE must
+     * not silently hide an otherwise-live checklist, so it degrades the other direction, toward
+     * always showing rather than never showing.
+     *
+     * [Recurrence] operates on epoch-millisecond instants with a real time-of-day; this call anchors
+     * both the series' start and the query window at LOCAL MIDNIGHT of the relevant day in [zone],
+     * so a generated occurrence lands exactly at the target day's own [windowStart] and the
+     * inclusive `windowStart..windowEnd` check in [Recurrence.occurrencesInWindow] catches it.
+     */
+    private fun appliesOnDay(checklist: Checklist, day: Int, zone: ZoneId = ZoneId.systemDefault()): Boolean {
+        val kind = checklist.scheduleKind ?: return true
+        val every = checklist.scheduleEvery ?: return true
+        val rule: RepeatRule = when (kind) {
+            "DAILY" -> RepeatRule.Daily(every)
+            "WEEKLY" -> {
+                val days = parseWeekdays(checklist.scheduleDaysOfWeek.orEmpty())
+                if (days.isNullOrEmpty()) return true
+                RepeatRule.Weekly(every, days)
+            }
+            else -> return true
+        }
+        val startDate = LocalDate.ofEpochDay(dayOf(checklist.createdAt, zone).toLong())
+        val startsAtMs = startDate.atStartOfDay(zone).toInstant().toEpochMilli()
+        val targetDate = LocalDate.ofEpochDay(day.toLong())
+        val windowStart = targetDate.atStartOfDay(zone).toInstant().toEpochMilli()
+        val windowEnd = targetDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        return Recurrence.occurrencesInWindow(
+            startsAt = startsAtMs,
+            rule = rule,
+            end = RepeatEnd.Never,
+            skippedDates = emptySet(),
+            windowStart = windowStart,
+            windowEnd = windowEnd,
+            zone = zone,
+        ).isNotEmpty()
+    }
 
     /** One day's tick state for one item, resolving the item's text even if it has since been
      * soft-deleted (trap 2) - [ChecklistHistoryLine.item] is read via
      * [com.kevin.legion.data.local.ChecklistItemDao.getByIdIncludingDeleted]-backed
      * [com.kevin.legion.data.local.ChecklistItemDao.forChecklistIncludingDeleted], never the
      * live-only [com.kevin.legion.data.local.ChecklistItemDao.forChecklist]. */
-    data class ChecklistHistoryLine(val day: Int, val item: ChecklistItem, val ticked: Boolean, val tickedAt: Long?)
+    data class ChecklistHistoryLine(val day: Int, val item: ChecklistItem, val ticked: Boolean, val tickedAt: Long?, val value: Double? = null)
 
     /**
      * Every item's tick state, per day, over `[fromDay, toDay]` (inclusive) - the "look back and
@@ -230,7 +383,7 @@ object ChecklistController {
         val itemsById = items.associateBy { it.id }
         return ticks.mapNotNull { tick ->
             val item = itemsById[tick.itemId] ?: return@mapNotNull null
-            ChecklistHistoryLine(day = tick.day, item = item, ticked = true, tickedAt = tick.tickedAt)
+            ChecklistHistoryLine(day = tick.day, item = item, ticked = true, tickedAt = tick.tickedAt, value = tick.value)
         }.sortedWith(compareBy({ it.day }, { it.item.sortOrder }))
     }
 }

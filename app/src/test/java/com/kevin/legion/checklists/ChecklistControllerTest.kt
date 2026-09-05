@@ -258,4 +258,77 @@ class ChecklistControllerTest {
         val history = ChecklistController.checklistHistory(context, checklist.id, today, today)
         assertTrue("no row means not done, never an explicit false line", history.isEmpty())
     }
+
+    // ---- measured items ---------------------------------------------------------------------------
+
+    @Test
+    fun `a measured tick stores its value and source`() = runBlocking {
+        val checklist = ChecklistController.createChecklist(context, "bio")
+        val item = ChecklistController.addItem(
+            context, checklist.id, "walk 10k steps",
+            measureUnit = "steps", measureTarget = 10000.0, measureDirection = "AT_LEAST",
+        )
+        val today = day(2026, 9, 4)
+
+        val outcome = ChecklistController.tick(context, item.id, today, value = 8400.0)
+        assertTrue("a valid measured tick is accepted", outcome is ChecklistController.TickOutcome.Ticked)
+
+        val state = ChecklistController.itemsWithTickState(context, checklist.id, today)
+        assertTrue(state.single().ticked)
+        assertEquals(8400.0, state.single().value)
+    }
+
+    @Test
+    fun `a valueless tick on a measured item is refused and writes nothing`() = runBlocking {
+        val checklist = ChecklistController.createChecklist(context, "bio")
+        val item = ChecklistController.addItem(context, checklist.id, "walk 10k steps", measureUnit = "steps")
+        val today = day(2026, 9, 4)
+
+        val outcome = ChecklistController.tick(context, item.id, today)
+        assertTrue("no number, no tick - a number is the point", outcome is ChecklistController.TickOutcome.Refused)
+
+        val state = ChecklistController.itemsWithTickState(context, checklist.id, today)
+        assertFalse("nothing was written by the refused tick", state.single().ticked)
+    }
+
+    @Test
+    fun `a valueless tick on a binary item still works`() = runBlocking {
+        val checklist = ChecklistController.createChecklist(context, "bio")
+        val item = ChecklistController.addItem(context, checklist.id, "goblet squats")
+        val today = day(2026, 9, 4)
+
+        val outcome = ChecklistController.tick(context, item.id, today)
+        assertTrue(outcome is ChecklistController.TickOutcome.Ticked)
+
+        val state = ChecklistController.itemsWithTickState(context, checklist.id, today)
+        assertTrue(state.single().ticked)
+    }
+
+    // ---- schedules ----------------------------------------------------------------------------------
+
+    @Test
+    fun `a WEEKLY MON,WED,FRI list is absent on Tuesday and present on Wednesday`() = runBlocking {
+        val checklist = ChecklistController.createChecklist(
+            context, "lifting",
+            scheduleKind = "WEEKLY", scheduleEvery = 1, scheduleDaysOfWeek = "MONDAY,WEDNESDAY,FRIDAY",
+        )
+        // 2026-09-07 is a Monday, so 2026-09-08 is Tuesday and 2026-09-09 is Wednesday.
+        val tuesday = day(2026, 9, 8)
+        val wednesday = day(2026, 9, 9)
+
+        val onTuesday = ChecklistController.checklistsForDay(context, tuesday)
+        val onWednesday = ChecklistController.checklistsForDay(context, wednesday)
+
+        assertTrue("WEEKLY MON,WED,FRI does not apply on a Tuesday", onTuesday.none { it.id == checklist.id })
+        assertTrue("WEEKLY MON,WED,FRI applies on a Wednesday", onWednesday.any { it.id == checklist.id })
+    }
+
+    @Test
+    fun `a no-schedule list appears every day after creation`() = runBlocking {
+        val checklist = backdatedChecklist("groceries", createdAt = epochMs(2026, 1, 1))
+        val farFuture = day(2027, 1, 1)
+
+        val checklists = ChecklistController.checklistsForDay(context, farFuture)
+        assertTrue("a plain todo list with no schedule applies every day", checklists.any { it.id == checklist.id })
+    }
 }

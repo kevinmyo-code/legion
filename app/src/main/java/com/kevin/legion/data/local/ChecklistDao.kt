@@ -29,8 +29,19 @@ interface ChecklistDao {
     @Query("UPDATE checklists SET name = :name, updatedAt = :at WHERE id = :id")
     suspend fun rename(id: Long, name: String, at: Long)
 
+    // DEPRECATED - see [Checklist.recursDaily]'s own doc comment. Kept only so a pre-migration
+    // caller does not vanish from the DAO surface; `ChecklistController` no longer calls this.
     @Query("UPDATE checklists SET recursDaily = :recursDaily, updatedAt = :at WHERE id = :id")
     suspend fun setRecursDaily(id: Long, recursDaily: Boolean, at: Long)
+
+    /** Sets or clears [Checklist.scheduleKind]/[Checklist.scheduleEvery]/[Checklist.scheduleDaysOfWeek]
+     * together, matching how [ChecklistController.createChecklist]/`setSchedule` always write all
+     * three at once - a schedule is one fact, not three independently-settable columns. */
+    @Query(
+        "UPDATE checklists SET scheduleKind = :scheduleKind, scheduleEvery = :scheduleEvery, " +
+            "scheduleDaysOfWeek = :scheduleDaysOfWeek, updatedAt = :at WHERE id = :id",
+    )
+    suspend fun setSchedule(id: Long, scheduleKind: String?, scheduleEvery: Int?, scheduleDaysOfWeek: String?, at: Long)
 
     @Query("UPDATE checklists SET sortOrder = :sortOrder, updatedAt = :at WHERE id = :id")
     suspend fun updateSortOrder(id: Long, sortOrder: Int, at: Long)

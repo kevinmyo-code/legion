@@ -30,9 +30,16 @@ interface ChecklistTickDao {
      * - re-ticking after an untick must reflect the NEW tap time, not the original one, exactly as
      * a brand-new row would via [insert]. Never called for a row that has no existing tombstone;
      * [ChecklistController.tick] chooses between this and [insert] based on
-     * [getForItemOnDayIncludingDeleted]'s result. */
-    @Query("UPDATE checklist_ticks SET deleted = 0, tickedAt = :tickedAt, updatedAt = :tickedAt WHERE itemId = :itemId AND day = :day")
-    suspend fun retick(itemId: Long, day: Int, tickedAt: Long)
+     * [getForItemOnDayIncludingDeleted]'s result.
+     *
+     * [value]/[source] are overwritten too, not just [tickedAt] - a revived tick is a fresh tick in
+     * every respect ([ChecklistTick]'s own class doc), so a re-tick with a new measured value must
+     * replace the old one rather than leaving a stale number under a new timestamp. */
+    @Query(
+        "UPDATE checklist_ticks SET deleted = 0, tickedAt = :tickedAt, updatedAt = :tickedAt, " +
+            "value = :value, source = :source WHERE itemId = :itemId AND day = :day",
+    )
+    suspend fun retick(itemId: Long, day: Int, tickedAt: Long, value: Double?, source: String)
 
     /** Every tick for [itemId] regardless of [ChecklistTick.day] - `isNonRecurringDone`'s read:
      * a non-recurring checklist's item is "done" the moment ANY tick exists, on any day. */
