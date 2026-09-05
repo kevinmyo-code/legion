@@ -4,7 +4,7 @@ ticket: "02"
 title: "Where Django runs"
 type: decision
 status: kiv
-status-detail: "Absorbed 2026-09-05 by django-engine (ADR 0044); see .scratch/django-engine/. Was: KIV 2026-09-05 (Kevin): no Django for now."
+status-detail: "SUPERSEDED 2026-09-05 evening by ADR 0044 (Django is the engine, map .scratch/django-engine). Absorbed 2026-09-05 by django-engine (ADR 0044); see .scratch/django-engine/. Was: KIV 2026-09-05 (Kevin): no Django for now."
 blockers: []
 blocked-by: []
 open-blockers: 0

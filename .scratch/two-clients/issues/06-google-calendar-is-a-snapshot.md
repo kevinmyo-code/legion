@@ -4,7 +4,7 @@ ticket: "06"
 title: "Google Calendar rows are a snapshot from 2026-09-01, not a feed"
 type: decision
 status: open
-status-detail: "Django parked 2026-09-05, so option 1 has no host. Decision still open: stay frozen and prune, or another path."
+status-detail: "SUPERSEDED 2026-09-05 evening by ADR 0044 (Django is the engine, map .scratch/django-engine). Django parked 2026-09-05, so option 1 has no host. Decision still open: stay frozen and prune, or another path."
 blockers: []
 blocked-by: []
 open-blockers: 0

@@ -4,7 +4,7 @@ ticket: "04"
 title: "The first rules move down: measured ticks and done-once"
 type: build
 status: kiv
-status-detail: "KIV 2026-09-05 (Kevin): no second client for now, so no drift to prevent yet. Checklist server tables are still owed for sync regardless - that part moves to the one-today map."
+status-detail: "SUPERSEDED 2026-09-05 evening by ADR 0044 (Django is the engine, map .scratch/django-engine). KIV 2026-09-05 (Kevin): no second client for now, so no drift to prevent yet. Checklist server tables are still owed for sync regardless - that part moves to the one-today map."
 blockers: []
 blocked-by: []
 open-blockers: 0
