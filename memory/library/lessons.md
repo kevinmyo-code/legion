@@ -942,3 +942,27 @@ about RECORDING, and not asked at all about TRANSCRIBING.
 Store the REASON, not a boolean. §4 rule 8's posture applies unchanged to a failure verdict: a state
 that says "it failed" with no retrievable why is unactionable, and `ListItem.exactDowngraded` is the
 existing precedent in this schema for storing the words of a refusal rather than only the fact of it.
+
+## L-2026-09-05: A test that pins a date on one side and reads the wall clock on the other is a bomb with a timer
+
+Six `ChecklistControllerTest` cases went red overnight with no code change. They hardcoded `today =
+2026-09-04` as the day to read, but built their checklist through `createChecklist`, which stamps
+`createdAt = System.currentTimeMillis()`. At midnight the real clock passed the fixture date; the
+created-before gate (ticket 09 trap 1) correctly refused to show a checklist "from the future"; six
+`.single()` calls found an empty list. The gate was right. The test was wrong, and it had been wrong
+since it was written - it just had not been midnight yet.
+
+Two agents and I suspected the wrong things first: a test that closes the shared Room instance, and
+another agent's uncommitted diff. The diagnosing agent settled it by diffing the two files against
+HEAD (identical) and reading the clock, not by reasoning about plausible culprits.
+
+**The rule:** in a test, every timestamp comes from the same source. Either everything is fixed
+(`epochMs(2026, 1, 1)` for creation, `day(2026, 9, 4)` for the read) or everything is the real clock.
+Any code path with a "before/after creation" or "not yet due" comparison is where the mixed case
+detonates, and it detonates on a date, not on a commit, so `git bisect` points nowhere. The fix that
+was applied - backdate `createdAt` through the existing `backdatedChecklist` helper - is the pattern
+the rest of that file already used.
+
+Checked the other five test files pinning September 2026 dates: only one reads the real clock, and
+only to stamp `updatedAt`/`createdAt` on rows queried by `startsAt`, which nothing gates on. Not a
+bomb. The distinction is whether a comparison crosses the two sources, not whether both appear.
