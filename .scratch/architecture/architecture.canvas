@@ -11,11 +11,21 @@
       "color": "1"
     },
     {
+      "id": "031437d2bc436119",
+      "type": "file",
+      "file": ".scratch/architecture/issues/05-detekt-with-a-baseline.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "d4da2bd8fd360c86",
       "type": "file",
       "file": ".scratch/architecture/issues/02-hilt-plugin-and-entrypoint-shim.md",
-      "x": 0,
-      "y": 150,
+      "x": 520,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -24,28 +34,8 @@
       "id": "ebb20e5c1ac6a4dc",
       "type": "file",
       "file": ".scratch/architecture/issues/03-bind-the-backend-interfaces.md",
-      "x": 0,
-      "y": 300,
-      "width": 320,
-      "height": 110,
-      "color": "1"
-    },
-    {
-      "id": "be718b77f261c5f5",
-      "type": "file",
-      "file": ".scratch/architecture/issues/04-three-screens-get-viewmodels.md",
-      "x": 0,
-      "y": 450,
-      "width": 320,
-      "height": 110,
-      "color": "1"
-    },
-    {
-      "id": "031437d2bc436119",
-      "type": "file",
-      "file": ".scratch/architecture/issues/05-detekt-with-a-baseline.md",
-      "x": 0,
-      "y": 600,
+      "x": 1040,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -54,12 +44,51 @@
       "id": "833c1501d5bdf41f",
       "type": "file",
       "file": ".scratch/architecture/issues/06-convert-as-touched-and-the-shim-trigger.md",
-      "x": 0,
-      "y": 750,
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "be718b77f261c5f5",
+      "type": "file",
+      "file": ".scratch/architecture/issues/04-three-screens-get-viewmodels.md",
+      "x": 1560,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "1"
     }
   ],
-  "edges": []
+  "edges": [
+    {
+      "id": "25adadb6b79a572a",
+      "fromNode": "1c851aad7e83398b",
+      "fromSide": "right",
+      "toNode": "d4da2bd8fd360c86",
+      "toSide": "left"
+    },
+    {
+      "id": "733495a08fb4013c",
+      "fromNode": "d4da2bd8fd360c86",
+      "fromSide": "right",
+      "toNode": "ebb20e5c1ac6a4dc",
+      "toSide": "left"
+    },
+    {
+      "id": "23c36cce493df4d4",
+      "fromNode": "ebb20e5c1ac6a4dc",
+      "fromSide": "right",
+      "toNode": "be718b77f261c5f5",
+      "toSide": "left"
+    },
+    {
+      "id": "681a23ba335ba344",
+      "fromNode": "d4da2bd8fd360c86",
+      "fromSide": "right",
+      "toNode": "833c1501d5bdf41f",
+      "toSide": "left"
+    }
+  ]
 }

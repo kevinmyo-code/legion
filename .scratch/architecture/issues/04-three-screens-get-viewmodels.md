@@ -5,10 +5,10 @@ title: "Calendar, ledger, pantry: a ViewModel each, controllers injected"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
-open-blockers: 0
-ready: true
+blockers: ["03"]
+blocked-by: ["[[03-bind-the-backend-interfaces]]"]
+open-blockers: 1
+ready: false
 tags: [ticket]
 ---
 

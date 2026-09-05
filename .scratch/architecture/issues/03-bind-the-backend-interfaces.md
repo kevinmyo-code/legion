@@ -5,10 +5,10 @@ title: "Bind the backend interfaces"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
-open-blockers: 0
-ready: true
+blockers: ["02"]
+blocked-by: ["[[02-hilt-plugin-and-entrypoint-shim]]"]
+open-blockers: 1
+ready: false
 tags: [ticket]
 ---
 

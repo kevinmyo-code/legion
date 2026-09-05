@@ -5,10 +5,10 @@ title: "Hilt plugin, @HiltAndroidApp, and the @EntryPoint shim"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
-open-blockers: 0
-ready: true
+blockers: ["01"]
+blocked-by: ["[[01-room-kapt-to-ksp]]"]
+open-blockers: 1
+ready: false
 tags: [ticket]
 ---
 

@@ -17,11 +17,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/architecture/map\|architecture]] | [[01-room-kapt-to-ksp\|01]] | build | Room moves from kapt to KSP |
-| [[.scratch/architecture/map\|architecture]] | [[02-hilt-plugin-and-entrypoint-shim\|02]] | build | Hilt plugin, @HiltAndroidApp, and the @EntryPoint shim |
-| [[.scratch/architecture/map\|architecture]] | [[03-bind-the-backend-interfaces\|03]] | build | Bind the backend interfaces |
-| [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected |
 | [[.scratch/architecture/map\|architecture]] | [[05-detekt-with-a-baseline\|05]] | build | detekt joins the build, with a baseline and a 1000-line ceiling |
-| [[.scratch/architecture/map\|architecture]] | [[06-convert-as-touched-and-the-shim-trigger\|06]] | decision | Convert as touched, and when the shim retires |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -111,6 +107,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
+| [[.scratch/architecture/map\|architecture]] | [[02-hilt-plugin-and-entrypoint-shim\|02]] | build | Hilt plugin, @HiltAndroidApp, and the @EntryPoint shim  waiting on [[01-room-kapt-to-ksp\|01]] |
+| [[.scratch/architecture/map\|architecture]] | [[03-bind-the-backend-interfaces\|03]] | build | Bind the backend interfaces  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
+| [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected  waiting on [[03-bind-the-backend-interfaces\|03]] |
+| [[.scratch/architecture/map\|architecture]] | [[06-convert-as-touched-and-the-shim-trigger\|06]] | decision | Convert as touched, and when the shim retires  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The projects tool surface, and its hands path  waiting on [[06-the-azure-devops-sync\|06]] |
