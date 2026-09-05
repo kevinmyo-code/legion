@@ -43,9 +43,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | Delete what the audit found dead in the day-to-day area |
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
-| [[.scratch/two-clients/map\|two-clients]] | [[01-schema-ownership-and-django-role\|01]] | build | Schema ownership, and a role of Django's own |
-| [[.scratch/two-clients/map\|two-clients]] | [[02-where-django-runs\|02]] | decision | Where Django runs |
-| [[.scratch/two-clients/map\|two-clients]] | [[04-first-rules-move-down\|04]] | build | The first rules move down: measured ticks and done-once |
+| [[.scratch/one-today/map\|one-today]] | [[10-everything-is-a-checklist\|10]] | build | Retire the persistent list and the grocery trip: everything is a checklist |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
@@ -123,8 +121,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
-| [[.scratch/two-clients/map\|two-clients]] | [[03-canvas-poller\|03]] | build | The Canvas poller, on Django's clock  waiting on [[01-schema-ownership-and-django-role\|01]], [[02-where-django-runs\|02]] |
-| [[.scratch/two-clients/map\|two-clients]] | [[05-webassign-completion-read\|05]] | build | The WebAssign completion read  waiting on [[01-schema-ownership-and-django-role\|01]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[03-transcribe-and-summarize\|03]] | build | One upload, a transcript and a summary out  waiting on [[01-the-recorder-and-the-mic\|01]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
@@ -140,6 +136,11 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
+| [[.scratch/two-clients/map\|two-clients]] | [[01-schema-ownership-and-django-role\|01]] | build | Schema ownership, and a role of Django's own |
+| [[.scratch/two-clients/map\|two-clients]] | [[02-where-django-runs\|02]] | decision | Where Django runs |
+| [[.scratch/two-clients/map\|two-clients]] | [[03-canvas-poller\|03]] | build | The Canvas poller, on Django's clock |
+| [[.scratch/two-clients/map\|two-clients]] | [[04-first-rules-move-down\|04]] | build | The first rules move down: measured ticks and done-once |
+| [[.scratch/two-clients/map\|two-clients]] | [[05-webassign-completion-read\|05]] | build | The WebAssign completion read |
 
 ## Maps
 
@@ -172,7 +173,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
-| [[.scratch/one-today/map\|one-today]] | 9 | 6 | [[.scratch/one-today/one-today.canvas\|open]] |
+| [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |

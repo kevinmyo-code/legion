@@ -3,12 +3,12 @@ map: two-clients
 ticket: "01"
 title: "Schema ownership, and a role of Django's own"
 type: build
-status: open
-status-detail: ""
+status: kiv
+status-detail: "KIV 2026-09-05 (Kevin): no Django for now. Wanted a PC interface to view/edit Supabase data; Supabase Studio's Table Editor is that. Ruling in ADR 0043 stands for when something must run while the phone sleeps."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

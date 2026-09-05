@@ -89,6 +89,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "57cbc53a4bd53e9b",
+      "type": "file",
+      "file": ".scratch/one-today/issues/10-everything-is-a-checklist.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []

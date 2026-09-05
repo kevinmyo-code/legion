@@ -3,8 +3,8 @@ map: two-clients
 ticket: "03"
 title: "The Canvas poller, on Django's clock"
 type: build
-status: open
-status-detail: ""
+status: kiv
+status-detail: "KIV 2026-09-05 (Kevin): no Django for now. Canvas state is refreshed by the manual read (tmp/canvas_reconcile.py) until a host exists."
 blockers: ["01", "02"]
 blocked-by: ["[[01-schema-ownership-and-django-role]]", "[[02-where-django-runs]]"]
 open-blockers: 2

@@ -3,8 +3,8 @@ map: two-clients
 ticket: "05"
 title: "The WebAssign completion read"
 type: build
-status: open
-status-detail: ""
+status: kiv
+status-detail: "KIV 2026-09-05 (Kevin): no Django for now. WebAssign completion is ticked by hand."
 blockers: ["01"]
 blocked-by: ["[[01-schema-ownership-and-django-role]]"]
 open-blockers: 1

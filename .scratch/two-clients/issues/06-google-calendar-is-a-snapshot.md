@@ -4,7 +4,7 @@ ticket: "06"
 title: "Google Calendar rows are a snapshot from 2026-09-01, not a feed"
 type: decision
 status: open
-status-detail: "Found 2026-09-05 while fixing an all-day rendering bug. Needs Kevin: does Google Calendar come back as a Django poll, or stay frozen?"
+status-detail: "Django parked 2026-09-05, so option 1 has no host. Decision still open: stay frozen and prune, or another path."
 blockers: []
 blocked-by: []
 open-blockers: 0
