@@ -231,21 +231,36 @@ fun dayOfWeekLetter(dayStartMs: Long, zone: ZoneId = ZoneId.systemDefault()): St
  * leading/trailing slot that belongs to the previous or next month - [buildMonthCells] renders
  * those as empty rather than showing a neighbouring month's day number, so a driver glancing at
  * the grid is never misled into thinking a stray "30" belongs to the displayed month.
+ *
+ * [openTodoCount], added 2026-09-05 (Kevin: "calendar has dots for events but not for todos, a bit
+ * misleading, i look at next wednesday and think theres nothing due, but there is") - the count of
+ * NOT-done tasks and reminders due this day, deliberately a SEPARATE field from [eventCount] rather
+ * than folded into it: an event and an open todo answer different questions ("what's scheduled" vs
+ * "what's still owed"), and collapsing them back into one number would recreate exactly the
+ * "nothing due" misread this field exists to fix. See [buildMonthOpenTodoCounts]'s own doc comment
+ * for what counts and what deliberately does not (checklist lines, done rows, events).
  */
-data class MonthCell(val dayStart: Long?, val dayOfMonth: Int?, val eventCount: Int)
+data class MonthCell(val dayStart: Long?, val dayOfMonth: Int?, val eventCount: Int, val openTodoCount: Int = 0)
 
 /**
  * The displayed [month]'s cells, always a multiple of seven (leading blanks + the month's own days
  * + trailing blanks, padded out to whole weeks). [counts] is keyed by the SAME local day-start
  * epoch [buildWeekAheadDayCounts] already buckets into - the caller builds it by zipping that
  * function's `dayStarts`/`List<Int>` pair into a map, so this function does no counting of its own
- * (ticket 14: "do not write a second counting rule").
+ * (ticket 14: "do not write a second counting rule"). [todoCounts] is the same shape, keyed the
+ * same way, built by [buildMonthOpenTodoCounts] - defaults to empty so every existing call site
+ * that has not been taught about todos yet still compiles and simply renders zero everywhere.
  *
  * Column order follows [java.time.temporal.WeekFields.of]'s locale-derived
  * [java.time.DayOfWeek] rather than a hardcoded Monday-or-Sunday start, matching whatever order a
  * caller's own weekday-letter header uses for the same locale.
  */
-fun buildMonthCells(month: YearMonth, counts: Map<Long, Int>, zone: ZoneId = ZoneId.systemDefault()): List<MonthCell> {
+fun buildMonthCells(
+    month: YearMonth,
+    counts: Map<Long, Int>,
+    zone: ZoneId = ZoneId.systemDefault(),
+    todoCounts: Map<Long, Int> = emptyMap(),
+): List<MonthCell> {
     val firstDayOfWeek = java.time.temporal.WeekFields.of(Locale.getDefault()).firstDayOfWeek
     val firstOfMonth = month.atDay(1)
     // How many blank slots precede day 1 - the gap between the grid's own first column
@@ -255,12 +270,19 @@ fun buildMonthCells(month: YearMonth, counts: Map<Long, Int>, zone: ZoneId = Zon
     val trailing = (7 - (leading + daysInMonth) % 7) % 7
 
     val cells = ArrayList<MonthCell>(leading + daysInMonth + trailing)
-    repeat(leading) { cells.add(MonthCell(dayStart = null, dayOfMonth = null, eventCount = 0)) }
+    repeat(leading) { cells.add(MonthCell(dayStart = null, dayOfMonth = null, eventCount = 0, openTodoCount = 0)) }
     for (day in 1..daysInMonth) {
         val dayStart = month.atDay(day).atStartOfDay(zone).toInstant().toEpochMilli()
-        cells.add(MonthCell(dayStart = dayStart, dayOfMonth = day, eventCount = counts[dayStart] ?: 0))
+        cells.add(
+            MonthCell(
+                dayStart = dayStart,
+                dayOfMonth = day,
+                eventCount = counts[dayStart] ?: 0,
+                openTodoCount = todoCounts[dayStart] ?: 0,
+            ),
+        )
     }
-    repeat(trailing) { cells.add(MonthCell(dayStart = null, dayOfMonth = null, eventCount = 0)) }
+    repeat(trailing) { cells.add(MonthCell(dayStart = null, dayOfMonth = null, eventCount = 0, openTodoCount = 0)) }
     return cells
 }
 
@@ -276,6 +298,62 @@ fun eventDotCount(eventCount: Int): Int = when {
     eventCount <= 4 -> 2
     else -> 3
 }
+
+// -------------------------------------------------------- 2026-09-05: open-todo month indicator
+
+/**
+ * The local day an [InboxRowView] with a due date belongs in, mirroring [agendaDayStart]'s own
+ * split for the same reason: a [AgendaSource.GOOGLE] task row's [InboxRowView.instantMs] is UTC
+ * midnight of its date when [InboxRowView.calendarAllDay] is true (`LiveToolbox.addAppointment`'s
+ * own convention, [toInboxRowView]'s doc comment on the GOOGLE branch), while a
+ * [AgendaSource.LOCAL] reminder's `startsAt` (all-day or timed) is already a genuine device-zone
+ * instant. Reading a GOOGLE all-day row through the device zone directly would put it one day
+ * early west of UTC - the exact bug [agendaDayStart] was written to fix in the AGENDA pane, and
+ * this is the same fix applied to [InboxRowView] rather than [com.kevin.legion.ui.AgendaEntry].
+ */
+private fun inboxRowDayStart(row: InboxRowView, zone: ZoneId): Long {
+    val instant = row.instantMs ?: return 0L
+    return if (row.source == AgendaSource.GOOGLE && row.calendarAllDay == true) {
+        Instant.ofEpochMilli(instant).atZone(ZoneOffset.UTC).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+    } else {
+        dayStartEpoch(instant, zone)
+    }
+}
+
+/**
+ * One open-todo count per local day, [dayStarts] the SAME index-aligned list
+ * [buildWeekAheadDayCounts] takes (built by the caller with [com.kevin.legion.ui.common.dailyBuckets]
+ * over the queried window). [rows] is the SAME [InboxRowView] stream the day view's own YET TO DO
+ * section reads - built by [buildInboxRows] over [com.kevin.legion.notes.NotesController.allItems]
+ * (which already excludes a checklist line - `GoalChecklistSync.ITEM_PREFIX` - so a "bio" routine's
+ * six lines never inflate this count, ticket 09's own rule restated here for a second table) plus
+ * `EventKind.TASK` rows queried with [com.kevin.legion.data.local.activeByKindInLocalWindow] - the
+ * one window helper this counts through, never a second date query of its own.
+ *
+ * **Done rows are excluded, on purpose** (Kevin: the indicator answers "what's still owed", not
+ * "what happened this day") - [InboxRowView.done] is checked here, the caller does not pre-filter.
+ * **An undated row ([InboxRowView.instantMs] null) cannot belong to any one day and is silently
+ * excluded**, the same rule [InboxRowView.instantMs]'s own doc comment states for the month day
+ * filter. **[EventKind.EVENT] rows never reach this function at all** - the day view never puts
+ * them in [dayRows], only in its own SCHEDULE section, so [rows] must never include them; that is
+ * the caller's contract, restated here rather than re-checked, matching [buildWeekAheadDayCounts]'s
+ * own "the caller is responsible for the window" contract.
+ */
+fun buildMonthOpenTodoCounts(rows: List<InboxRowView>, dayStarts: List<Long>, zone: ZoneId = ZoneId.systemDefault()): List<Int> {
+    val open = rows.filter { !it.done && it.instantMs != null }
+    val grouped = open.groupBy { inboxRowDayStart(it, zone) }
+    return dayStarts.map { day -> grouped[day]?.size ?: 0 }
+}
+
+/**
+ * How many square marks a cell draws for its [MonthCell.openTodoCount] - same density bands as
+ * [eventDotCount] (0 draws none, 1-2 draws one, 3-4 draws two, 5+ draws three), deliberately reusing
+ * that function's own thresholds so a driver who has learned "one dot means a couple, three means a
+ * lot" does not have to learn a second scale for the second indicator. Kept as its own named
+ * function rather than a direct call to [eventDotCount] so the two marks can diverge independently
+ * later without one's tuning silently dragging the other's.
+ */
+fun openTodoMarkCount(openTodoCount: Int): Int = eventDotCount(openTodoCount)
 
 // --------------------------------------------------------------- quant-viz ticket 16: DAY POPUP
 

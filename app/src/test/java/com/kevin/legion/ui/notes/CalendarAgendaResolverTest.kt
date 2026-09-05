@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.notes
 
+import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.ui.AgendaEntry
 import com.kevin.legion.ui.AgendaSource
 import com.kevin.legion.ui.common.dailyBuckets
@@ -268,6 +269,94 @@ class CalendarAgendaResolverTest {
         assertEquals(2, eventDotCount(4))
         assertEquals(3, eventDotCount(5))
         assertEquals(3, eventDotCount(99))
+    }
+
+    // ---------------------------------------- 2026-09-05: open-todo month indicator (buildMonthOpenTodoCounts)
+
+    /** Minimal [InboxRowView] builder for this section's fixtures - only the fields
+     * [buildMonthOpenTodoCounts]/[inboxRowDayStart] actually read (`done`, `source`,
+     * `calendarAllDay`, `instantMs`) vary per test; everything else is filler. */
+    private fun row(
+        id: Long,
+        done: Boolean,
+        instantMs: Long?,
+        source: AgendaSource = AgendaSource.LOCAL,
+        calendarAllDay: Boolean? = null,
+    ) = InboxRowView(
+        id = id,
+        text = "row $id",
+        done = done,
+        tickable = true,
+        recurring = false,
+        dateLabel = null,
+        overdue = false,
+        placeLabel = null,
+        exactDowngraded = false,
+        source = source,
+        calendarAllDay = calendarAllDay,
+        instantMs = instantMs,
+    )
+
+    @Test
+    fun `buildMonthOpenTodoCounts excludes done rows and counts the rest per day`() {
+        val wed = dayStartMs(2026, 9, 9)
+        val thu = dayStartMs(2026, 9, 10)
+        val dayStarts = listOf(wed, thu)
+        val rows = listOf(
+            row(1, done = false, instantMs = wed), // open task/reminder due Wed
+            row(2, done = false, instantMs = wed), // second open row due Wed
+            row(3, done = true, instantMs = wed), // done - must not count
+            row(4, done = false, instantMs = thu),
+        )
+
+        val counts = buildMonthOpenTodoCounts(rows, dayStarts, zone)
+
+        assertEquals(listOf(2, 1), counts)
+    }
+
+    @Test
+    fun `buildMonthOpenTodoCounts an all-day task at UTC midnight lands on its own local day`() {
+        // A calendar-table task's allDay convention is UTC midnight of its date (same fact
+        // [inboxRowDayStart]'s own doc comment and NotesResolvers' `toInboxRowView(AppointmentEvent)`
+        // state) - reading it through the device zone directly would land it a day early west of
+        // UTC, the exact bug [agendaDayStart] exists to avoid for the AGENDA pane.
+        val sep9 = java.time.LocalDate.of(2026, 9, 9)
+        val utcMidnight = sep9.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        val localSep9Start = dayStartMs(2026, 9, 9)
+        val dayStarts = listOf(dayStartMs(2026, 9, 8), localSep9Start, dayStartMs(2026, 9, 10))
+
+        val counts = buildMonthOpenTodoCounts(
+            listOf(row(1, done = false, instantMs = utcMidnight, source = AgendaSource.GOOGLE, calendarAllDay = true)),
+            dayStarts,
+            zone,
+        )
+
+        assertEquals(listOf(0, 1, 0), counts)
+    }
+
+    @Test
+    fun `buildMonthOpenTodoCounts a day with only checklist lines counts zero`() {
+        // Mirrors [com.kevin.legion.notes.NotesController.allItems]'s own exclusion - a "bio"
+        // checklist line never reaches [buildInboxRows]/[buildMonthOpenTodoCounts] in the real
+        // pipeline, so this fixture drops it the same way before building the row, rather than
+        // teaching [buildMonthOpenTodoCounts] a second filter it should never need.
+        val items = listOf(
+            ListItem(id = 1, listId = 1, text = com.kevin.legion.advisor.GoalChecklistSync.ITEM_PREFIX + "Stretch", startsAt = dayStartMs(2026, 9, 9)),
+        )
+        val filtered = items.filterNot { it.text.startsWith(com.kevin.legion.advisor.GoalChecklistSync.ITEM_PREFIX) }
+        val rows = buildInboxRows(filtered, now = 0L)
+        val dayStarts = listOf(dayStartMs(2026, 9, 9))
+
+        val counts = buildMonthOpenTodoCounts(rows, dayStarts, zone)
+
+        assertEquals(listOf(0), counts)
+    }
+
+    @Test
+    fun `openTodoMarkCount mirrors eventDotCount's own density bands`() {
+        assertEquals(eventDotCount(0), openTodoMarkCount(0))
+        assertEquals(eventDotCount(2), openTodoMarkCount(2))
+        assertEquals(eventDotCount(5), openTodoMarkCount(5))
     }
 
     // -------------------------------------------------------- quant-viz ticket 16: DAY POPUP

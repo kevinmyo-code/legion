@@ -169,6 +169,14 @@ fun CalendarScreen() {
     var calendarCollapsed by remember { mutableStateOf(false) }
     var monthLoading by remember { mutableStateOf(true) }
     var monthCells by remember { mutableStateOf(emptyList<MonthCell>()) }
+    // The month grid's open-todo query failed this load (2026-09-05 ticket: "add indicators" for
+    // tasks/reminders, not events only) - rendered as its own sentence above the grid, same
+    // discipline [recordedLoadFailed] already follows below: an unreadable month and a genuinely
+    // empty one must never render identically (CLAUDE.md's calendar-briefing rule, restated for a
+    // third table sharing this screen). The event dots still render even when this is true - only
+    // the todo marks are affected, since [buildMonthCells]'s `todoCounts` defaults to empty on
+    // failure rather than the whole grid load being aborted.
+    var monthTodoLoadFailed by remember { mutableStateOf(false) }
 
     // The day view's own row state - a real [ListItem]/[Event] behind every tickable row, same
     // shape `ui/notes/InboxScreen.kt`'s [rawItems]/[rawAppointments] pair already holds for its own
@@ -219,7 +227,27 @@ fun CalendarScreen() {
         val merged = com.kevin.legion.ui.agenda.buildMonthAgenda(context, displayedMonth, zone)
         val counts = buildWeekAheadDayCounts(merged, dayStarts, zone)
         val countsByDayStart = dayStarts.zip(counts).toMap()
-        monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone)
+        // Open-todo counts (2026-09-05 ticket: "add indicators" for tasks/reminders, not just
+        // events) - the SAME [InboxRowView] stream [dayRows] below is built from, over the whole
+        // month rather than one day: [NotesController.allItems] (already excludes checklist lines,
+        // `GoalChecklistSync.ITEM_PREFIX`) merged with `EventKind.TASK` rows over
+        // [activeByKindInLocalWindow] - the one window helper the day view already reads through,
+        // never a second date query. Wrapped separately from the event-dot query above so a failure
+        // here degrades only the todo marks, not the whole grid - [monthTodoLoadFailed] renders its
+        // own sentence, the grid itself still loads with [countsByDayStart] intact.
+        val todoCountsByDayStart = try {
+            val monthItems = NotesController.allItems(context)
+            val monthTasks = CarDatabase.getDatabase(context).eventDao()
+                .activeByKindInLocalWindow(EventKind.TASK, monthStart, monthEnd, zone)
+            val monthRows = buildInboxRows(monthItems, System.currentTimeMillis(), monthTasks.map { it.toAppointmentEvent() })
+            val todoCounts = com.kevin.legion.ui.notes.buildMonthOpenTodoCounts(monthRows, dayStarts, zone)
+            monthTodoLoadFailed = false
+            dayStarts.zip(todoCounts).toMap()
+        } catch (e: Exception) {
+            monthTodoLoadFailed = true
+            emptyMap()
+        }
+        monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone, todoCountsByDayStart)
         monthLoading = false
     }
 
@@ -398,6 +426,18 @@ fun CalendarScreen() {
     // this screen already reads CALENDAR (`LegionTabRow`), and repeating it as a heading was pure
     // duplication, not orientation. Same fix applied to `MetersScreen.kt`'s own "METERS" H1.
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp, bottom = 12.dp)) {
+        // Said in words, above the grid, once per month load - never a clean-looking grid with
+        // silently zeroed todo marks, which would read exactly like a month where nothing is due
+        // (2026-09-05 ticket's own instruction, same discipline [recordedLoadFailed] follows below
+        // for a different section of this same screen).
+        if (monthTodoLoadFailed) {
+            Text(
+                "Couldn't load open todos for this month - the event dots above are still current.",
+                style = LegionType.stamp,
+                color = sem.estimated,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
         if (!monthLoading) {
             MonthCalendar(
                 // One-today ticket 01 cut the live Google read this flag used to gate on - the

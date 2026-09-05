@@ -83,7 +83,9 @@ class ChecklistControllerTest {
 
     @Test
     fun `a tick and untick round trip`() = runBlocking {
-        val checklist = ChecklistController.createChecklist(context, "bio")
+        // Backdated (not ChecklistController.createChecklist's real-"now" default) so this test
+        // does not silently break the day the wall clock passes 2026-09-04 - see trap 1.
+        val checklist = backdatedChecklist("bio", createdAt = epochMs(2026, 1, 1))
         val item = ChecklistController.addItem(context, checklist.id, "goblet squats")
         val today = day(2026, 9, 4)
 
@@ -101,7 +103,8 @@ class ChecklistControllerTest {
 
     @Test
     fun `re-ticking after an untick on the same day revives the tick with a fresh tickedAt`() = runBlocking {
-        val checklist = ChecklistController.createChecklist(context, "bio")
+        // Backdated - see trap 1 comment above.
+        val checklist = backdatedChecklist("bio", createdAt = epochMs(2026, 1, 1))
         val item = ChecklistController.addItem(context, checklist.id, "goblet squats")
         val today = day(2026, 9, 4)
 
@@ -118,7 +121,8 @@ class ChecklistControllerTest {
 
     @Test
     fun `double-ticking the same item on the same day is idempotent and keeps the original tickedAt`() = runBlocking {
-        val checklist = ChecklistController.createChecklist(context, "bio")
+        // Backdated - see trap 1 comment above.
+        val checklist = backdatedChecklist("bio", createdAt = epochMs(2026, 1, 1))
         val item = ChecklistController.addItem(context, checklist.id, "goblet squats")
         val today = day(2026, 9, 4)
 
@@ -287,7 +291,8 @@ class ChecklistControllerTest {
 
     @Test
     fun `a measured tick stores its value and source`() = runBlocking {
-        val checklist = ChecklistController.createChecklist(context, "bio")
+        // Backdated - see trap 1 comment above.
+        val checklist = backdatedChecklist("bio", createdAt = epochMs(2026, 1, 1))
         val item = ChecklistController.addItem(
             context, checklist.id, "walk 10k steps",
             measureUnit = "steps", measureTarget = 10000.0, measureDirection = "AT_LEAST",
@@ -304,7 +309,8 @@ class ChecklistControllerTest {
 
     @Test
     fun `a valueless tick on a measured item is refused and writes nothing`() = runBlocking {
-        val checklist = ChecklistController.createChecklist(context, "bio")
+        // Backdated - see trap 1 comment above.
+        val checklist = backdatedChecklist("bio", createdAt = epochMs(2026, 1, 1))
         val item = ChecklistController.addItem(context, checklist.id, "walk 10k steps", measureUnit = "steps")
         val today = day(2026, 9, 4)
 
@@ -317,7 +323,8 @@ class ChecklistControllerTest {
 
     @Test
     fun `a valueless tick on a binary item still works`() = runBlocking {
-        val checklist = ChecklistController.createChecklist(context, "bio")
+        // Backdated - see trap 1 comment above.
+        val checklist = backdatedChecklist("bio", createdAt = epochMs(2026, 1, 1))
         val item = ChecklistController.addItem(context, checklist.id, "goblet squats")
         val today = day(2026, 9, 4)
 

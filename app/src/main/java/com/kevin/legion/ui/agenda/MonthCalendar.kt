@@ -24,6 +24,7 @@ import com.kevin.legion.ui.notes.CalendarNotLinkedRow
 import com.kevin.legion.ui.notes.MonthCell
 import com.kevin.legion.ui.notes.buildMonthCells
 import com.kevin.legion.ui.notes.eventDotCount
+import com.kevin.legion.ui.notes.openTodoMarkCount
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import java.time.LocalDate
@@ -134,12 +135,22 @@ fun MonthCalendar(
 }
 
 /**
- * One 34dp cell: the day number, and up to three [eventDotCount] dots beneath it (density only -
- * never source or importance, per that function's own doc comment). Today fills with
- * [MaterialTheme.colorScheme.primary]/`onPrimary`, the SAME inverted-amber treatment
- * `ui/common/DeckCharts.kt`'s `DeckRangeSelector` already uses for its own selected stencil chip -
- * a selected (but not today's) day instead gets a 1dp primary border, so the two states can never
- * be confused for each other. A blank slot ([MonthCell.dayOfMonth] null) renders nothing and is
+ * One 34dp cell: the day number, up to three [eventDotCount] ROUND dots for [MonthCell.eventCount]
+ * (density only - never source or importance, per that function's own doc comment), and - Kevin,
+ * 2026-09-05, "calendar has dots for events but not for todos... add indicators" - up to three
+ * [openTodoMarkCount] SQUARE marks for [MonthCell.openTodoCount] beneath them. **Square, not a
+ * second dot of another colour** - CLAUDE.md's "never colour-only" rule (the same one an
+ * UNRECONCILED ledger row follows): a shape difference reads in grayscale and to anyone who cannot
+ * distinguish the two colours, where a second circle in a different hue would not. A day whose open
+ * todos are all ticked draws no square at all - that absence IS the "all done" state, cheaper than a
+ * separate glyph and consistent with [eventDotCount] drawing nothing for zero.
+ *
+ * Today fills with [MaterialTheme.colorScheme.primary]/`onPrimary`, the SAME inverted-amber
+ * treatment `ui/common/DeckCharts.kt`'s `DeckRangeSelector` already uses for its own selected
+ * stencil chip - a selected (but not today's) day instead gets a 1dp primary border, so the two
+ * states can never be confused for each other. Today's own dots/squares invert the same way
+ * (`onPrimary`) so both marks stay legible against the filled background rather than one washing
+ * out against it. A blank slot ([MonthCell.dayOfMonth] null) renders nothing and is
  * not clickable - it belongs to the neighbouring month, not this one.
  *
  * Moved out of `ui/NotesScreen.kt` alongside [MonthCalendar] - see that function's doc comment.
@@ -156,6 +167,12 @@ fun MonthCellView(cell: MonthCell, isToday: Boolean, isSelected: Boolean, onClic
     ) {
         if (cell.dayOfMonth != null) {
             val dotColor = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+            // The todo mark deliberately picks a DIFFERENT hue from the event dot when not on
+            // today's inverted background (`tertiary`, already part of the app's own colour scheme
+            // - no new visual language) - shape alone (square vs circle) already carries the
+            // distinction per this function's own doc comment, so the colour split is a legibility
+            // aid on top of that, never the only thing telling the two apart.
+            val todoColor = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.tertiary
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     cell.dayOfMonth.toString(),
@@ -167,6 +184,16 @@ fun MonthCellView(cell: MonthCell, isToday: Boolean, isSelected: Boolean, onClic
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         repeat(dots) {
                             Box(Modifier.size(3.dp).background(dotColor, CircleShape))
+                        }
+                    }
+                }
+                val marks = openTodoMarkCount(cell.openTodoCount)
+                if (marks > 0) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        repeat(marks) {
+                            // No [CircleShape] here - the default rectangular clip is the whole
+                            // point (square vs the event dot's circle above).
+                            Box(Modifier.size(3.dp).background(todoColor))
                         }
                     }
                 }
