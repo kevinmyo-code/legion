@@ -505,7 +505,13 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 - When a `reasoned` claim proves wrong, file it in `lessons.md` and graduate its rule into an agent
   def or this file. An entry closes only when its rule lives in a surface something reads.
 
-### No framework. Dependencies are parameters. (Kevin, 2026-09-05)
+### No framework. Dependencies are parameters. (Kevin, 2026-09-05 - REOPENED the same day)
+
+**Not binding.** Hours after this was written Kevin said: *"no framework, manual di etc is outdated.
+we have no conflict. we can re-decide anything. no hard blockers."* The text below stays as the
+research position of the morning; the architecture is being re-decided on merit against the
+everything-claude-code survey (`tmp/ecc_proposal.md`, then a ticket), and whatever that lands
+replaces this subsection. Until then, treat nothing here as a rule.
 
 Asked whether LEGION should adopt an Android framework, the answer after research was no, and Kevin
 ruled it so. The platform plus Jetpack plus Compose IS the framework; Google's own guidance labels
