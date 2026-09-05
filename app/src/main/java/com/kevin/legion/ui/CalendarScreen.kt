@@ -12,6 +12,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +46,7 @@ import com.kevin.legion.ui.common.DeckSectionRule
 import com.kevin.legion.ui.common.dailyBuckets
 import com.kevin.legion.ui.notes.DAY_FILTER_WINDOW_MS
 import com.kevin.legion.ui.notes.InboxRowView
+import com.kevin.legion.ui.notes.ItemEditDialog
 import com.kevin.legion.ui.notes.MonthCell
 import com.kevin.legion.ui.notes.buildInboxRows
 import com.kevin.legion.ui.notes.buildMonthCells
@@ -153,12 +156,40 @@ import kotlinx.coroutines.launch
  * [scheduleRows]/[recordedRows]** - a checklist's own progress renders on ITS OWN section header
  * ([checklistSectionLabel]) and must never fold into the day's task completion ratio (ticket 08's
  * rule, restated for a third table sharing this screen).
+ *
+ * **A reminder row is now tap-to-edit (one-today ticket 10 slice C's own precondition,
+ * `.scratch/one-today/issues/10-*.md`: "a reminder's time, repeat and place must be editable from
+ * the calendar day view once [`ui/NotesScreen.kt`] is gone - verify or build that first").**
+ * [CalendarDayRow]'s own doc comment used to say this screen deliberately omitted an edit
+ * tap-through - that was true only while `ui/notes/InboxScreen.kt` still existed as the fallback
+ * hands path; with it retired, a reminder needs one HERE. [editingItem]/[editingItemNonce] open the
+ * SAME [ItemEditDialog] `ui/notes/InboxScreen.kt` used to (time, repeat, place, and REMOVE from the
+ * row itself - see [CalendarDayRow]'s own updated doc comment), never a second editor: only a row
+ * whose [InboxRowView.source] is [AgendaSource.LOCAL] (a real [ListItem]) gets the tap - an
+ * [AgendaSource.GOOGLE] task/event row has no [ListItem] behind it for [ItemEditDialog] to edit, and
+ * SCHEDULE's own events already carry no completion state at all (ticket 08). [highlightItemId]/
+ * [highlightItemNonce] reuse this same dialog for the notification-tap deep link
+ * (`service/ReminderAlarmReceiver.kt`'s `EXTRA_OPEN_ITEM_ID`), repointed here from the now-deleted
+ * `ui/NotesScreen.kt`/`InboxScreen.kt` pair - see [ui.MainActivity]'s own `EXTRA_ROUTE` comment for
+ * the repoint.
  */
 @Composable
-fun CalendarScreen() {
+fun CalendarScreen(
+    /** The notification-tap deep link's item id (`ui/MainActivity.kt`'s own `openItemId`,
+     * repointed here from the deleted `ui/NotesScreen.kt`) - opens [editingItem] directly,
+     * independent of [selectedDayStart], since a dated reminder far outside today's window (or a
+     * recurring one) must still be reachable from its own notification tap. */
+    highlightItemId: Long? = null,
+    /** Nonce-keyed for the same reason `ui/MainActivity.kt`'s own `openItemNonce` is - a REPEAT tap
+     * on the same notification while this screen is already open must still re-open the dialog. */
+    highlightItemNonce: Int = 0,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val zone = remember { ZoneId.systemDefault() }
+    // The tap-to-edit dialog state (this screen's own file doc comment, above) - a real [ListItem]
+    // behind it, same [ItemEditDialog] `ui/notes/InboxScreen.kt` used to render.
+    var editingItem by remember { mutableStateOf<ListItem?>(null) }
 
     // A day is always selected (fixed on-device 2026-09-01, Kevin: "it should show the due items
     // on the tapped date" - no unselected state, no navigation). Today's start on open, matching
@@ -340,6 +371,17 @@ fun CalendarScreen() {
         }
     }
 
+    // The notification-tap deep link (this screen's own file doc comment) - opens [editingItem]
+    // directly by id, never through [rawItems]/[dayRows]: a dated reminder outside the currently
+    // selected day, or a recurring one with no single occurrence in [dayRows] at all, must still be
+    // reachable from its own notification. [NotesController.itemById] returns null for an id that
+    // no longer resolves to a live reminder (already removed, or never one) - [editingItem] simply
+    // stays null and the dialog does not open, rather than crashing on a stale id.
+    LaunchedEffect(highlightItemNonce) {
+        if (highlightItemId == null) return@LaunchedEffect
+        editingItem = NotesController.itemById(context, highlightItemId)
+    }
+
     // Only ever called from [dayRows] (reminders + tasks) - [scheduleRows] rows carry no checkbox
     // (see [CalendarDayRow]'s own `row.tickable` gate) and this function is never wired to one.
     fun toggle(id: Long) {
@@ -465,12 +507,20 @@ fun CalendarScreen() {
         // The tapped day's agenda, split into SCHEDULE / YET TO DO / DONE (one-today ticket
         // 08, "events are not todos" - this screen's own file doc comment has the full
         // account). Rendered with [CalendarDayRow], a sparse local row (checkbox + label + date
-        // only) rather than `ui/notes/InboxScreen.kt`'s own [InboxRow] - that row also carries an
-        // edit tap-through and a REMOVE/DELETE button neither this screen's brief nor Kevin's
-        // "sparse UI + voice modals" instruction asked for, and a button that visibly exists but
-        // does nothing on tap is worse than one that is simply absent. The WRITE funnel is
-        // unchanged either way - [toggle] below calls the identical
-        // [NotesController.tick]/[tickAppointment] pair [InboxRow]'s own `onToggle` would have.
+        // only) rather than the now-deleted `ui/notes/InboxScreen.kt`'s own `InboxRow`.
+        // **CORRECTED one-today ticket 10 slice C, 2026-09-05: this comment used to say an edit
+        // tap-through and a REMOVE/DELETE button were left off deliberately, because
+        // `InboxScreen`'s own [ItemEditDialog] was still a reachable fallback hands path at the
+        // time.** With `ui/NotesScreen.kt`/`InboxScreen.kt` retired, that fallback is gone, and
+        // ticket 10's own precondition ("a reminder's time, repeat and place must be editable from
+        // the calendar day view once it is") makes a plain, absent edit affordance the wrong call
+        // now - [CalendarDayRow] below takes an `onEdit` AND an `onRemove` for exactly this, wired
+        // only for a real [ListItem] reminder ([InboxRowView.source] == [AgendaSource.LOCAL]; see
+        // this file's own class doc) - a REMOVE stamp beside the row, the same
+        // [NotesController.removeItem] funnel `InboxRow`'s own separate REMOVE button already
+        // called, never a second write path. The WRITE funnel for ticking is unchanged either way -
+        // [toggle] below calls the identical [NotesController.tick]/[tickAppointment] pair
+        // `InboxRow`'s own `onToggle` used to.
         //
         // The old "BACK TO MONTH" link is gone (fixed on-device 2026-09-01) - there is no
         // longer a month-only state to return to; the grid above is always visible already, and
@@ -561,15 +611,71 @@ fun CalendarScreen() {
             if (notDone.isEmpty()) {
                 Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
             } else {
-                notDone.forEach { row -> CalendarDayRow(row = row, onToggle = { toggle(row.id) }) }
+                // onEdit only for a real [ListItem] reminder ([AgendaSource.LOCAL]) - a
+                // [AgendaSource.GOOGLE] task row has no ListItem for [ItemEditDialog] to open (this
+                // screen's own file doc comment).
+                notDone.forEach { row ->
+                    CalendarDayRow(
+                        row = row,
+                        onToggle = { toggle(row.id) },
+                        onEdit = if (row.source == AgendaSource.LOCAL) {
+                            { editingItem = rawItems.firstOrNull { it.id == row.id } }
+                        } else {
+                            null
+                        },
+                        onRemove = if (row.source == AgendaSource.LOCAL) {
+                            {
+                                val target = rawItems.firstOrNull { it.id == row.id }
+                                if (target != null) {
+                                    scope.launch { NotesController.removeItem(context, target); reloadNonce++ }
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
             }
             DeckSectionRule("Done")
             if (done.isEmpty()) {
                 Text("Nothing done on this day yet.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
             } else {
-                done.forEach { row -> CalendarDayRow(row = row, onToggle = { toggle(row.id) }) }
+                done.forEach { row ->
+                    CalendarDayRow(
+                        row = row,
+                        onToggle = { toggle(row.id) },
+                        onEdit = if (row.source == AgendaSource.LOCAL) {
+                            { editingItem = rawItems.firstOrNull { it.id == row.id } }
+                        } else {
+                            null
+                        },
+                        onRemove = if (row.source == AgendaSource.LOCAL) {
+                            {
+                                val target = rawItems.firstOrNull { it.id == row.id }
+                                if (target != null) {
+                                    scope.launch { NotesController.removeItem(context, target); reloadNonce++ }
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
             }
         }
+    }
+
+    // The reminder editor (this screen's own file doc comment) - the SAME [ItemEditDialog]
+    // `ui/notes/InboxScreen.kt` used to render, reused rather than copied. [onSaved] bumps
+    // [reloadNonce] so the edited row's new date/repeat/place shows immediately without a manual
+    // re-navigation.
+    val editing = editingItem
+    if (editing != null) {
+        ItemEditDialog(
+            item = editing,
+            onDismiss = { editingItem = null },
+            onSaved = { editingItem = null; reloadNonce++ },
+        )
     }
 }
 
@@ -579,20 +685,37 @@ fun CalendarScreen() {
  * intentional: a recurring occurrence with no per-occurrence write path (`.scratch/one-today/
  * issues/02-ticking-an-appointment.md` point 2), and - as of one-today ticket 08, "events are not
  * todos" - EVERY [scheduleRows] row, because an event has no completion state to check off at all
- * (Kevin: "i dont mark an event done, it just passes"). Deliberately narrower than
- * `ui/notes/InboxScreen.kt`'s [com.kevin.legion.ui.notes.InboxRow] - see [CalendarScreen]'s own
- * call-site comment for why.
+ * (Kevin: "i dont mark an event done, it just passes"). Deliberately narrower than the now-deleted
+ * `ui/notes/InboxScreen.kt`'s own `InboxRow` - see [CalendarScreen]'s own call-site comment for why.
+ *
+ * [onEdit]/[onRemove] added one-today ticket 10 slice C, 2026-09-05 (this screen's own file doc
+ * comment has the full account) - both null for [scheduleRows]'s events and [checklistsToday]'s own
+ * rows (neither ever calls this composable with either set), non-null only for a real [ListItem]
+ * reminder in [dayRows]. [onEdit] wraps the label column in the same tap-to-edit
+ * `Modifier.clickable` the retired `InboxRow` used; [onRemove] renders the same REMOVE stamp that
+ * row's own separate button did, wired to [NotesController.removeItem] through [CalendarScreen]'s
+ * own call site rather than a second write path here.
  */
 @Composable
-private fun CalendarDayRow(row: InboxRowView, onToggle: () -> Unit) {
+private fun CalendarDayRow(
+    row: InboxRowView,
+    onToggle: () -> Unit,
+    onEdit: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null,
+) {
     val sem = LocalLegionSemantics.current
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (row.tickable) {
             Checkbox(checked = row.done, onCheckedChange = { onToggle() })
         } else {
             Column(Modifier.padding(start = 12.dp, end = 12.dp)) {}
         }
-        Column {
+        Column(
+            if (onEdit != null) Modifier.weight(1f).clickable(onClick = onEdit) else Modifier.weight(1f),
+        ) {
             Text(
                 row.text,
                 style = MaterialTheme.typography.bodyMedium,
@@ -603,6 +726,11 @@ private fun CalendarDayRow(row: InboxRowView, onToggle: () -> Unit) {
             }
             if (row.recurring) {
                 Text("Recurring - not tickable", style = LegionType.stamp, color = sem.faint)
+            }
+        }
+        if (onRemove != null) {
+            TextButton(onClick = onRemove) {
+                Text("REMOVE", style = LegionType.stamp, color = sem.faint)
             }
         }
     }

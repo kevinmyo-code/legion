@@ -896,11 +896,12 @@ class LiveSessionController(context: Context) {
                                 openVoiceModal()
                                 JSONObject().put("success", true)
                             }
-                            "show_list_modal" -> {
-                                VoiceModalController.show(VoiceModalTarget.WHOLE_LIST)
-                                openVoiceModal()
-                                JSONObject().put("success", true)
-                            }
+                            // "show_list_modal" retired (one-today ticket 10 slice C, "everything is
+                            // a checklist now") - VoiceModalTarget.WHOLE_LIST/`ui/NotesScreen.kt`
+                            // went with it. A model that still calls it by name falls through to
+                            // the `else` branch below, where LiveToolbox.dispatch's own explicit
+                            // retired-tool branch says so in words rather than silently no-opping
+                            // (§7) - same shape "show_groceries_modal" already established below.
                             // "show_groceries_modal" retired (one-today ticket 10 slice B, "everything
                             // is a checklist now") - VoiceModalTarget.GROCERIES/GroceryScreen went
                             // with it. A model that still calls it by name falls through to the

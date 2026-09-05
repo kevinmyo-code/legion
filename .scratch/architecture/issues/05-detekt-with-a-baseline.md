@@ -8,7 +8,7 @@ status-detail: "Built 2026-09-05. detekt 2.0.0-alpha.0 (built against Kotlin 2.2
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

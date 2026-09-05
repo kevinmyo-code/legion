@@ -19,22 +19,26 @@ import org.junit.Test
  * hours later (Kevin, on seeing it running: "setup is being duplicated. keep the top right corner
  * one and drop the one beside meters") - [LegionRoute.TOP_LEVEL]'s own doc comment has the full
  * account, and [StatusLine]'s SETUP stamp is now the only way into `settings/`.
- * [LegionRoute.MONEY]/[LegionRoute.BODY]/[LegionRoute.FLEET]/[LegionRoute.NOTES] are demoted off
+ * [LegionRoute.MONEY]/[LegionRoute.BODY]/[LegionRoute.FLEET] are demoted off
  * [LegionRoute.TOP_LEVEL], not deleted - every seeded aspect's "OPEN FULL SCREEN" button must
  * still resolve to a route this file actually declares, which is what the aspect-legacy-route
  * tests below still check regardless of which routes are tabs.
  * **`LegionRoute.TODAY` itself is gone, not merely demoted** - one-today ticket 07 (2026-09-01)
  * deleted `ui/TodayScreen.kt` and the `TODAY` constant once every survivor it carried was rehomed
  * (see [LegionRoute]'s class doc), so this suite no longer asserts anything about it.
+ * **`LegionRoute.NOTES` is gone too, same shape, one-today ticket 10 slice C (2026-09-05)** -
+ * `ui/NotesScreen.kt` deleted once its own survivor (a reminder's edit affordance) was rehomed
+ * onto `ui/CalendarScreen.kt`'s day view; the Notes aspect's legacy route below now resolves to
+ * [LegionRoute.CALENDAR] instead.
  */
 class LegionRouteTest {
 
     @Test
-    fun `CALENDAR and METERS are the only top-level tabs, SETTINGS and the four demoted routes are not`() {
+    fun `CALENDAR and METERS are the only top-level tabs, SETTINGS and the three demoted routes are not`() {
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.CALENDAR))
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.METERS))
         assertEquals(2, LegionRoute.TOP_LEVEL.size)
-        for (demoted in listOf(LegionRoute.SETTINGS, LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET, LegionRoute.NOTES)) {
+        for (demoted in listOf(LegionRoute.SETTINGS, LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET)) {
             assertTrue("$demoted must stay a real route, just not a tab", !LegionRoute.TOP_LEVEL.contains(demoted))
         }
     }
@@ -73,9 +77,13 @@ class LegionRouteTest {
 
     @Test
     fun `every seeded aspect's legacy route, when present, is a real LegionRoute constant`() {
+        // LegionRoute.NOTES dropped out of `known` one-today ticket 10 slice C, 2026-09-05 (the
+        // constant is deleted); LegionRoute.CALENDAR is added in its place - the Notes aspect's own
+        // legacy route (`ui/widgets/WidgetPagerScreen.kt`'s `legacyRouteForAspect`) is repointed
+        // there now.
         val known = setOf(
             LegionRoute.FLEET, LegionRoute.MONEY, LegionRoute.MONEY_PANTRY,
-            LegionRoute.NOTES, LegionRoute.FLEET_PLACES,
+            LegionRoute.CALENDAR, LegionRoute.FLEET_PLACES,
         )
         val names = listOf(
             FleetAspectSeeder.ASPECT_NAME, LedgerAspectSeeder.ASPECT_NAME, PantryAspectSeeder.ASPECT_NAME,

@@ -62,17 +62,16 @@ COPY = {
     "finish_intro": ("I'm done setting up", "Finishes first-run setup.", "Onboarding screen's own final step."),
 
     # --- Your day ---
-    "manage_item": ("Add milk to the shopping list", "Adds, ticks off, or changes an item on any of your lists.", "Notes tab, list screen - add, tick off, or edit a row."),
-    "manage_checklist": ("Tick off squats on bio", "Creates and manages your own reusable checklists - \"bio\", \"morning routine\" - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Not your one to-do list - a checklist is a routine you name yourself. Your grocery/shopping list is a checklist too, named \"Groceries\".", "Meters screen's LISTS pane - the checklists screen."),
-    "read_list": ("What's on my shopping list?", "Reads back a list.", "Notes tab, same list screen."),
-    "set_reminder": ("Remind me to call the shop at four", "Sets a reminder for a time, or for when you arrive somewhere.", "Partial - Notes shows and edits reminders, but there is no add-a-new-reminder dialog by hand."),
-    "read_calendar": ("What's on today?", "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", "Notes tab's LISTS / CALENDAR toggle, and Home's next-event tile."),
+    "manage_item": ("Remind me to renew my registration next month", "Adds, ticks off, reschedules, or removes a REMINDER - one with a due date/time, a place trigger, or a repeat. A plain to-do with none of those is a checklist line instead.", "Calendar tab, tap a day then tap a reminder row to edit its time, repeat, place, or remove it."),
+    "manage_checklist": ("Tick off squats on bio", "Creates and manages your own reusable checklists - \"bio\", \"morning routine\", plain to-dos too - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Your grocery/shopping list and your plain to-do list are both checklists, named \"Groceries\" and \"Todo\".", "Meters screen's LISTS pane - the checklists screen."),
+    "read_list": ("What have I got coming up?", "Reads back your open reminders, soonest due first, each with its date, place or repeat.", "Calendar tab, tap a day to see that day's reminders."),
+    "set_reminder": ("Remind me to grab my gym bag when I get to the gym", "Sets a reminder tied to a saved place, so it comes up when you next arrive there.", "Partial - Calendar's day view shows and edits a place-triggered reminder, but there is no add-a-new-reminder dialog by hand."),
+    "read_calendar": ("What's on today?", "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", "Calendar tab's month grid and day view, and Home's next-event tile."),
     "tag_place": ("Save this as work", "Saves where you are now under a name, so reminders can trigger there.", "Fleet > Saved places screen."),
     "forget_place": ("Forget the old gym", "Removes a saved place.", "Fleet > Saved places screen, delete behind a confirm."),
     "show_saved_places": ("Show my saved places", "Puts your saved places on screen.", "Is itself the Fleet > Saved places screen."),
     "open_navigation": ("Navigate to the hardware store", "Hands off to your maps app.", "Fleet > Saved places screen, Navigate button on each place."),
-    "show_agenda_modal": ("Show me my agenda", "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", "Notes tab, tap a day on the calendar and choose Show in list."),
-    "show_list_modal": ("Show me my list", "Pops up your whole list on screen without leaving where you are.", "Notes tab, the main list."),
+    "show_agenda_modal": ("Show me my agenda", "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", "Calendar tab, today's day view shows the same thing directly."),
     "show_generated_view": ("Show me my grocery spend by month", "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
 
     # --- The cars ---
@@ -202,7 +201,7 @@ COPY = {
 
 GROUPS = {
     "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation"],
-    "Your day": ["manage_item", "manage_checklist", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_list_modal", "show_generated_view"],
+    "Your day": ["manage_item", "manage_checklist", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_generated_view"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["activate_garage", "control_volume"],
     "Money": ["get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],

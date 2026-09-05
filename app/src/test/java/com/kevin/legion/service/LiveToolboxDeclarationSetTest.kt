@@ -108,12 +108,14 @@ class LiveToolboxDeclarationSetTest {
                 )
             }
         }
-        // "show_groceries_modal" removed from this set (one-today ticket 10 slice B, 2026-09-05) -
-        // it is no longer UI-scoped (dispatch() no longer returns null for it, see the retirement
-        // test below) because it is retired outright, not because it moved behind a dispatcher.
+        // "show_groceries_modal" removed from this set (one-today ticket 10 slice B, 2026-09-05),
+        // "show_list_modal" removed the same way (one-today ticket 10 slice C, 2026-09-05) - both
+        // are no longer UI-scoped (dispatch() no longer returns null for either, see the
+        // retirement tests below) because both are retired outright, not because either moved
+        // behind a dispatcher.
         val uiScoped = setOf(
             "import_receipt", "show_saved_places",
-            "show_agenda_modal", "show_list_modal",
+            "show_agenda_modal",
         )
         for ((_, toolNames) in DISPATCHED_FOR_TEST) {
             for (name in uiScoped) {
@@ -220,6 +222,34 @@ class LiveToolboxDeclarationSetTest {
         }
     }
 
+    /**
+     * `show_list_modal` retirement (one-today ticket 10 slice C, 2026-09-05): not declared to the
+     * live session anymore, and a model that still calls it by name (a cached old session, say)
+     * gets an explicit retirement message rather than the generic "Unknown tool" [dispatch] would
+     * otherwise fall through to - §7's outcome-verb rule applied to a retired capability. Same
+     * shape as the `manage_grocery`/`show_groceries_modal` test just above.
+     */
+    @Test
+    fun `show_list_modal is retired, not silently unknown`() = kotlinx.coroutines.runBlocking {
+        val live = names(LiveToolbox.declarations())
+        assertFalse("show_list_modal must not be declared", "show_list_modal" in live)
+
+        val result = LiveToolbox.dispatch(context, "show_list_modal", org.json.JSONObject())
+        assertTrue("show_list_modal must return a non-null result even though it is retired", result != null)
+        assertFalse(
+            "show_list_modal's retirement result must say it failed, not claim success",
+            result!!.getBoolean("success"),
+        )
+        assertTrue(
+            "show_list_modal's retirement message must name manage_checklist as one replacement",
+            result.getString("message").contains("manage_checklist"),
+        )
+        assertTrue(
+            "show_list_modal's retirement message must name show_agenda_modal as the other replacement",
+            result.getString("message").contains("show_agenda_modal"),
+        )
+    }
+
     /** ask_mail's whole point is that mail never reaches the live socket by its real name again. */
     @Test
     fun `EPISODIC_EXCLUDED_TOOLS carries ask_mail alongside the original two names`() {
@@ -304,15 +334,16 @@ class LiveToolboxDeclarationSetTest {
 
     /**
      * The voice-called-modal tools (ADR 0040): each must be declared to the live session with no
-     * required params, and [LiveToolbox.dispatch] must return null for both (the UI-scoped
+     * required params, and [LiveToolbox.dispatch] must return null for it (the UI-scoped
      * contract - [LiveSessionController] owns showing the modal, same shape as
-     * `show_saved_places`/`import_receipt`). Used to be three - `show_groceries_modal` retired
-     * (one-today ticket 10 slice B, 2026-09-05), see the retirement test above.
+     * `show_saved_places`/`import_receipt`). Used to be three, then two - `show_groceries_modal`
+     * retired (one-today ticket 10 slice B, 2026-09-05) and `show_list_modal` retired (one-today
+     * ticket 10 slice C, 2026-09-05), see the retirement tests above.
      */
     @Test
     fun `the voice-modal tools are declared with no required params`() {
         val live = LiveToolbox.declarations()
-        for (name in listOf("show_agenda_modal", "show_list_modal")) {
+        for (name in listOf("show_agenda_modal")) {
             val decl = (0 until live.length()).map { live.getJSONObject(it) }
                 .first { it.getString("name") == name }
             assertEquals(
@@ -324,8 +355,8 @@ class LiveToolboxDeclarationSetTest {
     }
 
     @Test
-    fun `dispatch returns null for both voice-modal tools`() = kotlinx.coroutines.runBlocking {
-        for (name in listOf("show_agenda_modal", "show_list_modal")) {
+    fun `dispatch returns null for the voice-modal tool`() = kotlinx.coroutines.runBlocking {
+        for (name in listOf("show_agenda_modal")) {
             val result = LiveToolbox.dispatch(context, name, org.json.JSONObject())
             org.junit.Assert.assertNull(
                 "$name is UI-scoped and must return null from dispatch() - the caller owns the screen",

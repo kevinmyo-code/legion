@@ -102,12 +102,15 @@ class MainActivity : ComponentActivity() {
     private var deepLinkNonce by mutableStateOf(0)
 
     // The notification-tap deep link (ticket 12: "tapping the notification opens the item").
-    // ReminderAlarmReceiver.postNotification sets both EXTRA_ROUTE (= LegionRoute.NOTES, so the
-    // bottom nav actually lands on Notes) and EXTRA_OPEN_ITEM_ID on the same Intent - deepLinkRoute
-    // above drives the navigation, openItemId drives what NotesScreen does once it's there. Nonce-
-    // keyed for the same reason deepLinkNonce is: a REPEAT tap on the same item's notification while
-    // the app is already foregrounded delivers onNewIntent with an unchanged extra value, and a
-    // plain state read would be skipped as a no-op change.
+    // ReminderAlarmReceiver.postNotification sets both EXTRA_ROUTE and EXTRA_OPEN_ITEM_ID on the
+    // same Intent - deepLinkRoute above drives the navigation, openItemId drives what the
+    // destination does once it's there. **REPOINTED one-today ticket 10 slice C, 2026-09-05:
+    // EXTRA_ROUTE used to be LegionRoute.NOTES (the bottom nav landed on the now-deleted
+    // `ui/NotesScreen.kt`) - it is LegionRoute.CALENDAR now, and openItemId/openItemNonce feed
+    // CalendarScreen's own highlightItemId/highlightItemNonce params instead of NotesScreen's
+    // openItemId/openItemNonce.** Nonce-keyed for the same reason deepLinkNonce is: a REPEAT tap on
+    // the same item's notification while the app is already foregrounded delivers onNewIntent with
+    // an unchanged extra value, and a plain state read would be skipped as a no-op change.
     private var openItemId by mutableStateOf<Long?>(null)
     private var openItemNonce by mutableStateOf(0)
 
@@ -410,20 +413,18 @@ private fun LegionShell(
     // NavHost boundary that disposes each destination's own `remember`ed state, so the instruction
     // has to be held somewhere that survives the navigation itself. See [LedgerScreen]'s
     // `openCategory` parameter doc comment for why this needs a nonce AND a consumed-reset (the
-    // Notes deep link gets away with nonce-only because a null payload there already means "nothing
-    // to do"; here `null` is the uncategorised bucket, a real request).
+    // reminder deep link (openItemId/openItemNonce, into CalendarScreen) gets away with nonce-only
+    // because a null payload there already means "nothing to do"; here `null` is the uncategorised
+    // bucket, a real request).
     var pendingMoneyCategory by remember { mutableStateOf<String?>(null) }
     var pendingMoneyCategoryNonce by remember { mutableStateOf(0) }
 
-    // Fixed on-device 2026-09-01 (Kevin: "meters > lists are hard to use... tapping persistant
-    // list also brings me to the old calendar and goals view" / "groceries trip tapping it brings
-    // me to not a grocery list") - the Lists section's two rows on [MetersScreen] both used to tap
-    // through to the wrong destination. Same shape as [pendingMoneyCategory] above: the instruction
-    // has to be held above the NavHost so it survives the navigation itself, nonce-keyed so a
-    // repeat tap on the SAME row while already on `notes` still re-navigates (same reasoning
-    // [openItemId]/[openItemNonce] state, above).
-    var notesStartMode by remember { mutableStateOf<LogMode?>(null) }
-    var notesStartModeNonce by remember { mutableStateOf(0) }
+    // notesStartMode/notesStartModeNonce REMOVED (one-today ticket 10 slice C, 2026-09-05) - fixed
+    // on-device 2026-09-01 (Kevin: "meters > lists are hard to use... tapping persistant list also
+    // brings me to the old calendar and goals view" / "groceries trip tapping it brings me to not a
+    // grocery list"), this pair used to carry [MetersScreen]'s "Persistent list" row's start mode
+    // above the NavHost boundary the same way [pendingMoneyCategory] does. Both `LogMode` (the enum
+    // it held) and the row it fed are gone with `ui/NotesScreen.kt`.
 
     // Keyed on the nonce, not the route string, so a repeat deep link to the
     // same sub-route (onNewIntent while already on top) still re-navigates -
@@ -674,12 +675,18 @@ private fun LegionShell(
                 WidgetPagerRoot(onOpenRoute = { route -> navController.navigate(route) { launchSingleTop = true } })
             }
             // The new start destination (2026-09-01 calendar-home cutover) - month grid + day view,
-            // no arguments, no callbacks: [CalendarScreen] owns its own month/day state internally
-            // (LegionRoute's own "nothing here takes a navigation argument" convention) and reads/
-            // writes through [com.kevin.legion.notes.NotesController] directly rather than through
-            // anything this shell needs to wire.
+            // no nav arguments (LegionRoute's own "nothing here takes a navigation argument"
+            // convention): [highlightItemId]/[highlightItemNonce] are plain params, not nav-graph
+            // arguments, same shape the deleted `ui/NotesScreen.kt` used for its own
+            // `openItemId`/`openItemNonce`. [CalendarScreen] owns its own month/day state internally
+            // and reads/writes through [com.kevin.legion.notes.NotesController] directly rather than
+            // through anything this shell needs to wire. **REPOINTED one-today ticket 10 slice C,
+            // 2026-09-05: this composable used to take no arguments** - the notification-tap deep
+            // link (`openItemId`/`openItemNonce`, this file's own state above) fed
+            // `ui/NotesScreen.kt` exclusively before that screen was deleted; `CalendarScreen`'s own
+            // file doc comment has the full account of how it opens the same [ItemEditDialog] now.
             composable(LegionRoute.CALENDAR) {
-                CalendarScreen()
+                CalendarScreen(highlightItemId = openItemId, highlightItemNonce = openItemNonce)
             }
             // The third tab ("C" - Kevin, verbatim, [LegionRoute.METERS]'s own doc comment). A
             // SKELETON (this ticket) - every callback below taps through to an already-registered
@@ -690,13 +697,9 @@ private fun LegionShell(
                     onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
                     onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
                     onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
-                    // Fixed on-device 2026-09-01: sets the start mode Notes opens in - see
-                    // [notesStartMode]'s own doc comment above.
-                    onOpenNotes = {
-                        notesStartMode = LogMode.ITEMS
-                        notesStartModeNonce++
-                        navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
-                    },
+                    // onOpenNotes REMOVED (one-today ticket 10 slice C, 2026-09-05) - the
+                    // "Persistent list" row it fed is gone from [MetersScreen]; see that screen's
+                    // own removal comment.
                     onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
                     // onOpenGroceriesList REMOVED (one-today ticket 10 slice B, 2026-09-05) - the
                     // "Groceries trip" row it fed is gone from [MetersScreen]; the shopping list is
@@ -735,12 +738,10 @@ private fun LegionShell(
                 BodyScreen()
             }
 
-            composable(LegionRoute.NOTES) {
-                NotesScreen(
-                    openItemId = openItemId, openItemNonce = openItemNonce,
-                    startMode = notesStartMode, startModeNonce = notesStartModeNonce,
-                )
-            }
+            // composable(LegionRoute.NOTES) { NotesScreen(...) } DELETED one-today ticket 10
+            // slice C, 2026-09-05 - both the route and the screen are gone; see
+            // `ui/CalendarScreen.kt`'s own file doc comment for where the notification-tap deep
+            // link and the reminder editor it opened both landed instead.
 
             composable(LegionRoute.FLEET) {
                 // Ticket 18: FLEET absorbed TELEMETRY as an in-screen drilldown off the

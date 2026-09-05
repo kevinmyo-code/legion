@@ -106,34 +106,10 @@ class CalendarAgendaResolverTest {
         assertEquals(2, mergeAgenda(local, google).size)
     }
 
-    // --------------------------------------------------------------------- buildAgendaCalendarNotice
-
-    @Test
-    fun `permission denied always produces a notice, regardless of entry count`() {
-        val withEntries = buildAgendaCalendarNotice(calendarPermissionGranted = false, entryCount = 3)
-        val withoutEntries = buildAgendaCalendarNotice(calendarPermissionGranted = false, entryCount = 0)
-
-        assertTrue(withEntries.message!!.isNotBlank())
-        assertFalse(withEntries.showNothingScheduled)
-        assertTrue(withoutEntries.message!!.isNotBlank())
-        // The exact failure this guards against: a denied permission must never quietly read as
-        // "NOTHING SCHEDULED" just because the local side also happens to be empty.
-        assertFalse(withoutEntries.showNothingScheduled)
-    }
-
-    @Test
-    fun `permission granted with zero entries is the one honest NOTHING SCHEDULED case`() {
-        val notice = buildAgendaCalendarNotice(calendarPermissionGranted = true, entryCount = 0)
-        assertNull(notice.message)
-        assertTrue(notice.showNothingScheduled)
-    }
-
-    @Test
-    fun `permission granted with entries present shows neither notice nor the empty row`() {
-        val notice = buildAgendaCalendarNotice(calendarPermissionGranted = true, entryCount = 4)
-        assertNull(notice.message)
-        assertFalse(notice.showNothingScheduled)
-    }
+    // buildAgendaCalendarNotice/AgendaCalendarNotice and their three tests here deleted one-today
+    // ticket 10 slice C, 2026-09-05, alongside the function/type themselves
+    // (`ui/notes/CalendarAgendaResolver.kt`'s own removal comment has the full account: the
+    // now-deleted `ui/notes/InboxScreen.kt` was the only caller).
 
     // ----------------------------------------------------------- quant-viz ticket 13: WEEK AHEAD
 

@@ -3,12 +3,12 @@ map: one-today
 ticket: "10"
 title: "Retire the persistent list and the grocery trip: everything is a checklist"
 type: build
-status: open
-status-detail: "Slice A (checklist voice tools) building 2026-09-05. B and C follow in order."
+status: built
+status-detail: "All three slices built 2026-09-05 (manage_checklist; grocery trip retired; persistent list retired with a reminder editor added to the calendar day view). OWED: dismissMissed (mark a missed reminder seen without completing it) has no hands or voice path left. Not yet run on the phone."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

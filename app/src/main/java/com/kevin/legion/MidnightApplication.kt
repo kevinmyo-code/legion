@@ -278,6 +278,18 @@ class MidnightApplication : Application() {
                 }.onFailure { MidnightEvents.appStartWorkFailed("migrate_grocery_trip_to_checklist", it) }
             }
 
+            // One-today ticket 10 slice C: the persistent-list surface retires, so any DATELESS
+            // open reminder (no time, no place trigger, no repeat, not a GoalChecklistSync "Plan: "
+            // line) is carried onto a non-recurring "Todo" checklist once (see
+            // ReminderChecklistMigration's own class doc for why this is data movement, not a Room
+            // migration). A dated/place-triggered/repeating reminder is untouched - it stays on the
+            // calendar. Same guard shape as the grocery migration just above.
+            appScope.launch {
+                runCatching {
+                    com.kevin.legion.notes.ReminderChecklistMigration.migrateIfNeeded(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("migrate_persistent_list_to_checklist", it) }
+            }
+
             // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
             // the retired "this car" sentinel is a magic value masquerading as user data, and the
             // two rows carrying it are both archived and invisible today - which is exactly why

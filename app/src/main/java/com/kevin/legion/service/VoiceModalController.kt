@@ -5,30 +5,27 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Which pre-made surface a voice-called modal foregrounds. A closed enum, not a payload of
- * content: ADR 0040's corrected model is "voice is a LAUNCHER, not a renderer" - the modal is
- * ordinary hand-built UI that exists whether or not anyone speaks, and the voice tool only names
- * WHICH one to bring up. Adding a target here means wiring one more pre-made composable into
+ * Which PRE-MADE surface a voice call brings forward. A closed enum, not a payload of content:
+ * ADR 0040's corrected model is "voice is a LAUNCHER, not a renderer" - the modal is ordinary
+ * hand-built UI that exists whether or not anyone speaks, and the voice tool only names WHICH one
+ * to bring up. Adding a target here means wiring one more pre-made composable into
  * [com.kevin.legion.ui.VoiceModalHost]'s `when`, never inventing new rendering.
- */
-/**
- * Which PRE-MADE surface a voice call brings forward. **Names only, never rendering instructions** -
- * the modal is built by hand and voice merely chooses it (ADR 0040: "not voice generated, voice
- * called").
- *
- * [WHOLE_LIST] is deliberately not called `NAMED_LIST`. `show_list_modal` takes no parameters and
- * shows the ONE persistent list `manage_item`/`read_list` already operate on, so a name promising a
- * choice of list would be a name promising something the code does not do - the exact shape that
- * bit this codebase twice before (`EventReplicaDao.upsert`'s defeated guarantee,
- * `GeneratedFormScreen`'s "PHOTO ON FILE"). If per-list targeting is ever added, the parameter and
- * the name arrive together.
  *
  * **`GROCERIES` retired (one-today ticket 10 slice B, 2026-09-05): "everything is a checklist
  * now".** The grocery trip screen (`ui/notes/GroceryScreen.kt`) and `show_groceries_modal` are gone
  * with it - a shopping list is a checklist named "Groceries" now, reached through the checklists
  * screen, not a voice-called modal.
+ *
+ * **`WHOLE_LIST` retired (one-today ticket 10 slice C, 2026-09-05), same shape, same reason.** It
+ * used to be deliberately not called `NAMED_LIST` - `show_list_modal` took no parameters and showed
+ * the ONE persistent list `manage_item`/`read_list` used to operate on, so a name promising a
+ * choice of list would have been a name promising something the code did not do (the exact shape
+ * that bit this codebase twice before: `EventReplicaDao.upsert`'s defeated guarantee,
+ * `GeneratedFormScreen`'s "PHOTO ON FILE"). The persistent list itself is gone now
+ * (`ui/NotesScreen.kt`) and `show_list_modal`'s own tool declaration retired with it - see
+ * `service/LiveToolbox.kt`'s own retirement comment on that tool.
  */
-enum class VoiceModalTarget { AGENDA, WHOLE_LIST }
+enum class VoiceModalTarget { AGENDA }
 
 /**
  * [target] plus [shownAt], mirroring [GlanceCardPayload]'s own shape: a bare enum value would

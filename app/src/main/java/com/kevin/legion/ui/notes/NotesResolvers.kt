@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName") // ticket 10 slice C left one class; renaming would detach git history
+
 package com.kevin.legion.ui.notes
 
 import com.kevin.legion.backend.EventKind
@@ -9,7 +11,16 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Pure resolvers behind the notes screens (`ui/NotesScreen.kt`, `ui/notes/InboxScreen.kt`).
+ * Pure resolvers behind the notes screens. **CORRECTED one-today ticket 10 slice C, 2026-09-05:
+ * `ui/NotesScreen.kt` and `ui/notes/InboxScreen.kt`, this file's own doc comment's original two
+ * callers, are both DELETED** ("everything is a checklist now") - [InboxRowView]/[buildInboxRows]
+ * below now serve `ui/CalendarScreen.kt`'s day view directly, the same merge, unchanged. This file's
+ * own MISSED-banner resolvers ([MissedRowView]/`buildMissedRows`/`buildMissedTile`/`buildListsTile`)
+ * and [LISTS_DO_NOT_SYNC_NOTICE] went with the screens that were their only callers (grep-confirmed
+ * before deletion) - the underlying facts they read ([com.kevin.legion.notes.NotesController.missedItems]/
+ * `dismissMissed`/`listNamesById`) are untouched and still feed the digest builders
+ * (`advisor/digest/HomeDigestBuilder.kt`/`LogDigestBuilder.kt`), which is why NONE of those
+ * `NotesController` functions were removed even though their only UI reader was.
  * No Compose, no Room, no `Context`: the same
  * "branching logic lives in a pure function, a composable only reads its output" split
  * [com.kevin.legion.ui.TodayGapResolvers]/[com.kevin.legion.ui.BodyGapResolvers]/
@@ -28,8 +39,9 @@ import java.time.format.DateTimeFormatter
 // ------------------------------------------------------------------- one-stream inbox (2026-08-11)
 
 /**
- * One row of the single-stream inbox ([com.kevin.legion.ui.notes.InboxScreen]) - Kevin, 2026-08-11:
- * "1 list, many items appended, all with their own due dates".
+ * One row of the single-stream inbox (originally `ui/notes/InboxScreen.kt`, now-deleted per this
+ * file's own class doc - `ui/CalendarScreen.kt`'s day view is the one reader left) - Kevin,
+ * 2026-08-11: "1 list, many items appended, all with their own due dates".
  *
  * Two points are the whole reason this replaced the old per-list row view:
  * - [dateLabel] is its OWN field, never folded into a general-purpose trigger string. The bug that
@@ -78,9 +90,11 @@ data class InboxRowView(
      * `.scratch/google-account-integration/issues/22-edit-calendar-entries-from-log.md`; **local as
      * of one-today ticket 01, "cut Google entirely"**) is a calendar-table row - `kind = 'event'`
      * (renamed from `'appointment'`, never tickable - one-today ticket 08) or `kind = 'task'`
-     * (tickable, nothing produces one yet) - merged into the SAME stream over a 90-day forward
-     * window ([com.kevin.legion.ui.notes.INBOX_CALENDAR_WINDOW_DAYS]). `ui/notes/NotesRows.kt`'s
-     * [InboxRow] shows the same `CAL` tag ticket 13 put on `TodayScreen`'s AGENDA pane - the
+     * (tickable, nothing produces one yet) - merged into the SAME stream, originally over a 90-day
+     * forward window (the retired `InboxScreen`'s own `INBOX_CALENDAR_WINDOW_DAYS`, deleted with it
+     * one-today ticket 10 slice C since it had no other reader; `ui/CalendarScreen.kt`'s day view
+     * windows to one calendar day instead, its own `dayEndExclusive`). The retired `InboxRow` showed
+     * a `CAL` tag ticket 13 put on `TodayScreen`'s AGENDA pane for this same row - the
      * distinction from a plain reminder is always in WORDS, never colour alone - even though, post
      * one-today, both live in the exact same local table, editable/deletable alike, just through
      * separate [NotesController] functions (see [tickable]'s own doc comment for why they are no
@@ -107,25 +121,20 @@ data class InboxRowView(
     /** Ticket 14: the row's own real instant, LOCAL zone-independent millis - `item.startsAt` for a
      * LOCAL row, [calendarOccurrenceStartMs] for a GOOGLE row (carried separately here rather than
      * read off that field at the render layer, since a LOCAL row has no occurrence field at all).
-     * Null for an undated local row, which the month calendar's day filter never matches - an
-     * undated item cannot belong to any one day. This is what lets [InboxScreen]'s new
-     * `dayFilterStartMs` param filter the ALREADY-BUILT row list without a second stream-building
-     * path: every row this file ever produces already carries the one timestamp a day filter needs. */
+     * Null for an undated local row, which a day filter never matches - an undated item cannot
+     * belong to any one day. This is what let the retired `InboxScreen`'s own `dayFilterStartMs`
+     * param filter the ALREADY-BUILT row list without a second stream-building path, and is the
+     * same reason `ui/CalendarScreen.kt`'s day view can filter [buildInboxRows]' output straight
+     * against its own `[day, dayEndExclusive)` window today: every row this file ever produces
+     * already carries the one timestamp a day filter needs. */
     val instantMs: Long? = null,
 )
 
-/**
- * The window Google events merge into the inbox stream over - **90 days forward from now, nothing
- * in the past.** Kevin's call, 2026-08-13 (`.scratch/google-account-integration/issues/
- * 13-calendar-read.md` follow-up): "far enough for anything worth planning around, short enough
- * that a yearly recurring series does not flood the stream." An appointment that already happened
- * is not a thing left to plan around - `TodayScreen`'s own AGENDA pane already covers today
- * specifically, and this window starts exactly where that one's coverage of the past would end.
- * `ui/notes/InboxScreen.kt` is the only reader; it lives here (not there) so [buildInboxRows]'
- * own tests can assert against the same named constant the screen queries with, rather than a
- * copy of the number.
- */
-const val INBOX_CALENDAR_WINDOW_DAYS = 90L
+// INBOX_CALENDAR_WINDOW_DAYS (90-day forward Google-merge window) deleted one-today ticket 10
+// slice C, 2026-09-05 - the retired `ui/notes/InboxScreen.kt` was its only reader
+// (grep-confirmed before deletion); `ui/CalendarScreen.kt`'s day view windows to one calendar day
+// at a time instead ([DAY_FILTER_WINDOW_MS], `ui/notes/NotesRows.kt`), which needs no separate
+// named forward-window constant of its own.
 
 /**
  * The whole inbox, in reading order: **dated items first, soonest due at the top; undated items
@@ -214,64 +223,24 @@ private fun toInboxRowView(event: AppointmentEvent): InboxRowView =
         instantMs = event.startMs,
     )
 
-// ------------------------------------------------------------------------------- MISSED (ticket 12)
+// MISSED banner resolvers (`MissedRowView`/`buildMissedRows`, ticket 12) and the LOG-tile builders
+// (`MissedTileData`/`buildMissedTile`/`ListsTileData`/`buildListsTile`, mission-control ticket 16)
+// deleted one-today ticket 10 slice C, 2026-09-05 - `ui/NotesScreen.kt` was every one of their only
+// callers (grep-confirmed before deletion) and is itself deleted with this slice. The FACTS they
+// read are untouched: [com.kevin.legion.notes.NotesController.missedItems]/`dismissMissed`/
+// `listNamesById` still exist and still feed `advisor/digest/HomeDigestBuilder.kt`/
+// `LogDigestBuilder.kt`'s own spoken/written missed-reminder line - only the on-screen MISSED
+// banner and its per-row DISMISS tap are gone. **This is a real, narrow loss, reported rather than
+// silently absorbed**: `dismissMissed` (silence a missed flag WITHOUT completing or deleting the
+// item) has no other caller left anywhere in the tree, so that specific action - as opposed to
+// ticking or removing the reminder, both still reachable from `ui/CalendarScreen.kt`'s day view -
+// has no hands path any more. Ticket 10 did not ask for a replacement UI for it, and none was built.
 
-data class MissedRowView(val id: Long, val text: String, val listName: String, val missedLabel: String)
-
-/**
- * Rows for the MISSED banner - "reported, never silent" (ticket 12: a one-off reminder due while
- * the phone was off is genuinely gone, and that fact must be surfaced, never dropped). [listNamesById]
- * lets a caller pass one batched name lookup ([com.kevin.legion.notes.NotesController.listNamesById])
- * rather than a query per row.
- */
-fun buildMissedRows(items: List<ListItem>, listNamesById: Map<Long, String>): List<MissedRowView> =
-    items.map { item ->
-        MissedRowView(
-            id = item.id,
-            text = item.text,
-            listName = listNamesById[item.listId] ?: "a list",
-            missedLabel = item.missedAt?.let { "was due ${formatDateTime(it)}" } ?: "was due earlier",
-        )
-    }
-
-// ------------------------------------------------------------- mission-control ticket 16: LOG tiles
-
-/**
- * MISSED tile (mission-control ticket 16's LOG build): a HALF-tile snapshot of [MissedRowView]'s
- * own count. Ticket 12's inventory called this whole panel HALF; `ui/NotesScreen.kt` keeps its
- * pre-existing FULL-detail rows (per-row DISMISS, tap-to-open) unchanged below this tile rather than
- * replacing them with it - this domain has no drilldown to send a tap to, and collapsing real,
- * working per-row controls into a single passive figure would be a functional regression the ticket
- * never asked for. Both now coexist: this is the at-a-glance figure, the rows below are the actual
- * controls. Deviation from the ticket's literal shape, reported rather than silently taken.
- */
-data class MissedTileData(val hero: String, val caption: String)
-
-fun buildMissedTile(missedRows: List<MissedRowView>): MissedTileData =
-    if (missedRows.isEmpty()) {
-        MissedTileData(hero = "0", caption = "no missed reminders")
-    } else {
-        MissedTileData(hero = missedRows.size.toString(), caption = "overdue reminders")
-    }
-
-/**
- * LISTS tile (mission-control ticket 16's LOG build): open (not-done) item count - ticket 12's
- * "count of open items across lists" read onto the post-2026-08-11 one-list model
- * (`ui/NotesScreen.kt`'s own file doc comment: "the multi-list model is gone"). [openCount] is
- * expected to be [ListItem]-only (`ui/notes/InboxScreen.kt`'s own `NotesController.allItems` read,
- * counted `!it.done`) - deliberately NOT the wider Google-merged stream that screen's ITEMS badge
- * counts, so the two figures are never the same claim under two different numbers. This tile's
- * caption says "open items", never bare "items", to keep that distinction in words.
- */
-data class ListsTileData(val hero: String, val caption: String)
-
-fun buildListsTile(openCount: Int): ListsTileData = ListsTileData(hero = openCount.toString(), caption = "open items")
-
-// --------------------------------------------------------------------------- sync honesty (ticket 09)
-
-/** "Lists do not sync" (ticket 09's accepted cost) - one line, said plainly, matching CLAUDE.md §4
- * rule seven's "say so in words on every surface" discipline applied to this domain's own cost. */
-const val LISTS_DO_NOT_SYNC_NOTICE = "Lists stay on this phone only - they do not sync to your other device yet."
+// LISTS_DO_NOT_SYNC_NOTICE ("lists do not sync", ticket 09's accepted cost) deleted alongside
+// `ui/notes/NotesRows.kt`'s own `ListsDoNotSyncNote` composable, its only renderer - both retired
+// one-today ticket 10 slice C, 2026-09-05 (`ui/notes/InboxScreen.kt` was the only screen that ever
+// showed the notice). The underlying fact (`list_items` does not sync while `Todo`/`Groceries`
+// checklists do) is unchanged; only this specific worded surface is gone.
 
 // ------------------------------------------------------------------------- formatting (device zone)
 

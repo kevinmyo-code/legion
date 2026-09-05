@@ -73,8 +73,10 @@ object LegionRoute {
      * The start destination as of the 2026-09-01 calendar-home cutover (Kevin, verbatim: "month
      * grid primary. tapping a day on the month opens up view B") - see [com.kevin.legion.ui.CalendarScreen].
      * No sub-routes: the selected day's agenda ("view B") is internal Compose state inside that
-     * screen, same convention this file's own class doc establishes for [NOTES]'s LISTS | CALENDAR
-     * toggle. Replaced `TODAY` as `startDestination` and as the shell's HOME target; `TODAY` and the
+     * screen, same convention `ui/NotesScreen.kt`'s own (now-deleted, one-today ticket 10 slice C)
+     * LISTS | CALENDAR toggle used to establish - [CALENDAR] itself is now where a reminder's edit
+     * affordance lives (see [com.kevin.legion.ui.CalendarScreen]'s own file doc comment).
+     * Replaced `TODAY` as `startDestination` and as the shell's HOME target; `TODAY` and the
      * screen it named were deleted outright 2026-09-01 (one-today ticket 07), once its survivors
      * were all rehomed - see this file's class doc.
      */
@@ -83,10 +85,11 @@ object LegionRoute {
     /**
      * The third tab ("C", Kevin verbatim: "C as another tab... those we tap through from view C the
      * meters"), 2026-09-01 - see [com.kevin.legion.ui.MetersScreen]. A dashboard of at-a-glance
-     * meters that tap through to [BODY]/[MONEY]/[FLEET]/[NOTES]/[MONEY_PANTRY], the same
-     * "every pane taps through to its module" rule the deleted `ui/TodayScreen.kt` already applied.
-     * Built as a skeleton in the calendar-home ticket; one-today ticket 07 added weather/area/
-     * newsletters/the media mini-bar, rehomed off that same deleted screen.
+     * meters that tap through to [BODY]/[MONEY]/[FLEET]/[MONEY_PANTRY], the same "every pane taps
+     * through to its module" rule the deleted `ui/TodayScreen.kt` already applied. (Used to also tap
+     * through to `NOTES` - that row and route are both deleted, one-today ticket 10 slice C,
+     * 2026-09-05.) Built as a skeleton in the calendar-home ticket; one-today ticket 07 added
+     * weather/area/newsletters/the media mini-bar, rehomed off that same deleted screen.
      */
     const val METERS = "meters"
 
@@ -106,15 +109,15 @@ object LegionRoute {
 
     const val BODY = "body"
 
-    /**
-     * The sixth top-level destination (`.scratch/notes-lists-calendar/issues/07-where-it-lives.md`'s
-     * Answer, 2026-08-07): "one new destination, 'Notes', with the calendar as a view inside it."
-     * No sub-routes of its own - the LISTS | CALENDAR toggle and the list-of-lists -> single-list
-     * drill-down are internal Compose state inside [com.kevin.legion.ui.NotesScreen], not nav-graph
-     * destinations, so this domain never needed the argument-carrying route this file's own doc
-     * comment says nothing here has needed yet.
-     */
-    const val NOTES = "notes"
+    // NOTES ("notes") DELETED one-today ticket 10 slice C, 2026-09-05 - it named the sixth
+    // top-level destination (`.scratch/notes-lists-calendar/issues/07-where-it-lives.md`'s Answer,
+    // 2026-08-07), `ui/NotesScreen.kt`, itself deleted with this slice ("everything is a checklist
+    // now": a dateless open reminder migrated onto a "Todo" checklist,
+    // `notes/ReminderChecklistMigration.kt`, and a dated/place-triggered/repeating reminder is
+    // edited from [CALENDAR]'s own day view instead - see `ui/CalendarScreen.kt`'s own file doc
+    // comment). Every former caller ([com.kevin.legion.service.ReminderAlarmReceiver]'s
+    // notification deep link, `ui/widgets/WidgetPagerScreen.kt`'s `legacyRouteForAspect`,
+    // `ui/MetersScreen.kt`'s now-deleted "Persistent list" row) is repointed at [CALENDAR].
 
     /**
      * Recurring checklists (`.scratch/one-today/issues/09-a-list-you-tick-every-day.md`) - see
@@ -129,7 +132,8 @@ object LegionRoute {
      * `onOpenGroceriesList` are gone** ("everything is a checklist now" - a shopping list retired
      * onto a checklist named "Groceries", reached through THIS route). No sub-routes: the
      * list-of-checklists -> single-checklist editor -> history drill-downs are internal Compose
-     * state inside that one screen, same convention [NOTES]'s own doc comment establishes.
+     * state inside that one screen, same convention `ui/NotesScreen.kt`'s own (now-deleted,
+     * one-today ticket 10 slice C) doc comment used to establish.
      */
     const val CHECKLISTS = "checklists"
 
@@ -212,8 +216,9 @@ object LegionRoute {
     /**
      * The driver's own editor for [com.kevin.legion.advisor.PrimingTopic]'s four bodies of
      * doctrine (2026-08-18) - see [com.kevin.legion.ui.companions.PlaybookScreen]. The list-to-
-     * editor drill-down inside it is internal Compose state, same posture [NOTES]'s own doc
-     * comment states for its LISTS | CALENDAR toggle, so this is one route, not five.
+     * editor drill-down inside it is internal Compose state, same posture `ui/NotesScreen.kt`'s
+     * own (now-deleted, one-today ticket 10 slice C) LISTS | CALENDAR toggle used to state, so
+     * this is one route, not five.
      */
     const val SETTINGS_PLAYBOOKS = "settings/playbooks"
 

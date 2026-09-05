@@ -52,17 +52,16 @@ object VoiceGuideData {
             title = "Your day",
             blurb = "Calendar, lists, reminders and the round-up.",
             entries = listOf(
-                Entry(name = "manage_item", say = "Add milk to the shopping list", does = "Adds, ticks off, or changes an item on any of your lists.", hands = "Notes tab, list screen - add, tick off, or edit a row."),
-                Entry(name = "manage_checklist", say = "Tick off squats on bio", does = "Creates and manages your own reusable checklists - \"bio\", \"morning routine\" - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Not your one to-do list - a checklist is a routine you name yourself. Your grocery/shopping list is a checklist too, named \"Groceries\".", hands = "Meters screen's LISTS pane - the checklists screen."),
-                Entry(name = "read_list", say = "What's on my shopping list?", does = "Reads back a list.", hands = "Notes tab, same list screen."),
-                Entry(name = "set_reminder", say = "Remind me to call the shop at four", does = "Sets a reminder for a time, or for when you arrive somewhere.", hands = "Partial - Notes shows and edits reminders, but there is no add-a-new-reminder dialog by hand."),
-                Entry(name = "read_calendar", say = "What's on today?", does = "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", hands = "Notes tab's LISTS / CALENDAR toggle, and Home's next-event tile."),
+                Entry(name = "manage_item", say = "Remind me to renew my registration next month", does = "Adds, ticks off, reschedules, or removes a REMINDER - one with a due date/time, a place trigger, or a repeat. A plain to-do with none of those is a checklist line instead.", hands = "Calendar tab, tap a day then tap a reminder row to edit its time, repeat, place, or remove it."),
+                Entry(name = "manage_checklist", say = "Tick off squats on bio", does = "Creates and manages your own reusable checklists - \"bio\", \"morning routine\", plain to-dos too - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Your grocery/shopping list and your plain to-do list are both checklists, named \"Groceries\" and \"Todo\".", hands = "Meters screen's LISTS pane - the checklists screen."),
+                Entry(name = "read_list", say = "What have I got coming up?", does = "Reads back your open reminders, soonest due first, each with its date, place or repeat.", hands = "Calendar tab, tap a day to see that day's reminders."),
+                Entry(name = "set_reminder", say = "Remind me to grab my gym bag when I get to the gym", does = "Sets a reminder tied to a saved place, so it comes up when you next arrive there.", hands = "Partial - Calendar's day view shows and edits a place-triggered reminder, but there is no add-a-new-reminder dialog by hand."),
+                Entry(name = "read_calendar", say = "What's on today?", does = "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", hands = "Calendar tab's month grid and day view, and Home's next-event tile."),
                 Entry(name = "tag_place", say = "Save this as work", does = "Saves where you are now under a name, so reminders can trigger there.", hands = "Fleet > Saved places screen."),
                 Entry(name = "forget_place", say = "Forget the old gym", does = "Removes a saved place.", hands = "Fleet > Saved places screen, delete behind a confirm."),
                 Entry(name = "show_saved_places", say = "Show my saved places", does = "Puts your saved places on screen.", hands = "Is itself the Fleet > Saved places screen."),
                 Entry(name = "open_navigation", say = "Navigate to the hardware store", does = "Hands off to your maps app.", hands = "Fleet > Saved places screen, Navigate button on each place."),
-                Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Notes tab, tap a day on the calendar and choose Show in list."),
-                Entry(name = "show_list_modal", say = "Show me my list", does = "Pops up your whole list on screen without leaving where you are.", hands = "Notes tab, the main list."),
+                Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Calendar tab, today's day view shows the same thing directly."),
                 Entry(name = "show_generated_view", say = "Show me my grocery spend by month", does = "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", hands = "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
             ),
         ),
@@ -245,6 +244,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 119 as of the last regeneration. */
-    val TOOL_COUNT: Int = 119
+    /** Total entries across every group above - 118 as of the last regeneration. */
+    val TOOL_COUNT: Int = 118
 }

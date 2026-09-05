@@ -34,14 +34,14 @@ Body, Fleet, Notes, Setup) are one tap away behind a "Classic" button, not retir
 
 <!-- VOICE-SURFACE:START -->
 
-**119 voice tools across 15 domains**, dispatched from one Gemini Live
+**118 voice tools across 15 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
 | Domain | Tools | Something you would say |
 |---|---|---|
 | Getting started | 8 | &ldquo;Give me a sitrep&rdquo; |
-| Your day | 12 | &ldquo;Add milk to the shopping list&rdquo; |
+| Your day | 11 | &ldquo;Remind me to renew my registration next month&rdquo; |
 | The cars | 28 | &ldquo;Any trouble codes?&rdquo; |
 | Driving | 2 | &ldquo;Open the garage&rdquo; |
 | Money | 11 | &ldquo;What's my balance?&rdquo; |

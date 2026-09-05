@@ -23,7 +23,8 @@ import java.util.Locale
  * and hands the plain list here to combine with the local [AgendaEntry] list it already built.
  * Every branch below is a plain JUnit test (`CalendarAgendaResolverTest`), matching this domain's
  * existing "pure builder, thin Composable wrapper" split
- * ([com.kevin.legion.ui.notes.buildInboxRows]/[com.kevin.legion.ui.notes.buildMissedRows]).
+ * ([com.kevin.legion.ui.notes.buildInboxRows] - `buildMissedRows`, this pattern's other original
+ * example, is deleted, one-today ticket 10 slice C; see [buildInboxRows]'s own doc comment).
  *
  * **This file's own merge/sort logic is UNCHANGED by that repoint** - only where its input comes
  * from moved. **No recurrence math lives here, or anywhere else in LEGION, for an appointment.**
@@ -114,41 +115,14 @@ fun <T> mergeByTime(
     return (local + converted).sortedBy { it.first }.map { it.second }
 }
 
-/**
- * What the AGENDA pane says about its own Google Calendar coverage, kept separate from whether the
- * row LIST itself is empty - ticket 13 point 7's "must never render an empty day that reads as
- * 'you have nothing on'" (the same failure shape as `memory/MEMORY.md`'s L15 note, applied here): a
- * denied `READ_CALENDAR` permission means the day might not be empty at all, merely UNREAD, and
- * that is a different fact from a day that was fully read and is genuinely empty. Both facts can be
- * true at once (permission refused AND zero local entries), so this is worded independently of
- * [AgendaEntry] count rather than folded into one empty-state string.
- */
-data class AgendaCalendarNotice(
-    /** Null when there is nothing to say - permission is granted, so the row list already speaks
-     * for itself. Non-null is shown as its own line/prompt regardless of whether [AgendaEntry]s
-     * are present, because a driver with three local reminders showing still cannot tell from that
-     * alone whether a fourth, Google-owned appointment is silently missing. */
-    val message: String?,
-    /** True only when [message] is null (permission granted) AND the merged list is empty - the
-     * one case where "NOTHING SCHEDULED" is an honest claim rather than a guess about a source this
-     * screen was never allowed to read. */
-    val showNothingScheduled: Boolean,
-)
-
-private const val CALENDAR_NOT_LINKED_MESSAGE =
-    "Calendar not linked - grant access to see Google events here too."
-
-/**
- * Resolves [AgendaCalendarNotice] from the one fact that decides it: whether `READ_CALENDAR` is
- * currently granted. [entryCount] only matters when it is - see that field's own doc comment for
- * why permission state and emptiness are never collapsed into a single check.
- */
-fun buildAgendaCalendarNotice(calendarPermissionGranted: Boolean, entryCount: Int): AgendaCalendarNotice =
-    if (!calendarPermissionGranted) {
-        AgendaCalendarNotice(message = CALENDAR_NOT_LINKED_MESSAGE, showNothingScheduled = false)
-    } else {
-        AgendaCalendarNotice(message = null, showNothingScheduled = entryCount == 0)
-    }
+// AgendaCalendarNotice/buildAgendaCalendarNotice (what the AGENDA pane said about its own Google
+// Calendar coverage, kept separate from whether the row list itself was empty - ticket 13 point 7)
+// deleted one-today ticket 10 slice C, 2026-09-05: `ui/notes/InboxScreen.kt` was the only caller
+// (grep-confirmed before deletion) and is itself deleted with this slice. One-today ticket 01 had
+// already cut the live `CalendarContract` read this notice existed to word ("cut Google entirely" -
+// the local `events` table is always readable, so the permission-refused branch had not fired in
+// production since that ticket), so nothing on `ui/CalendarScreen.kt`'s day view lost real coverage
+// by this removal.
 
 // ------------------------------------------------------------ quant-viz ticket 13: WEEK AHEAD
 
@@ -160,16 +134,19 @@ fun buildAgendaCalendarNotice(calendarPermissionGranted: Boolean, entryCount: In
  *
  * **Zero is a genuine zero here (ticket 13 point 2), never a gap.** Unlike a health metric where
  * an unlogged day is a fact this app cannot claim to know, a day with no agenda item is a fact the
- * app DOES know - [entries] is the SAME merged local+Google agenda stream
- * [mergeAgenda]/[buildAgendaCalendarNotice] already produce for [com.kevin.legion.ui.TodayScreen]'s
- * single-day AGENDA pane and `InboxScreen`'s stream, just windowed over seven days instead of one -
- * so an empty bucket here means "nothing scheduled that day", not "coverage unknown". This is why
+ * app DOES know - [entries] is the SAME merged local+Google agenda stream [mergeAgenda] produces for
+ * `ui/CalendarScreen.kt`'s own day view, just windowed over seven days instead of one (the original
+ * callers this comment named, `ui/TodayScreen.kt`'s single-day AGENDA pane and `ui/notes/
+ * InboxScreen.kt`'s own stream, are both deleted - one-today ticket 07 and ticket 10 slice C
+ * respectively) - so an empty bucket here means "nothing scheduled that day", not "coverage
+ * unknown". This is why
  * the return type is `List<Int>`, never `List<Int?>`: the gap-vs-zero distinction the chart kit
  * enforces elsewhere has nothing to represent on this particular screen, because this screen's one
  * source of truth (the local DB plus, when linked, Google) is either fully queried for the whole
- * window or not queried at all - see this file's other doc comment on why a denied `READ_CALENDAR`
- * is a caller-level "do not call this function, show [CalendarNotLinkedRow] instead" decision
- * rather than a per-day null this function could produce.
+ * window or not queried at all - a denied `READ_CALENDAR` used to be a caller-level "do not call
+ * this function, show [CalendarNotLinkedRow] instead" decision rather than a per-day null this
+ * function could produce (moot since one-today ticket 01 cut the live `CalendarContract` read
+ * entirely - the local `events` table this screen reads now is always readable).
  *
  * A [AgendaEntry] whose [AgendaEntry.timeMs] falls inside a local day but outside every entry in
  * [dayStarts] (i.e. a recurrence math bug or a Google event outside the queried window) is silently

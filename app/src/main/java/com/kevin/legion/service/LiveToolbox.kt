@@ -648,9 +648,13 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "set_reminder",
+            // Note added one-today ticket 10 slice C, 2026-09-05: this already only ever created a
+            // place-triggered REMINDER, never a plain todo, so no behavioural change - just the
+            // redirect clause manage_item/read_list also carry now.
             description = "Save a reminder tied to one of the user's saved places, surfaced when " +
                 "they next arrive there. Use for 'remind me to X when I get to / when I'm at the Y', " +
-                "e.g. 'remind me to grab my gym bag when I get to the gym'.",
+                "e.g. 'remind me to grab my gym bag when I get to the gym'. NOT for a plain to-do " +
+                "with no place attached to it - use manage_checklist (list=Todo) for that instead.",
             params = obj(
                 "place" to schema("string", "The saved place the reminder is for, e.g. home, work, gym, walmart."),
                 "text" to schema("string", "What to remind the user about, in their own words, e.g. 'grab your gym bag'."),
@@ -1262,18 +1266,25 @@ object LiveToolbox {
             // prefix off every repeat_* param (the field names and this description already carry
             // that context) without dropping any distinct rule, enum value, or capability - notes/
             // lists/calendar stays genuinely multi-shaped, this only removes restated words.
+            // REWRITTEN one-today ticket 10 slice C, 2026-09-05: this used to describe "the user's
+            // ONE PERSISTENT list" - that screen (`ui/NotesScreen.kt`) is gone, and a dateless
+            // to-do (no date, no place, no repeat) migrated onto a checklist named "Todo"
+            // (`notes/ReminderChecklistMigration.kt`). This tool is now scoped to a REMINDER - one
+            // with a real trigger (a due date/time, a place, or a repeat) - and a plain todo with
+            // none of those redirects to manage_checklist instead.
             description = "Add, tick, untick, remove, schedule (time and/or repeat), or skip one " +
-                "occurrence of ONE item on the user's ONE PERSISTENT list: car to-dos, errands, " +
-                "reminders, and notes all live on it, so never ask which of those to use or " +
-                "mention lists in the plural. NOT for shopping: the grocery/shopping list is a " +
-                "checklist named \"Groceries\" now, so 'add tums to the grocery list', 'put milk " +
-                "on the shopping list' and anything else naming groceries or shopping goes to " +
-                "manage_checklist (list=Groceries) - never here. A " +
-                "dated appointment (see 'kind') goes on the user's calendar instead of this list, " +
+                "occurrence of a REMINDER - a to-do tied to a real trigger: a due date/time, a " +
+                "place, or a repeat rule. NOT for a plain to-do with none of those - that's a " +
+                "checklist line now, route it to manage_checklist (list=Todo, create it first with " +
+                "action=create if it doesn't exist yet). NOT for shopping: the grocery/shopping " +
+                "list is a checklist named \"Groceries\" now, so 'add tums to the grocery list', " +
+                "'put milk on the shopping list' and anything else naming groceries or shopping " +
+                "goes to manage_checklist (list=Groceries) - never here. A " +
+                "dated appointment (see 'kind') goes on the user's calendar instead of a reminder, " +
                 "and it just passes at its time - it is NEVER tickable or untickable (say so " +
                 "plainly if asked to mark one done or not done, the same way you would for a " +
                 "class on a school schedule), and it is not removable, schedulable or skippable " +
-                "that way either (edit it on the Notes screen instead). " +
+                "that way either (edit it on the calendar day view instead). " +
                 "Pass any date/time the user gives on the SAME 'add' call via date/time - never add " +
                 "first and schedule in a second call, which stores an appointment with no date at " +
                 "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
@@ -1369,9 +1380,13 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "read_list",
-            description = "Read back the user's list - every open item, soonest due date first, " +
-                "with the date on any item that has one. There is exactly one list. Use for " +
-                "'what's on my list', 'what's left to do for the car', 'what have I got coming up'.",
+            // REWRITTEN one-today ticket 10 slice C, 2026-09-05 - see manage_item's own comment for
+            // why: this now reads back REMINDERS only, never a plain todo (that's manage_checklist
+            // list=Todo, "lists" action).
+            description = "Read back the user's open REMINDERS - each with the date, place or " +
+                "repeat that triggers it, soonest due first. NOT a plain to-do with none of those - " +
+                "use manage_checklist (list=Todo, action=read) for that instead. Use for 'what " +
+                "reminders do I have', 'what's left to do for the car', 'what have I got coming up'.",
             params = obj(),
             required = listOf(),
         ))
@@ -1382,21 +1397,23 @@ object LiveToolbox {
         // import_receipt just above; LiveSessionController owns the screen.
         fns.put(fn(
             name = "show_agenda_modal",
+            // Note added one-today ticket 10 slice C, 2026-09-05: "any to-do with a date today" was
+            // already reminder-shaped by definition (a dateless todo has no "today" to fall on) -
+            // added the explicit checklist redirect the other three notes tools now carry too.
             description = "Bring up today's due items - reminders, appointments, and any to-do " +
-                "with a date today - as an on-screen list. Use for 'show me my agenda', " +
-                "'what's on today', 'pull up today's list'.",
+                "with a date today - as an on-screen list. Does not include checklist lines (a " +
+                "plain to-do, or a routine like \"bio\") - use manage_checklist for those. Use for " +
+                "'show me my agenda', 'what's on today', 'pull up today's list'.",
             params = obj(),
             required = listOf(),
         ))
 
-        fns.put(fn(
-            name = "show_list_modal",
-            description = "Bring up the user's whole persistent list (car to-dos, errands, " +
-                "reminders, notes - the same one manage_item/read_list operate on) as an " +
-                "on-screen list. Use for 'show me my list', 'pull up my to-dos'.",
-            params = obj(),
-            required = listOf(),
-        ))
+        // show_list_modal RETIRED one-today ticket 10 slice C, 2026-09-05: the persistent-list
+        // screen it brought up (`ui/NotesScreen.kt`) is gone - "everything is a checklist now". A
+        // model that still calls it by name (a cached old session, for instance) gets an explicit
+        // retirement message off `dispatch`'s own named branch below (§7: nothing claims success
+        // unless the action ran), never a silent "Unknown tool" - same shape `manage_grocery`'s own
+        // retirement comment above already established.
 
         // show_groceries_modal RETIRED one-today ticket 10 slice B, 2026-09-05, alongside
         // manage_grocery - see that tool's own retirement comment above. There is no checklist
@@ -2055,9 +2072,11 @@ object LiveToolbox {
      * math reads back), `activate_garage` (acts on the physical world), `set_goal`/`close_goal`/
      * `accept_proposal` (lifecycle plus an explicit-consent protocol), `set_meal_target`/
      * `set_sleep_target` (config the meters read), `import_receipt`/
-     * `show_saved_places`/`show_agenda_modal`/`show_list_modal` (UI-scoped -
+     * `show_saved_places`/`show_agenda_modal` (UI-scoped -
      * [dispatch] returns null for these, and a sub-agent has no screen to hand them to, so
-     * dispatching one from inside an investigate loop would be a silent no-op), and every
+     * dispatching one from inside an investigate loop would be a silent no-op; `show_list_modal`
+     * used to be a third example here but is RETIRED, one-today ticket 10 slice C, 2026-09-05 - its
+     * own `dispatch` branch returns a named failure message now, never null), and every
      * money/notes/media/place/core tool.
      */
     private val DISPATCHED: Map<String, List<String>> = mapOf(
@@ -2650,7 +2669,17 @@ object LiveToolbox {
             "show_saved_places" -> null // caller launches the saved-places screen and replies
             "import_receipt" -> null // caller launches the receipt-import screen and replies
             "show_agenda_modal" -> null // caller shows the voice-called modal and replies
-            "show_list_modal" -> null // caller shows the voice-called modal and replies
+            // "show_list_modal" retired one-today ticket 10 slice C, 2026-09-05 - named explicitly
+            // for the same reason "manage_grocery" (above) and "show_groceries_modal" (below) are:
+            // a retired UI-scoped tool must still say so in words rather than falling through to
+            // "Unknown tool". The persistent list itself is gone (`ui/NotesScreen.kt`) - a reminder
+            // lives on the calendar day view now, a plain to-do is a checklist line.
+            "show_list_modal" -> result(
+                false,
+                "show_list_modal was retired - the persistent list is gone. A reminder can be " +
+                    "edited from the calendar day view now, or read back with show_agenda_modal; a " +
+                    "plain to-do is a checklist line, managed through manage_checklist.",
+            )
             // "show_groceries_modal" retired one-today ticket 10 slice B, 2026-09-05 - named
             // explicitly for the same reason "manage_grocery" is above: a retired UI-scoped tool
             // must still say so in words rather than falling through to "Unknown tool".

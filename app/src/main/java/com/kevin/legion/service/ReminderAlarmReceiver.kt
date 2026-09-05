@@ -124,9 +124,14 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             // Phase 2b wires both extras MainActivity actually reads: EXTRA_ROUTE lands the bottom
-            // nav on Notes, EXTRA_OPEN_ITEM_ID tells NotesScreen which item to jump into once it's
-            // there (ticket 12: "tapping the notification opens the item").
-            putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.NOTES)
+            // nav, EXTRA_OPEN_ITEM_ID tells the destination which item to jump into once it's there
+            // (ticket 12: "tapping the notification opens the item"). **REPOINTED one-today ticket
+            // 10 slice C, 2026-09-05: EXTRA_ROUTE used to be LegionRoute.NOTES, landing on the
+            // now-deleted `ui/NotesScreen.kt`** - `ui/CalendarScreen.kt` is the reminder-editing
+            // hands surface now (see that screen's own file doc comment), and its own
+            // `highlightItemId`/`highlightItemNonce` params read EXTRA_OPEN_ITEM_ID the same way
+            // NotesScreen's `openItemId`/`openItemNonce` used to.
+            putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.CALENDAR)
             putExtra(EXTRA_OPEN_ITEM_ID, item.id)
         }
         val openPi = PendingIntent.getActivity(

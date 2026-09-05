@@ -6,10 +6,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.service.VoiceModalController
 import com.kevin.legion.service.VoiceModalTarget
-import com.kevin.legion.ui.notes.InboxScreen
 
 /**
  * The collector for [VoiceModalController] - a voice-called modal made real (ADR 0040's corrected
@@ -41,18 +39,17 @@ fun VoiceModalHost() {
         sheetState = sheetState,
     ) {
         when (current.target) {
-            // Today's due items, filtered exactly the way tapping a dotted day on the NOTES
-            // calendar already filters `ui/NotesScreen.kt`'s InboxScreen (`selectedDayStart`,
-            // wired from `DayEventsDialog`'s own SHOW IN LIST button) - same screen, same filter,
-            // reached by hand today from NOTES -> tap a day -> SHOW IN LIST.
-            VoiceModalTarget.AGENDA -> InboxScreen(
-                dayFilterStartMs = dayStartEpoch(System.currentTimeMillis()),
-                onClearDayFilter = { /* the sheet closes rather than clearing in place */ },
-            )
-            // The unfiltered notes stream - reached by hand today as the NOTES tab's ITEMS mode
-            // (`ui/NotesScreen.kt`'s `LogMode.ITEMS` branch), the same composable with no day
-            // filter applied.
-            VoiceModalTarget.WHOLE_LIST -> InboxScreen()
+            // Today's due items. **REPOINTED one-today ticket 10 slice C, 2026-09-05: this used to
+            // host `ui/notes/InboxScreen.kt` with a day filter set to today** (the same screen
+            // tapping a dotted day on the old NOTES calendar filtered) - that screen is deleted.
+            // [CalendarScreen] is the hands-reachable Notes/Dates surface now (the top-level
+            // CALENDAR tab), and it already opens with TODAY selected by default
+            // (`selectedDayStart`'s own `remember` default), so hosting it bare here shows exactly
+            // "today's due items" with no day-filter parameter needed at all.
+            VoiceModalTarget.AGENDA -> CalendarScreen()
+            // VoiceModalTarget.WHOLE_LIST (the unfiltered persistent-list stream) retired one-today
+            // ticket 10 slice C alongside `ui/NotesScreen.kt` and `show_list_modal` - see
+            // [VoiceModalTarget]'s own doc comment.
             // VoiceModalTarget.GROCERIES (the grocery trip screen) retired one-today ticket 10
             // slice B alongside `ui/notes/GroceryScreen.kt` and `show_groceries_modal` - see
             // [VoiceModalTarget]'s own doc comment.

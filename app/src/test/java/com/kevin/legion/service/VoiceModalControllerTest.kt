@@ -15,10 +15,8 @@ class VoiceModalControllerTest {
     @Test
     fun `show sets the current payload to the requested target`() {
         VoiceModalController.dismiss()
-        // GROCERIES retired (one-today ticket 10 slice B, 2026-09-05) - WHOLE_LIST exercises the
-        // identical assignment path.
-        VoiceModalController.show(VoiceModalTarget.WHOLE_LIST)
-        assertEquals(VoiceModalTarget.WHOLE_LIST, VoiceModalController.current.value?.target)
+        VoiceModalController.show(VoiceModalTarget.AGENDA)
+        assertEquals(VoiceModalTarget.AGENDA, VoiceModalController.current.value?.target)
     }
 
     @Test
@@ -28,21 +26,18 @@ class VoiceModalControllerTest {
         assertNull(VoiceModalController.current.value)
     }
 
-    @Test
-    fun `a second show replaces the first rather than queueing`() {
-        VoiceModalController.show(VoiceModalTarget.AGENDA)
-        VoiceModalController.show(VoiceModalTarget.WHOLE_LIST)
-        // Only ever one payload live at a time - the second call overwrote the first outright,
-        // there is no queue anywhere in this controller to have preserved it.
-        assertEquals(VoiceModalTarget.WHOLE_LIST, VoiceModalController.current.value?.target)
-    }
+    // "a second show replaces the first rather than queueing" (originally proved by showing
+    // AGENDA then WHOLE_LIST and asserting the target was WHOLE_LIST) deleted one-today ticket 10
+    // slice C, 2026-09-05: `VoiceModalTarget` is down to one value ([WHOLE_LIST] retired alongside
+    // `show_list_modal` - see that enum's own doc comment), so there is no second target left to
+    // demonstrate an overwrite with. `repeat show of the same target is still a distinct payload`
+    // below already proves the identical "no queue, newest wins" behaviour via [VoiceModalPayload]'s
+    // own `shownAt`, which is what actually makes the StateFlow re-emit either way.
 
     @Test
     fun `repeat show of the same target is still a distinct payload`() {
         // VoiceModalPayload's shownAt (see its own doc comment) is what makes a StateFlow actually
         // re-emit on a same-target repeat call, rather than being swallowed as an unchanged value.
-        // GROCERIES retired (one-today ticket 10 slice B, 2026-09-05) - AGENDA exercises the
-        // identical repeat-call path.
         VoiceModalController.show(VoiceModalTarget.AGENDA)
         val first = VoiceModalController.current.value
         Thread.sleep(2) // guarantees a distinct shownAt millisecond - see VoiceModalPayload's doc
