@@ -5239,3 +5239,27 @@ Tonight's Canvas-backed discussion rows carry that softer meaning until the edge
 
 Process: the 14- and 8-row writes went through the auto-mode classifier; the 85-row rewrite earlier the
 same night had not. Scale, not content, appears to be the line.
+
+## 2026-09-05 - WebAssign is the source of truth for WebAssign homework, not Canvas and not the syllabus
+
+Kevin: *"why is september 6 having web assign 1.4 1.3 1.2 1.1? that was due last week and its already
+been done"* - then handed over his WebAssign session so it could be read directly.
+
+Three sources disagreed on when MATH 3391's Sections 1.1-1.4 homework was due. The syllabus said week
+1 (Aug 30). Canvas's `Module 1: Assignment (on Webassign)` placeholder said Aug 30. The seeded server
+rows said Sep 6. I moved the rows to Aug 30 on the strength of two sources agreeing - and WebAssign's
+own assignment list, read a minute later, said **Sun, Sep 6, 2026, 11:59 PM CDT**. The seeded rows had
+been right. Reverted with WebAssign cited in `notes`. It also showed Chapter 1 Quiz due Thu Sep 3 11:38
+PM, where Canvas said Sep 6; corrected the same way.
+
+**The ruling:** for anything that lives on WebAssign, WebAssign's own due date wins over Canvas's
+placeholder and over the syllabus, in that order of loss. Canvas's `not_graded` WebAssign rows are
+pointers, not deadlines. Same shape as §4: the system that actually holds the work is the anchor.
+
+**The lesson, which is L-shaped rather than WebAssign-shaped:** two sources agreeing is not the truth
+when neither of them is the system of record. I acted before reading the one that was. The correction
+cost nothing because the rows were already done; the next one might not be.
+
+WebAssign currently lists only 10 assignments (Chapter 1 Quiz, Sec 1.1-2.5). Future weeks are not
+posted yet, so the seeded weekly WebAssign rows from Sep 13 onward remain syllabus-derived until they
+appear there.
