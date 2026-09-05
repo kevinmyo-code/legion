@@ -498,6 +498,33 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 - When a `reasoned` claim proves wrong, file it in `lessons.md` and graduate its rule into an agent
   def or this file. An entry closes only when its rule lives in a surface something reads.
 
+### No framework. Dependencies are parameters. (Kevin, 2026-09-05)
+
+Asked whether LEGION should adopt an Android framework, the answer after research was no, and Kevin
+ruled it so. The platform plus Jetpack plus Compose IS the framework; Google's own guidance labels
+Hilt "for complex projects" and manual DI "for simple apps", and this is one developer, one phone.
+What the codebase lacks is two conventions, not a library. Both bind NEW code; the existing 33
+controllers migrate only as they are touched, never in a sweep.
+
+- **A controller takes its collaborators as parameters, never `Context`.** The database, a backend,
+  a clock. The caller resolves them once. `Context` threaded through 645 signatures is why 202 of
+  318 test files need Robolectric and why there is no seam to fake a backend - and with a second
+  client arriving (Django, see `docs/adr/` two-clients ADRs) a thin client that calls RPCs is the
+  shape that wants this most.
+- **One `AppGraph`, a plain Kotlin class built in `MidnightApplication.onCreate`**, holding the DB,
+  the Supabase client and the backends. That is what Google calls manual DI. No annotation
+  processor; Room's kapt is already the build's tax and Hilt would double it.
+- **Screen-level state holders for the busiest screens** (calendar, ledger, pantry) as `ViewModel`
+  subclasses exposing one `StateFlow<UiState>`, collected with `collectAsStateWithLifecycle`.
+  `lifecycle-viewmodel-compose` is already on the classpath. Rotation, process death and a Realtime
+  push all re-run a screen-local loader today; that surfaces as "the list flashed empty".
+
+**Adopt later, on a named trigger:** Koin if a DI library is ever wanted (fits the `object` style,
+no codegen; prefer it over Hilt). A `:core:data` module when a clean compile is intolerable - and
+before that, Room kapt to KSP, which is cheaper. Navigation 3 when navigation-compose 2.8 blocks a
+real need. **Never for this app:** Circuit, Decompose, MVI frameworks, a use-case layer, Flutter,
+React Native, KMP. Phone-only is a ruling and there is no second platform to share with.
+
 ### Branching
 
 | Branch | Role |
