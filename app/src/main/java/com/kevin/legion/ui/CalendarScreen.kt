@@ -299,16 +299,16 @@ fun CalendarScreen() {
         val checklistDay = java.time.Instant.ofEpochMilli(day).atZone(zone).toLocalDate().toEpochDay().toInt()
         checklistsToday = ChecklistController.checklistsForDay(context, checklistDay).map { checklist ->
             // A collapsed header still has to be honest (this ticket's own ruling): [itemsWithTickState]
-            // carries no failure signal of its own (unlike [VoiceNoteController]'s Loaded/Failed
-            // above), so a thrown read is caught here, per checklist, rather than crashing the whole
-            // day view over one bad list - [entry.loadFailed] then renders its own sentence instead
-            // of a false "0/0".
-            val items = try {
-                ChecklistController.itemsWithTickState(context, checklist.id, checklistDay)
-            } catch (e: Exception) {
-                null
+            // now carries its own failure signal (same [ChecklistController.ChecklistItemsResult]
+            // shape [VoiceNoteController.VoiceNotesForDayResult] uses above), so this consumes
+            // Loaded/Failed directly rather than a per-checklist try/catch - [entry.loadFailed]
+            // renders its own sentence instead of a false "0/0".
+            when (val result = ChecklistController.itemsWithTickState(context, checklist.id, checklistDay)) {
+                is ChecklistController.ChecklistItemsResult.Loaded ->
+                    ChecklistDayEntry(checklist = checklist, items = result.items, loadFailed = false)
+                is ChecklistController.ChecklistItemsResult.Failed ->
+                    ChecklistDayEntry(checklist = checklist, items = emptyList(), loadFailed = true)
             }
-            ChecklistDayEntry(checklist = checklist, items = items ?: emptyList(), loadFailed = items == null)
         }
     }
 
@@ -604,9 +604,10 @@ private fun RecordedDayRow(note: VoiceNote, onClick: () -> Unit) {
  * file doc comment for why a checklist gets its own section rather than joining [dayRows].
  *
  * [loadFailed], added one-today ticket 09's third build: true when [ChecklistController.itemsWithTickState]
- * threw for this checklist on this day - [items] is then always empty, but [loadFailed] is the fact
- * a caller must render ("couldn't load"), never inferred back out of an empty [items] list, which
- * would read identically to a genuinely empty checklist.
+ * returned [ChecklistController.ChecklistItemsResult.Failed] for this checklist on this day -
+ * [items] is then always empty, but [loadFailed] is the fact a caller must render ("couldn't
+ * load"), never inferred back out of an empty [items] list, which would read identically to a
+ * genuinely empty checklist.
  */
 private data class ChecklistDayEntry(val checklist: Checklist, val items: List<ChecklistController.ItemState>, val loadFailed: Boolean = false)
 

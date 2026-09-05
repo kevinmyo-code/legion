@@ -49,12 +49,12 @@ object ChecklistController {
     // ---- checklist CRUD ----------------------------------------------------------------------
 
     /**
-     * [recursDaily] is kept for source compatibility and still governs [itemsWithTickState]'s
-     * "done ever" vs "done today" split (see [Checklist.recursDaily]'s own doc comment) - it is
-     * NOT translated into a [scheduleKind] here. A brand-new checklist with no [scheduleKind]
-     * argument gets `scheduleKind = null`, which [checklistsForDay]/[appliesOnDay] read as "applies
-     * every day", exactly the unconditional listing every checklist already got before this ticket.
-     * Only [MIGRATION_65_66] back-fills `scheduleKind = "DAILY", scheduleEvery = 1` for EXISTING
+     * [recursDaily] is DEPRECATED (see [Checklist.recursDaily]'s own doc comment) and is no longer
+     * read by anything in this file - it is NOT translated into a [scheduleKind] here. A brand-new
+     * checklist with no [scheduleKind] argument gets `scheduleKind = null`, which
+     * [checklistsForDay]/[appliesOnDay]/[itemsWithTickState] all read as "applies every day, done
+     * once ever" - the plain-todo-list default this ticket's brief describes. Only
+     * [MIGRATION_65_66] back-fills `scheduleKind = "DAILY", scheduleEvery = 1` for EXISTING
      * `recursDaily = 1` rows, because that migration has to describe a historical fact about rows
      * that already exist; a fresh caller who wants a real schedule passes [scheduleKind] directly,
      * or calls [setSchedule] afterward.
@@ -96,6 +96,10 @@ object ChecklistController {
         db(context).checklistDao().rename(checklistId, name, at)
     }
 
+    /** DEPRECATED (see [Checklist.recursDaily]'s own doc comment) - nothing in this controller
+     * reads [Checklist.recursDaily] anymore, so calling this no longer changes how any read
+     * behaves. Kept only because §5 forbids deleting a working API alongside a non-destructive
+     * migration; use [setSchedule] instead. */
     suspend fun setRecursDaily(context: Context, checklistId: Long, recursDaily: Boolean, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().setRecursDaily(checklistId, recursDaily, at)
     }
@@ -255,41 +259,69 @@ object ChecklistController {
      * null on a binary item, and null on a measured item that has not been ticked yet. */
     data class ItemState(val item: ChecklistItem, val ticked: Boolean, val tickedAt: Long?, val value: Double? = null)
 
+    /** What [itemsWithTickState] hands back - the same "an empty read and a failed read are not
+     * the same sentence" shape [com.kevin.legion.voice.VoiceNoteController.VoiceNotesForDayResult]
+     * uses for the calendar's RECORDED section. [Loaded] with an empty list IS the quiet
+     * "no items yet" (or trap-1-gated) case; [Failed] is the other one, and a caller must say so
+     * in words (`ui/checklists/ChecklistDayViewLogic.kt`'s [checklistSectionLabel] does exactly
+     * this for the day view's collapsed header) rather than falling back to an empty list that
+     * would look identical to a genuinely empty checklist. */
+    sealed interface ChecklistItemsResult {
+        data class Loaded(val items: List<ItemState>) : ChecklistItemsResult
+        data class Failed(val reason: String) : ChecklistItemsResult
+    }
+
     /**
      * A checklist's items with their tick state for [day] (defaults to [today]).
      *
-     * Trap 1's gate: returns an EMPTY list, never "every item unticked", when [day] falls before
-     * [Checklist.createdAt] - compared as a LOCAL DAY via [dayOf], never as a raw millisecond
-     * range, so a timezone change cannot shift which side of the boundary a day falls on. Create
-     * "bio" today, ask for last Tuesday, and this comes back empty: nothing was missed, the list
-     * did not exist.
+     * Trap 1's gate: [ChecklistItemsResult.Loaded] with an EMPTY list, never "every item
+     * unticked", when [day] falls before [Checklist.createdAt] - compared as a LOCAL DAY via
+     * [dayOf], never as a raw millisecond range, so a timezone change cannot shift which side of
+     * the boundary a day falls on. Create "bio" today, ask for last Tuesday, and this comes back
+     * empty: nothing was missed, the list did not exist.
      *
-     * For a NON-recurring checklist ([Checklist.recursDaily] false), [ItemState.ticked] is true
-     * the moment ANY tick exists for that item on ANY day, not just [day] - "done" for a one-shot
-     * list is a fact about the item, not about the day being viewed.
+     * The mode is derived from [Checklist.scheduleKind], never from the deprecated
+     * [Checklist.recursDaily] (one-today ticket 09 decision 4): a NULL [scheduleKind] is a plain
+     * todo list with no day axis, so [ItemState.ticked] is true the moment ANY tick exists for
+     * that item on ANY day - "done" for it is a fact about the item, not about the day being
+     * viewed. A non-null [scheduleKind] (`"DAILY"`/`"WEEKLY"`) is tracked per day: [ItemState.ticked]
+     * reflects [day] alone.
+     *
+     * Deliberately wrapped in [runCatching], same reasoning as
+     * [com.kevin.legion.voice.VoiceNoteController.listInRange]'s own doc comment: a `@Query`
+     * against a local SQLite database can still throw (a corrupt page, a full disk), and that
+     * failure must read differently from a day/checklist with nothing on it - never silently
+     * collapsed to an empty list a caller cannot tell apart from a genuinely empty one.
      */
-    suspend fun itemsWithTickState(context: Context, checklistId: Long, day: Int = today()): List<ItemState> {
-        val checklist = db(context).checklistDao().getById(checklistId) ?: return emptyList()
-        if (day < dayOf(checklist.createdAt)) return emptyList() // trap 1
+    suspend fun itemsWithTickState(context: Context, checklistId: Long, day: Int = today()): ChecklistItemsResult =
+        runCatching {
+            val checklist = db(context).checklistDao().getById(checklistId) ?: return@runCatching emptyList<ItemState>()
+            if (day < dayOf(checklist.createdAt)) return@runCatching emptyList<ItemState>() // trap 1
 
-        val items = db(context).checklistItemDao().forChecklist(checklistId)
-        if (items.isEmpty()) return emptyList()
+            val items = db(context).checklistItemDao().forChecklist(checklistId)
+            if (items.isEmpty()) return@runCatching emptyList<ItemState>()
 
-        return if (checklist.recursDaily) {
-            val ticks = db(context).checklistTickDao().forItemsOnDay(items.map { it.id }, day)
-                .associateBy { it.itemId }
-            items.map { item ->
-                val tick = ticks[item.id]
-                ItemState(item, ticked = tick != null, tickedAt = tick?.tickedAt, value = tick?.value)
+            if (checklist.scheduleKind != null) {
+                val ticks = db(context).checklistTickDao().forItemsOnDay(items.map { it.id }, day)
+                    .associateBy { it.itemId }
+                items.map { item ->
+                    val tick = ticks[item.id]
+                    ItemState(item, ticked = tick != null, tickedAt = tick?.tickedAt, value = tick?.value)
+                }
+            } else {
+                items.map { item ->
+                    val ticks = db(context).checklistTickDao().allForItem(item.id)
+                    val latest = ticks.maxByOrNull { it.tickedAt }
+                    ItemState(item, ticked = ticks.isNotEmpty(), tickedAt = latest?.tickedAt, value = latest?.value)
+                }
             }
-        } else {
-            items.map { item ->
-                val ticks = db(context).checklistTickDao().allForItem(item.id)
-                val latest = ticks.maxByOrNull { it.tickedAt }
-                ItemState(item, ticked = ticks.isNotEmpty(), tickedAt = latest?.tickedAt, value = latest?.value)
-            }
-        }
-    }
+        }.fold(
+            onSuccess = { ChecklistItemsResult.Loaded(it) },
+            onFailure = {
+                android.util.Log.w("ChecklistController", "itemsWithTickState: read failed for checklist $checklistId, day $day", it)
+                ChecklistItemsResult.Failed(it.message ?: "unknown error")
+            },
+        )
 
     /** Every checklist that applies to [day] (defaults to [today]) - trap 1's gate again, this
      * time over the LIST of checklists rather than one checklist's items: a checklist created

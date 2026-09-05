@@ -19,13 +19,14 @@ import androidx.room.PrimaryKey
  * hour after a timezone change. Instead a tick is a row keyed by `(item, day)` in [ChecklistTick] -
  * tomorrow queries tomorrow's [ChecklistTick.day] and finds nothing, which IS the reset, for free.
  *
- * [recursDaily] only changes how a day is READ, never what is stored: a recurring checklist is
- * queried for "today's" state on every day since [createdAt]; a non-recurring one is done the
- * moment ANY tick exists on ANY day (`ChecklistController.isNonRecurringDone`), and still records
- * WHEN each line was actually done, because it uses the exact same tick row shape (see
- * [ChecklistTick]'s own doc comment for why there is deliberately no second, one-shot storage
- * model). Toggling this later relabels how existing ticks are already being read; it does not
- * migrate or discard anything.
+ * [recursDaily] used to be what changed how a day was READ (a recurring checklist queried for
+ * "today's" state on every day since [createdAt]; a non-recurring one done the moment ANY tick
+ * exists on ANY day) - **superseded, one-today ticket 09's second build (2026-09-04): the same
+ * split is now driven by [scheduleKind] being non-null/null, [recursDaily] itself is DEPRECATED
+ * (see its own field doc comment) and `ChecklistController` no longer reads it.** Either way the
+ * non-recurring case still records WHEN each line was actually done, because it uses the exact
+ * same tick row shape (see [ChecklistTick]'s own doc comment for why there is deliberately no
+ * second, one-shot storage model).
  *
  * **[createdAt] gates history, not just display.** A history read for a day before this checklist
  * existed must come back empty - never "every item, all unticked" - or deleting nothing and
