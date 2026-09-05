@@ -239,3 +239,41 @@ heavy local edits (invariants preamble, Kotlin rule 5, dropped phrases) - merge,
 - `anthropics/skills` (`skill-creator`, `pdf`/`docx`/`pptx`/`xlsx`, etc.) - bundle Python scripts
   and target document generation; tangential to this Android/Kotlin app and not worth the
   script-review burden right now.
+
+## affaan-m/everything-claude-code - ideas only (2026-09-05)
+
+- Source: https://github.com/affaan-m/everything-claude-code
+- Fetched: 2026-09-05, from `main` (raw files named per row below; no commit pinned, because nothing
+  verbatim was copied and so there is nothing to diff against on refresh)
+- License: MIT ("Copyright (c) 2026 Affaan Mustafa")
+- What was copied: **nothing executable and nothing verbatim.** ECC's hooks are Node scripts with
+  per-session state under `~/.gateguard`; this repo's tooling is `tools/*.py` and shell lines in
+  `.claude/settings.json`, so each hook below was re-authored in Python from the idea, and each
+  agent or rules section was written in the existing file's voice. Scout note: the job-local
+  `ecc_proposal.md` (not in the repo).
+
+| Here | ECC source | What changed |
+|---|---|---|
+| `tools/hooks/guard_generated.py` (PreToolUse Edit, Write; exit 2) | `scripts/hooks/config-protection.js` | Upstream blocks edits to linter/formatter configs so an agent fixes code rather than weakening the check. Here the protected set is the GENERATED layer CLAUDE.md sections 5, 12, 13 say never to hand-edit (wiki, board, ADR index, canvases, schema JSON, `VoiceGuideData.kt`), and the message names the generator and the source to edit instead. README gets a warning only, since only its VOICE-SURFACE block is generated. |
+| `tools/hooks/guard_destructive.py` (PreToolUse Bash; exit 2) | `scripts/hooks/gateguard-fact-force.js`, destructive branch | Upstream recognises `rm -rf`, `git reset --hard`, forced push, `git checkout --`, `git clean -f`, `git commit --amend` and denies with a fact-forcing prompt plus per-session state. Here: adb and pm uninstall, the pm wipe, `supabase db reset` added; checkout, clean, amend and stash deliberately not blocked; `rm -rf` allowed inside `$CLAUDE_JOB_DIR` or a tmp dir; no state file; each block says what is lost and the way around. |
+| `tools/hooks/warn_room.py` (PreToolUse Edit, Write; exit 0) | `scripts/hooks/doc-file-warning.js` | Shape only: a path-filtered PreToolUse warning via `additionalContext`. Upstream warns on ad-hoc `NOTES.md`-style files; here the filter is `data/local/*.kt` and the content is CLAUDE.md section 5's Room checklist. |
+| `tools/hooks/warn_long_kotlin.py` (PreToolUse Bash `git commit*`; exit 0) | `rules/common/coding-style.md` | Upstream states a file ceiling (800 lines) as a prose rule. Here it is a commit-time warning listing staged `.kt` files over the ceiling, with the number Kevin set (1000, 2026-09-05) and detekt as the enforcing gate in the build. |
+| `.claude/skills/verify/SKILL.md` | `skills/verification-loop/SKILL.md` | Kept: the ordered-checks-then-READY/NOT-READY shape. Replaced: every step, with CLAUDE.md sections 6 and 8's own commands (`compileDebugKotlin -Pnokey`, `testDebugUnitTest` with totals from JUnit XML, `docs_check.py`, `voice_guide.py --check`, `decision_debt.py`, `sql_check.py`), plus the one-Gradle-writer precondition. Dropped: the 80% coverage target and the secrets grep. |
+| `.claude/agents/auditor.md`, "Swallowed failures" | `agents/silent-failure-hunter.md` | Upstream's five hunt targets (empty catch, weak logging, dangerous fallbacks, lost propagation, missing timeout/rollback) re-expressed as the Kotlin shapes this codebase produces, anchored to L-2026-09-04. |
+| `.claude/agents/auditor.md`, "Review the tests" | `agents/pr-test-analyzer.md` | Upstream's "meaningful assertions, flaky patterns, isolation" phase turned into a checklist of the failures seen here (fake asserting on its inputs, two clocks, shared Room, empty fixture), anchored to L-2026-09-05. No coverage percentage. |
+| `.claude/agents/auditor.md`, "Postgres diffs" | `agents/database-reviewer.md` | Upstream's Postgres/Supabase checklist minus the multi-tenant and pooling items, plus the four LEGION-specific checks (constraint case per the 2026-08-29 incident, `private.apply_household_rls`, `supabase_realtime` membership, unique index behind `on conflict`). Grammar is left to `tools/sql_check.py`. |
+| `TEAM.md`, "Completion contract" | `rules/common/agents.md`, "Delegation Completion Contract" | Upstream's three points (final message is the deliverable; delegator owns collection; decompose only when it does not fit) kept in substance, reworded, and joined to this repo's existing assumptions-ledger and relay-tag rules. |
+| `.claude/agents/builder.md`, "Reaching green honestly" | `agents/kotlin-build-resolver.md` | Two of upstream's rules - never suppress a warning without approval; stop after three failed attempts at one error - as two bullets. The rest of that agent (a `./gradlew build` loop, detekt/ktlint fixing) was not taken; `builder` already builds. |
+
+### Deliberately NOT taken
+
+`tdd-guide` and `rules/testing` (coverage percent as a gate, mocks over fakes; this repo has fakes
+and no MockK), `continuous-learning` (silent prompt self-modification; `lessons.md` exists so a rule
+is written by someone and read next run), the telemetry and Plan Canvas hooks, every team-scale,
+marketing, SEO and commercial item (CLAUDE.md section 2), `rules/git-workflow` (`feat:` prefixes;
+commits here are prose and `devlog.py` reads them), and the `android-clean-architecture` skill (an
+architecture decision, Kevin's, item 10 of the proposal). Full inventory in the scout note.
+
+### To refresh
+There is nothing to diff. Re-read the upstream files named in the table if the idea behind one of
+these needs re-examining; the local files carry no upstream text.

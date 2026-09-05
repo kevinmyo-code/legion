@@ -41,3 +41,16 @@ End with an assumptions ledger: every non-trivial claim tagged `built` (it compi
 (a test exercised it), `traced` (you followed the path), `reasoned` (you inferred it), `on-device`.
 **A `reasoned` correctness claim must be labelled, never stated as fact.** Then `SKILL:` lines for
 durable facts worth carrying forward.
+
+## Reaching green honestly
+
+- **No `@Suppress` without the reason on the same line.**
+  `@Suppress("DEPRECATION") // Media3 API removed in 1.5; ticket 12 replaces the call` says why. A
+  bare one says only that the warning was in the way. Same for `@file:Suppress`, a compiler
+  `-Xsuppress-warnings` flag, `allWarningsAsErrors = false`, a detekt baseline entry, or `@Ignore`
+  on a test: each is a check switched off. Either the brief asked for it, or the report says it
+  happened and why. Never to reach green unsaid.
+- **Three failed attempts at one build error, then stop.** Report the last error verbatim - file,
+  line, the compiler's own words - and what the three attempts were. Do not try a fourth. Three
+  misses means the model of the problem is wrong, and a fourth guess from the same model is not
+  cheaper than a pause. A fix that introduces more errors than it removes counts as a miss.

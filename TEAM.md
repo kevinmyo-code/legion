@@ -53,3 +53,21 @@ through a session where `coding` was dispatched a dozen times. They are now `aud
 retrieval half is what `scout` does; its filing half was always done inline.
 
 Add a seat when a dispatch is genuinely ambiguous between two existing ones, not before.
+
+## Completion contract
+
+Dispatch is the default; this is what dispatching commits the dispatcher to.
+
+- **A turn does not end with a subagent unfinished or its result unrelayed.** A spawned agent is
+  not finished work. Whoever delegated owns collection: wait, read the report, integrate it, then
+  answer. "Waiting for the agent" is never a final message; an agent whose parent has ended its turn
+  has nobody to report to. Independent dispatches go out in one message so they run in parallel;
+  a dispatch that needs another's result waits for it.
+- **An agent's report ends with the assumptions ledger.** Every non-trivial claim tagged `built` /
+  `tested` / `traced` / `reasoned` / `on-device`. A report without one is not done; send it back.
+- **The orchestrator carries verification tags unchanged.** `reasoned` stays `reasoned` in the
+  relay and in the final message; "the agent reasoned X" never becomes "X" (CLAUDE.md section 8,
+  relay rule). A verification step an agent could not perform is a gate, not a note (L11): resolve
+  it, or have Kevin accept it in so many words, before the work is reported built.
+- **Decompose only when the work does not fit one context.** An agent handed a task sized for one
+  agent does not re-delegate it whole. Depth is an outcome, not a plan.

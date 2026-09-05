@@ -87,12 +87,12 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>115 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 20 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 22 are waiting on another ticket first. <b>51 are already built</b> and owe nothing but a run on the phone. 9 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 20 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 26 are waiting on another ticket first. <b>51 are already built</b> and owe nothing but a run on the phone. 9 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">115</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">33</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n mint">29</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">51</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">22</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n amber">26</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
 <div class="stat"><span class="n mint">45</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">9</span><span class="stamp l">KIV</span></div>
@@ -252,16 +252,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>architecture</h2>
-<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">6</span> ready<span class="sep">&middot;</span><span class="dim">of 6 tickets</span></span>
-<span class="bar"><i style="flex:6"></i><b style="flex:0"></b></span>
+<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 6 tickets</span></span>
+<span class="bar"><i style="flex:2"></i><b style="flex:4"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">Room moves from kapt to KSP</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">Hilt plugin, @HiltAndroidApp, and the @EntryPoint shim</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">Bind the backend interfaces</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">04</span><span class="body"><span class="tt">Calendar, ledger, pantry: a ViewModel each, controllers injected</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">05</span><span class="body"><span class="tt">detekt joins the build, with a baseline and a 1000-line ceiling</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">06</span><span class="body"><span class="tt">Convert as touched, and when the shim retires</span><span class="det">Rule to write once 02 lands and the EntryPoints.get count is known.</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">Hilt plugin, @HiltAndroidApp, and the @EntryPoint shim</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">Bind the backend interfaces</span></span><span class="chip c-build">build</span><span class="state">waiting on #02</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">Calendar, ledger, pantry: a ViewModel each, controllers injected</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Convert as touched, and when the shim retires</span><span class="det">Rule to write once 02 lands and the EntryPoints.get count is known.</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #02</span></li>
 </ul>
 </section>
 <section class="map">
