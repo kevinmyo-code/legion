@@ -1,8 +1,9 @@
 ---
-status: accepted
+status: superseded
 decided: 2026-09-05
 decided-by: Kevin
 supersedes: [0002-no-hosted-backend]
+superseded-by: [0044-django-is-the-engine]
 source: "[[decisions#2026-09-05 - Two clients, one Postgres: the rules live in the database]]"
 tags: [adr]
 ---

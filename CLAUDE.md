@@ -129,7 +129,7 @@ None of these is re-openable without Kevin. Full record in `memory/library/decis
 | **Phone-only** | Head units may still install it; they no longer constrain design. The AOSP 8-10 ceiling, the frame-clock-only motion ban, and the ADB blackout are all LIFTED. Normal Compose animation is allowed. |
 | **Commercial model is DEAD** | No billing, tiers, broker, trial, store listing, pricing, or positioning work. `billing/` was dropped entirely. Do not reintroduce it or reason about conversion. |
 | **Clone-and-run is a HARD requirement** | A stranger clones, sideloads, signs in, and it works. This, not cost, is what rules out Firestore. It is also why `gradle.properties` must never hardcode `org.gradle.java.home`. |
-| **Drive-BYO is the only store** | SUPERSEDED 2026-08-25 (Supabase as system of record, BYO project) and 2026-09-05 (Django as second client, ADR 0043). Kept here because the row's REASON survives: nothing the phone needs to function may be Kevin-hosted. No Firestore, ever. |
+| **Drive-BYO is the only store** | SUPERSEDED 2026-08-25 (Supabase, ADR 0038), 2026-09-05 morning (Django as second client, ADR 0043), and 2026-09-05 evening (**Django is the engine, ADR 0044**: one household-hosted server owns the data, Android and a web app are its clients, Supabase retires). Kept here because the row's REASON survives: nothing Kevin-hosted for other people. The household hosts its own. No Firestore, ever. |
 | **One global assistant identity** | Cars are data, not identities. Per-car `CompanionProfile` keying and Midnight AI's `CompanionIdentity` Zero-vs-car-self split are both dead. |
 | **The city-pop design language is DEAD** | With it: the mascot Zero, all generated art, `AvatarStudio`, `OccasionStylist`, `WallpaperPresets`, the two-identities decision. `ui/` is a deliberate clean slate, not a gap. **No replacement design language has been chosen yet.** |
 | **LLM ingestion is ALLOWED, behind a reconciliation gate** | See §4. This reverses Midnight AI's "no LLM extraction" posture. |
@@ -322,8 +322,14 @@ here.
 - **Estimates are labelled as estimates**, in the tool description and in any user-facing string.
 - **Pull-based tools always.** New domains default to tools/sub-agents, not pre-injected context.
 - **Lean Room migrations.** Copy generated SQL verbatim, additive only, no destructive fallback.
-- **Nothing Kevin-hosted that the PHONE depends on to function** (AMENDED 2026-09-05, Kevin; was
-  "No Kevin-hosted anything" from the 2026-07-31 pivot). Supabase is the system of record and is
+- **The household hosts its own server; nothing Kevin-hosted for anyone else** (AMENDED 2026-09-05
+  evening, Kevin, ADR 0044; the morning's "nothing the PHONE depends on" and the pivot's "no
+  Kevin-hosted anything" are both superseded). Django plus Postgres in `deploy/docker-compose.yml`
+  is the engine and the only writer. The phone reads from its Room replica when the server is
+  down and queues writes; it says so in words. Clone-and-run is clone, compose up, two users, one
+  URL. **The paragraph below is the morning ruling, superseded the same day and kept for its
+  reasoning until the map lands.**
+  The old text: Supabase is the system of record and is
   BYO - a stranger points a clone at their own project and it works - so it never broke the rule's
   purpose, only its wording. A Django app is now the SECOND client (`docs/adr/0043-*.md`): it runs
   what must happen while the phone is asleep (Canvas polling, WebAssign completion, analysis) and
@@ -428,9 +434,10 @@ here.
 - [ ] Room change? Verbatim generated SQL, additive, `exportSchema`, migration test.
 - [ ] Gemini call? On the user's own key, cheap one-shot sub-agent where possible.
 - [ ] Money? `Long` cents.
-- [ ] Does the PHONE need a Kevin-hosted service to function? Then it is wrong. Supabase and Django
-      are fine; the phone must still work when Django is down (ADR 0043). A rule both clients must
-      agree on lives in Postgres, not in Kotlin and again in Python (ADR 0042).
+- [ ] A write path? It is a Django endpoint first and a Kotlin caller second (ADR 0044). The phone
+      never writes Postgres directly. An integrity rule that must hold even if Django has a bug is
+      SQL shipped by a Django migration; a business rule lives in Django once, never also in Kotlin.
+- [ ] Server down? The phone still reads from Room, queues the write, and says so in words.
 - [ ] Does it survive clone-and-run by a stranger with their own signing cert?
 - [ ] New tool? Its failure result says in words what did NOT happen, and nothing claims success
       unless the underlying action ran. §7's outcome-verb rule needs a real result to stand on.

@@ -1,0 +1,214 @@
+{
+  "nodes": [
+    {
+      "id": "1f56661493cfe95a",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/01-server-skeleton.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0bd00bfba98d6f0c",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/07-where-it-runs.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "af1dc493ce677ca5",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/02-models-column-exact.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "97f27cc5743f495b",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/03-the-gate-in-python.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "629dfd815d254e20",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/04-domain-api-and-changes-feed.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "bc2959c7cfa1404a",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/06-worker-backups-first.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "786bf8667797bb81",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/05-media-photos-and-audio.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4b7e7db54c17c192",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/08-pwa-for-the-second-adult.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6fe44a0b338576c5",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/09-android-http-backends.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9d369a5c38235c96",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/10-cutover.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "16544da7be932be3",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/11-fresh-clone-end-to-end.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "d008a8726862094e",
+      "fromNode": "1f56661493cfe95a",
+      "fromSide": "right",
+      "toNode": "af1dc493ce677ca5",
+      "toSide": "left"
+    },
+    {
+      "id": "1703c34badbcbcdd",
+      "fromNode": "af1dc493ce677ca5",
+      "fromSide": "right",
+      "toNode": "97f27cc5743f495b",
+      "toSide": "left"
+    },
+    {
+      "id": "6ec12a5f741e8d55",
+      "fromNode": "af1dc493ce677ca5",
+      "fromSide": "right",
+      "toNode": "629dfd815d254e20",
+      "toSide": "left"
+    },
+    {
+      "id": "9adfb11fc6dc7d3c",
+      "fromNode": "629dfd815d254e20",
+      "fromSide": "right",
+      "toNode": "786bf8667797bb81",
+      "toSide": "left"
+    },
+    {
+      "id": "693c9d86798ee29a",
+      "fromNode": "af1dc493ce677ca5",
+      "fromSide": "right",
+      "toNode": "bc2959c7cfa1404a",
+      "toSide": "left"
+    },
+    {
+      "id": "4468d85638e3bb83",
+      "fromNode": "629dfd815d254e20",
+      "fromSide": "right",
+      "toNode": "4b7e7db54c17c192",
+      "toSide": "left"
+    },
+    {
+      "id": "f7cf0a287ec5e1d2",
+      "fromNode": "629dfd815d254e20",
+      "fromSide": "right",
+      "toNode": "6fe44a0b338576c5",
+      "toSide": "left"
+    },
+    {
+      "id": "7b22c279c1ec6e27",
+      "fromNode": "97f27cc5743f495b",
+      "fromSide": "right",
+      "toNode": "9d369a5c38235c96",
+      "toSide": "left"
+    },
+    {
+      "id": "5885444818ec6f84",
+      "fromNode": "629dfd815d254e20",
+      "fromSide": "right",
+      "toNode": "9d369a5c38235c96",
+      "toSide": "left"
+    },
+    {
+      "id": "3401d3b12a902e58",
+      "fromNode": "786bf8667797bb81",
+      "fromSide": "right",
+      "toNode": "9d369a5c38235c96",
+      "toSide": "left"
+    },
+    {
+      "id": "0ae9e29e8a2fa902",
+      "fromNode": "bc2959c7cfa1404a",
+      "fromSide": "right",
+      "toNode": "9d369a5c38235c96",
+      "toSide": "left"
+    },
+    {
+      "id": "5a42adf494d6a7ef",
+      "fromNode": "0bd00bfba98d6f0c",
+      "fromSide": "right",
+      "toNode": "9d369a5c38235c96",
+      "toSide": "left"
+    },
+    {
+      "id": "c3a7327b7d3bac82",
+      "fromNode": "6fe44a0b338576c5",
+      "fromSide": "right",
+      "toNode": "9d369a5c38235c96",
+      "toSide": "left"
+    },
+    {
+      "id": "76ccb5972d15472b",
+      "fromNode": "9d369a5c38235c96",
+      "fromSide": "right",
+      "toNode": "16544da7be932be3",
+      "toSide": "left"
+    }
+  ]
+}

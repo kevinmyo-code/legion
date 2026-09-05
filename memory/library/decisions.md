@@ -5347,3 +5347,33 @@ then calendar / ledger / pantry ViewModels, then convert-as-touched with a writt
 
 The morning's text survives here, not in CLAUDE.md, per that file's own rule about struck-through
 self-corrections.
+
+## 2026-09-05 - Django is the engine: one server, a native Android limb, a web limb
+
+Evening, after the framework ruling and the two-clients ADRs, Kevin asked for an architecture
+meeting: Supabase, the Android app, a Django app for the desk and for his wife's iPhone, *"find
+holes in the architecture and deployment. is there a better solution."* The review found three:
+ADR 0042's contract was three RPCs and no `created_by` column; ADR 0043 conflated a UI (should be
+RLS-bound, per user) with a worker (service role); and the assistant's 112 tools are Kotlin-only, so
+every future limb reimplements them. Then: *"how does things like instagram run? do we even need
+supabase?"* and *"im thinking we copy instagram right, django with 2 native apps reading it."*
+To the shape "Django plus Postgres in compose is the engine and only writer, Android native, her
+client a PWA, Supabase retires": *"yeah i think thats the way to go."*
+
+**The ruling** is ADR 0044. Django owns the schema; integrity triggers stay in SQL via Django
+migrations; the gate moves to Python with the same payload and corpus; device tokens per limb;
+the phone depends on the server to write and never to read; clone-and-run is clone, compose up,
+two users, one URL. ADR 0038 and 0043 superseded, 0042 amended, 0003 restated. CLAUDE.md sections
+2 and 7 edited in the same commit.
+
+**Why not stay on Supabase:** the four services it bundles (auth, PostgREST, Realtime, Storage)
+were each being worked around: a service role to bypass RLS for the second client, a second identity
+system for the web app, an RPC per rule to keep two writers honest, a keepalive to stop the free
+tier pausing. One writer needs none of them. Cost is writing the API layer, and the twelve Kotlin
+`*Backend` interfaces already isolate the phone from it.
+
+**Why no native iOS app:** a Mac, Xcode, 99 USD a year, and a second codebase for every screen and
+a second Gemini Live client. Her client is the web app until she needs a mic in her pocket.
+
+Map: `.scratch/django-engine/map.md`, eleven tickets. two-clients tickets 01, 02, 03 and 05 are
+absorbed by django-engine 07 and 06.

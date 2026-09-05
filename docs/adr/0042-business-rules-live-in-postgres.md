@@ -1,7 +1,8 @@
 ---
-status: accepted
+status: amended
 decided: 2026-09-05
 decided-by: Kevin
+amended: 2026-09-05
 source: "[[decisions#2026-09-05 - Two clients, one Postgres: the rules live in the database]]"
 tags: [adr]
 ---
@@ -9,6 +10,11 @@ tags: [adr]
 # 42. Business rules live in Postgres, not in either client
 
 ## Standing
+
+**AMENDED 2026-09-05 by [[0044-django-is-the-engine]]:** Django is the only writer and owns the
+migrations. Integrity rules (immutable facts, touch triggers, unique `origin_guid`, the
+`unaccounted_cents` check) stay in SQL, shipped by Django migrations. Business rules live in Django.
+The text below is the 2026-09-05 morning ruling, kept for its reasoning.
 
 **LEGION is a two-client system: one Supabase Postgres, the Android app, and a Django app. Any rule
 both clients must agree on is enforced in the database - CHECK constraints, triggers, RPC functions -

@@ -10,6 +10,9 @@ tags: [adr]
 
 ## Standing
 
+**RESTATED 2026-09-05 by [[0044-django-is-the-engine]]:** clone, `docker compose up`, make two users,
+point the app at the URL. The household hosts its own server; nothing Kevin-hosted is needed.
+
 LOCKED, and partly BLOCKED. The Drive OAuth finding below is unresolved.
 
 ## Context

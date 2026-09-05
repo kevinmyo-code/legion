@@ -1,8 +1,9 @@
 ---
-status: accepted
+status: superseded
 decided: 2026-08-25
 decided-by: Kevin
 supersedes: [0010-drive-appdatafolder-only-store]
+superseded-by: [0044-django-is-the-engine]
 source: "decisions.md 2026-08-25"
 tags: [adr]
 ---
