@@ -101,3 +101,8 @@ server/.pytest_cache/
 server/.ruff_cache/
 server/*.egg-info/
 
+
+# MCP servers (tools/mcp/): per-server uv venvs, and the private env file the launcher reads.
+# .claude/mcp.env holds LEGION_PG_URL and CANVAS_TOKEN. The repo is public; never commit it.
+.claude/mcp.env
+tools/mcp/*/.venv/

@@ -277,3 +277,17 @@ architecture decision, Kevin's, item 10 of the proposal). Full inventory in the 
 ### To refresh
 There is nothing to diff. Re-read the upstream files named in the table if the idea behind one of
 these needs re-examining; the local files carry no upstream text.
+
+## MCP servers, third-party (2026-09-05)
+
+Not vendored: both are fetched by their package manager at start (`uvx`, `npx`), pinned in
+`.mcp.json`, and run through `tools/mcp/launch.py`. `tools/mcp/README.md` has the tool lists and
+the smoke tests. Listed here because they are third-party code this repo depends on and TEAM.md's
+agents are told to call them.
+
+| Server | Source | Version | License | Notes |
+|---|---|---|---|---|
+| `pg` | https://github.com/crystaldba/postgres-mcp (PyPI `postgres-mcp`) | 0.3.x via `uvx`, pinned to Python 3.13 and `mcp<2` | MIT | `--access-mode=restricted`: read-only transaction, statement timeout, SQL parsed before it runs. The role it connects as is read-only on the server side too; both layers are wanted. |
+| `mobile` | https://github.com/mobile-next/mobile-mcp (npm `@mobilenext/mobile-mcp`) | 1.0.2, pinned rather than `@latest` so the tool list the agent files name does not move under them | Apache-2.0 | Exposes `mobile_uninstall_app`; denied in `.claude/settings.json` and kept off the device agent's list. `mobile_install_app` is `adb install -r`. |
+
+The three under `tools/mcp/{gradle,canvas,board}/` are ours; nothing was copied into them.

@@ -1,0 +1,38 @@
+{
+  "mcpServers": {
+    "pg": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--require", "LEGION_PG_URL",
+        "--alias", "DATABASE_URI=LEGION_PG_URL",
+        "--",
+        "uvx", "--python", "3.13", "--with", "mcp<2", "postgres-mcp", "--access-mode=restricted"
+      ]
+    },
+    "mobile": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--",
+        "npx", "-y", "@mobilenext/mobile-mcp@1.0.2"
+      ]
+    },
+    "gradle": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--",
+        "uv", "run", "--project", "tools/mcp/gradle", "tools/mcp/gradle/server.py"
+      ]
+    },
+    "board": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--",
+        "uv", "run", "--project", "tools/mcp/board", "tools/mcp/board/server.py"
+      ]
+    }
+  }
+}

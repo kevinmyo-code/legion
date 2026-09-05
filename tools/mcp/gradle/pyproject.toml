@@ -1,0 +1,9 @@
+[project]
+name = "legion-mcp-gradle"
+version = "0.1.0"
+description = "MCP server: run a Gradle task, read JUnit totals from the XML, summarise detekt."
+requires-python = ">=3.11"
+dependencies = ["mcp>=1.2,<2"]
+
+[tool.uv]
+package = false

@@ -44,5 +44,10 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "deny": [
+      "mcp__mobile__mobile_uninstall_app"
+    ]
   }
 }

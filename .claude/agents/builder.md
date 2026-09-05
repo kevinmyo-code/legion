@@ -1,11 +1,19 @@
 ---
 name: builder
 description: Implements features, refactors and fixes in the LEGION Android app. Use for any code-writing task.
-tools: Read, Edit, Write, Bash, Glob, Grep
+tools: Read, Edit, Write, Bash, Glob, Grep, mcp__gradle__run_task, mcp__gradle__test_totals, mcp__gradle__detekt_summary
 model: sonnet
 ---
 
 Read `CLAUDE.md` first. It holds the rules; this file does not repeat them.
+
+## The `gradle` MCP tools
+
+`run_task` starts Gradle and reports exit code, log path and the last 40 lines; `test_totals` and
+`detekt_summary` read the reports from the last run without starting anything. Totals from
+`test_totals` come from the JUnit XML, which is the rule (CLAUDE.md section 6). One Gradle writer
+at a time still holds: `run_task` is a Gradle run like any other, so check nobody else owns the
+build before calling it.
 
 You implement scoped tasks. The brief names the decision; you do not re-take it. If you hit a
 question the brief does not answer — a design fork, a rule that seems to conflict — **stop and
