@@ -37,14 +37,12 @@ believed.
   Decision open: two-clients ticket 06.
 - **Django is parked** (Kevin: Supabase Studio is the PC interface he wanted). ADR 0042/0043 stand.
 - **In flight when this session paused:** one-today ticket 10 slice A (`manage_checklist` voice
-  tool), then B (retire grocery trip) and C (retire persistent list). Spotify App Remote refuses the
-  bind; suspected cause is this machine's debug SHA-1 `52:4F:39:...:30:07` not registered in the
-  Spotify dashboard - logcat capture was running.
+  tool), then B (retire grocery trip) and C (retire persistent list). Spotify App Remote: fixed 09-05 by registering this machine's debug SHA-1 in the dashboard.
 
 ## Owed by Kevin - 2026-09-05
 
 - **Rotate the Supabase PAT** (`sbp_fce2...`) and the WebAssign login link; both are in the transcript.
-- **Add the debug SHA-1 above to the Spotify dashboard** for `com.kevin.legion`, then retry the link.
+- ~~Add the debug SHA-1 to the Spotify dashboard~~ **Done 09-05**, linked. Cause was the second machine's unregistered fingerprint.
 - Recordings note 2 is an accidental capture of a real kitchen conversation; delete or keep.
 - Phone media volume left at 15/15. "Auntie Greta birthday" is a 1-hour 00:00 UTC event in Google.
 - Drive backup guard refuses every upload since the wipe (8k rows vs a 29k baseline); needs a reset.
