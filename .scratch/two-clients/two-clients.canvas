@@ -31,6 +31,16 @@
       "color": "1"
     },
     {
+      "id": "ff55e6a60af80a0f",
+      "type": "file",
+      "file": ".scratch/two-clients/issues/06-google-calendar-is-a-snapshot.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "e103e3e5beb7802d",
       "type": "file",
       "file": ".scratch/two-clients/issues/03-canvas-poller.md",

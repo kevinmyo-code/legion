@@ -46,6 +46,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/two-clients/map\|two-clients]] | [[01-schema-ownership-and-django-role\|01]] | build | Schema ownership, and a role of Django's own |
 | [[.scratch/two-clients/map\|two-clients]] | [[02-where-django-runs\|02]] | decision | Where Django runs |
 | [[.scratch/two-clients/map\|two-clients]] | [[04-first-rules-move-down\|04]] | build | The first rules move down: measured ticks and done-once |
+| [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -175,6 +176,6 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
-| [[.scratch/two-clients/map\|two-clients]] | 5 | 5 | [[.scratch/two-clients/two-clients.canvas\|open]] |
+| [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 15 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
