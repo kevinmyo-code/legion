@@ -2756,3 +2756,71 @@ val MIGRATION_65_66 = object : Migration(65, 66) {
         db.execSQL("UPDATE `checklists` SET `scheduleKind` = 'DAILY', `scheduleEvery` = 1 WHERE `recursDaily` = 1")
     }
 }
+
+/**
+ * v66 -> v67: `conversation_audit` gets [com.kevin.legion.data.local.ConversationAudit.clientUuid],
+ * a client-minted UUID, and the unique index over it.
+ *
+ * **Why, in one line: `(device_id, local_id)` was never an identity.** The server keyed a
+ * conversation row on this phone's `ANDROID_ID` plus the Room rowid. The rowid is `AUTOINCREMENT`
+ * and restarts at 1 when the table is emptied; `ANDROID_ID` does not change. On 2026-09-03 the
+ * table reset, and the 142 rows recorded after it carried ids 1..142 that the server had already
+ * issued to 142 unrelated rows from August. The upload posts `on conflict do nothing`, so every one
+ * was discarded and the call returned success - three days of the only durable record of what a
+ * tool call did, silently dropped, against a 14-day retention timer. A UUID minted by the client
+ * cannot collide across a reset. Same shape [MemoryEntry.syncId]/[Goal.syncId]/[Category.guid]
+ * already use; this table was the last one still keyed on a local rowid.
+ *
+ * **`ALTER TABLE ... ADD COLUMN`, not a table rebuild, and that is safe here** unlike
+ * [MIGRATION_60_61]'s case: this adds a `NOT NULL` column WITH a real default (`''`), which SQLite
+ * accepts and backfills, and the generated `67.json` renders a non-null TEXT default as a
+ * single-quoted SQL literal (`DEFAULT ''`), matching [MIGRATION_65_66]'s `'USER_REPORTED'`
+ * precedent. Nothing is dropped or renamed.
+ *
+ * **Then every existing row is given a real UUID, before the unique index is created.** Order is
+ * load-bearing, the same three-step shape [MIGRATION_61_62] established: the `ADD COLUMN` leaves
+ * every row at `''`, so creating the unique index first would fail outright on the second row.
+ * The backfill uses the same non-RFC-4122 `randomblob` expression [MIGRATION_59_60]/
+ * [MIGRATION_60_61]/[MIGRATION_61_62] use - it only has to be effectively unique, and SQLite has no
+ * UUID function of its own.
+ *
+ * **The 142 rows this backfills have never reached the server and will now upload.** That is
+ * intended, not a side effect: they are the evidence the collision discarded. The upload cursor is
+ * reset alongside this by [com.kevin.legion.backend.ConversationAuditUploadCursor]'s key changing
+ * to `_v2`, because a SharedPreferences watermark survives a Room migration and would otherwise
+ * still claim all 142 were sent.
+ */
+// Named rather than passed as bare literals, unlike every migration above. detekt's MagicNumber
+// rule flags a version literal in a constructor call; the sixty-odd older migrations in this file
+// predate detekt and sit in its baseline instead, which is not a licence to add a sixty-first
+// entry. Naming them costs two lines and reads no worse.
+private const val SCHEMA_V66 = 66
+private const val SCHEMA_V67 = 67
+
+val MIGRATION_66_67 = object : Migration(SCHEMA_V66, SCHEMA_V67) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `conversation_audit` ADD COLUMN `clientUuid` TEXT NOT NULL DEFAULT ''")
+
+        // Same non-RFC-4122 shape MIGRATION_59_60/MIGRATION_60_61/MIGRATION_61_62 use - only needs
+        // to be effectively unique.
+        val uuidExpr = "(" +
+            "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+            "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "lower(hex(randomblob(6)))" +
+            ")"
+
+        // Blank first (every row is blank after the ADD COLUMN above), THEN any duplicate that
+        // somehow survived it, THEN the index - each step depends on the last having run, exactly
+        // as MIGRATION_61_62's own comment sets out.
+        db.execSQL("UPDATE `conversation_audit` SET clientUuid = $uuidExpr WHERE clientUuid IS NULL OR clientUuid = ''")
+        db.execSQL(
+            "UPDATE `conversation_audit` SET clientUuid = $uuidExpr " +
+                "WHERE id NOT IN (SELECT MIN(id) FROM `conversation_audit` GROUP BY clientUuid)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_conversation_audit_clientUuid` " +
+                "ON `conversation_audit` (`clientUuid`)",
+        )
+    }
+}

@@ -36,9 +36,24 @@ class ConversationAuditReconcileTest {
          *  HEAD count. */
         var serverCount = 0L
 
-        override suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Unit> {
+        /**
+         * How many rows of each batch the server "accepts". Null accepts everything, which is the
+         * ordinary case. Set it to model the failure this whole class of test exists for: a server
+         * that returns 200 having written FEWER rows than it was sent, which is exactly what
+         * `on conflict do nothing` does and exactly what nothing could see until
+         * [ConversationAuditBackend.uploadConversationAuditBatch] started returning a count.
+         */
+        var acceptAtMost: Int? = null
+
+        /** Set to make the next and every subsequent upload fail outright. */
+        var failWith: Throwable? = null
+
+        override suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Int> {
+            // Recorded even on the failure path: a test asserting that a retry re-sends the SAME
+            // rows needs to see what the failed attempt offered.
             batches.add(batch)
-            return Result.success(Unit)
+            failWith?.let { return Result.failure(it) }
+            return Result.success(acceptAtMost?.coerceAtMost(batch.size) ?: batch.size)
         }
 
         override suspend fun countConversationAudit(): Result<Long> = Result.success(serverCount)
@@ -55,6 +70,7 @@ class ConversationAuditReconcileTest {
         content: String,
         redacted: Boolean = false,
         toolName: String = "",
+        at: Long = 1_000L,
     ) {
         CarDatabase.getDatabase(context).conversationAuditDao().insert(
             ConversationAudit(
@@ -63,10 +79,13 @@ class ConversationAuditReconcileTest {
                 toolName = toolName,
                 content = content,
                 redacted = redacted,
-                at = 1_000L,
+                at = at,
             ),
         )
     }
+
+    private fun storedCursor() =
+        ConversationAuditUploadCursor.lastUploadedId(context, DeviceId.current(context))
 
     @Test
     fun `a re-run uploads nothing new`() = runBlocking {
@@ -131,6 +150,167 @@ class ConversationAuditReconcileTest {
         ConversationAuditReconcile.run(context, backend).getOrThrow()
 
         assertEquals(DeviceId.current(context), backend.batches.single().single().deviceId)
+    }
+
+
+    // --- The watermark only moves over rows the server confirmed ------------------------------
+    // Every test below is a regression test for one incident: on 2026-09-03 this reconcile's
+    // server key was (device_id, local_id), the phone's AUTOINCREMENT rowid restarted, 142 rows
+    // collided with 142 unrelated August rows, `on conflict do nothing` discarded all of them, the
+    // call returned success, and the cursor advanced over the lot. Three days of the only durable
+    // record of what a tool call did, gone, with a 14-day delete timer running.
+
+    @Test
+    fun `a failed upload leaves the watermark exactly where it was`() = runBlocking {
+        repeat(3) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        val backend = FakeConversationAuditBackend()
+        backend.failWith = ConversationAuditBackendException("Couldn't reach the server.")
+
+        val result = ConversationAuditReconcile.run(context, backend)
+
+        assertTrue("a transport failure must surface as a failure", result.isFailure)
+        assertEquals("the watermark must not move on a failure", 0L, storedCursor())
+    }
+
+    @Test
+    fun `a retry after a failure sends the same rows again`() = runBlocking {
+        repeat(3) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        val backend = FakeConversationAuditBackend()
+        backend.failWith = ConversationAuditBackendException("Couldn't reach the server.")
+        ConversationAuditReconcile.run(context, backend)
+
+        backend.failWith = null
+        val report = ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertEquals("every row must be re-offered, none skipped", 3, report.uploaded)
+        assertEquals(2, backend.batches.size)
+        assertEquals(
+            "the retry must offer the identical rows, by identity not by position",
+            backend.batches[0].map { it.clientUuid },
+            backend.batches[1].map { it.clientUuid },
+        )
+    }
+
+    @Test
+    fun `a server that silently accepts nothing does not advance the watermark`() = runBlocking {
+        // The 2026-09-03 shape exactly: HTTP success, zero rows written.
+        repeat(3) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        val backend = FakeConversationAuditBackend()
+        backend.acceptAtMost = 0
+
+        val report = ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertEquals("nothing reached the server, so nothing may be reported uploaded", 0, report.uploaded)
+        assertEquals("and the discard must be visible, not silent", 3, report.notAccepted)
+        assertEquals(0L, storedCursor())
+    }
+
+    @Test
+    fun `a partially accepted batch advances only as far as the server confirmed`() = runBlocking {
+        repeat(5) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        val backend = FakeConversationAuditBackend()
+        backend.acceptAtMost = 2
+
+        val report = ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(2, report.uploaded)
+        assertEquals(3, report.notAccepted)
+        val firstBatch = backend.batches.single()
+        assertEquals(
+            "the watermark stops at the second row, never at the fifth",
+            firstBatch[1].localId,
+            storedCursor(),
+        )
+    }
+
+    @Test
+    fun `the rows a partial batch left behind are re-offered on the next run`() = runBlocking {
+        repeat(5) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        val backend = FakeConversationAuditBackend()
+        backend.acceptAtMost = 2
+        ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        backend.acceptAtMost = null
+        val second = ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertEquals("the three rows nobody confirmed must go up", 3, second.uploaded)
+        assertEquals(0, second.notAccepted)
+    }
+
+    @Test
+    fun `every uploaded row carries the client uuid the phone minted, never a fresh one`() = runBlocking {
+        insertRow(ConversationAudit.Kind.USER, "hello")
+        val stored = CarDatabase.getDatabase(context).conversationAuditDao().recent(1).single()
+        val backend = FakeConversationAuditBackend()
+
+        ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertTrue("a minted uuid is never blank", stored.clientUuid.isNotBlank())
+        assertEquals(stored.clientUuid, backend.batches.single().single().clientUuid)
+    }
+
+    @Test
+    fun `a watermark left over from a previous incarnation of the table is discarded`() = runBlocking {
+        // The next failure this cursor would have caused: prefs survive a Room table reset, so a
+        // watermark of 142 against a table whose highest id is 3 skips every row, forever, in
+        // silence. A cursor above max(id) is impossible unless the sequence restarted.
+        repeat(3) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        ConversationAuditUploadCursor.advance(context, DeviceId.current(context), 142L)
+        val backend = FakeConversationAuditBackend()
+
+        val report = ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertEquals("a stale watermark must not swallow the table", 3, report.uploaded)
+    }
+
+    @Test
+    fun `a legitimate watermark is left alone`() = runBlocking {
+        repeat(3) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        val dao = CarDatabase.getDatabase(context).conversationAuditDao()
+        val secondId = dao.getAfterId(0L, 3)[1].id
+        ConversationAuditUploadCursor.advance(context, DeviceId.current(context), secondId)
+        val backend = FakeConversationAuditBackend()
+
+        val report = ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertEquals("only the row past the watermark goes up", 1, report.uploaded)
+    }
+
+    // --- The pending surface reports what is actually pending -----------------------------------
+
+    @Test
+    fun `pendingSummary counts every row past the watermark and dates the oldest`() = runBlocking {
+        val now = 10_000_000_000L
+        insertRow(ConversationAudit.Kind.USER, "old", at = now - 3 * 24 * 60 * 60 * 1000L)
+        insertRow(ConversationAudit.Kind.COMPANION, "new", at = now - 60_000L)
+
+        val pending = ConversationAuditReconcile.pendingSummary(context, now)
+
+        assertEquals(2, pending?.rows)
+        assertEquals(3 * 24 * 60 * 60 * 1000L, pending?.oldestAgeMs)
+    }
+
+    @Test
+    fun `pendingSummary reports nothing pending once the watermark covers every row`() = runBlocking {
+        insertRow(ConversationAudit.Kind.USER, "up")
+        val backend = FakeConversationAuditBackend()
+        ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        val pending = ConversationAuditReconcile.pendingSummary(context)
+
+        assertEquals(0, pending?.rows)
+        assertNull("no pending rows means no oldest one", pending?.oldestAgeMs)
+    }
+
+    @Test
+    fun `pendingSummary still counts rows a server accepted none of`() = runBlocking {
+        // The number a person would have needed on 2026-09-04 to notice.
+        repeat(4) { insertRow(ConversationAudit.Kind.COMPANION, "line $it") }
+        val backend = FakeConversationAuditBackend()
+        backend.acceptAtMost = 0
+        ConversationAuditReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(4, ConversationAuditReconcile.pendingSummary(context)?.rows)
     }
 
     // --- ConversationAuditReconcile.maybeAutoRun's two guard halves --------------------------

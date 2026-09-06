@@ -37,6 +37,7 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiKeyValidator
 import com.kevin.legion.ai.KeyCheck
+import com.kevin.legion.backend.ConversationAuditReconcile
 import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.SignInResult
 import com.kevin.legion.backend.SupabaseAuth
@@ -133,6 +134,16 @@ fun KeyScreen(onBack: () -> Unit) {
     // Unread until the first `me` check returns - same "unread must never render as any of the
     // other three" posture householdState already follows (CLAUDE.md sec 1).
     var engineState by remember { mutableStateOf<MeResult?>(null) }
+
+    // The audit trail's upload backlog (2026-09-06). Null until the first read returns, and null
+    // again if the table cannot be read - an unread state must never render as "nothing waiting",
+    // which is the same "unreadable and empty are different sentences" rule (CLAUDE.md sec 1) the
+    // engine block below follows. Re-read on every entry to this screen rather than cached: the
+    // number's whole job is to be current when someone comes looking.
+    var auditPending by remember { mutableStateOf<ConversationAuditReconcile.Pending?>(null) }
+    LaunchedEffect(Unit) {
+        auditPending = ConversationAuditReconcile.pendingSummary(context)
+    }
 
     // "Sync now" (django-engine ticket 09 build item 6): the one surface that says IN WORDS what a
     // sync pass actually did. Every automatic path reports only to logcat, which is useless when
@@ -530,6 +541,27 @@ fun KeyScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(24.dp))
 
+                // --- Audit trail backlog ---
+                // NOT behind BuildConfig.DEBUG, unlike the transport rows further down. This table
+                // is the only durable record of what a tool call actually did (the "it said 142k"
+                // incident), it is deleted on a 14-day timer, and its upload silently discarded
+                // three days of rows in September 2026 while every surface reported success. A
+                // number nobody can see is how that lasted three days; CLAUDE.md sec 7 wants the
+                // failure said in words, so this says it in a release build too.
+                DeckSectionRule("Audit trail", modifier = Modifier.padding(horizontal = 12.dp))
+                Text(
+                    auditTrailBacklogSentence(auditPending),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when {
+                        auditPending == null -> sem.estimated
+                        auditPending?.rows == 0 -> sem.faint
+                        else -> sem.estimated
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+
+                Spacer(Modifier.height(24.dp))
+
                 // --- Engine (Django) ---
                 DeckSectionRule("Engine", modifier = Modifier.padding(horizontal = 12.dp))
                 Text(
@@ -715,5 +747,62 @@ fun KeyScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+}
+
+/**
+ * The one sentence the Setup screen says about the audit trail's upload backlog.
+ *
+ * **Pulled out as a pure function purely so it can be unit-tested**, the same reasoning
+ * [com.kevin.legion.data.local.auditContent]'s own doc gives: an inline `when` inside the
+ * Composable would be correct today and untestable forever, and this particular sentence is the
+ * one that has to be right - it is the whole visible defence against the failure it describes
+ * (`conversation_audit` uploaded nothing for three days while every surface said success, see
+ * [com.kevin.legion.data.local.ConversationAudit.clientUuid]).
+ *
+ * Three states, deliberately worded so none can be mistaken for another:
+ * - `null` - the table could not be read. Says so. **Never rendered as "nothing waiting"**: an
+ *   unreadable count and an empty one are different sentences (CLAUDE.md section 1), and reading
+ *   the first as the second is exactly how a person is told everything is fine when the app cannot
+ *   see.
+ * - 0 rows - everything is on the server, said plainly.
+ * - n rows - the count AND the oldest row's age, because a count alone does not distinguish "a
+ *   turn from four minutes ago that has not synced yet" from "a fortnight of evidence about to be
+ *   deleted". The age is the half that makes the number actionable.
+ *
+ * The age is rendered coarsely (days / hours / minutes) on purpose - the decision this informs is
+ * "is anything wrong", not "exactly how wrong", and a precise duration invites reading a backlog
+ * that is fine as a problem.
+ */
+internal fun auditTrailBacklogSentence(pending: ConversationAuditReconcile.Pending?): String = when {
+    pending == null -> "Couldn't read the audit trail on this device."
+    pending.rows == 0 -> "Every conversation and tool call on this device is on the server."
+    // Retention keeps an un-uploaded row rather than deleting it
+    // (ConversationAuditDao.trimUploadedOlderThan), so this backlog is safe - saying so stops the
+    // sentence reading as an alarm about data already lost, which it is not.
+    else -> {
+        val rows = if (pending.rows == 1) "1 row" else "${pending.rows} rows"
+        when (val age = pending.oldestAgeMs?.let(::coarseAge)) {
+            null -> "$rows waiting to reach the server. Nothing is deleted while it waits."
+            else -> "$rows waiting to reach the server, oldest $age old. Nothing is deleted while it waits."
+        }
+    }
+}
+
+private const val MS_PER_MINUTE = 60_000L
+private const val MINUTES_PER_HOUR = 60L
+private const val HOURS_PER_DAY = 24L
+
+/** A duration in the coarsest unit that is at least 1 - see [auditTrailBacklogSentence] for why
+ *  precision here would be false comfort rather than information. */
+private fun coarseAge(ms: Long): String {
+    val minutes = ms / MS_PER_MINUTE
+    val hours = minutes / MINUTES_PER_HOUR
+    val days = hours / HOURS_PER_DAY
+    return when {
+        days >= 1L -> if (days == 1L) "1 day" else "$days days"
+        hours >= 1L -> if (hours == 1L) "1 hour" else "$hours hours"
+        minutes >= 1L -> if (minutes == 1L) "1 minute" else "$minutes minutes"
+        else -> "under a minute"
     }
 }

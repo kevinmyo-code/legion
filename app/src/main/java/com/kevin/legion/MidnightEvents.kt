@@ -239,13 +239,23 @@ object MidnightEvents {
         Log.w(TAG, "obd_sample_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
-    /** A foreground [com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun] pass
-     * completed - same "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. No
-     * `skipped` parameter - unlike [ledgerAutoReconcileSucceeded]'s ledger wave,
-     * [com.kevin.legion.backend.ConversationAuditReconcile] never skips a row, only batches and
-     * resumes (see that object's own class doc). */
-    fun conversationAuditAutoReconcileSucceeded(uploaded: Int, serverCountAfter: Long) = safe {
-        Log.d(TAG, "conversation_audit_auto_reconcile uploaded=$uploaded serverCountAfter=$serverCountAfter")
+    /**
+     * A foreground [com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun] pass
+     * completed - same "only evidence this ran" role as [ledgerAutoReconcileSucceeded].
+     *
+     * **[uploaded] is now the server's own count of rows it ACCEPTED, and [notAccepted] is the
+     * remainder it dropped.** This used to log the batch size as `uploaded`, which is how it
+     * printed `uploaded=142` on each of three consecutive days while the server received nothing -
+     * see [com.kevin.legion.backend.ConversationAuditBackend.uploadConversationAuditBatch]. The
+     * "never skips a row, only batches and resumes" claim the old comment made here was true of
+     * the CODE and false of the outcome; a skipped row is exactly what [notAccepted] counts.
+     */
+    fun conversationAuditAutoReconcileSucceeded(uploaded: Int, serverCountAfter: Long, notAccepted: Int) = safe {
+        Log.d(
+            TAG,
+            "conversation_audit_auto_reconcile uploaded=$uploaded notAccepted=$notAccepted " +
+                "serverCountAfter=$serverCountAfter",
+        )
     }
 
     /** [com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun] failed - degraded to

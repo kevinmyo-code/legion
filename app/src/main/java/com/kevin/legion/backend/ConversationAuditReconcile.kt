@@ -3,6 +3,7 @@ package com.kevin.legion.backend
 import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.ConversationAuditDao
 import com.kevin.legion.engine.DeviceId
 import io.github.jan.supabase.SupabaseClient
 import kotlinx.coroutines.CoroutineScope
@@ -28,7 +29,21 @@ internal object ConversationAuditUploadCursor {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    private fun key(deviceId: String) = "last_uploaded_local_id_$deviceId"
+    /**
+     * **`_v2` because the watermark's MEANING changed on 2026-09-06, not merely its value.** The
+     * old key recorded rows posted under the `(device_id, local_id)` server key; this one records
+     * rows the server has CONFIRMED it accepted under
+     * [com.kevin.legion.data.local.ConversationAudit.clientUuid]. Those are different claims, and
+     * the old key's value is a claim about a key that turned out not to identify anything - on the
+     * A25 it read 142 while the server held none of those 142 rows. A new key starts every install
+     * at 0 and re-offers the whole table exactly once, which is free: the upload is
+     * `on conflict (client_uuid) do nothing`, so a row genuinely already there is a no-op, and a
+     * row wrongly believed uploaded finally goes up.
+     *
+     * Migrating the old value forward would have carried the lie forward with it. Deleting the old
+     * key is not worth the code - it is 8 bytes and it is now inert.
+     */
+    private fun key(deviceId: String) = "uploaded_through_local_id_v2_$deviceId"
 
     fun lastUploadedId(context: Context, deviceId: String): Long = prefs(context).getLong(key(deviceId), 0L)
 
@@ -36,6 +51,13 @@ internal object ConversationAuditUploadCursor {
         prefs(context).edit().putLong(key(deviceId), id).apply()
     }
 }
+
+/** The upload watermark for THIS device, for callers outside this file that need it but have no
+ *  business knowing how it is stored - chiefly
+ *  [com.kevin.legion.data.local.ConversationAuditDao.record]'s two call sites, which hand it to
+ *  the retention trim so it cannot delete a row the server has not confirmed. */
+internal fun conversationAuditUploadedThroughId(context: Context): Long =
+    ConversationAuditUploadCursor.lastUploadedId(context, DeviceId.current(context))
 
 /**
  * The upload path for `conversation_audit`
@@ -71,24 +93,42 @@ internal object ConversationAuditUploadCursor {
  * that can be skipped-and-named for an unresolved one.
  *
  * **Batches and resumes for the same reason [ObdSampleReconcile] does, at a much smaller scale.**
- * 197 rows today does not need [BATCH_SIZE]'s batching to stay within a request's comfortable
- * size, but a busy fortnight is not measured yet either, and the identical shape means there is
- * exactly one pattern to review for this class of upload, not two.
+ * A table this size does not need [BATCH_SIZE]'s batching to stay within a request's comfortable
+ * size, but the identical shape means there is exactly one pattern to review for this class of
+ * upload, not two. (This paragraph used to quote "197 rows today", measured 2026-08-29. It was a
+ * count in a doc comment, so it rotted; read the table.)
+ *
+ * **The upsert key is `client_uuid`, and was `(device_id, local_id)` until 2026-09-06.** That is
+ * the correction this whole file exists in the shape it does because of: `local_id` is Room's
+ * `AUTOINCREMENT` rowid and restarts at 1 whenever the phone's table is emptied, while `device_id`
+ * (`ANDROID_ID`) does not - so after a reset this reconcile offered rows 1..142 against 142
+ * unrelated August rows already holding those ids, the server dropped all of them under
+ * `on conflict do nothing`, returned 200, and [ConversationAuditUploadCursor] advanced over the
+ * lot. Three days of the only durable record of what a tool call did, with a 14-day delete timer
+ * already running on it. Two changes make that shape unreachable rather than merely fixed:
+ * [com.kevin.legion.data.local.ConversationAudit.clientUuid] is an identity that survives a table
+ * reset, and [run] now advances the watermark only by rows the server SAYS it accepted.
  */
 object ConversationAuditReconcile {
     private const val BATCH_SIZE = 500
 
     /**
      * @param sourceCount every `conversation_audit` row on this device right now - note this can
-     *   SHRINK between runs, unlike every other reconcile's [sourceCount]: `ConversationAuditDao.trimOlderThan`
-     *   deletes rows older than [com.kevin.legion.data.local.CONVERSATION_AUDIT_RETENTION_DAYS] on
-     *   every write, independent of whether this reconcile has ever uploaded them. **A row trimmed
-     *   locally before this reconcile ever runs is lost, not merely delayed** - this is a real gap
-     *   this ticket's scope does not close (uploading, not scheduling), named here rather than
-     *   left implicit: a reconcile that never runs for two weeks loses whatever aged out in that
-     *   window.
-     * @param uploaded rows this RUN sent, counted by batch size attempted - same convention as
-     *   [ObdSampleReconcile.Report.uploaded].
+     *   SHRINK between runs, unlike every other reconcile's [sourceCount], because
+     *   [com.kevin.legion.data.local.ConversationAuditDao.trimUploadedOlderThan] drops rows past
+     *   [com.kevin.legion.data.local.CONVERSATION_AUDIT_RETENTION_DAYS] on every write.
+     *
+     *   **This paragraph used to end differently, and the difference is the fix.** It read: "A row
+     *   trimmed locally before this reconcile ever runs is lost, not merely delayed - this is a
+     *   real gap this ticket's scope does not close." That gap is now closed, from the other end:
+     *   the trim stops at this device's upload watermark, so an un-uploaded row is KEPT past its
+     *   window instead of deleted. The table can therefore grow without bound while uploads are
+     *   broken, which is the trade taken deliberately - unbounded disk is recoverable, a deleted
+     *   audit row is not - and [pendingSummary] is what stops that growth being a secret.
+     * @param uploaded rows the SERVER reported accepting this run. Deliberately NOT the batch size
+     *   attempted, which is what this counted until 2026-09-06 and what let it report 142 rows
+     *   uploaded on three consecutive days that uploaded nothing. Diverges from
+     *   [ObdSampleReconcile.Report.uploaded]'s attempted-count convention on purpose.
      * @param serverCountAfter the server's `conversation_audit` row count after this run, via
      *   [ConversationAuditBackend.countConversationAudit]'s HEAD-only request - same "cheap enough
      *   to report, too expensive to diff against" posture [ObdSampleReconcile.Report.serverCountAfter]
@@ -98,23 +138,63 @@ object ConversationAuditReconcile {
         val sourceCount: Int,
         val uploaded: Int,
         val serverCountAfter: Long,
+        /**
+         * Rows this run OFFERED that the server did not report accepting - sent minus accepted,
+         * summed over every batch. Almost always 0. A non-zero value means the server already held
+         * a row with that [com.kevin.legion.data.local.ConversationAudit.clientUuid], which under a
+         * client-minted UUID key genuinely IS the same row (an interrupted earlier run, most
+         * likely) - so it is not an error, but it is the number whose silence caused this ticket.
+         * Reported separately from [uploaded] rather than folded into it, because the old code
+         * added the batch SIZE to [uploaded] and thereby reported 142 rows uploaded on a run that
+         * wrote none of them.
+         */
+        val notAccepted: Int,
     )
+
+    /**
+     * The watermark to start from, with the one sanity check that can catch a watermark left over
+     * from a previous incarnation of this table.
+     *
+     * [com.kevin.legion.data.local.ConversationAudit.id] is an `AUTOINCREMENT` rowid, so it
+     * restarts at 1 when the table is emptied - but this cursor lives in SharedPreferences, which
+     * survives that. The two then disagree in the silent direction:
+     * [com.kevin.legion.data.local.ConversationAuditDao.getAfterId] returns nothing and the upload
+     * reports a clean, empty, successful run forever. (That is not the 2026-09-03 failure - that
+     * one was a key collision, see [com.kevin.legion.data.local.ConversationAudit.clientUuid] -
+     * but it is the SAME cursor-outlives-its-table root, and it is what would happen next time.)
+     *
+     * A cursor above the table's own highest id is impossible unless the sequence reset, so it is
+     * safe to treat as proof of one and restart from 0. Re-offering rows costs nothing under the
+     * UUID key. An empty table returns 0, the same conclusion by a shorter route.
+     */
+    internal suspend fun resolveCursor(dao: ConversationAuditDao, stored: Long): Long {
+        val maxId = dao.maxId() ?: return 0L
+        return if (stored > maxId) 0L else stored
+    }
 
     suspend fun run(context: Context, backend: ConversationAuditBackend): Result<Report> {
         val db = CarDatabase.getDatabase(context)
+        val dao = db.conversationAuditDao()
         val deviceId = DeviceId.current(context)
 
-        var cursor = ConversationAuditUploadCursor.lastUploadedId(context, deviceId)
+        var cursor = resolveCursor(dao, ConversationAuditUploadCursor.lastUploadedId(context, deviceId))
         var uploadedThisRun = 0
+        var notAcceptedThisRun = 0
 
-        while (true) {
-            val batch = db.conversationAuditDao().getAfterId(cursor, BATCH_SIZE)
+        // Loops while the previous batch came back FULLY accepted. A short batch means the server
+        // did not confirm the remainder, so this run stops and the next one re-offers it - and
+        // expressing that as the loop condition rather than a third `break` keeps the exit
+        // conditions in one place instead of scattered down the body.
+        var previousBatchFullyAccepted = true
+        while (previousBatchFullyAccepted) {
+            val batch = dao.getAfterId(cursor, BATCH_SIZE)
             if (batch.isEmpty()) break
 
             val uploads = batch.map { row ->
                 ConversationAuditUpload(
                     deviceId = deviceId,
                     localId = row.id,
+                    clientUuid = row.clientUuid,
                     turnSeq = row.turnSeq,
                     kind = row.kind,
                     toolName = row.toolName,
@@ -125,22 +205,62 @@ object ConversationAuditReconcile {
                     recordedAtMs = row.at,
                 )
             }
-            backend.uploadConversationAuditBatch(uploads).getOrElse { return Result.failure(it) }
-            uploadedThisRun += uploads.size
-            cursor = batch.last().id
-            ConversationAuditUploadCursor.advance(context, deviceId, cursor)
+            val accepted = backend.uploadConversationAuditBatch(uploads).getOrElse { return Result.failure(it) }
+            uploadedThisRun += accepted
+            notAcceptedThisRun += uploads.size - accepted
+
+            // The cursor moves by ACCEPTED ROWS, never by rows offered. This is the repair: the old
+            // code advanced to `batch.last().id` after any non-failing call, so a server that
+            // discarded all 500 rows of a batch and returned 200 OK moved the watermark 500 rows
+            // forward over evidence nobody held. Advancing `accepted` positions into the batch
+            // cannot outrun what the server confirmed, whatever the key turns out to be. Zero
+            // accepted moves it not at all.
+            if (accepted > 0) {
+                cursor = batch[accepted - 1].id
+                ConversationAuditUploadCursor.advance(context, deviceId, cursor)
+            }
+            previousBatchFullyAccepted = accepted == uploads.size
         }
 
         val serverCountAfter = backend.countConversationAudit().getOrElse { return Result.failure(it) }
 
         return Result.success(
             Report(
-                sourceCount = db.conversationAuditDao().count(),
+                sourceCount = dao.count(),
                 uploaded = uploadedThisRun,
                 serverCountAfter = serverCountAfter,
+                notAccepted = notAcceptedThisRun,
             ),
         )
     }
+
+    /** [pendingSummary]'s two numbers. [oldestAgeMs] is null exactly when [rows] is 0. */
+    data class Pending(val rows: Int, val oldestAgeMs: Long?)
+
+    /**
+     * How many rows are waiting to reach the server, and how old the oldest one is - the numbers
+     * [com.kevin.legion.ui.KeyScreen] turns into a sentence in front of a person.
+     *
+     * **This exists because the failure it describes was invisible for three days.** CLAUDE.md
+     * section 7's rule is that a tool says in words what did NOT happen; the reason the 2026-09-03
+     * collision ran as long as it did is that every surface reported success and the only contrary
+     * evidence was a row count in a database nobody was looking at. A count and an age are enough:
+     * "0 waiting" and "142 waiting, oldest 3 days" read differently at a glance, and the second is
+     * a question a person will actually ask about.
+     *
+     * Returns null only when the table cannot be read at all, so the caller can say so rather than
+     * render an unread state as "nothing waiting" - unreadable and empty are different sentences
+     * (CLAUDE.md section 1).
+     */
+    suspend fun pendingSummary(context: Context, now: Long = System.currentTimeMillis()): Pending? =
+        runCatching {
+            val dao = CarDatabase.getDatabase(context).conversationAuditDao()
+            val cursor = resolveCursor(dao, conversationAuditUploadedThroughId(context))
+            Pending(
+                rows = dao.countAfterId(cursor),
+                oldestAgeMs = dao.oldestAtAfterId(cursor)?.let { (now - it).coerceAtLeast(0L) },
+            )
+        }.getOrNull()
 
     private val autoRunScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -184,7 +304,11 @@ object ConversationAuditReconcile {
         try {
             if (auth.resolveSignedInUserId() == null) return
             val report = run(context, backend).getOrThrow()
-            MidnightEvents.conversationAuditAutoReconcileSucceeded(report.uploaded, report.serverCountAfter)
+            MidnightEvents.conversationAuditAutoReconcileSucceeded(
+                report.uploaded,
+                report.serverCountAfter,
+                report.notAccepted,
+            )
         } catch (e: Exception) {
             MidnightEvents.conversationAuditAutoReconcileFailed(e)
         }

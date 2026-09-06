@@ -989,6 +989,12 @@ class LiveSessionController(context: Context) {
                                 args = call.args.toString(),
                                 redacted = toolRedacted,
                                 vehicleId = vehicleId,
+                                // Retention must not delete a row the server has not confirmed -
+                                // see ConversationAuditDao.trimUploadedOlderThan. A TOOL_RESULT row
+                                // is the single most expensive kind to lose: it is the only record
+                                // of what a tool was asked and what it answered (ticket 20).
+                                uploadedThroughId =
+                                    com.kevin.legion.backend.conversationAuditUploadedThroughId(appContext),
                             )
                         }
                     }

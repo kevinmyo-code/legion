@@ -211,6 +211,12 @@ import androidx.room.RoomDatabase
  * [ConversationAudit]'s own doc comment for why this is a NEW table rather than an extension of
  * [MemoryAudit] (v27) despite both being flat trimmed audit logs.
  *
+ * v67: `conversation_audit.clientUuid` + `index_conversation_audit_clientUuid`. One additive
+ * `ALTER TABLE ... ADD COLUMN` with a real default, a backfill, then the unique index. The
+ * client-minted identity that replaces `(device_id, local_id)` as this table's server key - see
+ * [MIGRATION_66_67] and [ConversationAudit.clientUuid] for the three days of audit rows the old
+ * key silently discarded.
+ *
  * v31: `wellbeing_digest_schedule` (goal-plans ticket 05, "the Wellbeing switch finally gets
  * content" - `.scratch/goal-plans/issues/05-wellbeing-digest.md`). One additive `CREATE TABLE`,
  * nothing existing touched. See [WellbeingDigestSchedule]'s own doc comment for why this is a
@@ -365,7 +371,7 @@ import androidx.room.RoomDatabase
         OutboxEntry::class,
         Checklist::class, ChecklistItem::class, ChecklistTick::class,
     ],
-    version = 66,
+    version = 67,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -524,7 +530,11 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 66
+        const val SCHEMA_VERSION = 67
+        // 2026-09-06: bumped to 67 alongside `@Database(version=)` in the same edit again
+        // (`conversation_audit.clientUuid` + its unique index - the client-minted identity that
+        // replaces `(device_id, local_id)` as the upload's server key, after that pair silently
+        // discarded three days of audit rows; see [MIGRATION_66_67] for the full account).
         // 2026-09-04: bumped to 66 alongside `@Database(version=)` in the same edit again
         // (checklists get measured items - measureUnit/measureTarget/measureDirection on
         // checklist_items, value/source on checklist_ticks - and real schedules -
@@ -651,6 +661,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
                         MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61, MIGRATION_61_62,
                         MIGRATION_62_63, MIGRATION_63_64, MIGRATION_64_65, MIGRATION_65_66,
+                        MIGRATION_66_67,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

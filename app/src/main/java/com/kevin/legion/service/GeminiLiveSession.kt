@@ -1095,12 +1095,19 @@ class GeminiLiveSession(
         io.launch {
             runCatching {
                 val dao = CarDatabase.getDatabase(appContext).conversationAuditDao()
+                // The upload watermark, read once per turn and handed to the trim inside record():
+                // retention must never delete a row the server has not confirmed. See
+                // ConversationAuditDao.trimUploadedOlderThan for why a blind timer over an audit
+                // trail is a shredder.
+                val uploadedThrough =
+                    com.kevin.legion.backend.conversationAuditUploadedThroughId(appContext)
                 if (driverText.isNotBlank()) {
                     dao.record(
                         turnSeq = seq,
                         kind = ConversationAudit.Kind.USER,
                         content = driverText,
                         vehicleId = vehicleId,
+                        uploadedThroughId = uploadedThrough,
                     )
                 }
                 if (companionText.isNotBlank()) {
@@ -1110,6 +1117,7 @@ class GeminiLiveSession(
                         content = auditContent(companionText, redacted),
                         redacted = redacted,
                         vehicleId = vehicleId,
+                        uploadedThroughId = uploadedThrough,
                     )
                 }
             }

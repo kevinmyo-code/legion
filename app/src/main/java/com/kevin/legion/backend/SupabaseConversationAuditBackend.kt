@@ -39,6 +39,7 @@ class SupabaseConversationAuditBackend(private val client: SupabaseClient) : Con
     private data class ConversationAuditUpsertDto(
         @SerialName("device_id") val deviceId: String,
         @SerialName("local_id") val localId: Long,
+        @SerialName("client_uuid") val clientUuid: String,
         @SerialName("turn_seq") val turnSeq: Long,
         val kind: String,
         @SerialName("tool_name") val toolName: String,
@@ -50,20 +51,33 @@ class SupabaseConversationAuditBackend(private val client: SupabaseClient) : Con
     )
 
     /**
-     * A single Postgrest `upsert` call over the whole batch, `on_conflict` set to the table's own
-     * natural key and `ignoreDuplicates = true` - same shape as
-     * [SupabaseFleetBackend.uploadObdSampleBatch] and for the identical reason: a re-post of an
-     * already-present row must be a free no-op, not a merge or an error, and a batch upload should
-     * never pay for a response body it does not need.
+     * A single Postgrest `upsert` call over the whole batch, `on_conflict` set to `client_uuid` and
+     * `ignoreDuplicates = true`, **returning the inserted rows so they can be counted**.
+     *
+     * `ignoreDuplicates = true` sends `Prefer: resolution=ignore-duplicates`; [select] adds
+     * `Prefer: return=representation`, and PostgREST then echoes back exactly the rows it INSERTED,
+     * omitting the ones it dropped. So `.size` here is the server's own count of what it accepted,
+     * read from the server rather than assumed from what was sent - see
+     * [ConversationAuditBackend.uploadConversationAuditBatch] for the three days of silently
+     * discarded evidence that assumption cost.
+     *
+     * **The conflict target moved from `(device_id, local_id)` to `client_uuid` on 2026-09-06.**
+     * The response body this now pays for is the deliberate reversal of the old comment here
+     * ("a batch upload should never pay for a response body it does not need"): it turns out this
+     * one does need it, because without it a discard and an upload are the same observation. An
+     * empty batch still short-circuits to 0 without a request.
      */
-    override suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Unit> =
+    override suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Int> =
         translating("upload conversation audit rows") {
-            if (batch.isNotEmpty()) {
+            if (batch.isEmpty()) {
+                0
+            } else {
                 client.postgrest.from(CONVERSATION_AUDIT_TABLE).upsert(
                     batch.map { row ->
                         ConversationAuditUpsertDto(
                             deviceId = row.deviceId,
                             localId = row.localId,
+                            clientUuid = row.clientUuid,
                             turnSeq = row.turnSeq,
                             kind = row.kind,
                             toolName = row.toolName,
@@ -75,11 +89,11 @@ class SupabaseConversationAuditBackend(private val client: SupabaseClient) : Con
                         )
                     },
                 ) {
-                    onConflict = "device_id,local_id"
+                    onConflict = "client_uuid"
                     ignoreDuplicates = true
-                }
+                    select()
+                }.decodeList<kotlinx.serialization.json.JsonElement>().size
             }
-            Unit
         }
 
     /** Same HEAD-only `Count.EXACT` shape as [SupabaseFleetBackend.countObdSamples] - see that

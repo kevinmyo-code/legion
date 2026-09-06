@@ -3,6 +3,7 @@ package com.kevin.legion.data.local
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -66,7 +67,10 @@ import androidx.room.Query
  * **This is a record of what happened, never an input to behaviour**, same posture as
  * [MemoryAudit]: nothing reads it back into a prompt.
  */
-@Entity(tableName = "conversation_audit")
+@Entity(
+    tableName = "conversation_audit",
+    indices = [Index(value = ["clientUuid"], unique = true)],
+)
 data class ConversationAudit(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** Groups every row from the same exchange - see the class doc. Not a `@ForeignKey`: nothing
@@ -98,6 +102,23 @@ data class ConversationAudit(
     /** Active vehicle at the time - context, never a filter, same convention as [MemoryAudit.vehicleId]. */
     @ColumnInfo(defaultValue = "''") val vehicleId: String = "",
     val at: Long,
+    /**
+     * This row's identity ON THE SERVER, minted here at insert and never re-derived - the same
+     * client-minted-UUID shape every other synced table in this codebase already uses
+     * ([MemoryEntry.syncId], [Goal.syncId], [Category.guid], `origin_guid` server-side).
+     *
+     * **Added v67 because `(device_id, local_id)` was not an identity.** The upload's server-side
+     * natural key used to be this device's `ANDROID_ID` paired with [id], and [id] is an
+     * `AUTOINCREMENT` rowid: it restarts at 1 whenever this table is emptied, while `ANDROID_ID`
+     * does not. On 2026-09-03 exactly that happened, and the 142 rows recorded afterwards carried
+     * ids 1..142 that the server had already issued to 142 COMPLETELY DIFFERENT rows from August.
+     * The upload posts `on conflict do nothing`, so Postgres matched them on the old key, discarded
+     * every one, and returned success - three days of the only durable record of what a tool call
+     * did, silently dropped, with a 14-day delete timer already running on them
+     * ([CONVERSATION_AUDIT_RETENTION_DAYS]). A UUID cannot collide across a table reset, which
+     * removes the class of bug rather than that one instance of it.
+     */
+    @ColumnInfo(defaultValue = "''") val clientUuid: String = java.util.UUID.randomUUID().toString(),
 ) {
     object Kind {
         const val USER = "user"
@@ -143,18 +164,57 @@ interface ConversationAuditDao {
     suspend fun since(sinceMillis: Long): List<ConversationAudit>
 
     /**
-     * Drops everything older than [cutoffMillis] - the rolling retention window (ticket 23
-     * decision 4: [CONVERSATION_AUDIT_RETENTION_DAYS]). Called after every insert, same
-     * "trim on write" convention as [MemoryAuditDao.trim], deliberately NOT filtered by whether a
-     * row looks "interesting": the ticket's own motivating incident (the 142k claim) looked like
-     * an ordinary successful turn, so a relevance filter would have deleted the one row that
-     * mattered before anyone knew to look for it.
+     * Drops rows older than [cutoffMillis] **that the server already has** - the rolling retention
+     * window (ticket 23 decision 4: [CONVERSATION_AUDIT_RETENTION_DAYS]). Called after every
+     * insert, same "trim on write" convention as [MemoryAuditDao.trim], deliberately NOT filtered
+     * by whether a row looks "interesting": the ticket's own motivating incident (the 142k claim)
+     * looked like an ordinary successful turn, so a relevance filter would have deleted the one row
+     * that mattered before anyone knew to look for it.
+     *
+     * **`id <= :uploadedThroughId` added 2026-09-06, and it is the load-bearing half.** This
+     * previously read `WHERE at < :cutoffMillis` alone, which meant retention deleted on a timer
+     * whether or not a row had ever reached the server. That is a fine rule for a cache and a
+     * terrible one for the only durable record of what a tool call did: the upload had been
+     * silently discarding every row for three days (see [ConversationAudit.clientUuid] for the
+     * key collision that caused it), and nothing about the trim would have hesitated before
+     * destroying the sole surviving copy of that evidence on day fourteen. **A silent upload
+     * failure plus a blind timer is a shredder.** So the trim now stops at the upload watermark:
+     * an un-uploaded row is KEPT past its window, growing the table rather than losing evidence,
+     * and the growth is surfaced to a person by
+     * [com.kevin.legion.backend.ConversationAuditReconcile.pendingSummary] rather than left to be
+     * discovered. Keeping a row costs disk; deleting it costs the answer to "what did it actually
+     * do?", which is the entire reason this table exists.
+     *
+     * @param uploadedThroughId the highest local [ConversationAudit.id] the server has confirmed -
+     *   [com.kevin.legion.backend.ConversationAuditUploadCursor]'s watermark. Pass 0 to keep
+     *   everything, which is what an install that has never synced correctly gets.
      */
-    @Query("DELETE FROM conversation_audit WHERE at < :cutoffMillis")
-    suspend fun trimOlderThan(cutoffMillis: Long)
+    @Query("DELETE FROM conversation_audit WHERE at < :cutoffMillis AND id <= :uploadedThroughId")
+    suspend fun trimUploadedOlderThan(cutoffMillis: Long, uploadedThroughId: Long)
 
     @Query("SELECT COUNT(*) FROM conversation_audit")
     suspend fun count(): Int
+
+    /** How many rows sit past the upload watermark - the number
+     *  [com.kevin.legion.backend.ConversationAuditReconcile.pendingSummary] puts in front of a
+     *  person. Counts rows, never bytes: "how much evidence is not backed up" is a count question. */
+    @Query("SELECT COUNT(*) FROM conversation_audit WHERE id > :afterId")
+    suspend fun countAfterId(afterId: Long): Int
+
+    /** [ConversationAudit.at] of the OLDEST row past the watermark, or null when nothing is
+     *  pending. The age of this one is what says whether the backlog is minutes old or a fortnight
+     *  old, and a fortnight is the number that matters ([CONVERSATION_AUDIT_RETENTION_DAYS]). */
+    @Query("SELECT MIN(at) FROM conversation_audit WHERE id > :afterId")
+    suspend fun oldestAtAfterId(afterId: Long): Long?
+
+    /**
+     * The largest local id in the table, or null when it is empty - the one read that can tell a
+     * watermark left over from a PREVIOUS incarnation of this table apart from a legitimate one.
+     * See [com.kevin.legion.backend.ConversationAuditReconcile.resolveCursor] for why a stale
+     * watermark is otherwise undetectable and skips rows forever.
+     */
+    @Query("SELECT MAX(id) FROM conversation_audit")
+    suspend fun maxId(): Long?
 
     /**
      * Rows with a local [ConversationAudit.id] greater than [afterId], oldest-first, capped at
@@ -179,6 +239,13 @@ const val CONVERSATION_AUDIT_RETENTION_DAYS = 14L
  *
  * **Never throws into its caller.** Same posture as [MemoryAuditDao.record]: an audit trail
  * failing must never take the real conversation or a real tool dispatch down with it.
+ *
+ * @param uploadedThroughId the upload watermark, handed in rather than read here because this
+ *   function lives in `data.local` and the watermark lives in `backend` - see
+ *   [trimUploadedOlderThan] for why the trim needs it at all. Both production call sites read it
+ *   from [com.kevin.legion.backend.ConversationAuditUploadCursor]. It defaults to 0, and 0 means
+ *   "trim nothing", so a caller that forgets it over-retains rather than over-deletes: the failure
+ *   direction for an evidence table has to be a bigger table, never a missing row.
  */
 suspend fun ConversationAuditDao.record(
     turnSeq: Long,
@@ -188,6 +255,7 @@ suspend fun ConversationAuditDao.record(
     args: String = "",
     redacted: Boolean = false,
     vehicleId: String = "",
+    uploadedThroughId: Long = 0L,
 ) {
     runCatching {
         val now = System.currentTimeMillis()
@@ -203,6 +271,6 @@ suspend fun ConversationAuditDao.record(
                 at = now,
             ),
         )
-        trimOlderThan(now - CONVERSATION_AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+        trimUploadedOlderThan(now - CONVERSATION_AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000, uploadedThroughId)
     }
 }

@@ -21,6 +21,14 @@ package com.kevin.legion.backend
 data class ConversationAuditUpload(
     val deviceId: String,
     val localId: Long,
+    /**
+     * The row's server identity - [com.kevin.legion.data.local.ConversationAudit.clientUuid],
+     * carried verbatim, never re-minted here. **This replaced `(deviceId, localId)` as the upsert
+     * key on 2026-09-06**; see that property's own doc comment for the three days of evidence the
+     * old key silently discarded. [deviceId]/[localId] still ride along, because "which phone, and
+     * which row on it" remains worth recording even though neither is an identity any more.
+     */
+    val clientUuid: String,
     val turnSeq: Long,
     val kind: String,
     val toolName: String,
@@ -43,13 +51,23 @@ data class ConversationAuditUpload(
  */
 interface ConversationAuditBackend {
     /**
-     * Bulk-upserts a batch onto `(device_id, local_id)` (the table's own natural key, `on conflict
-     * do nothing` server-side). A re-post of an already-uploaded row is silently ignored, matching
-     * [FleetBackend.uploadObdSampleBatch]'s own idempotency contract and for the same reason: this
-     * device's `local_id` sequence never changes once written, so replaying a batch after an
-     * interrupted run can never double-count.
+     * Bulk-upserts a batch onto `client_uuid` (`on conflict do nothing` server-side), and returns
+     * **how many rows the server actually accepted** - not how many were offered.
+     *
+     * **That return value is the point, and `Result<Unit>` is what let this table lose three days.**
+     * The previous key was `(device_id, local_id)`, and `local_id` is an `AUTOINCREMENT` rowid that
+     * restarts when the phone's table is emptied while `device_id` does not - so after a reset the
+     * phone offered rows 1..142 against 142 unrelated August rows already holding those ids,
+     * Postgres discarded every one under `do nothing`, and returned success. The caller counted the
+     * batch SIZE as uploaded and advanced its watermark over all of them. A count of accepted rows
+     * makes that failure arithmetically impossible to mistake for an upload, whatever the key later
+     * becomes - which is why it is a count and not a boolean.
+     *
+     * A re-post of an already-present row is still a free no-op (it simply does not count), which
+     * under a client-minted UUID is correct: the same `client_uuid` genuinely is the same row, so a
+     * batch replayed after an interrupted run can never double-count.
      */
-    suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Unit>
+    suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Int>
 
     /**
      * A HEAD-only exact count of `conversation_audit`, no rows downloaded - same shape and same
