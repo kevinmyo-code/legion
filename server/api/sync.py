@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from django.db import DatabaseError, transaction
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
+from rest_framework.fields import DateTimeField
 from rest_framework.response import Response
 
 PAGE_SIZE = 500
@@ -49,11 +50,22 @@ def paginate_since(queryset, page_size: int = PAGE_SIZE):
     `page_size` rows came back, meaning this was the last page. A caller
     pages by re-requesting with `since=<next>` until `next` comes back
     null - the same shape ticket 04's own brief describes ("page size 500
-    with a next cursor")."""
+    with a next cursor").
+
+    **`next` is rendered with DRF's own `DateTimeField`, not Python's
+    `.isoformat()`.** This line used to read `page[-1].updated_at.isoformat()`,
+    which renders UTC as `+00:00`; a raw `+` in an un-percent-encoded query
+    string decodes to a literal SPACE, so a client handing `next` straight
+    back as `?since=<next>` corrupted its own watermark. That footgun was
+    found empirically while building the Phase 2 slice and is written up at
+    length in `api/changes.py`, which already dodged it for `server_time`.
+    Changed here in Phase 5 so every cursor this API hands out has the same
+    `Z` suffix as every timestamp inside the rows.
+    """
     rows = list(queryset[: page_size + 1])
     if len(rows) > page_size:
         page = rows[:page_size]
-        return page, page[-1].updated_at.isoformat()
+        return page, DateTimeField().to_representation(page[-1].updated_at)
     return rows, None
 
 

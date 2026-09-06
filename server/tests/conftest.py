@@ -12,6 +12,8 @@ import pytest
 from django.conf import settings
 from rest_framework.test import APIClient
 
+from tests.legacy_test_schema import LEGACY_PHASE5_TEST_SCHEMA_SQL
+
 # `legacy` is deliberately `managed = False` with `MIGRATION_MODULES =
 # {"legacy": None}` (legion/settings.py) - Supabase's own migrations own
 # these 41 tables' DDL, on purpose, so Django never touches it. That is
@@ -45,6 +47,13 @@ from rest_framework.test import APIClient
 # hits this exact same wall and will want the same pattern, or a shared
 # one. Flagged in this ticket's own final report rather than generalised
 # here.
+#
+# UPDATE, Phase 5 (places, voice notes, body, memory): that shared one now
+# exists as `tests/legacy_test_schema.py`, and the fixture below applies it
+# right after this constant. The events SQL stays here rather than moving
+# into it - this comment is the history of how the wall was found, and
+# moving the code away from it would leave the story without its example.
+# Ledger, pantry and fleet still owe their own blocks in that module.
 _LEGACY_EVENTS_TEST_SCHEMA_SQL = """
 create schema if not exists private;
 
@@ -129,22 +138,31 @@ create table if not exists public.event_skips (
 
 @pytest.fixture(scope="session")
 def django_db_setup(django_db_setup, django_db_blocker):
-    """Layers `_LEGACY_EVENTS_TEST_SCHEMA_SQL` on top of pytest-django's own
+    """Layers `_LEGACY_EVENTS_TEST_SCHEMA_SQL` and then
+    `LEGACY_PHASE5_TEST_SCHEMA_SQL` on top of pytest-django's own
     `django_db_setup` (which creates and migrates the test database) - see
-    that constant's own module-level comment for why this exists at all.
+    the first constant's own module-level comment for why this exists at
+    all, and `tests/legacy_test_schema.py`'s module doc for what the second
+    covers.
+
+    Order matters only in that both blocks create `private.touch_updated_at`
+    and guard the `provenance` enum; each does so idempotently
+    (`create or replace`, `if not exists`), so running either one first, or
+    both twice against a `--reuse-db` database, changes nothing.
     """
     from django.db import connection
 
     db_name = connection.settings_dict.get("NAME", "")
     if "test" not in db_name.lower():
         raise RuntimeError(
-            f"Refusing to run the legacy-events test schema against database "
+            f"Refusing to run the legacy test schema against database "
             f"{db_name!r} - it does not look like a pytest test database, and "
             f"this SQL must never touch anything else."
         )
     with django_db_blocker.unblock():
         with connection.cursor() as cursor:
             cursor.execute(_LEGACY_EVENTS_TEST_SCHEMA_SQL)
+            cursor.execute(LEGACY_PHASE5_TEST_SCHEMA_SQL)
 
 
 @pytest.fixture(autouse=True, scope="session")

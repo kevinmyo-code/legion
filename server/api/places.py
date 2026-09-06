@@ -1,0 +1,75 @@
+"""`/api/places` - one table, keyed by `label`, on the generic shape in
+`api/synced.py`.
+
+`label` as the identity is ticket 04's own named exception ("`places` |
+keyed by `label` | `PUT /api/places/<label>/`, `DELETE` likewise"), and it
+is not a stylistic choice: `public.places` has no `origin_guid` column at
+all. Confirmed against the live schema on 2026-09-06 rather than inferred
+from the model file, though `legacy/models/places.py`'s own class doc says
+the same thing ("No `origin_guid` - confirmed absent from the live schema,
+unlike almost every other table in this app"). `places.label_unique` is
+what makes the key work, and `20260825000500_aspect_places_fleet.sql`'s own
+comment says why the label has to stay unique and stable: `events.trigger_place_label`
+names a place by this string, and the geofence layer uses it as the OS
+requestId.
+
+`PlacesBackend.kt` (`RemotePlace`, `fetchActive` / `upsert` / `softDelete`)
+is the phone-side contract this mirrors, and the reason this aspect is the
+only one with `put_revives_tombstone = True` - see `SupabasePlacesBackend`'s
+`PlaceUpsertDto` doc comment, and `api/synced.py`'s own summary of it.
+"""
+from __future__ import annotations
+
+from api.synced import SyncedModelViewSet, SyncedSerializer, blank_error, range_error
+from legacy.models.places import Place
+
+# `legacy/CONSTRAINTS.md`'s own `## places` section, read from the live
+# schema. A caller outside these bounds is told the bounds (ticket 04:
+# "a 400 naming the allowed set"), never handed Postgres's own constraint
+# name.
+LATITUDE_BOUNDS = (-90, 90)
+LONGITUDE_BOUNDS = (-180, 180)
+
+
+class PlaceSerializer(SyncedSerializer):
+    class Meta:
+        model = Place
+        fields = [
+            "id",
+            "label",
+            "latitude",
+            "longitude",
+            "provenance",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+        ]
+        read_only_fields = ["id", "provenance", "created_at", "updated_at", "deleted_at"]
+
+    def validate_label(self, value: str) -> str:
+        if not value or not value.strip():
+            raise blank_error("label")
+        return value
+
+    def validate_latitude(self, value: float) -> float:
+        low, high = LATITUDE_BOUNDS
+        if not low <= value <= high:
+            raise range_error("latitude", value, low, high)
+        return value
+
+    def validate_longitude(self, value: float) -> float:
+        low, high = LONGITUDE_BOUNDS
+        if not low <= value <= high:
+            raise range_error("longitude", value, low, high)
+        return value
+
+
+class PlaceViewSet(SyncedModelViewSet):
+    aspect = "places"
+    table = "places"
+    serializer_class = PlaceSerializer
+    identity_field = "label"
+    # A re-tagged label brings a forgotten place back rather than leaving a
+    # tombstone in place - the one aspect where that is true. See this
+    # module's own doc comment.
+    put_revives_tombstone = True
