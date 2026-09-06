@@ -100,8 +100,15 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "drf_spectacular",
+    # No models - houses the `django`-schema-creation migration that has to
+    # run before any other app's first migration. See `core/apps.py`.
+    "core",
     "household",
     "api",
+    # Ticket 02 (django-engine map): the 41 `public` tables Supabase created,
+    # read as `managed = False` mirrors. See `legacy/models/` and
+    # `legacy/CONSTRAINTS.md`.
+    "legacy",
 ]
 
 MIDDLEWARE = [
@@ -143,7 +150,7 @@ DATABASE_URL = required_env("DATABASE_URL")
 
 
 def _parse_database_url(url: str) -> dict:
-    from urllib.parse import urlparse
+    from urllib.parse import unquote, urlparse
 
     parsed = urlparse(url)
     if parsed.scheme not in {"postgres", "postgresql"}:
@@ -151,17 +158,69 @@ def _parse_database_url(url: str) -> dict:
             f"DATABASE_URL must be a postgres:// URL, got scheme {parsed.scheme!r}. "
             f"Section 4/5 rules assume Postgres; there is no SQLite fallback."
         )
+    # `urlparse().username`/`.password` return the RAW substring between `:`
+    # and `@`, NOT percent-decoded - confirmed the hard way (ticket 02,
+    # django-engine map): a Supabase-generated password containing `@`,
+    # written into the URL as `%40` per RFC 3986, was handed to psycopg
+    # completely undecoded, so the literal string sent as the password
+    # still contained `%40` instead of `@`. Every attempt authenticated as
+    # the wrong password and Supabase's own pooler tripped its circuit
+    # breaker after enough of them. `unquote()` on both fields is the fix;
+    # a plain alphanumeric password happens to be its own unquoted form, so
+    # this was invisible until a real credential with a reserved character
+    # in it was used against this function for the first time.
     return {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": (parsed.path or "").lstrip("/"),
-        "USER": parsed.username or "",
-        "PASSWORD": parsed.password or "",
+        "USER": unquote(parsed.username or ""),
+        "PASSWORD": unquote(parsed.password or ""),
         "HOST": parsed.hostname or "",
         "PORT": str(parsed.port or 5432),
     }
 
 
 DATABASES = {"default": _parse_database_url(DATABASE_URL)}
+
+# Django's own bookkeeping (`django_migrations`, `auth_permission`,
+# `django_content_type`, `django_session`, `django_admin_log`, and every
+# `household_*` table) lives in a schema named `django`, never in `public` -
+# execution-plan.md Phase 0/1: "public stays owned by supabase/migrations/
+# until ticket 02 hands ownership over table by table." Postgres does NOT
+# create a schema named in `search_path` for you - confirmed empirically
+# against the live database (an unqualified `CREATE TABLE` under a
+# `search_path` naming a schema that does not yet exist silently falls
+# through to the next schema in the list, `public`, with no error at all).
+# `core/migrations/0001_create_django_schema.py` is what actually
+# creates `django` before anything else runs, in every environment
+# (compose's local Postgres, a fresh pytest test database, and the live
+# server) - this `OPTIONS` entry only says where to look and create once it
+# exists. Unqualified references to any of the 41 legacy tables still
+# resolve correctly: `public` is second in the path, and none of Django's
+# own table names collide with one of the 41.
+DATABASES["default"]["OPTIONS"] = {"options": "-c search_path=django,public"}
+
+# A second, read-only alias for ticket 02's per-table round-trip tests and
+# for `inspectdb` itself - `LEGION_PG_URL` is the `legion_reader` role
+# (SELECT + bypassrls, no DDL, no createdb), set only in an agent's
+# `.claude/mcp.env`, never in `deploy/.env`. Optional, unlike every other
+# database setting above: a household running this server by hand has no
+# reason to ever have this variable set, and must not be forced to decide a
+# value for a role it will never use. `legion_reader`'s own `search_path`
+# is left at its default (effectively `public`, since it owns no schema of
+# its own) - it never touches `django`.
+_readonly_url = os.environ.get("LEGION_PG_URL")
+if _readonly_url:
+    DATABASES["readonly"] = _parse_database_url(_readonly_url)
+
+# `managed = False` alone does NOT stop `makemigrations` from generating
+# `CreateModel` operations for a model - it only stops `migrate` from
+# emitting DDL for one. Confirmed the hard way: with `legacy/` a normal
+# migrated app, `makemigrations --check --dry-run` proposed a 41-model
+# initial migration despite every model being unmanaged. `MIGRATION_MODULES
+# = None` is Django's actual mechanism for "this app has no migrations at
+# all" - `legacy` therefore has no `migrations/` package (there is nothing
+# for one to hold), and `makemigrations --check` now reports nothing.
+MIGRATION_MODULES = {"legacy": None}
 
 AUTH_USER_MODEL = "household.User"
 
