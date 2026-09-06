@@ -497,7 +497,23 @@ class SubAgent(
                 Log.e(TAG, "SubAgent error $code: $err")
                 HttpOutcome.HttpError(code, err)
             } else {
-                HttpOutcome.Ok(connection.inputStream.bufferedReader().use { it.readText() })
+                val json = connection.inputStream.bufferedReader().use { it.readText() }
+                // Meter EVERY REST call, here at the one HTTP boundary rather than at the thirty
+                // call sites (2026-09-06, "my gemini credits burned really fast"). `ask`,
+                // `askTyped`, `askWithUsage` and `investigate` all funnel through postRaw into
+                // this function, so one line covers every present caller and cannot be forgotten
+                // by the next one added - which is exactly how [askWithUsage] ended up the only
+                // metered path in the app despite [parseUsageMetadata] existing since August.
+                // Fire-and-forget and self-swallowing inside the meter; nothing here can fail the
+                // call it is measuring.
+                val (prompt, candidates) = parseUsageMetadata(json)
+                GeminiUsageMeter.recordRestCall(model, prompt, candidates, parseTotalTokens(json))
+                // A 200 is proof the key is both valid and has quota, so any recorded problem is
+                // stale. Clearing it here rather than at the tool sites means a key that starts
+                // working again stops being reported as broken with nobody having to dismiss
+                // anything. noteOk is a no-op when there was nothing recorded.
+                KeyHealth.noteOk()
+                HttpOutcome.Ok(json)
             }
         } catch (e: Exception) {
             Log.e(TAG, "SubAgent request failed: ${e.message}", e)
@@ -508,11 +524,29 @@ class SubAgent(
         }
     }
 
-    /** Map an HTTP error to a typed result (mirrors [GeminiKeyValidator]'s key check). */
+    /**
+     * Map an HTTP error to a typed result (mirrors [GeminiKeyValidator]'s key check).
+     *
+     * Also records the verdict in [KeyHealth] with the server's OWN status and message attached
+     * (2026-09-06). Before this, the 429 and key-rejected branches were classified correctly and
+     * the reason reached [KeyHealth] from only a handful of hand-wired tool sites - and even those
+     * wrote to a field with no readers. Recording it here means every REST path feeds the same
+     * diagnosis, and it carries evidence rather than a bare label, so the Setup sentence can say
+     * what was actually seen instead of asserting a cause nobody checked.
+     */
     private fun classify(e: HttpOutcome.HttpError): AgentResult = when {
-        e.code == 429 -> AgentResult.RateLimited
-        e.code == 401 || e.code == 403 -> AgentResult.KeyInvalid
-        e.code == 400 && e.body.contains("API_KEY_INVALID") -> AgentResult.KeyInvalid
+        e.code == 429 -> {
+            KeyHealth.noteRateLimited("HTTP 429 from Gemini: ${e.body}")
+            AgentResult.RateLimited
+        }
+        e.code == 401 || e.code == 403 -> {
+            KeyHealth.noteInvalid("HTTP ${e.code} from Gemini: ${e.body}")
+            AgentResult.KeyInvalid
+        }
+        e.code == 400 && e.body.contains("API_KEY_INVALID") -> {
+            KeyHealth.noteInvalid("HTTP 400 API_KEY_INVALID from Gemini")
+            AgentResult.KeyInvalid
+        }
         e.code == 500 || e.code == 503 -> AgentResult.Overloaded
         else -> AgentResult.Failed
     }
@@ -705,6 +739,27 @@ class SubAgent(
             ?.optJSONObject(0)
             ?.optString("finishReason")
             ?.takeIf { it.isNotBlank() }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * `usageMetadata.totalTokenCount`, or null when the field is absent (2026-09-06).
+     *
+     * Separate from [parseUsageMetadata] rather than folded into it: that function returns a Pair
+     * and has a caller ([askWithUsage] -> [com.kevin.legion.ledger.CategoryAgent]) plus
+     * [com.kevin.legion.ai.SubAgentUsageMetadataTest] built on that exact shape, and widening it
+     * to a Triple would change both for no gain.
+     *
+     * **Never falls back to `prompt + candidates`.** The total is its own reported figure and on
+     * some models it exceeds the sum, because thinking tokens and cached content are counted in it
+     * but reported in their own fields. Deriving it would produce a number that always looks
+     * self-consistent and is sometimes wrong low - CLAUDE.md section 4 rule 6's shape.
+     */
+    internal fun parseTotalTokens(json: String): Int? = try {
+        JSONObject(json).optJSONObject("usageMetadata")
+            ?.takeIf { it.has("totalTokenCount") }
+            ?.optInt("totalTokenCount")
     } catch (e: Exception) {
         null
     }

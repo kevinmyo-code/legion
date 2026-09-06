@@ -768,12 +768,21 @@ class LiveSessionController(context: Context) {
                 if (userInitiated && event.reason !in NORMAL_CLOSE_REASONS) {
                     CompanionPhase.showNotice(
                         when {
-                            event.reason == "key rejected" -> {
-                                KeyHealth.noteInvalid(); "KEY PROBLEM - CHECK SETUP"
-                            }
-                            event.reason == "quota" -> {
-                                KeyHealth.noteRateLimited(); "KEY RATE-LIMITED - TRY AGAIN SOON"
-                            }
+                            // KeyHealth is noted by GeminiLiveSession's own onFailure now, WITH
+                            // the HTTP status attached. Calling noteInvalid() again here would
+                            // overwrite that evidence with a blank detail, leaving the Setup
+                            // sentence unable to say what it actually saw.
+                            event.reason == "key rejected" -> "KEY PROBLEM - CHECK SETUP"
+                            // "TRY AGAIN SOON" until 2026-09-06, which was an assertion the app
+                            // had no basis for: a 429 is Gemini's RESOURCE_EXHAUSTED for BOTH a
+                            // per-minute rate limit (clears in seconds) and an exhausted quota
+                            // (does not clear until the account is topped up). Kevin's key ran out
+                            // of credits, and the chip promised him a recovery that was not coming.
+                            // KeyHealth is noted by GeminiLiveSession itself now, with the status
+                            // attached, so the Setup screen carries the full sentence; this chip
+                            // says only what is certainly true and points at it.
+                            event.reason == "quota" -> "GEMINI QUOTA OR RATE LIMIT - SEE SETUP"
+                            
                             event.reason.contains("microphone", ignoreCase = true) -> "MIC UNAVAILABLE"
                             !everConnected -> "NO CONNECTION - TAP TO RETRY"
                             else -> "CONNECTION LOST - TAP TO RETRY"

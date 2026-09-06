@@ -22,6 +22,8 @@ import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.ai.GeminiUsageMeter
+import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ConversationAudit
@@ -480,6 +482,12 @@ class GeminiLiveSession(
     // start() call, which captureTurn() below treats as "don't capture yet."
     @Volatile private var episodicSessionId: String = ""
 
+    // Spend metering (2026-09-06): whether THIS socket has already been counted as one a person
+    // spoke into. Per-socket rather than per-turn - the question LiveConnectDay answers is "how
+    // many connections were never used", so a ten-turn conversation and a one-turn one are both
+    // exactly one carried-turn connect. Reset in start() alongside every other per-socket flag.
+    @Volatile private var connectCountedAsCarryingTurn = false
+
     // Ticket 02 (drive-test-2026-08-18): the resumption handle THIS connection was opened
     // with, set once in [start] and read by [buildSetup]. Separate from the handle we may
     // later RECEIVE (below) because those are different moments - one is "what we asked to
@@ -545,6 +553,7 @@ class GeminiLiveSession(
         // the same socket stays one session; a fresh start() (new socket) is a
         // new one.
         episodicSessionId = java.util.UUID.randomUUID().toString()
+        connectCountedAsCarryingTurn = false
         micHandedOff = false
         capturing = false
         vadMode = vad
@@ -810,6 +819,12 @@ class GeminiLiveSession(
 
         override fun onOpen(webSocket: WebSocket, response: Response) {
             MidnightEvents.sessionStart()
+            // A DURABLE count beside the Log.d breadcrumb (2026-09-06). MidnightEvents is
+            // Log.d-only, so August's reconnect storm was only ever found by reading logcat by
+            // hand, and a storm that happens while nobody is holding a cable leaves no trace at
+            // all. Counted at onOpen, not at start(): this is a socket that actually connected and
+            // is about to be billed for its setup prompt, not an attempt.
+            GeminiUsageMeter.recordLiveConnect()
             webSocket.send(buildSetup(systemInstruction, functionDeclarations).toString())
         }
 
@@ -824,6 +839,17 @@ class GeminiLiveSession(
             // The HTTP upgrade response carries the real cause on an auth/quota
             // reject, so map it to a stable reason the controller phrases for the
             // driver. Transport failures (no response) keep the exception message.
+            // Record WHY, durably, with the server's own status attached (2026-09-06). The
+            // upgrade response is the only place the Live path ever learns that the key has no
+            // quota, and until now that fact reached KeyHealth only from a handful of REST tool
+            // sites - which wrote to a field nothing read. On a quota-exhausted key the socket
+            // never opens, so what a person sees is a wake word that appears to do nothing; this
+            // is what lets the Setup screen say otherwise. See KeyHealth's class doc.
+            when (response?.code) {
+                429 -> KeyHealth.noteRateLimited("HTTP 429 opening the Gemini Live socket")
+                400, 401, 403 -> KeyHealth.noteInvalid("HTTP ${response?.code} opening the Gemini Live socket")
+                else -> Unit // a transport failure says nothing about the key; do not blame it
+            }
             closeSession(
                 when (response?.code) {
                     400, 401, 403 -> "key rejected"
@@ -933,6 +959,11 @@ class GeminiLiveSession(
         // warm until the driver taps.
         if (root.has("setupComplete")) {
             warm.set(true)
+            // The socket opened and the server accepted the setup: the key is valid and has quota
+            // right now, so any recorded problem is stale. Same reasoning as SubAgent's own
+            // noteOk on a 200 - a key that starts working again must stop being reported broken
+            // without anyone dismissing anything.
+            KeyHealth.noteOk()
             emit(LiveEvent.Connected)
             return
         }
@@ -943,6 +974,42 @@ class GeminiLiveSession(
         // half of why a dropped socket silently dropped the conversation's memory with it.
         root.optJSONObject("goAway")?.let { handleGoAway(it) }
         root.optJSONObject("sessionResumptionUpdate")?.let { handleSessionResumptionUpdate(it) }
+        // The sixth message field, and the one this class ignored for its whole life until
+        // 2026-09-06. The Live API reports token usage alongside serverContent, and dropping it
+        // meant NOTHING in this app had ever read a measured token count off a voice conversation -
+        // every spend figure any surface showed was estimated from prompt length. Kevin asked why
+        // his credits burned fast and the honest answer was that nobody knew. Handled last and
+        // unconditionally (not inside the serverContent branch) because usageMetadata rides at the
+        // ROOT of the server message, as a sibling of serverContent rather than a child.
+        root.optJSONObject("usageMetadata")?.let { handleUsageMetadata(it) }
+    }
+
+    /**
+     * Records what this socket has cost so far, against [episodicSessionId] so the spend can be
+     * lined up with the transcript it paid for.
+     *
+     * Reads `responseTokenCount` and falls back to `candidatesTokenCount`: the Live API documents
+     * the former, the REST `generateContent` API uses the latter, and this is one WebSocket whose
+     * exact field name is not worth asserting from a doc page - trying both costs nothing and
+     * neither present is recorded as null, which the meter keeps distinct from zero.
+     *
+     * `totalTokenCount` is taken as reported and never derived from the other two: on the Live API
+     * the total legitimately exceeds prompt + response, because audio input and output are counted
+     * in it and broken out under `responseTokensDetails` by modality.
+     *
+     * See [com.kevin.legion.data.local.GeminiUsage] for why repeat reports on one socket are
+     * max-folded rather than summed, and for the fact that whether they are cumulative or
+     * incremental is NOT yet verified on device.
+     */
+    private fun handleUsageMetadata(usage: JSONObject) {
+        val prompt = usage.takeIf { it.has("promptTokenCount") }?.optInt("promptTokenCount")
+        val response = when {
+            usage.has("responseTokenCount") -> usage.optInt("responseTokenCount")
+            usage.has("candidatesTokenCount") -> usage.optInt("candidatesTokenCount")
+            else -> null
+        }
+        val total = usage.takeIf { it.has("totalTokenCount") }?.optInt("totalTokenCount")
+        GeminiUsageMeter.recordLiveUsage(episodicSessionId, MODEL, prompt, response, total)
     }
 
     /**
@@ -1253,6 +1320,16 @@ class GeminiLiveSession(
             // previous breadcrumb-only version left the last two field reports with zero data).
             if (vadMode && bytesThisTurn < SILENT_TURN_BYTES_THRESHOLD) {
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
+            }
+            // Mark this socket as one a person actually spoke into (2026-09-06). The number that
+            // matters for spend is not how many sockets opened but how many opened and were never
+            // used: each of those still paid for its setup prompt. Read from `heard` rather than
+            // from captureEpisodicTurn, which returns early on a mail turn (the read-through rule)
+            // and on a proactive line with no driver text - both of which are wrong here, because
+            // a mail turn IS a user turn that cost tokens even though nothing about it is stored.
+            if (heard.isNotBlank() && !connectCountedAsCarryingTurn) {
+                connectCountedAsCarryingTurn = true
+                GeminiUsageMeter.recordLiveConnectCarriedTurn()
             }
             captureEpisodicTurn(heard, companionTurnText.toString().trim())
             // Ticket 05 call 5: a brush-off of an unprompted line suppresses that rule for a day.

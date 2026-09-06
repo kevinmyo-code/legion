@@ -2824,3 +2824,56 @@ val MIGRATION_66_67 = object : Migration(SCHEMA_V66, SCHEMA_V67) {
         )
     }
 }
+
+private const val SCHEMA_V68 = 68
+
+/**
+ * Three new tables and nothing else - purely additive, no column touched, no row rewritten.
+ *
+ * **What they are for (2026-09-06, "my gemini credits burned really fast").** [GeminiUsage] and
+ * [LiveConnectDay] make the spend MEASURABLE for the first time: nothing in this app had ever
+ * read a token count off the Live socket or off twenty-nine of the thirty REST sub-agent call
+ * sites, so every figure any surface had shown was an estimate, and the August reconnect storm
+ * was only ever found by reading logcat by hand. [BackgroundPassState] is the retry bookkeeping
+ * that stops the two unattended five-minute loops re-paying for the same no-op forever; see its
+ * own class doc for the two stuck shapes and the phone evidence for one of them.
+ *
+ * **`CREATE TABLE`, not a rebuild of anything** - there is nothing to preserve, so none of
+ * [MIGRATION_60_61]'s ALTER-vs-rebuild reasoning applies. The SQL below is copied verbatim out of
+ * the generated `68.json` with `${TABLE_NAME}` substituted, which is the only edit CLAUDE.md
+ * section 5 permits, and the indices are declared on the entity so a fresh install and an upgraded
+ * install cannot diverge.
+ *
+ * **`live_connect_day` and `background_pass_state` have no index block, which is correct rather
+ * than forgotten:** each declares a real PRIMARY KEY on the one column anything looks a row up by
+ * (`day`, `passKey`), and SQLite indexes a PK automatically. `gemini_usage` needs its two because
+ * its PK is a surrogate rowid: `sessionKey` is the natural key an upsert collides on, and `at` is
+ * what every day/month window filters by.
+ */
+val MIGRATION_67_68 = object : Migration(SCHEMA_V67, SCHEMA_V68) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `gemini_usage` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`sessionKey` TEXT NOT NULL, `surface` TEXT NOT NULL, `model` TEXT NOT NULL, " +
+                "`promptTokens` INTEGER, `responseTokens` INTEGER, `totalTokens` INTEGER, " +
+                "`reports` INTEGER NOT NULL, `at` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_gemini_usage_sessionKey` ON `gemini_usage` (`sessionKey`)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_gemini_usage_at` ON `gemini_usage` (`at`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `live_connect_day` (`day` TEXT NOT NULL, " +
+                "`connects` INTEGER NOT NULL, `connectsWithTurn` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL, PRIMARY KEY(`day`))",
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `background_pass_state` (`passKey` TEXT NOT NULL, " +
+                "`watermark` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, " +
+                "`nextAttemptAt` INTEGER NOT NULL, `setAsideAt` INTEGER NOT NULL, " +
+                "`setAsideReason` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`passKey`))",
+        )
+    }
+}

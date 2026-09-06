@@ -37,6 +37,8 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiKeyValidator
 import com.kevin.legion.ai.KeyCheck
+import com.kevin.legion.ai.KeyHealth
+import com.kevin.legion.ai.GeminiUsageMeter
 import com.kevin.legion.backend.ConversationAuditReconcile
 import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.SignInResult
@@ -144,6 +146,22 @@ fun KeyScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         auditPending = ConversationAuditReconcile.pendingSummary(context)
     }
+
+    // Measured Gemini spend (2026-09-06). Same null-is-not-zero discipline as auditPending above:
+    // null means the tables could not be read, and geminiSpendSentence says so rather than
+    // reporting a comfortable 0. Re-read on entry, because the number's job is to be current when
+    // someone comes looking - which, given what prompted it, will be someone asking where the
+    // credits went.
+    var spend by remember { mutableStateOf<GeminiUsageMeter.Spend?>(null) }
+    LaunchedEffect(Unit) {
+        spend = GeminiUsageMeter.spend(context)
+    }
+
+    // Whether the assistant can run at all (2026-09-06). Read on entry rather than collected: this
+    // is the screen someone opens BECAUSE voice stopped working, so the value that matters is the
+    // one at that moment. Null problem means nothing is wrong and the row does not render.
+    val keyProblem = remember { KeyHealth.lastProblem }
+    val keyProblemDetail = remember { KeyHealth.detail }
 
     // "Sync now" (django-engine ticket 09 build item 6): the one surface that says IN WORDS what a
     // sync pass actually did. Every automatic path reports only to logcat, which is useless when
@@ -562,6 +580,59 @@ fun KeyScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(24.dp))
 
+                // --- Can the assistant run at all? ---
+                // FIRST, above the spend figures, because it is the answer to the question that
+                // brings someone to this screen: the wake word did nothing and they want to know
+                // why. Absent entirely when nothing is wrong - see assistantAvailabilitySentence
+                // for why a healthy install shows no reassurance here.
+                assistantAvailabilitySentence(keyProblem, keyProblemDetail)?.let {
+                    DeckSectionRule("Assistant", modifier = Modifier.padding(horizontal = 12.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = sem.estimated,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    Spacer(Modifier.height(24.dp))
+                }
+
+                // --- Gemini spend ---
+                // NOT behind BuildConfig.DEBUG, for the same reason the audit block above is not:
+                // this is the answer to a question Kevin actually asked out loud ("my gemini
+                // credits burned really fast - are we wasting a lot?"), and a number nobody can see
+                // is how the reflection loop spent a week re-synthesizing the same memories.
+                DeckSectionRule("Gemini usage", modifier = Modifier.padding(horizontal = 12.dp))
+                Text(
+                    geminiSpendSentence(spend),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (spend == null) sem.estimated else sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    liveConnectSentence(spend),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when {
+                        spend == null -> sem.estimated
+                        spend?.connectsWithoutTurnThisMonth ?: 0 > 0 -> sem.estimated
+                        else -> sem.faint
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                // Only when something HAS been set aside - see backgroundPassSetAsideSentence for
+                // why the empty case says nothing rather than reassuring.
+                backgroundPassSetAsideSentence(spend)?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = sem.estimated,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
                 // --- Engine (Django) ---
                 DeckSectionRule("Engine", modifier = Modifier.padding(horizontal = 12.dp))
                 Text(
@@ -787,6 +858,131 @@ internal fun auditTrailBacklogSentence(pending: ConversationAuditReconcile.Pendi
             else -> "$rows waiting to reach the server, oldest $age old. Nothing is deleted while it waits."
         }
     }
+}
+
+/**
+ * The one sentence the Setup screen says about whether the assistant can run at all.
+ *
+ * **Why it exists (2026-09-06, Kevin: "i ran out of credits and im probably not gonna top up for a
+ * while").** On a key with no quota the Live socket fails its HTTP upgrade, so the wake word
+ * appears to do nothing, the microphone appears deaf, and nothing anywhere says why. The app knew:
+ * [KeyHealth] recorded the diagnosis in eight places. It was read in none, and was process-lifetime
+ * only. This is the reader.
+ *
+ * **It states what was OBSERVED, never a cause nobody checked.** A 429 is Gemini's
+ * `RESOURCE_EXHAUSTED` for a per-minute rate limit AND for an exhausted quota, and the status code
+ * does not tell the two apart - so the sentence names both possibilities and shows the status it
+ * saw rather than picking one and sounding confident. A 401/403 is unambiguous and gets a definite
+ * sentence. This is CLAUDE.md section 7's outcome rule applied to a diagnosis: do not assert what
+ * was not observed.
+ *
+ * **It is not a paywall and not a nag.** It names what does not work, says everything else still
+ * does, and stops. Nothing here counts down, re-prompts, or asks for money - CLAUDE.md section 7's
+ * compulsion ban. It disappears on its own the moment a call succeeds, because [KeyHealth.noteOk]
+ * fires on any 200 or any accepted Live setup.
+ *
+ * Returns null when there is nothing wrong, so a healthy install shows no row at all rather than a
+ * reassuring line nobody needs.
+ */
+internal fun assistantAvailabilitySentence(problem: String?, detail: String): String? = when (problem) {
+    KeyHealth.PROBLEM_RATE_LIMITED -> buildString {
+        append(
+            "Voice is unavailable: Gemini refused the last call because the key is out of quota " +
+                "or is being rate-limited. Everything else in LEGION still works by hand.",
+        )
+        // The evidence, so the claim above is checkable rather than merely plausible.
+        if (detail.isNotBlank()) append(" Gemini said: $detail")
+    }
+    KeyHealth.PROBLEM_INVALID -> buildString {
+        append(
+            "Voice is unavailable: Gemini rejected the key. Everything else in LEGION still works " +
+                "by hand.",
+        )
+        if (detail.isNotBlank()) append(" Gemini said: $detail")
+    }
+    else -> null
+}
+
+/**
+ * The sentences the Setup screen says about what Gemini has actually cost (2026-09-06).
+ *
+ * **Why this exists.** Kevin asked whether the app was wasting his credits and nothing could
+ * answer him, because nothing had ever read a token count off the Live socket and only one of the
+ * thirty REST sub-agent call sites was metered. Every figure the app had ever shown was estimated
+ * from prompt length. These sentences report [com.kevin.legion.data.local.GeminiUsage], which is
+ * measured.
+ *
+ * **A number the API never reported is said in words, never rendered as zero.** Gemini omits
+ * `usageMetadata` on some response shapes even inside a 200, so a window can contain calls whose
+ * cost is genuinely unknown. Printing "0 tokens today" over a day of unreported calls would tell
+ * him he is fine precisely when the app cannot see - the same failure as reading a refused
+ * permission as an empty calendar (CLAUDE.md section 1). Three distinct states, and the caller
+ * must not collapse any two:
+ * - `null` spend - the tables could not be read at all.
+ * - a window with calls but no reported totals - says the API did not report, and how many calls.
+ * - a total with SOME unreported calls behind it - gives the number AND says it is a floor.
+ *
+ * Pulled out as a pure function for the same reason [auditTrailBacklogSentence] was: an inline
+ * `when` inside the Composable would be correct today and untestable forever.
+ */
+internal fun geminiSpendSentence(spend: GeminiUsageMeter.Spend?): String = when {
+    spend == null -> "Couldn't read this device's Gemini usage."
+    spend.callsThisMonth == 0 ->
+        "No Gemini calls recorded this month. Metering started 6 September 2026, so anything " +
+            "before that was never counted."
+    else -> "${window("today", spend.tokensToday, spend.callsToday, spend.unreportedToday)} " +
+        window("this month", spend.tokensThisMonth, spend.callsThisMonth, spend.unreportedThisMonth)
+}
+
+/** One window's clause for [geminiSpendSentence]. See that function for why an unreported total is
+ *  never printed as zero. */
+private fun window(label: String, tokens: Long?, calls: Int, unreported: Int): String {
+    val callWord = if (calls == 1) "1 call" else "$calls calls"
+    return when {
+        calls == 0 -> "No Gemini calls $label."
+        tokens == null ->
+            "$callWord $label, but the API reported no token count for any of them, so the cost " +
+                "is unknown."
+        unreported > 0 ->
+            "At least $tokens tokens $label across $callWord - at least, because the API reported " +
+                "no count for $unreported of them."
+        else -> "$tokens tokens $label across $callWord."
+    }
+}
+
+/**
+ * The sentence about Live sockets that nobody spoke into - the shape that costs money for nothing,
+ * since every connect pays for its setup prompt whether or not a word follows.
+ *
+ * Separate from [geminiSpendSentence] because it answers a different question: that one is "how
+ * much", this one is "how much of it was wasted". August's reconnect storm was found by reading
+ * logcat by hand, because [com.kevin.legion.MidnightEvents.sessionStart] is a `Log.d` and nothing
+ * else; this is the same fact, durable and visible without a cable.
+ */
+internal fun liveConnectSentence(spend: GeminiUsageMeter.Spend?): String = when {
+    spend == null -> "Couldn't read this device's connection count."
+    spend.connectsThisMonth == 0 -> "No voice connections this month."
+    spend.connectsWithoutTurnThisMonth == 0 ->
+        "${spend.connectsThisMonth} voice connections this month, every one of them spoken into."
+    else ->
+        "${spend.connectsThisMonth} voice connections this month, " +
+            "${spend.connectsWithoutTurnThisMonth} of which nobody spoke into. Each one still " +
+            "paid for its setup prompt."
+}
+
+/**
+ * What the background passes have given up on, in words.
+ *
+ * A pass that quietly stopped and a pass that never ran look identical from the outside, and that
+ * is exactly how reflection went a week re-synthesizing the same memories with nobody the wiser.
+ * Empty is the normal state and says nothing at all, so this returns null rather than a reassuring
+ * line nobody needs to read.
+ */
+internal fun backgroundPassSetAsideSentence(spend: GeminiUsageMeter.Spend?): String? {
+    val rows = spend?.setAside?.takeIf { it.isNotEmpty() } ?: return null
+    val head = if (rows.size == 1) "One background task has stopped retrying" else
+        "${rows.size} background tasks have stopped retrying"
+    return "$head. ${rows.first().setAsideReason}"
 }
 
 private const val MS_PER_MINUTE = 60_000L

@@ -4,6 +4,8 @@ import android.app.Application
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.ai.GeminiUsageMeter
+import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.engine.mirror.MirrorFolderPreferences
 import com.kevin.legion.engine.mirror.MirrorLifecycleBinder
@@ -50,6 +52,18 @@ class MidnightApplication : Application() {
         // two, which is harmless - they are idempotent - and is left alone so
         // the assistant path does not depend on this ordering.
         GeminiKeyProvider.init(this)
+        // Token metering (2026-09-06). Seeded here for the same L12 reason as the caches
+        // around it: SubAgent's REST calls run from ledger, pantry and the vehicle agents
+        // whether or not the assistant service is switched on, and a meter that only woke
+        // up with AriaForegroundService would miss most of the spend it exists to count.
+        // Before this line runs every record call is a silent no-op, never a crash.
+        GeminiUsageMeter.init(this)
+        // The key's last-known health, seeded from disk (2026-09-06). It used to be
+        // process-lifetime only AND had no readers at all; both are fixed, and this is the
+        // line that makes the Setup sentence survive a process death - which matters most
+        // for exactly the case it was added for, a key with no quota left, where the
+        // failure repeats across restarts rather than being a one-off.
+        KeyHealth.init(this)
         ProactivePreferences.init(this)
         // backend-erp ticket 25: LedgerFolderPreferences.init/LedgerAccountMappingPreferences.init
         // used to seed here too - both classes are gone along with the rest of phone-side
