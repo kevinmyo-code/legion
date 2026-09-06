@@ -10,6 +10,141 @@ from __future__ import annotations
 
 import pytest
 from django.conf import settings
+from rest_framework.test import APIClient
+
+# `legacy` is deliberately `managed = False` with `MIGRATION_MODULES =
+# {"legacy": None}` (legion/settings.py) - Supabase's own migrations own
+# these 41 tables' DDL, on purpose, so Django never touches it. That is
+# exactly right for the LIVE database, and exactly wrong for pytest's own
+# ephemeral test database: `django_db_setup` (pytest-django's own fixture)
+# creates a brand-new, empty Postgres database and runs ONLY Django's own
+# migrations against it - since `legacy` contributes none, a fresh test
+# database has no `public.events` at all, confirmed empirically while
+# writing `test_events_api.py` (every write came back as a 400 whose
+# `save_or_400` message was `relation "events" does not exist`, not a
+# genuine validation refusal).
+#
+# This is a minimal, TEST-DATABASE-ONLY mirror of the columns/constraints
+# `supabase/migrations/20260825000400_aspect_dates_notes_merged.sql` and
+# its later ALTERs (`.../20260826000400_events_starts_at_nullable.sql`,
+# `.../20260827000100_events_structured_meta.sql`,
+# `.../20260901000300_events_kind_completable_axis.sql`,
+# `.../20260826000100_origin_guid.sql`) already define on the LIVE
+# database - it does not touch `legacy`'s `managed = False` status, adds no
+# migration to that app, and never runs anywhere but the disposable test
+# database `django_db_setup` itself just created (guarded twice: layered on
+# top of pytest-django's own fixture, which only ever targets the test
+# database, AND by refusing to run at all unless the connected database's
+# own name contains "test"). `vehicle_id` is a bare nullable uuid column
+# with no `REFERENCES public.vehicles` here - this ticket's serializer
+# never reads or writes it, so the `vehicles` table (and its own dependency
+# chain) is not part of this mirror at all.
+#
+# Worth a second pair of eyes: every future ticket that writes to a
+# `legacy` table (ledger, pantry, fleet in execution-plan.md's Phase 5)
+# hits this exact same wall and will want the same pattern, or a shared
+# one. Flagged in this ticket's own final report rather than generalised
+# here.
+_LEGACY_EVENTS_TEST_SCHEMA_SQL = """
+create schema if not exists private;
+
+do $$
+begin
+    if not exists (select 1 from pg_type where typname = 'provenance') then
+        create type public.provenance as enum
+            ('DETERMINISTIC', 'LLM_RECONCILED', 'UNRECONCILED', 'USER');
+    end if;
+end $$;
+
+create or replace function private.touch_updated_at()
+    returns trigger
+    language plpgsql
+    set search_path = ''
+as $$
+begin
+    new.updated_at := now();
+    return new;
+end;
+$$;
+
+create table if not exists public.events (
+    id                  uuid primary key,
+    title               text        not null check (length(trim(title)) > 0),
+    starts_at           timestamptz,
+    ends_at             timestamptz,
+    all_day             boolean     not null default false,
+    location            text,
+    notes               text,
+    source              text        not null default 'legion'
+                        check (source in ('legion', 'google')),
+    google_event_id     text,
+    done                boolean     not null default false,
+    done_at             timestamptz,
+    sort_order          integer,
+    trigger_place_label text,
+    repeat_kind         text
+        check (repeat_kind in ('DAILY', 'WEEKLY', 'MONTHLY_ON_DATE', 'YEARLY')),
+    repeat_every        integer check (repeat_every is null or repeat_every > 0),
+    repeat_days_of_week text,
+    repeat_day          integer check (repeat_day is null or repeat_day between 1 and 31),
+    repeat_month        integer check (repeat_month is null or repeat_month between 1 and 12),
+    repeat_end_kind     text check (repeat_end_kind in ('NEVER', 'ON_DATE', 'AFTER_COUNT')),
+    repeat_end_date     date,
+    repeat_end_count    integer check (repeat_end_count is null or repeat_end_count > 0),
+    exact               boolean     not null default false,
+    exact_downgraded    boolean     not null default false,
+    missed_at           timestamptz,
+    missed_dismissed_at timestamptz,
+    logged_at           timestamptz,
+    provenance          public.provenance not null default 'USER',
+    created_at          timestamptz not null default now(),
+    updated_at          timestamptz not null default now(),
+    deleted_at          timestamptz,
+    origin_guid         text unique,
+    structured_meta     jsonb,
+    vehicle_id          uuid,
+    kind                text not null default 'reminder'
+                        check (kind in ('reminder', 'event', 'task')),
+    constraint events_recurring_not_done check (repeat_kind is null or done = false),
+    constraint events_repeat_end_needs_kind
+        check (repeat_end_kind is null or repeat_kind is not null)
+);
+create unique index if not exists events_google_event_id_idx
+    on public.events (google_event_id) where google_event_id is not null;
+
+drop trigger if exists touch_updated_at on public.events;
+create trigger touch_updated_at
+    before update on public.events
+    for each row execute function private.touch_updated_at();
+
+create table if not exists public.event_skips (
+    id         uuid primary key default gen_random_uuid(),
+    event_id   uuid not null references public.events (id) on delete cascade,
+    skip_date  date not null,
+    created_at timestamptz not null default now(),
+    constraint event_skips_unique unique (event_id, skip_date)
+);
+"""
+
+
+@pytest.fixture(scope="session")
+def django_db_setup(django_db_setup, django_db_blocker):
+    """Layers `_LEGACY_EVENTS_TEST_SCHEMA_SQL` on top of pytest-django's own
+    `django_db_setup` (which creates and migrates the test database) - see
+    that constant's own module-level comment for why this exists at all.
+    """
+    from django.db import connection
+
+    db_name = connection.settings_dict.get("NAME", "")
+    if "test" not in db_name.lower():
+        raise RuntimeError(
+            f"Refusing to run the legacy-events test schema against database "
+            f"{db_name!r} - it does not look like a pytest test database, and "
+            f"this SQL must never touch anything else."
+        )
+    with django_db_blocker.unblock():
+        with connection.cursor() as cursor:
+            cursor.execute(_LEGACY_EVENTS_TEST_SCHEMA_SQL)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -22,3 +157,31 @@ def _require_postgres():
             f"ticket 01's own instruction not to substitute one)."
         )
     yield
+
+
+@pytest.fixture
+def household_user(db):
+    """One household member with a working password - the same shape
+    `test_auth_endpoints.py`'s own `_make_member` builds, promoted here so
+    ticket 04's API tests do not each hand-roll it."""
+    from household.models import HouseholdMember, User
+
+    user = User.objects.create_user(email="kevin@example.com", password="correct horse battery")
+    HouseholdMember.objects.create(user=user)
+    return user
+
+
+@pytest.fixture
+def auth_client(household_user):
+    """An `APIClient` carrying a live device token for `household_user` -
+    every domain-API test in this ticket authenticates this way rather than
+    against `AllowAny`, since `DeviceTokenAuthentication` +
+    `IsHouseholdMember` are this project's real default
+    (`REST_FRAMEWORK` in `legion/settings.py`), not an opt-in a test should
+    have to arrange by hand each time."""
+    from household.models import DeviceToken
+
+    _token, raw_key = DeviceToken.issue(household_user, "Test client")
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Token {raw_key}")
+    return client

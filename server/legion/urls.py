@@ -18,4 +18,11 @@ urlpatterns = [
         SpectacularSwaggerView.as_view(url_name="schema"),
         name="swagger-ui",
     ),
+    # Ticket 04 (django-engine map), Phase 2 slice: events, checklists, and
+    # the combined changes feed. Two separate includes because
+    # `checklists.urls` nests item/tick routes under its own `<checklist_id>`
+    # prefix and reads more plainly mounted at its own `api/checklists/`
+    # root than folded into `api.urls` alongside `events`/`changes`.
+    path("api/", include("api.urls")),
+    path("api/checklists/", include("checklists.urls")),
 ]

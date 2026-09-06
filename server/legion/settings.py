@@ -105,6 +105,12 @@ INSTALLED_APPS = [
     "core",
     "household",
     "api",
+    # Ticket 04 (django-engine map): the first tables Django owns end to
+    # end, no legacy Supabase table to honour. MANAGED, unlike `legacy`
+    # below - see `checklists/models.py`'s own module doc for why these
+    # still land in `public` rather than the `django` schema every other
+    # Django-owned table uses.
+    "checklists",
     # Ticket 02 (django-engine map): the 41 `public` tables Supabase created,
     # read as `managed = False` mirrors. See `legacy/models/` and
     # `legacy/CONSTRAINTS.md`.

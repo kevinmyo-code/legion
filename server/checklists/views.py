@@ -1,0 +1,268 @@
+"""Views for `/api/checklists` (django-engine ticket 04, Phase 2 slice).
+See `checklists/serializers.py`'s own doc comment for the measured-tick
+refusal wording this ticket asks to be reused verbatim, and
+`ChecklistController.kt` for the semantics every method here mirrors:
+idempotent tick, revive-on-retick, soft-delete-only.
+"""
+from __future__ import annotations
+
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from api.sync import paginate_since, parse_since, save_or_400
+from checklists.models import Checklist, ChecklistItem, ChecklistTick
+from checklists.serializers import (
+    ChecklistItemSerializer,
+    ChecklistSerializer,
+    ChecklistTickSerializer,
+    TickRequestSerializer,
+)
+
+
+def _idempotent_or_none(model, sync_id):
+    """`sync_id` honoured on POST for idempotent create (this ticket's own
+    rule 5: "the phone retries") - a retried create with the same
+    `sync_id` returns the row that already exists rather than making a
+    second one. Never treated as a match when blank/absent - `sync_id` is
+    nullable+unique, and Postgres already treats every NULL as distinct
+    from every other NULL, so this mirrors that at the application layer
+    too rather than matching two callers who both sent nothing."""
+    if not sync_id:
+        return None
+    return model.objects.filter(sync_id=sync_id).first()
+
+
+class ChecklistListCreateView(APIView):
+    """`GET /api/checklists?since=<iso>` and `POST /api/checklists`."""
+
+    def get(self, request):
+        since = parse_since(request.query_params.get("since"))
+        queryset = Checklist.objects.filter(updated_at__gte=since).order_by("updated_at")
+        page, next_since = paginate_since(queryset)
+        return Response({"results": ChecklistSerializer(page, many=True).data, "next": next_since})
+
+    def post(self, request):
+        existing = _idempotent_or_none(Checklist, request.data.get("sync_id"))
+        if existing is not None:
+            return Response(ChecklistSerializer(existing).data, status=status.HTTP_200_OK)
+
+        serializer = ChecklistSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance, error = save_or_400(lambda: serializer.save())
+        if error is not None:
+            return error
+        return Response(ChecklistSerializer(instance).data, status=status.HTTP_201_CREATED)
+
+
+class ChecklistDetailView(APIView):
+    """`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>`."""
+
+    def _get(self, checklist_id):
+        return Checklist.objects.filter(pk=checklist_id).first()
+
+    def get(self, request, checklist_id):
+        instance = self._get(checklist_id)
+        if instance is None:
+            return Response(
+                {"detail": f"No checklist with id {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(ChecklistSerializer(instance).data)
+
+    def patch(self, request, checklist_id):
+        instance = self._get(checklist_id)
+        if instance is None:
+            return Response(
+                {"detail": f"No checklist with id {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = ChecklistSerializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        _saved, error = save_or_400(lambda: serializer.save())
+        if error is not None:
+            return error
+        return Response(ChecklistSerializer(instance).data)
+
+    def delete(self, request, checklist_id):
+        instance = self._get(checklist_id)
+        if instance is None:
+            return Response(
+                {"detail": f"No checklist with id {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Idempotent, matching EventDetailView.delete's own posture -
+        # "already gone" and "just removed" read the same to a caller that
+        # does not care which happened. Does NOT cascade to items/ticks -
+        # ChecklistController.deleteChecklist's own doc comment: a
+        # checklist's history is never rewritten by deleting the checklist
+        # any more than by deleting one of its items.
+        if instance.deleted_at is None:
+            instance.deleted_at = timezone.now()
+            instance.save(update_fields=["deleted_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChecklistItemListCreateView(APIView):
+    """`GET`/`POST /api/checklists/<checklist_id>/items`."""
+
+    def get(self, request, checklist_id):
+        since = parse_since(request.query_params.get("since"))
+        queryset = (
+            ChecklistItem.objects.filter(checklist_id=checklist_id, updated_at__gte=since)
+            .order_by("updated_at")
+        )
+        page, next_since = paginate_since(queryset)
+        return Response(
+            {"results": ChecklistItemSerializer(page, many=True).data, "next": next_since}
+        )
+
+    def post(self, request, checklist_id):
+        if not Checklist.objects.filter(pk=checklist_id).exists():
+            return Response(
+                {"detail": f"No checklist with id {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        existing = _idempotent_or_none(ChecklistItem, request.data.get("sync_id"))
+        if existing is not None:
+            return Response(ChecklistItemSerializer(existing).data, status=status.HTTP_200_OK)
+
+        # The URL's checklist_id is authoritative - overwrites anything the
+        # caller may have sent under "checklist" in the body, the same
+        # precedence ChecklistItemDetailView.patch enforces on edit.
+        data = dict(request.data)
+        data["checklist"] = checklist_id
+        serializer = ChecklistItemSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        instance, error = save_or_400(lambda: serializer.save())
+        if error is not None:
+            return error
+        return Response(ChecklistItemSerializer(instance).data, status=status.HTTP_201_CREATED)
+
+
+class ChecklistItemDetailView(APIView):
+    """`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>/items/<item_id>`."""
+
+    def _get(self, checklist_id, item_id):
+        return ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
+
+    def get(self, request, checklist_id, item_id):
+        instance = self._get(checklist_id, item_id)
+        if instance is None:
+            return Response(
+                {"detail": f"No item {item_id} on checklist {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(ChecklistItemSerializer(instance).data)
+
+    def patch(self, request, checklist_id, item_id):
+        instance = self._get(checklist_id, item_id)
+        if instance is None:
+            return Response(
+                {"detail": f"No item {item_id} on checklist {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        data = dict(request.data)
+        # A client cannot reparent an item to a different checklist via
+        # PATCH - the URL's checklist_id is the only authority on which
+        # checklist an item belongs to.
+        data.pop("checklist", None)
+        serializer = ChecklistItemSerializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        _saved, error = save_or_400(lambda: serializer.save())
+        if error is not None:
+            return error
+        return Response(ChecklistItemSerializer(instance).data)
+
+    def delete(self, request, checklist_id, item_id):
+        instance = self._get(checklist_id, item_id)
+        if instance is None:
+            return Response(
+                {"detail": f"No item {item_id} on checklist {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Soft-delete only, never cascaded to ticks - ChecklistItem.kt's own
+        # doc comment, "trap 2": dropping an item must not rewrite the
+        # history of days it was already ticked.
+        if instance.deleted_at is None:
+            instance.deleted_at = timezone.now()
+            instance.save(update_fields=["deleted_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChecklistItemTickView(APIView):
+    """`POST /api/checklists/<checklist_id>/items/<item_id>/tick` -
+    `{day, value?, source?}`. See `checklists/serializers.py`'s
+    `TickRequestSerializer` for the measured-item refusal, reused verbatim
+    from `ChecklistController.tick`.
+    """
+
+    def post(self, request, checklist_id, item_id):
+        item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
+        if item is None:
+            return Response(
+                {"detail": f"No item {item_id} on checklist {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        request_serializer = TickRequestSerializer(data=request.data, context={"item": item})
+        request_serializer.is_valid(raise_exception=True)
+        day = request_serializer.validated_data["day"]
+        value = request_serializer.validated_data.get("value")
+        source = request_serializer.validated_data.get("source", "USER_REPORTED")
+
+        existing = ChecklistTick.objects.filter(item=item, day=day).first()
+
+        def _write():
+            now = timezone.now()
+            if existing is None:
+                return ChecklistTick.objects.create(
+                    item=item, day=day, value=value, source=source, ticked_at=now
+                )
+            if existing.deleted_at is None:
+                # Idempotent no-op, matching ChecklistController.tick's own
+                # posture: a double-tap does not overwrite the FIRST tap's
+                # ticked_at/value/source.
+                return existing
+            # Untick-then-retick-same-day: revive the tombstoned row with a
+            # fresh ticked_at (and the caller's fresh value/source),
+            # matching ChecklistTickDao.retick's exact semantics - never a
+            # second INSERT, which the (item, day) unique constraint would
+            # reject anyway.
+            existing.deleted_at = None
+            existing.value = value
+            existing.source = source
+            existing.ticked_at = now
+            existing.save(update_fields=["deleted_at", "value", "source", "ticked_at"])
+            return existing
+
+        tick, error = save_or_400(_write)
+        if error is not None:
+            return error
+        status_code = status.HTTP_201_CREATED if existing is None else status.HTTP_200_OK
+        return Response(ChecklistTickSerializer(tick).data, status=status_code)
+
+
+class ChecklistItemUntickView(APIView):
+    """`DELETE /api/checklists/<checklist_id>/items/<item_id>/tick/<day>` -
+    soft-deletes the tick for that day, matching `ChecklistController.untick`.
+    Idempotent: no tick on that day is still a 204, not a 404 - "already
+    untouched" and "just unticked" read the same to a caller that does not
+    care which happened.
+    """
+
+    def delete(self, request, checklist_id, item_id, day):
+        item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
+        if item is None:
+            return Response(
+                {"detail": f"No item {item_id} on checklist {checklist_id}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        tick = ChecklistTick.objects.filter(item=item, day=day).first()
+        if tick is not None and tick.deleted_at is None:
+            tick.deleted_at = timezone.now()
+            tick.save(update_fields=["deleted_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
