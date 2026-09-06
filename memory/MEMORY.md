@@ -22,7 +22,19 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-05 (session 38bf2e3c)
+## Where we stopped - 2026-09-06 early (session 38bf2e3c)
+
+- **The port is live on the laptop.** Django engine runs at `http://192.168.1.117:8000` (`deploy/.env`, gitignored)
+  against the Supabase Postgres as `legion_engine`: 11 Django tables in schema `django`, `checklists*` as
+  Django's first `public` tables (45 public tables now), superuser + household member kevinmyo@gmail.com.
+  Server: 93 tests green. API: /api/events, /api/checklists, /api/changes?since=, /api/schema/. Phone:
+  EngineAuth/EngineConfig/EngineTransport (default SUPABASE per aspect), Setup sign-in row, debug-only
+  cleartext. **Next: phone-side DjangoEventsBackend + ChecklistsSync behind the transport switch (ticket
+  09 second half), then the six Phase 3 checks on the A25** (`research/execution-plan.md`).
+- **Creds Kevin said he will rotate:** legion_reader and legion_engine share the password he pasted; the
+  reader's leaked once into an agent traceback.
+
+## Earlier the same session - 2026-09-05
 
 - **Phone at Room v66, all verified on the A25.** Checklists (named lists, measured lines, none/daily/
   weekly schedules, per-day or done-once ticks, history) live on `checklists*` tables - **Room only, no

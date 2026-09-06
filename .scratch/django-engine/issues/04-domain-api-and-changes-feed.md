@@ -3,7 +3,7 @@ map: django-engine
 ticket: "04"
 title: "The domain API: one resource shape for 38 tables, a changes feed, idempotent upsert by origin_guid"
 type: build
-status: open
+status: built
 status-detail: "Phase 2 slice built: /api/events, /api/checklists (+items, +ticks), /api/changes, all behind DeviceTokenAuthentication+IsHouseholdMember. checklists is a new Django-managed app (Checklist/ChecklistItem/ChecklistTick, public schema via a temporary search_path swap in its own migration, touch_updated_at + measured-tick-guard triggers). events sits over the existing legacy.Event (managed=False). Built against this ticket's own dispatch brief, which scopes the endpoint shapes to POST+PATCH+soft-DELETE for the two Phase 2 aspects - narrower, and shaped differently (no PUT-by-origin_guid upsert), than this file's own generic 38-table SyncedModelViewSet text below, which predates the phase split in research/execution-plan.md. Not done: the other 36 tables, server/api/COVERAGE.md, the openapi.yaml-staleness test, /api/dates/events/<id>/skips/. 45 new tests green, 0 failures (JUnit: 86 total, 41 skipped - the pre-existing legacy-readonly suite, gated on LEGION_PG_URL). Baseline before this ticket: 48 total (7 passed, 41 skipped). A test-only mirror of public.events'/event_skips' DDL was added to tests/conftest.py so pytest's ephemeral database (which never runs legacy's Supabase-owned migrations) has something to write against - flagged for a second look since every future ticket writing to a legacy table (ledger, pantry, fleet) hits the same wall."
 blockers: ["02"]
 blocked-by: ["[[02-models-column-exact]]"]

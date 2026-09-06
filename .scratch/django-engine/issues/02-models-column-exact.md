@@ -3,7 +3,7 @@ map: django-engine
 ticket: "02"
 title: "The 41 tables as Django models, column-exact, with the integrity SQL shipped by migration"
 type: build
-status: open
+status: built
 blockers: ["01"]
 blocked-by: ["[[01-server-skeleton]]"]
 open-blockers: 1
