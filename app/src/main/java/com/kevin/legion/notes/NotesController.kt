@@ -8,8 +8,7 @@ import com.kevin.legion.backend.EventKind
 import com.kevin.legion.backend.EventsAppointmentWriter
 import com.kevin.legion.backend.EventsBackend
 import com.kevin.legion.backend.RemoteEvent
-import com.kevin.legion.backend.SupabaseClientProvider
-import com.kevin.legion.backend.SupabaseEventsBackend
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.EventSkip
@@ -50,16 +49,20 @@ import java.util.UUID
  * `.scratch/backend-erp/issues/15-engine-retirement-sequence.md`).** DUAL-PATH, exactly
  * [com.kevin.legion.location.PlaceController]/[com.kevin.legion.pantry.PantryController]'s shape -
  * every function funnels through [backend] first, resolved the same way (an override for tests,
- * else [SupabaseClientProvider.get] wrapped in [SupabaseEventsBackend], else null meaning "not
- * configured"):
+ * else whatever [com.kevin.legion.backend.engine.EngineBackends] hands back for whichever
+ * transport `events` is on - Supabase's client wrapped in `SupabaseEventsBackend`, or the Django
+ * engine's `DjangoEventsBackend` - else null meaning "not configured"; that resolution moved out of
+ * this file on 2026-09-06, see [backend]'s own doc comment for the split-brain it closed):
  * - **Configured**: reads come from the local [Event] table ([allNotesItems], [itemById],
  *   [skippedDates] - see each one's own doc comment); writes go straight to
  *   [com.kevin.legion.backend.EventsBackend] and the local row is written **only on a genuine
  *   server ACK** ([applyChange]'s single write funnel) - never ahead of it, never on a failure. A
  *   failed remote write returns null/false exactly like a failed local write already does (CLAUDE.md
  *   section 7's outcome-verb rule), and Room is left completely untouched.
- * - **Not configured** (no Supabase project saved): **repointed onto the SAME `events` table as of
- *   ticket 15 step 4** (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`, "RULED
+ * - **Not configured** (no server at all for the transport `events` is on - no Supabase project
+ *   saved, or that aspect is on Django with no engine signed in): **repointed onto the SAME
+ *   `events` table as of ticket 15 step 4**
+ *   (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`, "RULED
  *   2026-08-27: notes gets ONE local table") - the earlier cutover-1 engine path
  *   ([com.kevin.legion.engine.RecordStore]/`engineRecordDao()`) is retired. **This file no longer
  *   touches the engine at all** - the engine's Notes `Item` records are left exactly where they are
@@ -96,26 +99,48 @@ object NotesController {
     private fun db(context: Context) = CarDatabase.getDatabase(context)
 
     /** Test seam: settable from a unit test so an [EventsBackend] fake can be injected without a
-     * real [SupabaseClientProvider] / network - same mechanism as
+     * real backend of either transport, and with no network - same mechanism as
      * [com.kevin.legion.location.PlaceController.backendOverride]/
      * [com.kevin.legion.pantry.PantryController.backendOverride]. Defaults to null, meaning
      * "resolve normally"; production code never sets this. */
     @Volatile
     internal var backendOverride: EventsBackend? = null
 
-    /** Resolves the active backend, or null when Supabase is not configured - the signal every
-     * function below branches on. Never performs network I/O itself. */
+    /**
+     * Resolves the active backend, or null when this device has no server for `events` at all -
+     * the signal every function below branches on. Never performs network I/O itself.
+     *
+     * **The per-aspect transport switch (django-engine ticket 09), 2026-09-06.** This used to be
+     * `SupabaseClientProvider.get(context)?.let { SupabaseEventsBackend(it) }`, hardcoded, which
+     * made a REMINDER's write go to Supabase while a TASK's tick from the same `events` table went
+     * to Django the moment that aspect was flipped - two halves of one table syncing to two
+     * different servers, silently. It now asks [EngineBackends] which transport `events` is on,
+     * exactly as [com.kevin.legion.backend.EventsAppointmentWriter.backend] already does, so every
+     * write to that table follows ONE switch.
+     *
+     * **The no-auth-wait variant deliberately**, matching that same writer: a write-through has
+     * never waited for a Supabase session restore and must not start (a voice-created reminder
+     * cannot block on a token refresh). See [EngineBackends]'s own doc comment for the two
+     * variants and why they differ.
+     *
+     * [backendOverride] still wins, so every existing test's fake is unaffected.
+     */
     private fun backend(context: Context): EventsBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabaseEventsBackend(client)
+        return EngineBackends(context).eventsBackendNow()
     }
 
-    /** Public sibling of [backend] that only exposes the yes/no, never the backend instance
-     * itself - [AlarmScheduler.rescheduleAll] needs to know which path it is walking (server-ack'd
-     * vs. local-direct writes) without needing an [EventsBackend] to call anything on. See that
-     * function's own doc comment for why the answer used to change what the start-up sweep was
-     * allowed to do. */
+    /**
+     * Public sibling of [backend] that only exposes the yes/no, never the backend instance itself.
+     *
+     * **This comment used to say [AlarmScheduler.rescheduleAll] was the caller** - "it needs to
+     * know which path it is walking (server-ack'd vs. local-direct writes) without needing an
+     * [EventsBackend] to call anything on". It no longer calls this; grepped 2026-09-06 and there
+     * is NO production caller left, only `NotesControllerTransportTest`, which uses it as the one
+     * observable of [backend]'s resolution. Left in place rather than deleted: it is the only
+     * public window onto which transport a reminder write will take, and the test that pins the
+     * transport switch needs exactly that window.
+     */
     fun isBackendConfigured(context: Context): Boolean = backend(context) != null
 
     /**

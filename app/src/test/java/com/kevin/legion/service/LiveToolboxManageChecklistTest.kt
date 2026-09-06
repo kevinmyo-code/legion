@@ -65,6 +65,68 @@ class LiveToolboxManageChecklistTest {
         assertEquals(1, ChecklistController.allChecklists(context).size)
     }
 
+    // ------------------------------------------------------------------ add: text, and the item alias
+
+    @Test
+    fun `add accepts item as an alias for text`() = runBlocking {
+        // Observed on the phone 2026-09-06: the model sent `item` (right for tick/untick/remove) on
+        // an `add`, was refused, called `lists` to re-orient and retried with `text` - three calls
+        // for one unambiguous request. The alias is what removes the round trip; the tool
+        // description says so in one clause rather than leaving the model to find it by failing.
+        dispatch(args("action" to "create", "list" to "Groceries"))
+
+        val result = dispatch(args("action" to "add", "list" to "Groceries", "item" to "oat milk"))
+
+        assertTrue(result.getBoolean("success"))
+        assertEquals("Added \"oat milk\" to \"Groceries\".", result.getString("message"))
+        val checklist = ChecklistController.allChecklists(context).first()
+        assertEquals(listOf("oat milk"), ChecklistController.itemsFor(context, checklist.id).map { it.text })
+    }
+
+    @Test
+    fun `text still wins when both are sent`() = runBlocking {
+        dispatch(args("action" to "create", "list" to "Groceries"))
+
+        val result = dispatch(
+            args("action" to "add", "list" to "Groceries", "text" to "oat milk", "item" to "whole milk"),
+        )
+
+        assertTrue(result.getBoolean("success"))
+        val checklist = ChecklistController.allChecklists(context).first()
+        assertEquals(listOf("oat milk"), ChecklistController.itemsFor(context, checklist.id).map { it.text })
+    }
+
+    @Test
+    fun `add with neither text nor item names the parameter, and adds nothing`() = runBlocking {
+        dispatch(args("action" to "create", "list" to "Groceries"))
+
+        val result = dispatch(args("action" to "add", "list" to "Groceries"))
+
+        assertFalse(result.getBoolean("success"))
+        assertEquals(
+            "add needs the line in \"text\"; nothing was added to \"Groceries\".",
+            result.getString("message"),
+        )
+        val checklist = ChecklistController.allChecklists(context).first()
+        assertTrue(ChecklistController.itemsFor(context, checklist.id).isEmpty())
+    }
+
+    @Test
+    fun `the refusal says you sent item only when item really was sent`() = runBlocking {
+        dispatch(args("action" to "create", "list" to "Groceries"))
+
+        val result = dispatch(args("action" to "add", "list" to "Groceries", "item" to "  "))
+
+        assertFalse(result.getBoolean("success"))
+        assertEquals(
+            "add needs the line in \"text\" (you sent \"item\", and it was empty); " +
+                "nothing was added to \"Groceries\".",
+            result.getString("message"),
+        )
+        val checklist = ChecklistController.allChecklists(context).first()
+        assertTrue(ChecklistController.itemsFor(context, checklist.id).isEmpty())
+    }
+
     // ------------------------------------------------------------------ tick on a measured item, no value
 
     @Test

@@ -34,8 +34,13 @@ import com.kevin.legion.backend.SupabaseEventsBackend
  */
 class EngineBackends(
     context: Context,
-    private val transport: EngineTransport = EngineTransport(context),
     private val config: EngineConfig = EngineConfig(context.applicationContext),
+    /** Defaulted FROM [config], not from [context], and the order of these two parameters is what
+     * makes that possible. [EngineTransport]'s shipped default for `events`/`checklists` is
+     * conditional on the engine being usable, so a transport reading one [EngineConfig] while the
+     * backends here read another could answer "Django" for an aspect this object then has no token
+     * to build a Django backend for. One config, one answer. */
+    private val transport: EngineTransport = EngineTransport(context, config),
 ) {
     private val app: Context = context.applicationContext
 
@@ -79,13 +84,17 @@ class EngineBackends(
      * **Null whenever `checklists` is still on [Transport.SUPABASE], because there is no Supabase
      * checklists backend to fall back to** - those three tables are Django-owned end to end
      * (`server/checklists/models.py`: "the FIRST tables Django owns end to end, no legacy to
-     * honour"). Since every aspect defaults to [Transport.SUPABASE] until the debug Setup row
-     * flips it, an untouched install syncs no checklists at all and behaves exactly as it did
-     * before this ticket - which is the conservative reading of the brief's "its transport gate is
-     * signed in to the engine or not", and the one that keeps the Setup screen's own promise
-     * ("Supabase remains the truth for every aspect until it is explicitly flipped here") true.
-     * The other reading - sync checklists the moment a device signs in, ignoring the toggle - is a
-     * one-line change here and nowhere else.
+     * honour"), so for this aspect "not on Django" simply means "not synced".
+     *
+     * **This paragraph used to say the opposite of what it now says, and the difference is the
+     * 2026-09-06 default flip.** It read: "Since every aspect defaults to [Transport.SUPABASE]
+     * until the debug Setup row flips it, an untouched install syncs no checklists at all" - true
+     * when written, and no longer. `checklists` now defaults to [Transport.DJANGO] whenever this
+     * device has a usable engine ([EngineTransport.DJANGO_BY_DEFAULT]), so an untouched install
+     * that is SIGNED IN syncs checklists without anyone flipping a row - which is the reading the
+     * old text explicitly deferred ("sync checklists the moment a device signs in, ignoring the
+     * toggle - a one-line change here and nowhere else"), taken deliberately after the A25 end-to-end
+     * run. An install with no engine still syncs nothing at all, exactly as before.
      */
     fun checklistsBackend(): ChecklistsBackend? =
         if (transport.transportFor(ASPECT_CHECKLISTS) != Transport.DJANGO) {
@@ -93,6 +102,15 @@ class EngineBackends(
         } else {
             engineHttp().takeIf { it.isUsable() }?.let { DjangoChecklistsBackend(it) }
         }
+
+    /**
+     * True when [aspect] is on Supabase only because this device has no usable engine, and would
+     * otherwise be on Django by its shipped default. Pure pass-through to
+     * [EngineTransport.isFallingBackToSupabase] - it lives here too so [EngineSyncNow], which
+     * already holds an [EngineBackends] and no [EngineTransport], can put it into words without
+     * growing a second collaborator that could read a different [EngineConfig].
+     */
+    fun isFallingBackToSupabase(aspect: String): Boolean = transport.isFallingBackToSupabase(aspect)
 
     private fun djangoEventsBackend(): EventsBackend? =
         engineHttp().takeIf { it.isUsable() }?.let { DjangoEventsBackend(it) }

@@ -2,6 +2,7 @@ package com.kevin.legion.backend.engine
 
 import com.kevin.legion.backend.SupabaseEventsBackend
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -12,10 +13,15 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 
 /**
- * [EngineBackends] - the transport gate itself. **The property being pinned down is "only when
- * set"**: an install that has not explicitly flipped an aspect to Django must behave exactly as it
- * did before this ticket, which for `events` means the Supabase path and for `checklists` means no
- * sync at all.
+ * [EngineBackends] - the transport gate itself.
+ *
+ * **This class doc used to say the property being pinned was "only when set": an install that has
+ * not explicitly flipped an aspect to Django must behave exactly as it did before ticket 09.**
+ * That was true until 2026-09-06, when `events` and `checklists` took Django as their default on a
+ * device that is signed in to an engine. The property NOW is narrower and is the guard on that
+ * flip: **an install with no engine behaves exactly as it did before**, whether it flipped anything
+ * or not. Most cases below therefore pin their transports explicitly in `setUp` rather than leaning
+ * on a default; the two that exercise the default say so in their names.
  *
  * No Supabase project is configured in this test environment, so the Supabase branch resolves to
  * null rather than to a [SupabaseEventsBackend] - which is itself the correct answer for an
@@ -27,23 +33,32 @@ class EngineBackendsTest {
 
     private val context = RuntimeEnvironment.getApplication()
 
+    // No explicit `transport`: it now defaults FROM the config passed here, so the transport and
+    // the backends agree about whether this device has an engine. See EngineBackends' own note on
+    // its parameter order.
     private fun backends() = EngineBackends(
         context = context,
-        transport = EngineTransport(context),
         config = EngineTestSupport.signedInConfig(context),
     )
 
     @Before
     fun setUp() {
-        // Both aspects back to the shipped default before every case - EngineTransport is
+        // Every aspect explicitly PINNED to Supabase before each case - EngineTransport is
         // SharedPreferences-backed and Robolectric carries prefs across tests in a class.
+        //
+        // This comment used to read "back to the shipped default", which stopped being true on
+        // 2026-09-06: events and checklists now default to Django on a device with an engine, and
+        // this class's `backends()` is exactly such a device. Pinning is what keeps the
+        // "only once the transport is flipped" cases below testing what they say they test -
+        // EngineTransportTest owns the defaults themselves.
         val transport = EngineTransport(context)
         EngineTransport.KNOWN_ASPECTS.forEach { transport.setTransport(it, Transport.SUPABASE) }
     }
 
     @Test
     fun `events resolves to the Django backend only once the transport is flipped`() = runBlocking {
-        // Default: never Django, even though this device is signed in to the engine.
+        // Pinned to Supabase by setUp: never Django, even though this device is signed in to
+        // the engine and Django is now the DEFAULT for events. An explicit choice wins.
         assertTrue(backends().eventsBackendNow() !is DjangoEventsBackend)
         assertTrue(backends().eventsBackendAfterAuth() !is DjangoEventsBackend)
 
@@ -56,8 +71,9 @@ class EngineBackendsTest {
     @Test
     fun `checklists resolve to nothing at all until the transport is flipped`() {
         // There is no Supabase checklists backend to fall back to - those tables are Django-owned
-        // end to end - so "not on the engine" means "not synced", and the shipped default is
-        // exactly that. Flipping the row is an opt-in, per the Setup screen's own promise.
+        // end to end - so "not on the engine" means "not synced". setUp has pinned this aspect to
+        // Supabase; the shipped default on a signed-in device is Django, which the two
+        // default-path cases below cover.
         assertNull(backends().checklistsBackend())
 
         EngineTransport(context).setTransport(EngineBackends.ASPECT_CHECKLISTS, Transport.DJANGO)
@@ -75,11 +91,51 @@ class EngineBackendsTest {
             decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
         )
         signedOut.clearSession()
-        val backends = EngineBackends(context, EngineTransport(context), signedOut)
+        val backends = EngineBackends(context, signedOut)
 
         assertNull(backends.eventsBackendNow())
         assertNull(backends.checklistsBackend())
         assertTrue(!backends.isConfiguredFor(EngineBackends.ASPECT_EVENTS))
+    }
+
+    @Test
+    fun `a fresh install with no engine token is on Supabase for every aspect`() {
+        // The 2026-09-06 default flip's guard, and the property that makes it safe to ship: with
+        // no engine on the device, nothing about a fresh install changes. `events` resolves the
+        // Supabase way (null here only because no Supabase project is configured in this
+        // environment either), `checklists` resolves to nothing at all, and the poll that stands
+        // in for Realtime does not run - exactly as before the flip.
+        val signedOut = EngineConfig(
+            context = context,
+            encrypt = { plain -> "ENC($plain)" },
+            decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
+        )
+        signedOut.clearSession()
+        // Nothing pinned: this is the DEFAULT path, so the pins from setUp are cleared first.
+        context.getSharedPreferences("engine_transport", android.content.Context.MODE_PRIVATE)
+            .edit().clear().apply()
+        val transport = EngineTransport(context, signedOut)
+        val backends = EngineBackends(context, signedOut, transport)
+
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_EVENTS))
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_CHECKLISTS))
+        assertTrue(backends.eventsBackendNow() !is DjangoEventsBackend)
+        assertNull(backends.checklistsBackend())
+        assertTrue(!EnginePoll(transport, {}, {}).shouldPoll())
+        // And it is reported, not silent.
+        assertTrue(backends.isFallingBackToSupabase(EngineBackends.ASPECT_EVENTS))
+    }
+
+    @Test
+    fun `signed in to an engine, both slice aspects are on Django with nothing flipped by hand`() {
+        val config = EngineTestSupport.signedInConfig(context)
+        context.getSharedPreferences("engine_transport", android.content.Context.MODE_PRIVATE)
+            .edit().clear().apply()
+        val backends = EngineBackends(context, config)
+
+        assertTrue(backends.eventsBackendNow() is DjangoEventsBackend)
+        assertNotNull(backends.checklistsBackend())
+        assertTrue(!backends.isFallingBackToSupabase(EngineBackends.ASPECT_EVENTS))
     }
 
     @Test

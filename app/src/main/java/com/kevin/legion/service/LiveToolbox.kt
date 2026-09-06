@@ -1356,8 +1356,8 @@ object LiveToolbox {
                 "day, 'weekly' only applies on its named days - a list created today has nothing " +
                 "for yesterday, that is expected. A measured line needs a real number to tick - " +
                 "with none given, refuse and ask, via 'value'; never invent one. 'item' fuzzily " +
-                "matches an existing line, never a position. 'lists' reads back every name and " +
-                "schedule.",
+                "matches an existing line, never a position - on 'add' it is accepted as an alias " +
+                "for 'text'. 'lists' reads back every name and schedule.",
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("create", "add", "tick", "untick", "remove", "read", "lists")),
@@ -1370,7 +1370,8 @@ object LiveToolbox {
                 "target" to schema("number", "'add' with 'unit' set only, if a goal number was given."),
                 "direction" to schema("string", "'add' with 'target' set: at least it, or at most it.",
                     enum = listOf("at_least", "at_most")),
-                "item" to schema("string", "'tick'/'untick'/'remove': which existing line to match, in the user's words."),
+                "item" to schema("string", "'tick'/'untick'/'remove': which existing line to " +
+                    "match, in the user's words. On 'add', an alias for 'text'."),
                 "value" to schema("number", "'tick' on a MEASURED line only: the number reported, e.g. 8400 for '8,400 steps'. Required for a measured line - omitting it refuses the tick."),
                 "day" to schema("string", "'tick'/'untick' only. Omit for today.",
                     enum = listOf("today", "yesterday")),
@@ -5544,8 +5545,29 @@ object LiveToolbox {
 
         when (action) {
             "add" -> {
-                val textArg = args.optString("text").trim()
-                if (textArg.isBlank()) return result(false, "What should I add to \"${checklist.name}\"?")
+                // `item` accepted as an alias for `text` (2026-09-06). Observed on the phone from
+                // `conversation_audit`: the model sent `item` (which IS the right parameter for
+                // tick/untick/remove) on an `add`, was refused with "What should I add to
+                // "Groceries"?", called `lists` to re-orient, then retried with `text` - three
+                // calls and about three seconds for an unambiguous request. The meaning of an
+                // `add` carrying only `item` is not in doubt, so it is taken; the tool description
+                // says so in one clause, because an alias the description hides is a rule the
+                // model can only find by failing.
+                val itemAlias = args.optString("item").trim()
+                val textArg = args.optString("text").trim().ifBlank { itemAlias }
+                if (textArg.isBlank()) {
+                    // Says the parameter, not just the question - CLAUDE.md section 7 wants a
+                    // failure that states what did NOT happen AND what would fix it. The "you
+                    // sent" clause appears only when the key really was present (empty, since a
+                    // non-empty one would have been taken above), never as a guess about what the
+                    // caller did.
+                    val sentEmptyItem = if (args.has("item")) " (you sent \"item\", and it was empty)" else ""
+                    return result(
+                        false,
+                        "add needs the line in \"text\"$sentEmptyItem; nothing was added to " +
+                            "\"${checklist.name}\".",
+                    )
+                }
                 val unit = args.optString("unit").trim().ifBlank { null }
                 val target = if (args.has("target") && !args.isNull("target")) args.optDouble("target") else null
                 val direction = when (args.optString("direction").trim().lowercase()) {

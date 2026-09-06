@@ -11,41 +11,99 @@ import android.content.Context
  * [com.kevin.legion.backend.SupabaseConfig] itself, since it is the Django side of the seam, not
  * the Supabase side).
  *
- * **Nothing reads this yet.** No aspect's sync/backend code branches on [transportFor] as of this
- * ticket - it exists so ticket 09's second half (wiring EventsSync/EventsBackend to actually check
- * it) has a stable seam to read from, per the map's "write it now so the events backend can branch
- * on it next" instruction. Every aspect defaults to [Transport.SUPABASE], so building this class
- * changes no behaviour anywhere in the app until something is explicitly flipped - and the only
- * way to flip one today is the debug-only row this ticket's Setup UI adds.
+ * **`events` and `checklists` default to [Transport.DJANGO] as of 2026-09-06** - that is Phase 3's
+ * "only when all six pass does the slice's transport flip to django in the committed default",
+ * taken after the A25 run: a checklist tick reached Postgres in about a second, a task tick reached
+ * it after commit `4d71da8`, a server-side write reached the phone on the 60 s poll, and an
+ * unreachable engine was reported in words with the write queued and drained on return. **The other
+ * seven aspects are untouched and still default to [Transport.SUPABASE]** - they have no Django
+ * backend written yet, so flipping them would be flipping to nothing.
+ *
+ * **The default is CONDITIONAL on this device having a usable engine, and that is the guard the
+ * flip lives or dies on.** A [Transport.DJANGO] aspect with no engine token resolves to no backend
+ * at all ([EngineBackends.eventsBackendNow] returns null), so shipping an unconditional Django
+ * default would have silently taken every `events` write off Supabase on a fresh install that has
+ * never seen an engine - a phone that syncs nothing, reported nowhere. So [defaultFor] answers
+ * [Transport.SUPABASE] until [EngineConfig] holds both an address and a token, which makes a fresh
+ * install behave EXACTLY as it did before this change, and [isFallingBackToSupabase] exists so the
+ * Setup screen's SYNC NOW row can say in words that that is what happened (CLAUDE.md section 7:
+ * nothing degrades quietly).
+ *
+ * **The fallback applies to the DEFAULT only, never to an explicit flip.** An aspect Kevin flipped
+ * by hand in the debug row is honoured verbatim even with no token - it resolves to no backend and
+ * says so, rather than quietly routing that aspect's writes to Supabase behind his back. Silently
+ * re-pointing a chosen transport is precisely the split-brain this whole switch exists to prevent
+ * (it is the bug fixed in `NotesController.backend` the same day), and "the write failed loudly"
+ * is a better outcome than "the write went somewhere else".
  *
  * **No `object` singleton, deliberately** - same Hilt-readiness note as [EngineConfig]/[EngineAuth]:
  * a plain class taking its [Context] as a constructor parameter.
  */
 enum class Transport { SUPABASE, DJANGO }
 
-class EngineTransport(context: Context) {
+class EngineTransport(
+    context: Context,
+    /** Injectable purely so a test can exercise the signed-in and signed-out defaults without a
+     * real Android Keystore - the same seam, for the same reason, [EngineConfig]'s own doc comment
+     * gives for its `encrypt`/`decrypt` parameters. */
+    private val config: EngineConfig = EngineConfig(context.applicationContext),
+) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /**
-     * [Transport.SUPABASE] for any [aspect] never explicitly flipped - including an aspect name
-     * this class has never heard of, so a future aspect is safe by construction rather than
-     * needing a line added here first before it can be asked about.
+     * The transport [aspect] is on: whatever was explicitly stored for it, else [defaultFor].
+     * An aspect name this class has never heard of is [Transport.SUPABASE], so a future aspect is
+     * safe by construction rather than needing a line added here first before it can be asked
+     * about.
      */
     fun transportFor(aspect: String): Transport {
-        val stored = prefs.getString(keyFor(aspect), null) ?: return Transport.SUPABASE
-        return runCatching { Transport.valueOf(stored) }.getOrDefault(Transport.SUPABASE)
+        val stored = prefs.getString(keyFor(aspect), null) ?: return defaultFor(aspect)
+        return runCatching { Transport.valueOf(stored) }.getOrElse { defaultFor(aspect) }
     }
 
     /** The debug-only Setup screen row is the one caller today - see KeyScreen.kt's Engine
-     * section. */
+     * section. Storing a value takes [aspect] out of [defaultFor]'s reach permanently, in both
+     * directions: an explicit SUPABASE is not the same as never having chosen. */
     fun setTransport(aspect: String, transport: Transport) {
         prefs.edit().putString(keyFor(aspect), transport.name).apply()
     }
+
+    /**
+     * True when [aspect] would be on Django by its shipped default but this device has no usable
+     * engine, so [transportFor] answered [Transport.SUPABASE] instead. **The one caller is the
+     * sentence [EngineSyncNow] hands back**, because a fallback nobody is told about is
+     * indistinguishable from a setting that was never applied.
+     *
+     * False for an explicitly-flipped aspect either way - see the class doc's third paragraph:
+     * an explicit choice is never overridden, so there is nothing to report.
+     */
+    fun isFallingBackToSupabase(aspect: String): Boolean =
+        prefs.getString(keyFor(aspect), null) == null &&
+            aspect in DJANGO_BY_DEFAULT &&
+            !engineUsable()
+
+    /** The shipped default for an aspect nobody has flipped by hand - see the class doc for why
+     * this is conditional rather than a constant. */
+    private fun defaultFor(aspect: String): Transport =
+        if (aspect in DJANGO_BY_DEFAULT && engineUsable()) Transport.DJANGO else Transport.SUPABASE
+
+    /** Address plus token, the same pair [EngineHttp.isUsable] gates a request on - read straight
+     * off [EngineConfig] here rather than through [EngineHttp] so nothing builds an HTTP client
+     * merely to answer which transport an aspect is on. */
+    private fun engineUsable(): Boolean = config.isConfigured() && config.isSignedIn()
 
     private fun keyFor(aspect: String) = "transport_$aspect"
 
     companion object {
         private const val PREFS = "engine_transport"
+
+        /**
+         * The aspects whose shipped default is [Transport.DJANGO] - the Phase 2 slice, and only
+         * once the engine is usable (see [defaultFor]). Adding an aspect here is the committed
+         * cutover for it and belongs with that aspect's own end-to-end run on the phone, never
+         * ahead of it.
+         */
+        val DJANGO_BY_DEFAULT: Set<String> = setOf("events", "checklists")
 
         /**
          * The aspects the debug toggle screen lists - the Phase 2 slice (events, checklists) plus

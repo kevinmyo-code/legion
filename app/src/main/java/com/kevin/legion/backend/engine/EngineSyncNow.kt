@@ -37,8 +37,9 @@ class EngineSyncNow(
     }
 
     private suspend fun eventsLine(): String {
+        val note = fallbackNote(EngineBackends.ASPECT_EVENTS)
         val backend = backends.eventsBackendAfterAuth()
-            ?: return "Events: not on the engine (transport is Supabase, or no token on this device)."
+            ?: return "Events: not on the engine (transport is Supabase, or no token on this device).$note"
         var failed: String? = null
         val line = guardingForeground(onFailure = { failed = it.message ?: "failed, with no message." }) {
             // Drain first, then pull - the same load-bearing ordering EventsOutboxDrain's own
@@ -50,12 +51,14 @@ class EngineSyncNow(
                 "${pulled.tombstoned} removed; sent ${drained.succeeded}, " +
                 "${drained.stillPending} still queued, ${drained.poisoned} stuck."
         }
-        return line ?: "Events: $failed"
+        return (line ?: "Events: $failed") + note
     }
 
     private suspend fun checklistsLine(): String {
+        val note = fallbackNote(EngineBackends.ASPECT_CHECKLISTS)
         val backend = backends.checklistsBackend()
-            ?: return "Checklists: not on the engine (flip the checklists transport row, and sign in)."
+            ?: return "Checklists: not on the engine (no engine sign-in on this device, or the " +
+                "checklists transport row is set to Supabase).$note"
         var failed: String? = null
         val line = guardingForeground(onFailure = { failed = it.message ?: "failed, with no message." }) {
             val drained = ChecklistsOutboxDrain.drain(app, backend)
@@ -73,8 +76,32 @@ class EngineSyncNow(
                 "sent ${drained.succeeded}, ${drained.stillPending} still queued, " +
                 "${drained.poisoned} stuck.$stoppedNote"
         }
-        return line ?: "Checklists: $failed"
+        return (line ?: "Checklists: $failed") + note
     }
+
+    /**
+     * The clause that says a Django default did not apply, appended to whichever sentence this
+     * aspect produced. **Empty for everything else**, so a line only grows when there is something
+     * to report.
+     *
+     * `events` and `checklists` default to [Transport.DJANGO] since 2026-09-06, but only on a
+     * device that holds an engine address and a token; without one they resolve to Supabase
+     * instead of to no backend at all (see [EngineTransport]'s class doc for why that guard exists).
+     * A fallback nobody is told about looks exactly like a setting that never took effect, which is
+     * the failure this button exists to prevent - so it is said in words, on the line for the
+     * aspect it happened to, whether that line otherwise reports a success or a failure.
+     */
+    // `internal`, not `private`, for the same reason as `backfillPhrase` below: the wording IS the
+    // deliverable, and `EngineSyncNowPhraseTest` can reach it with a real EngineBackends built over
+    // a signed-out EngineConfig, where a test that had to go through `run()` would need a live
+    // engine and would not be testing the wording at all.
+    internal fun fallbackNote(aspect: String): String =
+        if (backends.isFallingBackToSupabase(aspect)) {
+            " Django is this aspect's default now, but this device is not signed in to an engine, " +
+                "so it is on Supabase."
+        } else {
+            ""
+        }
 
     /**
      * The backfill's own clause, in words: how many crossed, how many never will, and why.

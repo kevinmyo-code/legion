@@ -648,16 +648,24 @@ fun KeyScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Debug-only per-aspect transport toggles (ticket 09's build item 4): Supabase is
-                // the truth for every aspect until explicitly flipped, so this is deliberately
+                // Debug-only per-aspect transport toggles (ticket 09's build item 4). Deliberately
                 // absent from a release build rather than merely hidden - a driver on a release
                 // build has no way to reach this row at all.
+                //
+                // The comment here used to read "Supabase is the truth for every aspect until
+                // explicitly flipped"; that stopped being true on 2026-09-06, when events and
+                // checklists took Django as their default after the A25 end-to-end run
+                // (EngineTransport.DJANGO_BY_DEFAULT). A row shows the transport that will
+                // ACTUALLY be used, so an aspect on its Django default reads SUPABASE until this
+                // device is signed in to an engine.
                 if (BuildConfig.DEBUG) {
                     Spacer(Modifier.height(12.dp))
                     DeckSectionRule("Transport (debug)", modifier = Modifier.padding(horizontal = 12.dp))
                     Text(
-                        "Supabase remains the truth for every aspect until it is explicitly " +
-                            "flipped here. Tap a row to toggle it. This section never ships to a " +
+                        "events and checklists are on the engine by default once this device is " +
+                            "signed in to one; every other aspect stays on Supabase until it is " +
+                            "flipped here. A row shows what will actually be used. Tap to toggle " +
+                            "it, which pins that aspect for good. This section never ships to a " +
                             "release build.",
                         style = LegionType.stamp,
                         color = sem.estimated,
