@@ -35,9 +35,9 @@ believed.
   Refresh = `tmp/canvas_reconcile.py` over a fresh Canvas API read; it is a snapshot, not sync.
 - **Google Calendar rows are frozen at 09-01** (importer retired). 18 all-day rows corrected 09-05.
   Decision open: two-clients ticket 06.
-- **Django is THE ENGINE (ADR 0044, evening 09-05, decided in a second terminal).** One Django server
-  owns Postgres, the gate, auth, media, the worker; Android is a limb over HTTPS JSON with Room as a
-  read cache; Supabase retires. Map `.scratch/django-engine/`, 11 tickets. Every Supabase sync path
+- **Django is THE ENGINE (ADR 0044, evening 09-05).** Shape decided 09-05 late: **Supabase Postgres (data
+  stays put, Django the only writer) > Django on Google Cloud Run (service + Job + Scheduler, the
+  midconerpdash pattern) > Android app and the Django-served PWA.** Media on R2/GCS. Cutover moves no rows. Map `.scratch/django-engine/`, 11 tickets. Every Supabase sync path
   built 09-02..05 is throwaway once Django owns writes. Two-clients map superseded.
 - **Android architecture: Hilt on KSP, ViewModel per screen** (CLAUDE.md §8, map `.scratch/architecture/`).
   KSP landed 09-05 (clean compile 3m15s to 2m41s); detekt with a baseline in flight.
