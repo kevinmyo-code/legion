@@ -4,7 +4,7 @@ ticket: "07"
 title: "Where it runs"
 type: decision
 status: resolved
-status-detail: "Decided 2026-09-05 (Kevin): database = the existing Supabase Postgres (free tier, pooler), Django the only writer; compute = home box behind Cloudflare Tunnel + Access, Oracle A1 fallback; media = Cloudflare R2. See decisions.md 2026-09-05."
+status-detail: "Decided 2026-09-05 (Kevin), amended the same night: database = the existing Supabase Postgres (pooler), Django the only writer; compute = Google Cloud Run service + Cloud Run Job on Cloud Scheduler, the pattern already running in midconerpdash; media = Cloudflare R2 or GCS; Cloudflare in front for the domain. Home box dropped."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -58,3 +58,31 @@ Cloudflare Tunnel on Kevin's domain with Access in front (two emails); Oracle A1
 Cloudflare R2, so ticket 05 repoints there. Backups: nightly `pg_dump` to R2 (ticket 06), which also
 keeps the free project from pausing. Full reasoning and the rejected alternatives in
 `memory/library/decisions.md`.
+
+## Amended 2026-09-05, same night: compute is Cloud Run, not a home box
+
+Kevin: *"my github has the midconerpdash project which i put on cloudflare... it runs even if my
+laptop is off"* - and a shallow clone showed what it actually is: a Python container on **Google
+Cloud Run** (`deploy.py`), a **Cloud Run Job** (`deploy_job.py`) fired by **Cloud Scheduler**
+(`install_schedule.py`), Firebase Hosting for the static page, Cloudflare in front as DNS. Its own
+Dockerfile states the reason: *"the figures have to keep refreshing when no workstation is switched
+on."* That is the Django engine's requirement word for word. Kevin: *"yes cloud run, update ticket 07."*
+
+| Layer | Decision |
+|---|---|
+| Database | Unchanged: the Supabase Postgres the data is in, free tier, session pooler, Django the only writer |
+| Web | **Cloud Run service** running the `server/Dockerfile` image, `--min-instances=0`, region `us-south1` (Dallas) or `us-central1`; free tier 2M requests, 180k vCPU-s, 360k GiB-s per month |
+| Worker | **Cloud Run Job** from the same image, one entrypoint per task, fired by **Cloud Scheduler** (3 jobs free). Replaces the `supercronic` container in compose; compose keeps it for local dev only |
+| Media | Cloudflare R2 (10 GB, no egress fee) or GCS (5 GB, same account). R2 unless the GCS path is simpler with `deploy.py`'s existing bucket code |
+| Domain and edge | Cloudflare DNS pointing at the Cloud Run URL, Access optional; Cloud Run has its own HTTPS |
+| Auth for the phone | Unchanged: device token header, Django-side. `--allow-unauthenticated` at the Cloud Run layer, exactly as midconerpdash does |
+| Dev loop | `docker compose up` on the laptop with a `local` profile (web + worker, no postgres). Docker Desktop stays useful but is not the deployment |
+
+**Why this beats the home box:** up when every household machine is off, no hardware, no power
+settings, no tunnel daemon, and Kevin already operates this exact shape. **Cost accepted:** a cold
+start of a second or two after idle, and Google's free tier is a monthly allowance, not a promise;
+`deploy.py`'s pattern of a max-instances cap keeps a runaway bill impossible.
+
+**What ticket 01 changes:** the compose file gains a `local` profile; `deploy/` gains a
+`cloudrun/` folder with the service and job definitions, modelled on midconerpdash's `deploy.py` and
+`deploy_job.py` rather than written fresh. `gcloud` is not installed on this machine yet.

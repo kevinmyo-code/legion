@@ -5407,3 +5407,16 @@ the nightly dump to R2 (ticket 06) is the backup.
 deploys through Cloudflare), Oracle A1 as fallback. Media on Cloudflare R2. Ticket 07 records the
 detail. **Docker stops being the blocker for verifying the server**: pytest runs against the managed
 Postgres given a role that can create the test database.
+
+## 2026-09-05 - Compute is Cloud Run, decided within the hour of "home box"
+
+The hosting entry above picked a household machine behind Cloudflare Tunnel because the survey found
+no free tier that runs a Python container and survives a month. It missed one, and Kevin's own repo
+had it: midconerpdash is a FastAPI container on Google Cloud Run with a Cloud Run Job on Cloud
+Scheduler, running while his laptop is off. Kevin: *"yes cloud run, update ticket 07."*
+
+Django is the same shape - a Python container plus a scheduled worker - so the engine goes to Cloud
+Run (service + job + scheduler), database unchanged (Supabase Postgres), media on R2 or GCS,
+Cloudflare in front for the domain. The home box is dropped; the laptop is the dev loop only. The
+earlier reasoning about Oracle, Render, Fly and Koyeb stands; Cloud Run was the omission, and the
+lesson is to look at what the person already runs before surveying the market.
