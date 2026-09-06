@@ -6,7 +6,7 @@ idempotent tick, revive-on-retick, soft-delete-only.
 """
 from __future__ import annotations
 
-from django.utils import timezone
+from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -99,7 +99,18 @@ class ChecklistDetailView(APIView):
         # checklist's history is never rewritten by deleting the checklist
         # any more than by deleting one of its items.
         if instance.deleted_at is None:
-            instance.deleted_at = timezone.now()
+            # `Now()` (SQL, evaluated by Postgres), never `timezone.now()`.
+            # This line used to read the Python clock, which is a DIFFERENT
+            # machine's clock from the one `checklists_touch_updated_at()`
+            # stamps `updated_at` with on the very same UPDATE - measured
+            # 0.53s apart against this project's own Postgres on
+            # 2026-09-06, Python behind. `created_at`/`updated_at` on these
+            # tables were already safe (`db_default=Now()` on the model, so
+            # Postgres fills them on INSERT); `deleted_at` was the one
+            # timestamp this app wrote from the wrong clock. See
+            # `api/events.py`'s `EventSerializer.create` for the full
+            # reasoning and `api/synced.py` for the rule.
+            instance.deleted_at = Now()
             instance.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -187,7 +198,8 @@ class ChecklistItemDetailView(APIView):
         # doc comment, "trap 2": dropping an item must not rewrite the
         # history of days it was already ticked.
         if instance.deleted_at is None:
-            instance.deleted_at = timezone.now()
+            # The database's clock - see ChecklistDetailView.delete above.
+            instance.deleted_at = Now()
             instance.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -216,11 +228,22 @@ class ChecklistItemTickView(APIView):
         existing = ChecklistTick.objects.filter(item=item, day=day).first()
 
         def _write():
-            now = timezone.now()
+            # `Now()` throughout, never `timezone.now()`. `ChecklistTick`
+            # already declares `db_default=Now()` for `ticked_at`, so the
+            # Python `now` this function used to compute was overriding the
+            # clock the schema itself asks for, on a row whose `updated_at`
+            # the `checklists_touch_updated_at()` trigger stamps from
+            # Postgres regardless - two clocks on one row. See
+            # ChecklistDetailView.delete above.
             if existing is None:
-                return ChecklistTick.objects.create(
-                    item=item, day=day, value=value, source=source, ticked_at=now
+                tick = ChecklistTick.objects.create(
+                    item=item, day=day, value=value, source=source, ticked_at=Now()
                 )
+                # `Now()` stays an unevaluated SQL expression in Python
+                # until Postgres runs it, and this response body renders
+                # `ticked_at`, so the row is read back first.
+                tick.refresh_from_db()
+                return tick
             if existing.deleted_at is None:
                 # Idempotent no-op, matching ChecklistController.tick's own
                 # posture: a double-tap does not overwrite the FIRST tap's
@@ -234,8 +257,11 @@ class ChecklistItemTickView(APIView):
             existing.deleted_at = None
             existing.value = value
             existing.source = source
-            existing.ticked_at = now
+            existing.ticked_at = Now()
             existing.save(update_fields=["deleted_at", "value", "source", "ticked_at"])
+            # Reads back the expression Postgres just evaluated, and the
+            # `updated_at` the trigger overwrote on the same statement.
+            existing.refresh_from_db()
             return existing
 
         tick, error = save_or_400(_write)
@@ -263,6 +289,7 @@ class ChecklistItemUntickView(APIView):
 
         tick = ChecklistTick.objects.filter(item=item, day=day).first()
         if tick is not None and tick.deleted_at is None:
-            tick.deleted_at = timezone.now()
+            # The database's clock - see ChecklistDetailView.delete above.
+            tick.deleted_at = Now()
             tick.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)

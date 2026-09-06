@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 
 from django.db import transaction
-from django.utils import timezone
+from django.db.models.functions import Now
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -109,8 +109,13 @@ class EventSerializer(serializers.ModelSerializer):
         # provenance/created_at/updated_at/deleted_at are server facts, not
         # caller intent (matching EventFields's own doc comment: "these
         # four are server- or ack-side facts, not caller intent") -
-        # deleted_at is set only by DELETE (never PATCH), updated_at only
-        # by the `touch_updated_at` trigger already on `public.events`.
+        # deleted_at is set only by DELETE (never PATCH), updated_at by
+        # `create` below on INSERT and by the `touch_updated_at` trigger
+        # already on `public.events` on every UPDATE. Both of those read
+        # the DATABASE's clock; see `create`'s own comment for why that
+        # sentence is load-bearing. This comment used to say updated_at was
+        # written "only by the trigger", which stopped being true the
+        # moment `create` started stamping it explicitly.
         read_only_fields = ["id", "provenance", "created_at", "updated_at", "deleted_at"]
         extra_kwargs = {
             # Each of these has a stated DB default (CREATE_DEFAULTS above)
@@ -163,18 +168,56 @@ class EventSerializer(serializers.ModelSerializer):
         # contract for a create: "there is no natural key to upsert ON" -
         # the id is minted fresh, here, every time.
         validated_data["id"] = uuid.uuid4()
-        now = timezone.now()
         # created_at/updated_at: NOT NULL with no Django-level default (see
-        # this module's own CREATE_DEFAULTS comment) - both stamped to the
-        # same "now" a genuine INSERT's own `default now()` would produce.
+        # this module's own CREATE_DEFAULTS comment), so they are supplied
+        # here rather than left to the column's own `default now()` clause.
+        #
+        # **They come from POSTGRES's clock, never this process's.** These
+        # lines used to read `now = timezone.now()` with both columns set
+        # to it, described in this very comment as "the same 'now' a
+        # genuine INSERT's own `default now()` would produce". That claim
+        # was wrong for a reason nothing local could see: Django does not
+        # run on the database's machine. `private.touch_updated_at` stamps
+        # `updated_at := now()` from the DATABASE's clock on every UPDATE,
+        # so a row inserted on the Python clock and later updated carried
+        # two timestamps minted by two different machines. Measured against
+        # this project's own Postgres on 2026-09-06, the two clocks
+        # differed by 0.53s with PYTHON BEHIND; had the skew run the other
+        # way, a row created and then updated would come back with an
+        # `updated_at` EARLIER than its own creation, and a `?since=` feed
+        # keyed on the value the phone was handed at create time would
+        # silently never return that change - a sync path losing data
+        # without failing. One clock for both writes removes the whole
+        # class of failure, and it is the clock the trigger already uses.
+        # `api/synced.py` (Phase 5) states the same rule at length and was
+        # written this way from the start; this is the Phase 2 slice
+        # catching up to it.
+        validated_data["created_at"] = Now()
+        validated_data["updated_at"] = Now()
         # provenance: events are AUTHORED, not gated (CLAUDE.md section 4
         # applies to ingestion; this API is a person typing), so every row
         # created here carries Provenance.USER, matching the column's own
         # DB default - never accepted from the caller (read_only above).
-        validated_data["created_at"] = now
-        validated_data["updated_at"] = now
         validated_data["provenance"] = Provenance.USER
-        return Event.objects.create(**validated_data)
+        instance = Event.objects.create(**validated_data)
+        # `Now()` is an unevaluated SQL expression until Postgres runs it;
+        # the in-memory instance still holds the expression object, not a
+        # datetime, so the row is read back before anything renders it.
+        instance.refresh_from_db()
+        return instance
+
+    def update(self, instance: Event, validated_data: dict) -> Event:
+        instance = super().update(instance, validated_data)
+        # The `touch_updated_at` trigger has just overwritten `updated_at`
+        # with the database's own clock, and a `done_at` derived by
+        # `EventDetailView.patch` arrived as an unevaluated `Now()` - so
+        # the values Django holds are stale, or are not datetimes at all,
+        # the instant the UPDATE lands. Same read-back `api/synced.py`
+        # does, and what lets a PATCH response claim to be the row as
+        # stored the way `test_create_event_returns_the_row_as_stored`
+        # already claims it of a POST.
+        instance.refresh_from_db()
+        return instance
 
 
 class EventListCreateView(APIView):
@@ -227,12 +270,23 @@ class EventDetailView(APIView):
         # supply done_at explicitly (the eventual migration/reconcile path,
         # matching EventFields.doneAtMs's own explicit-value posture) is
         # never overridden.
+        #
+        # The derived value is the DATABASE's clock. This line used to read
+        # `data["done_at"] = timezone.now().isoformat()`, which put a
+        # second machine's idea of "now" on a row whose `updated_at` the
+        # trigger stamps from Postgres - see `EventSerializer.create` for
+        # the measurement that retired that. `Now()` cannot travel through
+        # the request body (an unevaluated SQL expression is not something
+        # a DateTimeField can validate), so it rides in through
+        # `serializer.save(**kwargs)`, which DRF merges into
+        # `validated_data` after validation rather than before it.
+        derived: dict = {}
         if "done" in data and "done_at" not in data:
-            data["done_at"] = timezone.now().isoformat() if data["done"] else None
+            derived["done_at"] = Now() if data["done"] else None
 
         serializer = EventSerializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
-        _saved, error = save_or_400(lambda: serializer.save())
+        _saved, error = save_or_400(lambda: serializer.save(**derived))
         if error is not None:
             return error
         return Response(EventSerializer(instance).data)
@@ -247,6 +301,12 @@ class EventDetailView(APIView):
         # caller that does not care which happened.
         if instance.deleted_at is None:
             with transaction.atomic():
-                instance.deleted_at = timezone.now()
+                # `Now()`, not `timezone.now()` - one clock, the database's,
+                # for every timestamp this module writes. A tombstone is
+                # the one row state a phone can learn about ONLY through
+                # the `?since=` feed, so a `deleted_at` minted on a second
+                # clock is the worst place to keep one. Matches
+                # `SyncedModelViewSet.destroy` in `api/synced.py`.
+                instance.deleted_at = Now()
                 instance.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
