@@ -8,7 +8,18 @@ from api.views import healthz
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # The SAME view on two paths, and the second one is the one that works in
+    # production. **Cloud Run's frontend reserves `/healthz`**: it answers with
+    # Google's own 404 page before the request ever reaches the container,
+    # measured on the live service 2026-09-06 (`/healthzz`, `/health`,
+    # `/readyz` and every other path reached Django on the same deploy, so it
+    # is that exact string and not a routing mistake here). `/healthz` still
+    # works under `docker compose` locally, where nothing is in front of
+    # gunicorn, and it stays for that reason and because ticket 01's own
+    # verification names it. Anything checking the deployed engine must use
+    # `/health`.
     path("healthz", healthz, name="healthz"),
+    path("health", healthz, name="health"),
     path("api/auth/", include("household.urls")),
     # `server/openapi.yaml` (map's handoff artefact to ticket 09) is
     # regenerated from this endpoint by `manage.py spectacular`.
