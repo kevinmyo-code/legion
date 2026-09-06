@@ -1007,3 +1007,35 @@ confirmed twice.
 Positive finding from the same run, worth keeping: the honesty clause was observed WORKING. The model
 sent `item` where `add` wanted `text`, got a refusal in words, called `lists`, retried correctly, and
 spoke only after the successful call.
+
+## L-2026-09-06b: A 2xx that wrote nothing, and a server key built on a local rowid
+
+`conversation_audit` stopped reaching the server on 2026-09-03 and nobody noticed for three days. The
+cause was none of the four things anyone guessed. **The upload ran, returned success, wrote zero rows,
+and the watermark advanced over them.**
+
+The chain: the wipe reset the phone's `conversation_audit.id` sequence to 1. The server's natural key
+is `(device_id, local_id)`, and `device_id` is `Settings.Secure.ANDROID_ID`, which did not change. So
+post-wipe local rows 1..142 collided with pre-wipe server rows 1..142 - entirely different
+conversations - and the upsert carries `ignoreDuplicates = true`, which makes PostgREST return 2xx for
+rows it discarded. `ConversationAuditReconcile` then counted rows ATTEMPTED, not accepted, and
+advanced the cursor. The failure path was already honest; the hole was in the success path.
+
+**Three rules, in order of how much they generalise.**
+
+1. **A server-side natural key must never be a local rowid.** A Room `AUTOINCREMENT` id is unique per
+   database instance, not per device, and a wipe resets it while SharedPreferences cursors survive -
+   so the two go out of sync in the silent direction. Every other synced table here already got this
+   right with a client-minted `syncId` / `origin_guid`, and this one table was the exception. The fix
+   is a client UUID, not a cleverer composite.
+2. **A watermark may only advance by rows the server says it ACCEPTED.** `resolution=ignore-duplicates`
+   returns success for discards, so an attempted-count is not an upload count. Any cursor advanced on
+   such a call has to read the inserted count back.
+3. **Retention on a table nobody has uploaded yet destroys evidence on a timer.** This table has a
+   14-day trim and exists specifically to answer "what did the assistant actually do" - it settled
+   exactly that question earlier the same day. 142 stranded rows would have begun deleting themselves
+   on 2026-09-17 with no error anywhere. A trim must not delete a row that has not left the device.
+
+The tell that cracked it was the cursor sitting at exactly 142: a failed upload returns before
+advancing, so a cursor at 142 proves every call covering 1..142 returned success. The number that
+should have been impossible is the one that named the bug.
