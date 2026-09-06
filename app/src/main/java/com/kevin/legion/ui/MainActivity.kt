@@ -243,6 +243,15 @@ class MainActivity : ComponentActivity() {
             // configured or nobody is signed in) and fire-and-forget on its own scope - see
             // EventsSync.maybeAutoPull's own doc comment.
             com.kevin.legion.backend.EventsSync.maybeAutoPull(applicationContext)
+            // The repair pass for every task ticked on this phone while tickAppointment had no
+            // push side at all (found on the A25 2026-09-06). Placed after the pull for reading
+            // order only - unlike every backfill in this file, its correctness does NOT depend on
+            // that ordering, and could not: maybeAutoPull above is fire-and-forget on its own
+            // scope and five-minute throttled, so this line cannot promise to follow it. See
+            // EventsDoneDivergenceSweep's own class doc for why the strict local-newer test makes
+            // the ordering unnecessary. One-shot: latched in SharedPreferences after the first
+            // clean pass, so this is a no-op prefs read on every foreground after that.
+            com.kevin.legion.backend.EventsDoneDivergenceSweep.maybeAutoRun(applicationContext)
         }
         // Body-supabase ticket, same drain-then-pull ordering as the events pair above and for
         // the identical reason (BodyOutboxDrain's own class doc) - a separate lifecycleScope block

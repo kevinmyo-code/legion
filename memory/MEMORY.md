@@ -30,10 +30,14 @@ believed.
   Server: 93 tests green. API: /api/events, /api/checklists, /api/changes?since=, /api/schema/. Phone:
   EngineAuth/EngineConfig/EngineTransport (default SUPABASE per aspect), Setup sign-in row, debug-only
   cleartext. Phase 3 RAN 09-06: checklist write reached Postgres in a second, a server write reached the phone by
-  poll, an unreachable engine was reported honestly and the queued tick drained. **Three defects: the
-  events done-toggle has no push side at all (pre-existing, `NotesController.tickAppointment` is Room
-  only), voice claimed "Added oat milk" with no row anywhere (§7 breach, under investigation), and the
-  tick backfill aborts on its first refusal. Transport default stays SUPABASE until 1 and 3 are fixed.**
+  poll, an unreachable engine was reported honestly and the queued tick drained. Two of three defects FIXED 09-06 (the events done-toggle now pushes with an outbox fallback plus a
+  one-shot divergence sweep; the backfill skips a refusal and continues, keeping the tick locally).
+  **Open: voice said "Added oat milk" with no row anywhere. Not a silent-success bug - addItem inserts
+  or throws - so it is either no dispatch or the honesty clause disobeyed. The deciding evidence is the
+  phone's `conversation_audit` TOOL_RESULT row for that turn; the server's copy stopped at 09-03, so the
+  audit reconcile is itself broken and that evidence expires on 09-20 (14-day retention).**
+  Also open: `NotesController.backend()` is hardcoded to Supabase, so a REMINDER's tick ignores the
+  transport switch. Transport default stays SUPABASE in the repo until the run repeats clean.
   Next was (`research/execution-plan.md`).
 - **Creds Kevin said he will rotate:** legion_reader and legion_engine share the password he pasted; the
   reader's leaked once into an agent traceback.

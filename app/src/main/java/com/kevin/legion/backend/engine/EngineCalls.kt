@@ -2,6 +2,10 @@ package com.kevin.legion.backend.engine
 
 import java.time.format.DateTimeParseException
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * The failure-translation shared by [DjangoEventsBackend] and [DjangoChecklistsBackend].
@@ -122,3 +126,32 @@ internal inline fun <T> guardingForeground(onFailure: (Exception) -> Unit, block
     onFailure(e)
     null
 }
+
+/**
+ * DRF's error envelope, unwrapped into the sentence inside it - `{"detail": "..."}`,
+ * `{"non_field_errors": ["..."]}` and `{"<field>": ["..."]}` all come out as the English the
+ * engine actually wrote, with the braces and the escaped quotes gone.
+ *
+ * **This is presentation, never a second copy of a rule.** [EngineFailure.Refused.body] stays
+ * verbatim and every behavioural decision still reads it; this exists because a SUMMARY line has
+ * to be readable - `ChecklistsBackfill`'s own report line was reaching the Setup screen as the
+ * literal string `checklist_ticks: {"non_field_errors":["\"3 sets goblet squats\" is measured in
+ * kg - ..."]}`, which is the engine's words wearing a JSON costume. Nothing here rewords or
+ * shortens the engine's sentence; it only takes it out of the envelope.
+ *
+ * A body that is not a JSON object, or is one this cannot make sense of, is returned untouched -
+ * failing to unwrap must never lose the only explanation there is.
+ */
+internal fun engineRefusalSentence(body: String): String = runCatching {
+    val root = Json.parseToJsonElement(body) as? JsonObject ?: return@runCatching body
+    val sentences = root.values.flatMap { element ->
+        when (element) {
+            is JsonArray -> element.mapNotNull { (it as? JsonPrimitive)?.content }
+            is JsonPrimitive -> listOf(element.content)
+            // A nested object (DRF's per-field errors on a nested serializer) has no shape this
+            // helper can flatten honestly, so its raw text rides along rather than being dropped.
+            else -> listOf(element.toString())
+        }
+    }.filter { it.isNotBlank() }
+    if (sentences.isEmpty()) body else sentences.joinToString(" ")
+}.getOrDefault(body).trim()

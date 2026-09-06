@@ -1,12 +1,17 @@
 package com.kevin.legion.backend
 
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.backend.engine.EngineSyncNow
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.ChecklistItem
 import com.kevin.legion.data.local.ChecklistTick
+import com.kevin.legion.data.local.OutboxTarget
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -38,10 +43,20 @@ class ChecklistsBackfillTest {
         val itemPushes = mutableListOf<String>()
         val tickPushes = mutableListOf<Pair<String, Int>>()
 
+        /** Item server ids whose ticks the engine refuses with a 400, keyed the way the real
+         * engine keys its own refusal: by the ITEM, since the rule is a property of the item's
+         * `measure_unit`. */
+        val refusedTicksForItems = mutableSetOf<String>()
+
+        /** Set to make every call fail the way an unreachable laptop engine does - the branch that
+         * must still STOP a table (rule 5), as distinct from a refusal (rule 6). */
+        var unreachable = false
+
         override suspend fun fetchChanges(sinceIso: String?) =
             Result.success(ChecklistChanges("2026-09-06T00:00:00Z", emptyList(), emptyList(), emptyList()))
 
         override suspend fun upsertChecklist(syncId: String, fields: ChecklistFields): Result<RemoteChecklist> {
+            if (unreachable) return Result.failure(unreachableFailure())
             checklistPushes += syncId
             return Result.success(
                 RemoteChecklist(
@@ -70,6 +85,7 @@ class ChecklistsBackfillTest {
             syncId: String,
             fields: ChecklistItemFields,
         ): Result<RemoteChecklistItem> {
+            if (unreachable) return Result.failure(unreachableFailure())
             itemPushes += syncId
             return Result.success(
                 RemoteChecklistItem(
@@ -104,6 +120,12 @@ class ChecklistsBackfillTest {
             value: Double?,
             source: String,
         ): Result<RemoteChecklistTick> {
+            val refusal = when {
+                unreachable -> unreachableFailure()
+                itemServerId in refusedTicksForItems -> measuredTickRefusal()
+                else -> null
+            }
+            if (refusal != null) return Result.failure(refusal)
             tickPushes += itemServerId to day
             return Result.success(
                 RemoteChecklistTick(
@@ -121,6 +143,22 @@ class ChecklistsBackfillTest {
         }
 
         override suspend fun untick(checklistServerId: String, itemServerId: String, day: Int) = Result.success(true)
+
+        /** The engine's ACTUAL refusal, copied from the A25 on 2026-09-06 - DRF's
+         * `{"non_field_errors": [...]}` envelope around `checklists/serializers.py`'s own sentence,
+         * which is itself verbatim from `ChecklistController.tick`. Hand-shortening it would be
+         * testing a sentence nobody sends. */
+        private fun measuredTickRefusal() = EngineHttpException(
+            EngineFailure.Refused(
+                status = 400,
+                body = """{"non_field_errors":["\"3 sets goblet squats\" is measured in kg - """ +
+                    """give a number to tick it, nothing was recorded."]}""",
+            ),
+        )
+
+        private fun unreachableFailure() = EngineHttpException(
+            EngineFailure.Unreachable(host = "192.168.1.117:8000", message = "connection refused"),
+        )
     }
 
     private lateinit var backend: RecordingBackend
@@ -128,6 +166,9 @@ class ChecklistsBackfillTest {
     @Before
     fun setUp() {
         RoomTestReset.resetCarDatabaseSingleton()
+        // The cursor is SharedPreferences-backed and outlives the database reset above; without
+        // this, a cursor left by an earlier test in this class skips the rows a later one seeds.
+        ChecklistsBackfillCursor.resetForTest(context)
         backend = RecordingBackend()
     }
 
@@ -157,7 +198,8 @@ class ChecklistsBackfillTest {
         assertEquals(2, backend.tickPushes.size)
         // Six rows across three tables, every one pushed exactly once.
         assertEquals(6, first.pushed)
-        assertTrue(first.failed.isEmpty())
+        assertTrue(first.stopped.isEmpty())
+        assertTrue(first.skipped.isEmpty())
 
         val second = ChecklistsBackfill.run(context, backend)
 
@@ -206,5 +248,132 @@ class ChecklistsBackfillTest {
         // race between the two would leave it alive.
         assertTrue(backend.checklistPushes.isEmpty())
         assertEquals(1, report.skippedLocalOnlyDeleted)
+    }
+
+    // ------------------------------------------------------------------ rule 6: a refused row
+
+    /** Two checklists, each with one item and one tick. `bio`'s item is the measured one whose
+     * legacy tick carries no value, exactly as on the A25. */
+    private suspend fun seedRefusedAndFine(): Long {
+        val db = CarDatabase.getDatabase(context)
+        val bio = db.checklistDao().insert(Checklist(name = "bio", syncId = "sync-bio"))
+        val squats = db.checklistItemDao().insert(
+            ChecklistItem(checklistId = bio, text = "3 sets goblet squats", syncId = "sync-squats"),
+        )
+        db.checklistTickDao().insert(ChecklistTick(itemId = squats, day = 20_700, syncId = "sync-squats-tick"))
+
+        val errands = db.checklistDao().insert(Checklist(name = "errands", syncId = "sync-errands"))
+        val post = db.checklistItemDao().insert(
+            ChecklistItem(checklistId = errands, text = "post the parcel", syncId = "sync-post"),
+        )
+        db.checklistTickDao().insert(ChecklistTick(itemId = post, day = 20_700, syncId = "sync-post-tick"))
+
+        backend.refusedTicksForItems += "srv-sync-squats"
+        return squats
+    }
+
+    @Test
+    fun `a refused tick is skipped and every other tick still crosses`() = runBlocking {
+        // The A25 defect: the ticks table stopped dead on its first refusal, so ZERO ticks were
+        // ever backfilled and the blob reprinted on every sync. The refusal itself is correct -
+        // the tick predates the item being measured - but it may not hold the others hostage.
+        seedRefusedAndFine()
+
+        val report = ChecklistsBackfill.run(context, backend)
+
+        assertEquals(listOf("srv-sync-post" to 20_700), backend.tickPushes)
+        assertEquals(1, report.skipped.size)
+        assertEquals(OutboxTarget.CHECKLIST_TICKS, report.skipped.single().table)
+        // The engine's own words, unwrapped out of DRF's envelope - not the raw JSON, and not a
+        // paraphrase either.
+        assertEquals(
+            "\"3 sets goblet squats\" is measured in kg - give a number to tick it, nothing was recorded.",
+            report.skipped.single().reason,
+        )
+        // Four rows (two checklists, two items) plus the one tick that was taken.
+        assertEquals(5, report.pushed)
+        assertTrue("a refusal is not a stop", report.stopped.isEmpty())
+    }
+
+    @Test
+    fun `a refused row is never retried, and later runs still say it is being kept back`() = runBlocking {
+        seedRefusedAndFine()
+        ChecklistsBackfill.run(context, backend)
+
+        val second = ChecklistsBackfill.run(context, backend)
+
+        // Nothing re-attempted: the high-water cursor advanced past it, which is what stops the
+        // "error blob on every sync" without needing a flag on the row itself.
+        assertEquals(1, backend.tickPushes.size)
+        assertTrue(second.skipped.isEmpty())
+        // But the fact survives the run that produced it, so a later sentence can still say it.
+        assertEquals(1, second.unsyncableTotal)
+    }
+
+    @Test
+    fun `the refused tick is still on the phone - nothing deletes the user's history`() = runBlocking {
+        val squats = seedRefusedAndFine()
+
+        ChecklistsBackfill.run(context, backend)
+
+        // Kevin's ruling: "keep it locally, never send it". He did the squats; a tombstone here
+        // would assert he did not.
+        val tick = CarDatabase.getDatabase(context).checklistTickDao().getForItemOnDay(squats, 20_700)
+        assertNotNull(tick)
+        assertFalse(tick!!.deleted)
+    }
+
+    @Test
+    fun `an unreachable engine still STOPS the table - a refusal and an outage are not the same`() = runBlocking {
+        seedPreSyncRows("bio")
+        backend.unreachable = true
+
+        val report = ChecklistsBackfill.run(context, backend)
+
+        assertEquals(0, report.pushed)
+        assertTrue(report.skipped.isEmpty())
+        // One stop per table, and the run resumes from the cursor next time rather than recording
+        // the row as permanently unsendable.
+        assertEquals(3, report.stopped.size)
+        assertEquals(0, report.unsyncableTotal)
+    }
+
+    // ------------------------------------------------------------------ the sentence Kevin reads
+
+    @Test
+    fun `the summary sentence names the skip in words, never as a JSON blob`() = runBlocking {
+        seedRefusedAndFine()
+        val report = ChecklistsBackfill.run(context, backend)
+
+        val phrase = EngineSyncNow(context).backfillPhrase(report)
+
+        assertEquals(
+            "backfilled 5, skipped 1 (kept on this phone, never sent: " +
+                "\"3 sets goblet squats\" is measured in kg - give a number to tick it, nothing was recorded)",
+            phrase,
+        )
+        // The old line read `Backfill stopped: checklist_ticks: {"non_field_errors":[...]}`.
+        assertFalse(phrase.contains("non_field_errors"))
+        assertFalse(phrase.contains("Backfill stopped"))
+    }
+
+    @Test
+    fun `a later run still says a tick is being held back rather than reporting a clean pass`() = runBlocking {
+        seedRefusedAndFine()
+        ChecklistsBackfill.run(context, backend)
+        val second = ChecklistsBackfill.run(context, backend)
+
+        assertEquals(
+            "backfilled 0 (1 the engine will not take, kept on this phone and never sent)",
+            EngineSyncNow(context).backfillPhrase(second),
+        )
+    }
+
+    @Test
+    fun `a clean run says only what it did`() = runBlocking {
+        seedPreSyncRows("bio")
+        val report = ChecklistsBackfill.run(context, backend)
+
+        assertEquals("backfilled 3", EngineSyncNow(context).backfillPhrase(report))
     }
 }

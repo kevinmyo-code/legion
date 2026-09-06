@@ -137,6 +137,68 @@ class NotesControllerAppointmentTest {
         assertEquals(reminder.startsAt, rereadReminder.startsAt)
     }
 
+    /** A backend that refuses every write, so a push is guaranteed to fail and the outbox entry is
+     * guaranteed to exist - the only thing these two tests care about is whether the tick TRIED to
+     * leave the device at all. */
+    private class RefusingEventsBackend : com.kevin.legion.backend.EventsBackend {
+        val upsertCalls = mutableListOf<Pair<String?, com.kevin.legion.backend.EventFields>>()
+        override suspend fun fetchActive() = Result.success(emptyList<com.kevin.legion.backend.RemoteEvent>())
+        override suspend fun fetchChangedSince(sinceMs: Long) =
+            Result.success(emptyList<com.kevin.legion.backend.RemoteEvent>())
+        override suspend fun upsert(serverId: String?, fields: com.kevin.legion.backend.EventFields):
+            Result<com.kevin.legion.backend.RemoteEvent> {
+            upsertCalls += serverId to fields
+            return Result.failure(com.kevin.legion.backend.EventsBackendException("offline"))
+        }
+        override suspend fun softDelete(serverId: String) = Result.success(true)
+        override suspend fun skipOccurrence(serverId: String, skipDateEpochMs: Long) = Result.success(Unit)
+        override suspend fun fetchSkips(serverId: String) = Result.success(emptyList<Long>())
+        override suspend fun uploadMigratedEvent(event: com.kevin.legion.backend.MigratedEvent) =
+            Result.success(true)
+    }
+
+    @Test
+    fun `ticking a task pushes it and queues it when the push fails - it is never local-only`() = runBlocking {
+        // The A25 defect, 2026-09-06: this function wrote Room and stopped. No push, no outbox
+        // entry, so the tick reached no server on either transport and did not even surface as
+        // pending ("sent 0, 0 still queued"). Both assertions below failed before the fix.
+        val pushes = RefusingEventsBackend()
+        com.kevin.legion.backend.EventsAppointmentWriter.backendOverride = pushes
+        try {
+            val task = insertAppointment("MATH 3391 Module 3: Discussion", kind = EventKind.TASK)
+
+            assertTrue(NotesController.tickAppointment(context, task))
+
+            assertEquals(1, pushes.upsertCalls.size)
+            assertTrue(pushes.upsertCalls[0].second.done)
+            val outbox = CarDatabase.getDatabase(context).outboxDao().getAll()
+            assertEquals(1, outbox.size)
+            assertEquals(com.kevin.legion.data.local.OutboxTarget.EVENTS, outbox[0].targetTable)
+            assertTrue(outbox[0].payload.contains("\"done\":true"))
+        } finally {
+            com.kevin.legion.backend.EventsAppointmentWriter.backendOverride = null
+        }
+    }
+
+    @Test
+    fun `a refused row is refused before anything is pushed - the kind guard runs first`() = runBlocking {
+        // Widening tickAppointment to a push side must not widen what may be ticked: an
+        // EventKind.EVENT still writes nothing locally and sends nothing.
+        val pushes = RefusingEventsBackend()
+        com.kevin.legion.backend.EventsAppointmentWriter.backendOverride = pushes
+        try {
+            val event = insertAppointment("COSC 3334 Intro to Cybersecurity")
+
+            assertFalse(NotesController.tickAppointment(context, event))
+
+            assertTrue("nothing may reach the engine for a row this funnel refuses", pushes.upsertCalls.isEmpty())
+            assertTrue(CarDatabase.getDatabase(context).outboxDao().getAll().isEmpty())
+            assertFalse(NotesController.appointmentById(context, event.id)!!.done)
+        } finally {
+            com.kevin.legion.backend.EventsAppointmentWriter.backendOverride = null
+        }
+    }
+
     @Test
     fun `tickAppointment refuses a reminder-kind row - the kind boundary holds both directions`() = runBlocking {
         val list = NotesController.theList(context)

@@ -54,6 +54,16 @@ private data class EventUpsertOutboxPayload(
     val source: String,
     val kind: String,
     val createdAtMs: Long?,
+    /** ADDED 2026-09-06 with [EventsAppointmentWriter.setDone]. **Defaulted, so an entry queued by
+     * the previous build still decodes** - `Json`'s decoder only requires a key for a property with
+     * no default, so a payload written before these two existed reads back as an untouched task,
+     * which is exactly what it was. They are here because [EventsAppointmentWriter.repointPendingCreate]
+     * re-points a still-queued create at the row's CURRENT values, and before this a tick landing on
+     * a task whose own create had not drained yet would have been re-pointed into a payload with
+     * nowhere to carry it - the tick would have silently vanished at the one moment the outbox
+     * exists to prevent exactly that. */
+    val done: Boolean = false,
+    val doneAtMs: Long? = null,
 ) {
     fun toMigratedEvent() = MigratedEvent(
         originGuid = guid,
@@ -65,6 +75,8 @@ private data class EventUpsertOutboxPayload(
             allDay = allDay,
             source = source,
             kind = kind,
+            done = done,
+            doneAtMs = doneAtMs,
         ),
     )
 
@@ -78,6 +90,8 @@ private data class EventUpsertOutboxPayload(
             source = row.source,
             kind = row.kind,
             createdAtMs = row.createdAt,
+            done = row.done,
+            doneAtMs = row.doneAt,
         )
     }
 }
@@ -360,6 +374,65 @@ object EventsAppointmentWriter {
     }
 
     /**
+     * Marks a calendar-table row done or not-done, and PUSHES it. The tick half of
+     * [updateEvent]'s own shape: local write first, unconditionally, then the engine, then the
+     * outbox on failure.
+     *
+     * **This is the fix for a defect found on the A25 on 2026-09-06, and it is worth stating what
+     * the code used to do rather than only what it does now.**
+     * [com.kevin.legion.notes.NotesController.tickAppointment] wrote
+     * `eventDao().update(existing.copy(done = true, ...))` and stopped. There was no push, no
+     * outbox entry, and therefore nothing that even SURFACED as pending - the next sync reported
+     * "sent 0, 0 still queued" while the server row read `done = false`, because the phone had
+     * never told it anything and had nothing queued to say. [EventsSync.pull]'s rule 4 comment said
+     * the same thing in words ("this device has no push side yet"); that sentence outlived the
+     * `addEvent`/`updateEvent`/`deleteEvent` push side by four days and outlived this one by none.
+     * Every task ticked on the phone between the backend cutover and this change is local-only;
+     * [EventsDoneDivergenceSweep] is what goes back for those rows.
+     *
+     * **[done] and [doneAt] move together, always.** An untick clears [Event.doneAt] rather than
+     * leaving yesterday's completion instant on a row that is no longer complete - which is why the
+     * whole-row [EventUpdateOutboxPayload] and `explicitNulls = true` on the Django write matter
+     * here: a PATCH that merely omitted `done_at` would leave the old value in place server-side
+     * (that DTO's own doc comment).
+     *
+     * **The [Event.serverId] == null branch is [updateEvent]'s, for [updateEvent]'s reason** - the
+     * row's own create is still queued, there is no server row to PATCH, so the queued create is
+     * re-pointed at the row's current values instead. That only carries the tick because
+     * [EventUpsertOutboxPayload] now has `done`/`doneAtMs` (see its own field comment).
+     *
+     * Returns the row as written locally. The local write is never conditional on the push, so a
+     * caller may report the tick as made the instant this returns - what it may NOT report is that
+     * the engine has it, which is why nothing here says so.
+     */
+    suspend fun setDone(context: Context, existing: Event, done: Boolean): Event {
+        val db = CarDatabase.getDatabase(context)
+        val now = System.currentTimeMillis()
+        val updated = existing.copy(
+            done = done,
+            doneAt = if (done) now else null,
+            updatedAtMs = now,
+        )
+        db.eventDao().update(updated)
+
+        val backend = backend(context)
+        val serverId = existing.serverId
+        when {
+            // No server this device will ever talk to - nothing pushed, nothing queued, matching
+            // addEvent/updateEvent's identical unconfigured posture.
+            backend == null -> Unit
+            serverId == null -> repointPendingCreate(db, updated)
+            else -> {
+                val result = backend.upsert(serverId, updated.toEventFields())
+                if (result.isFailure) {
+                    enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+                }
+            }
+        }
+        return updated
+    }
+
+    /**
      * Soft-deletes a calendar-table row already read by the caller. Local write always happens -
      * marks [Event.deleted] rather than a hard delete, so a resurrecting pull (this row's own
      * tombstone reaching the server late) never finds anything locally left to conflict with. On a
@@ -467,8 +540,15 @@ object EventsAppointmentWriter {
  * duplicated rather than exported because [com.kevin.legion.backend.EventsReconcile]'s private
  * `EventFields(...)` helper and [com.kevin.legion.notes.NotesController]'s `toEventFields()` each
  * already have a shape suited to their own caller, and a shared version would need to become the
- * least-common-denominator of three different mapping needs for no real benefit. */
-private fun Event.toEventFields(): EventFields = EventFields(
+ * least-common-denominator of three different mapping needs for no real benefit.
+ *
+ * **`internal`, not `private`, since 2026-09-06.** [EventsDoneDivergenceSweep] pushes the same
+ * whole-row shape for the same reason [updateEvent] does (a PATCH that omits a column leaves the
+ * old value in place server-side), and a fourth hand-written copy of thirty field assignments is
+ * how one of them silently stops matching the others. The paragraph above still holds for
+ * `EventsReconcile` and `NotesController`, whose mappers have genuinely different receivers and
+ * needs; this widening is to ONE more caller with the identical need, not a general export. */
+internal fun Event.toEventFields(): EventFields = EventFields(
     title = title,
     startsAtMs = startsAt,
     createdAtMs = createdAt,
@@ -503,9 +583,12 @@ private fun Event.toEventFields(): EventFields = EventFields(
  * Retries every still-pending `events` outbox entry - `ui/MainActivity.kt`'s `onResume` hook,
  * alongside [EventsSync.maybeAutoPull]. **Called BEFORE that pull, deliberately - do not reverse
  * this ordering.** [EventsSync.pull] resolves a same-timestamp tie toward the SERVER (that
- * function's own "rule 4" comment: "this device has no push side yet, so the server is the only
- * copy every other device will ever converge on"). That reasoning breaks the moment a push side
- * exists: if a drain ran AFTER a pull, a local row still sitting in the outbox would look to that
+ * function's own "rule 4" comment: "the server is the only copy every other device will ever
+ * converge on"). **That comment used to open with "this device has no push side yet" and this
+ * paragraph quoted it verbatim; both were corrected 2026-09-06** when `setDone` closed the last
+ * push-side hole - the quoted clause is gone from the original, so it is gone from the quotation
+ * too, and the sentence below still says what it always said. That reasoning breaks the moment a
+ * push side exists: if a drain ran AFTER a pull, a local row still sitting in the outbox would look to that
  * pull exactly like "a local row the server does not have" (correctly left alone, by pull's own
  * rule 6) - fine on its own - but a row this SAME drain is about to successfully push would then
  * need a SECOND pull to ever become visible as synced, and in between, a concurrent edit from the

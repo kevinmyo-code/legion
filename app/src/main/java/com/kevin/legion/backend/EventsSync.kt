@@ -227,9 +227,19 @@ object EventsSync {
 
             // Rule 4: LAST-WRITE-WINS on updatedAtMs. An EXACTLY EQUAL timestamp is resolved
             // toward the SERVER, not treated as a no-op and not resolved toward the local row -
-            // this device has no push side yet, so the server is the only copy every other device
-            // will ever converge on, and a tie is resolved toward that shared destination rather
-            // than toward whichever write happened to reach this exact code path first.
+            // the server is the only copy every other device will ever converge on, and a tie is
+            // resolved toward that shared destination rather than toward whichever write happened
+            // to reach this exact code path first.
+            //
+            // CORRECTED 2026-09-06. This comment used to open its justification with "this device
+            // has no push side yet", and that claim went stale in two steps without anyone editing
+            // the sentence: EventsAppointmentWriter gained create/rename/delete pushes on
+            // 2026-09-02, and setDone gave the done-toggle one today. The BEHAVIOUR is deliberately
+            // unchanged - the shared-destination half of the argument never depended on the missing
+            // push side and still stands on its own - but the dead half is removed rather than left
+            // to be read as current. The tick that motivated today's fix was found by the phone, not
+            // by this tie: a local tick the server never heard about is strictly NEWER than the
+            // server row, so it takes the skippedLocalNewer branch below, not this one.
             if (remote.updatedAtMs >= local.updatedAtMs) {
                 val merged = remote.toMergedEvent(local)
                 // Idempotency (rule 8): on a second consecutive pull of the same server state,

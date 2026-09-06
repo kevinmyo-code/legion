@@ -957,30 +957,38 @@ object NotesController {
      * differently at the UI/voice layer only. Returns false, writing nothing, on a stale id, a row
      * that is not a task, or a genuine write failure - same "no false success" contract [tick]
      * holds for a reminder. Never touches [AlarmScheduler] - see this section's own class doc for
-     * why a row here never armed one to begin with. */
-    suspend fun tickAppointment(context: Context, item: Event): Boolean {
-        val now = System.currentTimeMillis()
-        val existing = db(context).eventDao().getById(item.id) ?: return false
-        if (existing.deleted || existing.kind != EventKind.TASK) return false
-        return try {
-            db(context).eventDao().update(existing.copy(done = true, doneAt = now, updatedAtMs = now))
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "tickAppointment failed for ${item.id}: ${e.message}")
-            false
-        }
-    }
+     * why a row here never armed one to begin with.
+     *
+     * **Routed through [EventsAppointmentWriter.setDone] since 2026-09-06, and the body this
+     * replaced is worth naming.** It was `db(context).eventDao().update(existing.copy(done = true,
+     * ...))` and nothing else - a local write with no push and no outbox entry, so a tick made on
+     * the phone reached no server on either transport and did not even surface as pending (the sync
+     * line read "sent 0, 0 still queued", which was true and useless). Found on the A25 against a
+     * real MATH 3391 task. The guards above are unchanged and still run FIRST - a stale id, an
+     * [EventKind.EVENT] or a reminder is refused before anything is written or sent, so widening
+     * this to a push side did not widen what may be ticked. */
+    suspend fun tickAppointment(context: Context, item: Event): Boolean = setAppointmentDone(context, item, true)
 
-    /** The undo of [tickAppointment] - same failure contract, same [EventKind.TASK]-only guard. */
-    suspend fun untickAppointment(context: Context, item: Event): Boolean {
-        val now = System.currentTimeMillis()
-        val existing = db(context).eventDao().getById(item.id) ?: return false
-        if (existing.deleted || existing.kind != EventKind.TASK) return false
+    /** The undo of [tickAppointment] - same failure contract, same [EventKind.TASK]-only guard, and
+     * the same 2026-09-06 push side (see [tickAppointment]'s own doc comment). */
+    suspend fun untickAppointment(context: Context, item: Event): Boolean = setAppointmentDone(context, item, false)
+
+    /** The shared body of [tickAppointment]/[untickAppointment] - one funnel rather than two
+     * near-identical ones, since the pair now differ only in the boolean they pass on. The
+     * try/catch stays HERE rather than moving into [EventsAppointmentWriter.setDone]: it exists for
+     * this file's own contract (a Room failure is reported as "the tick did not happen", never
+     * thrown at a bare UI coroutine), and the writer's own callers want the row back. */
+    private suspend fun setAppointmentDone(context: Context, item: Event, done: Boolean): Boolean {
+        val existing = db(context).eventDao().getById(item.id)
+        // One condition, three ways in: a stale id, a row already tombstoned, or a kind this
+        // funnel does not own (an EventKind.EVENT "just passes", one-today ticket 08). All three
+        // write nothing and send nothing.
+        if (existing == null || existing.deleted || existing.kind != EventKind.TASK) return false
         return try {
-            db(context).eventDao().update(existing.copy(done = false, doneAt = null, updatedAtMs = now))
+            EventsAppointmentWriter.setDone(context, existing, done)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "untickAppointment failed for ${item.id}: ${e.message}")
+            Log.w(TAG, "setAppointmentDone(done=$done) failed for ${item.id}: ${e.message}")
             false
         }
     }

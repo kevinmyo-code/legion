@@ -63,16 +63,55 @@ class EngineSyncNow(
             val pulled = ChecklistsSync.pull(app, backend)
             // The backfill reports a per-table stop rather than throwing (see its own rule 5), so
             // a partial run has to be said in words here or it would read as a clean pass.
-            val failedNote = if (backfilled.failed.isEmpty()) {
+            val stoppedNote = if (backfilled.stopped.isEmpty()) {
                 ""
             } else {
-                " Backfill stopped: " + backfilled.failed.joinToString("; ")
+                " Backfill stopped early, and will resume next sync: " + backfilled.stopped.joinToString("; ")
             }
             "Checklists: pulled ${pulled.inserted} new, ${pulled.updated} updated, " +
-                "${pulled.tombstoned} removed; backfilled ${backfilled.pushed}; " +
+                "${pulled.tombstoned} removed; ${backfillPhrase(backfilled)}; " +
                 "sent ${drained.succeeded}, ${drained.stillPending} still queued, " +
-                "${drained.poisoned} stuck.$failedNote"
+                "${drained.poisoned} stuck.$stoppedNote"
         }
         return line ?: "Checklists: $failed"
+    }
+
+    /**
+     * The backfill's own clause, in words: how many crossed, how many never will, and why.
+     *
+     * **This replaces a line that printed the engine's raw JSON refusal on every sync, forever.**
+     * Before 2026-09-06 the backfill stopped on its first refusal, so the Setup screen read
+     * `Backfill stopped: checklist_ticks: {"non_field_errors":["\"3 sets goblet squats\" is
+     * measured in kg - give a number to tick it, nothing was recorded."]} (row id 1, syncId
+     * 0f8195ff-...)` - an error blob, repeated identically after every sync, while zero ticks
+     * crossed. The refusal itself was correct; what was missing was a sentence.
+     *
+     * **The kept-on-this-phone clause is a ruling, not a nicety** - the tick records something the
+     * user really did, before the item was ever given a unit, so it stays on the device and is
+     * simply never sent (see [ChecklistsBackfill]'s rule 6). Saying that out loud is what stops
+     * "skipped" reading as "discarded".
+     *
+     * **The engine's sentence loses only its full stop**, because it sits inside a parenthetical
+     * that is itself mid-sentence and `recorded.); sent 0` reads as a typo. That is the same class
+     * of change as [engineRefusalSentence]'s unwrapping - punctuation, not wording - and the
+     * verbatim body still reaches the user untouched on the path built for it
+     * (`ChecklistsWriteThrough.PushOutcome.Refused`, which hands back `EngineFailure.Refused.body`
+     * itself).
+     */
+    // `internal`, not `private`, purely so `EngineSyncNowPhraseTest` can assert the exact
+    // sentence. There is no seam to fake this class's EngineBackends (it is a final class), and
+    // the wording IS the deliverable here - a test that could only reach it through a live engine
+    // would not be a test of the wording at all.
+    internal fun backfillPhrase(report: ChecklistsBackfill.Report): String = when {
+        report.skipped.isNotEmpty() ->
+            "backfilled ${report.pushed}, skipped ${report.skipped.size} " +
+                "(kept on this phone, never sent: " +
+                report.skipped.joinToString("; ") { it.reason.trimEnd('.') } + ")"
+        // Nothing NEW was skipped this run, but something is still being held back, so a bare
+        // "backfilled 0" would read as a clean sweep of everything there is.
+        report.unsyncableTotal > 0 ->
+            "backfilled ${report.pushed} (${report.unsyncableTotal} the engine will not take, " +
+                "kept on this phone and never sent)"
+        else -> "backfilled ${report.pushed}"
     }
 }

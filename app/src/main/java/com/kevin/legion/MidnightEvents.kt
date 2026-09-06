@@ -149,6 +149,31 @@ object MidnightEvents {
         Log.w(TAG, "events_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A [com.kevin.legion.backend.EventsDoneDivergenceSweep] pass completed. [failed] non-empty
+     * means the sweep's own one-shot latch was NOT set and it runs again next foreground - see that
+     * object's own doc comment. Expected to log exactly once per install with a nonzero [pushed]
+     * and then never again. */
+    fun eventsDoneDivergenceSwept(
+        examined: Int,
+        pushed: Int,
+        skippedServerNewer: Int,
+        skippedNotOnServer: Int,
+        failed: List<String>,
+    ) = safe {
+        Log.i(
+            TAG,
+            "events_done_divergence_sweep examined=$examined pushed=$pushed " +
+                "skippedServerNewer=$skippedServerNewer skippedNotOnServer=$skippedNotOnServer " +
+                "failed=$failed",
+        )
+    }
+
+    /** [com.kevin.legion.backend.EventsDoneDivergenceSweep.maybeAutoRun] failed - degraded to this
+     * log line, same posture as [eventsAutoPullFailed]. The latch stays unset, so it retries. */
+    fun eventsDoneDivergenceSweepFailed(e: Throwable) = safe {
+        Log.w(TAG, "events_done_divergence_sweep_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** [com.kevin.legion.backend.EventsRealtime] could not open or maintain its
      * `postgres_changes` subscription - degraded to this log line, per that object's own class
      * doc: the foreground pull stays as the fallback, so a socket failure must never surface as a
@@ -594,12 +619,27 @@ object MidnightEvents {
     /** A foreground [com.kevin.legion.backend.ChecklistsBackfill.maybeAutoRun] pass completed -
      * the only evidence that will ever exist on a real device that the pre-write-through
      * checklists reached the engine, since that upload has no UI of its own outside the debug
-     * "SYNC NOW" row. */
-    fun checklistsBackfillSucceeded(pushed: Int, alreadyPresent: Int, skippedLocalOnlyDeleted: Int, failedTables: List<String>) = safe {
+     * "SYNC NOW" row.
+     *
+     * **[skipped] and [stoppedTables] were ONE parameter (`failedTables`) until 2026-09-06**, and
+     * collapsing them is what made a single permanently-refused tick indistinguishable from a
+     * broken sync. They are separate now because they mean opposite things about what to do next:
+     * a skip is final and the run carried on past it; a stop is retryable and cost the rest of that
+     * table. See [com.kevin.legion.backend.ChecklistsBackfill]'s own rule 6. */
+    fun checklistsBackfillSucceeded(
+        pushed: Int,
+        alreadyPresent: Int,
+        skippedLocalOnlyDeleted: Int,
+        skipped: List<String>,
+        unsyncableTotal: Int,
+        stoppedTables: List<String>,
+    ) = safe {
         Log.d(
             TAG,
             "checklists_backfill pushed=$pushed alreadyPresent=$alreadyPresent " +
-                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted failed=${failedTables.joinToString("; ")}",
+                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted " +
+                "skipped=${skipped.joinToString("; ")} unsyncableTotal=$unsyncableTotal " +
+                "stopped=${stoppedTables.joinToString("; ")}",
         )
     }
 
