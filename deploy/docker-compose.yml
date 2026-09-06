@@ -1,11 +1,48 @@
-# ADR 0044: "clone, docker compose up, make two users, point the app at the
-# URL. Nothing Kevin-hosted is needed; the household hosts its own." Every
-# secret comes from `.env` (copy `.env.example`); nothing here is a default
-# credential meant to survive past a first run.
+# ADR 0044: "clone, docker compose up, point the app at the URL. Nothing
+# Kevin-hosted is needed; the household hosts its own." Every secret comes
+# from `.env` (copy `.env.example`); nothing here is a default credential
+# meant to survive past a first run.
+#
+# Two ways to run this, both defined here so there is one file, not two:
+#
+#   docker compose up
+#       Full stack: postgres + web + worker + caddy. Copy .env.example to
+#       .env unmodified and this is what a household gets - it ships with
+#       COMPOSE_PROFILES=full already set, which is what makes a bare
+#       `docker compose up` (no --profile flag at all) reach the postgres
+#       and caddy services below. This is the BYO path from ADR 0044 and
+#       tickets 09/11: `docker compose up`, make two users, point the app
+#       at the URL.
+#
+#   docker compose --profile local up
+#       Dev loop only (ticket 07's amendment): web + worker against the
+#       real Supabase Postgres named in DATABASE_URL, no local `postgres`
+#       container, no caddy. This is what Kevin's own machine runs day to
+#       day, because the deployed shape is Cloud Run talking to that same
+#       Supabase database and a second local Postgres would just be a
+#       second, divergent schema to keep in sync.
+#
+#       Compose profiles only ADD services to whatever is already active;
+#       they cannot subtract one. A service with no `profiles:` key runs
+#       in EVERY invocation, `--profile` flags included - so the only way
+#       to make `postgres` and `caddy` absent from `--profile local up` is
+#       to give them an explicit profile ("full") that local does not
+#       request. That in turn means a bare `docker compose up`, with no
+#       COMPOSE_PROFILES set anywhere, would start nothing at all (every
+#       service now requires some profile to be active) - which is why
+#       `.env.example` ships `COMPOSE_PROFILES=full` uncommented: a fresh
+#       clone that only ever copies the example gets the full stack from
+#       plain `docker compose up`, unchanged. Kevin's local loop overrides
+#       it for one shell:
+#           COMPOSE_PROFILES= docker compose --profile local up
+#       (COMPOSE_PROFILES and --profile are additive, so the shell override
+#       has to blank the inherited "full" or local would drag postgres and
+#       caddy in alongside web/worker.)
 services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    profiles: ["full"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -23,32 +60,37 @@ services:
       context: ../server
     restart: unless-stopped
     env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
+    profiles: ["full", "local"]
     volumes:
       - media:/app/media
     expose:
       - "8000"
+    # In the `full` profile DATABASE_URL in .env points at the `postgres`
+    # service above; in `local` it points at Supabase's pooler instead.
+    # Either way this container only ever reads DATABASE_URL, never a
+    # hardcoded host, so the same image and the same compose service work
+    # for both. No depends_on on postgres: that dependency is only real
+    # in the full-stack case, and compose has no per-profile depends_on.
 
   worker:
     build:
       context: ../server
     restart: unless-stopped
     env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
+    profiles: ["full", "local"]
     volumes:
       - media:/app/media
     # Ticket 06 fills /etc/crontab with the nightly pg_dump and whatever
     # else the worker owns. Empty today, on purpose - there is no scheduled
-    # job yet.
+    # job yet. On Cloud Run this container is replaced by a Cloud Run Job
+    # fired by Cloud Scheduler (deploy/cloudrun/); supercronic here is for
+    # local dev and for a household's own compose-only install only.
     entrypoint: ["supercronic", "/etc/crontab"]
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    profiles: ["full"]
     depends_on:
       - web
     ports:
@@ -58,6 +100,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    # No `local` profile: the dev loop talks to `web` directly over plain
+    # HTTP on localhost, which is not a production origin and does not
+    # need a certificate.
 
 volumes:
   postgres_data:

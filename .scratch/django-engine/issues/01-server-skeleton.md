@@ -4,7 +4,7 @@ ticket: "01"
 title: "Server skeleton: Django, Postgres, compose, two users, one token per device"
 type: build
 status: built
-status-detail: "Written 2026-09-05: ruff clean, manage.py check passes with no DB, 14 modules import, migrations generated, missing SECRET_KEY fails loudly. OWED, needs Docker on this machine: compose up to /healthz, pytest against Postgres, the auth round-trip."
+status-detail: "Written 2026-09-05: ruff clean, manage.py check passes with no DB, 14 modules import, migrations generated, missing SECRET_KEY fails loudly. Ticket 07's Cloud Run amendment landed the same day: docker-compose.yml gained a `local` profile (web+worker against Supabase, no postgres container) behind a `full`/`local` compose-profiles split documented at the top of the file; deploy/cloudrun/ gained deploy.py, deploy_job.py, install_schedule.py and a README, all `--dry-run`-verified against a fake project id; server/Dockerfile now binds $PORT for Cloud Run; legion/settings.py gained ALLOWED_HOSTS-for-Cloud-Run-URL support, CSRF_TRUSTED_ORIGINS and SECURE_PROXY_SSL_HEADER. OWED: gcloud SDK install and a first real deploy (no gcloud on this machine); Docker on this machine for compose up to /healthz, pytest against Postgres, and the auth round-trip; deploy/crontab does not exist yet (ticket 06, blocked on 02) so install_schedule.py has nothing to schedule until then."
 blockers: []
 blocked-by: []
 open-blockers: 0

@@ -58,6 +58,39 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
+# Ticket 07 amendment: compute is Cloud Run, reached at its own
+# *.run.app URL and, once DNS is pointed there, a Cloudflare-fronted
+# household domain. Both are comma-separated in the same variable as any
+# other host - ALLOWED_HOSTS has no notion of "this one is temporary" and
+# doesn't need one. No default: an empty ALLOWED_HOSTS from a household
+# that has not set this yet means Django refuses every request with
+# DisallowedHost, which is the correct failure - a silent default host
+# would be the same Kevin-hosted-assumption section 7 forbids.
+
+# Comma-separated origins CSRF trusts a POST's Origin/Referer header
+# against - Django's own default (deriving it from ALLOWED_HOSTS) does not
+# add the scheme, and a Cloud Run URL or a Cloudflare-fronted domain is
+# always HTTPS, so this is stated explicitly rather than guessed. Optional,
+# not `required_env`: local dev's compose profile talks to `web` over
+# plain HTTP on localhost and never hits a CSRF-protected form (the phone
+# and web app authenticate with a device token header, not a session
+# cookie), so there is nothing to trust yet and no household is forced to
+# decide a value it does not have.
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+# Cloud Run terminates TLS at its own front end and forwards the original
+# scheme in this header before the request reaches the container, which
+# otherwise looks like plain HTTP to Django - request.is_secure() and the
+# CSRF and session "secure cookie" checks would all misfire behind the
+# proxy without this. Safe to trust unconditionally here because Cloud
+# Run's proxy is the only thing that can ever reach this container
+# directly; there is no second hop it could be spoofed at.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -151,6 +184,12 @@ STATIC_URL = "static/"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = required_env("MEDIA_ROOT")
+# Cloud Run's filesystem is ephemeral (wiped on every cold start and never
+# shared across instances), so MEDIA_ROOT there is scratch space at best.
+# Ticket 05 owns the real fix - an R2 or GCS-backed Django storage - and is
+# the ticket that gets to introduce a `MEDIA_BACKEND` switch; nothing reads
+# one here yet, and adding an unused setting in this ticket would be a
+# stub with no caller. This comment is the pointer for whoever picks up 05.
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

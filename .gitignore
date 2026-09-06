@@ -95,6 +95,10 @@ tools/evals/runs/
 # django-engine (ticket 01): the household's own secrets, never Kevin's to
 # ship. .env.example lists every variable; .env holds a real household's.
 deploy/.env
+# django-engine (ticket 07): cloud deploy config - project id and non-secret
+# Cloud Run settings. Never a secret value itself (those are Secret Manager
+# references by name, resolved at deploy time), but still per-household.
+deploy/cloudrun/.env
 server/.venv/
 server/**/__pycache__/
 server/.pytest_cache/
