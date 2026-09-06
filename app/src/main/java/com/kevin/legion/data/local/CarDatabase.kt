@@ -486,6 +486,14 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun checklistItemDao(): ChecklistItemDao
     abstract fun checklistTickDao(): ChecklistTickDao
 
+    /** The sync half of the same three tables (django-engine ticket 09, 2026-09-06) - new DAOs
+     * over EXISTING tables and columns, so no entity changed and no migration is owed. See
+     * [ChecklistSyncDao]'s own class doc for why the sync queries live in their own interfaces
+     * rather than as four more methods on each DAO above. */
+    abstract fun checklistSyncDao(): ChecklistSyncDao
+    abstract fun checklistItemSyncDao(): ChecklistItemSyncDao
+    abstract fun checklistTickSyncDao(): ChecklistTickSyncDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null

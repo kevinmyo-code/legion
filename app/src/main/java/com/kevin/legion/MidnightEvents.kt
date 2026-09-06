@@ -558,6 +558,70 @@ object MidnightEvents {
         Log.w(TAG, "last_aspects_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    // --- Django engine (django-engine ticket 09) ----------------------------------------------
+    // The engine transport's own breadcrumbs. Kept separate from the lastAspects/events ones above
+    // rather than reusing them, because "which transport did this pass run over" is the single
+    // most useful thing to know from a logcat during the port - the two paths merge into the same
+    // Room tables, so an identically-worded line would be genuinely ambiguous.
+
+    /** A foreground [com.kevin.legion.backend.ChecklistsSync.maybeAutoPull] pass completed across
+     * all three checklist tables. [skippedOrphaned] is items plus ticks whose parent could not be
+     * resolved locally - reported, never silently dropped, per that object's own class doc. */
+    fun checklistsAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, skippedOrphaned: Int) = safe {
+        Log.d(
+            TAG,
+            "checklists_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned skippedOrphaned=$skippedOrphaned",
+        )
+    }
+
+    /** [com.kevin.legion.backend.ChecklistsSync.maybeAutoPull] failed - degraded to this log line,
+     * same posture as [lastAspectsAutoPullFailed]. */
+    fun checklistsAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "checklists_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.ChecklistsOutboxDrain.maybeDrain] pass completed. */
+    fun checklistsOutboxDrainSucceeded(succeeded: Int, stillPending: Int, poisoned: Int) = safe {
+        Log.d(TAG, "checklists_outbox_drain succeeded=$succeeded stillPending=$stillPending poisoned=$poisoned")
+    }
+
+    /** [com.kevin.legion.backend.ChecklistsOutboxDrain.maybeDrain] failed. */
+    fun checklistsOutboxDrainFailed(e: Throwable) = safe {
+        Log.w(TAG, "checklists_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.ChecklistsBackfill.maybeAutoRun] pass completed -
+     * the only evidence that will ever exist on a real device that the pre-write-through
+     * checklists reached the engine, since that upload has no UI of its own outside the debug
+     * "SYNC NOW" row. */
+    fun checklistsBackfillSucceeded(pushed: Int, alreadyPresent: Int, skippedLocalOnlyDeleted: Int, failedTables: List<String>) = safe {
+        Log.d(
+            TAG,
+            "checklists_backfill pushed=$pushed alreadyPresent=$alreadyPresent " +
+                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted failed=${failedTables.joinToString("; ")}",
+        )
+    }
+
+    /** [com.kevin.legion.backend.ChecklistsBackfill.maybeAutoRun] threw outright. */
+    fun checklistsBackfillFailed(e: Throwable) = safe {
+        Log.w(TAG, "checklists_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** One [com.kevin.legion.backend.engine.EnginePoll] tick pulled [aspect] - the Django
+     * transport's counterpart to [eventsRealtimePullSucceeded], and the only evidence the 60 s
+     * foreground poll is actually running. */
+    fun enginePollPulled(aspect: String, inserted: Int, updated: Int, tombstoned: Int) = safe {
+        Log.d(TAG, "engine_poll[$aspect] inserted=$inserted updated=$updated tombstoned=$tombstoned")
+    }
+
+    /** An [com.kevin.legion.backend.engine.EnginePoll] tick failed - degraded to this log line,
+     * never a dialog: the foreground pull stays as the fallback, exactly as
+     * [eventsRealtimeSubscribeFailed] describes for the socket it replaces. */
+    fun enginePollFailed(e: Throwable) = safe {
+        Log.w(TAG, "engine_poll_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A foreground [com.kevin.legion.backend.FleetSync.maybeAutoPull] pass completed across every
      * fleet table this pull merges (vehicles/service_history/drives/code_events/code_clear_events/
      * oil_analyses/vehicle_specs/build_entries/drive_reassignments/maintenance_schedules), plus the

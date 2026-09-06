@@ -288,6 +288,17 @@ class MainActivity : ComponentActivity() {
             com.kevin.legion.backend.LastAspectsBackfill.maybeAutoRun(applicationContext)
             com.kevin.legion.backend.LastAspectsSync.maybeAutoPull(applicationContext)
         }
+        // Checklists, over the Django engine (django-engine ticket 09) - the first sync path those
+        // three tables have ever had. Same drain-then-backfill-then-pull ordering as every block
+        // above, for the identical reason, and its own lifecycleScope block since it has no
+        // ordering dependency on any of them. **Silent no-op on every install that has not
+        // explicitly flipped the `checklists` transport row to the engine and signed in**, which is
+        // every install by default - see EngineBackends.checklistsBackend's own doc comment.
+        lifecycleScope.launch {
+            com.kevin.legion.backend.ChecklistsOutboxDrain.maybeDrain(applicationContext)
+            com.kevin.legion.backend.ChecklistsBackfill.maybeAutoRun(applicationContext)
+            com.kevin.legion.backend.ChecklistsSync.maybeAutoPull(applicationContext)
+        }
         // The two Supabase tables that had a schema and RLS but never a single row uploaded
         // (measured against the real phone and the real project, one-today ticket): ledger's
         // UNRECONCILED-only reconcile and fleet's maintenance-schedule upload, neither of which

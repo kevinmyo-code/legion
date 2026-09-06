@@ -43,6 +43,7 @@ import com.kevin.legion.backend.SupabaseAuth
 import com.kevin.legion.backend.SupabaseConfig
 import com.kevin.legion.backend.engine.EngineAuth
 import com.kevin.legion.backend.engine.EngineConfig
+import com.kevin.legion.backend.engine.EngineSyncNow
 import com.kevin.legion.backend.engine.EngineTransport
 import com.kevin.legion.backend.engine.LoginResult
 import com.kevin.legion.backend.engine.MeResult
@@ -133,6 +134,14 @@ fun KeyScreen(onBack: () -> Unit) {
     // other three" posture householdState already follows (CLAUDE.md sec 1).
     var engineState by remember { mutableStateOf<MeResult?>(null) }
 
+    // "Sync now" (django-engine ticket 09 build item 6): the one surface that says IN WORDS what a
+    // sync pass actually did. Every automatic path reports only to logcat, which is useless when
+    // Kevin is stood in front of the phone asking whether the laptop engine is reachable at all.
+    // Null until the button has been pressed once - an unrun state must never render as a result
+    // (CLAUDE.md sec 1, "unreadable and empty are different sentences").
+    var engineSyncRunning by remember { mutableStateOf(false) }
+    var engineSyncStamp by remember { mutableStateOf<String?>(null) }
+
     suspend fun refreshEngineState() {
         engineState = if (engineConfig.isConfigured() && engineConfig.isSignedIn()) {
             engineAuth.me()
@@ -175,6 +184,16 @@ fun KeyScreen(onBack: () -> Unit) {
                 }
             }
             engineSignInChecking = false
+        }
+    }
+
+    fun engineSyncNow() {
+        engineSyncRunning = true
+        scope.launch {
+            // The sentence comes back from EngineSyncNow, never composed here - one place owns the
+            // wording, and it is the place that can see the real counts and the real failure.
+            engineSyncStamp = EngineSyncNow(context).run()
+            engineSyncRunning = false
         }
     }
 
@@ -663,6 +682,24 @@ fun KeyScreen(onBack: () -> Unit) {
                                     transport = next
                                 },
                             )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = ::engineSyncNow, enabled = !engineSyncRunning) {
+                                Text(
+                                    if (engineSyncRunning) "SYNCING" else "SYNC NOW",
+                                    style = LegionType.stamp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                        // Nothing at all until a real pass has returned - see the state
+                        // declaration above for why an unrun state is not rendered as a result.
+                        engineSyncStamp?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = sem.faint)
                         }
                     }
                 }

@@ -107,8 +107,13 @@ private val engineJson = Json { ignoreUnknownKeys = true }
  * policy") names the OS mechanism, not the fix; a Kevin reading it on the A25 has no way to know a
  * debug build would work. This branch replaces it with the actual next action instead of relaying
  * the OS's own wording.
+ *
+ * **`internal`, not `private`, since 2026-09-06 (django-engine ticket 09's second half).**
+ * [EngineHttp] hits the exact same cleartext wall for the exact same reason - it is the same OkHttp
+ * engine talking to the same laptop address - and a second copy of this branch would be a second
+ * place for the wording to rot. Widened rather than duplicated; nothing else about it changed.
  */
-private fun unreachableMessage(baseUrl: String, e: IOException): String {
+internal fun unreachableMessage(baseUrl: String, e: IOException): String {
     val raw = e.message ?: "unknown error"
     return if (raw.contains("CLEARTEXT")) {
         "This build blocks plain http; use https, or a debug build for a laptop engine. " +

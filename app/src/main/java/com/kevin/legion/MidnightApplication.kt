@@ -376,6 +376,17 @@ class MidnightApplication : Application() {
             runCatching { com.kevin.legion.backend.PantryReceiptsRealtime.bind(this@MidnightApplication) }
                 .onFailure { MidnightEvents.appStartWorkFailed("bind_pantry_receipts_realtime", it) }
 
+            // The Django engine's 60 s foreground poll (django-engine ticket 09) - the same
+            // ProcessLifecycleOwner-driven shape as every Realtime binder above, and deliberately
+            // bound alongside them rather than instead of them: it REPLACES Realtime for an aspect
+            // on the Django transport and does nothing at all for one on Supabase, so exactly one
+            // live-change mechanism is running per aspect. bind() only registers the observer; the
+            // loop starts on the next onStart and only if something is actually on Django. See
+            // EnginePoll's own class doc.
+            runCatching {
+                com.kevin.legion.backend.engine.EnginePoll.forApp(this@MidnightApplication).bind(appScope)
+            }.onFailure { MidnightEvents.appStartWorkFailed("bind_engine_poll", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

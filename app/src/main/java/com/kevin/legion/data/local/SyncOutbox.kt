@@ -95,6 +95,17 @@ object OutboxTarget {
     const val LISTS_LIST_ITEMS = "list_items"
     const val GOALS = "goals"
     const val GROCERY_STAPLES = "grocery_staples"
+
+    /** django-engine ticket 09 - the first sync path checklists have ever had, and the first
+     * outbox targets whose queued entries carry NO field snapshot in [OutboxEntry.payload]. See
+     * `backend/ChecklistsOutbox.kt`'s own class doc for why a checklist entry names the row and
+     * lets the drain re-read it, where an events entry serialises the row's values at enqueue
+     * time - and what that buys (a rename queued behind an offline create needs no
+     * `repointPendingCreate` dance) at what cost (a row hard-deleted before the drain has nothing
+     * left to send, which these three tables never do - they only ever tombstone). */
+    const val CHECKLISTS = "checklists"
+    const val CHECKLIST_ITEMS = "checklist_items"
+    const val CHECKLIST_TICKS = "checklist_ticks"
 }
 
 /** [OutboxEntry.operation] values. **The comment this replaces said only [UPSERT] was produced as

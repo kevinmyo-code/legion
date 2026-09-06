@@ -248,6 +248,12 @@ fun CalendarScreen(
     // the tap happened, in words, never a toast that vanishes.
     val measureInputs = remember { mutableStateMapOf<Long, String>() }
     val measureRefusals = remember { mutableStateMapOf<Long, String>() }
+    // Checklist item ids whose tick/untick for the viewed day is sitting in `sync_outbox` because
+    // the engine could not be reached (django-engine ticket 09). Loaded alongside the day's rows
+    // and rendered as a one-line note under the item - CLAUDE.md section 7: a tick that has not
+    // reached the engine must not look like one that has. Empty on every install not on the engine
+    // transport, so nothing about this screen changes there.
+    var queuedChecklistItemIds by remember { mutableStateOf(emptySet<Long>()) }
     var reloadNonce by remember { mutableStateOf(0) }
 
     LaunchedEffect(displayedMonth, reloadNonce) {
@@ -369,6 +375,12 @@ fun CalendarScreen(
                     ChecklistDayEntry(checklist = checklist, items = emptyList(), loadFailed = true)
             }
         }
+        // Read AFTER the rows themselves, and from the outbox rather than from any push result -
+        // a tick queued minutes ago on a previous screen must be labelled too, not only the one
+        // just tapped. [ChecklistsOutboxDrain.queuedItemIdsForDay] excludes poisoned entries, so a
+        // write nothing will retry any more is never called "queued".
+        queuedChecklistItemIds =
+            com.kevin.legion.backend.ChecklistsOutboxDrain.queuedItemIdsForDay(context, checklistDay)
     }
 
     // The notification-tap deep link (this screen's own file doc comment) - opens [editingItem]
@@ -602,6 +614,7 @@ fun CalendarScreen(
                                 onMeasureInputChange = { measureInputs[itemState.item.id] = it },
                                 onSubmitMeasure = { tickMeasuredItem(itemState.item.id, measureInputs[itemState.item.id] ?: "") },
                                 refusalMessage = measureRefusals[itemState.item.id],
+                                queued = itemState.item.id in queuedChecklistItemIds,
                             )
                         }
                     }
@@ -797,7 +810,21 @@ private data class ChecklistDayEntry(val checklist: Checklist, val items: List<C
  *
  * Deliberately has no date label - a checklist item has no due instant of its own, only a per-day
  * tick state, which the section header's own progress count already carries in aggregate.
+ *
+ * **[queued], django-engine ticket 09: this row's tick for this day is in the outbox because the
+ * engine could not be reached.** The tick itself is real and local - it is in Room, the checkbox is
+ * ticked, tomorrow's read will still see it - so the row renders exactly as a synced one does, plus
+ * one line of words saying the engine does not have it yet. That wording is the whole point:
+ * CLAUDE.md section 7 forbids anything claiming an outcome it did not observe, and a queued write
+ * that renders identically to a delivered one is that claim made by omission. **In words, never by
+ * colour alone**, the same rule an UNRECONCILED ledger row follows.
  */
+// detekt's FunctionNaming does not know about @Composable, whose own convention is PascalCase;
+// this file's other composables sit in config/detekt/baseline.xml for exactly that reason. This
+// one's baseline entry is keyed on its full signature and stopped matching the moment `queued` was
+// added, and this ticket's brief forbids editing the baseline - so the same already-accepted fact
+// is stated here instead of being re-recorded there.
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; see the comment above.
 @Composable
 private fun ChecklistItemDayRow(
     itemState: ChecklistController.ItemState,
@@ -806,6 +833,7 @@ private fun ChecklistItemDayRow(
     onMeasureInputChange: (String) -> Unit,
     onSubmitMeasure: () -> Unit,
     refusalMessage: String?,
+    queued: Boolean = false,
 ) {
     val sem = LocalLegionSemantics.current
     val item = itemState.item
@@ -819,6 +847,7 @@ private fun ChecklistItemDayRow(
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (itemState.ticked) sem.faint else MaterialTheme.colorScheme.onSurface,
                 )
+                if (queued) QueuedNote()
             }
         }
         return
@@ -832,6 +861,7 @@ private fun ChecklistItemDayRow(
                     Text(item.text, style = MaterialTheme.typography.bodyMedium, color = sem.faint)
                     val resultLabel = measureTargetResult(item, value)?.let { " - ${measureTargetResultLabel(it)}" } ?: ""
                     Text(measureValueDisplay(item, value) + resultLabel, style = LegionType.stamp, color = sem.faint)
+                    if (queued) QueuedNote()
                 }
                 Text(
                     "UNTICK",
@@ -864,6 +894,24 @@ private fun ChecklistItemDayRow(
             if (refusalMessage != null) {
                 Text(refusalMessage, style = LegionType.stamp, color = sem.estimated, modifier = Modifier.padding(top = 2.dp))
             }
+            // An unticked measured item can still carry a queued UNTICK - the row is unticked
+            // locally and the engine has not been told yet, which is exactly as much a
+            // not-yet-delivered fact as a queued tick.
+            if (queued) QueuedNote()
         }
     }
+}
+
+/** The one-line "the engine does not have this yet" note - see [ChecklistItemDayRow]'s own
+ * [queued] paragraph. Its own composable so the three places a checklist row can render it cannot
+ * word it three different ways. */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase - same reason as ChecklistItemDayRow above.
+@Composable
+private fun QueuedNote() {
+    Text(
+        "Queued - not on the engine yet.",
+        style = LegionType.stamp,
+        color = LocalLegionSemantics.current.estimated,
+        modifier = Modifier.padding(top = 2.dp),
+    )
 }

@@ -3,6 +3,7 @@ package com.kevin.legion.backend
 import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.local.Event
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -414,18 +415,34 @@ object EventsSync {
      * while this coroutine is still waiting) from launching a second pull; see
      * [resolveUserIdForAutoPull] for the bounded, single-retry wait that replaced the bare
      * `currentUserId()` read.
+     *
+     * **Where that wait lives now (2026-09-06, the transport switch).** The body below no longer
+     * calls [resolveUserIdForAutoPull] directly - [EngineBackends.eventsBackendAfterAuth] does, on
+     * its Supabase branch, so the retry is unchanged in behaviour but is applied by whichever
+     * transport actually needs it (the Django branch reads its token straight out of
+     * [com.kevin.legion.backend.engine.EngineConfig] and has no session to restore). This function
+     * keeps [resolveUserIdForAutoPull] as an `internal` member because `EventsSyncTest` drives that
+     * retry directly against a fake gateway.
      */
     fun maybeAutoPull(context: Context) {
         val now = System.currentTimeMillis()
         if (now - lastAutoPullAt < AUTO_PULL_MIN_INTERVAL_MS) return
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
+        // The per-aspect transport switch (django-engine ticket 09, ADR 0044). This used to read
+        // `SupabaseClientProvider.get(app) ?: return` and then build a SupabaseEventsBackend
+        // unconditionally; it now asks EngineBackends which transport `events` is on and gets
+        // either that same Supabase backend or a DjangoEventsBackend. **[pull] itself is
+        // untouched** - it takes its backend as a parameter, and its merge rules and their tests
+        // are frozen by this ticket's brief, so the switch lives here, at the one place a backend
+        // is actually constructed. The synchronous pre-check keeps the throttle-slot reservation
+        // exactly where this function's own doc comment says it must stay: before any awaiting.
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_EVENTS)) return
         lastAutoPullAt = now
         autoPullScope.launch {
             try {
-                val userId = resolveUserIdForAutoPull(SupabaseAuth(app))
-                if (userId == null) return@launch
-                val report = pull(app, SupabaseEventsBackend(client))
+                val backend = backends.eventsBackendAfterAuth() ?: return@launch
+                val report = pull(app, backend)
                 MidnightEvents.eventsAutoPullSucceeded(
                     report.inserted,
                     report.updated,

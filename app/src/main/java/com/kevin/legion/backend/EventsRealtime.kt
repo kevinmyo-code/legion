@@ -5,6 +5,9 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.channel
@@ -127,12 +130,20 @@ object EventsRealtime {
     // doc comment traces, never carried over to this file. The `channel != null` guard stays a
     // synchronous pre-launch check (unchanged) since it is reading in-memory state, not auth.
     private fun subscribe(context: Context) {
+        // The transport switch (django-engine ticket 09): Realtime is Supabase's mechanism, so an
+        // aspect moved to the Django engine must not also hold a `postgres_changes` socket open
+        // against a project it no longer reads. [com.kevin.legion.backend.engine.EnginePoll]'s 60 s
+        // foreground poll takes over for `events` in that case - exactly one live-change mechanism
+        // per aspect at a time, never both and never neither. Checked here rather than in [bind]
+        // so flipping the debug transport row takes effect on the next foreground return instead
+        // of needing a process restart.
+        val onDjango = EngineTransport(context).transportFor(EngineBackends.ASPECT_EVENTS) == Transport.DJANGO
+        // Second guard, unchanged and pre-existing: a channel already open from a PRIOR onStart
+        // this same process never saw an onStop for (defensive - ProcessLifecycleOwner does not
+        // double-fire onStart without an intervening onStop, but a leaked channel from a previous
+        // subscribe attempt that itself threw partway through must not be silently doubled).
+        if (onDjango || channel != null) return
         val client = SupabaseClientProvider.get(context) ?: return
-        // Guard against a channel already open from a PRIOR onStart this same process never saw
-        // an onStop for (defensive - ProcessLifecycleOwner does not double-fire onStart without an
-        // intervening onStop, but a leaked channel from a previous subscribe attempt that itself
-        // threw partway through must not be silently doubled).
-        if (channel != null) return
 
         scope.launch {
             if (SupabaseAuth(context).resolveSignedInUserId() == null) return@launch

@@ -2,6 +2,7 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.OutboxEntry
@@ -233,10 +234,17 @@ object EventsAppointmentWriter {
     @Volatile
     internal var backendOverride: EventsBackend? = null
 
+    /** The per-aspect transport switch (django-engine ticket 09). This used to be
+     * `SupabaseClientProvider.get(context)?.let { SupabaseEventsBackend(it) }`; it now asks
+     * [EngineBackends] which transport `events` is on, and gets that same Supabase backend or a
+     * [com.kevin.legion.backend.engine.DjangoEventsBackend]. **The no-auth-wait variant
+     * deliberately** - a write-through has never waited for a session restore and must not start
+     * (a voice-created appointment cannot block on a token refresh); see [EngineBackends]'s own
+     * doc comment for the two variants and why they differ. [backendOverride] still wins, so every
+     * existing test's fake is unaffected. */
     private fun backend(context: Context): EventsBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabaseEventsBackend(client)
+        return EngineBackends(context).eventsBackendNow()
     }
 
     /**
@@ -595,10 +603,14 @@ object EventsOutboxDrain {
      */
     suspend fun maybeDrain(context: Context) {
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
-        if (SupabaseAuth(app).resolveSignedInUserId() == null) return
+        // The transport switch, same as EventsSync.maybeAutoPull's. This is the AWAITING variant
+        // (unlike EventsAppointmentWriter's): the guard it replaces was already a suspending
+        // `SupabaseAuth(app).resolveSignedInUserId() == null` check, per this function's own
+        // cold-start note above, and EngineBackends.eventsBackendAfterAuth performs exactly that
+        // same single bounded retry on its Supabase branch.
+        val backend = EngineBackends(app).eventsBackendAfterAuth() ?: return
         try {
-            val report = drain(app, SupabaseEventsBackend(client))
+            val report = drain(app, backend)
             MidnightEvents.eventsOutboxDrainSucceeded(report.succeeded, report.stillPending, report.poisoned)
         } catch (e: Exception) {
             MidnightEvents.eventsOutboxDrainFailed(e)

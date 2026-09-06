@@ -1,6 +1,9 @@
 package com.kevin.legion.checklists
 
 import android.content.Context
+import com.kevin.legion.backend.ChecklistsBackend
+import com.kevin.legion.backend.ChecklistsWriteThrough
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.ChecklistItem
@@ -20,11 +23,25 @@ import java.time.ZoneId
  * in here later, following [com.kevin.legion.goals.GoalController]/[com.kevin.legion.notes.NotesController]'s
  * own controller/DAO split so a future screen and any voice tool can never disagree about a rule.
  *
- * **No sync write-through here.** Unlike [com.kevin.legion.goals.GoalController]
- * (`LastAspectsWriteThrough`), this file writes Room directly - the brief is explicit that no sync
- * code is wired in this ticket. The four sync columns exist on all three entities from day one
- * (see each entity's own class doc) so a later sync ticket adds a write-through funnel here
- * without a second migration.
+ * **CORRECTED 2026-09-06 (django-engine ticket 09). This doc comment used to say "No sync
+ * write-through here... this file writes Room directly - the brief is explicit that no sync code is
+ * wired in this ticket", and that was true right up until the later sync ticket it predicted
+ * arrived.** It has now: every mutator below writes Room first, unconditionally, and then calls
+ * [ChecklistsWriteThrough], exactly the funnel that sentence said a later ticket would add "without
+ * a second migration" - and no migration was needed, because the four sync columns have been on all
+ * three entities since v64 (see each entity's own class doc).
+ *
+ * **Local write first, then push, and a failed push is never a failed write.** The push is
+ * fire-and-forget from the caller's point of view for every mutator except [tick]/[untick] (which
+ * return an outcome the UI already renders); when the engine is unreachable the write is queued in
+ * `sync_outbox` and the calendar day view says so in words. See [ChecklistsWriteThrough]'s own
+ * class doc for what the user sees and why a REFUSED write is deliberately not queued.
+ *
+ * **[backendOverride] is the test seam**, same mechanism and same purpose as
+ * [com.kevin.legion.backend.EventsAppointmentWriter.backendOverride]. Production code never sets
+ * it; with nothing set, [EngineBackends] answers, and it answers null on any install whose
+ * `checklists` transport has not been flipped to the engine - which is every install by default, so
+ * this whole path is inert until someone opts in.
  *
  * Every day argument in this file is a local epoch day (`LocalDate.toEpochDay().toInt()`),
  * never a millisecond timestamp - matching [ChecklistTick.day]'s own column. [today] is the one
@@ -34,6 +51,17 @@ import java.time.ZoneId
 object ChecklistController {
 
     private fun db(context: Context) = CarDatabase.getDatabase(context)
+
+    /** Test seam - see this object's own class doc. Settable from a unit test so a fake
+     * [ChecklistsBackend] can be injected with no real network. */
+    @Volatile
+    internal var backendOverride: ChecklistsBackend? = null
+
+    /** The write-through this object pushes every mutation through. Built per call because
+     * [ChecklistsWriteThrough] holds no state between writes and resolving the backend fresh each
+     * time is what lets the debug transport row take effect without a process restart. */
+    private fun sync(context: Context) =
+        ChecklistsWriteThrough(context, backendOverride ?: EngineBackends(context).checklistsBackend())
 
     /** Today as a local epoch day - the zone defaults to the device's own, same as every other
      * "what day is it" read in this codebase (`ui/agenda/MonthCalendar.kt`, `ui/CalendarScreen.kt`). */
@@ -75,6 +103,7 @@ object ChecklistController {
             scheduleDaysOfWeek = scheduleDaysOfWeek,
         )
         val id = db(context).checklistDao().insert(checklist)
+        sync(context).checklistChanged(id)
         return checklist.copy(id = id)
     }
 
@@ -90,10 +119,12 @@ object ChecklistController {
         at: Long = System.currentTimeMillis(),
     ) {
         db(context).checklistDao().setSchedule(checklistId, scheduleKind, scheduleEvery, scheduleDaysOfWeek, at)
+        sync(context).checklistChanged(checklistId)
     }
 
     suspend fun renameChecklist(context: Context, checklistId: Long, name: String, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().rename(checklistId, name, at)
+        sync(context).checklistChanged(checklistId)
     }
 
     /** DEPRECATED (see [Checklist.recursDaily]'s own doc comment) - nothing in this controller
@@ -106,10 +137,12 @@ object ChecklistController {
 
     suspend fun archiveChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().archive(checklistId, at)
+        sync(context).checklistChanged(checklistId)
     }
 
     suspend fun unarchiveChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().unarchive(checklistId, at)
+        sync(context).checklistChanged(checklistId)
     }
 
     /** Soft-deletes the checklist itself. Does NOT touch its items or their ticks - matches
@@ -119,6 +152,7 @@ object ChecklistController {
      * either. */
     suspend fun deleteChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().deleteById(checklistId, at)
+        sync(context).checklistDeleted(checklistId)
     }
 
     suspend fun getChecklist(context: Context, checklistId: Long): Checklist? =
@@ -158,6 +192,7 @@ object ChecklistController {
             measureDirection = measureDirection,
         )
         val id = db(context).checklistItemDao().insert(item)
+        sync(context).itemChanged(id)
         return item.copy(id = id)
     }
 
@@ -172,14 +207,17 @@ object ChecklistController {
         at: Long = System.currentTimeMillis(),
     ) {
         db(context).checklistItemDao().setMeasure(itemId, measureUnit, measureTarget, measureDirection, at)
+        sync(context).itemChanged(itemId)
     }
 
     suspend fun editItem(context: Context, itemId: Long, text: String, at: Long = System.currentTimeMillis()) {
         db(context).checklistItemDao().updateText(itemId, text, at)
+        sync(context).itemChanged(itemId)
     }
 
     suspend fun reorderItem(context: Context, itemId: Long, sortOrder: Int, at: Long = System.currentTimeMillis()) {
         db(context).checklistItemDao().updateSortOrder(itemId, sortOrder, at)
+        sync(context).itemChanged(itemId)
     }
 
     /** Soft-deletes an item only - trap 2, by name. Never cascades to [ChecklistTick]; a history
@@ -187,6 +225,7 @@ object ChecklistController {
      * [com.kevin.legion.data.local.ChecklistItemDao.getByIdIncludingDeleted]. */
     suspend fun deleteItem(context: Context, itemId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistItemDao().deleteById(itemId, at)
+        sync(context).itemDeleted(itemId)
     }
 
     // ---- tick / untick -------------------------------------------------------------------------
@@ -243,6 +282,12 @@ object ChecklistController {
             !existing.deleted -> Unit // already ticked - idempotent no-op, tickedAt/value/source untouched
             else -> dao.retick(itemId, day, at, value, source)
         }
+        // Push AFTER the local write, always - see this object's own class doc. The outcome is
+        // deliberately not folded into [TickOutcome]: a queued tick is still a tick as far as this
+        // function's caller is concerned (the row is in Room and renders ticked), and the calendar
+        // day view labels it queued from the outbox itself rather than from a return value a voice
+        // tool would have to learn to interpret.
+        sync(context).ticked(itemId, day)
         return TickOutcome.Ticked
     }
 
@@ -250,6 +295,7 @@ object ChecklistController {
      * survives for [tick]'s revival path rather than being lost. */
     suspend fun untick(context: Context, itemId: Long, day: Int = today(), at: Long = System.currentTimeMillis()) {
         db(context).checklistTickDao().untick(itemId, day, at)
+        sync(context).unticked(itemId, day)
     }
 
     // ---- reads ---------------------------------------------------------------------------------
