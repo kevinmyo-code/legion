@@ -966,3 +966,44 @@ the rest of that file already used.
 Checked the other five test files pinning September 2026 dates: only one reads the real clock, and
 only to stamp `updatedAt`/`createdAt` on rows queried by `startsAt`, which nothing gates on. Not a
 bomb. The distinction is whether a comparison crosses the two sources, not whether both appear.
+
+## L-2026-09-06: "No row exists now" is not "no row was ever written"
+
+I accused the assistant of breaking §7's outcome-verb rule. It said `Added "oat milk" to the grocery
+list.`, no such row existed on the phone or the server, and I reported that to Kevin as the honesty
+clause failing in the exact place it was written for.
+
+The audit table settled it in one query and I was wrong. `manage_checklist` was dispatched with
+`{"action":"add","text":"oat milk","list":"Groceries"}`, the tool returned
+`{"success":true,...}`, and the row was inserted 1.3 seconds before the assistant spoke. Twenty-six
+seconds later it was **renamed to "milk" through the edit dialog on the screen** - no audit row,
+because no tool did it. Kevin was using his own phone during the test. The other "phantom" items were
+three he typed and one he spoke.
+
+**The reasoning error was a false dichotomy of my own making.** I framed it as "either the tool was
+never called, or it was called, refused, and the model spoke anyway" and had an investigating agent
+narrow between those two. Both were wrong because the set was wrong: it missed *written, then edited*.
+A missing row has more histories than "never created" - it can be renamed, soft-deleted, merged, or
+overwritten by a later sync.
+
+**Two rules out of it.**
+
+1. **When the evidence table exists, read it before forming the hypothesis.** `conversation_audit`
+   exists precisely for this class of question (it was built after the "it said 142k" incident) and it
+   had the answer the whole time. I spent an investigation narrowing between two guesses when one
+   query would have ended it. The investigating agent said so plainly in its own report - the deciding
+   artifact "exists in this codebase but was not read" - and that sentence should have stopped me.
+2. **A live device under test may have a human on it.** Every anomaly in that window - the rename,
+   three items, one utterance - was Kevin. When a device agent reports rows it did not create, "the
+   owner is using his phone" ranks above "the app invented them", and the audit trail distinguishes
+   them: a hands-path edit leaves no tool row at all.
+
+The corollary is a genuine gap worth naming: **a hands-path edit is invisible in the audit trail.**
+`conversation_audit` records what the assistant did, so a human's typing is a hole in the record that
+looks identical to data appearing from nowhere. That is correct scope for that table, and it means
+provenance questions about a row need a different answer - `checklist_items` has no `source` column,
+confirmed twice.
+
+Positive finding from the same run, worth keeping: the honesty clause was observed WORKING. The model
+sent `item` where `add` wanted `text`, got a refusal in words, called `lists`, retried correctly, and
+spoke only after the successful call.

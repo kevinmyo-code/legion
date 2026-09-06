@@ -32,10 +32,10 @@ believed.
   cleartext. Phase 3 RAN 09-06: checklist write reached Postgres in a second, a server write reached the phone by
   poll, an unreachable engine was reported honestly and the queued tick drained. Two of three defects FIXED 09-06 (the events done-toggle now pushes with an outbox fallback plus a
   one-shot divergence sweep; the backfill skips a refusal and continues, keeping the tick locally).
-  **Open: voice said "Added oat milk" with no row anywhere. Not a silent-success bug - addItem inserts
-  or throws - so it is either no dispatch or the honesty clause disobeyed. The deciding evidence is the
-  phone's `conversation_audit` TOOL_RESULT row for that turn; the server's copy stopped at 09-03, so the
-  audit reconcile is itself broken and that evidence expires on 09-20 (14-day retention).**
+  **RESOLVED 09-06, and I was wrong: there was no honesty breach.** The audit rows show the tool was
+  called correctly, returned success, and the row WAS written - then renamed by hand on the phone 26 s
+  later, by Kevin, who was using it during the test. See lessons.md L-2026-09-06. The audit reconcile
+  IS still stale on the server (newest row 09-03) and that is a real, separate defect.
   Also open: `NotesController.backend()` is hardcoded to Supabase, so a REMINDER's tick ignores the
   transport switch. Transport default stays SUPABASE in the repo until the run repeats clean.
   Next was (`research/execution-plan.md`).
