@@ -1,5 +1,7 @@
 package com.kevin.legion.ui
 
+import android.os.Build
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
+import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiKeyValidator
@@ -38,7 +41,15 @@ import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.SignInResult
 import com.kevin.legion.backend.SupabaseAuth
 import com.kevin.legion.backend.SupabaseConfig
+import com.kevin.legion.backend.engine.EngineAuth
+import com.kevin.legion.backend.engine.EngineConfig
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.LoginResult
+import com.kevin.legion.backend.engine.MeResult
+import com.kevin.legion.backend.engine.Transport
+import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.common.DeckSectionRule
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import kotlinx.coroutines.launch
@@ -98,6 +109,74 @@ fun KeyScreen(onBack: () -> Unit) {
     var householdState by remember { mutableStateOf<MembershipResult?>(null) }
 
     val supabaseAuth = remember { SupabaseAuth(context) }
+
+    // --- Django engine (ticket 09 first half: where it is, and how to sign in) ---
+    // Same paste-and-verify shape as the two BYO sections above, one row under the existing
+    // backend section per the brief rather than a second settings route.
+    val engineConfig = remember { EngineConfig(context) }
+    val engineAuth = remember { EngineAuth(engineConfig) }
+    val engineTransport = remember { EngineTransport(context) }
+
+    var engineUrlText by remember { mutableStateOf(engineConfig.baseUrl()) }
+    var engineUrlStatus by remember { mutableStateOf<String?>(null) }
+    var engineConfigured by remember { mutableStateOf(engineConfig.isConfigured()) }
+
+    var engineEmailText by remember { mutableStateOf("") }
+    var enginePasswordText by remember { mutableStateOf("") }
+    // Defaults to the phone model, per the brief - a driver signing in from a new device does not
+    // have to think of a name for it first.
+    var engineDeviceNameText by remember { mutableStateOf(Build.MODEL.orEmpty()) }
+    var engineSignInChecking by remember { mutableStateOf(false) }
+    var engineSignInStatus by remember { mutableStateOf<String?>(null) }
+    var engineSignInStatusIsError by remember { mutableStateOf(false) }
+    // Unread until the first `me` check returns - same "unread must never render as any of the
+    // other three" posture householdState already follows (CLAUDE.md sec 1).
+    var engineState by remember { mutableStateOf<MeResult?>(null) }
+
+    suspend fun refreshEngineState() {
+        engineState = if (engineConfig.isConfigured() && engineConfig.isSignedIn()) {
+            engineAuth.me()
+        } else {
+            null
+        }
+    }
+
+    LaunchedEffect(engineConfigured) {
+        if (engineConfigured) refreshEngineState()
+    }
+
+    fun saveEngineUrl() {
+        val saved = engineConfig.saveBaseUrl(engineUrlText)
+        engineUrlStatus = if (saved) {
+            "Saved."
+        } else {
+            "That didn't look like an address - start with http:// or https://."
+        }
+        engineConfigured = engineConfig.isConfigured()
+    }
+
+    fun engineSignIn() {
+        engineSignInChecking = true
+        scope.launch {
+            when (val result = engineAuth.login(engineEmailText, enginePasswordText, engineDeviceNameText)) {
+                is LoginResult.Ok -> {
+                    engineSignInStatus = "Signed in."
+                    engineSignInStatusIsError = false
+                    enginePasswordText = ""
+                    refreshEngineState()
+                }
+                is LoginResult.Refused -> {
+                    engineSignInStatus = result.message
+                    engineSignInStatusIsError = true
+                }
+                is LoginResult.Unreachable -> {
+                    engineSignInStatus = result.message
+                    engineSignInStatusIsError = true
+                }
+            }
+            engineSignInChecking = false
+        }
+    }
 
     suspend fun refreshHouseholdState() {
         householdState = if (SupabaseConfig.isConfigured(context)) supabaseAuth.isHouseholdMember() else null
@@ -427,6 +506,164 @@ fun KeyScreen(onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = if (signInStatusIsError) sem.estimated else sem.faint,
                         )
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // --- Engine (Django) ---
+                DeckSectionRule("Engine", modifier = Modifier.padding(horizontal = 12.dp))
+                Text(
+                    "LEGION can also talk to a Django engine you run yourself - your own server, " +
+                        "your own Postgres, nothing hosted by me. Supabase above keeps working " +
+                        "until an aspect is explicitly flipped below.",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                Spacer(Modifier.height(6.dp))
+
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    OutlinedTextField(
+                        value = engineUrlText,
+                        onValueChange = { engineUrlText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Uri,
+                        ),
+                        label = { Text("Engine address (http://host:port)", style = LegionType.stamp) },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = ::saveEngineUrl) {
+                            Text("SAVE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    engineUrlStatus?.let {
+                        Text(it, style = LegionType.stamp, color = sem.faint)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    Text(
+                        when (val state = engineState) {
+                            null -> when {
+                                !engineConfigured -> "Not configured yet."
+                                engineConfig.isSignedIn() -> "Checking..."
+                                else -> "Not signed in."
+                            }
+                            is MeResult.Ok -> "Signed in as ${state.email} on this device."
+                            is MeResult.Refused -> state.message
+                            is MeResult.Unreachable -> state.message
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (engineState) {
+                            is MeResult.Ok -> sem.faint
+                            null -> sem.faint
+                            else -> sem.estimated
+                        },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = engineEmailText,
+                        onValueChange = { engineEmailText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Email,
+                        ),
+                        label = { Text("Email", style = LegionType.stamp) },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = enginePasswordText,
+                        onValueChange = { enginePasswordText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Password,
+                        ),
+                        label = { Text("Password", style = LegionType.stamp) },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = engineDeviceNameText,
+                        onValueChange = { engineDeviceNameText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                            autoCorrectEnabled = false,
+                        ),
+                        label = { Text("Device name", style = LegionType.stamp) },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(
+                            onClick = ::engineSignIn,
+                            enabled = !engineSignInChecking && engineEmailText.isNotBlank() &&
+                                enginePasswordText.isNotBlank() && engineDeviceNameText.isNotBlank(),
+                        ) {
+                            Text(
+                                if (engineSignInChecking) "SIGNING IN" else "SIGN IN",
+                                style = LegionType.stamp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    engineSignInStatus?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (engineSignInStatusIsError) sem.estimated else sem.faint,
+                        )
+                    }
+                }
+
+                // Debug-only per-aspect transport toggles (ticket 09's build item 4): Supabase is
+                // the truth for every aspect until explicitly flipped, so this is deliberately
+                // absent from a release build rather than merely hidden - a driver on a release
+                // build has no way to reach this row at all.
+                if (BuildConfig.DEBUG) {
+                    Spacer(Modifier.height(12.dp))
+                    DeckSectionRule("Transport (debug)", modifier = Modifier.padding(horizontal = 12.dp))
+                    Text(
+                        "Supabase remains the truth for every aspect until it is explicitly " +
+                            "flipped here. Tap a row to toggle it. This section never ships to a " +
+                            "release build.",
+                        style = LegionType.stamp,
+                        color = sem.estimated,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                        EngineTransport.KNOWN_ASPECTS.forEach { aspect ->
+                            var transport by remember(aspect) {
+                                mutableStateOf(engineTransport.transportFor(aspect))
+                            }
+                            DeckRow(
+                                label = aspect,
+                                value = transport.name,
+                                valueColor = if (transport == Transport.DJANGO) sem.estimated else null,
+                                modifier = Modifier.clickable {
+                                    val next = if (transport == Transport.SUPABASE) {
+                                        Transport.DJANGO
+                                    } else {
+                                        Transport.SUPABASE
+                                    }
+                                    engineTransport.setTransport(aspect, next)
+                                    transport = next
+                                },
+                            )
+                        }
                     }
                 }
 
