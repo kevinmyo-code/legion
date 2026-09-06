@@ -21,6 +21,16 @@
       "color": "4"
     },
     {
+      "id": "76a0ff3f5f34795d",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/12-pytest-leaves-a-connection-behind.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "af1dc493ce677ca5",
       "type": "file",
       "file": ".scratch/django-engine/issues/02-models-column-exact.md",
