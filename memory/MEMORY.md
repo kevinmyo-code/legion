@@ -29,8 +29,12 @@ believed.
   Django's first `public` tables (45 public tables now), superuser + household member kevinmyo@gmail.com.
   Server: 93 tests green. API: /api/events, /api/checklists, /api/changes?since=, /api/schema/. Phone:
   EngineAuth/EngineConfig/EngineTransport (default SUPABASE per aspect), Setup sign-in row, debug-only
-  cleartext. **Next: phone-side DjangoEventsBackend + ChecklistsSync behind the transport switch (ticket
-  09 second half), then the six Phase 3 checks on the A25** (`research/execution-plan.md`).
+  cleartext. Phase 3 RAN 09-06: checklist write reached Postgres in a second, a server write reached the phone by
+  poll, an unreachable engine was reported honestly and the queued tick drained. **Three defects: the
+  events done-toggle has no push side at all (pre-existing, `NotesController.tickAppointment` is Room
+  only), voice claimed "Added oat milk" with no row anywhere (§7 breach, under investigation), and the
+  tick backfill aborts on its first refusal. Transport default stays SUPABASE until 1 and 3 are fixed.**
+  Next was (`research/execution-plan.md`).
 - **Creds Kevin said he will rotate:** legion_reader and legion_engine share the password he pasted; the
   reader's leaked once into an agent traceback.
 

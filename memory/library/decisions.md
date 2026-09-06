@@ -5420,3 +5420,39 @@ Run (service + job + scheduler), database unchanged (Supabase Postgres), media o
 Cloudflare in front for the domain. The home box is dropped; the laptop is the dev loop only. The
 earlier reasoning about Oracle, Render, Fly and Koyeb stands; Cloud Run was the omission, and the
 lesson is to look at what the person already runs before surveying the market.
+
+## 2026-09-06 - Phase 3 ran on the A25: the port works both ways, and found three real defects
+
+The first end-to-end run of Supabase Postgres -> Django -> the phone, with the engine on the laptop
+and the transport flipped to Django for events and checklists. Three of six checks passed outright,
+and the three failures are worth more than the passes.
+
+**Proven on hardware, not inferred.** A checklist tick on the phone reached Postgres about a second
+later through write-through. A change made server-side reached the phone through the 60 s foreground
+poll, watched changing on screen with no manual sync. With the engine killed, the phone named the
+host, said "nothing was sent", rendered "Queued - not on the engine yet." in words under the row, and
+drained (`sent 1`) when the engine came back - the whole §7 posture, working.
+
+**Defect 1, pre-existing and serious: the events done-toggle has no push side at all.**
+`NotesController.tickAppointment` writes Room and stops; `EventsSync.kt:230` says so in its own
+comment. So every task ticked on the phone since the backend cutover has been local-only, on either
+transport, and at least one row has already diverged (a COSC 4320 assignment reads ticked on the
+phone and `done = false` on the server). The Django port did not cause this; it revealed it, because
+this is the first time anything checked.
+
+**Defect 2, a §7 breach in the exact place the rule exists for:** the assistant said
+`Added "oat milk" to the grocery list.` and no such row exists anywhere. Five items nobody requested
+appeared in the same window (milk, bread, garlic, peanut butter, ginger) with the bar reading "Ginger
+is added" - consistent with the live mic hearing the room, as it did on 2026-09-05. Under
+investigation; the diagnostic question is whether the tool was never called, returned success without
+writing, or failed while the model spoke anyway.
+
+**Defect 3: the tick backfill aborts on its first refusal.** `bio`'s "3 sets goblet squats" was
+ticked before it became a measured item, so a legacy tick carries no number; the server rightly
+refuses it, and the backfill then stops entirely, so zero ticks ever cross and the error reprints on
+every sync. The rule is correct and the data is real history - the fix is to skip and continue, and to
+keep the tick locally rather than delete a thing the user actually did to make a sync look clean.
+
+**Ruling: the transport default stays SUPABASE in the repo** until defects 1 and 3 are fixed and the
+run repeats. The phone is left on DJANGO for events and checklists so the next pass starts where this
+one stopped.
