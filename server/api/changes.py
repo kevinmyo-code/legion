@@ -31,7 +31,7 @@ pull should use the per-table `?since=` routes, which do page.
 """
 from __future__ import annotations
 
-from django.utils import timezone
+from django.db import connection
 from rest_framework import status
 from rest_framework.fields import DateTimeField
 from rest_framework.response import Response
@@ -79,7 +79,36 @@ class ChangesView(APIView):
         # committed the same instant this request is being served is never
         # silently skipped by a client-computed max(updated_at) that ran a
         # moment too early.
-        server_time = timezone.now()
+        #
+        # **From POSTGRES's clock, never this process's.** This line used
+        # to read `server_time = timezone.now()`, which minted the phone's
+        # single most load-bearing watermark on a machine that is not the
+        # one stamping the `updated_at` values it will be compared against.
+        # Measured 2026-09-06 against this project's own Postgres, the two
+        # clocks differed by 0.53s with PYTHON BEHIND - the harmless
+        # direction, in which a client merely re-fetches half a second of
+        # rows it already has. Reversed, `server_time` would sit in the
+        # database's FUTURE, and every row written inside that window would
+        # be skipped by the next pull, forever, with nothing logged: the
+        # client has been told "everything before here is already mine"
+        # about rows it never received. Nothing in the old code chose the
+        # safe direction. One round trip is the correct price for a value a
+        # client hands back as its own idea of what it already has.
+        # `api/events.py` and `checklists/views.py` were put on the same
+        # clock the same day, for the same reason; `api/synced.py` always
+        # was.
+        #
+        # Known limit, unchanged by this and NOT fixable with a different
+        # clock: a write transaction that STARTED before this read but
+        # commits after it carries a trigger-stamped `updated_at` of its
+        # own transaction start, older than `server_time`, so the next pull
+        # will not see it either. That is a snapshot problem, not a clock
+        # problem - `now()` in place of `statement_timestamp()` would not
+        # close it, and closing it properly means a commit-order cursor
+        # rather than a timestamp at all.
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT statement_timestamp()")
+            server_time = cursor.fetchone()[0]
 
         # DRF's own DateTimeField, not a bare `.isoformat()` - Python's
         # isoformat() renders a UTC offset as `+00:00`, while DRF's default

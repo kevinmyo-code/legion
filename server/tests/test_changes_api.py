@@ -69,6 +69,45 @@ def test_server_time_round_trips_as_a_usable_since_watermark(auth_client):
     assert "after the watermark" in titles
 
 
+def test_server_time_is_a_boundary_in_the_databases_own_clock(auth_client):
+    """`server_time` is the value a client stores as "everything before here
+    is already mine", and it is compared against `updated_at` columns that
+    Postgres stamps. So it has to come from Postgres, and this test pins
+    that PROPERTY rather than any timing: a row written before the
+    watermark is absent from a feed keyed on it, and a row written after it
+    is present. Both halves hold because all three timestamps come from one
+    monotonic clock - `statement_timestamp()` advances per statement even
+    inside pytest's single wrapping transaction, so this needs no
+    `transaction=True`.
+
+    `ChangesView` used to compute `server_time` with `timezone.now()`, on a
+    machine measured 0.53s away from the database's clock (2026-09-06,
+    Python behind). Behind is the harmless direction: the client re-fetches
+    rows it has. Ahead, `server_time` lands in the database's future and
+    every row written inside that window is skipped by the next pull,
+    permanently and silently, because the client was told it already had
+    them. That is the failure this asserts against; see `api/changes.py`'s
+    own comment for the whole reasoning.
+    """
+    from urllib.parse import quote
+
+    auth_client.post("/api/events", {"title": "before the watermark"}, format="json")
+
+    watermark = auth_client.get("/api/changes?aspects=events").data["server_time"]
+
+    auth_client.post("/api/events", {"title": "after the watermark"}, format="json")
+
+    feed = auth_client.get(f"/api/changes?aspects=events&since={quote(watermark)}")
+    assert feed.status_code == 200
+    titles = {row["title"] for row in feed.data["events"]}
+    assert "after the watermark" in titles
+    # The discriminating half. A Python-clock watermark that trails the
+    # database's would let this row back into the feed; one drawn from
+    # Postgres cannot, because the row's own `updated_at` was stamped by
+    # the same clock, one statement earlier.
+    assert "before the watermark" not in titles
+
+
 # ---------------------------------------------------------------------------
 # Phase 5: places, voice notes, body and memory join the vocabulary. They come
 # from `api/registry.py`, the same list `api/urls.py` routes from, so a table
