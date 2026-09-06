@@ -64,6 +64,19 @@ class EngineAuthTest {
         return HttpClient(engine)
     }
 
+    /** Stands in for OkHttp's own cleartext guard (`NetworkSecurityPolicy`) throwing on a
+     * release build, or any debug build with no `network_security_config.xml` opt-in - see
+     * `app/src/debug/res/xml/network_security_config.xml`'s own doc comment for the real message
+     * text observed on the A25, 2026-09-02. */
+    private fun clientBlockedByCleartextPolicy(): HttpClient {
+        val engine = MockEngine { _ ->
+            throw IOException(
+                "CLEARTEXT communication to 192.168.1.117 not permitted by network security policy",
+            )
+        }
+        return HttpClient(engine)
+    }
+
     @Test
     fun `login 200 stores the token and reports the user id`() = runBlocking {
         val config = configWithBaseUrl()
@@ -117,6 +130,25 @@ class EngineAuthTest {
             message.contains(baseUrl),
         )
         assertTrue(message.contains("nothing was sent"))
+        assertNull(config.token())
+        assertFalse(config.isSignedIn())
+    }
+
+    @Test
+    fun `login blocked by the cleartext network policy names the fix, not the raw OS message`() = runBlocking {
+        val config = configWithBaseUrl()
+        val auth = EngineAuth(config, clientBlockedByCleartextPolicy())
+
+        val result = auth.login("kevin@example.com", "correct horse", "Pixel 9")
+
+        assertTrue(result is LoginResult.Unreachable)
+        val message = (result as LoginResult.Unreachable).message
+        assertEquals(
+            "This build blocks plain http; use https, or a debug build for a laptop engine. " +
+                "Nothing was sent.",
+            message,
+        )
+        assertFalse("must not relay the raw OS wording", message.contains("network security policy"))
         assertNull(config.token())
         assertFalse(config.isSignedIn())
     }

@@ -93,6 +93,32 @@ private data class ErrorBody(val detail: String? = null)
 private val engineJson = Json { ignoreUnknownKeys = true }
 
 /**
+ * Shared by [EngineAuth.login] and [EngineAuth.me]'s `catch (e: IOException)` branches. Section
+ * 7's outcome-verb rule read backwards: a failure result must say in words what did NOT happen
+ * and, where there is one, the way around it - not just relay whatever string OkHttp happened to
+ * throw.
+ *
+ * OkHttp's own cleartext guard (`okhttp3.internal.connection.RealConnection`, backed by
+ * `NetworkSecurityPolicy.isCleartextTrafficPermitted`) throws an [IOException] whose message
+ * contains "CLEARTEXT" whenever the current build's network security config blocks plain HTTP to
+ * the given host - release builds keep Android's API 28+ default of blocking it outright, and a
+ * debug build with no `usesCleartextTraffic`/`networkSecurityConfig` opt-in hits the same wall.
+ * The raw message ("CLEARTEXT communication to 192.168.1.117 not permitted by network security
+ * policy") names the OS mechanism, not the fix; a Kevin reading it on the A25 has no way to know a
+ * debug build would work. This branch replaces it with the actual next action instead of relaying
+ * the OS's own wording.
+ */
+private fun unreachableMessage(baseUrl: String, e: IOException): String {
+    val raw = e.message ?: "unknown error"
+    return if (raw.contains("CLEARTEXT")) {
+        "This build blocks plain http; use https, or a debug build for a laptop engine. " +
+            "Nothing was sent."
+    } else {
+        "Could not reach $baseUrl, nothing was sent: $raw"
+    }
+}
+
+/**
  * Talks to the Django engine's three auth endpoints - server/household/urls.py:
  * POST /api/auth/login, GET /api/auth/me, POST /api/auth/logout - over whatever Ktor already
  * brings in via supabase-kt (ADR 0044's build note: "no new HTTP stack"). This is a bare
@@ -147,9 +173,7 @@ class EngineAuth(
         } catch (e: IOException) {
             // Never reached the engine at all - offline, wrong address, refused connection.
             // Section 7: this must say in words that nothing was sent, not merely that it failed.
-            LoginResult.Unreachable(
-                "Could not reach $baseUrl, nothing was sent: ${e.message ?: "unknown error"}",
-            )
+            LoginResult.Unreachable(unreachableMessage(baseUrl, e))
         }
     }
 
@@ -196,9 +220,7 @@ class EngineAuth(
             }
             handleMeResponse(baseUrl, response)
         } catch (e: IOException) {
-            MeResult.Unreachable(
-                "Could not reach $baseUrl, nothing was sent: ${e.message ?: "unknown error"}",
-            )
+            MeResult.Unreachable(unreachableMessage(baseUrl, e))
         }
     }
 

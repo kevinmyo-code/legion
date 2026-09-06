@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG BUILD TYPE ONLY - see app/src/debug/AndroidManifest.xml, which is where this gets wired
+  in via android:networkSecurityConfig on <application>. Manifest merger only applies a debug
+  source set's manifest to debug builds, so a release build never sees this attribute at all and
+  keeps Android API 28+'s default: plaintext HTTP blocked everywhere, no opt-in file present.
+
+  WHY THIS EXISTS: the Django engine (backend/engine/EngineAuth.kt, EngineConfig) runs on a
+  laptop on the LAN during development - `http://192.168.1.117:8000` observed on the A25
+  2026-09-02 - and has no TLS certificate to serve. Without this file every sign-in attempt from
+  a debug build throws `CLEARTEXT communication to 192.168.1.117 not permitted by network
+  security policy` before a single byte reaches the laptop. Production (Cloud Run) is HTTPS and
+  is untouched by this file either way.
+
+  SCOPE, AND WHY IT ISN'T NARROWER: a <domain-config> only matches literal domain names or
+  wildcarded subdomains (<domain>, optionally with wildcardIncludeSubdomains) - it has no syntax
+  for an IP-address range or a CIDR block, so "any 192.168.x.x / 10.x.x.x address" cannot be
+  expressed as a domain-config allowlist. Enumerating every octet LEGION's LAN might hand out
+  (192.168.0.0-255, 192.168.1.0-255, 10.0.0.0-255, ... 172.16-31.x.x, plus 127.0.0.1 and the
+  10.0.2.2 emulator-host alias) would need thousands of <domain> entries, would still miss
+  whatever subnet the laptop is on next time DHCP hands out a different one, and would silently
+  stop working the day the laptop's address changes - exactly the kind of stale-and-wrong
+  guardrail CLAUDE.md warns against. A base-config is therefore used instead: cleartext permitted
+  to ANY host, for THIS BUILD TYPE ONLY. This is acceptable specifically because debug is never
+  distributed - it is not the build a stranger sideloads under clone-and-run, and it is not what
+  a Play or other store listing would ship (there is no listing; CLAUDE.md section 2). The
+  narrower alternative, if one is ever found that survives a moving LAN address without becoming
+  a second thing to keep in sync, should replace this comment and this file together.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

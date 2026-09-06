@@ -11,7 +11,12 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <application>
+    <!-- DEBUG BUILD TYPE ONLY - see res/xml/network_security_config.xml (this source set) for
+         why and for the scope this permits. Manifest merger applies a source set's own
+         AndroidManifest.xml only to builds of that build type, so this attribute is absent from
+         any release manifest; verified by inspecting the merged release manifest rather than
+         assumed (backend-erp / laptop-engine cleartext ticket, 2026-09-05). -->
+    <application android:networkSecurityConfig="@xml/network_security_config">
         <!-- The widget pager's own debug export DELETED (cutover 5,
              docs/architecture/cutover5-2026-08-24.md) - WidgetPagerActivity itself is gone, the
              pager is reached through MainActivity (already exported, already launcher) now.
