@@ -123,18 +123,32 @@ class GeminiSpendSentenceTest {
     }
 
     @Test
-    fun `connects nobody spoke into are named and their cost explained`() {
+    fun `connects that carried nothing are named and their cost explained`() {
         val sentence = liveConnectSentence(spend(connectsThisMonth = 40, connectsWithTurnThisMonth = 6))
         assertTrue(sentence.contains("40 voice connections"))
-        assertTrue(sentence.contains("34 of which nobody spoke into"))
+        assertTrue(sentence.contains("34 of which carried nothing at all"))
         assertTrue("a bare count is not actionable without why it costs", sentence.contains("setup prompt"))
     }
 
     @Test
     fun `a month where every connect was used says so without alarming`() {
         val sentence = liveConnectSentence(spend(connectsThisMonth = 8, connectsWithTurnThisMonth = 8))
-        assertTrue(sentence.contains("every one of them spoken into"))
-        assertFalse(sentence.contains("nobody spoke"))
+        assertTrue(sentence.contains("every one of them used"))
+        assertFalse(sentence.contains("carried nothing"))
+    }
+
+    @Test
+    fun `the connect sentence never claims a counted socket was spoken into`() {
+        // 2026-09-07. The counter behind this changed from "Gemini returned a transcript" to
+        // GeminiLiveSession.turnCarriedWork's three signals - transcript, spoken reply, or tool
+        // call - because reading the transcript alone reported 24 connects in a day with zero
+        // carrying a turn on a phone that had been used. A proactive line spoken on a warm socket
+        // now counts, and nobody spoke into that one, so the OLD wording would have become a
+        // false claim about a real number. Pinned here so a future edit cannot quietly restore it.
+        val used = liveConnectSentence(spend(connectsThisMonth = 8, connectsWithTurnThisMonth = 8))
+        val mixed = liveConnectSentence(spend(connectsThisMonth = 40, connectsWithTurnThisMonth = 6))
+        assertFalse(used.contains("spoken into"))
+        assertFalse(mixed.contains("spoke into"))
     }
 
     @Test

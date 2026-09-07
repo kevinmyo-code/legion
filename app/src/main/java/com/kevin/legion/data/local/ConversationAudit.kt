@@ -127,6 +127,33 @@ data class ConversationAudit(
     }
 }
 
+/**
+ * What a [ConversationAudit.Kind.USER] row holds when the person demonstrably spoke and Gemini
+ * returned no transcript for it (2026-09-07).
+ *
+ * **Why a row exists at all in that case.** [ConversationAudit] rows were written only when
+ * `inputAudioTranscription` came back non-blank, and it sometimes comes back empty on a turn the
+ * model clearly heard and acted on - the evidence is a 09-05 turn where the assistant answered
+ * "I've created the grocery list and added milk for you" with no USER row anywhere beside it. Two
+ * things broke at once: the audit trail silently lost turns, and `live_connect_day`'s
+ * "connects that carried a turn" undercounted, so the spend meter's own headline understated real
+ * use. **No row is a lie by omission** - it reads, later, as a turn that never happened.
+ *
+ * **This is a marker, never invented speech.** It is not a guess at what was said and must never be
+ * treated as one; it records only the two facts the app actually observed - the microphone
+ * forwarded audio, and no transcript came back. Same shape and same reasoning as
+ * [READ_THROUGH_REDACTED] just below: a fixed, recognisable string in the content column, saying in
+ * words what is missing rather than leaving a gap for a reader to misread.
+ *
+ * Deliberately NOT a new [ConversationAudit.Kind]. `conversation_audit.kind` carries a server-side
+ * `check (kind in ('user', 'companion', 'tool_result'))`
+ * (`supabase/migrations/20260829000300_conversation_audit_kind_lowercase.sql`), so a fourth value
+ * would be rejected on upload until that migration was applied - and a rejected row in a batch is
+ * how this table already lost three days once. A `user` row whose content says it was not
+ * transcribed needs no migration on either side.
+ */
+const val UNTRANSCRIBED_USER_TURN = "[user spoke; no transcription returned]"
+
 /** What a redacted [ConversationAudit.content] holds - ticket 23 decision 2, verbatim. Also reused
  *  by [MemoryAuditDao.record]'s caller in [com.kevin.legion.service.GeminiLiveSession.auditSpokenTurn],
  *  which had the identical leak (storing a mail-touched spoken line in full) and is fixed

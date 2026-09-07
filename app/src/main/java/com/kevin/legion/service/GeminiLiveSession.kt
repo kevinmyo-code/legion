@@ -29,6 +29,7 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ConversationAudit
 import com.kevin.legion.data.local.EpisodicTurn
 import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.UNTRANSCRIBED_USER_TURN
 import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.data.local.record
 import com.kevin.legion.media.MusicController
@@ -459,6 +460,19 @@ class GeminiLiveSession(
     // turnComplete alongside every other per-turn accumulator.
     @Volatile private var mailToolCalledThisTurn = false
 
+    // 2026-09-07: whether ANY tool was called this turn, mail-shaped or not. Set from
+    // [handleToolCall] beside [mailToolCalledThisTurn] and cleared on the same turnComplete.
+    //
+    // Separate from that flag rather than derived from it, because the two answer opposite
+    // questions: that one is "must this turn be kept out of storage", this one is "did this turn do
+    // any work". A turn whose only tool was `create_list` sets this and not that.
+    //
+    // It exists because a turn can produce a tool call and a spoken answer with NO transcript at
+    // all - `inputAudioTranscription` comes back empty sometimes on a turn the model plainly heard
+    // - and until now the transcript was the only evidence either the audit trail or the connect
+    // meter looked at. See [turnCarriedWork] and [userSpokeButWasNotTranscribed].
+    @Volatile private var toolCalledThisTurn = false
+
     // Ticket 23 (hands-and-senses, "an audit trail of every conversation and every tool call"):
     // groups every [com.kevin.legion.data.local.ConversationAudit] row minted from one exchange -
     // the driver's line, the companion's reply, and every tool call in between - without a
@@ -661,14 +675,20 @@ class GeminiLiveSession(
      * reconnect+greeting instead of just handing control to the driver. The
      * turnComplete handler still transitions state correctly afterward via
      * suppressMicNextTurn -> parkWarm().
+     *
+     * **Returns whether the line actually went out (2026-09-07).** This used to return Unit and had
+     * two silent exits - the guard below, and [sendText] returning false on a socket OkHttp has
+     * already closed - so [LiveSessionController.requestSpeak]'s warm branch could not tell a
+     * spoken line from a dropped one and reported neither. Same reasoning as [beginConversation]'s
+     * own Boolean return, which exists for exactly this.
      */
-    fun speakOnWarm(text: String) {
-        if (!running.get() || closed.get()) return
+    fun speakOnWarm(text: String): Boolean {
+        if (!running.get() || closed.get()) return false
         warmHoldJob?.cancel()
         suppressMicNextTurn = true
         ConversationState.setBusy(true)
         MicArbiter.request(micClaimant, micPreemptionListener)
-        sendText(text)
+        return sendText(text)
     }
 
     /** Connected and idle (warm), ready for an instant [beginConversation]. */
@@ -845,9 +865,19 @@ class GeminiLiveSession(
             // sites - which wrote to a field nothing read. On a quota-exhausted key the socket
             // never opens, so what a person sees is a wake word that appears to do nothing; this
             // is what lets the Setup screen say otherwise. See KeyHealth's class doc.
+            //
+            // **The BODY, added 2026-09-07, and it is the whole diagnostic value of the row.** This
+            // recorded the bare status and nothing else, while the REST path at
+            // [com.kevin.legion.ai.SubAgent.classify] had always attached the server's own message.
+            // An exhausted key and a per-minute rate limit BOTH come back 429 `RESOURCE_EXHAUSTED`,
+            // and the detail text is the only thing that tells them apart - which is precisely the
+            // question the Setup sentence was being asked and could not answer. A verdict with no
+            // evidence behind it is CLAUDE.md sec 4 rule 8's failure in a new place: the check ran,
+            // the input was thrown away, and nobody can re-verify it afterwards.
+            val body = failureBody(response)
             when (response?.code) {
-                429 -> KeyHealth.noteRateLimited("HTTP 429 opening the Gemini Live socket")
-                400, 401, 403 -> KeyHealth.noteInvalid("HTTP ${response?.code} opening the Gemini Live socket")
+                429 -> KeyHealth.noteRateLimited(liveFailureDetail(429, body))
+                400, 401, 403 -> KeyHealth.noteInvalid(liveFailureDetail(response.code, body))
                 else -> Unit // a transport failure says nothing about the key; do not blame it
             }
             closeSession(
@@ -858,6 +888,22 @@ class GeminiLiveSession(
                 }
             )
         }
+
+        /**
+         * The HTTP upgrade response's body, or null when there was none to read.
+         *
+         * **Read here and nowhere else, because this is the only moment it exists.** OkHttp's
+         * `RealWebSocket.onResponse` hands the failed upgrade response to this listener and then
+         * closes it on the very next line, so a body not read inside [onFailure] is gone. Wrapped
+         * in `runCatching` rather than trusted: a body can legitimately be absent, already
+         * consumed, or throw on read, and none of those is worth failing a socket teardown over -
+         * a missing detail costs a less specific sentence, an exception here would cost the close.
+         *
+         * `onFailure` runs on an OkHttp dispatcher thread, never the main thread, so the blocking
+         * read is safe where it sits.
+         */
+        private fun failureBody(response: Response?): String? =
+            runCatching { response?.body?.string() }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             webSocket.close(NORMAL_CLOSE, null)
@@ -1153,9 +1199,23 @@ class GeminiLiveSession(
      * **Driver text is never redacted.** The driver's own words cannot themselves be fetched
      * read-through content - see [ConversationAudit]'s class doc for why tool RESULTS get redacted
      * per-call but this turn's free text is redacted as a whole when flagged.
+     *
+     * **[userSpokeUntranscribed] closes a hole found 2026-09-07.** A USER row was written only when
+     * [driverText] was non-blank, and `inputAudioTranscription` sometimes returns nothing on a turn
+     * the model plainly heard and acted on - so the audit trail was quietly missing the user half
+     * of real turns (the motivating one: "I've created the grocery list and added milk for you",
+     * with no USER row anywhere near it). When the caller's own
+     * [userSpokeButWasNotTranscribed] says the microphone forwarded audio and the model answered,
+     * the row is written with [com.kevin.legion.data.local.UNTRANSCRIBED_USER_TURN] as its content.
+     * **Nothing is invented** - the marker records the absence, which is a true statement, where no
+     * row at all was a false one.
      */
-    private fun auditConversationTurn(driverText: String, companionText: String) {
-        if (driverText.isBlank() && companionText.isBlank()) return
+    private fun auditConversationTurn(
+        driverText: String,
+        companionText: String,
+        userSpokeUntranscribed: Boolean = false,
+    ) {
+        if (driverText.isBlank() && companionText.isBlank() && !userSpokeUntranscribed) return
         val seq = turnSeq.getAndIncrement()
         val redacted = mailToolCalledThisTurn
         val vehicleId = ActiveVehicle.current(appContext)
@@ -1168,11 +1228,18 @@ class GeminiLiveSession(
                 // trail is a shredder.
                 val uploadedThrough =
                     com.kevin.legion.backend.conversationAuditUploadedThroughId(appContext)
-                if (driverText.isNotBlank()) {
+                // Kind.USER either way, deliberately - see [UNTRANSCRIBED_USER_TURN] for why a
+                // fourth `kind` would be rejected by the server's own check constraint.
+                val userContent = when {
+                    driverText.isNotBlank() -> driverText
+                    userSpokeUntranscribed -> UNTRANSCRIBED_USER_TURN
+                    else -> ""
+                }
+                if (userContent.isNotEmpty()) {
                     dao.record(
                         turnSeq = seq,
                         kind = ConversationAudit.Kind.USER,
-                        content = driverText,
+                        content = userContent,
                         vehicleId = vehicleId,
                         uploadedThroughId = uploadedThrough,
                     )
@@ -1308,6 +1375,10 @@ class GeminiLiveSession(
             speakingThisTurn = false
             crisisFiredThisTurn = false
             val heard = userTurnText.toString().trim()
+            // Hoisted 2026-09-07: three decisions below now need the companion's own line, and
+            // computing it three times from a StringBuilder that is cleared a few lines later is
+            // how one of them would eventually get the wrong value.
+            val said = companionTurnText.toString().trim()
             Log.d(TAG, "Turn transcript: \"$heard\" (forwarded $bytesThisTurn bytes)")
             // Also a Crashlytics breadcrumb: logcat is blocked on the head unit
             // (§14), so a logcat-only diagnostic is invisible in the one place
@@ -1321,25 +1392,47 @@ class GeminiLiveSession(
             if (vadMode && bytesThisTurn < SILENT_TURN_BYTES_THRESHOLD) {
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
             }
-            // Mark this socket as one a person actually spoke into (2026-09-06). The number that
+            // Mark this socket as one that CARRIED A TURN (2026-09-06; the heading read "one a
+            // person actually spoke into" until the widening two paragraphs down made that untrue -
+            // a proactive line counts now, and nobody spoke into that one). The number that
             // matters for spend is not how many sockets opened but how many opened and were never
             // used: each of those still paid for its setup prompt. Read from `heard` rather than
             // from captureEpisodicTurn, which returns early on a mail turn (the read-through rule)
             // and on a proactive line with no driver text - both of which are wrong here, because
             // a mail turn IS a user turn that cost tokens even though nothing about it is stored.
-            if (heard.isNotBlank() && !connectCountedAsCarryingTurn) {
+            //
+            // **Widened 2026-09-07 from `heard.isNotBlank()` to [turnCarriedWork].** Reading the
+            // transcript alone is what produced "24 connects, zero carrying a turn" on a day the
+            // phone was used: a blank `inputAudioTranscription` on a turn that ran a tool and spoke
+            // an answer counted as an unused socket. See [turnCarriedWork] for the three signals
+            // and for why the Setup sentence's wording changed with it.
+            if (turnCarriedWork(heard, said, toolCalledThisTurn) && !connectCountedAsCarryingTurn) {
                 connectCountedAsCarryingTurn = true
                 GeminiUsageMeter.recordLiveConnectCarriedTurn()
             }
-            captureEpisodicTurn(heard, companionTurnText.toString().trim())
+            captureEpisodicTurn(heard, said)
             // Ticket 05 call 5: a brush-off of an unprompted line suppresses that rule for a day.
             // Read here because this is the one place the user's actual words exist; ProactiveBus
             // is what knows which rule (if any) is still awaiting an answer, and it no-ops when
             // none is. Deterministic and free - no model round trip to ask "was that a no?".
             io.launch { runCatching { ProactiveBus.noteReply(appContext, heard) } }
-            auditSpokenTurn(companionTurnText.toString().trim())
-            auditConversationTurn(heard, companionTurnText.toString().trim())
+            auditSpokenTurn(said)
+            auditConversationTurn(
+                heard,
+                said,
+                // The one case where a USER row is written with no transcript behind it. Evaluated
+                // HERE, while `bytesThisTurn` and the per-turn flags still hold this turn's values
+                // - they are reset a few lines down.
+                userSpokeButWasNotTranscribed(
+                    transcript = heard,
+                    micWasOpen = vadMode,
+                    micBytesForwarded = bytesThisTurn,
+                    companionText = said,
+                    toolCalled = toolCalledThisTurn,
+                ),
+            )
             mailToolCalledThisTurn = false
+            toolCalledThisTurn = false
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
             emit(LiveEvent.TurnComplete)
@@ -1414,6 +1507,10 @@ class GeminiLiveSession(
             // which can land before the owner's own dispatch/response round trip finishes in
             // some orderings, and the exclusion must hold regardless of that race.
             if (isEpisodicExcludedTool(name)) mailToolCalledThisTurn = true
+            // 2026-09-07: flagged for the same reason and at the same moment - what matters is
+            // that the model ASKED for a tool, which is already proof this turn did something,
+            // whatever the dispatch later returns.
+            toolCalledThisTurn = true
             emit(LiveEvent.ToolCall(
                 id = call.optString("id"),
                 name = name,
@@ -2425,6 +2522,135 @@ class GeminiLiveSession(
 
     companion object {
         private const val TAG = "GeminiLiveSession"
+
+        /**
+         * Longest server message kept inside a [KeyHealth] detail from this class.
+         *
+         * Sized against [KeyHealth]'s own 160-character cap: the `HTTP 429 opening the Gemini Live
+         * socket: ` prefix eats about 45 of those, so trimming here means the SERVER'S OWN WORDS
+         * survive rather than being what gets chopped off the end. The Setup sentence renders this
+         * inline ("Gemini said: ..."), so it has to be a readable clause, not a wall of JSON.
+         */
+        internal const val FAILURE_DETAIL_MAX = 110
+
+        /**
+         * Whether this socket should count as one that CARRIED A TURN, for
+         * [com.kevin.legion.data.local.LiveConnectDay] (2026-09-07).
+         *
+         * **This used to read the transcript and nothing else**, which made the meter's headline
+         * wrong in the direction that matters: `live_connect_day` reported 24 connects on one day
+         * with ZERO carrying a turn, on a phone that had been used, because
+         * `inputAudioTranscription` had come back empty on the turns that did the work. A metric
+         * whose whole job is "how many sockets were opened and never used" understating use is
+         * worse than no metric, because it looks like evidence.
+         *
+         * Three independent signals, any of which proves the socket did something a person would
+         * recognise: a transcript, a spoken reply, or a tool call. The last two survive a blank
+         * transcription; the first does not.
+         *
+         * **This does widen the definition, and the sentence built from it says so** - see
+         * [com.kevin.legion.ui.liveConnectSentence], which no longer claims every counted connect
+         * was "spoken into". A proactive line spoken on a warm socket now counts as a carried turn,
+         * because it is: it produced real speech and was billed for it.
+         */
+        internal fun turnCarriedWork(
+            transcript: String,
+            companionText: String,
+            toolCalled: Boolean,
+        ): Boolean = transcript.isNotBlank() || companionText.isNotBlank() || toolCalled
+
+        /**
+         * Whether the person demonstrably SPOKE this turn even though nothing was transcribed -
+         * the condition under which [auditConversationTurn] writes a USER row saying exactly that
+         * (2026-09-07). See [com.kevin.legion.data.local.UNTRANSCRIBED_USER_TURN].
+         *
+         * **[micBytesForwarded] is the anchor, and it is why this is not simply "the transcript was
+         * blank".** A greeting, a proactive line and an onboarding prompt all complete turns with
+         * no transcript and no user in the room; writing "the user said something" for those would
+         * be inventing a person, which is a worse failure than the missing row this fixes. Bytes
+         * off the open microphone actually reaching the socket is a fact the app observed, not one
+         * it inferred - the same posture CLAUDE.md sec 4 rule 5 takes on anything a source did not
+         * state.
+         *
+         * [micWasOpen] ([vadMode]) and [micBytesForwarded] together mean the microphone was open
+         * for a conversational turn and audio went out on it. The trailing clause - a reply or a
+         * tool call - is what says the model received it and acted, which is the shape of the
+         * evidence that started this: an assistant answering "I've created the grocery list and
+         * added milk for you" with no user row beside it.
+         */
+        internal fun userSpokeButWasNotTranscribed(
+            transcript: String,
+            micWasOpen: Boolean,
+            micBytesForwarded: Long,
+            companionText: String,
+            toolCalled: Boolean,
+        ): Boolean = transcript.isBlank() &&
+            micWasOpen &&
+            micBytesForwarded > 0L &&
+            (companionText.isNotBlank() || toolCalled)
+
+        /**
+         * The [KeyHealth] detail for a Live-socket HTTP upgrade failure: the status, plus whatever
+         * the server actually said.
+         *
+         * **Added 2026-09-07 because the status alone cannot answer the question being asked.** A
+         * 429 is Gemini's `RESOURCE_EXHAUSTED` both for a key with no quota left and for a
+         * per-minute rate limit that clears in seconds, and only the message tells them apart. The
+         * REST path had carried the body since it was written
+         * ([com.kevin.legion.ai.SubAgent.classify]); the Live path recorded `"HTTP 429 opening the
+         * Gemini Live socket"` and dropped the evidence - so on a quota-exhausted key the app knew
+         * the status, could not say which of the two it was, and the person concluded the app was
+         * broken.
+         *
+         * A null/blank [body] yields the bare status rather than a fabricated cause: an absent
+         * message is reported as absent (CLAUDE.md sec 1 - unreadable and empty are different
+         * sentences), never guessed at.
+         *
+         * Pure, so [GeminiLiveSessionFailureDetailTest] can walk it without a socket.
+         */
+        internal fun liveFailureDetail(code: Int, body: String?): String {
+            val head = "HTTP $code opening the Gemini Live socket"
+            val summary = summariseGeminiError(body) ?: return head
+            return "$head: $summary"
+        }
+
+        /**
+         * The readable part of a Gemini error body, or null when there is nothing to report.
+         *
+         * Gemini returns `{"error":{"code":..,"message":..,"status":..}}`, so `status - message` is
+         * pulled out when the body parses. **A body that does not parse is kept VERBATIM rather
+         * than discarded** - an unrecognised shape is still evidence, and swallowing it would put
+         * this function back in the business of throwing away the one thing that distinguishes two
+         * causes. Whitespace is collapsed and the result is capped at [FAILURE_DETAIL_MAX]; the
+         * ellipsis is there so a truncated message reads as truncated instead of as a complete
+         * sentence that happens to stop early.
+         */
+        internal fun summariseGeminiError(body: String?): String? {
+            val raw = body?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val text = (geminiErrorClause(raw) ?: raw).replace(WHITESPACE_RUN, " ").trim()
+            return when {
+                text.isEmpty() -> null
+                text.length <= FAILURE_DETAIL_MAX -> text
+                else -> text.take(FAILURE_DETAIL_MAX - 1).trimEnd() + "…"
+            }
+        }
+
+        /** `status - message` out of a Gemini error envelope, or null when [raw] is not one (or
+         *  carries neither field). Split out of [summariseGeminiError] so that function keeps a
+         *  single exit for its own trimming; the fallback to the verbatim body lives there. */
+        private fun geminiErrorClause(raw: String): String? = runCatching {
+            val err = JSONObject(raw).optJSONObject("error") ?: return@runCatching null
+            val message = err.optString("message").trim()
+            val status = err.optString("status").trim()
+            when {
+                message.isNotEmpty() && status.isNotEmpty() -> "$status - $message"
+                message.isNotEmpty() -> message
+                status.isNotEmpty() -> status
+                else -> null
+            }
+        }.getOrNull()
+
+        private val WHITESPACE_RUN = Regex("\\s+")
 
         /**
          * Pure decision behind [mailToolCalledThisTurn]'s skip inside [captureEpisodicTurn]

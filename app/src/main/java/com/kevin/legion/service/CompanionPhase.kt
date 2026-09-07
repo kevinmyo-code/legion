@@ -29,8 +29,33 @@ object CompanionPhase {
     // A SharedFlow, NOT a StateFlow: a frustrated double-tap fires the same
     // string twice, and StateFlow's conflation would swallow the second flash.
     // (Setter is showNotice to avoid a name clash with the val.)
-    private val _notice = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 4)
-    val notice: SharedFlow<String> = _notice.asSharedFlow()
+    //
+    // **`replay` went from 0 to 1 on 2026-09-07, and the element type from `String` to [Notice].**
+    // The comment above is still true and is kept; it described only half the problem. With
+    // `replay = 0` and no active collector, `tryEmit` returns true and DROPS the value - so every
+    // refusal notice raised while nothing was composing this flow went nowhere at all. That is not
+    // a rare case: two of the three doors that reach [LiveSessionController.onTap] - the wake word
+    // ([WakeWordEngine]) and the Android Auto voice button
+    // ([com.kevin.legion.car.LegionMediaLibraryService]) - fire while the app is backgrounded and
+    // [com.kevin.legion.ui.assistant.AssistantStrip], the only collector, is not composed. The app
+    // said why it had refused and nobody could hear it, which is CLAUDE.md sec 7's failure in its
+    // silent form: nothing was asserted, and something false was concluded.
+    //
+    // Replay does NOT reintroduce conflation - a SharedFlow delivers every emission to every
+    // ACTIVE subscriber regardless of replay, so the frustrated double-tap still flashes twice. It
+    // only means a collector that subscribes LATER sees the most recent one, which is what carries
+    // a refusal across the walk from a wake word in a pocket to opening the app to find out why.
+    private val _notice = MutableSharedFlow<Notice>(replay = 1, extraBufferCapacity = 4)
+    val notice: SharedFlow<Notice> = _notice.asSharedFlow()
+
+    /**
+     * One flashed notice, and the wall-clock moment it was raised.
+     *
+     * [atMs] exists purely because of the replay above: a replayed notice is evidence of a PAST
+     * moment, not a current state, and a collector that subscribes an hour later has to be able to
+     * tell those apart. See [noticeStillWorthShowing].
+     */
+    data class Notice(val text: String, val atMs: Long)
 
     // Crisis path (CLAUDE.md sec 9.1). True once CrisisDetector matched the
     // driver's speech, until the driver dismisses it.
@@ -88,6 +113,33 @@ object CompanionPhase {
     }
 
     fun showNotice(text: String) {
-        _notice.tryEmit(text)
+        _notice.tryEmit(Notice(text, System.currentTimeMillis()))
     }
+
+    /**
+     * How long a REPLAYED [Notice] is still worth putting on screen.
+     *
+     * **GUESSED, not measured**, and named here so it is one number to revisit rather than a
+     * literal buried in a composable. It bounds one specific walk: a wake word is refused while the
+     * phone is in a pocket or the app sits behind Spotify, and the person opens LEGION to find out
+     * why. Two minutes covers that. It deliberately does not cover "I opened the app after lunch
+     * and it flashed something about a call I finished an hour ago", which would be a worse lie
+     * than saying nothing at all.
+     */
+    const val NOTICE_REPLAY_MAX_AGE_MS = 2 * 60 * 1000L
+
+    /**
+     * Whether a [Notice] read off [notice] is recent enough to show.
+     *
+     * Pure and Context-free so it is directly unit-testable, the same reasoning
+     * [LiveSessionController.shouldAutoReconnectAfterClose]'s own doc gives for living where it
+     * does. A LIVE emission is fresh by construction (its [Notice.atMs] is the current
+     * millisecond), so this only ever actually rejects something the replay buffer handed a late
+     * subscriber.
+     */
+    fun noticeStillWorthShowing(
+        atMs: Long,
+        nowMs: Long,
+        maxAgeMs: Long = NOTICE_REPLAY_MAX_AGE_MS,
+    ): Boolean = nowMs - atMs < maxAgeMs
 }

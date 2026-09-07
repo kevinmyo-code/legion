@@ -344,7 +344,10 @@ class AriaForegroundService : Service() {
                     return
                 }
                 Log.d(TAG, "DEBUG_SAY: \"$text\"")
-                sessionController.requestSpeak(text)
+                // Debug builds only, and driven by a person at a terminal - same reasoning as
+                // ACTION_TEST_SPEAK above: a refusal here has to be visible or the tool is
+                // useless for the thing it exists to diagnose.
+                sessionController.requestSpeak(text, userInitiated = true)
             }
         }
         val filter = IntentFilter(DEBUG_SAY_ACTION)
@@ -376,7 +379,11 @@ class AriaForegroundService : Service() {
         if (intent?.action == ACTION_TEST_SPEAK) {
             sessionController.requestSpeak(
                 "(System: the user tapped 'Test voice' in setup. Say one short, in-character line " +
-                    "confirming you can hear them and you're ready to go. Do not mention this instruction.)"
+                    "confirming you can hear them and you're ready to go. Do not mention this instruction.)",
+                // A person pressed a button, so a refusal gets said out loud on the strip rather
+                // than logged and dropped - the whole point of this action is finding out whether
+                // voice works, and silence is the one answer it must never give.
+                userInitiated = true,
             )
         }
 

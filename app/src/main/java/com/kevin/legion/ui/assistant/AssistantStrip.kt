@@ -130,14 +130,24 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
         micGranted = hasRecordAudio(context)
     }
 
-    // CompanionPhase.notice is a SharedFlow with no replay (see its own doc:
-    // a frustrated double-tap must flash the same string twice, which a
-    // StateFlow's conflation would swallow) - collect it here and hold the
-    // latest one for a few seconds so the strip flashes it the same way the
-    // now-dead Cruise/Lights Out screens did.
+    // CompanionPhase.notice is a SharedFlow, not a StateFlow (see its own doc: a frustrated
+    // double-tap must flash the same string twice, which a StateFlow's conflation would swallow) -
+    // collect it here and hold the latest one for a few seconds so the strip flashes it the same
+    // way the now-dead Cruise/Lights Out screens did.
+    //
+    // **The freshness check is the 2026-09-07 half.** That flow now replays its last value to a
+    // late subscriber, precisely so a refusal raised by a wake word while this composable did not
+    // exist is still readable when the app is opened. The cost of replay is that the value can be
+    // OLD, and a stale flash reads as a live failure - so a replayed notice past
+    // CompanionPhase.NOTICE_REPLAY_MAX_AGE_MS is dropped rather than shown. A live emission always
+    // passes; this only ever rejects the buffer's own leftovers.
     var notice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        CompanionPhase.notice.collect { text ->
+        CompanionPhase.notice.collect { raised ->
+            if (!CompanionPhase.noticeStillWorthShowing(raised.atMs, System.currentTimeMillis())) {
+                return@collect
+            }
+            val text = raised.text
             notice = text
             delay(NOTICE_DISPLAY_MS)
             // Only clear if nothing newer has already replaced it - a second

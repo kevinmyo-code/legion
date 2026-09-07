@@ -951,23 +951,35 @@ private fun window(label: String, tokens: Long?, calls: Int, unreported: Int): S
 }
 
 /**
- * The sentence about Live sockets that nobody spoke into - the shape that costs money for nothing,
- * since every connect pays for its setup prompt whether or not a word follows.
+ * The sentence about Live sockets that carried nothing - the shape that costs money for nothing,
+ * since every connect pays for its setup prompt whether or not anything follows.
  *
  * Separate from [geminiSpendSentence] because it answers a different question: that one is "how
  * much", this one is "how much of it was wasted". August's reconnect storm was found by reading
  * logcat by hand, because [com.kevin.legion.MidnightEvents.sessionStart] is a `Log.d` and nothing
  * else; this is the same fact, durable and visible without a cable.
+ *
+ * **The wording changed on 2026-09-07 and the counter underneath it changed with it.** It used to
+ * say "spoken into", because
+ * [com.kevin.legion.service.GeminiLiveSession] only counted a connect as used when Gemini returned
+ * a TRANSCRIPT for it. That undercounted badly - it reported 24 connects in a day with zero
+ * carrying a turn on a phone that had been used, because `inputAudioTranscription` comes back empty
+ * on some turns the model plainly heard, and because a proactive line spoken on a warm socket was
+ * never counted at all. The counter now reads three signals
+ * ([com.kevin.legion.service.GeminiLiveSession.turnCarriedWork]): a transcript, a spoken reply, or
+ * a tool call. So "carried a turn" is the honest phrase and "spoken into" is not: a socket that
+ * only ever spoke an unprompted line is counted, and nobody spoke into it.
  */
 internal fun liveConnectSentence(spend: GeminiUsageMeter.Spend?): String = when {
     spend == null -> "Couldn't read this device's connection count."
     spend.connectsThisMonth == 0 -> "No voice connections this month."
     spend.connectsWithoutTurnThisMonth == 0 ->
-        "${spend.connectsThisMonth} voice connections this month, every one of them spoken into."
+        "${spend.connectsThisMonth} voice connections this month, every one of them used - " +
+            "something was said, heard, or run on each."
     else ->
         "${spend.connectsThisMonth} voice connections this month, " +
-            "${spend.connectsWithoutTurnThisMonth} of which nobody spoke into. Each one still " +
-            "paid for its setup prompt."
+            "${spend.connectsWithoutTurnThisMonth} of which carried nothing at all - nothing " +
+            "heard, nothing said, no tool run. Each one still paid for its setup prompt."
 }
 
 /**

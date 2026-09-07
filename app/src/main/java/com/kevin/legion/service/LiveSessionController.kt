@@ -1,9 +1,12 @@
 package com.kevin.legion.service
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import androidx.core.content.ContextCompat
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
@@ -273,7 +276,16 @@ class LiveSessionController(context: Context) {
             "onTap: session=${s != null} inConversation=${s?.inConversation} isWarm=${s?.isWarm()}"
         )
         // Always allow stopping an active conversation.
-        if (s != null && s.inConversation) { s.stop(); return }
+        if (s != null && s.inConversation) {
+            s.stop()
+            // Says which of the two things a tap can do actually happened. [Phase.IDLE] alone does
+            // not: it is also what a FAILED tap leaves behind, and the strip reads "Tap to talk"
+            // either way. Kevin's 24-connects-no-turns day is consistent with exactly this loop -
+            // tap, nothing audible, tap again and silently end the session that was live, tap
+            // again and pay for another connect.
+            refuse(VoiceRefusal.ENDED_ACTIVE_CHAT)
+            return
+        }
 
         // A deliberate tap resets the prewarm backoff - the driver is actively
         // asking, so try now rather than honoring a long dead-zone cooldown.
@@ -284,13 +296,21 @@ class LiveSessionController(context: Context) {
         // (2026-08-21): isInCall used to be set true on RINGING, so the one moment Kevin wants to
         // say "answer it" was the moment this returned early and showed "ON A CALL". Answering by
         // voice is impossible without this distinction.
-        if (TelephonyController.isInCall) { CompanionPhase.showNotice("ON A CALL"); return }
+        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
         // BYO-key only, no tiers (commercial model retired 2026-07-31).
-        if (!GeminiKeyProvider.hasKey()) {
-            CompanionPhase.showNotice("ADD A GEMINI KEY IN SETUP TO TALK")
-            return
-        }
-        if (!isOnline()) { CompanionPhase.showNotice("NO SIGNAL OUT HERE"); return }
+        if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
+        // Added 2026-09-07, and it is a spend fix as much as an honesty one. Without it a tap with
+        // RECORD_AUDIO revoked opened a socket, paid for the whole setup prompt (~16k tokens, see
+        // [shouldAutoReconnectAfterClose]'s doc), connected, opened the mic, and only THEN found out
+        // in [GeminiLiveSession.micLoop] - which closes with "microphone permission not granted" and
+        // lands as a notice at the [LiveEvent.Closed] branch below. The answer was right and it cost
+        // a connect to reach; [com.kevin.legion.ui.assistant.AssistantStrip] already checks this
+        // before its own tap, but the wake word and the Android Auto voice button both call straight
+        // in here and never did. Every path through [onTap] ends with the mic opening, so this is
+        // safe to refuse on unconditionally - the speak-only proactive path does not come through
+        // here.
+        if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
+        if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
 
         if (s != null && s.isWarm()) {
             resumeWarm(s, fromWakeWord)
@@ -309,6 +329,39 @@ class LiveSessionController(context: Context) {
         }
         startConversation(fromWakeWord)
     }
+
+    /**
+     * Tells the person who asked that nothing is going to happen, and why.
+     *
+     * **The single exit for every refused ask.** Before this existed the guards each decided for
+     * themselves whether to say anything: three of them flashed a shouted string, and six more -
+     * every refusal on the [requestSpeak] side plus the stop branch of [onTap] - returned in
+     * silence. See [VoiceRefusal]'s own doc for what that silence cost.
+     *
+     * [tellTheUser] is false for a BACKGROUND proactive raise, which nobody asked for: a raise that
+     * cannot be spoken must not put an error on screen over whatever the person is actually doing,
+     * and [ProactiveDelivery] is the layer that owns whether an unsolicited line is delivered at
+     * all. The refusal is still logged with its own sentence, so the reason exists somewhere even
+     * when the screen stays quiet. Every DELIBERATE ask - every path through [onTap], and a
+     * [requestSpeak] call flagged `userInitiated` - passes true.
+     */
+    private fun refuse(refusal: VoiceRefusal, tellTheUser: Boolean = true) {
+        val text = refusalNotice(refusal)
+        android.util.Log.d("LiveSessionController", "refused ($refusal): $text")
+        if (tellTheUser) CompanionPhase.showNotice(text)
+    }
+
+    /**
+     * Whether RECORD_AUDIO is granted RIGHT NOW.
+     *
+     * Read live rather than cached: a person can revoke it from system Settings at any point while
+     * the service keeps running, which is the same "goes stale for reasons outside this app"
+     * reasoning [com.kevin.legion.ui.assistant.AssistantStrip] states for re-checking it on
+     * ON_RESUME.
+     */
+    private fun hasMicPermission(): Boolean =
+        ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
 
     /**
      * Whether the device reports an internet-capable network. Deliberately does
@@ -330,11 +383,28 @@ class LiveSessionController(context: Context) {
      * microphone and waits for an answer, because it asked a question the user can act on. Only
      * `incoming_call` sets it (see [ProactiveRaise.listensForReply]); a window opened this way MUST
      * be closed by [stopListening], or it lingers to the idle backstop.
+     *
+     * **[userInitiated] decides whether a refusal is put on screen (2026-09-07).** Almost every
+     * caller is [ProactiveBus], raising a line nobody asked for - those keep the default and stay
+     * quiet on screen when they cannot be spoken, because an error banner over whatever the person
+     * is doing is worse than a missed nudge, and [ProactiveDelivery] already owns the question of
+     * whether an unsolicited line is delivered at all. The two callers where a PERSON pressed
+     * something - `ACTION_TEST_SPEAK` from Setup, and the debug `DEBUG_SAY` broadcast - pass true
+     * and get the same worded refusal a tap gets. Every branch below now reports; before this,
+     * every single one of them dropped the line in silence.
+     *
+     * **Known gap, NOT fixed here.** [ProactiveBus.speak] chooses spoken-vs-notified BEFORE this
+     * runs and records `DELIVERY_SPOKEN` in `proactive_raises` at that moment. When a branch below
+     * refuses, that row asserts an outcome that did not happen and no notification is posted in its
+     * place - the raise is simply lost. Routing a refusal back to [ProactiveDelivery.notify] is a
+     * real fix and a bigger change than this one; it is written down here rather than left to be
+     * rediscovered.
      */
     fun requestSpeak(
         prompt: String,
         listensForReply: Boolean = false,
         carriesReadThroughContent: Boolean = false,
+        userInitiated: Boolean = false,
     ) {
         // Ticket 24: a proactive raise that needs to speak is the third genuine signal
         // [shouldAutoReconnectAfterClose] recognises, alongside a tap and a wake-word trigger
@@ -345,35 +415,62 @@ class LiveSessionController(context: Context) {
         // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
         // still lands in a turn already flagged. See GeminiLiveSession.markTurnReadThrough.
         if (carriesReadThroughContent) session?.markTurnReadThrough()
-        if (listensForReply) { speakAndListen(prompt, carriesReadThroughContent); return }
+        if (listensForReply) { speakAndListen(prompt, carriesReadThroughContent, userInitiated); return }
         val s = session
-        // DIAGNOSTIC (B9, remove once root-caused): which branch a proactive line
-        // takes decides whether the mic reopens after (only the inConversation
-        // fold-in branch skips suppressMicNextTurn) - a field report of "it
-        // listened after proactive speech" should show "fold-in" here.
-        val branch = when {
-            s != null && s.inConversation -> "fold-in (mic WILL reopen after, by design)"
-            s != null && s.isWarm() -> "warm speakOnWarm (mic suppressed)"
-            s != null -> "mid-connect PROACTIVE_WARM (mic suppressed)"
-            else -> "cold startProactive (mic suppressed)"
-        }
-        android.util.Log.d("LiveSessionController", "requestSpeak branch: $branch")
+        android.util.Log.d("LiveSessionController", "requestSpeak branch: ${speakBranchLabel(s)}")
         when {
             // Mid-conversation: fold the line into the ongoing turn flow (rare).
             // The segment is already active from when the conversation started.
-            s != null && s.inConversation -> s.sendText(prompt)
+            //
+            // sendText returns false rather than throwing when OkHttp's socket is already
+            // closing/closed - the same shape handleToolCall's own `sent` check documents. Ignoring
+            // that false is how a line vanished with nothing logged and nothing said.
+            s != null && s.inConversation ->
+                if (!s.sendText(prompt)) refuse(VoiceRefusal.SOCKET_GONE, userInitiated)
             // Warm socket already up: speak on it and stay warm. This is a
             // proactive line spoken on an already-connected socket - it never
             // fires LiveEvent.Connected, so start the billing segment here.
-            s != null && s.isWarm() -> {
-                s.speakOnWarm(prompt)
+            s != null && s.isWarm() ->
+                if (!s.speakOnWarm(prompt)) refuse(VoiceRefusal.SOCKET_GONE, userInitiated)
+            // A socket is still connecting (prewarm): speak once it's up, warm. If that connect
+            // never lands, the [LiveEvent.Closed] branch reports the dropped prompt - which is
+            // what [pendingSpeakUserInitiated] is carried for.
+            s != null -> {
+                pendingAction = Pending.PROACTIVE_WARM
+                pendingPrompt = prompt
+                pendingSpeakUserInitiated = userInitiated
             }
-            // A socket is still connecting (prewarm): speak once it's up, warm.
-            s != null -> { pendingAction = Pending.PROACTIVE_WARM; pendingPrompt = prompt }
             // Nothing live: spin up a short-lived speak-only session.
-            else -> startProactive(prompt)
+            else -> startProactive(prompt, userInitiated)
         }
     }
+
+    /**
+     * DIAGNOSTIC (B9, remove once root-caused): which branch a proactive line takes decides whether
+     * the mic reopens after it (only the `inConversation` fold-in branch skips
+     * `suppressMicNextTurn`), so a field report of "it listened after proactive speech" should show
+     * "fold-in" here.
+     *
+     * Lifted out of [requestSpeak] 2026-09-07 - purely so that function stays under detekt's
+     * cyclomatic-complexity ceiling once every branch of it started reporting its own failures.
+     * The four cases and their wording are unchanged.
+     */
+    private fun speakBranchLabel(s: GeminiLiveSession?): String = when {
+        s == null -> "cold startProactive (mic suppressed)"
+        s.inConversation -> "fold-in (mic WILL reopen after, by design)"
+        s.isWarm() -> "warm speakOnWarm (mic suppressed)"
+        else -> "mid-connect PROACTIVE_WARM (mic suppressed)"
+    }
+
+    /**
+     * Whether the [pendingPrompt] currently queued for a PROACTIVE_* action came from a person
+     * pressing something ([requestSpeak]'s `userInitiated`) rather than from a background raise.
+     *
+     * Held on the controller rather than passed along because the moment it is needed - the socket
+     * dying before the queued line could be spoken - is handled in the [LiveEvent.Closed] branch,
+     * which has no access to the call that queued it.
+     */
+    private var pendingSpeakUserInitiated = false
 
     /** Tears down the active session and the controller's scope. */
     fun destroy() {
@@ -486,7 +583,10 @@ class LiveSessionController(context: Context) {
             if (connectionMode == null) {
                 s.silentDestroy(); session = null
                 set(Phase.IDLE, IDLE_STATUS)
-                CompanionPhase.showNotice("VOICE PAUSED - SEE SETUP TO CONTINUE")
+                // resolveLiveConnectionMode() returns null for exactly one reason - no key saved -
+                // so this says the same thing onTap's own hasKey() guard does. It is reachable only
+                // when the key is cleared between that guard and this coroutine actually running.
+                refuse(VoiceRefusal.NO_KEY)
                 return@launch
             }
             val base = brain.buildBaseInstruction()
@@ -534,16 +634,28 @@ class LiveSessionController(context: Context) {
      * away from someone mid-sentence to tell them the phone is ringing, which they can already
      * hear.
      */
-    private fun speakAndListen(prompt: String, carriesReadThroughContent: Boolean = false) {
+    private fun speakAndListen(
+        prompt: String,
+        carriesReadThroughContent: Boolean = false,
+        userInitiated: Boolean = false,
+    ) {
         val existing = session
         if (existing != null && existing.inConversation) {
             // Already listening - fold the line in and let the open mic do its job.
-            existing.sendText(prompt)
+            if (!existing.sendText(prompt)) refuse(VoiceRefusal.SOCKET_GONE, userInitiated)
             return
         }
         if (!GeminiKeyProvider.hasKey() || !isOnline()) {
-            // No socket is possible, so say nothing rather than half-opening a window. The
-            // notification fallback in ProactiveDelivery is what carries the raise in this case.
+            // No socket is possible, so nothing is half-opened here.
+            //
+            // **CORRECTED 2026-09-07.** This comment used to read "so say nothing rather than
+            // half-opening a window. The notification fallback in ProactiveDelivery is what carries
+            // the raise in this case." The first clause is right; the second was not true.
+            // [ProactiveBus.speak] picks spoken-vs-notified BEFORE emitting and only calls
+            // [ProactiveDelivery.notify] on the branch it did NOT emit on - so a raise that got
+            // this far had already been recorded as SPOKEN and there is no fallback behind it. The
+            // line is lost. It is at least reported now, and on screen when a person asked for it.
+            refuse(if (!GeminiKeyProvider.hasKey()) VoiceRefusal.NO_KEY else VoiceRefusal.OFFLINE, userInitiated)
             return
         }
         existing?.silentDestroy()
@@ -561,6 +673,7 @@ class LiveSessionController(context: Context) {
             val connectionMode = resolveLiveConnectionMode()
             if (connectionMode == null) {
                 s.silentDestroy(); session = null; ringListening = false
+                refuse(VoiceRefusal.NO_KEY, userInitiated)
                 return@launch
             }
             val base = brain.buildBaseInstruction()
@@ -598,16 +711,21 @@ class LiveSessionController(context: Context) {
     }
 
     /** Cold start a speak-only proactive session (no warm socket existed). */
-    private fun startProactive(prompt: String) {
+    private fun startProactive(prompt: String, userInitiated: Boolean = false) {
         val s = newSession()
         session = s
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = prompt
+        pendingSpeakUserInitiated = userInitiated
         conversationMode = false
         connectedThisSession = false
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
-            if (connectionMode == null) { s.silentDestroy(); session = null; return@launch }
+            if (connectionMode == null) {
+                s.silentDestroy(); session = null
+                refuse(VoiceRefusal.NO_KEY, userInitiated)
+                return@launch
+            }
             val base = brain.buildBaseInstruction()
             s.start(
                 base, LiveToolbox.declarations(),
@@ -789,6 +907,17 @@ class LiveSessionController(context: Context) {
                         }
                     )
                 }
+                // A queued proactive line whose socket died before it could ever be spoken
+                // (2026-09-07). The `userInitiated` block above covers Pending.CONVERSATION - those
+                // set conversationMode true - so this is only ever the PROACTIVE_* queue, which was
+                // cleared four lines below in complete silence. On screen only when a person
+                // actually asked for the line; see [refuse].
+                if (pendingPrompt != null &&
+                    (pendingAction == Pending.PROACTIVE_WARM || pendingAction == Pending.PROACTIVE_COLD)
+                ) {
+                    refuse(VoiceRefusal.SOCKET_GONE, pendingSpeakUserInitiated)
+                }
+
                 // A prewarm socket (not a conversation) that never connected is a
                 // failed connect - escalate the retry backoff.
                 if (!everConnected && !userInitiated) consecutivePrewarmFailures++
@@ -796,6 +925,7 @@ class LiveSessionController(context: Context) {
                 session = null
                 pendingAction = Pending.NONE
                 pendingPrompt = null
+                pendingSpeakUserInitiated = false
                 conversationMode = false
                 connectedThisSession = false
                 set(Phase.IDLE, IDLE_STATUS)
@@ -1091,8 +1221,74 @@ class LiveSessionController(context: Context) {
         appContext.startActivity(intent)
     }
 
+    /**
+     * Every reason a DELIBERATE ask - a tap on the strip, a wake word, the Android Auto voice
+     * button, a "test voice" press - ends with the assistant saying nothing.
+     *
+     * **Why this exists (2026-09-07).** `live_connect_day` recorded 24 Live connects in one day
+     * with zero of them carrying a turn, while Kevin's own account of the same day was "I
+     * couldn't connect to voice" and his conclusion was that his Gemini credits had run out.
+     * They had not. Every guard below [onTap] was doing its job; several of them said nothing at
+     * all on the way out, and the ones that did spoke into
+     * [CompanionPhase.notice] while it had no collector (see that flow's own doc for the
+     * `replay = 0` half of the same defect).
+     *
+     * CLAUDE.md sec 7 forbids the assistant asserting an outcome it did not observe. This is the
+     * mirror image and costs exactly as much: **the app asserted nothing, and the person
+     * reasonably concluded something false.** A refused tap is a fact the app knows and the
+     * person cannot see.
+     *
+     * An enum rather than a string literal at each call site so [refusalNotice] can be a pure
+     * function a plain JVM test walks exhaustively - [LiveSessionController] needs a live
+     * Context/GeminiLiveSession/Room to construct at all, the same constraint
+     * [shouldAutoReconnectAfterClose] and [shouldRestoreAfterToolCall] already live with.
+     * `when` over an enum with no `else` is also what makes a NEW guard added below fail to
+     * compile until somebody writes its sentence.
+     */
+    internal enum class VoiceRefusal {
+        /** The tap stopped a conversation that was running, rather than starting one. */
+        ENDED_ACTIVE_CHAT,
+
+        /** A call is connected and owns the speakers. A RINGING phone is NOT this - see
+         *  [onTap]'s own comment for why answering by voice depends on that distinction. */
+        ON_A_CALL,
+
+        /** No BYO Gemini key is saved, so no socket can be opened at all. */
+        NO_KEY,
+
+        /** RECORD_AUDIO is not granted. Checked BEFORE a socket is opened as of 2026-09-07 -
+         *  see [onTap]. */
+        NO_MIC_PERMISSION,
+
+        /** The device reports no internet-capable network. */
+        OFFLINE,
+
+        /** There was a socket, and it was already gone by the time we tried to speak on it. */
+        SOCKET_GONE,
+    }
+
     companion object {
         private const val IDLE_STATUS = "Tap to talk"
+
+        /**
+         * The sentence a [VoiceRefusal] puts in front of the person who asked.
+         *
+         * Sentence case, matching [com.kevin.legion.ui.assistant.AssistantStripResolver]'s own
+         * labels, which is where these land - the SHOUTED strings these replaced ("ON A CALL",
+         * "NO SIGNAL OUT HERE") were written for the since-deleted Cruise/Lights Out screens.
+         *
+         * **Each one names what did NOT happen, then why.** "On a call" is a state; "Didn't start -
+         * you're on a call" is an outcome plus its reason, and only the second one answers the
+         * question the person actually has, which is why nothing happened when they asked.
+         */
+        internal fun refusalNotice(refusal: VoiceRefusal): String = when (refusal) {
+            VoiceRefusal.ENDED_ACTIVE_CHAT -> "Ended the chat - tap to start another"
+            VoiceRefusal.ON_A_CALL -> "Didn't start - you're on a call"
+            VoiceRefusal.NO_KEY -> "Didn't start - no Gemini key saved. Add one in Setup"
+            VoiceRefusal.NO_MIC_PERMISSION -> "Didn't start - microphone permission is off"
+            VoiceRefusal.OFFLINE -> "Didn't start - no network"
+            VoiceRefusal.SOCKET_GONE -> "Didn't speak - the connection had already closed"
+        }
 
         // Close reasons that are expected (user stop / idle timeout / teardown /
         // warm-hold expiry / our own deliberate pre-goAway close) and so never flashed as an
