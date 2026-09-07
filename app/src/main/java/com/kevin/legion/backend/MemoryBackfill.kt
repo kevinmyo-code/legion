@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionMemory
 import com.kevin.legion.data.local.MemoryAudit
@@ -170,10 +173,19 @@ object MemoryBackfill {
         val now = System.currentTimeMillis()
         if (now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
+        // Transport switch (django-engine Phase 5) - identical shape to
+        // [BodyBackfill.maybeAutoRun], see there for the reasoning behind bypassing the Supabase
+        // session gate on the Django branch rather than failing it.
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_MEMORY)) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_MEMORY) == Transport.DJANGO
         lastAutoRunAt = now
         try {
-            val report = runIfSignedIn(app, SupabaseAuth(app), SupabaseMemoryBackend(client)) ?: return
+            val backend = backends.memoryBackend() ?: return
+            val report = when {
+                onDjango -> run(app, backend)
+                else -> runIfSignedIn(app, SupabaseAuth(app), backend)
+            } ?: return
             MidnightEvents.memoryBackfillSucceeded(report.pushed, report.alreadyPresent, report.skippedLocalOnlyDeleted, report.failed)
         } catch (e: Exception) {
             MidnightEvents.memoryBackfillFailed(e)

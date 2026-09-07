@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionMemory
 import com.kevin.legion.data.local.MemoryEntry
@@ -38,10 +41,16 @@ object MemoryWriteThrough {
     @Volatile
     internal var backendOverride: MemoryBackend? = null
 
+    /**
+     * **This used to read `SupabaseClientProvider.get(context) ?: return null` followed by
+     * `SupabaseMemoryBackend(client)`, i.e. Supabase or nothing.** It now asks [EngineBackends]
+     * which transport `memory` is on and gets that same Supabase backend, a
+     * `DjangoMemoryBackend`, or null when neither is configured (django-engine Phase 5).
+     * `memory` still DEFAULTS to Supabase, so an untouched install behaves exactly as it did.
+     */
     private fun backend(context: Context): MemoryBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabaseMemoryBackend(client)
+        return EngineBackends(context).memoryBackend()
     }
 
     /** See [BodyWriteThrough.cancelPendingCreateIfPending]'s own doc comment for the full
@@ -297,10 +306,15 @@ object MemoryOutboxDrain {
      * matters. No-ops silently when Supabase is not configured or nobody is signed in. */
     suspend fun maybeDrain(context: Context) {
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
-        if (SupabaseAuth(app).resolveSignedInUserId() == null) return
+        // Transport switch (django-engine Phase 5) - see [BodyOutboxDrain.maybeDrain] for the full
+        // reasoning, which is identical here: the backend comes from EngineBackends, and the
+        // Supabase session gate is skipped on the Django branch because an engine device has no
+        // session to resolve and gating on one would leave a flipped aspect never draining.
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_MEMORY) == Transport.DJANGO
+        val backend = EngineBackends(app).memoryBackend() ?: return
+        if (!onDjango && SupabaseAuth(app).resolveSignedInUserId() == null) return
         try {
-            val report = drain(app, SupabaseMemoryBackend(client))
+            val report = drain(app, backend)
             MidnightEvents.memoryOutboxDrainSucceeded(report.succeeded, report.stillPending, report.poisoned)
         } catch (e: Exception) {
             MidnightEvents.memoryOutboxDrainFailed(e)

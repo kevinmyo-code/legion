@@ -1,0 +1,47 @@
+{
+  "results": [
+    {
+      "id": "07efc8d8-8ae0-4bd8-9dd2-03528758f8d9",
+      "started_at": "2026-09-04T20:45:41.300000Z",
+      "ended_at": "2026-09-04T20:47:52.054000Z",
+      "title": "Phone",
+      "summary": null,
+      "transcript": null,
+      "kind": "SOLO",
+      "provenance": "LLM_DERIVED",
+      "interrupted": false,
+      "created_at": "2026-09-04T20:55:17.167963Z",
+      "updated_at": "2026-09-04T20:56:23.378151Z",
+      "deleted_at": "2026-09-04T20:56:21.889000Z"
+    },
+    {
+      "id": "ed4f9548-5825-45b5-877b-8f57bd72923a",
+      "started_at": "2026-09-04T22:50:25.899000Z",
+      "ended_at": "2026-09-04T22:51:10.534000Z",
+      "title": "Cooking Instructions for Sautéed Apples",
+      "summary": "The speaker outlines steps to prepare apples by peeling and cutting them into bite-sized pieces, sautéing them in butter in a heated pan while adding cinnamon and sugar, and stirring everything until the apples soften.",
+      "transcript": "Die Äpfel schälen und in mundgerechte Stücke schneiden. Dann die Pfanne erhitzen und die Äpfel mit Butter anbraten. Währenddessen etwas Zimt und Zucker drüberstreuen. Und dann alles gut durchrühren, bis die Äpfel weich sind.",
+      "kind": "SOLO",
+      "provenance": "LLM_DERIVED",
+      "interrupted": false,
+      "created_at": "2026-09-04T22:51:16.528557Z",
+      "updated_at": "2026-09-04T22:51:16.528557Z",
+      "deleted_at": null
+    },
+    {
+      "id": "142f4cea-9673-4dc8-b31b-10a026026730",
+      "started_at": "2026-09-04T22:54:35.354000Z",
+      "ended_at": "2026-09-04T22:59:28.794000Z",
+      "title": "Transcription Check Seven",
+      "summary": "An automated check recording where a speaker recites the standard pangram sentence 'The quick brown fox jumps over the lazy dog' followed by 'Transcription check number seven', surrounded mostly by silence.",
+      "transcript": "The quick brown fox jumps over the lazy dog. Transcription check number seven.",
+      "kind": "SOLO",
+      "provenance": "LLM_DERIVED",
+      "interrupted": false,
+      "created_at": "2026-09-04T22:59:35.497680Z",
+      "updated_at": "2026-09-04T22:59:35.497680Z",
+      "deleted_at": null
+    }
+  ],
+  "next": null
+}

@@ -3,10 +3,9 @@ package com.kevin.legion.voice
 import android.content.Context
 import android.util.Log
 import com.kevin.legion.ai.VoiceNoteAgent
-import com.kevin.legion.backend.SupabaseClientProvider
-import com.kevin.legion.backend.SupabaseVoiceNotesBackend
 import com.kevin.legion.backend.VoiceNoteFields
 import com.kevin.legion.backend.VoiceNotesBackend
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.VoiceNote
 import com.kevin.legion.data.local.VoiceNoteDao
@@ -48,9 +47,13 @@ object VoiceNoteController {
     private const val TAG = "VoiceNoteController"
 
     /** Test seam: settable from a unit test so a [VoiceNotesBackend] fake can be injected without
-     * a real [SupabaseClientProvider] / network - same mechanism as
+     * a real backend or network - same mechanism as
      * [com.kevin.legion.location.PlaceController.backendOverride]. Defaults to null, meaning
-     * "resolve normally"; production code never sets this. */
+     * "resolve normally"; production code never sets this.
+     *
+     * This comment used to name `SupabaseClientProvider` as the thing a fake stands in for; since
+     * [backend] resolves through [com.kevin.legion.backend.engine.EngineBackends], the thing being
+     * avoided is now either a Supabase client or an engine token, depending on the transport. */
     @Volatile
     internal var backendOverride: VoiceNotesBackend? = null
 
@@ -103,12 +106,25 @@ object VoiceNoteController {
         }
     }
 
-    /** Resolves the active backend, or null when Supabase is not configured - the signal every
-     * sync-touching function below branches on. Never performs network I/O itself. */
+    /**
+     * Resolves the active backend, or null when this aspect's transport is not usable on this
+     * device - the signal every sync-touching function below branches on. Never performs network
+     * I/O itself.
+     *
+     * **This used to read `SupabaseClientProvider.get(context) ?: return null` followed by
+     * `SupabaseVoiceNotesBackend(client)`, i.e. Supabase or nothing.** It now asks
+     * [com.kevin.legion.backend.engine.EngineBackends] which transport `voice_notes` is on and
+     * gets that same Supabase backend, a `DjangoVoiceNotesBackend`, or null when neither is
+     * configured (django-engine Phase 5). `voice_notes` still DEFAULTS to Supabase, so an
+     * untouched install behaves exactly as it did.
+     *
+     * **The audio file is not affected by any of this**, on either transport: neither backend has
+     * an audio field to send, because `public.voice_notes` has no such column. The file stays on
+     * the phone and [com.kevin.legion.data.local.VoiceNoteStore] owns its lifetime.
+     */
     private fun backend(context: Context): VoiceNotesBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabaseVoiceNotesBackend(client)
+        return EngineBackends(context).voiceNotesBackend()
     }
 
     // -------------------------------------------------------------------- start / stop

@@ -1,0 +1,35 @@
+{
+  "results": [
+    {
+      "id": "6c261297-9d9d-4572-86da-bf97330011d8",
+      "vehicle_id": "00:1D:A5:0E:82:0E",
+      "text": "Driver's name is Kevin.",
+      "category": "driver",
+      "source": "consolidated",
+      "importance": 7,
+      "logged_at": "2026-07-26T18:52:55.295000Z",
+      "last_accessed_at": "2026-07-26T18:52:55.295000Z",
+      "provenance": "USER",
+      "created_at": "2026-09-02T17:47:53.851792Z",
+      "updated_at": "2026-09-02T17:47:53.851792Z",
+      "deleted_at": null,
+      "origin_guid": "cc08cf9b-265d-4633-9f60-7d5670c2be1e"
+    },
+    {
+      "id": "ccb3dddd-e209-461d-b27a-1b0065043760",
+      "vehicle_id": "00:1D:A5:0E:82:0E",
+      "text": "Driver's home address is 23318 Kings Spoke Drive, Katy, Texas.",
+      "category": "driver",
+      "source": "consolidated",
+      "importance": 9,
+      "logged_at": "2026-07-26T18:52:55.295000Z",
+      "last_accessed_at": "2026-07-26T18:52:55.295000Z",
+      "provenance": "USER",
+      "created_at": "2026-09-02T17:47:54.156525Z",
+      "updated_at": "2026-09-02T17:47:54.156525Z",
+      "deleted_at": null,
+      "origin_guid": "7d0905c0-2c4c-49e9-ba46-aac51026fb48"
+    }
+  ],
+  "next": null
+}

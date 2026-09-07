@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.BodyweightLog
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MealLog
@@ -297,10 +300,23 @@ object BodyBackfill {
         val now = System.currentTimeMillis()
         if (now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
+        // Transport switch (django-engine Phase 5): the gate and the backend both come from
+        // EngineBackends now, so a device whose `body` row is flipped to Django is not turned away
+        // for having no Supabase project. `body` still defaults to Supabase.
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_BODY)) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_BODY) == Transport.DJANGO
         lastAutoRunAt = now
         try {
-            val report = runIfSignedIn(app, SupabaseAuth(app), SupabaseBodyBackend(client)) ?: return
+            val backend = backends.bodyBackend() ?: return
+            // On Django there is no Supabase session to resolve, so [runIfSignedIn]'s gate is
+            // bypassed rather than failed - gating on a session that cannot exist would leave a
+            // flipped aspect silently never backfilling. Everything else about the run is
+            // identical, including that it happens INLINE (see this function's own doc comment).
+            val report = when {
+                onDjango -> run(app, backend)
+                else -> runIfSignedIn(app, SupabaseAuth(app), backend)
+            } ?: return
             MidnightEvents.bodyBackfillSucceeded(report.pushed, report.alreadyPresent, report.skippedLocalOnlyDeleted, report.failed)
         } catch (e: Exception) {
             MidnightEvents.bodyBackfillFailed(e)

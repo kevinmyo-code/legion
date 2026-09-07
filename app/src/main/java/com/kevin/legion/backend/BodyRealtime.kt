@@ -5,6 +5,9 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.channel
@@ -73,8 +76,27 @@ object BodyRealtime {
     // doc comment traces, never carried over to this file. `channels.isNotEmpty()` stays a
     // synchronous pre-launch check (unchanged) since it is reading in-memory state, not auth.
     private fun subscribe(context: Context) {
+        // The transport switch (django-engine Phase 5), the same guard
+        // [EventsRealtime.subscribe] already carries and for the same reason: Realtime is
+        // Supabase's mechanism, so an aspect moved to the Django engine must not also hold a
+        // `postgres_changes` socket open against a project it no longer reads. Checked here rather
+        // than in [bind] so flipping the debug transport row takes effect on the next foreground
+        // return instead of needing a process restart.
+        //
+        // **What takes over is NOT a poll, and that is a real gap rather than an oversight.**
+        // [com.kevin.legion.backend.engine.EnginePoll] covers `events` and `checklists` only, so a
+        // `body` aspect flipped to Django has no 60 s live-change mechanism at all - it falls back
+        // to the five-minute foreground pull ([BodySync.maybeAutoPull]), which is slower but never
+        // wrong. Widening that poll belongs with `body`'s own cutover run on the phone.
+        val onDjango =
+            EngineTransport(context).transportFor(EngineBackends.ASPECT_BODY) == Transport.DJANGO
+        // Folded into ONE guard with the pre-existing `channels.isNotEmpty()` check rather than
+        // sitting on its own line above it - byte for byte the shape [EventsRealtime.subscribe]
+        // uses (`if (onDjango || channel != null) return`), and it also keeps this function inside
+        // detekt's two-return ceiling without a suppression. Both halves are pure reads of
+        // in-memory or SharedPreferences state, so the order between them is free.
+        if (onDjango || channels.isNotEmpty()) return
         val client = SupabaseClientProvider.get(context) ?: return
-        if (channels.isNotEmpty()) return
 
         scope.launch {
             if (SupabaseAuth(context).resolveSignedInUserId() == null) return@launch

@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionMemory
 import com.kevin.legion.data.local.MemoryAudit
@@ -329,13 +332,17 @@ object MemorySync {
         val now = System.currentTimeMillis()
         if (now - lastAutoPullAt < AUTO_PULL_MIN_INTERVAL_MS) return
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
+        // Transport switch (django-engine Phase 5) - identical shape to [BodySync.maybeAutoPull],
+        // see there for the reasoning. The throttle slot is still reserved before the launch.
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_MEMORY)) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_MEMORY) == Transport.DJANGO
         lastAutoPullAt = now
         autoPullScope.launch {
             try {
-                val userId = resolveUserIdForAutoPull(SupabaseAuth(app))
-                if (userId == null) return@launch
-                val report = pull(app, SupabaseMemoryBackend(client))
+                if (!onDjango && resolveUserIdForAutoPull(SupabaseAuth(app)) == null) return@launch
+                val backend = backends.memoryBackend() ?: return@launch
+                val report = pull(app, backend)
                 MidnightEvents.memoryAutoPullSucceeded(
                     report.inserted, report.updated, report.skippedLocalNewer,
                     report.tombstoned, report.skippedTombstoneNoLocalMatch,

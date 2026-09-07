@@ -4,8 +4,7 @@ import android.content.Context
 import android.location.Location
 import android.util.Log
 import com.kevin.legion.backend.PlacesBackend
-import com.kevin.legion.backend.SupabaseClientProvider
-import com.kevin.legion.backend.SupabasePlacesBackend
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.engine.migration.EnginePlacesRetirementCopy
@@ -46,19 +45,37 @@ object PlaceController {
 
     /**
      * Test seam: settable from a unit test so a [PlacesBackend] fake can be injected without a
-     * real [SupabaseClientProvider] / network. Defaults to null, meaning "resolve normally" -
-     * production code never sets this.
+     * real backend or network. Defaults to null, meaning "resolve normally" - production code
+     * never sets this.
+     *
+     * This comment used to name `SupabaseClientProvider` as the thing a fake stands in for; since
+     * [backend] resolves through [com.kevin.legion.backend.engine.EngineBackends], the thing being
+     * avoided is now either a Supabase client or an engine token, depending on the transport.
      */
     @Volatile
     internal var backendOverride: PlacesBackend? = null
 
-    /** Resolves the active backend, or null when Supabase is not configured (the signal every
-     * function below branches on). Never performs network I/O itself - it only builds a client
-     * wrapper; the actual request happens in whichever [PlacesBackend] call the caller makes. */
+    /**
+     * Resolves the active backend, or null when this aspect's transport is not usable on this
+     * device (the signal every function below branches on). Never performs network I/O itself - it
+     * only builds a client wrapper; the actual request happens in whichever [PlacesBackend] call
+     * the caller makes.
+     *
+     * **This used to read `SupabaseClientProvider.get(context) ?: return null` followed by
+     * `SupabasePlacesBackend(client)`, i.e. Supabase or nothing.** It now asks
+     * [EngineBackends] which transport `places` is on and gets that same Supabase backend, or a
+     * [com.kevin.legion.backend.engine.DjangoPlacesBackend], or null when neither is configured
+     * (django-engine Phase 5). `places` still DEFAULTS to Supabase, so an untouched install
+     * behaves exactly as it did; only the debug Setup row changes the answer.
+     *
+     * **Nothing about this file's durability changes with it.** This controller is pure
+     * write-through with no outbox: a failed write is spoken as a failure and nothing is queued,
+     * on either transport. See `DjangoPlacesBackend`'s own class doc for why the Django transport
+     * deliberately does not add durability the Supabase one does not have.
+     */
     private fun backend(context: Context): PlacesBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabasePlacesBackend(client)
+        return EngineBackends(context).placesBackend()
     }
 
     private fun placeDao(context: Context) = CarDatabase.getDatabase(context).placeDao()

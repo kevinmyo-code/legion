@@ -30,6 +30,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
 | [[.scratch/django-engine/map\|django-engine]] | [[12-pytest-leaves-a-connection-behind\|12]] | build | Every pytest run leaves a connection on test_postgres and breaks the next one |
+| [[.scratch/django-engine/map\|django-engine]] | [[13-provisional-ingestion-has-no-endpoint\|13]] | decision | Rule 7 provisional ingestion has no endpoint, and the commit paths structurally cannot be one |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
@@ -80,6 +81,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[12-newsletter-summarizer\|12]] | build | Newsletters summarize themselves, no setup required |
 | [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
+| [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[08-daily-prescription-and-autolog\|08]] | build | The checklist prescribes a day, and a ticked day logs itself |
@@ -117,7 +119,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The projects tool surface, and its hands path  waiting on [[06-the-azure-devops-sync\|06]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[02-models-column-exact\|02]] | build | The 41 tables as Django models, column-exact, with the integrity SQL shipped by migration  waiting on [[01-server-skeleton\|01]] |
-| [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus  waiting on [[02-models-column-exact\|02]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[04-domain-api-and-changes-feed\|04]] | build | The domain API: one resource shape for 38 tables, a changes feed, idempotent upsert by origin_guid  waiting on [[02-models-column-exact\|02]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[05-media-photos-and-audio\|05]] | build | Media: receipt photos and voice-note audio on a volume, served only to a token  waiting on [[04-domain-api-and-changes-feed\|04]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[06-worker-backups-first\|06]] | build | The worker: a nightly dump with a drilled restore, then Canvas, then WebAssign  waiting on [[02-models-column-exact\|02]] |
@@ -173,7 +174,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
-| [[.scratch/django-engine/map\|django-engine]] | 12 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
+| [[.scratch/django-engine/map\|django-engine]] | 13 | 12 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |

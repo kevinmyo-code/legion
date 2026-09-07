@@ -1,0 +1,35 @@
+{
+  "results": [
+    {
+      "id": "b021c3f8-cf90-4a79-afd8-efc717a18f74",
+      "label": "fancy walmart",
+      "latitude": 29.9114766666667,
+      "longitude": -95.7280833333333,
+      "provenance": "USER",
+      "created_at": "2026-08-26T21:11:36.342899Z",
+      "updated_at": "2026-08-26T21:11:36.342899Z",
+      "deleted_at": null
+    },
+    {
+      "id": "2b9c119d-9294-4599-b29a-668f957109f3",
+      "label": "home",
+      "latitude": 29.858552,
+      "longitude": -95.780431,
+      "provenance": "USER",
+      "created_at": "2026-08-26T21:11:36.657888Z",
+      "updated_at": "2026-08-26T21:11:36.657888Z",
+      "deleted_at": null
+    },
+    {
+      "id": "8869bfb7-a911-443d-82ac-541c86962338",
+      "label": "work",
+      "latitude": 29.782164,
+      "longitude": -95.532689,
+      "provenance": "USER",
+      "created_at": "2026-08-26T21:11:36.903447Z",
+      "updated_at": "2026-08-26T21:11:36.903447Z",
+      "deleted_at": null
+    }
+  ],
+  "next": null
+}

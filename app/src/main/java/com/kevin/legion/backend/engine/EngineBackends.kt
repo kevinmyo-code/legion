@@ -1,11 +1,19 @@
 package com.kevin.legion.backend.engine
 
 import android.content.Context
+import com.kevin.legion.backend.BodyBackend
 import com.kevin.legion.backend.ChecklistsBackend
 import com.kevin.legion.backend.EventsBackend
+import com.kevin.legion.backend.MemoryBackend
+import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.SupabaseAuth
+import com.kevin.legion.backend.SupabaseBodyBackend
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseEventsBackend
+import com.kevin.legion.backend.SupabaseMemoryBackend
+import com.kevin.legion.backend.SupabasePlacesBackend
+import com.kevin.legion.backend.SupabaseVoiceNotesBackend
+import com.kevin.legion.backend.VoiceNotesBackend
 
 /**
  * The one place the per-aspect transport switch ([EngineTransport]) turns into an actual backend
@@ -112,6 +120,52 @@ class EngineBackends(
      */
     fun isFallingBackToSupabase(aspect: String): Boolean = transport.isFallingBackToSupabase(aspect)
 
+    /**
+     * The places backend for whatever transport `places` is set to, or null when that transport is
+     * not usable on this device (no Supabase project saved; no engine address or token).
+     *
+     * **No auth wait on either branch, and that is on purpose.**
+     * [com.kevin.legion.location.PlaceController] is pure write-through with no outbox - a failed
+     * write is spoken as a failure and nothing is queued - and it has never waited for a Supabase
+     * session before resolving its backend. Adding a wait here would change when `tag_place`
+     * answers, on a path that sits behind a voice tool and a geofence.
+     */
+    fun placesBackend(): PlacesBackend? = when (transport.transportFor(ASPECT_PLACES)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabasePlacesBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoPlacesBackend(it) }
+    }
+
+    /** The voice-notes backend for whatever transport `voice_notes` is set to, or null. Same
+     * no-auth-wait shape as [placesBackend] - `VoiceNoteController` resolves its backend inside a
+     * stop-recording path that must not block. */
+    fun voiceNotesBackend(): VoiceNotesBackend? = when (transport.transportFor(ASPECT_VOICE_NOTES)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabaseVoiceNotesBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoVoiceNotesBackend(it) }
+    }
+
+    /**
+     * The body backend for whatever transport `body` is set to, or null.
+     *
+     * **"Now" semantics - no Supabase session wait - and every existing caller already does its
+     * own.** `BodySync.maybeAutoPull`, `BodyOutboxDrain.maybeDrain` and `BodyBackfill.maybeAutoRun`
+     * each await [SupabaseAuth.resolveSignedInUserId] themselves before they get here (the
+     * cold-start fix traced in their own doc comments), and `BodyWriteThrough` deliberately does
+     * not wait at all. Putting a wait inside this function would either duplicate theirs or impose
+     * one on the write path that has never had one, so the resolution stays where it is and this
+     * only answers which transport.
+     */
+    fun bodyBackend(): BodyBackend? = when (transport.transportFor(ASPECT_BODY)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabaseBodyBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoBodyBackend(it) }
+    }
+
+    /** The memory backend for whatever transport `memory` is set to, or null. Same "Now" semantics
+     * as [bodyBackend], for the same reason. */
+    fun memoryBackend(): MemoryBackend? = when (transport.transportFor(ASPECT_MEMORY)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabaseMemoryBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoMemoryBackend(it) }
+    }
+
     private fun djangoEventsBackend(): EventsBackend? =
         engineHttp().takeIf { it.isUsable() }?.let { DjangoEventsBackend(it) }
 
@@ -123,5 +177,16 @@ class EngineBackends(
     companion object {
         const val ASPECT_EVENTS = "events"
         const val ASPECT_CHECKLISTS = "checklists"
+
+        // The Phase 5 aspects. Every one of these strings already appears in
+        // [EngineTransport.KNOWN_ASPECTS] (the debug toggle screen has listed them since the
+        // slice landed); naming them here is what lets a call site ask about one without a
+        // literal, and it does NOT change any default - all four resolve to
+        // [Transport.SUPABASE] until they are in [EngineTransport.DJANGO_BY_DEFAULT], which is a
+        // cutover that belongs with that aspect's own run on the phone.
+        const val ASPECT_PLACES = "places"
+        const val ASPECT_VOICE_NOTES = "voice_notes"
+        const val ASPECT_BODY = "body"
+        const val ASPECT_MEMORY = "memory"
     }
 }

@@ -1,0 +1,33 @@
+{
+  "results": [
+    {
+      "id": "806d1884-95e0-431f-99cd-945ca9217374",
+      "event": "spoken",
+      "store": "speech",
+      "detail": "It's a",
+      "ref_id": 0,
+      "vehicle_id": "00:1D:A5:0E:82:0E",
+      "logged_at": "2026-08-21T04:20:02.063000Z",
+      "provenance": "USER",
+      "created_at": "2026-09-02T17:48:11.948870Z",
+      "updated_at": "2026-09-02T17:48:11.948870Z",
+      "deleted_at": null,
+      "origin_guid": "06ab059e-ce15-4104-86e1-d3a4cd02ca65"
+    },
+    {
+      "id": "5c86ed0c-70b5-469e-be1b-3fc069223d83",
+      "event": "spoken",
+      "store": "speech",
+      "detail": "It's a warm,",
+      "ref_id": 0,
+      "vehicle_id": "00:1D:A5:0E:82:0E",
+      "logged_at": "2026-08-21T04:20:02.258000Z",
+      "provenance": "USER",
+      "created_at": "2026-09-02T17:48:12.064501Z",
+      "updated_at": "2026-09-02T17:48:12.064501Z",
+      "deleted_at": null,
+      "origin_guid": "a8c262ad-a7ac-4ab4-8a3f-bdeebda41100"
+    }
+  ],
+  "next": null
+}

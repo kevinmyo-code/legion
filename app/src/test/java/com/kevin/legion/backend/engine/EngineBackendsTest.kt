@@ -139,6 +139,70 @@ class EngineBackendsTest {
     }
 
     @Test
+    fun `the four Phase 5 aspects resolve to Django only once their own row is flipped`() {
+        // The gate this ticket's brief asks to be proven rather than assumed. All four default to
+        // SUPABASE (they are absent from EngineTransport.DJANGO_BY_DEFAULT), so on this device -
+        // which IS signed in to an engine, and for which events/checklists would default to
+        // Django - not one of them resolves to a Django backend until its row says so.
+        //
+        // The Supabase branch answers null here because no Supabase project is configured in this
+        // environment, which is itself the right answer for an unconfigured install; what these
+        // assertions actually pin is the negative - never a Django backend unless the toggle says
+        // so - and then the positive once it does.
+        val transport = EngineTransport(context)
+        context.getSharedPreferences("engine_transport", android.content.Context.MODE_PRIVATE)
+            .edit().clear().apply()
+
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_PLACES))
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_VOICE_NOTES))
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_BODY))
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_MEMORY))
+
+        assertTrue(backends().placesBackend() !is DjangoPlacesBackend)
+        assertTrue(backends().voiceNotesBackend() !is DjangoVoiceNotesBackend)
+        assertTrue(backends().bodyBackend() !is DjangoBodyBackend)
+        assertTrue(backends().memoryBackend() !is DjangoMemoryBackend)
+
+        // Nor do they claim to be falling back: a default of Supabase is not a fallback, and
+        // saying so would put a sentence on the Setup screen about a flip that never happened.
+        assertTrue(!backends().isFallingBackToSupabase(EngineBackends.ASPECT_BODY))
+
+        transport.setTransport(EngineBackends.ASPECT_PLACES, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_VOICE_NOTES, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_BODY, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_MEMORY, Transport.DJANGO)
+
+        assertTrue(backends().placesBackend() is DjangoPlacesBackend)
+        assertTrue(backends().voiceNotesBackend() is DjangoVoiceNotesBackend)
+        assertTrue(backends().bodyBackend() is DjangoBodyBackend)
+        assertTrue(backends().memoryBackend() is DjangoMemoryBackend)
+    }
+
+    @Test
+    fun `a Phase 5 aspect flipped to Django with no engine token resolves to nothing`() {
+        // Same guard the slice aspects have: an explicit flip is honoured verbatim even with no
+        // token, so the write fails loudly rather than being re-pointed at Supabase behind the
+        // driver's back. See EngineTransport's class doc, third paragraph.
+        val transport = EngineTransport(context)
+        transport.setTransport(EngineBackends.ASPECT_BODY, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_MEMORY, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_PLACES, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_VOICE_NOTES, Transport.DJANGO)
+        val signedOut = EngineConfig(
+            context = context,
+            encrypt = { plain -> "ENC($plain)" },
+            decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
+        )
+        signedOut.clearSession()
+        val backends = EngineBackends(context, signedOut)
+
+        assertNull(backends.bodyBackend())
+        assertNull(backends.memoryBackend())
+        assertNull(backends.placesBackend())
+        assertNull(backends.voiceNotesBackend())
+    }
+
+    @Test
     fun `isConfiguredFor answers for the aspect's OWN transport, not a global one`() {
         EngineTransport(context).setTransport(EngineBackends.ASPECT_CHECKLISTS, Transport.DJANGO)
 

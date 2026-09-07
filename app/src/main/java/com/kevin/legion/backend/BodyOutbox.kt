@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.BodyweightLog
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MealLog
@@ -35,10 +38,20 @@ object BodyWriteThrough {
     @Volatile
     internal var backendOverride: BodyBackend? = null
 
+    /**
+     * **This used to read `SupabaseClientProvider.get(context) ?: return null` followed by
+     * `SupabaseBodyBackend(client)`, i.e. Supabase or nothing.** It now asks [EngineBackends]
+     * which transport `body` is on and gets that same Supabase backend, a `DjangoBodyBackend`, or
+     * null when neither is configured (django-engine Phase 5). `body` still DEFAULTS to Supabase,
+     * so an untouched install behaves exactly as it did.
+     *
+     * **No auth wait, unchanged.** This is the write-through path and it has never waited for a
+     * Supabase session - see [EngineBackends.bodyBackend]'s own doc comment for why the wait stays
+     * at the call sites that already do it rather than moving inside the resolver.
+     */
     private fun backend(context: Context): BodyBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabaseBodyBackend(client)
+        return EngineBackends(context).bodyBackend()
     }
 
     /**
@@ -575,10 +588,17 @@ object BodyOutboxDrain {
      * shared resolver instead). */
     suspend fun maybeDrain(context: Context) {
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
-        if (SupabaseAuth(app).resolveSignedInUserId() == null) return
+        // Transport switch (django-engine Phase 5). The backend comes from EngineBackends now,
+        // which answers Supabase or Django per EngineTransport; `body` still defaults to Supabase.
+        // The Supabase session gate below is SKIPPED on the Django branch, and that is the whole
+        // reason the transport is read here rather than only inside the resolver: a device signed
+        // in to an engine has no Supabase session to resolve, so gating on one would leave a
+        // flipped aspect silently never draining.
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_BODY) == Transport.DJANGO
+        val backend = EngineBackends(app).bodyBackend() ?: return
+        if (!onDjango && SupabaseAuth(app).resolveSignedInUserId() == null) return
         try {
-            val report = drain(app, SupabaseBodyBackend(client))
+            val report = drain(app, backend)
             MidnightEvents.bodyOutboxDrainSucceeded(report.succeeded, report.stillPending, report.poisoned)
         } catch (e: Exception) {
             MidnightEvents.bodyOutboxDrainFailed(e)

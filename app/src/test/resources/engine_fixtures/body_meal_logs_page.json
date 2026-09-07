@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "id": "691bc4e2-2644-4bc5-8929-875036c603f7",
+      "description": "Rice with pork and potatoes, potato chips, and coffee with a scoop of creamer",
+      "calories_kcal": 765,
+      "protein_g": 28.0,
+      "carbs_g": 87.0,
+      "fat_g": 34.0,
+      "logged_at": "2026-08-07T18:28:52.693000Z",
+      "source_image_path": null,
+      "trust_tier": "REPORTED",
+      "provenance": "USER",
+      "created_at": "2026-09-02T16:41:36.139881Z",
+      "updated_at": "2026-09-02T16:41:36.139881Z",
+      "deleted_at": null,
+      "origin_guid": "1392d79b-ae1b-47cf-84ed-4488fb7cc9e8"
+    },
+    {
+      "id": "2f3d0e64-03fd-41bb-85fc-30b60bfb0717",
+      "description": "Honey Oats cereal with milk and a side of chips",
+      "calories_kcal": 465,
+      "protein_g": 13.0,
+      "carbs_g": 78.0,
+      "fat_g": 12.0,
+      "logged_at": "2026-08-08T02:54:44.496000Z",
+      "source_image_path": null,
+      "trust_tier": "REPORTED",
+      "provenance": "USER",
+      "created_at": "2026-09-02T16:41:36.307519Z",
+      "updated_at": "2026-09-02T16:41:36.307519Z",
+      "deleted_at": null,
+      "origin_guid": "beb549dc-ab52-48f3-bbce-3c56899d59e7"
+    }
+  ],
+  "next": null
+}

@@ -8,6 +8,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -147,6 +148,25 @@ class EngineHttp(
     suspend fun patch(path: String, jsonBody: String): Result<EngineOk> =
         send(path) { url ->
             client.patch(url) {
+                authorize()
+                contentType(ContentType.Application.Json)
+                setBody(jsonBody)
+            }
+        }
+
+    /**
+     * `PUT <path>` - the upsert verb of `server/api/synced.py`'s generic shape, added for the
+     * Phase 5 aspects (places, voice notes, body, memory).
+     *
+     * **Distinct from [patch], not a synonym for it.** The Phase 2 slice patches: `PATCH
+     * /api/events/<id>` is DRF's `partial=True` update of a row that must already exist. This is
+     * an upsert whose identity comes from the URL, so the same request creates the row when it is
+     * absent and replaces it when it is present, and answers 200 either way - which is what makes
+     * a queued write safe to drain twice.
+     */
+    suspend fun put(path: String, jsonBody: String): Result<EngineOk> =
+        send(path) { url ->
+            client.put(url) {
                 authorize()
                 contentType(ContentType.Application.Json)
                 setBody(jsonBody)

@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "id": "2af976ec-2367-4f01-b40f-10a9a1579c9f",
+      "text": "Work address is 945 Bunker Hill Road, Houston, TX 77024",
+      "logged_at": "2026-07-26T21:06:18.969000Z",
+      "provenance": "USER",
+      "created_at": "2026-09-02T17:47:51.703442Z",
+      "updated_at": "2026-09-02T17:47:51.703442Z",
+      "deleted_at": null,
+      "origin_guid": "3b501785-fe66-45ce-8bd6-576b6c1d4493"
+    },
+    {
+      "id": "44ef49a2-4caf-4998-a351-8670fbca17be",
+      "text": "Gym address is 22314 FM 529, Cypress, TX 77433",
+      "logged_at": "2026-07-26T21:07:02.513000Z",
+      "provenance": "USER",
+      "created_at": "2026-09-02T17:47:52.352486Z",
+      "updated_at": "2026-09-02T17:47:52.352486Z",
+      "deleted_at": null,
+      "origin_guid": "fdc26078-920f-4766-9eba-53a8c388721f"
+    }
+  ],
+  "next": null
+}
