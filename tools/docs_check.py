@@ -99,10 +99,17 @@ def main() -> int:
     # Obsidian resolves a wikilink by basename, or by vault-relative path when the
     # basename is ambiguous. Fifteen files are called map.md, so the path form is
     # the only thing that works for them. Accept both.
+    # Excluded paths are matched RELATIVE to ROOT, never against the absolute path. Matching the
+    # absolute path looks equivalent and is not: run this script from inside a git worktree and
+    # ROOT itself sits under .claude/worktrees, so every file matched the exclusion, the index came
+    # out EMPTY, and all 566 wikilinks in the repo were reported as resolving to nothing - a
+    # check that fails everything is as useless as one that passes everything, and this one did it
+    # only in the worktree setup memory/ recommends for running two agents at once.
     def indexable():
         for pattern in ("*.md", "*.canvas", "*.base"):
             for f in ROOT.rglob(pattern):
-                if ".claude/worktrees" in f.as_posix() or "/build/" in f.as_posix():
+                rel = f.relative_to(ROOT).as_posix()
+                if rel.startswith(".claude/worktrees/") or "/build/" in f"/{rel}":
                     continue
                 yield f
 
