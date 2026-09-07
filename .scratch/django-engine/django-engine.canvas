@@ -51,6 +51,16 @@
       "color": "1"
     },
     {
+      "id": "a21f092cc99f135a",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/14-rules-that-live-only-on-the-phone.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "af1dc493ce677ca5",
       "type": "file",
       "file": ".scratch/django-engine/issues/02-models-column-exact.md",

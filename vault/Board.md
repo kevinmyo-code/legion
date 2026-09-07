@@ -31,6 +31,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
 | [[.scratch/django-engine/map\|django-engine]] | [[12-pytest-leaves-a-connection-behind\|12]] | build | Every pytest run leaves a connection on test_postgres and breaks the next one |
 | [[.scratch/django-engine/map\|django-engine]] | [[13-provisional-ingestion-has-no-endpoint\|13]] | decision | Rule 7 provisional ingestion has no endpoint, and the commit paths structurally cannot be one |
+| [[.scratch/django-engine/map\|django-engine]] | [[14-rules-that-live-only-on-the-phone\|14]] | build | Three rules live only on the phone, and a second app would not have them |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
@@ -174,7 +175,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
-| [[.scratch/django-engine/map\|django-engine]] | 13 | 12 | [[.scratch/django-engine/django-engine.canvas\|open]] |
+| [[.scratch/django-engine/map\|django-engine]] | 14 | 13 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
