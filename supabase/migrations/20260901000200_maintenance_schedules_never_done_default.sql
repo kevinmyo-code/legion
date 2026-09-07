@@ -22,7 +22,9 @@
 -- checked for `never_done = true` before this default change is relied on, which this migration
 -- deliberately does NOT do on Kevin's behalf.
 --
--- UNAPPLIED as of this commit - no CLI or project credentials in this environment, matching
+-- APPLIED. (This line said UNAPPLIED until 2026-09-07, when the fleet routing ticket read the live
+-- schema and found the column present. There is no migration history table in this project, so a
+-- header is the only record of what has run, and a header that lies is worse than no header.)
 -- 20260829000200_vehicles_archived.sql's own note. Apply by hand (or via CI with real credentials).
 
 alter table public.maintenance_schedules

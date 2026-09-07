@@ -219,7 +219,19 @@ class SyncedSerializer(serializers.ModelSerializer):
         # never gets the chance to fire. Each is therefore supplied here.
         # `api/events.py`'s own CREATE_DEFAULTS comment is the longer
         # version of this paragraph; it was found there first.
-        validated_data["id"] = uuid.uuid4()
+        #
+        # **`id` is conditional, and the condition is not defensive coding.**
+        # Two of the fleet tables have no `id` column at all: `chassis_quirks`
+        # is keyed on its own `quirk_id` text and `vehicle_specs` on the
+        # `vehicle_id` that is simultaneously its primary key and its foreign
+        # key (`api/fleet.py`'s own module doc, shapes 3 and 4). Django creates
+        # no implicit `id` for a model that declares `primary_key=True`
+        # elsewhere, so `objects.create(id=...)` on either raises
+        # `TypeError: 'id' is an invalid keyword argument` - a 500, not a 400.
+        # This line used to be unconditional, which was correct for the
+        # sixteen tables that existed before fleet.
+        if "id" in field_names:
+            validated_data["id"] = uuid.uuid4()
         validated_data["created_at"] = Now()
         validated_data["updated_at"] = Now()
         if "provenance" in field_names:
@@ -299,6 +311,18 @@ class SyncedModelViewSet(viewsets.ViewSet):
     identity_is_primary_key: bool = False
 
     allow_delete: bool = True
+    # Why this table has no DELETE, in one sentence, shown to the caller in
+    # the 405. It exists because `allow_delete = False` covers two genuinely
+    # different situations and one wording cannot be true of both: an
+    # append-only audit trail (`memory_audit`), and a table that simply has
+    # no `deleted_at` column to write a tombstone into (`chassis_quirks`,
+    # `vehicle_specs` - see `api/fleet.py`). The 405 said "it is an audit
+    # trail, and a trail with rows removed from it is not one" for every
+    # such table before fleet arrived, which would have been a false
+    # statement about reference data. Left empty, the refusal drops the
+    # reason clause and keeps only what is true regardless - terser, never
+    # wrong.
+    no_delete_reason: str = ""
     put_revives_tombstone: bool = False
     # False strips PUT, POST and DELETE from the URL map entirely. See
     # `GatedReadViewSet`.
@@ -328,6 +352,42 @@ class SyncedModelViewSet(viewsets.ViewSet):
     @classmethod
     def route_name(cls) -> str:
         return f"{cls.aspect}-{cls.table}".replace("_", "-")
+
+    @classmethod
+    def detail_path_suffix(cls) -> str:
+        """The part of the detail route after the collection prefix, and the
+        one shape a table is allowed to differ in.
+
+        One segment everywhere but `maintenance_schedules`, whose identity is
+        the composite `(vehicle_id, service_name)` that
+        `maintenance_schedules_unique_per_vehicle` enforces - there is no
+        single column to put in a URL, and inventing one would have meant
+        inventing an identity the phone does not have
+        (`FleetBackend.upsertMaintenanceSchedule` upserts by that pair, in as
+        many words). It overrides this and `identity_path_parameters` together,
+        and writes its own `upsert`/`destroy`/`_lookup` to match; everything
+        else here is untouched by it.
+
+        The alternative was to leave that table out of `api/registry.py` and
+        route it by hand. That was rejected because the registry is what makes
+        a table's presence in `api/changes.py` and in `api/urls.py` the same
+        fact, and buying a tidier base class with a table that is routed but
+        invisible in the changes feed is the exact trade this project has
+        already paid for once.
+        """
+        return f"<{cls.identity_url_converter}:identity>/"
+
+    @classmethod
+    def identity_path_parameters(cls) -> list[tuple[str, str, str]]:
+        """`(url kwarg, path converter, the column it names)` per segment of
+        `detail_path_suffix`, for `api/schema.SyncedAutoSchema` to describe.
+
+        The column name is in here because a client generated from a bare
+        `identity: string` has no way to know whether that is an
+        `origin_guid`, a `sync_id`, a place label or the server's own uuid -
+        four different things across this API, and the schema says which.
+        """
+        return [("identity", cls.identity_url_converter, cls.identity_field)]
 
     # -- helpers ------------------------------------------------------------
 
@@ -495,11 +555,11 @@ class SyncedModelViewSet(viewsets.ViewSet):
         if self.gate_endpoint and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             return self._gate_refusal(request.method)
         if request.method == "DELETE" and not self.allow_delete:
+            reason = f"{self.no_delete_reason} " if self.no_delete_reason else ""
             return Response(
                 {
                     "detail": (
-                        f"Nothing was deleted. {self.table} is append-only: it is an audit "
-                        f"trail, and a trail with rows removed from it is not one. There is "
+                        f"Nothing was deleted. {reason}There is "
                         f"no delete route for this table."
                     )
                 },
@@ -578,7 +638,7 @@ def synced_paths(viewset: type[SyncedModelViewSet]) -> list:
         return [
             path(prefix, viewset.as_view(list_map), name=f"{viewset.route_name()}-list"),
             path(
-                f"{prefix}<{viewset.identity_url_converter}:identity>/",
+                f"{prefix}{viewset.detail_path_suffix()}",
                 viewset.as_view({"get": "retrieve"}),
                 name=f"{viewset.route_name()}-detail",
             ),
@@ -591,7 +651,7 @@ def synced_paths(viewset: type[SyncedModelViewSet]) -> list:
     return [
         path(prefix, viewset.as_view(list_map), name=f"{viewset.route_name()}-list"),
         path(
-            f"{prefix}<{viewset.identity_url_converter}:identity>/",
+            f"{prefix}{viewset.detail_path_suffix()}",
             viewset.as_view(detail_map),
             name=f"{viewset.route_name()}-detail",
         ),

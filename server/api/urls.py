@@ -10,7 +10,8 @@ list of twenty-six paths would be twenty-six chances to spell one
 differently. `synced_paths` builds them from the viewset's own `aspect` and
 `table`, so a route cannot disagree with the class it dispatches to.
 
-What that loop produces today:
+What that loop produces today, plus fleet's own three telemetry routes, which
+are declared separately at the foot of this file:
 
     /api/places/                          /api/places/<label>/
     /api/voice_notes/                     /api/voice_notes/<uuid>/
@@ -34,6 +35,35 @@ What that loop produces today:
     /api/pantry/receipts/                 /api/pantry/receipts/<uuid>/            GET only
     /api/pantry/line-items/               /api/pantry/line-items/<uuid>/          GET only
     /api/ingest/files/                    /api/ingest/files/<uuid>/               GET only
+    /api/fleet/vehicles/                  /api/fleet/vehicles/<origin_guid>/
+    /api/fleet/service_history/           /api/fleet/service_history/<origin_guid>/
+    /api/fleet/drives/                    /api/fleet/drives/<sync_id>/
+    /api/fleet/code_events/               /api/fleet/code_events/<sync_id>/
+    /api/fleet/code_clear_events/         /api/fleet/code_clear_events/<sync_id>/
+    /api/fleet/oil_analyses/              /api/fleet/oil_analyses/<sync_id>/
+    /api/fleet/build_entries/             /api/fleet/build_entries/<sync_id>/
+    /api/fleet/drive_reassignments/       /api/fleet/drive_reassignments/<sync_id>/
+    /api/fleet/chassis_quirks/            /api/fleet/chassis_quirks/<quirk_id>/   no DELETE
+    /api/fleet/vehicle_specs/             /api/fleet/vehicle_specs/<uuid>/        no DELETE
+    /api/fleet/maintenance_schedules/     /api/fleet/maintenance_schedules/<uuid>/<service_name>/
+    /api/fleet/obd_samples/               (no detail route at all)
+    /api/fleet/obd_samples/batch/         POST
+    /api/fleet/obd_samples/count/         GET
+
+**Fleet is where the generic detail route stops being one shape.** Six of its
+tables key on `sync_id` rather than `origin_guid`, `chassis_quirks` on its own
+text primary key, `vehicle_specs` on the uuid that is simultaneously its
+primary key and its foreign key, and `maintenance_schedules` on the PAIR
+`(vehicle_id, service_name)` - the only two-segment detail route in this API,
+built from `SyncedModelViewSet.detail_path_suffix` rather than by hand here.
+`chassis_quirks` and `vehicle_specs` carry no DELETE because neither table has
+a `deleted_at` column to write a tombstone into. `api/fleet.py`'s own module
+doc is the table of which shape is which and why.
+
+**`obd_samples` is not in the registry loop and its three routes are literal**,
+because it is append-only telemetry with no single-row identity: no PUT, no
+DELETE, and its list route requires `?vehicle=`. `api/registry.py` explains why
+it is the one routed table absent from the changes feed.
 
 `memory_audit`'s detail route carries PUT and no DELETE (append-only), and
 `voice_notes`' list route carries POST because its identity is the server's
@@ -58,6 +88,7 @@ from django.urls import path
 
 from api.changes import ChangesView
 from api.events import EventDetailView, EventListCreateView
+from api.fleet import OBD_SAMPLE_PATHS
 from api.registry import SYNCED_VIEWSETS
 from api.synced import synced_paths
 
@@ -69,3 +100,8 @@ urlpatterns = [
 
 for _viewset in SYNCED_VIEWSETS:
     urlpatterns += synced_paths(_viewset)
+
+# The one aspect with routes outside the registry loop. See this module's own
+# doc comment, and `api/fleet.py` for the four reasons `obd_samples` is not a
+# synced table.
+urlpatterns += OBD_SAMPLE_PATHS

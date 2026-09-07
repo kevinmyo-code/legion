@@ -13,6 +13,7 @@ from django.conf import settings
 from rest_framework.test import APIClient
 
 from tests.legacy_test_schema import (
+    LEGACY_FLEET_TEST_SCHEMA_SQL,
     LEGACY_INGEST_TEST_SCHEMA_SQL,
     LEGACY_LEDGER_PANTRY_CONFIG_TEST_SCHEMA_SQL,
     LEGACY_PHASE5_TEST_SCHEMA_SQL,
@@ -57,7 +58,12 @@ from tests.legacy_test_schema import (
 # right after this constant. The events SQL stays here rather than moving
 # into it - this comment is the history of how the wall was found, and
 # moving the code away from it would leave the story without its example.
-# Ledger, pantry and fleet still owe their own blocks in that module.
+#
+# **The sentence above used to end "Ledger, pantry and fleet still owe their
+# own blocks in that module."** All three have them now: ledger and pantry in
+# two blocks (the gate's five tables and the four authored ones), fleet in a
+# fourth covering all twelve of its tables. Nothing is owed; the wall is
+# fully walled.
 _LEGACY_EVENTS_TEST_SCHEMA_SQL = """
 create schema if not exists private;
 
@@ -144,27 +150,39 @@ create table if not exists public.event_skips (
 def django_db_setup(django_db_setup, django_db_blocker):
     """Layers `_LEGACY_EVENTS_TEST_SCHEMA_SQL`, then
     `LEGACY_PHASE5_TEST_SCHEMA_SQL`, then `LEGACY_INGEST_TEST_SCHEMA_SQL`,
-    then `LEGACY_LEDGER_PANTRY_CONFIG_TEST_SCHEMA_SQL`
+    then `LEGACY_LEDGER_PANTRY_CONFIG_TEST_SCHEMA_SQL`, then
+    `LEGACY_FLEET_TEST_SCHEMA_SQL`
     on top of pytest-django's own `django_db_setup` (which creates and
     migrates the test database) - see the first constant's own module-level
     comment for why this exists at all, and
-    `tests/legacy_test_schema.py`'s module doc for what the other three
+    `tests/legacy_test_schema.py`'s module doc for what the other four
     cover.
 
-    Order matters only in that all four blocks guard the `provenance` enum
-    and three of them create `private.touch_updated_at`; each does so
+    Order matters only in that all five blocks guard the `provenance` enum
+    and four of them create `private.touch_updated_at`; each does so
     idempotently (`create or replace`, `if not exists`), so running them in
     any order, or twice against a `--reuse-db` database, changes nothing.
     The third block was added by django-engine ticket 03 and brings the
     ledger and pantry tables the section 4 gate writes. The fourth was added
     by the ledger/pantry API ticket and brings the four AUTHORED tables of
     those same two aspects - the half the gate never touches, which is why
-    they are a separate block and not more rows in the third.
+    they are a separate block and not more rows in the third. The fifth is
+    the fleet API ticket's twelve tables.
 
-    **This docstring counted "three blocks" before the fourth arrived**, and
-    said so in the same shape; the number is kept accurate rather than
-    generalised away, because "all of them" would stop telling a reader
-    whether their own table is here.
+    **`vehicles` arrives with that fifth block, and it is worth knowing why it
+    was not needed before.** `_LEGACY_EVENTS_TEST_SCHEMA_SQL`'s own comment
+    says `events.vehicle_id` is "a bare nullable uuid column with no
+    `REFERENCES public.vehicles` here - this ticket's serializer never reads
+    or writes it, so the `vehicles` table (and its own dependency chain) is
+    not part of this mirror at all". That is still true of the events mirror,
+    which is left exactly as it was: the fleet block creates the real
+    `vehicles`, but the events mirror still does not point at it, so the two
+    remain independent and neither block has to run before the other.
+
+    **This docstring counted "three blocks", then four**, and said so in the
+    same shape each time; the number is kept accurate rather than generalised
+    away, because "all of them" would stop telling a reader whether their own
+    table is here.
     """
     from django.db import connection
 
@@ -181,6 +199,7 @@ def django_db_setup(django_db_setup, django_db_blocker):
             cursor.execute(LEGACY_PHASE5_TEST_SCHEMA_SQL)
             cursor.execute(LEGACY_INGEST_TEST_SCHEMA_SQL)
             cursor.execute(LEGACY_LEDGER_PANTRY_CONFIG_TEST_SCHEMA_SQL)
+            cursor.execute(LEGACY_FLEET_TEST_SCHEMA_SQL)
 
 
 @pytest.fixture(autouse=True, scope="session")

@@ -14,8 +14,27 @@ reverse). That paragraph then said "Ledger, pantry and fleet are still absent, o
 purpose: the first two wait on the section 4 gate moving server-side (ticket
 03) and fleet has four identity shapes and a 20,796-row `obd_samples` table
 that needs a windowed pull." The gate landed (`server/ingest/`), so ledger
-and pantry are here now. **Fleet is still absent, and its reason is
-unchanged.**
+and pantry are here now. **Fleet is here too now, with ELEVEN of its twelve
+tables** - the four identity shapes turned out to cost this file nothing at
+all, because they are all identity and this feed reads none of them; it reads
+`cursor_field` and `table`, which every fleet viewset has like any other.
+
+**`obd_samples` is the twelfth and it is excluded, deliberately.** It is
+routed - `GET /api/fleet/obd_samples/?vehicle=<uuid>&since=`, plus a batch
+upload and a count - but it is not in `api/registry.py` and so it is not a key
+in this body. The reason is this feed's own defining property, stated four
+paragraphs down: **it is not paged.** `obd_samples` held 20,796 rows on
+2026-09-07, roughly thirteen times every other table in this database
+combined, and a client that asked for `aspects=fleet` - or that omitted
+`aspects` entirely and meant everything - would be handed the whole telemetry
+archive in one unpaged response. Its own route requires a vehicle and pages,
+which is the shape that table needs and the shape this endpoint is not.
+
+So `aspects=fleet` fills eleven keys and never `obd_samples`. A client that
+wants telemetry asks for it by vehicle, on its own route. This is said here,
+in `api/registry.py`, in `api/fleet.py`, and in the `aspects` parameter's own
+description in `server/openapi.yaml`, because a key that is silently absent
+from a feed is indistinguishable from a table with nothing in it.
 
 **Phase 5 continued: `ledger`, `pantry` and `ingest`.** The first two are
 this ticket's own item 4 ("extend `/api/changes?aspects=` to accept `ledger`
@@ -33,7 +52,8 @@ in `checklists`, `checklist_items`, AND `checklist_ticks` together (they
 are one aspect's three tables, not three aspects), `events` pulls in just
 `events`, `body` pulls in all eight of its tables, `memory` all three,
 `ledger` its five (three config tables plus `statements` and
-`ledger_transactions`), `pantry` its three, `ingest` its one.
+`ledger_transactions`), `pantry` its three, `ingest` its one, and `fleet`
+eleven of its twelve - every one but `obd_samples`, for the reason above.
 **Missing/blank `aspects` means every known aspect**, the same "absence is
 never evidence of wanting less" posture `api/sync.parse_since` already
 takes for `since` - a caller that forgot the parameter should see too much,
@@ -116,7 +136,11 @@ ASPECTS_PARAMETER = OpenApiParameter(
         "`checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` "
         "fills all eight of its tables; `memory` all three. **Omitted or blank means every "
         "known aspect.** An unknown name is a 400 naming it - never a silently smaller "
-        "response."
+        "response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**: "
+        "this endpoint is not paged and that table held 20,796 rows on 2026-09-07, so "
+        "telemetry has its own paged, per-vehicle route at GET "
+        "/api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here is a "
+        "design, not an empty table."
     ),
 )
 

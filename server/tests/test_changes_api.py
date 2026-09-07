@@ -44,14 +44,20 @@ def test_aspects_filter_selects_only_the_named_aspect(auth_client):
 
 
 def test_unknown_aspect_is_400_naming_the_allowed_set(auth_client):
-    """**This test used to send `aspects=ledger`**, which was an unknown
-    aspect when it was written (Phase 2) and is a real one now that the
-    ledger/pantry routes have landed. The example moved to `fleet`, which is
-    the last aspect still unrouted and is therefore the only name that stays
-    a genuine unknown - `api/changes.py` says why fleet waits."""
-    response = auth_client.get("/api/changes?aspects=fleet")
+    """**This test used to send `aspects=ledger`**, then `aspects=fleet`, and
+    both are real aspects now - ledger when its routes landed, fleet when its
+    own did. Each time, this test failing was the correct answer and the
+    example moved on.
+
+    It has now run out of unrouted aspects: fleet was the last one, so every
+    aspect this app has is routed and no real name is a genuine unknown any
+    more. The example is therefore a name that is not an aspect and is not
+    going to become one, rather than the next thing on the roadmap - which
+    also means this test stops needing an edit every time a ticket lands.
+    """
+    response = auth_client.get("/api/changes?aspects=telemetry")
     assert response.status_code == 400
-    assert "fleet" in str(response.data)
+    assert "telemetry" in str(response.data)
     assert "events" in str(response.data)
     assert "checklists" in str(response.data)
 
@@ -205,11 +211,15 @@ def test_an_unknown_aspect_names_the_new_ones_too(auth_client):
     """The refusal lists everything that DOES exist, so a client that guessed
     wrong is not left guessing again. Every aspect ever added has to appear
     here, which is what makes this test the one that fails when someone routes
-    a table and forgets `api/registry.py`."""
-    response = auth_client.get("/api/changes?aspects=fleet")
+    a table and forgets `api/registry.py`.
+
+    **This sent `aspects=fleet` until fleet was routed**, which is when it
+    failed and was corrected - see the sibling test above for why the unknown
+    name is now one that will never be an aspect."""
+    response = auth_client.get("/api/changes?aspects=telemetry")
     assert response.status_code == 400
     text = str(response.data)
-    assert "fleet" in text
+    assert "telemetry" in text
     for known in (
         "events",
         "checklists",
@@ -221,5 +231,10 @@ def test_an_unknown_aspect_names_the_new_ones_too(auth_client):
         "ledger",
         "pantry",
         "ingest",
+        # The fleet ticket's one. `obd_samples` is deliberately NOT an aspect
+        # name and never appears in this list: it is a TABLE inside fleet, and
+        # one this feed excludes - `api/registry.py` and `api/changes.py` both
+        # say why.
+        "fleet",
     ):
         assert known in text, known

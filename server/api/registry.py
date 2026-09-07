@@ -14,6 +14,7 @@ migration reads down the file.
 from __future__ import annotations
 
 from api.body import BODY_VIEWSETS
+from api.fleet import FLEET_VIEWSETS
 from api.ingest_files import INGEST_VIEWSETS
 from api.ledger import LEDGER_VIEWSETS
 from api.memory import MEMORY_VIEWSETS
@@ -30,12 +31,27 @@ SYNCED_VIEWSETS: list[type[SyncedModelViewSet]] = [
     *LEDGER_VIEWSETS,
     *PANTRY_VIEWSETS,
     *INGEST_VIEWSETS,
+    *FLEET_VIEWSETS,
 ]
 
-# Aspect name -> the viewsets that make it up, in registry order. `body` has
-# eight tables, `ledger` five, `memory` three, `pantry` three; `places`,
-# `voice_notes` and `ingest` are one each. Built from the list rather than
-# typed out a second time.
+# Aspect name -> the viewsets that make it up, in registry order. `fleet` has
+# eleven tables here, `body` eight, `ledger` five, `memory` three, `pantry`
+# three; `places`, `voice_notes` and `ingest` are one each. Built from the list
+# rather than typed out a second time.
+#
+# **`fleet` has TWELVE tables and only eleven of them are here.** `obd_samples`
+# is routed (`api/fleet.py`'s `OBD_SAMPLE_PATHS`, added to `api/urls.py`
+# alongside this loop) and is deliberately absent from this list, which makes
+# it the one exception to the guarantee stated above: a routed table is
+# normally in the changes feed too, because both readers come from here.
+#
+# It is an exception because the feed is NOT paged - `api/changes.py` says so
+# in its own doc - and `obd_samples` held 20,796 rows on 2026-09-07, thirteen
+# times every other table in this database combined. Folding it in would make
+# `GET /api/changes` with no `aspects` a whole-telemetry-archive download, for
+# every client, forever. It is the same reason the feed excludes anything
+# unbounded, and it is named here rather than left as a gap someone later
+# "fixes" by adding the viewset to this list.
 #
 # **Six of these are read-only** - `ledger.statements`,
 # `ledger.ledger_transactions`, `pantry.receipts`, `pantry.receipt_line_items`

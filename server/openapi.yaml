@@ -1126,6 +1126,7 @@ paths:
             - events
             - checklists
             - body
+            - fleet
             - ingest
             - ledger
             - memory
@@ -1136,7 +1137,11 @@ paths:
           populated: `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`;
           `body` fills all eight of its tables; `memory` all three. **Omitted or blank
           means every known aspect.** An unknown name is a 400 naming it - never a
-          silently smaller response.'
+          silently smaller response. **`fleet` fills eleven of its twelve tables and
+          never `obd_samples`**: this endpoint is not paged and that table held 20,796
+          rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at
+          GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here
+          is a design, not an empty table.'
         explode: false
         style: form
       - in: query
@@ -1810,6 +1815,1502 @@ paths:
         required: true
       tags:
       - events
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/build_entries/:
+    get:
+      operationId: api_fleet_build_entries_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedBuildEntry'
+          description: ''
+  /api/fleet/build_entries/{identity}/:
+    put:
+      operationId: api_fleet_build_entries_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildEntry'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BuildEntry'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BuildEntry'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildEntry'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_build_entries_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/chassis_quirks/:
+    get:
+      operationId: api_fleet_chassis_quirks_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedChassisQuirk'
+          description: ''
+  /api/fleet/chassis_quirks/{identity}/:
+    put:
+      operationId: api_fleet_chassis_quirks_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `quirk_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChassisQuirk'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChassisQuirk'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChassisQuirk'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChassisQuirk'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+  /api/fleet/code_clear_events/:
+    get:
+      operationId: api_fleet_code_clear_events_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCodeClearEvent'
+          description: ''
+  /api/fleet/code_clear_events/{identity}/:
+    put:
+      operationId: api_fleet_code_clear_events_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodeClearEvent'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CodeClearEvent'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CodeClearEvent'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeClearEvent'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_code_clear_events_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/code_events/:
+    get:
+      operationId: api_fleet_code_events_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCodeEvent'
+          description: ''
+  /api/fleet/code_events/{identity}/:
+    put:
+      operationId: api_fleet_code_events_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodeEvent'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CodeEvent'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CodeEvent'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeEvent'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_code_events_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/drive_reassignments/:
+    get:
+      operationId: api_fleet_drive_reassignments_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedDriveReassignment'
+          description: ''
+  /api/fleet/drive_reassignments/{identity}/:
+    put:
+      operationId: api_fleet_drive_reassignments_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriveReassignment'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DriveReassignment'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DriveReassignment'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriveReassignment'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_drive_reassignments_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/drives/:
+    get:
+      operationId: api_fleet_drives_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedDrive'
+          description: ''
+  /api/fleet/drives/{identity}/:
+    put:
+      operationId: api_fleet_drives_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Drive'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Drive'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Drive'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Drive'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_drives_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/maintenance_schedules/:
+    get:
+      operationId: api_fleet_maintenance_schedules_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedMaintenanceSchedule'
+          description: ''
+  /api/fleet/maintenance_schedules/{vehicle_id}/{service_name}/:
+    put:
+      operationId: api_fleet_maintenance_schedules_update
+      description: |-
+        `PUT maintenance_schedules/<vehicle_id>/<service_name>/`.
+
+        Idempotent for the same reason the generic one is: the identity comes
+        from the URL, so a retry cannot make a second row - and here the URL
+        carries both halves of the unique constraint, so a retry cannot violate
+        `maintenance_schedules_unique_per_vehicle` either.
+      parameters:
+      - in: path
+        name: service_name
+        schema:
+          type: string
+        description: The row's `service_name`.
+        required: true
+      - in: path
+        name: vehicle_id
+        schema:
+          type: string
+          format: uuid
+        description: The row's `vehicle_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceSchedule'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MaintenanceSchedule'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MaintenanceSchedule'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceSchedule'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_maintenance_schedules_destroy
+      description: |-
+        `DELETE maintenance_schedules/<vehicle_id>/<service_name>/`. Sets
+        the tombstone; idempotent; a second delete is still a 204.
+      parameters:
+      - in: path
+        name: service_name
+        schema:
+          type: string
+        description: The row's `service_name`.
+        required: true
+      - in: path
+        name: vehicle_id
+        schema:
+          type: string
+          format: uuid
+        description: The row's `vehicle_id`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/obd_samples/:
+    get:
+      operationId: api_fleet_obd_samples_list
+      description: |-
+        `GET /api/fleet/obd_samples/?vehicle=<uuid>&since=<iso>` - the windowed,
+        per-vehicle pull `FleetBackend.fetchObdSamplesSince` calls.
+
+        No `?active=1`: this table has no `deleted_at`, so every row that exists is
+        live and the unnarrowed feed already IS the active set. The parameter is
+        absent from the schema rather than advertised and ignored, which is the
+        same choice `api/synced.SyncedModelViewSet.has_tombstones` makes for the
+        gated tables.
+
+        Paged with the same 500-row `next` cursor every other feed uses, keyed on
+        `recorded_at`. The known limit `api/synced.py` states for its own cursor
+        applies here too and is MORE reachable: the cursor is an inclusive
+        timestamp and cannot express "after this row", so a full page of samples
+        sharing one `recorded_at` would re-serve itself forever. It needs 500
+        samples at one instant for one car and one PID set; the natural key makes
+        exact duplicates impossible, so the 500 would have to be 500 distinct PIDs
+        read in the same millisecond.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark, matched against `recorded_at` - the instant
+          the sample was READ FROM THE CAR, not the instant it reached this server.
+          That is the column `FleetBackend.fetchObdSamplesSince` filters on, and the
+          only one that means anything to a client rebuilding a window of telemetry.
+          Omitted means this vehicle's whole history, paged; the phone passes roughly
+          the last 30 days (Kevin's 2026-09-03 OBD-volume ruling), and that window
+          is the CLIENT's choice, never a narrowing this server applies on its behalf.
+      - in: query
+        name: vehicle
+        schema:
+          type: string
+          format: uuid
+        description: 'REQUIRED. The `vehicles.id` whose samples to return. This is
+          the one list route in the API with a mandatory filter: `obd_samples` held
+          20,796 rows on 2026-09-07 and an unbounded feed over it is a download, not
+          a feed. Absent is a 400 naming this parameter; a uuid naming no vehicle
+          is a 404, never an empty page - an empty page would read as ''this car has
+          no telemetry'' when the truth is ''there is no such car''.'
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedObdSample'
+          description: One page of one vehicle's samples, oldest first. No tombstones,
+            because this table has no tombstone column - telemetry is append-only
+            and is corrected by a newer observation, never by editing an old one.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`vehicle` was missing or was not a uuid. Nothing was returned.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`vehicle` named no vehicle this server knows.'
+  /api/fleet/obd_samples/batch/:
+    post:
+      operationId: api_fleet_obd_samples_batch_create
+      description: |-
+        `POST /api/fleet/obd_samples/batch/` - `FleetBackend.uploadObdSampleBatch`.
+
+        The body is a JSON ARRAY of samples, matching ticket 04's own exceptions
+        table (`POST /api/fleet/obd_samples/batch/ [..]`) and what
+        `SupabaseFleetBackend` already sends.
+
+        **Idempotent on the natural key, by construction rather than by checking.**
+        `obd_samples_natural_key_idx` is unique on `(vehicle_id, pid, recorded_at)`
+        and the insert names it as the `on conflict` target, so a re-post of a
+        batch that already landed writes nothing and answers 200 with
+        `inserted: 0`. That is not a nicety: `ObdSampleReconcile` resumes an
+        interrupted upload from a cursor it may have failed to advance, so re-posts
+        are the normal case and not the exceptional one. A sample IS its car, its
+        PID and its instant - the key is content-derived, so a re-post is genuinely
+        the same sample and not merely one that looks like it.
+
+        **Nothing is corrected here and nothing can be.** There is no PUT, no
+        PATCH and no DELETE anywhere on this table. A telemetry observation is
+        superseded by a newer observation, never by editing an old one, which is
+        why `obd_samples` carries no `forbid_mutation_of_facts` trigger either -
+        the immutability trigger exists for gated aspects where a row asserts a
+        VERIFIED fact, and this row asserts an observation.
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/ObdSampleUpload'
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/ObdSampleUpload'
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/ObdSampleUpload'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObdBatchResult'
+          description: At least one sample was written.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObdBatchResult'
+          description: 'Nothing was written, and that is a normal answer: every sample
+            in the batch was already stored under the same natural key, or the batch
+            was empty. Not an error, and not something to retry differently.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nothing was written. The body was not a JSON array, a sample
+            was malformed, the batch was over the size cap, or a `vehicle_id` named
+            no vehicle. Field-level errors come back keyed by index.
+  /api/fleet/obd_samples/count/:
+    get:
+      operationId: api_fleet_obd_samples_count
+      description: |-
+        `GET /api/fleet/obd_samples/count/` - `FleetBackend.countObdSamples`.
+
+        A number and nothing else. `ObdSampleReconcile`'s own class doc explains at
+        length why a full-row fetch here "would defeat the entire batching effort
+        for a report line"; against PostgREST that was a `HEAD` with
+        `Prefer: count=exact`, and here it is a `COUNT(*)`, which is the same
+        bargain - one integer, no rows.
+
+        `?vehicle=` is OPTIONAL here, unlike on the feed, and the asymmetry is not
+        an inconsistency: a count of the whole table is one aggregate whatever its
+        size, so the reason the feed refuses an unbounded request simply does not
+        apply.
+      parameters:
+      - in: query
+        name: vehicle
+        schema:
+          type: string
+          format: uuid
+        description: Optional. Narrows the count to one vehicle. Omitted counts the
+          whole table, which is what `FleetBackend.countObdSamples` asks for.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObdSampleCount'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`vehicle` was not a uuid.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`vehicle` named no vehicle this server knows.'
+  /api/fleet/oil_analyses/:
+    get:
+      operationId: api_fleet_oil_analyses_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedOilAnalysis'
+          description: ''
+  /api/fleet/oil_analyses/{identity}/:
+    put:
+      operationId: api_fleet_oil_analyses_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OilAnalysis'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OilAnalysis'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OilAnalysis'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OilAnalysis'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_oil_analyses_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `sync_id`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/service_history/:
+    get:
+      operationId: api_fleet_service_history_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedServiceHistory'
+          description: ''
+  /api/fleet/service_history/{identity}/:
+    put:
+      operationId: api_fleet_service_history_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceHistory'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ServiceHistory'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ServiceHistory'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceHistory'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_service_history_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/fleet/vehicle_specs/:
+    get:
+      operationId: api_fleet_vehicle_specs_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedVehicleSpec'
+          description: ''
+  /api/fleet/vehicle_specs/{identity}/:
+    put:
+      operationId: api_fleet_vehicle_specs_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `vehicle_id`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleSpec'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VehicleSpec'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VehicleSpec'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleSpec'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+  /api/fleet/vehicles/:
+    get:
+      operationId: api_fleet_vehicles_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - fleet
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedVehicle'
+          description: ''
+  /api/fleet/vehicles/{identity}/:
+    put:
+      operationId: api_fleet_vehicles_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - fleet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_fleet_vehicles_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - fleet
       security:
       - deviceToken: []
       responses:
@@ -3643,6 +5144,83 @@ components:
       - origin_guid
       - provenance
       - updated_at
+    BuildEntry:
+      type: object
+      description: |-
+        Field-for-field `RemoteBuildEntry` / `BuildEntryUpload`: one
+        driver-authored logbook line (a mod, part, repair, consumable, or general
+        spend entry).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sync_id:
+          type: string
+        vehicle_id:
+          type: string
+          format: uuid
+        entry_type:
+          type: string
+          description: '''mod'', ''part'', ''repair'', ''consumable'' or ''other''
+            on the phone, and unconstrained text on the live schema - the list is
+            open-ended, so this API refuses no value.'
+        title:
+          type: string
+        vendor:
+          type: string
+          default: ''
+        part_number:
+          type: string
+          default: ''
+        cost_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+          description: In cents (CLAUDE.md section 4 rule 3). Null means the driver
+            logged what was done with no dollar figure; never 0, which would assert
+            it was free.
+        logged_at:
+          type: string
+          format: date-time
+        mileage:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        notes:
+          type: string
+          default: ''
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - entry_type
+      - id
+      - logged_at
+      - provenance
+      - sync_id
+      - title
+      - updated_at
+      - vehicle_id
     Category:
       type: object
       description: Field-for-field `RemoteCategory` / `CategoryFields`.
@@ -3850,8 +5428,135 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IngestedFile'
+        vehicles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Vehicle'
+        service_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceHistory'
+        drives:
+          type: array
+          items:
+            $ref: '#/components/schemas/Drive'
+        code_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeEvent'
+        code_clear_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeClearEvent'
+        oil_analyses:
+          type: array
+          items:
+            $ref: '#/components/schemas/OilAnalysis'
+        build_entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuildEntry'
+        drive_reassignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriveReassignment'
+        chassis_quirks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChassisQuirk'
+        vehicle_specs:
+          type: array
+          items:
+            $ref: '#/components/schemas/VehicleSpec'
+        maintenance_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceSchedule'
       required:
       - server_time
+    ChassisQuirk:
+      type: object
+      description: |-
+        Field-for-field `RemoteChassisQuirk` / `ChassisQuirkUpload`.
+
+        `chassis` is a comma-delimited list of chassis codes, e.g. "E46,E46M3",
+        carried verbatim rather than normalised into a join table - it matches the
+        phone's own shape, and it is NOT a `vehicle_id`: this is platform reference
+        data, independent of any specific vehicle row.
+
+        The cost and mileage bounds are null, never -1, when unknown. The phone
+        stores -1 as its unbounded sentinel and that sentinel must not be carried
+        forward - it is the zero-default trap wearing a different number.
+      properties:
+        quirk_id:
+          type: string
+        chassis:
+          type: string
+        engine:
+          type: string
+          default: ''
+        title:
+          type: string
+        symptom:
+          type: string
+        verification_steps:
+          type: string
+        mileage_low:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          description: Null means no lower bound. Never -1, which is the phone's own
+            sentinel and must not be carried forward.
+        mileage_high:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        severity:
+          type: string
+        cost_low_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+          description: Typical repair cost range, in cents (CLAUDE.md section 4 rule
+            3). Null means unknown or DIY-variable, never 0.
+        cost_high_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+        fix_notes:
+          type: string
+          default: ''
+        source_url:
+          type: string
+          default: ''
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - chassis
+      - created_at
+      - provenance
+      - quirk_id
+      - severity
+      - symptom
+      - title
+      - updated_at
+      - verification_steps
     Checklist:
       type: object
       properties:
@@ -4005,6 +5710,138 @@ components:
       - item
       - ticked_at
       - updated_at
+    CodeClearEvent:
+      type: object
+      description: |-
+        Field-for-field `RemoteCodeClearEvent` / `CodeClearEventUpload`: the
+        outcome of one Mode 04 clear-codes send.
+
+        A row exists only for CLEARED, RETURNED or UNVERIFIED. The two no-op
+        outcomes (`NOTHING_TO_CLEAR`, `REFUSED`) never send anything and never
+        reach this table, which is why they are not in the allowed set.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sync_id:
+          type: string
+        vehicle_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        mileage:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        codes_before: {}
+        freeze_frame:
+          nullable: true
+        codes_after:
+          nullable: true
+          description: THREE-way, not two. Null means the post-send re-read never
+            completed (UNVERIFIED). An empty array means it ran and found nothing
+            (CLEARED). A non-empty array names the codes that survived (RETURNED).
+            Do not collapse null and the empty array.
+        outcome:
+          type: string
+        ack_raw:
+          type: string
+          default: ''
+          description: 'The adapter''s raw acknowledgement. DIAGNOSTIC ONLY: a failed
+            send returns an empty string and a quiet link answers exactly like a real
+            ack, so `outcome` is never asserted off this field.'
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - codes_before
+      - created_at
+      - deleted_at
+      - id
+      - occurred_at
+      - outcome
+      - provenance
+      - sync_id
+      - updated_at
+      - vehicle_id
+    CodeEvent:
+      type: object
+      description: |-
+        Field-for-field `RemoteCodeEvent` / `CodeEventUpload`: one ELM327 DTC
+        read plus its Mode 02 freeze frame.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sync_id:
+          type: string
+        vehicle_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        mileage:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          description: 'An estimate, not a measurement: a frozen snapshot of the vehicle''s
+            current mileage at read time, with nothing captured to prove how stale
+            it was. Diagnostic metadata, never a gated figure.'
+        codes:
+          description: A JSON array of DTC strings, e.g. ["P0420","P0128"].
+        freeze_frame:
+          nullable: true
+          description: A JSON object, or null when the adapter returned no freeze
+            frame at all - some older ELM327 clones skip Mode 02 entirely. Null and
+            an empty object are different facts.
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - codes
+      - created_at
+      - deleted_at
+      - id
+      - occurred_at
+      - provenance
+      - sync_id
+      - updated_at
+      - vehicle_id
     CompanionMemory:
       type: object
       description: |-
@@ -4079,6 +5916,137 @@ components:
           type: string
       required:
       - detail
+    Drive:
+      type: object
+      description: |-
+        Field-for-field `RemoteDrive` / `DriveUpload`.
+
+        `gallons` is null, never 0.0, when MAF was silent for the whole drive.
+        `Drive.gallons`' own comment is emphatic about this and the distinction is
+        load-bearing for MPG: a drive that burned an unknown amount of fuel must
+        not read as a drive that burned none.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sync_id:
+          type: string
+        vehicle_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        miles:
+          type: number
+          format: double
+        gallons:
+          type: number
+          format: double
+          nullable: true
+          description: Null, never 0.0, when the mass-airflow sensor was silent for
+            the whole drive. Unknown fuel and no fuel are different facts and must
+            not collapse - an MPG figure computed over a null here is not a low MPG,
+            it is no MPG.
+        end_reason:
+          type: string
+          description: '''ENGINE_OFF'' or ''LINK_LOST'' today. Deliberately unconstrained
+            text on the live schema, so widening it needs no migration and this API
+            refuses no value.'
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - end_reason
+      - ended_at
+      - id
+      - miles
+      - provenance
+      - started_at
+      - sync_id
+      - updated_at
+      - vehicle_id
+    DriveReassignment:
+      type: object
+      description: |-
+        Field-for-field `RemoteDriveReassignment` / `DriveReassignmentUpload`.
+
+        A correction RULE over `drives`, not a mutation of the drives themselves:
+        "samples in this window belong to `new_vehicle_id`, not `vehicle_id`". The
+        window is a time RANGE rather than a list of row ids, so that samples
+        landing in it later, from any device, are still caught.
+
+        Nothing here refuses a rule that names the same vehicle twice. That is the
+        live schema's own choice and it is deliberate: such a rule is a no-op the
+        app should never produce, and a client retry of an already-applied
+        correction is a legitimate no-op write.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sync_id:
+          type: string
+        vehicle_id:
+          type: string
+          format: uuid
+        new_vehicle_id:
+          type: string
+          format: uuid
+        from_at:
+          type: string
+          format: date-time
+        to_at:
+          type: string
+          format: date-time
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - from_at
+      - id
+      - new_vehicle_id
+      - provenance
+      - sync_id
+      - to_at
+      - updated_at
+      - vehicle_id
     Event:
       type: object
       properties:
@@ -4550,6 +6518,69 @@ components:
       required:
       - token
       - user_id
+    MaintenanceSchedule:
+      type: object
+      description: |-
+        Field-for-field `RemoteMaintenanceSchedule` / `MaintenanceScheduleUpload`.
+
+        Deliberately carries NO `last_done_mileage` or `last_done_date`, matching
+        the engine's own decision: when a service was last done is a fact about
+        SERVICE HISTORY, and duplicating it here is how the two drift into
+        disagreeing. "Is this due" is computed by reading the latest matching
+        `service_history` row against these intervals.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vehicle_id:
+          type: string
+          format: uuid
+        service_name:
+          type: string
+        interval_miles:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        interval_months:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        interval_source:
+          type: string
+          description: Free text rather than a constrained set - the engine left this
+            open, and values like 'SEEDED' and a manual entry both occur.
+        never_done:
+          type: boolean
+          default: false
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - interval_source
+      - provenance
+      - service_name
+      - updated_at
+      - vehicle_id
     MeResponse:
       type: object
       properties:
@@ -4865,6 +6896,296 @@ components:
       - provenance
       - store
       - updated_at
+    ObdBatchResult:
+      type: object
+      description: |-
+        What `POST .../batch/` answers with.
+
+        Four numbers rather than one, because a batch upload can partly no-op for
+        two completely different reasons and a client that cannot tell them apart
+        cannot tell a healthy retry from a bug. `FleetBackend.uploadObdSampleBatch`
+        itself only reads success or failure - its own doc explains that decoding
+        500 rows back to count them would spend the request-size budget the
+        batching exists to protect - and these four cost one integer each.
+      properties:
+        received:
+          type: integer
+          description: How many samples were in the request body.
+        inserted:
+          type: integer
+          description: How many rows this call actually wrote. Zero on a full re-post.
+        already_present:
+          type: integer
+          description: How many were already stored under the same natural key `(vehicle_id,
+            pid, recorded_at)` and were therefore skipped. A re-post of a batch that
+            already landed reports every row here, which is what makes an unacknowledged
+            upload safe to retry.
+        duplicates_in_batch:
+          type: integer
+          description: How many rows in THIS body shared a natural key with an earlier
+            row in the same body and were folded into it. Normally 0. Non-zero means
+            the client sent two readings claiming the same car, PID and instant -
+            which the table cannot store separately and which are indistinguishable
+            to it - so the first was kept. Reported rather than silently dropped.
+      required:
+      - already_present
+      - duplicates_in_batch
+      - inserted
+      - received
+    ObdSample:
+      type: object
+      description: |-
+        One `public.obd_samples` row as the windowed feed returns it.
+
+        Not a `SyncedSerializer`: that base's `create`/`update` exist to write rows
+        through the four generic routes, and this table has no such route. Reads
+        only.
+
+        **No `id` on the wire, and that is deliberate rather than an oversight.**
+        `RemoteObdSample`'s own doc comment: "no `serverId`/`syncId` at all - the
+        table's own natural key is `(vehicle_id, pid, recorded_at)`, which
+        `FleetSync`'s pull-side dedup matches against directly rather than needing a
+        separate identity column". There is no detail route to address a sample by
+        its uuid, so publishing one would hand clients an identity that addresses
+        nothing and invite them to key a cache on it.
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+          readOnly: true
+        pid:
+          type: string
+        value:
+          type: number
+          format: double
+        unit:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+          description: When the reading was taken from the car. Part of the natural
+            key `(vehicle_id, pid, recorded_at)`, and the column this feed's `?since=`
+            and `next` cursor are keyed on.
+        lat:
+          type: number
+          format: double
+          nullable: true
+        lng:
+          type: number
+          format: double
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          description: 'When this server stored the sample - NOT when it was read.
+            The two can be far apart: the phone batches uploads and resumes them across
+            sessions.'
+      required:
+      - created_at
+      - pid
+      - recorded_at
+      - unit
+      - value
+      - vehicle_id
+    ObdSampleCount:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: How many `obd_samples` rows exist, for the whole table or for
+            one vehicle.
+      required:
+      - count
+    ObdSampleUpload:
+      type: object
+      description: |-
+        One sample in a `POST .../batch/` body.
+
+        A plain `Serializer`, not a `ModelSerializer`, because nothing here goes
+        through the ORM: the insert is one statement with an explicit
+        `on conflict (vehicle_id, pid, recorded_at) do nothing` (see
+        `ObdSampleBatchView`), and a model serializer would suggest a per-row
+        `.save()` that does not happen.
+
+        `vehicle_id` is a bare `UUIDField` rather than a `PrimaryKeyRelatedField`
+        for a measured reason: the related field issues one SELECT per row to prove
+        the vehicle exists, which for a 500-row batch is 500 round trips against a
+        remote Postgres. The view checks each DISTINCT vehicle once instead, which
+        is the same guarantee at 1/500th the cost.
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        pid:
+          type: string
+        value:
+          type: number
+          format: double
+        unit:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+        lat:
+          type: number
+          format: double
+          nullable: true
+        lng:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - pid
+      - recorded_at
+      - unit
+      - value
+      - vehicle_id
+    OilAnalysis:
+      type: object
+      description: |-
+        Field-for-field `RemoteOilAnalysis` / `OilAnalysisUpload`: a used-oil lab
+        report, voice-entered or typed by the driver.
+
+        USER provenance, not DETERMINISTIC, and the distinction is the point: a
+        person transcribed these numbers, code did not derive them. Every figure
+        here is as trustworthy as the typing.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sync_id:
+          type: string
+        vehicle_id:
+          type: string
+          format: uuid
+        analyzed_at:
+          type: string
+          format: date-time
+        mileage:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        oil_brand:
+          type: string
+          default: ''
+        oil_grade:
+          type: string
+          default: ''
+        drain_interval_miles:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        iron:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          description: Parts per million. Null means the lab did not report iron,
+            never 0 - a report that omits an element is not the same fact as one that
+            measured zero of it. The same is true of every metal and contaminant here.
+        copper:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        lead:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        tin:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        aluminum:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        chromium:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        nickel:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        sodium:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        potassium:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        silicon:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        boron:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        magnesium:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        fuel_percent:
+          type: number
+          format: double
+          nullable: true
+        water_percent:
+          type: number
+          format: double
+          nullable: true
+        tbn:
+          type: number
+          format: double
+          nullable: true
+        viscosity_cst:
+          type: number
+          format: double
+          nullable: true
+        lab_notes:
+          type: string
+          default: ''
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - analyzed_at
+      - created_at
+      - deleted_at
+      - id
+      - provenance
+      - sync_id
+      - updated_at
+      - vehicle_id
     PagedBodyweightLog:
       type: object
       properties:
@@ -4888,6 +7209,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BudgetTarget'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedBuildEntry:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuildEntry'
         next:
           type: string
           format: date-time
@@ -4929,6 +7266,22 @@ components:
       required:
       - next
       - results
+    PagedChassisQuirk:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChassisQuirk'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
     PagedChecklist:
       type: object
       properties:
@@ -4961,6 +7314,38 @@ components:
       required:
       - next
       - results
+    PagedCodeClearEvent:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeClearEvent'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedCodeEvent:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeEvent'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
     PagedCompanionMemory:
       type: object
       properties:
@@ -4968,6 +7353,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CompanionMemory'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedDrive:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Drive'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedDriveReassignment:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriveReassignment'
         next:
           type: string
           format: date-time
@@ -5041,6 +7458,22 @@ components:
       required:
       - next
       - results
+    PagedMaintenanceSchedule:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceSchedule'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
     PagedMealLog:
       type: object
       properties:
@@ -5105,6 +7538,38 @@ components:
       required:
       - next
       - results
+    PagedObdSample:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObdSample'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedOilAnalysis:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OilAnalysis'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
     PagedPlace:
       type: object
       properties:
@@ -5153,6 +7618,22 @@ components:
       required:
       - next
       - results
+    PagedServiceHistory:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceHistory'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
     PagedSleepLog:
       type: object
       properties:
@@ -5192,6 +7673,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Statement'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedVehicle:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Vehicle'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedVehicleSpec:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VehicleSpec'
         next:
           type: string
           format: date-time
@@ -5826,6 +8339,81 @@ components:
       - reversal_of
       - total_price_cents
       - unit_price_cents
+    ServiceHistory:
+      type: object
+      description: |-
+        Field-for-field `RemoteServiceHistory` / `ServiceHistoryUpload`.
+
+        `kind` is the fleet aspect's own small provenance and is deliberately a
+        separate column from `provenance`: provenance says how the ROW was
+        produced, `kind` says how the EVENT was witnessed. OBSERVED means LEGION
+        saw it or read it from a document; ASSERTED means the driver said so with
+        no independent evidence. A client rendering a service record must not
+        collapse the two, for the same reason section 4 rule 5 will not let an
+        estimate be shown as a measurement.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vehicle_id:
+          type: string
+          format: uuid
+        service_name:
+          type: string
+        mileage:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        service_date:
+          type: string
+          format: date
+          nullable: true
+        cost_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+          description: In cents (CLAUDE.md section 4 rule 3), or null when no figure
+            was recorded. Unlike `build_entries.cost_cents` this column carries no
+            non-negative CHECK on the live schema, so none is invented here.
+        kind:
+          type: string
+          description: OBSERVED means LEGION saw it happen or read it from a document;
+            ASSERTED means the driver said so, with no independent evidence. NOT the
+            same axis as `provenance`, which says how the row was produced rather
+            than how the event was witnessed.
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - kind
+      - provenance
+      - service_name
+      - updated_at
+      - vehicle_id
     SleepLog:
       type: object
       description: |-
@@ -6125,6 +8713,197 @@ components:
           default: USER_REPORTED
       required:
       - day
+    Vehicle:
+      type: object
+      description: |-
+        Field-for-field `RemoteVehicle` / `VehicleUpload` (`FleetBackend.kt`).
+
+        `confirmed` and `archived` default to False when omitted, matching their own
+        column defaults. **That is a statement about the whole row, not a merge**:
+        PUT here means "the row should be in this state", so a flag left out of the
+        body reads as false rather than as "leave whatever is there". The same is
+        true of every optional field on every table in this API; it is called out
+        on this one because `archived` is USER state a person set deliberately
+        (ticket 27, 2026-08-29) and silently clearing it would be worse than
+        silently clearing a spec sheet's blank string.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        trim:
+          type: string
+          nullable: true
+        engine:
+          type: string
+          nullable: true
+        confirmed:
+          type: boolean
+          default: false
+        odometer_baseline:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          description: 'An odometer reading, paired with `odometer_baseline_at`. Both
+            or neither: a baseline without its timestamp cannot be projected forward,
+            so it is worse than none - it looks like knowledge and is not (`vehicles_odometer_baseline_paired`).'
+        odometer_baseline_at:
+          type: string
+          format: date-time
+          nullable: true
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+          nullable: true
+        archived:
+          type: boolean
+          default: false
+        last_obd_mac:
+          type: string
+          nullable: true
+          description: 'The MAC of the OBD dongle this car was last seen on. A best-effort
+            rebuild HINT, never an identity: a car that changed dongles carries its
+            old value here until the next sync, and nothing may be assigned on the
+            strength of it alone.'
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - make
+      - model
+      - name
+      - provenance
+      - updated_at
+      - year
+    VehicleSpec:
+      type: object
+      description: |-
+        Field-for-field `RemoteVehicleSpec` / `VehicleSpecUpload`: the factory
+        build details for one car, mostly NHTSA vPIC VIN-decode output.
+
+        DETERMINISTIC despite the three manually-typed columns (`paint_color`,
+        `paint_code`, `build_notes`) that vPIC cannot supply - the column default
+        says so and this matches it. `decoded_at` is null, not 0, for "never
+        decoded": the phone stores 0L for that and carrying it forward would read
+        as an actual moment in 1970.
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        vin:
+          type: string
+          default: ''
+        engine_cylinders:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        displacement_l:
+          type: number
+          format: double
+          nullable: true
+        engine_hp:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        engine_config:
+          type: string
+          default: ''
+        fuel_type:
+          type: string
+          default: ''
+        transmission_style:
+          type: string
+          default: ''
+        transmission_speeds:
+          type: string
+          default: ''
+        drive_type:
+          type: string
+          default: ''
+        body_class:
+          type: string
+          default: ''
+        doors:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        series:
+          type: string
+          default: ''
+        vehicle_type:
+          type: string
+          default: ''
+        manufacturer:
+          type: string
+          default: ''
+        plant_city:
+          type: string
+          default: ''
+        plant_country:
+          type: string
+          default: ''
+        paint_color:
+          type: string
+          default: ''
+        paint_code:
+          type: string
+          default: ''
+        build_notes:
+          type: string
+          default: ''
+        decoded_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null means never decoded. Never 0 or an epoch timestamp - the
+            phone stores 0L for this and it would read as an actual moment in 1970.
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - provenance
+      - updated_at
+      - vehicle_id
     VoiceNote:
       type: object
       description: |-

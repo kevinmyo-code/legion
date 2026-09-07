@@ -287,6 +287,16 @@ class MemoryAuditViewSet(_MemoryViewSet):
     # could drop. See this module's doc comment for the phone-side rule it
     # mirrors.
     allow_delete = False
+    # The sentence the 405 carries. It used to be hardcoded into
+    # `SyncedModelViewSet.http_method_not_allowed` because this was the only
+    # table that ever set `allow_delete = False`; fleet added two whose reason
+    # is different (no `deleted_at` column at all), so the wording moved to the
+    # viewset that means it. Same words, same table, said in the place that is
+    # true of it.
+    no_delete_reason = (
+        "memory_audit is append-only: it is an audit trail, and a trail with rows removed "
+        "from it is not one."
+    )
 
 
 MEMORY_VIEWSETS = [MemoryViewSet, CompanionMemoryViewSet, MemoryAuditViewSet]

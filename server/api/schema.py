@@ -285,20 +285,31 @@ class SyncedAutoSchema(AutoSchema):
                 return [SINCE_PARAMETER]
             return [SINCE_PARAMETER, ACTIVE_PARAMETER]
         if view.action in {"retrieve", "upsert", "destroy"}:
-            # Replaces the auto-resolved path parameter with the same type
+            # Replaces the auto-resolved path parameter(s) with the same type
             # (the URL converter still decides `str` vs `uuid`) plus a
             # description - `identity` is `origin_guid` on most tables,
-            # `label` on places and the server's own `id` on voice notes,
-            # and a client generated from a bare `identity: string` has no
-            # way to know which.
-            uuid_converter = view.identity_url_converter == "uuid"
+            # `sync_id` on six fleet tables, `label` on places and the
+            # server's own `id` on voice notes, and a client generated from a
+            # bare `identity: string` has no way to know which.
+            #
+            # **A list, because one table's detail route has TWO segments.**
+            # `maintenance_schedules` is keyed on the composite
+            # `(vehicle_id, service_name)` and its path carries both; this
+            # used to build exactly one parameter named `identity` from
+            # `view.identity_field`, which would have described that route as
+            # having a path variable it does not have and omitted the two it
+            # does. `SyncedModelViewSet.identity_path_parameters` is the one
+            # place the segments are declared, and `synced_paths` builds the
+            # URL from the matching `detail_path_suffix`, so the schema and
+            # the router cannot disagree about them.
             return [
                 OpenApiParameter(
-                    name="identity",
+                    name=name,
                     location=OpenApiParameter.PATH,
-                    type=OpenApiTypes.UUID if uuid_converter else OpenApiTypes.STR,
+                    type=OpenApiTypes.UUID if converter == "uuid" else OpenApiTypes.STR,
                     required=True,
-                    description=f"The row's `{view.identity_field}`.",
+                    description=f"The row's `{column}`.",
                 )
+                for name, converter, column in view.identity_path_parameters()
             ]
         return []

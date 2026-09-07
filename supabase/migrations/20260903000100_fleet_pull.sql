@@ -24,7 +24,9 @@
 -- own "hintFree" check for how a collision (two vehicles claiming the same hint) is refused rather
 -- than silently misassigned.
 --
--- UNAPPLIED as of this commit - no CLI or project credentials in this environment. Apply by hand
+-- APPLIED. (This line said UNAPPLIED until 2026-09-07, when the fleet routing ticket read the live
+-- schema and found the column present. There is no migration history table in this project, so a
+-- header is the only record of what has run, and a header that lies is worse than no header.)
 -- (or via CI with real credentials) before FleetSync's pull is exercised against a real Supabase
 -- project.
 
