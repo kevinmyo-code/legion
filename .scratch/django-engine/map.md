@@ -4,8 +4,8 @@ title: "Django is the engine: one server, a native Android limb, a web limb"
 charted: 2026-09-05
 charted-by: "Kevin + Fable"
 effort: "`.scratch/django-engine/`"
-tickets: 11
-open: 11
+tickets: 13
+open: 12
 status: open
 tags: [map]
 ---
@@ -83,4 +83,13 @@ handoff artefact between the two is the OpenAPI schema `server/openapi.yaml`, re
               +-- 07 where it runs -----------------------------+
 ```
 
+Two tickets are off that spine because they were found rather than planned: 12 (pytest leaves a
+connection behind) and 13 (rule 7 provisional ingestion has no endpoint, found while building 03).
+
 Supabase stays live and untouched until ticket 10. Nothing here is a cutover until then.
+
+**The `tickets:` and `open:` counts in this file's frontmatter are hand-maintained, not generated.**
+`tools/obsidian_sync.py`'s `render_map` returns early on any file that already has frontmatter, so
+it writes those two numbers once, at conversion, and never again. They read 11/11 on 2026-09-07
+with twelve ticket files on disk, and were corrected to 13/12 by hand along with this note. Count
+the files rather than trusting the header, or fix the script.

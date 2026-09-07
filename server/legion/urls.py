@@ -36,4 +36,9 @@ urlpatterns = [
     # root than folded into `api.urls` alongside `events`/`changes`.
     path("api/", include("api.urls")),
     path("api/checklists/", include("checklists.urls")),
+    # Ticket 03 (django-engine map): the section 4 gate. Its own mount rather
+    # than folded into `api.urls` for the same reason `checklists` has one -
+    # these are commit endpoints that return a verdict, not CRUD over a
+    # collection, and grouping them under one prefix keeps that visible.
+    path("api/ingest/", include("ingest.urls")),
 ]

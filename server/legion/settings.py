@@ -115,6 +115,12 @@ INSTALLED_APPS = [
     # read as `managed = False` mirrors. See `legacy/models/` and
     # `legacy/CONSTRAINTS.md`.
     "legacy",
+    # Ticket 03 (django-engine map): the section 4 gate, moved out of
+    # `public.commit_statement`/`public.commit_receipt` and into Python
+    # (ADR 0044 decision 2). No models of its own - it writes `legacy`'s
+    # four gated tables and `ingested_files`, which is why it needs no
+    # migrations either.
+    "ingest",
 ]
 
 MIDDLEWARE = [

@@ -1,4 +1,13 @@
-"""Test-database-only DDL for the `legacy` tables Phase 5 writes to.
+"""Test-database-only DDL for the `legacy` tables the server writes to.
+
+**This module holds TWO constants now, and its title used to say "the tables
+Phase 5 writes to".** `LEGACY_PHASE5_TEST_SCHEMA_SQL` is that original set
+(places, voice notes, the eight body tables, the three memory tables) and
+everything below describes it. `LEGACY_INGEST_TEST_SCHEMA_SQL` at the foot of
+the file is django-engine ticket 03's: the five ledger and pantry tables the
+section 4 gate writes, with the `forbid_mutation_of_facts` trigger that makes a
+gated row immutable. It has its own header covering what it mirrors and what it
+deliberately leaves out. `conftest.apply_legacy_test_schema` applies both.
 
 ## Why this file exists at all
 
@@ -298,6 +307,241 @@ begin
         execute format(
             'create trigger touch_updated_at before update on public.%I '
             'for each row execute function private.touch_updated_at()',
+            tbl
+        );
+    end loop;
+end $$;
+"""
+
+
+# ============================================================================
+# The five tables django-engine ticket 03 (the gate in Python) writes.
+#
+# `tests/conftest.py`'s own note said this wall was coming: "every future
+# ticket that writes to a `legacy` table (ledger, pantry, fleet in
+# execution-plan.md's Phase 5) hits this exact same wall". This is the ledger
+# and pantry half of it. Fleet still owes its own block.
+#
+# Copied from the `supabase/migrations/` files that define these tables on the
+# live database, then checked column by column and constraint by constraint
+# against the live schema through `information_schema.columns` and
+# `pg_constraint` on 2026-09-07 - which is how the three post-hoc ALTERs got
+# folded in rather than missed:
+#
+# - base tables and both triggers: `20260825000200_conventions.sql`,
+#   `20260825000300_aspect_ledger_pantry.sql`
+# - `origin_guid` and its unique indexes: `20260826000100_origin_guid.sql`
+# - `receipts.unaccounted_cents` and its two checks:
+#   `20260826000300_receipt_unaccounted.sql` and
+#   `20260826000500_receipts_allow_unreconciled.sql`
+# - `statements.stated_total_cents` losing NOT NULL, and the scope guard that
+#   replaced it: `20260827000300_commit_statement_deterministic_two_anchor.sql`
+#
+# **What is deliberately NOT copied: `public.commit_statement`,
+# `public.commit_receipt`, `private.quarantine_file` and
+# `private.ledger_resolve_dedup`.** Those four ARE the gate, and ticket 03
+# moves the gate into Python (ADR 0044 decision 2). Mirroring them here would
+# mean maintaining a fifth copy of the arithmetic in the one file whose whole
+# job is to be a copy of something else.
+#
+# **What IS copied, and is load-bearing rather than decoration:
+# `private.forbid_mutation_of_facts` and its trigger on all four gated
+# tables.** ADR 0044 decision 1 keeps that rule in SQL precisely because it has
+# to hold even when Django has a bug, so a test database without it would be a
+# laxer database than the one this app ships against - and
+# `test_ingest_api.py` asserts the refusal directly.
+# ============================================================================
+LEGACY_INGEST_TEST_SCHEMA_SQL = """
+create schema if not exists private;
+
+do $$
+begin
+    if not exists (select 1 from pg_type where typname = 'provenance') then
+        create type public.provenance as enum
+            ('DETERMINISTIC', 'LLM_RECONCILED', 'UNRECONCILED', 'USER');
+    end if;
+    if not exists (select 1 from pg_type where typname = 'ingest_state') then
+        create type public.ingest_state as enum (
+            'NEW', 'INGESTED', 'QUARANTINED', 'UNREADABLE', 'DUPLICATE_CONTENT', 'NEEDS_LLM'
+        );
+    end if;
+end $$;
+
+-- Blocks every UPDATE, and blocks DELETE except on UNRECONCILED rows - rule 7
+-- defines a provisional row as transient and never asserted as fact, so
+-- superseding one is a delete rather than a reversal.
+create or replace function private.forbid_mutation_of_facts()
+    returns trigger
+    language plpgsql
+    set search_path = ''
+as $$
+begin
+    if tg_op = 'UPDATE' then
+        raise exception
+            'Row % in % is immutable: it came through the reconciliation gate. Post a reversal '
+            '(a new row with reversal_of set) and a replacement instead of editing it.',
+            old.id, tg_table_name
+            using errcode = 'restrict_violation';
+    end if;
+
+    if tg_op = 'DELETE' then
+        if old.provenance = 'UNRECONCILED'::public.provenance then
+            return old;
+        end if;
+        raise exception
+            'Row % in % is immutable: it came through the reconciliation gate and is not '
+            'provisional. Post a reversal instead of deleting it.',
+            old.id, tg_table_name
+            using errcode = 'restrict_violation';
+    end if;
+
+    return null;
+end;
+$$;
+
+-- ============================================================================
+-- ingested_files. The per-file ingestion ledger both aspects hang off, and the
+-- one table here with NO forbid_mutation trigger: its state and quarantine
+-- reason are updated by every commit and every retry.
+-- ============================================================================
+create table if not exists public.ingested_files (
+    id                uuid primary key default gen_random_uuid(),
+    content_sha256    text        not null unique,
+    source_file_id    text,
+    display_name      text,
+    size_bytes        bigint,
+    state             public.ingest_state not null default 'NEW',
+    quarantine_reason text,
+    first_seen_at     timestamptz not null default now(),
+    last_attempt_at   timestamptz not null default now()
+);
+
+-- ============================================================================
+-- LEDGER
+-- ============================================================================
+create table if not exists public.statements (
+    id                 uuid primary key default gen_random_uuid(),
+    ingested_file_id   uuid not null references public.ingested_files (id) on delete restrict,
+    account_last4      text        not null check (account_last4 ~ '^[0-9]{4}$'),
+    account_nickname   text        not null check (length(trim(account_nickname)) > 0),
+    currency           text        not null check (currency in ('SGD', 'USD')),
+    period_start       date        not null,
+    period_end         date        not null,
+    -- Nullable as of 2026-08-27, guarded by the scope-guard check below: only a
+    -- deterministically parsed statement may omit the printed total, and it is
+    -- stored NULL rather than synthesised from sum(lines).
+    stated_total_cents bigint,
+    opening_balance_cents bigint   not null,
+    closing_balance_cents bigint   not null,
+    provenance         public.provenance not null,
+    created_at         timestamptz not null default now(),
+    constraint statements_period_ordered check (period_end >= period_start),
+    constraint statements_not_provisional check (provenance <> 'UNRECONCILED'),
+    constraint statements_total_only_null_if_deterministic check (
+        stated_total_cents is not null or provenance = 'DETERMINISTIC'
+    ),
+    constraint statements_one_per_file unique (ingested_file_id, account_last4)
+);
+
+create table if not exists public.ledger_transactions (
+    id                uuid primary key default gen_random_uuid(),
+    statement_id      uuid references public.statements (id) on delete restrict,
+    account_last4     text        not null check (account_last4 ~ '^[0-9]{4}$'),
+    account_nickname  text        not null,
+    currency          text        not null check (currency in ('SGD', 'USD')),
+    txn_date          date        not null,
+    description       text        not null,
+    amount_cents      bigint      not null,
+    balance_cents     bigint,
+    line_ref          text        not null,
+    category          text,
+    category_pending  boolean     not null default true,
+    pending_logged_at timestamptz,
+    reversal_of       uuid references public.ledger_transactions (id) on delete restrict,
+    provenance        public.provenance not null,
+    created_at        timestamptz not null default now(),
+    origin_guid       text,
+    constraint ledger_txn_header_matches_provenance check (
+        (provenance = 'UNRECONCILED' and statement_id is null)
+        or (provenance <> 'UNRECONCILED' and statement_id is not null)
+    ),
+    constraint ledger_txn_reversal_not_provisional check (
+        reversal_of is null or provenance <> 'UNRECONCILED'
+    )
+);
+
+create unique index if not exists ledger_transactions_origin_guid_idx
+    on public.ledger_transactions (origin_guid);
+
+-- ============================================================================
+-- PANTRY
+-- ============================================================================
+create table if not exists public.receipts (
+    id                 uuid primary key default gen_random_uuid(),
+    ingested_file_id   uuid references public.ingested_files (id) on delete restrict,
+    store              text        not null,
+    purchase_date      date        not null,
+    currency           text        not null check (currency in ('SGD', 'USD')),
+    total_cents        bigint      not null,
+    subtotal_cents     bigint,
+    tax_cents          bigint,
+    other_charges_cents bigint,
+    photo_object_path  text,
+    provenance         public.provenance not null,
+    created_at         timestamptz not null default now(),
+    origin_guid        text,
+    -- Rule 7's 2026-08-26 amendment. The unexplained amount gets its own column
+    -- and is never stored as tax: `tax := total - sum(lines)` would make the
+    -- anchor an identity and would silently absorb a genuinely missed line.
+    unaccounted_cents  bigint,
+    constraint receipts_not_provisional check (
+        provenance <> 'UNRECONCILED' or unaccounted_cents is not null
+    ),
+    constraint receipts_unaccounted_requires_unreconciled check (
+        unaccounted_cents is null
+        or (unaccounted_cents <> 0 and provenance = 'UNRECONCILED')
+    )
+);
+
+create unique index if not exists receipts_origin_guid_idx on public.receipts (origin_guid);
+
+create table if not exists public.receipt_line_items (
+    id                uuid primary key default gen_random_uuid(),
+    receipt_id        uuid        not null references public.receipts (id) on delete cascade,
+    name              text        not null,
+    quantity          numeric     not null check (quantity > 0),
+    unit_price_cents  bigint,
+    total_price_cents bigint      not null,
+    -- ESTIMATES. Section 4 rule 5: excluded from every reconciliation check,
+    -- and every surface that renders one must say "estimate".
+    estimated_calories_kcal numeric,
+    estimated_protein_g     numeric,
+    estimated_carbs_g       numeric,
+    estimated_fat_g         numeric,
+    reversal_of       uuid references public.receipt_line_items (id) on delete restrict,
+    provenance        public.provenance not null,
+    created_at        timestamptz not null default now(),
+    origin_guid       text
+);
+
+create unique index if not exists receipt_line_items_origin_guid_idx
+    on public.receipt_line_items (origin_guid);
+
+-- ============================================================================
+-- Immutability for the four gated tables. NOT ingested_files - see its comment.
+-- ============================================================================
+do $$
+declare
+    tbl text;
+begin
+    foreach tbl in array array[
+        'statements', 'ledger_transactions', 'receipts', 'receipt_line_items'
+    ]
+    loop
+        execute format('drop trigger if exists forbid_mutation on public.%I', tbl);
+        execute format(
+            'create trigger forbid_mutation before update or delete on public.%I '
+            'for each row execute function private.forbid_mutation_of_facts()',
             tbl
         );
     end loop;

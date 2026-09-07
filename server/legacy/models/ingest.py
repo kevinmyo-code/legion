@@ -1,7 +1,19 @@
 """`ingested_files`: the one table `ledger` and `pantry` both hang their
 statements/receipts off of (`ticket 02`'s table maps it to its own app for
-that reason). This is also where ticket 03 (the gate in Python) will live
-once it exists - nothing about the gate itself is built here."""
+that reason).
+
+This module's doc used to say "this is also where ticket 03 (the gate in
+Python) will live once it exists". It does not: the gate landed in its own
+`ingest` app (`ingest/gate.py`, `ingest/dedup.py`, `ingest/views.py`), which
+keeps the arithmetic in a module with no ORM in it at all. This file is
+still only the table mirror - nothing about the gate is built here.
+
+`ingested_files` is the ONE table in this app that a gated write updates
+rather than only inserting: `private.forbid_mutation_of_facts` is attached
+to `statements`, `ledger_transactions`, `receipts` and `receipt_line_items`
+and to nothing else, so the state/reason upsert the commit paths do is
+allowed here and would be refused on any of those four.
+"""
 from __future__ import annotations
 
 from django.db import models

@@ -12,7 +12,10 @@ import pytest
 from django.conf import settings
 from rest_framework.test import APIClient
 
-from tests.legacy_test_schema import LEGACY_PHASE5_TEST_SCHEMA_SQL
+from tests.legacy_test_schema import (
+    LEGACY_INGEST_TEST_SCHEMA_SQL,
+    LEGACY_PHASE5_TEST_SCHEMA_SQL,
+)
 
 # `legacy` is deliberately `managed = False` with `MIGRATION_MODULES =
 # {"legacy": None}` (legion/settings.py) - Supabase's own migrations own
@@ -138,17 +141,20 @@ create table if not exists public.event_skips (
 
 @pytest.fixture(scope="session")
 def django_db_setup(django_db_setup, django_db_blocker):
-    """Layers `_LEGACY_EVENTS_TEST_SCHEMA_SQL` and then
-    `LEGACY_PHASE5_TEST_SCHEMA_SQL` on top of pytest-django's own
-    `django_db_setup` (which creates and migrates the test database) - see
-    the first constant's own module-level comment for why this exists at
-    all, and `tests/legacy_test_schema.py`'s module doc for what the second
-    covers.
+    """Layers `_LEGACY_EVENTS_TEST_SCHEMA_SQL`, then
+    `LEGACY_PHASE5_TEST_SCHEMA_SQL`, then `LEGACY_INGEST_TEST_SCHEMA_SQL`
+    on top of pytest-django's own `django_db_setup` (which creates and
+    migrates the test database) - see the first constant's own module-level
+    comment for why this exists at all, and
+    `tests/legacy_test_schema.py`'s module doc for what the other two
+    cover.
 
-    Order matters only in that both blocks create `private.touch_updated_at`
-    and guard the `provenance` enum; each does so idempotently
-    (`create or replace`, `if not exists`), so running either one first, or
-    both twice against a `--reuse-db` database, changes nothing.
+    Order matters only in that all three blocks guard the `provenance` enum
+    and two of them create `private.touch_updated_at`; each does so
+    idempotently (`create or replace`, `if not exists`), so running them in
+    any order, or twice against a `--reuse-db` database, changes nothing.
+    The third block was added by django-engine ticket 03 and brings the
+    ledger and pantry tables the section 4 gate writes.
     """
     from django.db import connection
 
@@ -163,6 +169,7 @@ def django_db_setup(django_db_setup, django_db_blocker):
         with connection.cursor() as cursor:
             cursor.execute(_LEGACY_EVENTS_TEST_SCHEMA_SQL)
             cursor.execute(LEGACY_PHASE5_TEST_SCHEMA_SQL)
+            cursor.execute(LEGACY_INGEST_TEST_SCHEMA_SQL)
 
 
 @pytest.fixture(autouse=True, scope="session")
