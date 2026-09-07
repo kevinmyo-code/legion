@@ -88,3 +88,31 @@ def test_there_is_no_post_route_for_a_client_keyed_table(auth_client):
     idempotent ON."""
     response = auth_client.post("/api/places/", HOME | {"label": "home"}, format="json")
     assert response.status_code == 405
+
+
+def test_a_label_longer_than_thirty_characters_is_refused_in_words(auth_client):
+    """django-engine ticket 14. This cap lived only in
+    `location/PlaceController.normalizeLabel` until 2026-09-07, so a second
+    Android app (the head unit is a separate app, ADR 0044) simply would not
+    have had it. The refusal names the length, the limit, and what a label
+    that long usually is."""
+    long_label = "a" * 31
+    response = auth_client.put(f"/api/places/{long_label}/", HOME, format="json")
+
+    assert response.status_code == 400
+    text = str(response.data)
+    assert "31" in text and "30" in text
+    assert "Nothing was saved" in text
+    # Nothing partial: the refusal is before any write.
+    assert not Place.objects.filter(label=long_label).exists()
+
+
+def test_a_thirty_character_label_is_accepted(auth_client):
+    """The boundary is inclusive - `PlaceController.normalizeLabel` refused
+    on `s.length > 30`, so thirty is a legal name and thirty-one is not.
+    Without this the cap could quietly become 29 and no test would notice."""
+    label = "a" * 30
+    response = auth_client.put(f"/api/places/{label}/", HOME, format="json")
+
+    assert response.status_code == 200, response.data
+    assert response.data["label"] == label

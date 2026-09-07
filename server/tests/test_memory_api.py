@@ -114,3 +114,134 @@ def test_a_bad_source_is_400_naming_the_allowed_set(auth_client):
     text = str(response.data)
     for allowed in ("consolidated", "reflection", "stated"):
         assert allowed in text
+
+
+# django-engine ticket 14: the recall rule, moved off
+# `CompanionMemoryDao.getRecallScan`'s WHERE clause and onto this server.
+JEEP = "AA:BB:CC:DD:EE:FF"
+OUTLANDER = "car:11111111-2222-3333-4444-555555555555"
+
+
+def _store(client, guid, **overrides):
+    response = client.put(
+        f"/api/memory/companion_memories/{guid}/", COMPANION | overrides, format="json"
+    )
+    assert response.status_code == 200, response.data
+    return response.data
+
+
+def _texts(response):
+    return {row["text"] for row in response.data["results"]}
+
+
+def test_a_car_anchored_memory_is_not_returned_for_another_vehicle(auth_client):
+    """The defect this ticket names: Django served every row unfiltered, so
+    a second client recalled the Outlander's memories while in the Jeep."""
+    _store(
+        auth_client, "jeep-car", vehicle_id=JEEP, category="car_anchored", text="jeep oil at 60k"
+    )
+    _store(
+        auth_client,
+        "outlander-car",
+        vehicle_id=OUTLANDER,
+        category="car_anchored",
+        text="outlander needs a cabin filter",
+    )
+
+    scan = auth_client.get("/api/memory/companion_memories/", {"vehicle": JEEP})
+
+    assert scan.status_code == 200
+    assert _texts(scan) == {"jeep oil at 60k"}
+
+
+def test_driver_and_relationship_memories_cross_every_vehicle(auth_client):
+    """The other half of the same rule, and the bug that produced it:
+    scoping the whole table by vehicle stranded 46 memories about Kevin the
+    moment the Jeep became the active car. A person does not change car to
+    car."""
+    _store(
+        auth_client,
+        "driver-1",
+        vehicle_id=OUTLANDER,
+        category="driver",
+        text="he likes bossa nova",
+    )
+    _store(
+        auth_client,
+        "rel-1",
+        vehicle_id=OUTLANDER,
+        category="relationship",
+        text="he calls his mother on sundays",
+    )
+    _store(auth_client, "car-1", vehicle_id=OUTLANDER, category="car_anchored", text="cabin filter")
+
+    scan = auth_client.get("/api/memory/companion_memories/", {"vehicle": JEEP})
+
+    assert _texts(scan) == {"he likes bossa nova", "he calls his mother on sundays"}
+
+
+def test_omitting_the_vehicle_returns_every_row_because_this_is_also_the_replica_feed(auth_client):
+    """Stated as a test so it cannot be "fixed" by someone reading the
+    filter and assuming it should be the default. The Room replica is whole
+    on purpose - the driver-facing memory screen reads across all cars, and
+    a tombstone for another car's row still has to arrive. See
+    `api/memory.py`'s module doc."""
+    _store(
+        auth_client, "jeep-car", vehicle_id=JEEP, category="car_anchored", text="jeep oil at 60k"
+    )
+    _store(
+        auth_client, "out-car", vehicle_id=OUTLANDER, category="car_anchored", text="cabin filter"
+    )
+
+    everything = auth_client.get("/api/memory/companion_memories/")
+
+    assert _texts(everything) == {"jeep oil at 60k", "cabin filter"}
+
+
+def test_the_vehicle_filter_composes_with_active_and_since(auth_client):
+    """`?vehicle=` narrows the same feed `?active=1` narrows, rather than
+    replacing it - a tombstoned row for THIS vehicle is still gone."""
+    _store(
+        auth_client, "jeep-car", vehicle_id=JEEP, category="car_anchored", text="jeep oil at 60k"
+    )
+    _store(auth_client, "jeep-old", vehicle_id=JEEP, category="car_anchored", text="jeep old fact")
+    auth_client.delete("/api/memory/companion_memories/jeep-old/")
+
+    live = auth_client.get(
+        "/api/memory/companion_memories/", {"vehicle": JEEP, "active": "1"}
+    )
+
+    assert _texts(live) == {"jeep oil at 60k"}
+
+
+def test_a_blank_vehicle_is_read_as_not_asking_rather_than_as_a_vehicle(auth_client):
+    """`?vehicle=` with nothing after it is a caller who did not supply the
+    fact, not a caller in a car named "". Same posture `api/synced.py` takes
+    for `?active=`: a caller who cannot be understood sees too much, never
+    silently nothing - which for THIS parameter is also the safe direction,
+    since the alternative is a replica that quietly loses rows."""
+    _store(
+        auth_client, "jeep-car", vehicle_id=JEEP, category="car_anchored", text="jeep oil at 60k"
+    )
+
+    blank = auth_client.get("/api/memory/companion_memories/", {"vehicle": "   "})
+
+    assert _texts(blank) == {"jeep oil at 60k"}
+
+
+def test_the_vehicle_filter_is_only_on_companion_memories(auth_client):
+    """`memories` has no `vehicle_id` column at all and `memory_audit` is a
+    trail, not a recall source. A `?vehicle=` on either is an unknown query
+    parameter and is ignored, exactly as an unknown one is everywhere else
+    in this API - the unknown-FIELD refusal is about write bodies, not query
+    strings."""
+    stored = auth_client.put(
+        "/api/memory/memories/guid-1/",
+        {"text": "the garage code is 4417", "logged_at": "2026-09-01T10:00:00Z"},
+        format="json",
+    )
+    assert stored.status_code == 200, stored.data
+
+    scan = auth_client.get("/api/memory/memories/", {"vehicle": JEEP})
+    assert scan.status_code == 200
+    assert _texts(scan) == {"the garage code is 4417"}

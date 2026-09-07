@@ -5,6 +5,9 @@ import android.location.Location
 import android.util.Log
 import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.backend.engine.engineRefusalSentence
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.engine.migration.EnginePlacesRetirementCopy
@@ -108,7 +111,10 @@ object PlaceController {
         val backend = backend(context)
         if (backend != null) {
             val remote = backend.upsert(label, loc.latitude, loc.longitude).getOrElse {
-                return "Something went wrong pinning that spot - it didn't save. Try again in a sec."
+                // A REFUSAL is relayed in the engine's own words; anything else keeps the generic
+                // sentence. See [engineRefusal] for why the two are not the same thing.
+                return engineRefusal(it)
+                    ?: "Something went wrong pinning that spot - it didn't save. Try again in a sec."
             }
             // Room is written ONLY here, after a genuine server ACK (ticket 01 ruling 9) - never
             // ahead of it, and never on the failure branch above.
@@ -222,12 +228,68 @@ object PlaceController {
             ?.first?.label
     }
 
+    /**
+     * The engine's own sentence when it REFUSED a write, or null for every other failure shape.
+     *
+     * **Why the engine's words rather than this file's own** (django-engine ticket 14): a rule the
+     * server holds and the phone does not can only be explained by the server. `PlaceSerializer`
+     * refuses an over-long label with a sentence written to be read by a person - it names the
+     * length, the limit and what a name that long usually is - and paraphrasing it here would put
+     * a second, drifting copy of the rule in Kotlin, which is the thing that ticket exists to
+     * remove. [engineRefusalSentence] only unwraps DRF's `{"field": ["..."]}` envelope; it does not
+     * reword.
+     *
+     * **4xx only, deliberately.** [com.kevin.legion.backend.engine.EngineHttp.classify] files 5xx
+     * under [EngineFailure.Refused] too, on the sound reasoning that the request DID reach the
+     * engine and must not be treated as never-sent - but "The engine failed on its side (HTTP 500)"
+     * is a fault, not a refusal, and reading it out as though the user had asked for something
+     * disallowed would be the wrong sentence. Those keep the generic message. 401/403 never arrive
+     * here at all; `classify` files them under [EngineFailure.Unauthorized].
+     *
+     * Returns null on the Supabase transport for everything, since that backend throws its own
+     * exception type - which is correct rather than a gap: `public.places` has no length CHECK, so
+     * there is no refusal on that path to relay (see the label cap in [normalizeLabel]).
+     */
+    private fun engineRefusal(t: Throwable): String? =
+        ((t as? EngineHttpException)?.failure as? EngineFailure.Refused)
+            ?.takeIf { it.status in HTTP_CLIENT_ERROR_RANGE }
+            ?.let { engineRefusalSentence(it.body).takeIf(String::isNotBlank) }
+
+    /** DRF's `status.HTTP_400_BAD_REQUEST` and the top of the 4xx block - the range [engineRefusal]
+     * relays, being refusals the caller could act on rather than 5xx faults. */
+    private const val HTTP_BAD_REQUEST = 400
+    private const val HTTP_LAST_CLIENT_ERROR = 499
+    private val HTTP_CLIENT_ERROR_RANGE = HTTP_BAD_REQUEST..HTTP_LAST_CLIENT_ERROR
+
     private fun distanceTo(from: Location, place: TaggedPlace): Float {
         val out = FloatArray(1)
         Location.distanceBetween(from.latitude, from.longitude, place.latitude, place.longitude, out)
         return out[0]
     }
 
+    /**
+     * Cleans a spoken label down to a name, or null when there is no usable name in it.
+     *
+     * **The 30-character cap now ALSO lives in the engine** (django-engine ticket 14):
+     * `server/api/places.py`'s `PlaceSerializer.LABEL_MAX_LENGTH` refuses the same write with a
+     * sentence [tagPlace] relays verbatim, and `supabase/migrations/20260907000200_places_label_length.sql`
+     * is the matching CHECK (UNAPPLIED as of 2026-09-07). The server is the authority.
+     *
+     * **The Kotlin copy is still here, and deleting it today would lose the rule rather than move
+     * it.** Ticket 14 asks for the deletion, on the reasoning that [tagPlace] is a synchronous
+     * write-through with no outbox so the refusal reaches the user before anything is stored. That
+     * is true of the DJANGO transport. It is not true of the other two, and `places` is on neither
+     * of them by choice: [com.kevin.legion.backend.engine.EngineTransport.DJANGO_BY_DEFAULT] is
+     * `{"events", "checklists"}`, so an untouched install runs this aspect on Supabase - where
+     * `public.places` has `check (length(trim(label)) > 0)` and no length bound at all - or, with
+     * no project saved, straight into Room with no server in the path whatsoever. On both, deleting
+     * this line means a misheard sentence is simply stored as a place name.
+     *
+     * **So the deletion is owed the day `places` joins `DJANGO_BY_DEFAULT`, and not before.** Until
+     * then this is the pre-validation ADR 0042 explicitly permits ("a client may pre-validate for a
+     * faster error message, never as the only check") - it is no longer the only check, which is
+     * the half of that sentence this ticket actually fixed.
+     */
     private fun normalizeLabel(raw: String): String? {
         var s = raw.lowercase()
             .replace(Regex("\\bby the way\\b"), " ")

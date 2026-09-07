@@ -43,6 +43,23 @@ interface CompanionMemoryDao {
      *
      * No schema change: the partition was only ever in this WHERE clause. `deleted = 0` added
      * memory-supabase ticket.
+     *
+     * **THE ENGINE IS THE AUTHORITY ON THIS RULE AS OF 2026-09-07** (django-engine ticket 14).
+     * `GET /api/memory/companion_memories/?vehicle=<id>` applies exactly the predicate below,
+     * server-side, for any client that asks - `server/api/memory.py`'s `CompanionMemoryViewSet.list`,
+     * and that module's doc comment records why the vehicle is a parameter rather than server-held
+     * state (`vehicle/ActiveVehicle.kt`: the active car "is per-device state and MUST NOT sync",
+     * because the phone and the head unit may legitimately be in different cars). Until then this
+     * WHERE clause was the ONLY copy of the rule in existence, so Django served every row
+     * unfiltered and a second Android app would have recalled the Outlander's service history from
+     * the driver's seat of the Jeep.
+     *
+     * **The clause stays here, and that is not a duplicated business rule.** ADR 0044 rule 4: the
+     * phone depends on the server to write and NEVER to read - Room is a full replica and this
+     * query is a read of it, so deleting the predicate would not move the rule to Django, it would
+     * remove it from the one client that currently runs it. The server's copy is what a SECOND
+     * client gets. Both must say the same thing; if they ever disagree, the server is right and
+     * this line is the bug.
      */
     @Query(
         "SELECT * FROM companion_memories " +

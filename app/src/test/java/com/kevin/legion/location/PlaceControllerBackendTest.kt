@@ -4,6 +4,8 @@ import android.location.Location
 import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.PlacesBackendException
 import com.kevin.legion.backend.RemotePlace
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.testutil.RoomTestReset
@@ -36,6 +38,10 @@ class PlaceControllerBackendTest {
         seed: List<RemotePlace> = emptyList(),
         var upsertFails: Boolean = false,
         var deleteFails: Boolean = false,
+        /** Stands in for the Django transport answering a non-2xx - the shape `EngineHttp.classify`
+         * produces, so the relay in PlaceController.engineRefusal is exercised as it would be by a
+         * real refusal from `server/api/places.py`. Null means "no engine failure to simulate". */
+        var upsertRefusal: EngineFailure? = null,
     ) : PlacesBackend {
         val rows = seed.associateBy { it.label }.toMutableMap()
         var upsertCalls = 0
@@ -45,7 +51,13 @@ class PlaceControllerBackendTest {
             Result.success(rows.values.filterNot { it.deleted })
 
         override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> {
-            if (upsertFails) return Result.failure(PlacesBackendException("simulated network failure"))
+            val refusal = upsertRefusal
+            val failure: Throwable? = when {
+                refusal != null -> EngineHttpException(refusal)
+                upsertFails -> PlacesBackendException("simulated network failure")
+                else -> null
+            }
+            if (failure != null) return Result.failure(failure)
             upsertCalls++
             val row = RemotePlace(label, latitude, longitude, updatedAtMs = ++clock, deleted = false)
             rows[label] = row
@@ -227,5 +239,79 @@ class PlaceControllerBackendTest {
 
         assertEquals("work", label)
         assertEquals(0, backend.upsertCalls)
+    }
+
+    // -- django-engine ticket 14: the rules that used to live only on the phone ------------------
+
+    /** The exact body `server/api/places.py`'s `PlaceSerializer.validate_label` produces for a
+     * 31-character label, in DRF's field-error envelope. Copied from the server's own sentence
+     * rather than paraphrased - if that sentence changes, this test should be updated to the new
+     * one, and the point being asserted (the phone says what the SERVER said) is unaffected. */
+    private val serverLabelRefusal =
+        """{"label":["Nothing was saved. That place name is 31 characters long and a place name can be """ +
+            """at most 30. A name that long is usually a whole sentence that was heard as one - try """ +
+            """something short, like 'home' or 'the gym'."]}"""
+
+    @Test
+    fun `a server refusal is relayed in the server's own words, not paraphrased`() = runBlocking {
+        // The label cap now lives in the engine (ticket 14). A rule the phone does not hold can
+        // only be explained by the server, so the sentence has to survive the trip intact.
+        val backend = FakePlacesBackend(upsertRefusal = EngineFailure.Refused(400, serverLabelRefusal))
+        PlaceController.backendOverride = backend
+
+        val result = PlaceController.tagPlace(context, "gym")
+
+        assertTrue(
+            "the engine's own explanation must reach the user: was <$result>",
+            result.contains("31 characters long") && result.contains("at most 30"),
+        )
+        assertFalse(
+            "and it must arrive unwrapped, not wearing DRF's JSON envelope",
+            result.contains("{\"label\"") || result.contains("[\""),
+        )
+        assertTrue(
+            "Room must never be written when the server refused",
+            CarDatabase.getDatabase(context).placeDao().getAll().isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a 5xx is a fault, not a refusal, and keeps the generic sentence`() = runBlocking {
+        // EngineHttp.classify files 5xx under Refused too (the request DID reach the engine), so
+        // relaying every Refused verbatim would read a server fault out as though the user had
+        // asked for something disallowed.
+        val backend = FakePlacesBackend(
+            upsertRefusal = EngineFailure.Refused(500, "The engine failed on its side (HTTP 500)."),
+        )
+        PlaceController.backendOverride = backend
+
+        val result = PlaceController.tagPlace(context, "gym")
+
+        assertTrue(
+            "a fault must still say in words that nothing saved: was <$result>",
+            result.contains("didn't save") || result.contains("went wrong"),
+        )
+        assertFalse("and must not quote the HTTP status at the user", result.contains("HTTP 500"))
+    }
+
+    @Test
+    fun `the blank-label guard survives and never reaches the backend`() = runBlocking {
+        // Ticket 14 keeps this one deliberately: an empty path segment addresses the COLLECTION
+        // route, not a row, so `PUT /api/places//` is not a write this label could ever make. It
+        // is load-bearing for URL construction, not a duplicated business rule.
+        val backend = FakePlacesBackend()
+        PlaceController.backendOverride = backend
+
+        // "by the way" and "location" are not blank as spoken - normalizeLabel strips both to
+        // nothing, which is the same refusal by a different road and is worth holding here too.
+        for (nothing in listOf("", "   ", "by the way", "location")) {
+            val result = PlaceController.tagPlace(context, nothing)
+            assertTrue(
+                "a label with no name in it must be refused before any write: <$nothing> gave <$result>",
+                result.contains("didn't catch"),
+            )
+        }
+        assertEquals("nothing may reach the server", 0, backend.upsertCalls)
+        assertTrue(CarDatabase.getDatabase(context).placeDao().getAll().isEmpty())
     }
 }
