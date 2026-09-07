@@ -44,9 +44,14 @@ def test_aspects_filter_selects_only_the_named_aspect(auth_client):
 
 
 def test_unknown_aspect_is_400_naming_the_allowed_set(auth_client):
-    response = auth_client.get("/api/changes?aspects=ledger")
+    """**This test used to send `aspects=ledger`**, which was an unknown
+    aspect when it was written (Phase 2) and is a real one now that the
+    ledger/pantry routes have landed. The example moved to `fleet`, which is
+    the last aspect still unrouted and is therefore the only name that stays
+    a genuine unknown - `api/changes.py` says why fleet waits."""
+    response = auth_client.get("/api/changes?aspects=fleet")
     assert response.status_code == 400
-    assert "ledger" in str(response.data)
+    assert "fleet" in str(response.data)
     assert "events" in str(response.data)
     assert "checklists" in str(response.data)
 
@@ -197,9 +202,24 @@ def test_the_feed_carries_tombstones(auth_client):
 
 
 def test_an_unknown_aspect_names_the_new_ones_too(auth_client):
+    """The refusal lists everything that DOES exist, so a client that guessed
+    wrong is not left guessing again. Every aspect ever added has to appear
+    here, which is what makes this test the one that fails when someone routes
+    a table and forgets `api/registry.py`."""
     response = auth_client.get("/api/changes?aspects=fleet")
     assert response.status_code == 400
     text = str(response.data)
     assert "fleet" in text
-    for known in ("events", "checklists", "places", "voice_notes", "body", "memory"):
+    for known in (
+        "events",
+        "checklists",
+        "places",
+        "voice_notes",
+        "body",
+        "memory",
+        # The ledger/pantry ticket's three.
+        "ledger",
+        "pantry",
+        "ingest",
+    ):
         assert known in text, known

@@ -10,15 +10,30 @@ addition to this file's own logic." That is now done for four more:
 `places`, `voice_notes`, `body` and `memory`, and it cost no per-aspect
 logic at all - they come from `api/registry.py`, the same list `api/urls.py`
 routes from, so an aspect cannot be routable and invisible here (or the
-reverse). Ledger, pantry and fleet are still absent, on purpose: the first
-two wait on the section 4 gate moving server-side (ticket 03) and fleet has
-four identity shapes and a 20,796-row `obd_samples` table that needs a
-windowed pull.
+reverse). That paragraph then said "Ledger, pantry and fleet are still absent, on
+purpose: the first two wait on the section 4 gate moving server-side (ticket
+03) and fleet has four identity shapes and a 20,796-row `obd_samples` table
+that needs a windowed pull." The gate landed (`server/ingest/`), so ledger
+and pantry are here now. **Fleet is still absent, and its reason is
+unchanged.**
+
+**Phase 5 continued: `ledger`, `pantry` and `ingest`.** The first two are
+this ticket's own item 4 ("extend `/api/changes?aspects=` to accept `ledger`
+and `pantry`, returning their tables"). The third was not asked for by name
+and is here because the registry makes it unavoidable in the right way:
+`ingested_files` is routed (`/api/ingest/files/`), and `api/registry.py` is
+the single list both this feed and `api/urls.py` read, so a routed table
+cannot be invisible here. It is also the table that makes the other two
+legible - `statements.ingested_file_id` and `receipts.ingested_file_id` point
+into it, and a client pulling everything would otherwise hold two dangling
+references and no way to see a quarantine.
 
 `aspects` selects which top-level keys get populated - `checklists` pulls
 in `checklists`, `checklist_items`, AND `checklist_ticks` together (they
 are one aspect's three tables, not three aspects), `events` pulls in just
-`events`, `body` pulls in all eight of its tables, `memory` all three.
+`events`, `body` pulls in all eight of its tables, `memory` all three,
+`ledger` its five (three config tables plus `statements` and
+`ledger_transactions`), `pantry` its three, `ingest` its one.
 **Missing/blank `aspects` means every known aspect**, the same "absence is
 never evidence of wanting less" posture `api/sync.parse_since` already
 takes for `since` - a caller that forgot the parameter should see too much,
@@ -217,10 +232,18 @@ class ChangesView(APIView):
         # Tombstones included, ordered by `updated_at`, exactly as the
         # per-table routes return them; the ordering is what lets a client
         # apply the rows in the order they happened.
+        #
+        # `cursor_field` rather than a hardcoded `updated_at`, because the five
+        # gated tables (`statements`, `ledger_transactions`, `receipts`,
+        # `receipt_line_items`, `ingested_files`) have no such column - see
+        # `api/synced.py`'s own doc comment. Their key in this body still
+        # carries every row changed at or after `since`; what "changed" can
+        # mean there is only "was created", since nothing may update them.
         for aspect in requested:
             for viewset in SYNCED_ASPECTS.get(aspect, ()):
                 model = viewset.model()
-                rows = model.objects.filter(updated_at__gte=since).order_by("updated_at", "pk")
+                cursor = viewset.cursor_field
+                rows = model.objects.filter(**{f"{cursor}__gte": since}).order_by(cursor, "pk")
                 body[viewset.table] = viewset.serializer_class(rows, many=True).data
 
         return Response(body)

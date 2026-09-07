@@ -42,15 +42,31 @@ def parse_since(raw: str | None) -> datetime:
     return parsed
 
 
-def paginate_since(queryset, page_size: int = PAGE_SIZE):
-    """`queryset` must already be `.order_by("updated_at")` ascending.
-    Returns `(rows, next_iso)`: `next_iso` is the `updated_at` of the last
+def paginate_since(queryset, page_size: int = PAGE_SIZE, cursor_field: str = "updated_at"):
+    """`queryset` must already be `.order_by(cursor_field)` ascending.
+    Returns `(rows, next_iso)`: `next_iso` is the `cursor_field` of the last
     row on this page, ISO-formatted, when a full page came back (there may
     be more rows the caller has not seen yet); `None` when fewer than
     `page_size` rows came back, meaning this was the last page. A caller
     pages by re-requesting with `since=<next>` until `next` comes back
     null - the same shape ticket 04's own brief describes ("page size 500
     with a next cursor").
+
+    **`cursor_field` is `updated_at` for every table that HAS one, and this
+    parameter exists because five of them do not.** `statements`,
+    `ledger_transactions`, `receipts` and `receipt_line_items` carry
+    `created_at` and nothing else - they are the section 4 gate's output and
+    `private.forbid_mutation_of_facts` blocks UPDATE on all four outright, so
+    a column meaning "when this last changed" would have no writer.
+    `ingested_files` carries `first_seen_at` and `last_attempt_at`, and the
+    second is the one that MOVES (every commit and every retry rewrites it in
+    `ingest.views._upsert_file`), so it is the only honest watermark there.
+    Confirmed against the live schema on 2026-09-07 through
+    `information_schema.columns`, not inferred from the model files.
+    `LedgerBackend.fetchChangedTransactionsSince` and
+    `PantryBackend.fetchChangedReceiptsSince` already state the same choice on
+    the phone side, in words, as does `RemoteLedgerTransaction`'s own doc
+    comment: `created_at >= sinceMs`, inclusive, insert-if-absent only.
 
     **`next` is rendered with DRF's own `DateTimeField`, not Python's
     `.isoformat()`.** This line used to read `page[-1].updated_at.isoformat()`,
@@ -65,7 +81,7 @@ def paginate_since(queryset, page_size: int = PAGE_SIZE):
     rows = list(queryset[: page_size + 1])
     if len(rows) > page_size:
         page = rows[:page_size]
-        return page, DateTimeField().to_representation(page[-1].updated_at)
+        return page, DateTimeField().to_representation(getattr(page[-1], cursor_field))
     return rows, None
 
 

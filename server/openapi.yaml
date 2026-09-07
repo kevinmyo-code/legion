@@ -1126,7 +1126,10 @@ paths:
             - events
             - checklists
             - body
+            - ingest
+            - ledger
             - memory
+            - pantry
             - places
             - voice_notes
         description: 'Comma-separated aspect names. Selects which top-level keys get
@@ -1819,6 +1822,83 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/ingest/files/:
+    get:
+      operationId: api_ingest_files_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedIngestedFile'
+          description: ''
+  /api/ingest/files/{identity}/:
+    get:
+      operationId: api_ingest_files_retrieve
+      description: |-
+        `GET <table>/<identity>/`. One row, tombstoned or not.
+
+        Routed ONLY on a `GatedReadViewSet`, and it exists there because the
+        405 has to have somewhere to happen. A PUT to a path no URL pattern
+        matches is a 404, not a 405, and DRF refuses `as_view({})` outright
+        ("The `actions` argument must be provided"), so a detail route that
+        carried no action at all could not be declared. The minimum honest
+        action on a read-only resource is the read, and it is keyed on the
+        server's own `id` because none of the five gated tables has a
+        client-minted identity that is reliably present: `statements` has no
+        `origin_guid` column at all, and it is nullable on
+        `ledger_transactions`, `receipts` and `receipt_line_items` (null on
+        everything the gate itself committed - see
+        `20260826000100_origin_guid.sql`).
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `id`.
+        required: true
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestedFile'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
   /api/ingest/receipt:
     post:
       operationId: api_ingest_receipt_create
@@ -1921,9 +2001,9 @@ paths:
             the payload tripped. Nothing was written, and no quarantine row was recorded
             either, because this is not a verdict about a document: it is a payload
             nothing could evaluate. Distinct from a quarantine, which is a 200.'
-  /api/memory/companion_memories/:
+  /api/ledger/budget_targets/:
     get:
-      operationId: api_memory_companion_memories_list
+      operationId: api_ledger_budget_targets_list
       description: |-
         `?since=<iso>` (tombstones included) and `?active=1` (live rows
         only). They compose: `?active=1&since=<iso>` is a live-rows-changed
@@ -1957,6 +2037,548 @@ paths:
           the whole table. Hand back the `next` cursor from the previous page, or
           `server_time` from GET /api/changes; both are already `Z`-suffixed so they
           need no extra encoding.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedBudgetTarget'
+          description: ''
+  /api/ledger/budget_targets/{identity}/:
+    put:
+      operationId: api_ledger_budget_targets_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetTarget'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetTarget'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetTarget'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetTarget'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_ledger_budget_targets_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/ledger/categories/:
+    get:
+      operationId: api_ledger_categories_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCategory'
+          description: ''
+  /api/ledger/categories/{identity}/:
+    put:
+      operationId: api_ledger_categories_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Category'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Category'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Category'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_ledger_categories_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/ledger/category_rules/:
+    get:
+      operationId: api_ledger_category_rules_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCategoryRule'
+          description: ''
+  /api/ledger/category_rules/{identity}/:
+    put:
+      operationId: api_ledger_category_rules_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRule'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryRule'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryRule'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryRule'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_ledger_category_rules_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/ledger/statements/:
+    get:
+      operationId: api_ledger_statements_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedStatement'
+          description: ''
+  /api/ledger/statements/{identity}/:
+    get:
+      operationId: api_ledger_statements_retrieve
+      description: |-
+        `GET <table>/<identity>/`. One row, tombstoned or not.
+
+        Routed ONLY on a `GatedReadViewSet`, and it exists there because the
+        405 has to have somewhere to happen. A PUT to a path no URL pattern
+        matches is a 404, not a 405, and DRF refuses `as_view({})` outright
+        ("The `actions` argument must be provided"), so a detail route that
+        carried no action at all could not be declared. The minimum honest
+        action on a read-only resource is the read, and it is keyed on the
+        server's own `id` because none of the five gated tables has a
+        client-minted identity that is reliably present: `statements` has no
+        `origin_guid` column at all, and it is nullable on
+        `ledger_transactions`, `receipts` and `receipt_line_items` (null on
+        everything the gate itself committed - see
+        `20260826000100_origin_guid.sql`).
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `id`.
+        required: true
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Statement'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/ledger/transactions/:
+    get:
+      operationId: api_ledger_transactions_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedLedgerTransaction'
+          description: ''
+  /api/ledger/transactions/{identity}/:
+    get:
+      operationId: api_ledger_transactions_retrieve
+      description: |-
+        `GET <table>/<identity>/`. One row, tombstoned or not.
+
+        Routed ONLY on a `GatedReadViewSet`, and it exists there because the
+        405 has to have somewhere to happen. A PUT to a path no URL pattern
+        matches is a 404, not a 405, and DRF refuses `as_view({})` outright
+        ("The `actions` argument must be provided"), so a detail route that
+        carried no action at all could not be declared. The minimum honest
+        action on a read-only resource is the read, and it is keyed on the
+        server's own `id` because none of the five gated tables has a
+        client-minted identity that is reliably present: `statements` has no
+        `origin_guid` column at all, and it is nullable on
+        `ledger_transactions`, `receipts` and `receipt_line_items` (null on
+        everything the gate itself committed - see
+        `20260826000100_origin_guid.sql`).
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `id`.
+        required: true
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerTransaction'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/memory/companion_memories/:
+    get:
+      operationId: api_memory_companion_memories_list
+      description: |-
+        `?since=<iso>` (tombstones included), `?active=1` (live rows
+        only) and `?vehicle=<id>` (the recall rule: `car_anchored` memories
+        only for that vehicle, `driver` and `relationship` always). All
+        three compose.
+
+        A missing `since` means EVERYTHING, and so does a missing
+        `vehicle` - this route is the replication feed as well as the recall
+        read, and a replica has to be whole. See the `vehicle` parameter's
+        own description.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      - in: query
+        name: vehicle
+        schema:
+          type: string
+        description: 'The vehicle this device is currently in (the phone''s `ActiveVehicle.current()`
+          - a dongle MAC or a `car:<uuid>`). Supplying it applies the recall rule:
+          every `driver` and `relationship` memory comes back, and `car_anchored`
+          memories come back ONLY for this vehicle. **Omitting it returns everything**,
+          because this route is also the replication feed and a replica has to be
+          whole - see `api/memory.py`''s own module doc. Send it whenever the rows
+          are going into a prompt; omit it when they are going into a local cache.'
       tags:
       - memory
       security:
@@ -2268,6 +2890,285 @@ paths:
             a database refusal or a hand-written check, and `{"<field>": ["..."]}`
             for a field-level validation error. Both carry text meant to be shown
             to a person.'
+  /api/pantry/grocery_staples/:
+    get:
+      operationId: api_pantry_grocery_staples_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - pantry
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedGroceryStaple'
+          description: ''
+  /api/pantry/grocery_staples/{identity}/:
+    put:
+      operationId: api_pantry_grocery_staples_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - pantry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroceryStaple'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GroceryStaple'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GroceryStaple'
+        required: true
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroceryStaple'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_pantry_grocery_staples_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        description: The row's `origin_guid`.
+        required: true
+      tags:
+      - pantry
+      security:
+      - deviceToken: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/pantry/line-items/:
+    get:
+      operationId: api_pantry_line_items_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - pantry
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedReceiptLineItem'
+          description: ''
+  /api/pantry/line-items/{identity}/:
+    get:
+      operationId: api_pantry_line_items_retrieve
+      description: |-
+        `GET <table>/<identity>/`. One row, tombstoned or not.
+
+        Routed ONLY on a `GatedReadViewSet`, and it exists there because the
+        405 has to have somewhere to happen. A PUT to a path no URL pattern
+        matches is a 404, not a 405, and DRF refuses `as_view({})` outright
+        ("The `actions` argument must be provided"), so a detail route that
+        carried no action at all could not be declared. The minimum honest
+        action on a read-only resource is the read, and it is keyed on the
+        server's own `id` because none of the five gated tables has a
+        client-minted identity that is reliably present: `statements` has no
+        `origin_guid` column at all, and it is nullable on
+        `ledger_transactions`, `receipts` and `receipt_line_items` (null on
+        everything the gate itself committed - see
+        `20260826000100_origin_guid.sql`).
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `id`.
+        required: true
+      tags:
+      - pantry
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptLineItem'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/pantry/receipts/:
+    get:
+      operationId: api_pantry_receipts_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - pantry
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedReceipt'
+          description: ''
+  /api/pantry/receipts/{identity}/:
+    get:
+      operationId: api_pantry_receipts_retrieve
+      description: |-
+        `GET <table>/<identity>/`. One row, tombstoned or not.
+
+        Routed ONLY on a `GatedReadViewSet`, and it exists there because the
+        405 has to have somewhere to happen. A PUT to a path no URL pattern
+        matches is a 404, not a 405, and DRF refuses `as_view({})` outright
+        ("The `actions` argument must be provided"), so a detail route that
+        carried no action at all could not be declared. The minimum honest
+        action on a read-only resource is the read, and it is keyed on the
+        server's own `id` because none of the five gated tables has a
+        client-minted identity that is reliably present: `statements` has no
+        `origin_guid` column at all, and it is nullable on
+        `ledger_transactions`, `receipts` and `receipt_line_items` (null on
+        everything the gate itself committed - see
+        `20260826000100_origin_guid.sql`).
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `id`.
+        required: true
+      tags:
+      - pantry
+      security:
+      - deviceToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
   /api/places/:
     get:
       operationId: api_places_list
@@ -2686,6 +3587,156 @@ components:
       - updated_at
       - weight_unit
       - weight_value
+    BudgetTarget:
+      type: object
+      description: |-
+        Field-for-field `RemoteBudgetTarget` / `BudgetTargetFields`.
+
+        `amount_cents` is an integer. `effective_from_month` is a bare `date`, not
+        a timestamp, matching `meal_targets.effective_from_date`'s precedent - the
+        phone's `effectiveFromMonthEpoch` is always a UTC month-start instant by
+        convention, so a date round-trips it with no timezone ambiguity.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          type: string
+        currency:
+          type: string
+        amount_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        effective_from_month:
+          type: string
+          format: date
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - amount_cents
+      - category
+      - created_at
+      - currency
+      - deleted_at
+      - effective_from_month
+      - id
+      - origin_guid
+      - provenance
+      - updated_at
+    Category:
+      type: object
+      description: Field-for-field `RemoteCategory` / `CategoryFields`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        is_food_category:
+          type: boolean
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - is_food_category
+      - name
+      - origin_guid
+      - provenance
+      - updated_at
+    CategoryRule:
+      type: object
+      description: |-
+        Field-for-field `RemoteCategoryRule` / `CategoryRuleFields`.
+
+        `created_at_client` is writable and `created_at` is not, and the pair is
+        deliberate rather than an oversight - the migration's own header explains
+        it: `created_at` is Postgres's insert stamp, `created_at_client` is the
+        instant the rule was written on the phone, and `LedgerController.applyCategoryRules`
+        orders rules by the second one, oldest first, because the earliest rule
+        written for a merchant is the one that governs it. Letting the server's
+        clock stand in for the phone's would silently reorder every rule around
+        whenever it happened to reach the server.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          type: string
+        substring:
+          type: string
+        created_at_client:
+          type: string
+          format: date-time
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - category
+      - created_at
+      - created_at_client
+      - deleted_at
+      - id
+      - origin_guid
+      - provenance
+      - substring
+      - updated_at
     Changes:
       type: object
       properties:
@@ -2763,6 +3814,42 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MemoryAudit'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+        category_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryRule'
+        budget_targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetTarget'
+        statements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Statement'
+        ledger_transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerTransaction'
+        grocery_staples:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroceryStaple'
+        receipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+        receipt_line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptLineItem'
+        ingested_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestedFile'
       required:
       - server_time
     Checklist:
@@ -3116,6 +4203,65 @@ components:
       - provenance
       - title
       - updated_at
+    GroceryStaple:
+      type: object
+      description: |-
+        Field-for-field `RemoteGroceryStaple` / `GroceryStapleFields`
+        (`LastAspectsBackend.kt`).
+
+        `grocery_staples` carries no CHECK constraints at all - CONSTRAINTS.md's
+        own no-constraints list names it - only `grocery_staples_name_unique` and
+        the `origin_guid` unique. The two refusals below are therefore this API's
+        own, and each has a reason beyond tidiness: a blank `name` would take the
+        unique name slot the real staple wants, and a `times_bought` below 1 would
+        contradict the column's own `default 1`, which exists because a staple
+        only becomes one by being bought at least once.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        display_name:
+          type: string
+        times_bought:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          default: 1
+        last_bought_at:
+          type: string
+          format: date-time
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - display_name
+      - id
+      - last_bought_at
+      - name
+      - origin_guid
+      - provenance
+      - updated_at
     Health:
       type: object
       description: |-
@@ -3173,6 +4319,210 @@ components:
       required:
       - inserted
       - outcome
+    IngestStateEnum:
+      enum:
+      - NEW
+      - INGESTED
+      - QUARANTINED
+      - UNREADABLE
+      - DUPLICATE_CONTENT
+      - NEEDS_LLM
+      type: string
+      description: |-
+        * `NEW` - New
+        * `INGESTED` - Ingested
+        * `QUARANTINED` - Quarantined
+        * `UNREADABLE` - Unreadable
+        * `DUPLICATE_CONTENT` - Duplicate Content
+        * `NEEDS_LLM` - Needs Llm
+    IngestedFile:
+      type: object
+      description: |-
+        One `public.ingested_files` row.
+
+        `content_sha256` is the idempotency key the whole ingest path turns on: a
+        second post of the same bytes is a no-op, which is what makes a lost
+        acknowledgement retryable rather than ambiguous
+        (`ingest.views._already_committed`'s own doc comment). `quarantine_reason`
+        is the sentence the gate wrote when it refused, in the same words the
+        caller was given at the time.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        content_sha256:
+          type: string
+          readOnly: true
+        source_file_id:
+          type: string
+          readOnly: true
+          nullable: true
+        display_name:
+          type: string
+          readOnly: true
+          nullable: true
+        size_bytes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/IngestStateEnum'
+          readOnly: true
+          description: |-
+            Where this document got to. INGESTED means the section 4 gate ran and committed it; QUARANTINED means the gate ran and REFUSED it, and `quarantine_reason` says why in words; UNREADABLE, DUPLICATE_CONTENT and NEEDS_LLM are the three ways it never reached the gate at all. A QUARANTINED file wrote no rows anywhere - that is the point of it.
+
+            * `NEW` - New
+            * `INGESTED` - Ingested
+            * `QUARANTINED` - Quarantined
+            * `UNREADABLE` - Unreadable
+            * `DUPLICATE_CONTENT` - Duplicate Content
+            * `NEEDS_LLM` - Needs Llm
+        quarantine_reason:
+          type: string
+          readOnly: true
+          nullable: true
+          description: 'The gate''s own sentence, or null. Written to be shown to
+            a person: it says which figures did not agree, not merely that something
+            failed.'
+        first_seen_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: The first time this content was posted. FIXED after the first
+            insert - not a change watermark. Page this feed with `since` against `last_attempt_at`,
+            which is what the `next` cursor carries.
+        last_attempt_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: The last time this content was posted, rewritten on every commit
+            and every retry. The column this feed's `?since=` and `next` are keyed
+            on.
+      required:
+      - content_sha256
+      - display_name
+      - first_seen_at
+      - id
+      - last_attempt_at
+      - quarantine_reason
+      - size_bytes
+      - source_file_id
+      - state
+    LedgerTransaction:
+      type: object
+      description: |-
+        One `public.ledger_transactions` row.
+
+        `provenance` is the load-bearing field on the wire, not decoration.
+        `UNRECONCILED` means section 4 rule 7: the source stated no anchor, the
+        row is provisional, it is transient, and **every surface that renders one
+        must say so in words** - which for this API means a client cannot render
+        this row without reading this field. `statement_id` is null on exactly
+        those rows and non-null on every other, by
+        `ledger_txn_header_matches_provenance`, so the two always agree.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        statement_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        account_last4:
+          type: string
+          readOnly: true
+        account_nickname:
+          type: string
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        txn_date:
+          type: string
+          format: date
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        amount_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+        balance_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+        line_ref:
+          type: string
+          readOnly: true
+        category:
+          type: string
+          readOnly: true
+          nullable: true
+        category_pending:
+          type: boolean
+          readOnly: true
+        pending_logged_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        reversal_of:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          description: The id of the row this one reverses, or null. A gated row is
+            never edited; it is corrected by posting a reversal and a replacement.
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+          description: |-
+            DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER. **UNRECONCILED is provisional** (CLAUDE.md section 4 rule 7): the source stated no anchor, the figure is unverified, and any surface showing it - or any total containing it - must say so in words, never by colour or a glyph alone.
+
+            * `DETERMINISTIC` - Deterministic
+            * `LLM_RECONCILED` - Llm Reconciled
+            * `UNRECONCILED` - Unreconciled
+            * `USER` - User
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        origin_guid:
+          type: string
+          readOnly: true
+          nullable: true
+      required:
+      - account_last4
+      - account_nickname
+      - amount_cents
+      - balance_cents
+      - category
+      - category_pending
+      - created_at
+      - currency
+      - description
+      - id
+      - line_ref
+      - origin_guid
+      - pending_logged_at
+      - provenance
+      - reversal_of
+      - statement_id
+      - txn_date
     LoginRequest:
       type: object
       properties:
@@ -3531,6 +4881,54 @@ components:
       required:
       - next
       - results
+    PagedBudgetTarget:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetTarget'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedCategory:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedCategoryRule:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryRule'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
     PagedChecklist:
       type: object
       properties:
@@ -3586,6 +4984,54 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Event'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedGroceryStaple:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroceryStaple'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedIngestedFile:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestedFile'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedLedgerTransaction:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerTransaction'
         next:
           type: string
           format: date-time
@@ -3675,6 +5121,38 @@ components:
       required:
       - next
       - results
+    PagedReceipt:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedReceiptLineItem:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptLineItem'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
     PagedSleepLog:
       type: object
       properties:
@@ -3698,6 +5176,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SleepTarget'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+      required:
+      - next
+      - results
+    PagedStatement:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Statement'
         next:
           type: string
           format: date-time
@@ -4048,6 +5542,117 @@ components:
         * `LLM_RECONCILED` - Llm Reconciled
         * `UNRECONCILED` - Unreconciled
         * `USER` - User
+    Receipt:
+      type: object
+      description: |-
+        One `public.receipts` header, with the anchors the gate checked it
+        against (section 4 rule 8) and the residual it could not explain (rule 7).
+
+        `ingested_file_id` is nullable here and NOT on `statements`: a receipt can
+        reach the gate from a photo the phone took rather than from a file it
+        scanned, so there is not always a file row to point at.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        ingested_file_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        store:
+          type: string
+          readOnly: true
+        purchase_date:
+          type: string
+          format: date
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        total_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          description: The total the receipt printed, in cents. The anchor the line
+            items were reconciled against (CLAUDE.md section 4 rule 2).
+        subtotal_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+        tax_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+        other_charges_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+        photo_object_path:
+          type: string
+          readOnly: true
+          nullable: true
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+          description: |-
+            DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER. UNRECONCILED is provisional and transient: it is superseded, and physically deleted, when a document that DID pass the gate covers the same purchase.
+
+            * `DETERMINISTIC` - Deterministic
+            * `LLM_RECONCILED` - Llm Reconciled
+            * `UNRECONCILED` - Unreconciled
+            * `USER` - User
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        origin_guid:
+          type: string
+          readOnly: true
+          nullable: true
+        unaccounted_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+          description: Null on every healthy receipt. Non-null means the total is
+            MORE than the captured lines explain and the difference could not be re-verified
+            (CLAUDE.md section 4 rule 7's 2026-08-26 amendment). `provenance` reads
+            UNRECONCILED on exactly those rows, by check constraint, so the two always
+            agree. **Never add this into a total or any other anchor** - it is the
+            residual the arithmetic could not explain, not a figure to reconcile against
+            - and any surface showing such a receipt must say in words that it is
+            unverified.
+      required:
+      - created_at
+      - currency
+      - id
+      - ingested_file_id
+      - origin_guid
+      - other_charges_cents
+      - photo_object_path
+      - provenance
+      - purchase_date
+      - store
+      - subtotal_cents
+      - tax_cents
+      - total_cents
+      - unaccounted_cents
     ReceiptAnchors:
       type: object
       properties:
@@ -4111,6 +5716,116 @@ components:
       - fields
       - items_carrying_an_estimate
       - note
+    ReceiptLineItem:
+      type: object
+      description: |-
+        One `public.receipt_line_items` row: what the receipt printed, plus four
+        macro estimates it did not. See this module's doc comment on rule 5, and on
+        why `quantity` and the estimates render as strings rather than numbers.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        receipt_id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,7}(?:\.\d{0,3})?$
+          readOnly: true
+        unit_price_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+        total_price_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          description: In cents. Summed across a receipt's lines, this is what the
+            gate checked against the printed total (CLAUDE.md section 4 rule 2).
+        estimated_calories_kcal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,7}(?:\.\d{0,3})?$
+          readOnly: true
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            product name. A receipt never prints this. Excluded from every reconciliation
+            check and never a gated figure (CLAUDE.md section 4 rule 5); any surface
+            showing it must say it is an estimate.'
+        estimated_protein_g:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,7}(?:\.\d{0,3})?$
+          readOnly: true
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            product name. A receipt never prints this. Excluded from every reconciliation
+            check and never a gated figure (CLAUDE.md section 4 rule 5); any surface
+            showing it must say it is an estimate.'
+        estimated_carbs_g:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,7}(?:\.\d{0,3})?$
+          readOnly: true
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            product name. A receipt never prints this. Excluded from every reconciliation
+            check and never a gated figure (CLAUDE.md section 4 rule 5); any surface
+            showing it must say it is an estimate.'
+        estimated_fat_g:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,7}(?:\.\d{0,3})?$
+          readOnly: true
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            product name. A receipt never prints this. Excluded from every reconciliation
+            check and never a gated figure (CLAUDE.md section 4 rule 5); any surface
+            showing it must say it is an estimate.'
+        reversal_of:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        origin_guid:
+          type: string
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - estimated_calories_kcal
+      - estimated_carbs_g
+      - estimated_fat_g
+      - estimated_protein_g
+      - id
+      - name
+      - origin_guid
+      - provenance
+      - quantity
+      - receipt_id
+      - reversal_of
+      - total_price_cents
+      - unit_price_cents
     SleepLog:
       type: object
       description: |-
@@ -4248,6 +5963,92 @@ components:
       - provenance
       - target_minutes
       - updated_at
+    Statement:
+      type: object
+      description: |-
+        One `public.statements` row: a bank statement's header and, crucially,
+        the three anchors the gate checked it against (section 4 rule 8).
+
+        `ingested_file_id` rather than DRF's default `ingested_file` because that
+        is the column's real name, and the name every existing client already
+        reads - these rows reached the phone through PostgREST, which renders the
+        physical column. Renaming it here would have been a gratuitous break for
+        a tidier-looking field.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        ingested_file_id:
+          type: string
+          format: uuid
+          readOnly: true
+        account_last4:
+          type: string
+          readOnly: true
+        account_nickname:
+          type: string
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        period_start:
+          type: string
+          format: date
+          readOnly: true
+        period_end:
+          type: string
+          format: date
+          readOnly: true
+        stated_total_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          nullable: true
+          description: The total the statement itself printed, in cents. NULL means
+            the document printed none, which `statements_total_only_null_if_deterministic`
+            permits only for a deterministically parsed statement. Never synthesised
+            from the sum of the lines - that would make the check an identity (CLAUDE.md
+            section 4 rule 6).
+        opening_balance_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          description: An anchor the gate checked against, in cents (section 4 rule
+            8).
+        closing_balance_cents:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          readOnly: true
+          description: An anchor the gate checked against, in cents (section 4 rule
+            8).
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - account_last4
+      - account_nickname
+      - closing_balance_cents
+      - created_at
+      - currency
+      - id
+      - ingested_file_id
+      - opening_balance_cents
+      - period_end
+      - period_start
+      - provenance
+      - stated_total_cents
     StatementAnchors:
       type: object
       description: |-

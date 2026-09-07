@@ -1,12 +1,27 @@
 """The contract in `api/synced.py`, run against every table that is keyed
 by a client-minted identity: places, the eight body tables, the three
-memory tables. Twelve tables, one set of assertions - which is the claim
-the generic shape makes, so it is tested as one parametrized module rather
-than as twelve near-identical files.
+memory tables, and the four AUTHORED ledger/pantry config tables. Sixteen
+tables, one set of assertions - which is the claim the generic shape makes,
+so it is tested as one parametrized module rather than as sixteen
+near-identical files.
+
+**This docstring said "twelve tables" before the ledger/pantry ticket added
+`categories`, `category_rules`, `budget_targets` and `grocery_staples`.** They
+needed no departures at all, which is the point of adding them here rather
+than writing them a module: `20260902000400_aspect_ledger_config.sql`'s own
+header calls them AUTHORED - "never a document that came through the
+reconciliation gate" - so they carry `updated_at`, a `deleted_at` tombstone
+and an `origin_guid` identity, exactly like body and memory.
 
 `voice_notes` is NOT here: its identity is the server's own id, so it
 creates by POST and its PUT never inserts. `tests/test_voice_notes_api.py`
 covers it, and the difference is the point rather than an omission.
+
+**Neither are `statements`, `ledger_transactions`, `receipts`,
+`receipt_line_items` or `ingested_files`.** Every assertion below is built on
+PUT-creates-a-row, and those five refuse every write verb there is - they are
+the section 4 gate's own output, and `tests/test_ledger_pantry_api.py` covers
+them, including the 405 that names the gate.
 
 ## The clock trap, written down because it cost an hour
 
@@ -169,6 +184,44 @@ TABLES = [
             "logged_at": _iso(1 + i),
         },
         id="memory_audit",
+    ),
+    # The four AUTHORED ledger/pantry tables. `categories` and
+    # `grocery_staples` are unique on `name`, `budget_targets` on
+    # (category, currency, effective_from_month), so each factory varies the
+    # column that would otherwise collide when the same test writes two rows.
+    pytest.param(
+        "/api/ledger/categories/",
+        lambda i: {"name": f"groceries {i}", "is_food_category": True},
+        id="categories",
+    ),
+    pytest.param(
+        "/api/ledger/category_rules/",
+        lambda i: {
+            "category": "groceries",
+            "substring": f"COLD STORAGE {i}",
+            "created_at_client": _iso(1 + i),
+        },
+        id="category_rules",
+    ),
+    pytest.param(
+        "/api/ledger/budget_targets/",
+        lambda i: {
+            "category": "groceries",
+            "currency": "SGD",
+            "amount_cents": 50000 + i,
+            "effective_from_month": _date(1 + i),
+        },
+        id="budget_targets",
+    ),
+    pytest.param(
+        "/api/pantry/grocery_staples/",
+        lambda i: {
+            "name": f"milk {i}",
+            "display_name": f"Milk {i}",
+            "times_bought": 3 + i,
+            "last_bought_at": _iso(1 + i),
+        },
+        id="grocery_staples",
     ),
 ]
 
@@ -434,6 +487,49 @@ REFUSED = [
         {"store": "diary"},
         ("memories", "companion_memories", "speech"),
         id="memory-audit-store",
+    ),
+    pytest.param(
+        "/api/ledger/categories/",
+        lambda i: {"name": "groceries", "is_food_category": True},
+        {"name": "   "},
+        ("name", "blank"),
+        id="categories-blank-name",
+    ),
+    pytest.param(
+        "/api/ledger/category_rules/",
+        lambda i: {
+            "category": "groceries",
+            "substring": "COLD STORAGE",
+            "created_at_client": _iso(1),
+        },
+        # A blank substring matches every description, so this one rule would
+        # categorise the whole ledger as groceries.
+        {"substring": "  "},
+        ("substring", "blank"),
+        id="category-rules-blank-substring",
+    ),
+    pytest.param(
+        "/api/ledger/budget_targets/",
+        lambda i: {
+            "category": "groceries",
+            "currency": "SGD",
+            "amount_cents": 50000,
+            "effective_from_month": _date(1),
+        },
+        {"currency": "EUR"},
+        ("SGD", "USD"),
+        id="budget-targets-currency",
+    ),
+    pytest.param(
+        "/api/pantry/grocery_staples/",
+        lambda i: {
+            "name": "milk",
+            "display_name": "Milk",
+            "last_bought_at": _iso(1),
+        },
+        {"times_bought": 0},
+        ("times_bought", "at least 1"),
+        id="grocery-staples-times-bought",
     ),
 ]
 

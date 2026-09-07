@@ -27,6 +27,34 @@ costs a serializer plus one registry entry (`api/registry.py`).
 (voice notes), because a PUT to an id the server has never minted cannot
 sensibly insert - see `identity_is_primary_key` below.
 
+## The gated tables get the GET half and nothing else
+
+Ticket 04's own exceptions table: "`statements`, `receipts`,
+`ledger_transactions`, `receipt_line_items` - **no PUT, no DELETE.** Written
+only by ticket 03's gate. GET only", and "`ingested_files` - GET only".
+`GatedReadViewSet` below is that row. It is the same `list` over the same
+`paginate_since`, with the write half removed at the URL layer rather than
+guarded inside a handler, and with a 405 that names the gate endpoint instead
+of DRF's bare `Method "PUT" not allowed.` The reason is CLAUDE.md section 4
+rule 2 expressed as routing: a row that could be edited into existence around
+the gate would not be a gated row.
+
+**Two things those five tables do NOT have, confirmed against the live schema
+on 2026-09-07 rather than inferred: `updated_at` and `deleted_at`.** So
+`cursor_field` below keys their feed on `created_at` (`last_attempt_at` for
+`ingested_files`, the only column there that moves), and `has_tombstones` is
+False - there is no tombstone to include, because there is no column to write
+one in. That is not a shortfall of this API; it is what an append-only table
+is. `private.forbid_mutation_of_facts` blocks UPDATE on all four outright and
+blocks DELETE except on an `UNRECONCILED` row, which a rule 7 supersession
+removes PHYSICALLY. `LedgerBackend.fetchChangedTransactionsSince`'s own doc
+comment says the same thing from the phone's side, in words: "'Includes
+tombstones' does not apply here... `created_at` is the only clock it has".
+The consequence a client must know, and it is stated in the schema rather
+than left to be discovered: a provisional row that is superseded vanishes
+with no trace in the feed, so a client that wants to notice must re-read,
+not merely page forward.
+
 ## What is deliberately configurable, and why each one exists
 
 Nothing here is a general-purpose knob. Every attribute below is a
@@ -241,7 +269,27 @@ class SyncedModelViewSet(viewsets.ViewSet):
 
     aspect: str = ""
     table: str = ""
+    # The path segment, when it is not the table's own name. Ticket 04 and this
+    # ticket's brief name three paths that deliberately do not repeat their
+    # table: `/api/ledger/transactions/` (not `ledger_transactions`, which
+    # would read `ledger/ledger_transactions`), `/api/pantry/line-items/` (not
+    # `receipt_line_items`) and `/api/ingest/files/` (not `ingested_files`).
+    # `table` stays the TABLE name regardless, because it is also the key
+    # `api/changes.py` publishes the rows under, and that key is documented as
+    # naming the table.
+    url_segment: str = ""
     serializer_class: type[SyncedSerializer] | None = None
+
+    # The column the `?since=` feed is keyed on, and the one `next` is rendered
+    # from. `updated_at` everywhere it exists; see this module's own doc comment
+    # and `api/sync.paginate_since` for the five tables where it does not.
+    cursor_field: str = "updated_at"
+    # Whether the table has a `deleted_at` column at all. False turns `?active=1`
+    # into a no-op that is honest rather than misleading: on a table with no
+    # tombstones every row that exists IS live, so the unnarrowed feed already
+    # is the active set. The parameter is dropped from the schema for those
+    # routes (`api/schema.SyncedAutoSchema`) rather than advertised and ignored.
+    has_tombstones: bool = True
 
     identity_field: str = "origin_guid"
     # The path converter for the identity segment. `str` matches anything
@@ -252,6 +300,13 @@ class SyncedModelViewSet(viewsets.ViewSet):
 
     allow_delete: bool = True
     put_revives_tombstone: bool = False
+    # False strips PUT, POST and DELETE from the URL map entirely. See
+    # `GatedReadViewSet`.
+    writable: bool = True
+    # Set on a read-only viewset whose rows come from the section 4 gate: the
+    # endpoint a caller should have used, quoted back at them in the 405.
+    # Empty on every writable table, where DRF's own 405 is already accurate.
+    gate_endpoint: str = ""
 
     @classmethod
     def model(cls):
@@ -261,10 +316,14 @@ class SyncedModelViewSet(viewsets.ViewSet):
     def route_prefix(cls) -> str:
         """`places/` for a one-table aspect, `body/bodyweight_logs/` for a
         table inside a multi-table one - ticket 04's `/api/<app>/<table>/`,
-        collapsed where app and table would repeat the same word."""
-        if cls.aspect == cls.table:
-            return f"{cls.table}/"
-        return f"{cls.aspect}/{cls.table}/"
+        collapsed where app and table would repeat the same word.
+
+        `url_segment` overrides the table half where the two differ - see that
+        attribute's own comment."""
+        segment = cls.url_segment or cls.table
+        if cls.aspect == segment:
+            return f"{segment}/"
+        return f"{cls.aspect}/{segment}/"
 
     @classmethod
     def route_name(cls) -> str:
@@ -301,8 +360,8 @@ class SyncedModelViewSet(viewsets.ViewSet):
         comment it comes from.
         """
         since = parse_since(request.query_params.get("since"))
-        queryset = self.model().objects.filter(updated_at__gte=since)
-        if request.query_params.get("active", "").strip().lower() in TRUTHY:
+        queryset = self.model().objects.filter(**{f"{self.cursor_field}__gte": since})
+        if self.has_tombstones and request.query_params.get("active", "").strip().lower() in TRUTHY:
             queryset = queryset.filter(deleted_at__isnull=True)
         # Secondary sort on the primary key so a page boundary is stable
         # when several rows share one `updated_at` - which they routinely
@@ -313,9 +372,30 @@ class SyncedModelViewSet(viewsets.ViewSet):
         # simultaneous writes to one table is not a shape this app has, and
         # fixing it properly means a compound cursor, which is a bigger
         # change than this ticket.
-        queryset = queryset.order_by("updated_at", "pk")
-        page, next_since = paginate_since(queryset)
+        queryset = queryset.order_by(self.cursor_field, "pk")
+        page, next_since = paginate_since(queryset, cursor_field=self.cursor_field)
         return Response({"results": self._serialize(page, many=True), "next": next_since})
+
+    def retrieve(self, request, identity):
+        """`GET <table>/<identity>/`. One row, tombstoned or not.
+
+        Routed ONLY on a `GatedReadViewSet`, and it exists there because the
+        405 has to have somewhere to happen. A PUT to a path no URL pattern
+        matches is a 404, not a 405, and DRF refuses `as_view({})` outright
+        ("The `actions` argument must be provided"), so a detail route that
+        carried no action at all could not be declared. The minimum honest
+        action on a read-only resource is the read, and it is keyed on the
+        server's own `id` because none of the five gated tables has a
+        client-minted identity that is reliably present: `statements` has no
+        `origin_guid` column at all, and it is nullable on
+        `ledger_transactions`, `receipts` and `receipt_line_items` (null on
+        everything the gate itself committed - see
+        `20260826000100_origin_guid.sql`).
+        """
+        instance = self._lookup(identity)
+        if instance is None:
+            return self._not_found(identity)
+        return Response(self._serialize(instance))
 
     def create(self, request):
         """`POST <table>/`. Routed only where the identity IS the primary
@@ -383,11 +463,37 @@ class SyncedModelViewSet(viewsets.ViewSet):
                 return error
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    def _gate_refusal(self, method: str) -> Response:
+        """The 405 body for a write to a table the section 4 gate owns.
+
+        Ticket 04's exceptions table says only "no PUT, no DELETE"; CLAUDE.md
+        section 7 says a failure result states in words what did NOT happen and
+        offers the nearest thing there IS a path to. So the sentence names both
+        the reason and the door: a client that guessed at a CRUD route learns
+        the gate endpoint from the refusal rather than from a document it does
+        not have open.
+        """
+        verb = "deleted" if method == "DELETE" else "written"
+        return Response(
+            {
+                "detail": (
+                    f"Nothing was {verb}. {self.table} rows come only from the reconciliation "
+                    f"gate (CLAUDE.md section 4), never from this API: a row that could be "
+                    f"edited into existence around the gate would not be a gated row. The way "
+                    f"in is {self.gate_endpoint}, which either commits the document or "
+                    f"quarantines it with a reason. This route is read-only."
+                )
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
     def http_method_not_allowed(self, request, *args, **kwargs):
         """DRF's own 405 body is `Method "DELETE" not allowed.`, which is
         true and says nothing about why. For an append-only table the why
         is the whole point (CLAUDE.md section 7: a failure result says in
         words what did NOT happen), so it is spelled out."""
+        if self.gate_endpoint and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            return self._gate_refusal(request.method)
         if request.method == "DELETE" and not self.allow_delete:
             return Response(
                 {
@@ -402,6 +508,58 @@ class SyncedModelViewSet(viewsets.ViewSet):
         return super().http_method_not_allowed(request, *args, **kwargs)
 
 
+class GatedReadSerializer(SyncedSerializer):
+    """Every field read-only, for a table nothing but the section 4 gate writes.
+
+    Not decoration, and not defensive coding either - these serializers are
+    never handed a request body, because `GatedReadViewSet` routes no method
+    that has one. What it buys is a HONEST SCHEMA: drf-spectacular renders a
+    read-only field as `readOnly: true`, so `server/openapi.yaml` tells a
+    generated client that `total_cents` is something it receives and never
+    sends. `api/schema.py`'s own header states the rule this serves - "the
+    schema must describe what the endpoints actually do" - and a component
+    whose fields looked writable would be describing a write path that does
+    not exist.
+
+    `required = False` moves with `read_only = True` because DRF asserts the
+    two are never both set, and a field left `required` would make the
+    component's `required:` list claim a caller has to send it.
+    """
+
+    def get_fields(self):
+        fields = super().get_fields()
+        for field in fields.values():
+            field.read_only = True
+            field.required = False
+        return fields
+
+
+class GatedReadViewSet(SyncedModelViewSet):
+    """`GET` and nothing else, over a table the section 4 gate owns.
+
+    Subclasses set `aspect` / `table` / `serializer_class` / `gate_endpoint`
+    like any other, and inherit the four departures this shape needs. See this
+    module's own doc comment for why each one is forced by the schema rather
+    than chosen.
+    """
+
+    # There is no write path at all, so there is nothing to key one on: the
+    # identity is the server's own primary key, and it is used only by
+    # `retrieve`. See that method's docstring for why `origin_guid` could not
+    # serve here even where the column exists.
+    identity_field = "id"
+    identity_url_converter = "uuid"
+    # Deliberately NOT `identity_is_primary_key = True`: that flag means "PUT
+    # updates and never inserts, POST creates instead", and both halves of it
+    # describe write routes this viewset does not have. Setting it would add a
+    # POST to the list map, which is the exact thing this class exists to
+    # prevent.
+    writable = False
+    allow_delete = False
+    cursor_field = "created_at"
+    has_tombstones = False
+
+
 def synced_paths(viewset: type[SyncedModelViewSet]) -> list:
     """The two `path()` entries one synced table costs. Method-to-action
     mapping is explicit rather than router-generated: `DefaultRouter` would
@@ -410,12 +568,24 @@ def synced_paths(viewset: type[SyncedModelViewSet]) -> list:
 
     A table with `allow_delete = False` gets no `delete` in its map at all,
     so the 405 comes from the URL layer rather than from a guard inside a
-    view that could be forgotten."""
+    view that could be forgotten. `writable = False` does the same for the
+    whole write half: a gated table's detail route carries `get` and nothing
+    else, so PUT and DELETE reach `http_method_not_allowed` and are answered
+    with the gate's own address."""
     prefix = viewset.route_prefix()
+    list_map = {"get": "list"}
+    if not viewset.writable:
+        return [
+            path(prefix, viewset.as_view(list_map), name=f"{viewset.route_name()}-list"),
+            path(
+                f"{prefix}<{viewset.identity_url_converter}:identity>/",
+                viewset.as_view({"get": "retrieve"}),
+                name=f"{viewset.route_name()}-detail",
+            ),
+        ]
     detail_map = {"put": "upsert"}
     if viewset.allow_delete:
         detail_map["delete"] = "destroy"
-    list_map = {"get": "list"}
     if viewset.identity_is_primary_key:
         list_map["post"] = "create"
     return [

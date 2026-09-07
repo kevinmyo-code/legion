@@ -195,9 +195,18 @@ class SyncedAutoSchema(AutoSchema):
     | action | method | status | body |
     |---|---|---|---|
     | `list` | GET | 200 | the paged envelope |
+    | `retrieve` | GET | 200 | one row (gated tables only) |
     | `create` | POST | 201 | the row as stored |
     | `upsert` | PUT | 200 | the row as stored, created or updated |
     | `destroy` | DELETE | 204 | empty |
+
+    **The 405 a gated table answers PUT and DELETE with is not in this
+    document, and that is correct.** `api/synced.GatedReadViewSet` declares no
+    PUT and no DELETE at all, so there is no operation to attach a response
+    to; a schema that listed them would be advertising write routes that do
+    not exist. The refusal is still a sentence rather than DRF's default -
+    `SyncedModelViewSet._gate_refusal` - because a client that guessed wrong
+    deserves the address of the gate, not just a status code.
     """
 
     def get_tags(self) -> list[str]:
@@ -243,6 +252,8 @@ class SyncedAutoSchema(AutoSchema):
         action = view.action
         if action == "list":
             return {200: paged_serializer(item)}
+        if action == "retrieve":
+            return {200: item, 404: NOT_FOUND}
         if action == "create":
             return {201: item, 400: WRITE_REFUSED}
         if action == "upsert":
@@ -265,8 +276,15 @@ class SyncedAutoSchema(AutoSchema):
     def get_override_parameters(self) -> list:
         view = self.view
         if view.action == "list":
+            # `active` is dropped for a table with no `deleted_at` column.
+            # Advertising a filter that cannot narrow anything would be the
+            # same class of lie as the bare-array list response this file was
+            # written to fix: true of the code, false about the effect. See
+            # `api/synced.SyncedModelViewSet.has_tombstones`.
+            if not view.has_tombstones:
+                return [SINCE_PARAMETER]
             return [SINCE_PARAMETER, ACTIVE_PARAMETER]
-        if view.action in {"upsert", "destroy"}:
+        if view.action in {"retrieve", "upsert", "destroy"}:
             # Replaces the auto-resolved path parameter with the same type
             # (the URL converter still decides `str` vs `uuid`) plus a
             # description - `identity` is `origin_guid` on most tables,

@@ -304,5 +304,12 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ProvenanceEnum": "legacy.enums.Provenance",
         "VoiceNoteProvenanceEnum": "legacy.models.notes.VoiceNote.PROVENANCE_CHOICES",
+        # `ingested_files.state`. Named for the same reason as the two above,
+        # though no collision forced it: drf-spectacular derives a component
+        # name from the FIELD, so this one would land in a generated client as
+        # a class called `StateEnum` - which says nothing about what it is the
+        # state OF, and would collide the first time any other table grows a
+        # `state` column.
+        "IngestStateEnum": "legacy.enums.IngestState",
     },
 }

@@ -1,13 +1,22 @@
 """Test-database-only DDL for the `legacy` tables the server writes to.
 
-**This module holds TWO constants now, and its title used to say "the tables
+**This module holds THREE constants now, and its title used to say "the tables
 Phase 5 writes to".** `LEGACY_PHASE5_TEST_SCHEMA_SQL` is that original set
 (places, voice notes, the eight body tables, the three memory tables) and
-everything below describes it. `LEGACY_INGEST_TEST_SCHEMA_SQL` at the foot of
-the file is django-engine ticket 03's: the five ledger and pantry tables the
-section 4 gate writes, with the `forbid_mutation_of_facts` trigger that makes a
-gated row immutable. It has its own header covering what it mirrors and what it
-deliberately leaves out. `conftest.apply_legacy_test_schema` applies both.
+everything below describes it. `LEGACY_INGEST_TEST_SCHEMA_SQL` is
+django-engine ticket 03's: the five ledger and pantry tables the section 4
+gate writes, with the `forbid_mutation_of_facts` trigger that makes a gated row
+immutable. `LEGACY_LEDGER_PANTRY_CONFIG_TEST_SCHEMA_SQL` at the foot of the
+file is the ledger/pantry API ticket's: the four AUTHORED tables of those two
+aspects (`categories`, `category_rules`, `budget_targets`, `grocery_staples`),
+which the gate never touches and which stay freely editable. Each has its own
+header covering what it mirrors and what it deliberately leaves out. The
+`django_db_setup` fixture in `conftest.py` applies all three.
+
+**That last sentence used to read "`conftest.apply_legacy_test_schema` applies
+both"**, when there were two blocks; the count is spelled out rather than left
+as "all of them" because a reader checking whether their own table is covered
+wants to know how many blocks to look through.
 
 ## Why this file exists at all
 
@@ -542,6 +551,157 @@ begin
         execute format(
             'create trigger forbid_mutation before update or delete on public.%I '
             'for each row execute function private.forbid_mutation_of_facts()',
+            tbl
+        );
+    end loop;
+end $$;
+"""
+
+
+# ============================================================================
+# The four AUTHORED tables of the ledger and pantry aspects.
+#
+# The block above holds the five tables the section 4 GATE writes. These four
+# are the other half of the same two aspects and are the opposite kind of
+# thing: `20260902000400_aspect_ledger_config.sql`'s own header calls them
+# AUTHORED - "a hand-typed category or a confirmed categorisation rule is a
+# thing the app recorded, never a document that came through the
+# reconciliation gate" - so they get `updated_at`, a `deleted_at` tombstone,
+# and NO `forbid_mutation_of_facts` trigger. That contrast is why they are a
+# separate constant rather than appended to the one above: the two blocks are
+# governed by different rules, and a reader should not have to work out which
+# half of one block a table falls in.
+#
+# Copied from the `supabase/migrations/` files that define them on the live
+# database, then checked column by column, constraint by constraint and
+# trigger by trigger against the live schema through
+# `information_schema.columns`, `pg_constraint` and `pg_trigger` on
+# 2026-09-07:
+#
+# - `categories`, `category_rules`, `budget_targets`:
+#   `20260902000400_aspect_ledger_config.sql`
+# - `grocery_staples`: `20260902000500_aspect_last.sql`
+#
+# Dropped from the copy, deliberately and for the same reasons the first block
+# states: `alter publication supabase_realtime`, `private.apply_household_rls`,
+# the two partial read indexes (`category_rules_substring_idx`,
+# `budget_targets_category_currency_idx` - they change no result, only a plan)
+# and `comment on column`.
+#
+# Kept, because a test without them would be testing a database this app does
+# not have: every unique constraint (including the compound
+# `budget_targets_category_currency_month_unique`, which is what makes a second
+# target for one category/currency/month a refusal rather than a duplicate),
+# the one CHECK these four tables have between them (`budget_targets.currency`),
+# and the `touch_updated_at` trigger - load-bearing again, since `updated_at`
+# moving on UPDATE is the whole basis of the `?since=` feed.
+# ============================================================================
+LEGACY_LEDGER_PANTRY_CONFIG_TEST_SCHEMA_SQL = """
+create schema if not exists private;
+
+do $$
+begin
+    if not exists (select 1 from pg_type where typname = 'provenance') then
+        create type public.provenance as enum
+            ('DETERMINISTIC', 'LLM_RECONCILED', 'UNRECONCILED', 'USER');
+    end if;
+end $$;
+
+create or replace function private.touch_updated_at()
+    returns trigger
+    language plpgsql
+    set search_path = ''
+as $$
+begin
+    new.updated_at := now();
+    return new;
+end;
+$$;
+
+-- ============================================================================
+-- LEDGER CONFIG (20260902000400_aspect_ledger_config.sql)
+-- ============================================================================
+create table if not exists public.categories (
+    id               uuid primary key default gen_random_uuid(),
+    name             text        not null,
+    is_food_category boolean     not null,
+    provenance       public.provenance not null default 'USER',
+    created_at       timestamptz not null default now(),
+    updated_at       timestamptz not null default now(),
+    deleted_at       timestamptz,
+    origin_guid      text        not null unique,
+    constraint categories_name_unique unique (name)
+);
+
+create table if not exists public.category_rules (
+    id                uuid primary key default gen_random_uuid(),
+    category          text        not null,
+    substring         text        not null,
+    -- The phone's own write instant, carried verbatim. NOT the same fact as
+    -- `created_at` below: LedgerController.applyCategoryRules orders rules by
+    -- this column, oldest first, so the server's insert clock cannot stand in
+    -- for it. See the migration's own header.
+    created_at_client timestamptz not null,
+    provenance        public.provenance not null default 'USER',
+    created_at        timestamptz not null default now(),
+    updated_at        timestamptz not null default now(),
+    deleted_at        timestamptz,
+    origin_guid       text        not null unique
+);
+
+create table if not exists public.budget_targets (
+    id                   uuid primary key default gen_random_uuid(),
+    category             text        not null,
+    currency             text        not null check (currency in ('SGD', 'USD')),
+    amount_cents         bigint      not null,
+    -- A bare `date`, not a timestamptz - BudgetTarget.effectiveFromMonthEpoch is
+    -- always a UTC month-start instant by convention, so a date round-trips it
+    -- with no timezone ambiguity.
+    effective_from_month date        not null,
+    provenance           public.provenance not null default 'USER',
+    created_at           timestamptz not null default now(),
+    updated_at           timestamptz not null default now(),
+    deleted_at           timestamptz,
+    origin_guid          text        not null unique,
+    constraint budget_targets_category_currency_month_unique
+        unique (category, currency, effective_from_month)
+);
+
+-- ============================================================================
+-- PANTRY CONFIG (20260902000500_aspect_last.sql). `grocery_items` is NOT here:
+-- nothing syncs it, the trip list retired into checklists on 2026-09-05, and no
+-- route in this API reads or writes it.
+-- ============================================================================
+create table if not exists public.grocery_staples (
+    id             uuid primary key default gen_random_uuid(),
+    name           text        not null,
+    display_name   text        not null,
+    times_bought   integer     not null default 1,
+    last_bought_at timestamptz not null,
+    provenance     public.provenance not null default 'USER',
+    created_at     timestamptz not null default now(),
+    updated_at     timestamptz not null default now(),
+    deleted_at     timestamptz,
+    origin_guid    text        not null unique,
+    constraint grocery_staples_name_unique unique (name)
+);
+
+-- ============================================================================
+-- updated_at on all four. No forbid_mutation trigger anywhere in this block -
+-- see its header for why that is the whole distinction.
+-- ============================================================================
+do $$
+declare
+    tbl text;
+begin
+    foreach tbl in array array[
+        'categories', 'category_rules', 'budget_targets', 'grocery_staples'
+    ]
+    loop
+        execute format('drop trigger if exists touch_updated_at on public.%I', tbl);
+        execute format(
+            'create trigger touch_updated_at before update on public.%I '
+            'for each row execute function private.touch_updated_at()',
             tbl
         );
     end loop;

@@ -14,7 +14,10 @@ migration reads down the file.
 from __future__ import annotations
 
 from api.body import BODY_VIEWSETS
+from api.ingest_files import INGEST_VIEWSETS
+from api.ledger import LEDGER_VIEWSETS
 from api.memory import MEMORY_VIEWSETS
+from api.pantry import PANTRY_VIEWSETS
 from api.places import PlaceViewSet
 from api.synced import SyncedModelViewSet
 from api.voice_notes import VoiceNoteViewSet
@@ -24,11 +27,23 @@ SYNCED_VIEWSETS: list[type[SyncedModelViewSet]] = [
     VoiceNoteViewSet,
     *BODY_VIEWSETS,
     *MEMORY_VIEWSETS,
+    *LEDGER_VIEWSETS,
+    *PANTRY_VIEWSETS,
+    *INGEST_VIEWSETS,
 ]
 
 # Aspect name -> the viewsets that make it up, in registry order. `body` has
-# eight tables and `memory` three; `places` and `voice_notes` are one each.
-# Built from the list rather than typed out a second time.
+# eight tables, `ledger` five, `memory` three, `pantry` three; `places`,
+# `voice_notes` and `ingest` are one each. Built from the list rather than
+# typed out a second time.
+#
+# **Six of these are read-only** - `ledger.statements`,
+# `ledger.ledger_transactions`, `pantry.receipts`, `pantry.receipt_line_items`
+# and `ingest.ingested_files` carry `writable = False` (five tables; the sixth
+# departure is `memory.memory_audit`, which is append-only rather than
+# read-only). So an aspect here is not a promise that everything under it can
+# be written; it is a promise that everything under it can be READ from the
+# same feed, which is what a client's cache needs.
 SYNCED_ASPECTS: dict[str, list[type[SyncedModelViewSet]]] = {}
 for _viewset in SYNCED_VIEWSETS:
     SYNCED_ASPECTS.setdefault(_viewset.aspect, []).append(_viewset)
