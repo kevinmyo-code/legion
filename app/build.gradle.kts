@@ -21,6 +21,9 @@ plugins {
     // baseline and the LargeClass-as-file-length-proxy reasoning live in
     // config/detekt/detekt.yml; version choice is explained in libs.versions.toml.
     alias(libs.plugins.detekt)
+    // OpenAPI codegen (django-engine ticket 09). See the `openApiGenerate` block below and
+    // openapi/README.md for what it generates and why the schema is a committed artifact.
+    id("org.openapi.generator")
 }
 
 // Secrets are kept out of source control - set them in local.properties
@@ -162,6 +165,25 @@ android {
         // assets so MigrationTestHelper can validate migrations on disk.
         getByName("androidTest") {
             assets.srcDirs("$projectDir/schemas")
+        }
+        // Generated engine models (see the openApiGenerate block at the foot of this file).
+        // Generated into build/, never committed: the committed artifact is the SCHEMA, so a
+        // reviewer diffs the contract rather than 35 files of generated Kotlin.
+        //
+        // NOTE the output lives in build/openapi-generated/, deliberately NOT under
+        // build/generated/. That subtree is AGP's own, and adding a source dir inside it broke
+        // resource merging in a way that surfaced far from the cause: every R.drawable reference
+        // in LegionMediaLibraryService.kt became "Unresolved reference", with the drawable files
+        // present and tracked the whole time. Confirmed by building the same worktree with these
+        // changes stashed (green) and unstashed (red).
+        //
+        // A plain path string, NOT a task provider. Wiring the dependency the idiomatic Gradle
+        // way (`kotlin.srcDir(tasks.named(...).map { ... })`) is rejected outright by AGP:
+        // "You cannot add Provider instances to the Android SourceSet API", because Studio cannot
+        // tell a generated read-only directory from a static read-write one. So the producer/
+        // consumer edges are declared by hand at the foot of this file instead.
+        getByName("main") {
+            kotlin.srcDir("${layout.buildDirectory.get()}/openapi-generated/src/main/kotlin")
         }
     }
     testOptions {
@@ -416,4 +438,68 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.room.testing)
+}
+
+// ---------------------------------------------------------------------------------------------
+// OpenAPI codegen: the engine's models, generated from the engine's own schema.
+//
+// WHY generated, and why MODELS ONLY. The Django engine publishes a drf-spectacular schema; it is
+// vendored at openapi/legion-schema.yaml and is the contract three limbs share - this phone, the
+// head unit in the MIDNIGHT_AI repo, and the PWA later. A hand-written DTO per limb is the same
+// contract copied three times, and copies drift silently: the failure looks like a field that is
+// quietly always null, not like a compile error.
+//
+// What is deliberately NOT generated is the transport. `EngineHttp`/`EngineFailure` classify every
+// non-2xx into four branches none of which a caller can mistake for a success, which is CLAUDE.md
+// section 7's outcome-verb rule expressed as a type. openapi-generator's own ApiClient throws
+// untyped exceptions and would lose exactly that guarantee, so codegen stops at the models and the
+// hand-written transport stays.
+//
+// `typeMappings` maps UUID to String on purpose: the generator otherwise emits `java.util.UUID`
+// behind kotlinx's `@Contextual`, which needs a serializers module registered at every call site
+// and throws at RUNTIME when one is missing. Verified by round-tripping a real payload rather than
+// by reading the generator's docs.
+// ---------------------------------------------------------------------------------------------
+val openApiOutputDir = layout.buildDirectory.dir("openapi-generated")
+
+openApiGenerate {
+    generatorName.set("kotlin")
+    inputSpec.set("$rootDir/openapi/legion-schema.yaml")
+    outputDir.set(openApiOutputDir.get().asFile.absolutePath)
+    packageName.set("com.kevin.legion.backend.engine.api")
+    modelPackage.set("com.kevin.legion.backend.engine.api.model")
+    // Models only - no apis, no docs, no generated test stubs. See the block comment above.
+    globalProperties.set(mapOf("models" to "", "modelDocs" to "false", "modelTests" to "false"))
+    typeMappings.set(mapOf("java.util.UUID" to "kotlin.String", "UUID" to "kotlin.String"))
+    configOptions.set(
+        mapOf(
+            "serializationLibrary" to "kotlinx_serialization",
+            "dateLibrary" to "string",
+            "enumPropertyNaming" to "UPPERCASE",
+        ),
+    )
+}
+
+// A clean clone must compile without anyone remembering to run codegen first - clone-and-run is a
+// hard requirement (CLAUDE.md section 2), and "the build works once you know the extra command" is
+// exactly the shape that breaks it.
+//
+// Every edge is declared by hand because the two idiomatic alternatives are both closed off here:
+// AGP rejects a task Provider in its SourceSet API (see the sourceSets block above), and Gradle 9
+// refuses to INFER a dependency from a bare path, failing with "implicit dependency" the moment a
+// second task reads the directory. KSP is the second task, and it is the one that actually broke:
+// `kspDebugKotlin` reads the generated models to run Room's processor over the source set.
+listOf("kspDebugKotlin", "kspReleaseKotlin").forEach { kspTask ->
+    tasks.matching { it.name == kspTask }.configureEach {
+        dependsOn(tasks.named("openApiGenerate"))
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    dependsOn(tasks.named("openApiGenerate"))
+}
+
+// detekt resolves its inputs separately again, and generated code is not ours to lint anyway.
+tasks.matching { it.name.startsWith("detekt") }.configureEach {
+    dependsOn(tasks.named("openApiGenerate"))
 }

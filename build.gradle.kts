@@ -16,4 +16,10 @@ plugins {
     // apply-false per the usual root-catalog convention. See libs.versions.toml's `detekt` entry
     // for why 2.0.0-alpha.0.
     alias(libs.plugins.detekt) apply false
+    // OpenAPI codegen (django-engine ticket 09): the engine's own drf-spectacular schema,
+    // vendored at openapi/legion-schema.yaml, is the contract every limb generates its models
+    // from - the phone here, the head unit in the MIDNIGHT_AI repo, the PWA later. Hand-written
+    // DTOs in three repos is three copies of one contract drifting apart; this is one copy.
+    // 7.18.0 verified against this repo's own Gradle 9.4.1, not assumed.
+    id("org.openapi.generator") version "7.18.0" apply false
 }
