@@ -32,13 +32,15 @@ pull should use the per-table `?since=` routes, which do page.
 from __future__ import annotations
 
 from django.db import connection
-from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from rest_framework import serializers, status
 from rest_framework.fields import DateTimeField
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.events import EventSerializer
-from api.registry import SYNCED_ASPECTS
+from api.registry import SYNCED_ASPECTS, SYNCED_VIEWSETS
+from api.schema import SINCE_PARAMETER, DetailSerializer
 from api.sync import parse_since
 from checklists.models import Checklist, ChecklistItem, ChecklistTick
 from checklists.serializers import (
@@ -53,7 +55,79 @@ from legacy.models.dates import Event
 KNOWN_ASPECTS = ("events", "checklists", *sorted(SYNCED_ASPECTS))
 
 
+def _build_changes_serializer() -> type[serializers.Serializer]:
+    """The response body, described for `server/openapi.yaml`, built from
+    the same two sources the `get` below reads: the four hand-written
+    Phase 2 keys and `api/registry.SYNCED_VIEWSETS`.
+
+    Generated rather than typed out for the reason the whole registry
+    exists: a table added to the feed and forgotten here would leave the
+    contract quietly describing a smaller response than the server sends,
+    and a generated client would have no field to decode it into.
+
+    **Every table key is optional, and that is not hedging.** `?aspects=`
+    selects which keys are populated, so a request for one aspect gets a
+    body with only that aspect's keys in it. `server_time` is the only key
+    always present.
+    """
+    fields: dict = {
+        "server_time": serializers.DateTimeField(
+            help_text=(
+                "Postgres's own clock, read before any row query. Store THIS as the next "
+                "`since`, rather than a max(updated_at) computed from the rows returned."
+            )
+        ),
+        "events": EventSerializer(many=True, required=False),
+        "checklists": ChecklistSerializer(many=True, required=False),
+        "checklist_items": ChecklistItemSerializer(many=True, required=False),
+        "checklist_ticks": ChecklistTickSerializer(many=True, required=False),
+    }
+    for viewset in SYNCED_VIEWSETS:
+        fields[viewset.table] = viewset.serializer_class(many=True, required=False)
+    return type("ChangesSerializer", (serializers.Serializer,), fields)
+
+
+ChangesSerializer = _build_changes_serializer()
+
+ASPECTS_PARAMETER = OpenApiParameter(
+    name="aspects",
+    location=OpenApiParameter.QUERY,
+    required=False,
+    style="form",
+    explode=False,
+    type={"type": "array", "items": {"type": "string", "enum": list(KNOWN_ASPECTS)}},
+    description=(
+        "Comma-separated aspect names. Selects which top-level keys get populated: "
+        "`checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` "
+        "fills all eight of its tables; `memory` all three. **Omitted or blank means every "
+        "known aspect.** An unknown name is a 400 naming it - never a silently smaller "
+        "response."
+    ),
+)
+
+
 class ChangesView(APIView):
+    @extend_schema(
+        operation_id="api_changes_retrieve",
+        tags=["changes"],
+        parameters=[SINCE_PARAMETER, ASPECTS_PARAMETER],
+        responses={
+            200: OpenApiResponse(
+                response=ChangesSerializer,
+                description=(
+                    "One key per TABLE, named for the table, each holding every row changed "
+                    "at or after `since` with tombstones included, oldest first. **Not "
+                    "paged**: a large first pull should use the per-table `?since=` routes, "
+                    "which are."
+                ),
+            ),
+            400: OpenApiResponse(
+                response=DetailSerializer,
+                description="An aspect name this server does not know. `detail` names it and "
+                "lists the ones that exist.",
+            ),
+        },
+    )
     def get(self, request):
         raw_aspects = request.query_params.get("aspects", "")
         requested = [a.strip() for a in raw_aspects.split(",") if a.strip()]

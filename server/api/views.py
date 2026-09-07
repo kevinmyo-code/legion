@@ -6,10 +6,46 @@ from __future__ import annotations
 
 from django.db import connection
 from django.db.utils import OperationalError
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import serializers
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 
 
+class HealthSerializer(serializers.Serializer):
+    """The 200 body. `db` is the only key, and it is only ever `"ok"` -
+    anything else took the 503 branch below."""
+
+    db = serializers.CharField(help_text='Always "ok" on a 200.')
+
+
+class HealthErrorSerializer(serializers.Serializer):
+    """The 503 body. `detail` is psycopg's own message, verbatim - the
+    check says what it actually found rather than a generic failure."""
+
+    db = serializers.CharField(help_text='Always "error" on a 503.')
+    detail = serializers.CharField()
+
+
+@extend_schema(
+    # No `operation_id` here on purpose: `legion/urls.py` mounts this ONE
+    # view on both `/healthz` and `/health` (Cloud Run's frontend reserves
+    # the first string - see that file's comment), and a fixed operation id
+    # would give two paths the same one, which is an invalid document.
+    # Leaving it path-derived yields `healthz_retrieve` and
+    # `health_retrieve`, which is correct and distinct.
+    tags=["health"],
+    responses={
+        200: OpenApiResponse(
+            response=HealthSerializer,
+            description="The database answered `SELECT 1`.",
+        ),
+        503: OpenApiResponse(
+            response=HealthErrorSerializer,
+            description="The database did not answer. The body carries psycopg's own message.",
+        ),
+    },
+)
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([])

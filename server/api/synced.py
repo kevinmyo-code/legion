@@ -93,6 +93,7 @@ from django.urls import path
 from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 
+from api.schema import SyncedAutoSchema
 from api.sync import paginate_since, parse_since, save_or_400
 from legacy.enums import Provenance
 
@@ -228,6 +229,15 @@ class SyncedModelViewSet(viewsets.ViewSet):
     anyone, and the only way to make that impossible is to never write the
     attribute at all.
     """
+
+    # How this viewset is described in `server/openapi.yaml`. Set on the
+    # base class, so every registered table is described from its own
+    # `serializer_class` / `action` / identity settings and no subclass has
+    # a decorator to forget. See `api/schema.SyncedAutoSchema` - in
+    # particular for the list route, whose response is the
+    # `{"results": [...], "next": ...}` envelope and NOT the bare array
+    # drf-spectacular guesses for a list action.
+    schema = SyncedAutoSchema()
 
     aspect: str = ""
     table: str = ""

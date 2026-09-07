@@ -4,18 +4,22 @@ and what device am I' - the phone's own membership check.
 from __future__ import annotations
 
 from django.contrib.auth import authenticate
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from api.schema import DetailSerializer
 from household.models import DeviceToken
 from household.serializers import (
     LoginRequestSerializer,
     LoginResponseSerializer,
     MeResponseSerializer,
 )
+
+AUTH_TAGS = ["auth"]
 
 
 class LoginView(APIView):
@@ -29,6 +33,31 @@ class LoginView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
+    @extend_schema(
+        operation_id="api_auth_login_create",
+        tags=AUTH_TAGS,
+        request=LoginRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=LoginResponseSerializer,
+                description=(
+                    "A new device token. `token` is the raw key and is shown ONCE - the "
+                    "server stores only its hash and cannot hand it back again. Send it as "
+                    "`Authorization: Token <key>` on every later call."
+                ),
+            ),
+            401: OpenApiResponse(
+                response=DetailSerializer,
+                description="Wrong email or password, or the account is inactive. No token "
+                "was issued.",
+            ),
+            429: OpenApiResponse(
+                response=DetailSerializer,
+                description="Rate limited: 5 attempts a minute per IP. `detail` says when to "
+                "try again.",
+            ),
+        },
+    )
     def post(self, request):
         serializer = LoginRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -52,8 +81,32 @@ class LoginView(APIView):
 
 class LogoutView(APIView):
     """`POST /api/auth/logout`. Revokes only the token making the request -
-    every other device this user owns keeps working."""
+    every other device this user owns keeps working.
 
+    Send it with an explicit `Content-Length: 0` even though there is no
+    body: measured against the deployed Cloud Run service on 2026-09-07, a
+    POST carrying neither a body nor that header is answered 411 Length
+    Required by the frontend and never reaches Django, so the token is NOT
+    revoked and the caller has been told nothing about why. Most HTTP
+    clients set the header themselves for an empty POST; `curl` without
+    `-d` does not.
+    """
+
+    @extend_schema(
+        operation_id="api_auth_logout_create",
+        tags=AUTH_TAGS,
+        request=None,
+        responses={
+            204: OpenApiResponse(
+                description="This token is revoked. Every other device keeps working."
+            ),
+            400: OpenApiResponse(
+                response=DetailSerializer,
+                description="The request carried no device token, so there was nothing to "
+                "revoke. Nothing was changed.",
+            ),
+        },
+    )
     def post(self, request):
         token = request.auth
         if not isinstance(token, DeviceToken):
@@ -73,6 +126,30 @@ class MeView(APIView):
     call succeeds, the calling token is live and its user is a household
     member; if it 401s or 403s, the phone knows to ask for a new token."""
 
+    @extend_schema(
+        operation_id="api_auth_me_retrieve",
+        tags=AUTH_TAGS,
+        responses={
+            200: OpenApiResponse(
+                response=MeResponseSerializer,
+                description=(
+                    "The token is live and its user is a household member. `device_name` is "
+                    "the name the token was issued under at login."
+                ),
+            ),
+            401: OpenApiResponse(
+                response=DetailSerializer,
+                description="No token, an unknown token, or a revoked one. Ask for a new one.",
+            ),
+            403: OpenApiResponse(
+                response=DetailSerializer,
+                description=(
+                    "The token is live but its user is not a household member. A `User` row "
+                    "alone is not enough - see `manage.py add_household_member`."
+                ),
+            ),
+        },
+    )
     def get(self, request):
         token = request.auth
         device_name = token.name if isinstance(token, DeviceToken) else ""

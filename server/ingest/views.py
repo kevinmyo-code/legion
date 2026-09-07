@@ -56,10 +56,13 @@ from typing import Any
 from django.db import DatabaseError, transaction
 from django.db.models import Max, Min
 from django.db.models.functions import Now
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.schema import DetailSerializer
 from ingest import gate
 from ingest.dedup import ExistingRow, resolve_dedup
 from legacy.enums import IngestState, Provenance
@@ -109,6 +112,145 @@ PROVISIONAL_REFUSAL = (
     "statements_not_provisional and receipts_not_provisional enforce. Nothing was written. "
     "A document that states no anchor is quarantined here with a reason; rule 7 provisional "
     "ingestion is .scratch/django-engine/issues/13-provisional-ingestion-has-no-endpoint.md."
+)
+
+
+INGEST_TAGS = ["ingest"]
+
+# The request body is described to `server/openapi.yaml` as a free-form JSON
+# object, and that is a decision rather than a gap.
+#
+# **The body IS the RPC's `payload`, unchanged** (this module's own doc comment,
+# and ticket 03's wording). Nothing validates it as a serializer - `_commit`
+# reads it key by key so it can raise `GateInputError` with the SQL's own
+# sentences. Writing a serializer purely to describe it would create a SECOND
+# description of the payload, in a file nothing executes, free to drift from the
+# reads below the moment either changes. That is the exact failure this ticket
+# exists to prevent, so the keys are listed in prose instead, taken from the
+# reads themselves.
+STATEMENT_DESCRIPTION = (
+    "`public.commit_statement(payload jsonb)`, moved into Django.\n\n"
+    "The request body IS that RPC's `payload`, unchanged, and is a free-form JSON object "
+    "on purpose (see this module's source for why it is not a serializer). Keys read: "
+    "`content_sha256` (required), `provenance` (required, and never `UNRECONCILED` - there "
+    "is no provisional path here), `lines` (array of `{txn_date, description, amount_cents, "
+    "balance_cents?, line_ref?, category?}`), the three anchors `stated_total_cents?` / "
+    "`opening_balance_cents` / `closing_balance_cents`, `account_last4`, `account_nickname`, "
+    "`currency`, `period_start?`, `period_end?`, and the file facts `source_file_id?` / "
+    "`display_name?` / `size_bytes?`. Money is an integer number of cents, never a decimal."
+)
+
+RECEIPT_DESCRIPTION = (
+    "`public.commit_receipt(payload jsonb)`, moved into Django.\n\n"
+    "The request body IS that RPC's `payload`, unchanged, and is a free-form JSON object "
+    "on purpose (see this module's source for why it is not a serializer). Keys read: "
+    "`content_sha256` (required), `provenance` (defaults to `LLM_RECONCILED`), `items` "
+    "(array of `{name, quantity?, unit_price_cents?, total_price_cents, "
+    "estimated_calories_kcal?, estimated_protein_g?, estimated_carbs_g?, "
+    "estimated_fat_g?}`), the anchors `total_cents` / `subtotal_cents?` / `tax_cents?` / "
+    "`other_charges_cents?`, `store`, `purchase_date`, `currency`, `photo_object_path?`, "
+    "and the file facts `source_file_id?` / `display_name?` / `size_bytes?`. Money is an "
+    "integer number of cents. **The four `estimated_*` fields are estimates and are "
+    "excluded from the reconciliation arithmetic** (CLAUDE.md section 4 rule 5)."
+)
+
+
+class IngestOutcomeSerializer(serializers.Serializer):
+    """The 200 body, and it covers BOTH no-write outcomes because they are one
+    status code and a client branches on `outcome`, not on the shape.
+
+    `ALREADY_COMMITTED` carries `content_sha256` and `note`; `QUARANTINED`
+    carries `reason`. `inserted` is 0 in both - nothing was written either way.
+    A quarantine is a VERDICT, not a transport failure (see this module's own
+    doc comment for why it is not a 4xx), so it must never be surfaced as
+    "something went wrong" or retried blindly.
+    """
+
+    outcome = serializers.CharField(
+        help_text=f"`{gate.ALREADY_COMMITTED}` or `{gate.QUARANTINED}`."
+    )
+    inserted = serializers.IntegerField(help_text="Always 0 here. Nothing was written.")
+    content_sha256 = serializers.CharField(
+        required=False, help_text=f"`{gate.ALREADY_COMMITTED}` only."
+    )
+    note = serializers.CharField(required=False, help_text=f"`{gate.ALREADY_COMMITTED}` only.")
+    reason = serializers.CharField(
+        required=False,
+        help_text=(
+            f"`{gate.QUARANTINED}` only: what the gate found, in words. Stored on "
+            f"`ingested_files.quarantine_reason` too, so the file is not re-offered with no "
+            f"memory of why it failed."
+        ),
+    )
+
+
+class StatementAnchorsSerializer(serializers.Serializer):
+    """CLAUDE.md section 4 rule 8, echoed. The AUTHORITY is the stored row on
+    `public.statements`; this copy is so a caller just told COMMITTED can see the
+    three figures that earned it without a second round trip."""
+
+    stated_total_cents = serializers.IntegerField(
+        allow_null=True,
+        help_text="Null means the bank printed none. **Never derived from sum(lines)** - "
+        "that would make the check an identity.",
+    )
+    opening_balance_cents = serializers.IntegerField()
+    closing_balance_cents = serializers.IntegerField()
+    note = serializers.CharField()
+
+
+class StatementCommittedSerializer(serializers.Serializer):
+    """The 201 body: rows were written."""
+
+    outcome = serializers.CharField(help_text=f"Always `{gate.COMMITTED}` on a 201.")
+    statement_id = serializers.UUIDField()
+    inserted = serializers.IntegerField(help_text="Ledger transactions written.")
+    duplicates_skipped = serializers.IntegerField()
+    restatements_skipped = serializers.IntegerField()
+    provisional_superseded = serializers.IntegerField(
+        help_text="Rule 7 provisional rows deleted because this verified file covers the "
+        "same card and window."
+    )
+    anchors = StatementAnchorsSerializer()
+
+
+class ReceiptAnchorsSerializer(serializers.Serializer):
+    total_cents = serializers.IntegerField()
+    subtotal_cents = serializers.IntegerField(allow_null=True)
+    tax_cents = serializers.IntegerField(allow_null=True)
+    other_charges_cents = serializers.IntegerField(allow_null=True)
+    note = serializers.CharField()
+
+
+class ReceiptEstimatesSerializer(serializers.Serializer):
+    """Section 4 rule 5 as a response a caller cannot miss: anything the
+    document does not state is an estimate and is labelled one."""
+
+    fields = serializers.ListField(child=serializers.CharField())
+    items_carrying_an_estimate = serializers.IntegerField()
+    note = serializers.CharField()
+
+
+class ReceiptCommittedSerializer(serializers.Serializer):
+    """The 201 body: line items were written."""
+
+    outcome = serializers.CharField(help_text=f"Always `{gate.COMMITTED}` on a 201.")
+    receipt_id = serializers.UUIDField()
+    inserted = serializers.IntegerField(help_text="Line items written.")
+    anchors = ReceiptAnchorsSerializer()
+    estimates = ReceiptEstimatesSerializer()
+
+
+GATE_INPUT_REFUSED = OpenApiResponse(
+    response=DetailSerializer,
+    description=(
+        "The gate could not RUN - a missing `content_sha256`, a money field that is not an "
+        "integer number of cents, a bad date, an `UNRECONCILED` provenance (there is no "
+        "provisional path here), or a database constraint the payload tripped. Nothing was "
+        "written, and no quarantine row was recorded either, because this is not a verdict "
+        "about a document: it is a payload nothing could evaluate. Distinct from a "
+        "quarantine, which is a 200."
+    ),
 )
 
 
@@ -241,6 +383,27 @@ class _IngestView(APIView):
 class StatementIngestView(_IngestView):
     """`public.commit_statement(payload jsonb)`."""
 
+    @extend_schema(
+        operation_id="api_ingest_statement_create",
+        tags=INGEST_TAGS,
+        description=STATEMENT_DESCRIPTION,
+        request=OpenApiTypes.OBJECT,
+        responses={
+            201: OpenApiResponse(
+                response=StatementCommittedSerializer,
+                description="The gate passed and rows were written.",
+            ),
+            200: OpenApiResponse(
+                response=IngestOutcomeSerializer,
+                description=(
+                    "Nothing was written, and that is a normal answer. Either this exact file "
+                    "was already committed, or the gate refused it and the refusal is now on "
+                    "record with its reason."
+                ),
+            ),
+            400: GATE_INPUT_REFUSED,
+        },
+    )
     def post(self, request):
         try:
             payload = self._payload(request)
@@ -473,6 +636,27 @@ class StatementIngestView(_IngestView):
 class ReceiptIngestView(_IngestView):
     """`public.commit_receipt(payload jsonb)`."""
 
+    @extend_schema(
+        operation_id="api_ingest_receipt_create",
+        tags=INGEST_TAGS,
+        description=RECEIPT_DESCRIPTION,
+        request=OpenApiTypes.OBJECT,
+        responses={
+            201: OpenApiResponse(
+                response=ReceiptCommittedSerializer,
+                description="The gate passed and line items were written.",
+            ),
+            200: OpenApiResponse(
+                response=IngestOutcomeSerializer,
+                description=(
+                    "Nothing was written, and that is a normal answer. Either this exact "
+                    "receipt was already committed, or the gate refused it and the refusal "
+                    "is now on record with its reason."
+                ),
+            ),
+            400: GATE_INPUT_REFUSED,
+        },
+    )
     def post(self, request):
         try:
             payload = self._payload(request)

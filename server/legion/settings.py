@@ -286,4 +286,23 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "The engine. One Django server, every limb a client of it.",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Two DIFFERENT choice sets are both spelled `provenance` on this API, and
+    # drf-spectacular cannot name them apart on its own - it resolved the
+    # collision as `Provenance382Enum`, a component name derived from a hash,
+    # which would land in a generated client as a class called exactly that and
+    # would change the moment either set did. Named here instead:
+    #
+    #   ProvenanceEnum          `public.provenance`, the four-value Postgres enum
+    #                           on every gated and authored table (section 4 rule 4).
+    #   VoiceNoteProvenanceEnum `voice_notes.provenance`, a plain text column pinned
+    #                           by its own CHECK to the single literal LLM_DERIVED.
+    #                           See `legacy/models/notes.py` and `api/voice_notes.py`
+    #                           for why a voice note is none of the other four.
+    #
+    # Values are dotted paths, resolved by drf-spectacular's `deep_import_string`,
+    # so the attribute on the model class works and neither set is restated here.
+    "ENUM_NAME_OVERRIDES": {
+        "ProvenanceEnum": "legacy.enums.Provenance",
+        "VoiceNoteProvenanceEnum": "legacy.models.notes.VoiceNote.PROVENANCE_CHOICES",
+    },
 }

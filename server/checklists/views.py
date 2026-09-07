@@ -7,10 +7,12 @@ idempotent tick, revive-on-retick, soft-delete-only.
 from __future__ import annotations
 
 from django.db.models.functions import Now
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.schema import NOT_FOUND, SINCE_PARAMETER, WRITE_REFUSED, paged_serializer
 from api.sync import paginate_since, parse_since, save_or_400
 from checklists.models import Checklist, ChecklistItem, ChecklistTick
 from checklists.serializers import (
@@ -18,6 +20,18 @@ from checklists.serializers import (
     ChecklistSerializer,
     ChecklistTickSerializer,
     TickRequestSerializer,
+)
+
+CHECKLIST_TAGS = ["checklists"]
+
+# `POST` here is idempotent on `sync_id`, and the 200-versus-201 split is
+# the ONLY thing that tells a caller which happened - the body is the row
+# either way. Worded once and reused by both collection POSTs so the two
+# cannot describe the same behaviour differently.
+IDEMPOTENT_REPEAT = (
+    "**Not created - this `sync_id` already exists**, and the body is the row that was "
+    "already there, unchanged. A retried create is a no-op; a client tells the two apart by "
+    "the status code, never by the body."
 )
 
 
@@ -37,12 +51,40 @@ def _idempotent_or_none(model, sync_id):
 class ChecklistListCreateView(APIView):
     """`GET /api/checklists?since=<iso>` and `POST /api/checklists`."""
 
+    @extend_schema(
+        operation_id="api_checklists_list",
+        tags=CHECKLIST_TAGS,
+        parameters=[SINCE_PARAMETER],
+        responses={
+            200: OpenApiResponse(
+                response=paged_serializer(ChecklistSerializer),
+                description=(
+                    "Checklists changed at or after `since`, tombstones included, oldest "
+                    "first, 500 to a page. Items and ticks are their own routes; "
+                    "GET /api/changes returns all three together."
+                ),
+            )
+        },
+    )
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
         queryset = Checklist.objects.filter(updated_at__gte=since).order_by("updated_at")
         page, next_since = paginate_since(queryset)
         return Response({"results": ChecklistSerializer(page, many=True).data, "next": next_since})
 
+    @extend_schema(
+        operation_id="api_checklists_create",
+        tags=CHECKLIST_TAGS,
+        request=ChecklistSerializer,
+        responses={
+            201: OpenApiResponse(
+                response=ChecklistSerializer,
+                description="Created. The body is the row as stored.",
+            ),
+            200: OpenApiResponse(response=ChecklistSerializer, description=IDEMPOTENT_REPEAT),
+            400: WRITE_REFUSED,
+        },
+    )
     def post(self, request):
         existing = _idempotent_or_none(Checklist, request.data.get("sync_id"))
         if existing is not None:
@@ -62,6 +104,11 @@ class ChecklistDetailView(APIView):
     def _get(self, checklist_id):
         return Checklist.objects.filter(pk=checklist_id).first()
 
+    @extend_schema(
+        operation_id="api_checklists_retrieve",
+        tags=CHECKLIST_TAGS,
+        responses={200: ChecklistSerializer, 404: NOT_FOUND},
+    )
     def get(self, request, checklist_id):
         instance = self._get(checklist_id)
         if instance is None:
@@ -71,6 +118,12 @@ class ChecklistDetailView(APIView):
             )
         return Response(ChecklistSerializer(instance).data)
 
+    @extend_schema(
+        operation_id="api_checklists_partial_update",
+        tags=CHECKLIST_TAGS,
+        request=ChecklistSerializer,
+        responses={200: ChecklistSerializer, 400: WRITE_REFUSED, 404: NOT_FOUND},
+    )
     def patch(self, request, checklist_id):
         instance = self._get(checklist_id)
         if instance is None:
@@ -85,6 +138,19 @@ class ChecklistDetailView(APIView):
             return error
         return Response(ChecklistSerializer(instance).data)
 
+    @extend_schema(
+        operation_id="api_checklists_destroy",
+        tags=CHECKLIST_TAGS,
+        responses={
+            204: OpenApiResponse(
+                description=(
+                    "Done. Soft-deleted, and NOT cascaded to items or ticks - a checklist's "
+                    "history is never rewritten by deleting the checklist."
+                )
+            ),
+            404: NOT_FOUND,
+        },
+    )
     def delete(self, request, checklist_id):
         instance = self._get(checklist_id)
         if instance is None:
@@ -118,6 +184,21 @@ class ChecklistDetailView(APIView):
 class ChecklistItemListCreateView(APIView):
     """`GET`/`POST /api/checklists/<checklist_id>/items`."""
 
+    @extend_schema(
+        operation_id="api_checklists_items_list",
+        tags=CHECKLIST_TAGS,
+        parameters=[SINCE_PARAMETER],
+        responses={
+            200: OpenApiResponse(
+                response=paged_serializer(ChecklistItemSerializer),
+                description=(
+                    "Items on this checklist changed at or after `since`, tombstones "
+                    "included, oldest first, 500 to a page. An unknown `checklist_id` is an "
+                    "empty page here, not a 404 - this route does not read the parent."
+                ),
+            )
+        },
+    )
     def get(self, request, checklist_id):
         since = parse_since(request.query_params.get("since"))
         queryset = (
@@ -129,6 +210,22 @@ class ChecklistItemListCreateView(APIView):
             {"results": ChecklistItemSerializer(page, many=True).data, "next": next_since}
         )
 
+    @extend_schema(
+        operation_id="api_checklists_items_create",
+        tags=CHECKLIST_TAGS,
+        request=ChecklistItemSerializer,
+        responses={
+            201: OpenApiResponse(
+                response=ChecklistItemSerializer,
+                description=(
+                    "Created. The URL's `checklist_id` wins over any `checklist` in the body."
+                ),
+            ),
+            200: OpenApiResponse(response=ChecklistItemSerializer, description=IDEMPOTENT_REPEAT),
+            400: WRITE_REFUSED,
+            404: NOT_FOUND,
+        },
+    )
     def post(self, request, checklist_id):
         if not Checklist.objects.filter(pk=checklist_id).exists():
             return Response(
@@ -159,6 +256,11 @@ class ChecklistItemDetailView(APIView):
     def _get(self, checklist_id, item_id):
         return ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
 
+    @extend_schema(
+        operation_id="api_checklists_items_retrieve",
+        tags=CHECKLIST_TAGS,
+        responses={200: ChecklistItemSerializer, 404: NOT_FOUND},
+    )
     def get(self, request, checklist_id, item_id):
         instance = self._get(checklist_id, item_id)
         if instance is None:
@@ -168,6 +270,23 @@ class ChecklistItemDetailView(APIView):
             )
         return Response(ChecklistItemSerializer(instance).data)
 
+    @extend_schema(
+        operation_id="api_checklists_items_partial_update",
+        tags=CHECKLIST_TAGS,
+        request=ChecklistItemSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=ChecklistItemSerializer,
+                description=(
+                    "The row as stored. A `checklist` in the body is DROPPED, not honoured: "
+                    "an item cannot be reparented, and the URL is the only authority on "
+                    "which checklist it belongs to."
+                ),
+            ),
+            400: WRITE_REFUSED,
+            404: NOT_FOUND,
+        },
+    )
     def patch(self, request, checklist_id, item_id):
         instance = self._get(checklist_id, item_id)
         if instance is None:
@@ -187,6 +306,19 @@ class ChecklistItemDetailView(APIView):
             return error
         return Response(ChecklistItemSerializer(instance).data)
 
+    @extend_schema(
+        operation_id="api_checklists_items_destroy",
+        tags=CHECKLIST_TAGS,
+        responses={
+            204: OpenApiResponse(
+                description=(
+                    "Done. Soft-deleted, and NOT cascaded to its ticks - dropping an item "
+                    "must not rewrite the history of days it was already ticked."
+                )
+            ),
+            404: NOT_FOUND,
+        },
+    )
     def delete(self, request, checklist_id, item_id):
         instance = self._get(checklist_id, item_id)
         if instance is None:
@@ -211,6 +343,34 @@ class ChecklistItemTickView(APIView):
     from `ChecklistController.tick`.
     """
 
+    @extend_schema(
+        operation_id="api_checklists_items_tick_create",
+        tags=CHECKLIST_TAGS,
+        request=TickRequestSerializer,
+        responses={
+            201: OpenApiResponse(
+                response=ChecklistTickSerializer,
+                description="A first tick for that day.",
+            ),
+            200: OpenApiResponse(
+                response=ChecklistTickSerializer,
+                description=(
+                    "A tick already existed for that day. Either an idempotent no-op (the "
+                    "FIRST tap's `ticked_at`/`value`/`source` are kept) or, if it had been "
+                    "unticked, the same row revived with a fresh `ticked_at`."
+                ),
+            ),
+            400: OpenApiResponse(
+                response=WRITE_REFUSED.response,
+                description=(
+                    "Nothing was recorded. Chiefly the measured-item refusal: an item with a "
+                    "`measure_unit` needs a `value`, and the message is the same sentence "
+                    "the phone's own controller uses."
+                ),
+            ),
+            404: NOT_FOUND,
+        },
+    )
     def post(self, request, checklist_id, item_id):
         item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
         if item is None:
@@ -279,6 +439,20 @@ class ChecklistItemUntickView(APIView):
     care which happened.
     """
 
+    @extend_schema(
+        operation_id="api_checklists_items_tick_destroy",
+        tags=CHECKLIST_TAGS,
+        responses={
+            204: OpenApiResponse(
+                description=(
+                    "Done. Idempotent: no tick on that day is still a 204, not a 404 - "
+                    "'already untouched' and 'just unticked' read the same to a caller that "
+                    "does not care which happened."
+                )
+            ),
+            404: NOT_FOUND,
+        },
+    )
     def delete(self, request, checklist_id, item_id, day):
         item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
         if item is None:

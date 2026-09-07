@@ -22,13 +22,23 @@ import uuid
 
 from django.db import transaction
 from django.db.models.functions import Now
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.schema import (
+    NO_CONTENT,
+    NOT_FOUND,
+    SINCE_PARAMETER,
+    WRITE_REFUSED,
+    paged_serializer,
+)
 from api.sync import paginate_since, parse_since, save_or_400
 from legacy.enums import Provenance
 from legacy.models.dates import Event
+
+EVENT_TAGS = ["events"]
 
 # CONSTRAINTS.md's own `## events` section, read from the live schema
 # (`legion_reader`, 2026-09-05) - the allowed sets this serializer's
@@ -223,12 +233,49 @@ class EventSerializer(serializers.ModelSerializer):
 class EventListCreateView(APIView):
     """`GET /api/events?since=<iso>` and `POST /api/events`."""
 
+    @extend_schema(
+        operation_id="api_events_list",
+        tags=EVENT_TAGS,
+        parameters=[SINCE_PARAMETER],
+        responses={
+            200: OpenApiResponse(
+                response=paged_serializer(EventSerializer),
+                description=(
+                    "Rows changed at or after `since`, tombstones included, oldest first, "
+                    "500 to a page. This route does NOT accept `?active=1` - the synced "
+                    "routes do; here a client filters `deleted_at` itself."
+                ),
+            )
+        },
+    )
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
         queryset = Event.objects.filter(updated_at__gte=since).order_by("updated_at")
         page, next_since = paginate_since(queryset)
         return Response({"results": EventSerializer(page, many=True).data, "next": next_since})
 
+    @extend_schema(
+        operation_id="api_events_create",
+        tags=EVENT_TAGS,
+        request=EventSerializer,
+        responses={
+            201: OpenApiResponse(
+                response=EventSerializer,
+                description="Created. The body is the row as stored, server-minted `id`, "
+                "`provenance` and timestamps included.",
+            ),
+            200: OpenApiResponse(
+                response=EventSerializer,
+                description=(
+                    "**Not created - this `origin_guid` already exists**, and the body is "
+                    "the row that was already there, unchanged. A retried create is a "
+                    "no-op, which is what makes a lost acknowledgement safe to retry. A "
+                    "client tells the two apart by the status code, never by the body."
+                ),
+            ),
+            400: WRITE_REFUSED,
+        },
+    )
     def post(self, request):
         # origin_guid/sync_id honoured on POST for idempotent upsert (this
         # ticket's own rule 5): a retried create with the same origin_guid
@@ -257,6 +304,23 @@ class EventDetailView(APIView):
     def _get_object(self, pk):
         return Event.objects.filter(pk=pk).first()
 
+    @extend_schema(
+        operation_id="api_events_partial_update",
+        tags=EVENT_TAGS,
+        request=EventSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=EventSerializer,
+                description=(
+                    "The row as stored. Every field is optional on the way in; only the "
+                    "ones sent are changed. Sending `done` without `done_at` derives "
+                    "`done_at` from the database clock (or clears it when `done` is false)."
+                ),
+            ),
+            400: WRITE_REFUSED,
+            404: NOT_FOUND,
+        },
+    )
     def patch(self, request, pk):
         instance = self._get_object(pk)
         if instance is None:
@@ -291,6 +355,11 @@ class EventDetailView(APIView):
             return error
         return Response(EventSerializer(instance).data)
 
+    @extend_schema(
+        operation_id="api_events_destroy",
+        tags=EVENT_TAGS,
+        responses={204: NO_CONTENT, 404: NOT_FOUND},
+    )
     def delete(self, request, pk):
         instance = self._get_object(pk)
         if instance is None:
