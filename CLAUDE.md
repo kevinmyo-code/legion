@@ -102,9 +102,23 @@ device model in a prompt had three separate agents reporting work on a phone tha
 - **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.
-- **MIDNIGHT_AI (`C:\Users\Kwin\StudioProjects\MIDNIGHT_AI`) is a FROZEN ARCHIVE.** Private, read
-  only, historical reference for what was ported. Never build there. Never write LEGION's project
-  history into its memory files, which is what happened during the 2026-07-31 port session.
+- **MIDNIGHT_AI IS UNFROZEN and is the third limb (AMENDED 2026-09-07, Kevin, ADR 0045).** Kevin:
+  *"i want to add that too as a limb for the django app. it reads the django just like ours."* It is
+  a live repository again - a second Android app, package `com.kevin.midnightai`, its own release
+  cadence, its own device token, reading the Django engine over HTTPS JSON exactly as the phone
+  does. **Build there.** Repo `github.com/kevinmyo-code/MIDNIGHT_AI`; on the second machine it is
+  checked out at `C:\Users\kevin\AndroidStudioProjects\AiApp`, NOT at the
+  `StudioProjects\MIDNIGHT_AI` path this line used to name.
+  **What survives of the freeze is the provenance half, and it still binds:** never write LEGION's
+  project history into its memory files (which is what happened during the 2026-07-31 port
+  session), and `memory/library/`'s FROZEN shelves are still frozen history about a dead commercial
+  car-launcher, not rules (section 11).
+  **The two repos share a CONTRACT, never code.** `openapi/legion-schema.yaml` is the engine's own
+  schema; each limb vendors a copy and generates its own models. There is no shared module and
+  there will not be one: the two codebases share class names from the 2026-07-31 seed and no longer
+  share meanings - `GeminiLiveSession.kt` is 1337 lines there against 2790 here - so anything
+  factored out to hold both would have to be re-diverged the first time either app needed a change
+  the other did not want.
 - **RUN SESSIONS FROM THIS DIRECTORY, not from MIDNIGHT_AI.** On 2026-08-01 a session did all its
   work here with its working directory set to the archive. Three things broke silently: `/wayfinder`,
   `/prototype` and every other slash-command resolved to the ARCHIVE's skills (the un-adapted copies
@@ -126,7 +140,7 @@ None of these is re-openable without Kevin. Full record in `memory/library/decis
 
 | Decision | Consequence |
 |---|---|
-| **Phone-only** | Head units may still install it; they no longer constrain design. The AOSP 8-10 ceiling, the frame-clock-only motion ban, and the ADB blackout are all LIFTED. Normal Compose animation is allowed. |
+| **Phone-only** | AMENDED 2026-09-07 (ADR 0045): phone-only still governs **LEGION's own design** - the AOSP 8-10 ceiling, the frame-clock-only motion ban and the ADB blackout stay LIFTED, and normal Compose animation is allowed - but it no longer means the engine has one Android client. The head unit is a SEPARATE APP in a separate repo, and none of those constraints come back into this one. |
 | **Commercial model is DEAD** | No billing, tiers, broker, trial, store listing, pricing, or positioning work. `billing/` was dropped entirely. Do not reintroduce it or reason about conversion. |
 | **Clone-and-run is a HARD requirement** | A stranger clones, sideloads, signs in, and it works. This, not cost, is what rules out Firestore. It is also why `gradle.properties` must never hardcode `org.gradle.java.home`. |
 | **Drive-BYO is the only store** | SUPERSEDED 2026-08-25 (Supabase, ADR 0038), 2026-09-05 morning (Django as second client, ADR 0043), and 2026-09-05 evening (**Django is the engine, ADR 0044**: one household-hosted server owns the data, Android and a web app are its clients, Supabase retires). Kept here because the row's REASON survives: nothing Kevin-hosted for other people. The household hosts its own. No Firestore, ever. |

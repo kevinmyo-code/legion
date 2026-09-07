@@ -53,6 +53,7 @@ Format and the test for whether something deserves an ADR:
 | 0041 | [[0041-a-recording-kevin-starts-is-first-party\|A recording Kevin starts is first-party, and its transcript is kept]] | accepted | 2026-09-01 | - |
 | 0042 | [[0042-business-rules-live-in-postgres\|Business rules live in Postgres, not in either client]] | amended | 2026-09-05 | 2026-09-05 |
 | 0044 | [[0044-django-is-the-engine\|Django is the engine]] | accepted | 2026-09-05 | - |
+| 0045 | [[0045-the-head-unit-is-a-third-limb\|The head unit is a third limb, and the schema is what the limbs share]] | accepted | 2026-09-07 | - |
 
 ## Superseded
 
