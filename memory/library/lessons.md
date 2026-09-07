@@ -1039,3 +1039,28 @@ advanced the cursor. The failure path was already honest; the hole was in the su
 The tell that cracked it was the cursor sitting at exactly 142: a failed upload returns before
 advancing, so a cursor at 142 proves every call covering 1..142 returned success. The number that
 should have been impossible is the one that named the bug.
+
+## L-2026-09-07: A partial unique index cannot be an ON CONFLICT target
+
+The `conversation_audit` repair shipped with the new `client_uuid` index created PARTIAL
+(`where client_uuid is not null`), on my instruction, to exempt the 277 rows written before the
+column existed. It did not work, and it failed in the loudest available way: PostgREST sends a bare
+`ON CONFLICT (client_uuid)`, Postgres cannot infer a partial index from a bare conflict target, and
+**every upload batch was rejected** with `there is no unique or exclusion constraint matching the ON
+CONFLICT specification`. The fix that was meant to unstick 142 rows moved none of them.
+
+Two things I got wrong, and the second is the general one.
+
+**The predicate bought nothing.** A plain unique index already permits many NULLs, because Postgres
+treats NULLs as distinct. The exemption I was engineering was the default behaviour. I reasoned about
+what the index needed to allow without checking what a unique index already allows.
+
+**A constraint is not only a rule; it is also an interface.** The index had to satisfy two consumers -
+the invariant, and PostgREST's upsert inference - and I only designed for the first. Anything a client
+names in an `ON CONFLICT` clause must be inferable from that clause alone: total unique index, or a
+named constraint, never a partial one. The same applies to any `on_conflict=` in supabase-kt.
+
+Cheap tell, worth reaching for next time: if a change to an index is meant to unstick a write path,
+**exercise that exact write against it in a rolled-back transaction before shipping**. The agent that
+found this did precisely that - bare form refused, predicated form accepted, both inside a transaction
+it rolled back - and settled in one query what I had reasoned about twice and got wrong twice.
