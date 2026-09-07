@@ -6,10 +6,29 @@ from __future__ import annotations
 
 from django.db import connection
 from django.db.utils import OperationalError
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 
 
+class HealthzOkSerializer(serializers.Serializer):
+    """Documentation-only - see `api/errors.py`'s own doc comment. `healthz`
+    builds its `Response(...)` by hand; this just types what it sends."""
+
+    db = serializers.ChoiceField(choices=["ok"])
+
+
+class HealthzErrorSerializer(serializers.Serializer):
+    db = serializers.ChoiceField(choices=["error"])
+    detail = serializers.CharField()
+
+
+@extend_schema(
+    request=None,
+    responses={200: HealthzOkSerializer, 503: HealthzErrorSerializer},
+    auth=[],
+)
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([])

@@ -280,4 +280,25 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "The engine. One Django server, every limb a client of it.",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Both are named `provenance`, so drf-spectacular's field-name-based
+    # enum naming collides them by default and resolves it with a numeric
+    # suffix ("Provenance382Enum") - a generated client's type name, not
+    # cosmetic. The shared four-value `public.provenance` enum
+    # (`legacy.enums.Provenance`, every model in `legacy/models/` except
+    # `VoiceNote`) keeps the plain name; `VoiceNote.provenance` is pinned by
+    # its own DB CHECK to the single literal `'LLM_DERIVED'`
+    # (`legacy/models/notes.py`'s own doc comment) and gets a name that says
+    # so, rather than a number.
+    # Both entries are required together: drf-spectacular only auto-names an
+    # enum plainly when a field name maps to exactly one choice set (the
+    # `elif len(prop_hash_set) == 1` case in its own `postprocess_schema_
+    # enums`). The moment `provenance` has two distinct choice sets ANY-
+    # where in the schema, every hash for that field name is treated as
+    # ambiguous unless it has its own override entry - overriding only the
+    # odd one out (`VoiceNoteProvenanceEnum`) still left the common
+    # four-value enum falling through to the numeric-suffix branch.
+    "ENUM_NAME_OVERRIDES": {
+        "ProvenanceEnum": "legacy.enums.Provenance",
+        "VoiceNoteProvenanceEnum": "legacy.models.notes.VoiceNote.PROVENANCE_CHOICES",
+    },
 }

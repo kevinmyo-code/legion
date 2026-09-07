@@ -22,13 +22,29 @@ import uuid
 
 from django.db import transaction
 from django.db.models.functions import Now
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.errors import DetailErrorSerializer
 from api.sync import paginate_since, parse_since, save_or_400
 from legacy.enums import Provenance
 from legacy.models.dates import Event
+
+# Same `?since=` contract as `checklists/views.py`'s own SINCE_PARAM -
+# duplicated rather than imported to keep `checklists` and `api` from
+# depending on each other for a one-line query param description.
+SINCE_PARAM = OpenApiParameter(
+    name="since",
+    type=str,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    description=(
+        "ISO-8601 watermark. Rows with updated_at >= since are returned. "
+        "Missing or unparsable means fetch everything, never fetch nothing."
+    ),
+)
 
 # CONSTRAINTS.md's own `## events` section, read from the live schema
 # (`legion_reader`, 2026-09-05) - the allowed sets this serializer's
@@ -220,15 +236,28 @@ class EventSerializer(serializers.ModelSerializer):
         return instance
 
 
+class EventPageSerializer(serializers.Serializer):
+    """Documentation-only shape for `{results, next}` - see
+    `api/sync.paginate_since`'s own doc comment for what `next` means."""
+
+    results = EventSerializer(many=True)
+    next = serializers.CharField(allow_null=True)
+
+
 class EventListCreateView(APIView):
     """`GET /api/events?since=<iso>` and `POST /api/events`."""
 
+    @extend_schema(parameters=[SINCE_PARAM], responses={200: EventPageSerializer})
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
         queryset = Event.objects.filter(updated_at__gte=since).order_by("updated_at")
         page, next_since = paginate_since(queryset)
         return Response({"results": EventSerializer(page, many=True).data, "next": next_since})
 
+    @extend_schema(
+        request=EventSerializer,
+        responses={200: EventSerializer, 201: EventSerializer, 400: DetailErrorSerializer},
+    )
     def post(self, request):
         # origin_guid/sync_id honoured on POST for idempotent upsert (this
         # ticket's own rule 5): a retried create with the same origin_guid
@@ -257,6 +286,10 @@ class EventDetailView(APIView):
     def _get_object(self, pk):
         return Event.objects.filter(pk=pk).first()
 
+    @extend_schema(
+        request=EventSerializer,
+        responses={200: EventSerializer, 400: DetailErrorSerializer, 404: DetailErrorSerializer},
+    )
     def patch(self, request, pk):
         instance = self._get_object(pk)
         if instance is None:
@@ -291,6 +324,7 @@ class EventDetailView(APIView):
             return error
         return Response(EventSerializer(instance).data)
 
+    @extend_schema(request=None, responses={204: None, 404: DetailErrorSerializer})
     def delete(self, request, pk):
         instance = self._get_object(pk)
         if instance is None:

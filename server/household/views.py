@@ -4,12 +4,14 @@ and what device am I' - the phone's own membership check.
 from __future__ import annotations
 
 from django.contrib.auth import authenticate
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from api.errors import DetailErrorSerializer
 from household.models import DeviceToken
 from household.serializers import (
     LoginRequestSerializer,
@@ -29,6 +31,13 @@ class LoginView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
+    @extend_schema(
+        request=LoginRequestSerializer,
+        responses={
+            200: LoginResponseSerializer,
+            401: DetailErrorSerializer,
+        },
+    )
     def post(self, request):
         serializer = LoginRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -54,6 +63,13 @@ class LogoutView(APIView):
     """`POST /api/auth/logout`. Revokes only the token making the request -
     every other device this user owns keeps working."""
 
+    @extend_schema(
+        request=None,
+        responses={
+            204: None,
+            400: DetailErrorSerializer,
+        },
+    )
     def post(self, request):
         token = request.auth
         if not isinstance(token, DeviceToken):
@@ -73,6 +89,7 @@ class MeView(APIView):
     call succeeds, the calling token is live and its user is a household
     member; if it 401s or 403s, the phone knows to ask for a new token."""
 
+    @extend_schema(responses={200: MeResponseSerializer})
     def get(self, request):
         token = request.auth
         device_name = token.name if isinstance(token, DeviceToken) else ""

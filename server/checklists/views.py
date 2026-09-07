@@ -7,10 +7,12 @@ idempotent tick, revive-on-retick, soft-delete-only.
 from __future__ import annotations
 
 from django.db.models.functions import Now
-from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.errors import DetailErrorSerializer
 from api.sync import paginate_since, parse_since, save_or_400
 from checklists.models import Checklist, ChecklistItem, ChecklistTick
 from checklists.serializers import (
@@ -19,6 +21,37 @@ from checklists.serializers import (
     ChecklistTickSerializer,
     TickRequestSerializer,
 )
+
+# The one `?since=` query param every paged GET on this file takes -
+# `api/sync.parse_since`'s own doc comment states the "missing means
+# everything" contract; this just gives that same parameter one shared
+# schema entry rather than four hand-typed copies.
+SINCE_PARAM = OpenApiParameter(
+    name="since",
+    type=str,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    description=(
+        "ISO-8601 watermark. Rows with updated_at >= since are returned. "
+        "Missing or unparsable means fetch everything, never fetch nothing."
+    ),
+)
+
+
+class ChecklistPageSerializer(serializers.Serializer):
+    """Documentation-only shape for `{results, next}` - the page
+    `paginate_since` returns. See that function's own doc comment for what
+    `next` means (null on the last page, an ISO watermark otherwise)."""
+
+    results = ChecklistSerializer(many=True)
+    next = serializers.CharField(allow_null=True)
+
+
+class ChecklistItemPageSerializer(serializers.Serializer):
+    """Same page shape as `ChecklistPageSerializer`, over checklist items."""
+
+    results = ChecklistItemSerializer(many=True)
+    next = serializers.CharField(allow_null=True)
 
 
 def _idempotent_or_none(model, sync_id):
@@ -37,12 +70,21 @@ def _idempotent_or_none(model, sync_id):
 class ChecklistListCreateView(APIView):
     """`GET /api/checklists?since=<iso>` and `POST /api/checklists`."""
 
+    @extend_schema(
+        operation_id="api_checklists_list",
+        parameters=[SINCE_PARAM],
+        responses={200: ChecklistPageSerializer},
+    )
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
         queryset = Checklist.objects.filter(updated_at__gte=since).order_by("updated_at")
         page, next_since = paginate_since(queryset)
         return Response({"results": ChecklistSerializer(page, many=True).data, "next": next_since})
 
+    @extend_schema(
+        request=ChecklistSerializer,
+        responses={200: ChecklistSerializer, 201: ChecklistSerializer, 400: DetailErrorSerializer},
+    )
     def post(self, request):
         existing = _idempotent_or_none(Checklist, request.data.get("sync_id"))
         if existing is not None:
@@ -62,6 +104,10 @@ class ChecklistDetailView(APIView):
     def _get(self, checklist_id):
         return Checklist.objects.filter(pk=checklist_id).first()
 
+    @extend_schema(
+        operation_id="api_checklists_retrieve",
+        responses={200: ChecklistSerializer, 404: DetailErrorSerializer},
+    )
     def get(self, request, checklist_id):
         instance = self._get(checklist_id)
         if instance is None:
@@ -71,6 +117,10 @@ class ChecklistDetailView(APIView):
             )
         return Response(ChecklistSerializer(instance).data)
 
+    @extend_schema(
+        request=ChecklistSerializer,
+        responses={200: ChecklistSerializer, 400: DetailErrorSerializer, 404: DetailErrorSerializer},
+    )
     def patch(self, request, checklist_id):
         instance = self._get(checklist_id)
         if instance is None:
@@ -85,6 +135,7 @@ class ChecklistDetailView(APIView):
             return error
         return Response(ChecklistSerializer(instance).data)
 
+    @extend_schema(request=None, responses={204: None, 404: DetailErrorSerializer})
     def delete(self, request, checklist_id):
         instance = self._get(checklist_id)
         if instance is None:
@@ -118,6 +169,11 @@ class ChecklistDetailView(APIView):
 class ChecklistItemListCreateView(APIView):
     """`GET`/`POST /api/checklists/<checklist_id>/items`."""
 
+    @extend_schema(
+        operation_id="api_checklists_items_list",
+        parameters=[SINCE_PARAM],
+        responses={200: ChecklistItemPageSerializer},
+    )
     def get(self, request, checklist_id):
         since = parse_since(request.query_params.get("since"))
         queryset = (
@@ -129,6 +185,15 @@ class ChecklistItemListCreateView(APIView):
             {"results": ChecklistItemSerializer(page, many=True).data, "next": next_since}
         )
 
+    @extend_schema(
+        request=ChecklistItemSerializer,
+        responses={
+            200: ChecklistItemSerializer,
+            201: ChecklistItemSerializer,
+            400: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+        },
+    )
     def post(self, request, checklist_id):
         if not Checklist.objects.filter(pk=checklist_id).exists():
             return Response(
@@ -159,6 +224,10 @@ class ChecklistItemDetailView(APIView):
     def _get(self, checklist_id, item_id):
         return ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
 
+    @extend_schema(
+        operation_id="api_checklists_items_retrieve",
+        responses={200: ChecklistItemSerializer, 404: DetailErrorSerializer},
+    )
     def get(self, request, checklist_id, item_id):
         instance = self._get(checklist_id, item_id)
         if instance is None:
@@ -168,6 +237,10 @@ class ChecklistItemDetailView(APIView):
             )
         return Response(ChecklistItemSerializer(instance).data)
 
+    @extend_schema(
+        request=ChecklistItemSerializer,
+        responses={200: ChecklistItemSerializer, 400: DetailErrorSerializer, 404: DetailErrorSerializer},
+    )
     def patch(self, request, checklist_id, item_id):
         instance = self._get(checklist_id, item_id)
         if instance is None:
@@ -187,6 +260,7 @@ class ChecklistItemDetailView(APIView):
             return error
         return Response(ChecklistItemSerializer(instance).data)
 
+    @extend_schema(request=None, responses={204: None, 404: DetailErrorSerializer})
     def delete(self, request, checklist_id, item_id):
         instance = self._get(checklist_id, item_id)
         if instance is None:
@@ -211,6 +285,15 @@ class ChecklistItemTickView(APIView):
     from `ChecklistController.tick`.
     """
 
+    @extend_schema(
+        request=TickRequestSerializer,
+        responses={
+            200: ChecklistTickSerializer,
+            201: ChecklistTickSerializer,
+            400: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+        },
+    )
     def post(self, request, checklist_id, item_id):
         item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
         if item is None:
@@ -279,6 +362,7 @@ class ChecklistItemUntickView(APIView):
     care which happened.
     """
 
+    @extend_schema(request=None, responses={204: None, 404: DetailErrorSerializer})
     def delete(self, request, checklist_id, item_id, day):
         item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
         if item is None:

@@ -32,11 +32,13 @@ pull should use the per-table `?since=` routes, which do page.
 from __future__ import annotations
 
 from django.db import connection
-from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers, status
 from rest_framework.fields import DateTimeField
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.errors import DetailErrorSerializer
 from api.events import EventSerializer
 from api.registry import SYNCED_ASPECTS
 from api.sync import parse_since
@@ -53,7 +55,63 @@ from legacy.models.dates import Event
 KNOWN_ASPECTS = ("events", "checklists", *sorted(SYNCED_ASPECTS))
 
 
+def _build_changes_response_serializer() -> type[serializers.Serializer]:
+    """Every key this view can put in its response body, all of them
+    optional (a caller narrowing `aspects=` gets only some), built from the
+    same `SYNCED_ASPECTS` registry the view itself reads - so a new Phase 5
+    aspect widens this schema for free instead of needing a second,
+    hand-typed list here that can drift from the real one.
+    """
+    fields: dict[str, serializers.Field] = {
+        "server_time": serializers.DateTimeField(
+            help_text="Postgres's own clock at the moment this response was "
+            "built - store this as the next `since`, never a value derived "
+            "from the rows in this response."
+        ),
+        "events": EventSerializer(many=True, required=False),
+        "checklists": ChecklistSerializer(many=True, required=False),
+        "checklist_items": ChecklistItemSerializer(many=True, required=False),
+        "checklist_ticks": ChecklistTickSerializer(many=True, required=False),
+    }
+    for viewsets_for_aspect in SYNCED_ASPECTS.values():
+        for viewset in viewsets_for_aspect:
+            fields[viewset.table] = viewset.serializer_class(many=True, required=False)
+    return type("ChangesResponseSerializer", (serializers.Serializer,), fields)
+
+
+# Built once at import time - `SYNCED_ASPECTS` is a module-level constant
+# fully populated by the time this module imports it (api/registry.py's own
+# doc comment: built at import from the SYNCED_VIEWSETS list).
+ChangesResponseSerializer = _build_changes_response_serializer()
+
+ASPECTS_PARAM = OpenApiParameter(
+    name="aspects",
+    type=str,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    description=(
+        "Comma-separated aspect names, e.g. `events,checklists`. Missing or "
+        "blank means every known aspect: events, checklists, body, memory, "
+        "places, voice_notes."
+    ),
+)
+CHANGES_SINCE_PARAM = OpenApiParameter(
+    name="since",
+    type=str,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    description=(
+        "ISO-8601 watermark. Rows with updated_at >= since are returned. "
+        "Missing or unparsable means fetch everything, never fetch nothing."
+    ),
+)
+
+
 class ChangesView(APIView):
+    @extend_schema(
+        parameters=[ASPECTS_PARAM, CHANGES_SINCE_PARAM],
+        responses={200: ChangesResponseSerializer, 400: DetailErrorSerializer},
+    )
     def get(self, request):
         raw_aspects = request.query_params.get("aspects", "")
         requested = [a.strip() for a in raw_aspects.split(",") if a.strip()]
