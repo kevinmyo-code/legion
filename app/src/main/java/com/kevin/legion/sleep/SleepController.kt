@@ -20,6 +20,17 @@ import java.util.UUID
  */
 object SleepController {
     /**
+     * Outcome of a voice/tool/dialog write, same shape and same reason as
+     * [com.kevin.legion.workouts.WorkoutController.WriteOutcome], which is the original: [success]
+     * is derived from what actually landed, never asserted by the caller. Added 2026-09-07 because
+     * [logSleep] and [setTarget] returned a bare `String` and `LiveToolbox`'s `log_sleep`/
+     * `set_sleep_target` dispatch hardcoded `success = true` above them - so both a server REFUSAL
+     * and a rejected duration came back to the model as `{"success": true}` with a failure sentence
+     * beside it, which is exactly the flag CLAUDE.md section 7's outcome-verb rule is conditioned on.
+     */
+    data class WriteOutcome(val success: Boolean, val message: String)
+
+    /**
      * Logs one night's sleep. [durationHours] is parsed via [parseSleepDurationMinutes] - a null
      * result (an implausible or unparseable duration) is refused with a spoken reason rather than
      * silently written, the same "reject rather than guess" discipline
@@ -35,9 +46,12 @@ object SleepController {
         notes: String?,
         sleepDateOverride: Long?,
         now: Long = System.currentTimeMillis(),
-    ): String {
+    ): WriteOutcome {
         val minutes = parseSleepDurationMinutes(durationHours)
-            ?: return "That doesn't sound like a real duration - give me a number of hours between 0 and 24."
+            ?: return WriteOutcome(
+                false,
+                "That doesn't sound like a real duration - give me a number of hours between 0 and 24.",
+            )
         val sleepDate = sleepDateOverride ?: dayStartEpoch(now)
         // BodyWriteThrough.addSleepLog, not a direct DAO insert - see MealController.logMeal's
         // own comment for the write-through shape this follows (body-supabase ticket).
@@ -55,20 +69,23 @@ object SleepController {
             ),
         )
         return if (outcome is WriteThroughOutcome.Refused) {
-            "That sleep log didn't go through: ${outcome.message}"
+            WriteOutcome(false, "That sleep log didn't go through: ${outcome.message}")
         } else {
             val hoursText = formatMinutesAsHours(minutes)
             val qualityText = quality?.let { ", quality $it/5" } ?: ""
             val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)
                 ?.let { " " + queuedSentence(it.reason) } ?: ""
-            "Sleep logged: $hoursText$qualityText.$queuedNote"
+            WriteOutcome(true, "Sleep logged: $hoursText$qualityText.$queuedNote")
         }
     }
 
     /** Sets the driver's nightly sleep target, effective from tonight's wake-date onward (D2's "copy forward"). */
-    suspend fun setTarget(context: Context, targetHours: Double, now: Long = System.currentTimeMillis()): String {
+    suspend fun setTarget(context: Context, targetHours: Double, now: Long = System.currentTimeMillis()): WriteOutcome {
         val minutes = parseSleepDurationMinutes(targetHours)
-            ?: return "That doesn't sound like a real target - give me a number of hours between 0 and 24."
+            ?: return WriteOutcome(
+                false,
+                "That doesn't sound like a real target - give me a number of hours between 0 and 24.",
+            )
         val dayStart = dayStartEpoch(now)
         val db = CarDatabase.getDatabase(context)
         val guid = db.sleepTargetDao().getByEffectiveDate(dayStart)?.guid ?: UUID.randomUUID().toString()
@@ -77,11 +94,11 @@ object SleepController {
             SleepTarget(targetMinutes = minutes, effectiveFromDateEpoch = dayStart, updatedAt = now, guid = guid),
         )
         return if (outcome is WriteThroughOutcome.Refused) {
-            "That target didn't go through: ${outcome.message}"
+            WriteOutcome(false, "That target didn't go through: ${outcome.message}")
         } else {
             val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)
                 ?.let { " " + queuedSentence(it.reason) } ?: ""
-            "Sleep target set: ${formatMinutesAsHours(minutes)} a night.$queuedNote"
+            WriteOutcome(true, "Sleep target set: ${formatMinutesAsHours(minutes)} a night.$queuedNote")
         }
     }
 

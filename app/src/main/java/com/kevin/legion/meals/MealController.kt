@@ -17,6 +17,18 @@ import java.util.UUID
  */
 object MealController {
     /**
+     * Outcome of a voice/tool/dialog write, same shape and same reason as
+     * [com.kevin.legion.workouts.WorkoutController.WriteOutcome], which is the original: [success]
+     * is derived from what actually landed, never asserted by the caller. Added 2026-09-07 because
+     * [logMeal] and [setTarget] returned a bare `String` and `LiveToolbox`'s `log_meal`/
+     * `set_meal_target` dispatch hardcoded `success = true` above them - so a server REFUSAL came
+     * back to the model as `{"success": true, "message": "That meal didn't go through: ..."}` and
+     * CLAUDE.md section 7's outcome-verb rule, which is conditioned on the tool RESULT, had a lying
+     * flag to stand on.
+     */
+    data class WriteOutcome(val success: Boolean, val message: String)
+
+    /**
      * D25: hands [spokenDescription] to [MealAgent], then writes a [MealLog] row from whatever
      * it returns. Unlike [com.kevin.legion.pantry.PantryController.importReceipt] there is no
      * gate to fail here (see [MealAgent]'s doc comment) - a meal log is written even if some
@@ -24,7 +36,7 @@ object MealController {
      * not a number that must reconcile against anything. D37: [TrustTier.REPORTED] stamped here
      * unconditionally, same as [com.kevin.legion.workouts.WorkoutController.logSet].
      */
-    suspend fun logMeal(context: Context, spokenDescription: String): String {
+    suspend fun logMeal(context: Context, spokenDescription: String): WriteOutcome {
         val estimate = MealAgent.estimateFromDescription(spokenDescription)
         val now = System.currentTimeMillis()
         val description = estimate?.description ?: spokenDescription
@@ -54,17 +66,26 @@ object MealController {
         // (`.scratch/django-engine/issues/15-*`, CLAUDE.md §7's outcome-verb rule). A blank
         // description is the live case: `meal_logs.description` is `length(trim(...)) > 0` on both
         // servers, and neither this function nor `log_meal`'s dispatch has ever checked it.
-        if (outcome is WriteThroughOutcome.Refused) return "That meal didn't go through: ${outcome.message}"
+        if (outcome is WriteThroughOutcome.Refused) {
+            return WriteOutcome(false, "That meal didn't go through: ${outcome.message}")
+        }
         val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
-        return if (estimate?.caloriesKcal != null) {
+        val spoken = if (estimate?.caloriesKcal != null) {
             "$description logged - roughly ${estimate.caloriesKcal} kcal (estimate).$queuedNote"
         } else {
             "$description logged - couldn't put a calorie estimate on it, but it's recorded.$queuedNote"
         }
+        return WriteOutcome(true, spoken)
     }
 
     /** D26: sets the driver's daily calorie/macro target, effective from today (D2's "copy forward"). */
-    suspend fun setTarget(context: Context, caloriesKcal: Int, proteinG: Double, carbsG: Double, fatG: Double): String {
+    suspend fun setTarget(
+        context: Context,
+        caloriesKcal: Int,
+        proteinG: Double,
+        carbsG: Double,
+        fatG: Double,
+    ): WriteOutcome {
         val now = System.currentTimeMillis()
         val dayStart = dayStartEpoch(now)
         val db = CarDatabase.getDatabase(context)
@@ -80,9 +101,14 @@ object MealController {
                 guid = guid,
             ),
         )
-        if (outcome is WriteThroughOutcome.Refused) return "That target didn't go through: ${outcome.message}"
+        if (outcome is WriteThroughOutcome.Refused) {
+            return WriteOutcome(false, "That target didn't go through: ${outcome.message}")
+        }
         val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
-        return "Daily target set: $caloriesKcal kcal, ${proteinG}g protein, ${carbsG}g carbs, ${fatG}g fat.$queuedNote"
+        return WriteOutcome(
+            true,
+            "Daily target set: $caloriesKcal kcal, ${proteinG}g protein, ${carbsG}g carbs, ${fatG}g fat.$queuedNote",
+        )
     }
 
     /** D27's gap, computed impossible-to-misread by construction - see [DailyMealGap]'s doc comment. */

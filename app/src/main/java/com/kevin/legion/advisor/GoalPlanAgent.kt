@@ -68,6 +68,19 @@ data class GoalPlan(
     val mealTarget: GoalPlanMealTarget? = null,
     val sleepTarget: GoalPlanSleepTarget? = null,
     val workoutPlanMessage: String? = null,
+    /**
+     * Whether the write behind [workoutPlanMessage] actually landed, as
+     * [WorkoutController.generatePlan] itself reported it - null when no workout piece was
+     * proposed or [GoalPlanAgent.accept] has not run yet, so it is populated in exactly the same
+     * cases [workoutPlanMessage] is.
+     *
+     * Added 2026-09-07 with the rest of the outcome-flag fix. `accept_goal_plan`'s dispatch used
+     * to recover this by testing `message.startsWith("I couldn't")`, which was true of the
+     * sub-agent's failure sentence and of nothing else - so once the server-first change taught
+     * that write to answer "That plan didn't go through: ..." on a REFUSAL, the prefix test read a
+     * refused plan as a success. A flag the writer sets cannot drift from the writer's wording.
+     */
+    val workoutPlanSucceeded: Boolean? = null,
     val goals: List<GoalPlanGoal> = emptyList(),
     val refusals: List<String> = emptyList(),
     /**
@@ -202,8 +215,12 @@ class GoalPlanAgent(
      */
     suspend fun accept(context: Context, plan: GoalPlan): GoalPlan {
         val workoutGoalSentence = plan.pendingWorkoutGoal ?: return plan
-        val message = WorkoutController.generatePlan(context, workoutGoalSentence)
-        return plan.copy(workoutPlanMessage = message, pendingWorkoutGoal = null)
+        val outcome = WorkoutController.generatePlan(context, workoutGoalSentence)
+        return plan.copy(
+            workoutPlanMessage = outcome.message,
+            workoutPlanSucceeded = outcome.success,
+            pendingWorkoutGoal = null,
+        )
     }
 
     /**
@@ -231,6 +248,11 @@ class GoalPlanAgent(
      * open.
      */
     suspend fun acceptWholePlan(context: Context, plan: GoalPlan): GoalPlan {
+        // The meal/sleep target outcomes are still discarded here, exactly as they were before
+        // those two calls returned one - this function's contract is "make every write the plan
+        // proposed", and nothing downstream has a field to render a per-target refusal into. That
+        // is a real gap (GoalPlanDialog's AcceptedPlanBody says "Meal target set" unconditionally)
+        // and it is NOT what the 2026-09-07 outcome-flag fix closed; it needs its own ticket.
         plan.mealTarget?.let {
             MealController.setTarget(context, it.caloriesKcal, it.proteinG, it.carbsG, it.fatG)
         }

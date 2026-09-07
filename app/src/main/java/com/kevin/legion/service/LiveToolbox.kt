@@ -2620,29 +2620,39 @@ object LiveToolbox {
             "clear_pending_transaction" -> clearPendingTransaction(context, args.optString("description"))
             "list_recent_groceries" -> listRecentGroceries(context, args.optInt("count", 10))
             "get_grocery_spend" -> getGrocerySpend(context)
-            "create_workout_plan" -> result(success = true, message = WorkoutController.generatePlan(context, args.optString("goal")))
+            // success DERIVED from the controller's own WriteOutcome, never hardcoded - these five
+            // dispatches (plus logSleep below) used to pass `success = true` over messages that
+            // already said "didn't go through", so a refused write reached the model as
+            // {"success": true, "message": "<a failure>"}. CANNOT_CLAUSE is conditioned on the tool
+            // RESULT, so a lying flag defeats it outright. Fixed 2026-09-07, same shape
+            // log_workout_set and remember already had.
+            "create_workout_plan" ->
+                WorkoutController.generatePlan(context, args.optString("goal"))
+                    .let { result(it.success, it.message) }
             "log_workout_set" -> logWorkoutSet(context, args)
-            "log_bodyweight" -> result(
-                success = true,
-                message = WorkoutController.logBodyweight(context, args.optDouble("weight"), args.optString("weight_unit", "lbs")),
-            )
+            "log_bodyweight" ->
+                WorkoutController.logBodyweight(
+                    context, args.optDouble("weight"), args.optString("weight_unit", "lbs"),
+                ).let { result(it.success, it.message) }
             "get_workout_gap" -> getWorkoutGap(context)
             "list_recent_workouts" -> listRecentWorkouts(context, args.optInt("count", 10))
-            "log_meal" -> result(success = true, message = MealController.logMeal(context, args.optString("description")))
-            "set_meal_target" -> result(
-                success = true,
-                message = MealController.setTarget(
+            "log_meal" ->
+                MealController.logMeal(context, args.optString("description"))
+                    .let { result(it.success, it.message) }
+            "set_meal_target" ->
+                MealController.setTarget(
                     context, args.optInt("calories"), args.optDouble("protein_g"),
                     args.optDouble("carbs_g"), args.optDouble("fat_g"),
-                ),
-            )
+                ).let { result(it.success, it.message) }
             "set_budget" -> setBudget(context, args)
             "list_budget_categories" -> listBudgetCategories(context)
             "get_monthly_spend" -> getMonthlySpend(context)
             "get_meal_gap" -> getMealGap(context)
             "list_recent_meals" -> listRecentMeals(context, args.optInt("count", 10))
             "log_sleep" -> logSleep(context, args)
-            "set_sleep_target" -> result(success = true, message = com.kevin.legion.sleep.SleepController.setTarget(context, args.optDouble("hours")))
+            "set_sleep_target" ->
+                com.kevin.legion.sleep.SleepController.setTarget(context, args.optDouble("hours"))
+                    .let { result(it.success, it.message) }
             "get_sleep_gap" -> getSleepGap(context)
             "list_recent_sleep" -> listRecentSleep(context, args.optInt("count", 10))
             "undo_last_log" -> undoLastLog(context)
@@ -4519,11 +4529,17 @@ object LiveToolbox {
         // the workout write itself failed - GoalChecklistSync.materializeToday just re-derives from whatever
         // Room currently holds, which in that case is unchanged from before this call.
         GoalChecklistSync.materializeToday(context)
-        // WorkoutController.generatePlan (which accept() calls) returns a plain message string
-        // either way, never a structured outcome - the same "I couldn't ..." prefix
-        // create_workout_plan's own dispatch already treats as its one failure signature, mirrored
-        // here rather than inventing a second convention for the identical underlying call.
-        return result(success = !message.startsWith("I couldn't"), message = message)
+        // **This comment used to read "WorkoutController.generatePlan (which accept() calls)
+        // returns a plain message string either way, never a structured outcome - the same
+        // 'I couldn't ...' prefix create_workout_plan's own dispatch already treats as its one
+        // failure signature".** Both halves of that stopped being true: generatePlan returns a
+        // WriteOutcome now, create_workout_plan's dispatch derives from it, and the prefix test had
+        // already gone wrong before that - a REFUSED plan answers "That plan didn't go through:
+        // ..." and starts with no such prefix, so the tool would have reported a plan the server
+        // rejected as a success. The flag comes from the writer now (GoalPlan.workoutPlanSucceeded);
+        // the null fallback only covers "accept() never ran", whose message is the one the prefix
+        // test was actually written for.
+        return result(success = accepted.workoutPlanSucceeded ?: false, message = message)
     }
 
     // --- Advisors (ticket 18) -------------------------------------------------------------------
@@ -4873,16 +4889,18 @@ object LiveToolbox {
         }
         val quality = if (args.has("quality") && !args.isNull("quality")) args.optInt("quality") else null
         val notes = args.optString("notes").trim().takeIf { it.isNotBlank() }
-        return result(
-            success = true,
-            message = com.kevin.legion.sleep.SleepController.logSleep(
-                context = context,
-                durationHours = args.optDouble("duration_hours"),
-                quality = quality,
-                notes = notes,
-                sleepDateOverride = sleepDateOverride,
-            ),
+        // success DERIVED, not hardcoded: SleepController.logSleep refuses an implausible duration
+        // in words and a server-first REFUSED write reaches no table at all, and this dispatch used
+        // to report both as success = true (see the dispatch block's own comment on
+        // create_workout_plan).
+        val outcome = com.kevin.legion.sleep.SleepController.logSleep(
+            context = context,
+            durationHours = args.optDouble("duration_hours"),
+            quality = quality,
+            notes = notes,
+            sleepDateOverride = sleepDateOverride,
         )
+        return result(success = outcome.success, message = outcome.message)
     }
 
     /** Tonight's (today's wake-date's) sleep gap, worded for the model to speak. */

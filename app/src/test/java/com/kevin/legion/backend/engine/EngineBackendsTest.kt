@@ -179,6 +179,59 @@ class EngineBackendsTest {
     }
 
     @Test
+    fun `the last three aspects resolve to Django only once their own row is flipped`() {
+        // The same gate the four Phase 5 aspects have, for ledger, pantry and fleet. None of the
+        // three is in EngineTransport.DJANGO_BY_DEFAULT, so on this device - which IS signed in to
+        // an engine - not one resolves to a Django backend until its row says so. `ledger` answers
+        // TWO backends (the gated read-only half and the writable config half) and both must move
+        // together, which is the property the second pair of assertions pins.
+        val transport = EngineTransport(context)
+        context.getSharedPreferences("engine_transport", android.content.Context.MODE_PRIVATE)
+            .edit().clear().apply()
+
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_LEDGER))
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_PANTRY))
+        assertEquals(Transport.SUPABASE, transport.transportFor(EngineBackends.ASPECT_FLEET))
+
+        assertTrue(backends().ledgerBackend() !is DjangoLedgerBackend)
+        assertTrue(backends().ledgerConfigBackend() !is DjangoLedgerConfigBackend)
+        assertTrue(backends().pantryBackend() !is DjangoPantryBackend)
+        assertTrue(backends().fleetBackend() !is DjangoFleetBackend)
+        assertTrue(!backends().isFallingBackToSupabase(EngineBackends.ASPECT_FLEET))
+
+        transport.setTransport(EngineBackends.ASPECT_LEDGER, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_PANTRY, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_FLEET, Transport.DJANGO)
+
+        assertTrue(backends().ledgerBackend() is DjangoLedgerBackend)
+        assertTrue(backends().ledgerConfigBackend() is DjangoLedgerConfigBackend)
+        assertTrue(backends().pantryBackend() is DjangoPantryBackend)
+        assertTrue(backends().fleetBackend() is DjangoFleetBackend)
+    }
+
+    @Test
+    fun `the last three aspects flipped to Django with no engine token resolve to nothing`() {
+        // Same guard, same reason as the Phase 5 case below: an explicit flip is honoured verbatim
+        // even with no token, so a write fails loudly rather than being re-pointed at Supabase.
+        val transport = EngineTransport(context)
+        transport.setTransport(EngineBackends.ASPECT_LEDGER, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_PANTRY, Transport.DJANGO)
+        transport.setTransport(EngineBackends.ASPECT_FLEET, Transport.DJANGO)
+        val signedOut = EngineConfig(
+            context = context,
+            encrypt = { plain -> "ENC($plain)" },
+            decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
+        )
+        signedOut.clearSession()
+        val backends = EngineBackends(context, signedOut)
+
+        assertNull(backends.ledgerBackend())
+        assertNull(backends.ledgerConfigBackend())
+        assertNull(backends.pantryBackend())
+        assertNull(backends.fleetBackend())
+    }
+
+    @Test
     fun `a Phase 5 aspect flipped to Django with no engine token resolves to nothing`() {
         // Same guard the slice aspects have: an explicit flip is honoured verbatim even with no
         // token, so the write fails loudly rather than being re-pointed at Supabase behind the

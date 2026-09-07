@@ -87,10 +87,26 @@ internal class EngineSyncedTable<ROW>(
     private val idOf: (ROW) -> String,
 ) {
 
-    /** `GET <table>/?since=<iso>` - **tombstones included**, because a soft-deleted row is exactly
+    /**
+     * `GET <table>/?since=<iso>` - **tombstones included**, because a soft-deleted row is exactly
      * what a merge's tombstone branch is waiting for. A null [sinceIso] omits the parameter, which
-     * `api/sync.parse_since` reads as "fetch everything", never as "fetch nothing". */
-    suspend fun fetchChangedSince(sinceIso: String?): List<ROW> = fetchPages(sinceIso, activeOnly = false)
+     * `api/sync.parse_since` reads as "fetch everything", never as "fetch nothing".
+     *
+     * **A `since`-less call is also how a table with NO tombstones is read in full.** The five
+     * gated tables and `chassis_quirks`/`vehicle_specs` set `has_tombstones = False`, so they have
+     * no `?active=1` to narrow with - the unnarrowed feed already IS the live set, and calling
+     * [fetchActive] against one would send a parameter the view does not advertise.
+     *
+     * [extraQuery] is for the one route that takes a filter of its own:
+     * `GET /api/fleet/obd_samples/?vehicle=<uuid>` REFUSES with a 400 when `vehicle` is absent
+     * (`api/fleet.py`'s `OBD_VEHICLE_PARAMETER`: "the one list route in the API with a mandatory
+     * filter"). It is a map rather than a named `vehicle` parameter so this class stays ignorant of
+     * fleet; every other caller omits it and sends exactly what it sent before this existed.
+     */
+    suspend fun fetchChangedSince(
+        sinceIso: String?,
+        extraQuery: Map<String, String> = emptyMap(),
+    ): List<ROW> = fetchPages(sinceIso, activeOnly = false, extraQuery = extraQuery)
 
     /** `GET <table>/?active=1` - live rows only. Narrowed SERVER-side (unlike
      * [DjangoEventsBackend.fetchActive], which has to filter tombstones in the client because
@@ -107,12 +123,17 @@ internal class EngineSyncedTable<ROW>(
      * overwrites itself rather than duplicating), the loop stops the moment `next` repeats the
      * cursor it was just given, and [MAX_PAGES] caps it outright.
      */
-    private suspend fun fetchPages(sinceIso: String?, activeOnly: Boolean): List<ROW> {
+    private suspend fun fetchPages(
+        sinceIso: String?,
+        activeOnly: Boolean,
+        extraQuery: Map<String, String> = emptyMap(),
+    ): List<ROW> {
         val collected = LinkedHashMap<String, ROW>()
         var cursor = sinceIso
         var pages = 0
         while (pages < MAX_PAGES) {
             val query = buildMap {
+                putAll(extraQuery)
                 cursor?.let { put("since", it) }
                 if (activeOnly) put("active", "1")
             }

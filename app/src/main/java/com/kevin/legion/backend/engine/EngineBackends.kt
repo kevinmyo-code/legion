@@ -4,13 +4,21 @@ import android.content.Context
 import com.kevin.legion.backend.BodyBackend
 import com.kevin.legion.backend.ChecklistsBackend
 import com.kevin.legion.backend.EventsBackend
+import com.kevin.legion.backend.FleetBackend
+import com.kevin.legion.backend.LedgerBackend
+import com.kevin.legion.backend.LedgerConfigBackend
 import com.kevin.legion.backend.MemoryBackend
+import com.kevin.legion.backend.PantryBackend
 import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.SupabaseAuth
 import com.kevin.legion.backend.SupabaseBodyBackend
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseEventsBackend
+import com.kevin.legion.backend.SupabaseFleetBackend
+import com.kevin.legion.backend.SupabaseLedgerBackend
+import com.kevin.legion.backend.SupabaseLedgerConfigBackend
 import com.kevin.legion.backend.SupabaseMemoryBackend
+import com.kevin.legion.backend.SupabasePantryBackend
 import com.kevin.legion.backend.SupabasePlacesBackend
 import com.kevin.legion.backend.SupabaseVoiceNotesBackend
 import com.kevin.legion.backend.VoiceNotesBackend
@@ -40,6 +48,15 @@ import com.kevin.legion.backend.VoiceNotesBackend
  * **No `object` singleton** - a plain class taking [Context] and its two collaborators as
  * constructor parameters, per CLAUDE.md section 8's controller rule and this ticket's brief.
  */
+// One public function per aspect (plus [isConfiguredFor]/[isFallingBackToSupabase] and events'
+// two auth variants) is what this class IS, so its function count is the aspect count and grew
+// past detekt's ceiling of 11 the moment ledger, pantry and fleet landed. The alternative shapes
+// are both worse: a single `backendFor(aspect): Any?` would hand every caller an untyped object to
+// cast, and splitting this into three resolver classes would reintroduce exactly the "one
+// EngineTransport per object, answering different transports for the same aspect" hazard this
+// class's own constructor comment exists to prevent. Stated here rather than added to
+// config/detekt/baseline.xml, which this ticket's brief forbids.
+@Suppress("TooManyFunctions") // One accessor per aspect; the count IS the aspect count.
 class EngineBackends(
     context: Context,
     private val config: EngineConfig = EngineConfig(context.applicationContext),
@@ -166,6 +183,45 @@ class EngineBackends(
         Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoMemoryBackend(it) }
     }
 
+    /**
+     * The GATED ledger backend (`statements`, `ledger_transactions`) for whatever transport
+     * `ledger` is set to, or null. Same "Now" semantics as [bodyBackend].
+     *
+     * **Two backends share the `ledger` aspect key, deliberately.** This one and
+     * [ledgerConfigBackend] cover the two halves the SERVER splits the aspect into - read-only
+     * gated tables versus full-CRUD config - and they must never disagree about which transport
+     * ledger is on, which is exactly what asking the same [EngineTransport] once per call
+     * guarantees.
+     */
+    fun ledgerBackend(): LedgerBackend? = when (transport.transportFor(ASPECT_LEDGER)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabaseLedgerBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoLedgerBackend(it) }
+    }
+
+    /** The ledger CONFIG backend (`categories`, `category_rules`, `budget_targets`) - the writable
+     * half of the same `ledger` aspect. See [ledgerBackend] for why one aspect key answers two
+     * backends. */
+    fun ledgerConfigBackend(): LedgerConfigBackend? = when (transport.transportFor(ASPECT_LEDGER)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabaseLedgerConfigBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoLedgerConfigBackend(it) }
+    }
+
+    /** The pantry backend for whatever transport `pantry` is set to, or null. Same "Now" semantics
+     * as [bodyBackend]. */
+    fun pantryBackend(): PantryBackend? = when (transport.transportFor(ASPECT_PANTRY)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabasePantryBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoPantryBackend(it) }
+    }
+
+    /** The fleet backend for whatever transport `fleet` is set to, or null. Same "Now" semantics as
+     * [bodyBackend]. **[DjangoFleetBackend] refuses two of the interface's 37 functions in words** -
+     * see its own class doc, "THE ONE GAP" - so this returning a non-null Django backend does not
+     * mean every fleet write is available on that transport. */
+    fun fleetBackend(): FleetBackend? = when (transport.transportFor(ASPECT_FLEET)) {
+        Transport.SUPABASE -> SupabaseClientProvider.get(app)?.let { SupabaseFleetBackend(it) }
+        Transport.DJANGO -> engineHttp().takeIf { it.isUsable() }?.let { DjangoFleetBackend(it) }
+    }
+
     private fun djangoEventsBackend(): EventsBackend? =
         engineHttp().takeIf { it.isUsable() }?.let { DjangoEventsBackend(it) }
 
@@ -188,5 +244,12 @@ class EngineBackends(
         const val ASPECT_VOICE_NOTES = "voice_notes"
         const val ASPECT_BODY = "body"
         const val ASPECT_MEMORY = "memory"
+
+        // The last three aspects to get a Django client. Same note as the four above: naming one
+        // here changes no default - all three resolve to [Transport.SUPABASE] until they are in
+        // [EngineTransport.DJANGO_BY_DEFAULT], and this ticket adds none of them to it.
+        const val ASPECT_LEDGER = "ledger"
+        const val ASPECT_PANTRY = "pantry"
+        const val ASPECT_FLEET = "fleet"
     }
 }

@@ -92,7 +92,11 @@ fun LogMealDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
                         busy = true
                         scope.launch {
                             // Same call log_meal's dispatch makes: MealController.logMeal(context, description).
-                            result = MealController.logMeal(context, description.trim())
+                            // .message, not the whole WriteOutcome: the dialog renders one line of
+                            // prose and that line already states a refusal in words. It does not
+                            // read .success because it has nothing to do differently with it -
+                            // unlike the tool boundary, where the flag is what the model believes.
+                            result = MealController.logMeal(context, description.trim()).message
                             busy = false
                         }
                     },
@@ -149,7 +153,9 @@ fun SetMealTargetDialog(
                         busy = true
                         scope.launch {
                             // Same call set_meal_target's dispatch makes: MealController.setTarget(...).
-                            result = MealController.setTarget(context, parsedCalories!!, parsedProtein!!, parsedCarbs!!, parsedFat!!)
+                            result = MealController.setTarget(
+                                context, parsedCalories!!, parsedProtein!!, parsedCarbs!!, parsedFat!!,
+                            ).message
                             busy = false
                         }
                     },
@@ -202,7 +208,7 @@ fun LogSleepDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
                                 quality = if (quality.isNotBlank()) parsedQuality else null,
                                 notes = null,
                                 sleepDateOverride = null,
-                            )
+                            ).message
                             busy = false
                         }
                     },
@@ -242,7 +248,7 @@ fun SetSleepTargetDialog(currentHours: Double?, onDismiss: () -> Unit, onDone: (
                         busy = true
                         scope.launch {
                             // Same call set_sleep_target's dispatch makes: SleepController.setTarget(...).
-                            result = SleepController.setTarget(context, parsedHours!!)
+                            result = SleepController.setTarget(context, parsedHours!!).message
                             busy = false
                         }
                     },
@@ -289,7 +295,7 @@ fun LogBodyweightDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
                         busy = true
                         scope.launch {
                             // Same call log_bodyweight's dispatch makes: WorkoutController.logBodyweight(...).
-                            result = WorkoutController.logBodyweight(context, parsedWeight!!, unit)
+                            result = WorkoutController.logBodyweight(context, parsedWeight!!, unit).message
                             busy = false
                         }
                     },

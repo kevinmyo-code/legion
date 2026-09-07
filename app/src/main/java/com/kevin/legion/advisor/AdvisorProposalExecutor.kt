@@ -125,7 +125,12 @@ object AdvisorProposalExecutor {
         val protein = obj.optDouble("proteinG", 0.0)
         val carbs = obj.optDouble("carbsG", 0.0)
         val fat = obj.optDouble("fatG", 0.0)
-        return ExecuteResult.Ok(MealController.setTarget(context, calories, protein, carbs, fat))
+        // Unlike its two neighbours below this one never verified anything - it wrapped
+        // MealController.setTarget's message in Ok() whatever that message said, so a refused
+        // target read as applied. It has the writer's own flag now (2026-09-07), which is the same
+        // evidence the read-backs below gather, obtained from the write itself.
+        val outcome = MealController.setTarget(context, calories, protein, carbs, fat)
+        return if (outcome.success) ExecuteResult.Ok(outcome.message) else ExecuteResult.WriteFailed(outcome.message)
     }
 
     /** [SleepController.setTarget] rejects <=0 / >24h / NaN / Infinite by RETURNING a spoken
@@ -139,7 +144,7 @@ object AdvisorProposalExecutor {
     private suspend fun setSleepTarget(context: Context, obj: JSONObject): ExecuteResult {
         if (!obj.has("targetHours")) return ExecuteResult.Refused("That proposal didn't include a target.")
         val now = System.currentTimeMillis()
-        val message = SleepController.setTarget(context, obj.optDouble("targetHours"), now)
+        val message = SleepController.setTarget(context, obj.optDouble("targetHours"), now).message
         val landed = CarDatabase.getDatabase(context).sleepTargetDao()
             .currentTarget(com.kevin.legion.meals.dayStartEpoch(now))
         return if (landed != null && landed.updatedAt >= now) {
@@ -162,7 +167,7 @@ object AdvisorProposalExecutor {
         // nothing is written in that case. Verified by read-back, not by matching that sentence:
         // require the current plan's updatedAt be no older than this call.
         val now = System.currentTimeMillis()
-        val message = WorkoutController.generatePlan(context, goal)
+        val message = WorkoutController.generatePlan(context, goal).message
         val landed = CarDatabase.getDatabase(context).workoutPlanDao()
             .currentPlan(com.kevin.legion.workouts.weekStartEpoch(now))
         return if (landed != null && landed.updatedAt >= now) {

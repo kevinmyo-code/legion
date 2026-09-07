@@ -30,6 +30,12 @@ object WorkoutController {
      * defect class ticket 05 closed for `set_odometer`/`log_service`, found again here 2026-08-17
      * (a driver's spoken sets during a 21:42-21:45 session never reached `workout_set_logs`, and
      * the app told him they had). [message] is what the caller speaks either way.
+     *
+     * 2026-09-07: [generatePlan] and [logBodyweight] return it too, for the same defect found
+     * again after the server-first change - `create_workout_plan`/`log_bodyweight` hardcoded
+     * `success = true` over messages that had already learnt to say "didn't go through".
+     * [com.kevin.legion.meals.MealController.WriteOutcome] and
+     * [com.kevin.legion.sleep.SleepController.WriteOutcome] are the same shape for the same reason.
      */
     data class WriteOutcome(val success: Boolean, val message: String)
 
@@ -40,9 +46,9 @@ object WorkoutController {
      * summary on success, or a failure message on any step going wrong - never a half-written
      * plan (if the agent call fails or returns nothing usable, nothing is written).
      */
-    suspend fun generatePlan(context: Context, goal: String): String {
+    suspend fun generatePlan(context: Context, goal: String): WriteOutcome {
         val draft = WorkoutPlanAgent.write(goal)
-            ?: return "I couldn't put a plan together just now - try again in a sec."
+            ?: return WriteOutcome(false, "I couldn't put a plan together just now - try again in a sec.")
 
         val now = System.currentTimeMillis()
         val weekStart = weekStartEpoch(now)
@@ -64,7 +70,7 @@ object WorkoutController {
         // are written - the same "never a half-written plan" posture this function's own doc
         // comment already states for a failed agent call, extended to a server that says no.
         return if (planOutcome is WriteThroughOutcome.Refused) {
-            "That plan didn't go through: ${planOutcome.message}"
+            WriteOutcome(false, "That plan didn't go through: ${planOutcome.message}")
         } else {
             val itemRows = draft.exercises.map { (exercise, targetSets) ->
                 val existingGuid = db.workoutPlanItemDao().getByExerciseAndWeek(exercise, weekStart)?.guid
@@ -93,27 +99,36 @@ object WorkoutController {
      * engine can take four exercises and refuse the fifth (see
      * [com.kevin.legion.backend.BodyWriteThrough.setWorkoutPlanItems]), and "one exercise was
      * rejected" leaves the driver with no way to find out which one is missing from his plan.
+     *
+     * **[WriteOutcome.success] is false only when NOTHING landed**, not when something was left
+     * out: the plan row plus one exercise IS a plan that now exists, and calling that a failure
+     * would have the caller deny a write that really happened - the mirror image of the
+     * hardcoded-true defect this return type exists to close. A partial write says so in words
+     * (`Left out: ...`) and still reads as done, the same way a QUEUED write does.
      */
     private fun planMessage(
         draft: WorkoutPlanDraft,
         planOutcome: WriteThroughOutcome<*>,
         itemRows: List<WorkoutPlanItem>,
         itemOutcomes: List<WriteThroughOutcome<*>>,
-    ): String {
+    ): WriteOutcome {
         val refused = itemRows.zip(itemOutcomes).mapNotNull { (item, outcome) ->
             (outcome as? WriteThroughOutcome.Refused)?.let { item.exercise to it.message }
         }
         val refusedList = refused.joinToString("; ") { "${it.first} - ${it.second}" }
         val landed = draft.exercises.entries.filterNot { entry -> refused.any { it.first == entry.key } }
         return if (landed.isEmpty()) {
-            "None of that plan's exercises went through: $refusedList"
+            WriteOutcome(false, "None of that plan's exercises went through: $refusedList")
         } else {
             val exerciseList = landed.joinToString(", ") { "${it.key} (${it.value} sets/week)" }
             val refusedNote = if (refused.isEmpty()) "" else " Left out: $refusedList"
             val anyQueued = planOutcome is WriteThroughOutcome.Queued<*> ||
                 itemOutcomes.any { it is WriteThroughOutcome.Queued<*> }
             val queuedNote = if (anyQueued) " " + queuedSentence(queuedReason(planOutcome, itemOutcomes)) else ""
-            "Plan set: ${draft.sessionsPerWeek} sessions a week - $exerciseList.$refusedNote$queuedNote"
+            WriteOutcome(
+                true,
+                "Plan set: ${draft.sessionsPerWeek} sessions a week - $exerciseList.$refusedNote$queuedNote",
+            )
         }
     }
 
@@ -213,7 +228,7 @@ object WorkoutController {
      * `supabase/.../aspect_body.sql`), and on the server-first path they are now enforced BEFORE
      * anything reaches Room instead of after.
      */
-    suspend fun logBodyweight(context: Context, weightValue: Double, weightUnit: String): String {
+    suspend fun logBodyweight(context: Context, weightValue: Double, weightUnit: String): WriteOutcome {
         val now = System.currentTimeMillis()
         val outcome = BodyWriteThrough.addBodyweightLog(
             context,
@@ -222,9 +237,11 @@ object WorkoutController {
                 guid = UUID.randomUUID().toString(), updatedAtMs = now,
             ),
         )
-        if (outcome is WriteThroughOutcome.Refused) return "That bodyweight didn't go through: ${outcome.message}"
+        if (outcome is WriteThroughOutcome.Refused) {
+            return WriteOutcome(false, "That bodyweight didn't go through: ${outcome.message}")
+        }
         val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
-        return "Bodyweight logged: $weightValue $weightUnit.$queuedNote"
+        return WriteOutcome(true, "Bodyweight logged: $weightValue $weightUnit.$queuedNote")
     }
 
     /**
