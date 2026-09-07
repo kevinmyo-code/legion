@@ -153,7 +153,7 @@ object MemoryConsolidator {
         val auditDao = db.memoryAuditDao()
         val now = System.currentTimeMillis()
         for (m in distilled) {
-            val written = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
+            val outcome = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
                 context,
                 CompanionMemory(
                     vehicleId = vehicleId,
@@ -166,6 +166,16 @@ object MemoryConsolidator {
                     updatedAtMs = now,
                 ),
             )
+            // A refused row reached no table at all (server-first write-through,
+            // `.scratch/django-engine/issues/15-*`), so there is no id to audit against and no
+            // write to claim. Logged rather than silently skipped: this pass runs unattended with
+            // nobody watching, and the transcript it distilled is about to be deleted.
+            val written = outcome.row
+            if (written == null) {
+                val why = (outcome as com.kevin.legion.backend.WriteThroughOutcome.Refused).message
+                Log.w(TAG, "consolidated memory refused by the server, not written: $why")
+                continue
+            }
             // Audit trail (2026-08-20): this pass runs unattended and writes durable memories from
             // a transcript it then DELETES, so without a line here a wrong memory has no
             // recoverable provenance at all.

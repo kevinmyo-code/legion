@@ -142,29 +142,52 @@ class AriaBrain private constructor(context: Context) {
     }
 
     /**
+     * What one [remember] call did. Same shape and same reason as
+     * [com.kevin.legion.workouts.WorkoutController.WriteOutcome]: `remember` returned a bare
+     * `String` and `LiveToolbox`'s dispatch hardcoded `success = true` above it, which was
+     * harmless while the local write was unconditional and is not once a server can refuse the
+     * row (`.scratch/django-engine/issues/15-*`). [message] is what the caller speaks either way.
+     */
+    data class RememberOutcome(val success: Boolean, val message: String)
+
+    /**
      * Saves something to long-term memory and returns a short in-character
      * acknowledgement. Invoked when Gemini calls the "remember" tool.
+     *
+     * **A refusal from the engine is NOT acknowledged as a memory.** On the server-first path
+     * ([com.kevin.legion.backend.MemoryWriteThrough]) a refused row never reaches Room, so there
+     * is nothing to acknowledge and nothing to audit - the server's own sentence goes back
+     * instead, and the `WRITTEN` audit line is skipped, because an audit trail that records a
+     * write which did not happen is worse than no audit line at all.
      */
-    suspend fun remember(text: String): String = withContext(Dispatchers.IO) {
+    suspend fun remember(text: String): RememberOutcome = withContext(Dispatchers.IO) {
         val trimmed = text.trim()
         // Nothing to store (model called remember with no real content) - just ack.
-        if (trimmed.isEmpty()) return@withContext REMEMBER_ACKS.random()
+        if (trimmed.isEmpty()) return@withContext RememberOutcome(true, REMEMBER_ACKS.random())
         // Dedup: if we already know this, refresh its recency instead of adding a
         // duplicate row that would waste one of the limited recall slots.
         val existing = memoryDao.findByText(trimmed)
+        var queuedNote = ""
         if (existing != null) {
             memoryDao.touch(existing.id, System.currentTimeMillis())
         } else {
             val now = System.currentTimeMillis()
-            com.kevin.legion.backend.MemoryWriteThrough.addMemoryEntry(
+            val outcome = com.kevin.legion.backend.MemoryWriteThrough.addMemoryEntry(
                 appContext,
                 MemoryEntry(text = trimmed, timestamp = now, updatedAtMs = now),
             )
+            if (outcome is com.kevin.legion.backend.WriteThroughOutcome.Refused) {
+                return@withContext RememberOutcome(false, "I couldn't save that: ${outcome.message}")
+            }
             audit(MemoryAudit.Event.WRITTEN, MemoryAudit.Store.FLAT, trimmed)
+            // Written here, not on the server yet - said in words (ADR 0044 rule 4), never folded
+            // silently into the ordinary ack.
+            queuedNote = (outcome as? com.kevin.legion.backend.WriteThroughOutcome.Queued<*>)
+                ?.let { " " + com.kevin.legion.backend.queuedSentence(it.reason) } ?: ""
         }
         // The memory list just changed; force the next base instruction to rebuild.
         baseCache = null
-        REMEMBER_ACKS.random()
+        RememberOutcome(true, REMEMBER_ACKS.random() + queuedNote)
     }
 
     /**

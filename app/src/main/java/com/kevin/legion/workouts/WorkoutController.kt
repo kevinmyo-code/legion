@@ -2,6 +2,8 @@ package com.kevin.legion.workouts
 
 import android.content.Context
 import com.kevin.legion.backend.BodyWriteThrough
+import com.kevin.legion.backend.WriteThroughOutcome
+import com.kevin.legion.backend.queuedSentence
 import com.kevin.legion.data.local.BodyweightLog
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.WorkoutPlan
@@ -49,28 +51,81 @@ object WorkoutController {
         // WorkoutPlanDao.getByEffectiveWeek's own doc comment for why a fresh one here would
         // orphan a server row (body-supabase ticket).
         val planGuid = db.workoutPlanDao().getByEffectiveWeek(weekStart)?.guid ?: UUID.randomUUID().toString()
-        BodyWriteThrough.setWorkoutPlan(
+        val planOutcome = BodyWriteThrough.setWorkoutPlan(
             context,
-            WorkoutPlan(sessionsPerWeek = draft.sessionsPerWeek, effectiveFromWeekEpoch = weekStart, updatedAt = now, guid = planGuid),
-        )
-        val itemRows = draft.exercises.map { (exercise, targetSets) ->
-            val itemGuid = db.workoutPlanItemDao().getByExerciseAndWeek(exercise, weekStart)?.guid ?: UUID.randomUUID().toString()
-            WorkoutPlanItem(
-                exercise = exercise,
-                targetSetsPerWeek = targetSets,
+            WorkoutPlan(
+                sessionsPerWeek = draft.sessionsPerWeek,
                 effectiveFromWeekEpoch = weekStart,
                 updatedAt = now,
-                // Ticket 08: only the exercises the model actually gave a rep count for carry
-                // one - draft.repsPerSet has no entry at all for the rest, and this stays null
-                // rather than inventing one (see WorkoutPlanItem.repsPerSet's own doc).
-                repsPerSet = draft.repsPerSet[exercise],
-                guid = itemGuid,
-            )
+                guid = planGuid,
+            ),
+        )
+        // The plan row is the parent of every item row, so a refused plan stops here and NO items
+        // are written - the same "never a half-written plan" posture this function's own doc
+        // comment already states for a failed agent call, extended to a server that says no.
+        return if (planOutcome is WriteThroughOutcome.Refused) {
+            "That plan didn't go through: ${planOutcome.message}"
+        } else {
+            val itemRows = draft.exercises.map { (exercise, targetSets) ->
+                val existingGuid = db.workoutPlanItemDao().getByExerciseAndWeek(exercise, weekStart)?.guid
+                WorkoutPlanItem(
+                    exercise = exercise,
+                    targetSetsPerWeek = targetSets,
+                    effectiveFromWeekEpoch = weekStart,
+                    updatedAt = now,
+                    // Ticket 08: only the exercises the model actually gave a rep count for carry
+                    // one - draft.repsPerSet has no entry at all for the rest, and this stays null
+                    // rather than inventing one (see WorkoutPlanItem.repsPerSet's own doc).
+                    repsPerSet = draft.repsPerSet[exercise],
+                    guid = existingGuid ?: UUID.randomUUID().toString(),
+                )
+            }
+            planMessage(draft, planOutcome, itemRows, BodyWriteThrough.setWorkoutPlanItems(context, itemRows))
         }
-        BodyWriteThrough.setWorkoutPlanItems(context, itemRows)
-        val exerciseList = draft.exercises.entries.joinToString(", ") { "${it.key} (${it.value} sets/week)" }
-        return "Plan set: ${draft.sessionsPerWeek} sessions a week - $exerciseList."
     }
+
+    /**
+     * The spoken result of a plan write, once every row has had its own answer from the engine.
+     * Split out of [generatePlan] so that function keeps one exit per branch, and because the
+     * composition is pure - no Context, no Room - which is the half worth reading on its own.
+     *
+     * **A refused exercise is NAMED, never counted**: per-row outcomes exist precisely because the
+     * engine can take four exercises and refuse the fifth (see
+     * [com.kevin.legion.backend.BodyWriteThrough.setWorkoutPlanItems]), and "one exercise was
+     * rejected" leaves the driver with no way to find out which one is missing from his plan.
+     */
+    private fun planMessage(
+        draft: WorkoutPlanDraft,
+        planOutcome: WriteThroughOutcome<*>,
+        itemRows: List<WorkoutPlanItem>,
+        itemOutcomes: List<WriteThroughOutcome<*>>,
+    ): String {
+        val refused = itemRows.zip(itemOutcomes).mapNotNull { (item, outcome) ->
+            (outcome as? WriteThroughOutcome.Refused)?.let { item.exercise to it.message }
+        }
+        val refusedList = refused.joinToString("; ") { "${it.first} - ${it.second}" }
+        val landed = draft.exercises.entries.filterNot { entry -> refused.any { it.first == entry.key } }
+        return if (landed.isEmpty()) {
+            "None of that plan's exercises went through: $refusedList"
+        } else {
+            val exerciseList = landed.joinToString(", ") { "${it.key} (${it.value} sets/week)" }
+            val refusedNote = if (refused.isEmpty()) "" else " Left out: $refusedList"
+            val anyQueued = planOutcome is WriteThroughOutcome.Queued<*> ||
+                itemOutcomes.any { it is WriteThroughOutcome.Queued<*> }
+            val queuedNote = if (anyQueued) " " + queuedSentence(queuedReason(planOutcome, itemOutcomes)) else ""
+            "Plan set: ${draft.sessionsPerWeek} sessions a week - $exerciseList.$refusedNote$queuedNote"
+        }
+    }
+
+    /** The first queue reason among a plan write's outcomes - one sentence covers the whole plan,
+     * and repeating the same "engine unreachable" line once per exercise would bury it. */
+    private fun queuedReason(
+        planOutcome: WriteThroughOutcome<*>,
+        itemOutcomes: List<WriteThroughOutcome<*>>,
+    ): String = (
+        (planOutcome as? WriteThroughOutcome.Queued<*>)
+            ?: itemOutcomes.filterIsInstance<WriteThroughOutcome.Queued<*>>().firstOrNull()
+        )?.reason ?: "unknown error"
 
     /**
      * D22: writes one set-group log entry. [exercise]/[sets] are the "important missing piece" the
@@ -113,7 +168,7 @@ object WorkoutController {
         if (sets <= 0)
             return WriteOutcome(false, "That's not a set count I can log - how many sets?")
 
-        val row = BodyWriteThrough.addWorkoutSetLog(
+        val outcome = BodyWriteThrough.addWorkoutSetLog(
             context,
             WorkoutSetLog(
                 exercise = exercise,
@@ -128,28 +183,48 @@ object WorkoutController {
                 updatedAtMs = loggedAt,
             ),
         )
-        // D34: the tool response states what was written, no separate confirm turn. success is
-        // now derived from BodyWriteThrough's own local write having run without throwing - Room's
-        // insert() (called inside it) throws rather than returning a failed row id, so reaching
-        // this line at all means the local write landed; a push failure is queued, never lost, and
-        // never reported as a failure to the driver (CLAUDE.md's outcome-verb rule cuts the other
-        // way here: LOCAL success is what "logged" asserts, matching every other body write).
+        // D34: the tool response states what was written, no separate confirm turn.
+        //
+        // **This comment used to end "a push failure is queued, never lost, and never reported as
+        // a failure to the driver (CLAUDE.md's outcome-verb rule cuts the other way here: LOCAL
+        // success is what 'logged' asserts, matching every other body write)."** That reading held
+        // while the local write was unconditional. It no longer is on the Django transport
+        // (`.scratch/django-engine/issues/15-*`): a REFUSED write never reaches Room at all, so
+        // there is no local success left to assert and success is derived from the outcome branch.
+        // A QUEUED write is still a real local write and still reads as logged - with the queue
+        // said in words after it, which is ADR 0044 rule 4 rather than a hedge.
+        val row = outcome.row ?: return WriteOutcome(
+            false,
+            "That set didn't go through: ${(outcome as WriteThroughOutcome.Refused).message}",
+        )
         val weightPhrase = if (weightValue != null) " at $weightValue${weightUnit ?: ""}" else ""
         val repsPhrase = if (reps != null) " of $reps" else ""
-        return WriteOutcome(true, "${row.sets} sets$repsPhrase of ${row.exercise}$weightPhrase, logged.")
+        val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
+        return WriteOutcome(true, "${row.sets} sets$repsPhrase of ${row.exercise}$weightPhrase, logged.$queuedNote")
     }
 
-    /** D23: bodyweight is its own reported measurement, not a field on [WorkoutSetLog]. */
+    /**
+     * D23: bodyweight is its own reported measurement, not a field on [WorkoutSetLog].
+     *
+     * **Nothing in Kotlin has ever checked [weightValue] or [weightUnit] here**, and that is not an
+     * oversight this ticket introduced - `log_bodyweight`'s `args.optDouble("weight")` happily
+     * yields 0.0 for a missing or unparseable argument. `weight_value > 0` and
+     * `weight_unit in ('lbs','kg')` are the server's rules (`server/api/body.py`,
+     * `supabase/.../aspect_body.sql`), and on the server-first path they are now enforced BEFORE
+     * anything reaches Room instead of after.
+     */
     suspend fun logBodyweight(context: Context, weightValue: Double, weightUnit: String): String {
         val now = System.currentTimeMillis()
-        BodyWriteThrough.addBodyweightLog(
+        val outcome = BodyWriteThrough.addBodyweightLog(
             context,
             BodyweightLog(
                 weightValue = weightValue, weightUnit = weightUnit, loggedAt = now, trustTier = TrustTier.REPORTED,
                 guid = UUID.randomUUID().toString(), updatedAtMs = now,
             ),
         )
-        return "Bodyweight logged: $weightValue $weightUnit."
+        if (outcome is WriteThroughOutcome.Refused) return "That bodyweight didn't go through: ${outcome.message}"
+        val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
+        return "Bodyweight logged: $weightValue $weightUnit.$queuedNote"
     }
 
     /**

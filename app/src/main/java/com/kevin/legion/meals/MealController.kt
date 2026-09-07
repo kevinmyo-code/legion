@@ -2,6 +2,8 @@ package com.kevin.legion.meals
 
 import android.content.Context
 import com.kevin.legion.backend.BodyWriteThrough
+import com.kevin.legion.backend.WriteThroughOutcome
+import com.kevin.legion.backend.queuedSentence
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MealLog
 import com.kevin.legion.data.local.MealTarget
@@ -29,7 +31,7 @@ object MealController {
         // BodyWriteThrough.addMealLog, not a direct DAO insert (body-supabase ticket) - writes
         // locally first, unconditionally, then pushes to Supabase if configured, enqueueing on
         // failure. guid/updatedAtMs are minted here, at the one place a MealLog is ever created.
-        BodyWriteThrough.addMealLog(
+        val outcome = BodyWriteThrough.addMealLog(
             context,
             MealLog(
                 description = description,
@@ -46,10 +48,18 @@ object MealController {
         )
         // D34: no separate confirm turn - state what was written, in words the driver can catch
         // a mishearing from. Estimate fields are always spoken as estimates (CLAUDE.md §4 rule 5).
+        //
+        // A REFUSED write reached no table at all on the server-first path, so nothing here may
+        // say "logged" - the server's own sentence goes back instead
+        // (`.scratch/django-engine/issues/15-*`, CLAUDE.md §7's outcome-verb rule). A blank
+        // description is the live case: `meal_logs.description` is `length(trim(...)) > 0` on both
+        // servers, and neither this function nor `log_meal`'s dispatch has ever checked it.
+        if (outcome is WriteThroughOutcome.Refused) return "That meal didn't go through: ${outcome.message}"
+        val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
         return if (estimate?.caloriesKcal != null) {
-            "$description logged - roughly ${estimate.caloriesKcal} kcal (estimate)."
+            "$description logged - roughly ${estimate.caloriesKcal} kcal (estimate).$queuedNote"
         } else {
-            "$description logged - couldn't put a calorie estimate on it, but it's recorded."
+            "$description logged - couldn't put a calorie estimate on it, but it's recorded.$queuedNote"
         }
     }
 
@@ -62,7 +72,7 @@ object MealController {
         // own doc comment for why a fresh guid here would orphan a server row.
         val guid = db.mealTargetDao().getByEffectiveDate(dayStart)?.guid ?: UUID.randomUUID().toString()
         // BodyWriteThrough.setMealTarget, not a direct DAO upsert - see logMeal's own comment.
-        BodyWriteThrough.setMealTarget(
+        val outcome = BodyWriteThrough.setMealTarget(
             context,
             MealTarget(
                 caloriesKcal = caloriesKcal, proteinG = proteinG, carbsG = carbsG, fatG = fatG,
@@ -70,7 +80,9 @@ object MealController {
                 guid = guid,
             ),
         )
-        return "Daily target set: $caloriesKcal kcal, ${proteinG}g protein, ${carbsG}g carbs, ${fatG}g fat."
+        if (outcome is WriteThroughOutcome.Refused) return "That target didn't go through: ${outcome.message}"
+        val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
+        return "Daily target set: $caloriesKcal kcal, ${proteinG}g protein, ${carbsG}g carbs, ${fatG}g fat.$queuedNote"
     }
 
     /** D27's gap, computed impossible-to-misread by construction - see [DailyMealGap]'s doc comment. */

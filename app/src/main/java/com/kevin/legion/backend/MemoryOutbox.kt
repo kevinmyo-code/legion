@@ -33,8 +33,19 @@ import kotlinx.serialization.json.Json
  * happened, never an input to behaviour" with nothing reading it back live, so a few minutes'
  * push latency costs nothing a driver would ever notice.
  *
- * **Local write always happens first, unconditionally** - same posture as [BodyWriteThrough]'s own
- * class doc.
+ * **This paragraph used to read "Local write always happens first, unconditionally - same posture
+ * as [BodyWriteThrough]'s own class doc". It still points at that class doc, which now says the
+ * opposite for one of the two transports.** Both files were reversed together by
+ * `.scratch/django-engine/issues/15-*`: on [com.kevin.legion.backend.engine.Transport.DJANGO] an
+ * upsert pushes FIRST, a 4xx refusal writes nothing locally and hands back the engine's own
+ * sentence, and anything else that failed writes locally, queues, and is said in words. On
+ * [com.kevin.legion.backend.engine.Transport.SUPABASE] - still `memory`'s default - nothing
+ * changed. See [BodyWriteThrough]'s class doc for the full reasoning; it is identical here, and
+ * memory is where it bites hardest, because [com.kevin.legion.ai.MemoryConsolidator] and
+ * [com.kevin.legion.ai.ReflectionEngine] write unattended with nobody watching to notice a row
+ * that was accepted locally and refused forever.
+ *
+ * **Deletes stay local-first on both transports**, same reasoning as body's.
  */
 object MemoryWriteThrough {
     /** Test seam, same mechanism as [BodyWriteThrough.backendOverride]. */
@@ -91,20 +102,71 @@ object MemoryWriteThrough {
         }
     }
 
-    suspend fun addMemoryEntry(context: Context, row: MemoryEntry): MemoryEntry {
+    /**
+     * One upsert, described rather than performed - see [BodyWriteThrough]'s own `Upsert` for why
+     * this bundle exists. It differs in one way: [store] hands back the row AS STORED rather than
+     * Unit, because [addCompanionMemory]'s caller needs the id Room assigned (its audit line
+     * points at it) and body's eight tables never do.
+     */
+    private class Upsert<T>(
+        val target: String,
+        val payload: String,
+        val store: suspend (CarDatabase) -> T,
+        val localId: (T) -> Long,
+        val push: suspend (MemoryBackend) -> Result<*>,
+    )
+
+    /** The ordering rule, in one place - see [BodyWriteThrough]'s own `write`, which this mirrors
+     * line for line, and this object's class doc for why it forks on the transport. The one
+     * difference is that [Upsert.store] hands back the stored row, so a caller can read the id
+     * Room assigned. */
+    private suspend fun <T> write(context: Context, upsert: Upsert<T>): WriteThroughOutcome<T> {
         val db = CarDatabase.getDatabase(context)
-        db.memoryDao().insert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertMemoryEntry(row.syncId, MemoryEntryPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.MEMORY_MEMORIES, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(MemoryEntryPayload.serializer(), MemoryEntryPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
+        val backend = backend(context)
+        val serverFirst = EngineTransport(context).transportFor(EngineBackends.ASPECT_MEMORY) == Transport.DJANGO
+        if (backend == null || !serverFirst) {
+            // Supabase (or an unconfigured install), unchanged: local write first, push after,
+            // enqueue on failure, and nothing new said.
+            val storedLocally = upsert.store(db)
+            val legacyResult = backend?.let { upsert.push(it) }
+            if (legacyResult != null && legacyResult.isFailure) {
+                enqueue(
+                    db, upsert.target, OutboxOperation.UPSERT, upsert.localId(storedLocally), upsert.payload,
+                    legacyResult.exceptionOrNull()?.message,
+                )
+            }
+            return WriteThroughOutcome.StoredLocally(storedLocally)
         }
-        return row
+        val result = upsert.push(backend)
+        // A refusal ends it BEFORE the local write - nothing in Room, nothing in the outbox.
+        val refusal = refusalSentence(result.exceptionOrNull())
+        return if (refusal != null) {
+            WriteThroughOutcome.Refused(refusal)
+        } else {
+            val stored = upsert.store(db)
+            if (result.isSuccess) {
+                WriteThroughOutcome.Sent(stored)
+            } else {
+                val reason = result.exceptionOrNull()?.message ?: "unknown error"
+                enqueue(db, upsert.target, OutboxOperation.UPSERT, upsert.localId(stored), upsert.payload, reason)
+                WriteThroughOutcome.Queued(stored, reason)
+            }
+        }
     }
+
+    suspend fun addMemoryEntry(context: Context, row: MemoryEntry): WriteThroughOutcome<MemoryEntry> = write(
+        context,
+        Upsert(
+            target = OutboxTarget.MEMORY_MEMORIES,
+            payload = Json.encodeToString(MemoryEntryPayload.serializer(), MemoryEntryPayload.from(row)),
+            store = { db ->
+                db.memoryDao().insert(row)
+                row
+            },
+            localId = { it.id },
+            push = { backend -> backend.upsertMemoryEntry(row.syncId, MemoryEntryPayload.from(row).toFields()) },
+        ),
+    )
 
     /** Soft-deletes and pushes a tombstone for one remembered fact - the driver rejecting a row on
      * the memory screen, or [deleteAllMemoryEntries]'s per-row loop. On an unconfigured install
@@ -172,21 +234,29 @@ object MemoryWriteThrough {
         }
     }
 
-    suspend fun addCompanionMemory(context: Context, row: CompanionMemory): CompanionMemory {
-        val db = CarDatabase.getDatabase(context)
-        val id = db.companionMemoryDao().insert(row)
-        val withId = row.copy(id = id)
-        val backend = backend(context) ?: return withId
-        val result = backend.upsertCompanionMemory(row.syncId, CompanionMemoryPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.MEMORY_COMPANION_MEMORIES, OutboxOperation.UPSERT, id,
-                Json.encodeToString(CompanionMemoryPayload.serializer(), CompanionMemoryPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return withId
-    }
+    /**
+     * **A refusal here returns [WriteThroughOutcome.Refused] and NO row**, which is what every
+     * caller's audit line turns on: [com.kevin.legion.ai.MemoryConsolidator],
+     * [com.kevin.legion.ai.ReflectionEngine] and `LiveToolbox.rememberGoalPlanConstraint` each
+     * record a [com.kevin.legion.data.local.MemoryAudit] line saying `WRITTEN` and pointing at
+     * this row's id. There is no id when nothing was written, and an audit line claiming a write
+     * that did not happen is the same lie in the archive that "logged it" is out loud.
+     */
+    suspend fun addCompanionMemory(
+        context: Context,
+        row: CompanionMemory,
+    ): WriteThroughOutcome<CompanionMemory> = write(
+        context,
+        Upsert(
+            target = OutboxTarget.MEMORY_COMPANION_MEMORIES,
+            payload = Json.encodeToString(CompanionMemoryPayload.serializer(), CompanionMemoryPayload.from(row)),
+            store = { db -> row.copy(id = db.companionMemoryDao().insert(row)) },
+            localId = { it.id },
+            push = { backend ->
+                backend.upsertCompanionMemory(row.syncId, CompanionMemoryPayload.from(row).toFields())
+            },
+        ),
+    )
 
     /** Soft-deletes and pushes a tombstone for one learned memory - same shape as
      * [deleteMemoryEntry]. */

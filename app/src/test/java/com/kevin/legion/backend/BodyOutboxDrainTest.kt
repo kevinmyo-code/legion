@@ -88,7 +88,10 @@ class BodyOutboxDrainTest {
     fun `a failed push enqueues an outbox entry, never losing the write`() = runBlocking {
         backend.bodyweightUpsertResult = Result.failure(BodyBackendException("offline"))
 
-        val row = BodyWriteThrough.addBodyweightLog(context, freshRow("guid-a"))
+        // `.row`, not the bare row this used to return - see WriteThroughOutcome. On this test's
+        // transport (Supabase, the default) the branch is always StoredLocally, so the row is
+        // never null here; the server-first branches are exercised in BodyServerFirstWriteTest.
+        val row = requireNotNull(BodyWriteThrough.addBodyweightLog(context, freshRow("guid-a")).row)
 
         // Local write always lands regardless of the push outcome.
         val stored = CarDatabase.getDatabase(context).bodyweightLogDao().getAll()

@@ -101,7 +101,12 @@ class AriaBrainRememberHandPathTest {
 
         val ack = brain.remember("   ")
 
-        assertTrue("still returns an acknowledgement, never silence", ack.isNotBlank())
+        // `.message`, not the bare String this used to return: `remember` answers an
+        // AriaBrain.RememberOutcome now, so a refusal from the engine can be told apart from an
+        // ack (.scratch/django-engine/issues/15-*). A blank remember is still a SUCCESSFUL no-op -
+        // nothing was refused, there was simply nothing to write.
+        assertTrue("a blank remember is a no-op, not a failure", ack.success)
+        assertTrue("still returns an acknowledgement, never silence", ack.message.isNotBlank())
         assertTrue("a blank remember must never write a row", db.memoryDao().getRecent(10).isEmpty())
     }
 }

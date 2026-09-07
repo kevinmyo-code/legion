@@ -177,7 +177,7 @@ object ReflectionEngine {
         val now = System.currentTimeMillis()
         val auditDao = CarDatabase.getDatabase(context).memoryAuditDao()
         for (insight in insights) {
-            val written = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
+            val outcome = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
                 context,
                 CompanionMemory(
                     vehicleId = vehicleId,
@@ -190,7 +190,16 @@ object ReflectionEngine {
                     updatedAtMs = now,
                 ),
             )
-            val id = written.id
+            // A refused row was never written (server-first write-through,
+            // `.scratch/django-engine/issues/15-*`) - no id, so no audit line, since a WRITTEN
+            // line pointing at nothing is exactly the false provenance the audit exists to
+            // prevent. See MemoryConsolidator.writeMemories for the identical branch.
+            val id = outcome.row?.id
+            if (id == null) {
+                val why = (outcome as com.kevin.legion.backend.WriteThroughOutcome.Refused).message
+                Log.w(TAG, "reflection insight refused by the server, not written: $why")
+                continue
+            }
             // Audit trail (2026-08-20). Reflection is the pass most worth auditing: it writes a
             // memory synthesized from OTHER memories rather than from anything the driver said, so
             // it is the one place a plausible-sounding claim can enter the record with no external

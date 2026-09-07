@@ -2,6 +2,8 @@ package com.kevin.legion.sleep
 
 import android.content.Context
 import com.kevin.legion.backend.BodyWriteThrough
+import com.kevin.legion.backend.WriteThroughOutcome
+import com.kevin.legion.backend.queuedSentence
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.SleepLog
 import com.kevin.legion.data.local.SleepTarget
@@ -39,7 +41,7 @@ object SleepController {
         val sleepDate = sleepDateOverride ?: dayStartEpoch(now)
         // BodyWriteThrough.addSleepLog, not a direct DAO insert - see MealController.logMeal's
         // own comment for the write-through shape this follows (body-supabase ticket).
-        BodyWriteThrough.addSleepLog(
+        val outcome = BodyWriteThrough.addSleepLog(
             context,
             SleepLog(
                 sleepDate = sleepDate,
@@ -52,9 +54,15 @@ object SleepController {
                 updatedAtMs = now,
             ),
         )
-        val hoursText = formatMinutesAsHours(minutes)
-        val qualityText = quality?.let { ", quality $it/5" } ?: ""
-        return "Sleep logged: $hoursText$qualityText."
+        return if (outcome is WriteThroughOutcome.Refused) {
+            "That sleep log didn't go through: ${outcome.message}"
+        } else {
+            val hoursText = formatMinutesAsHours(minutes)
+            val qualityText = quality?.let { ", quality $it/5" } ?: ""
+            val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)
+                ?.let { " " + queuedSentence(it.reason) } ?: ""
+            "Sleep logged: $hoursText$qualityText.$queuedNote"
+        }
     }
 
     /** Sets the driver's nightly sleep target, effective from tonight's wake-date onward (D2's "copy forward"). */
@@ -64,11 +72,17 @@ object SleepController {
         val dayStart = dayStartEpoch(now)
         val db = CarDatabase.getDatabase(context)
         val guid = db.sleepTargetDao().getByEffectiveDate(dayStart)?.guid ?: UUID.randomUUID().toString()
-        BodyWriteThrough.setSleepTarget(
+        val outcome = BodyWriteThrough.setSleepTarget(
             context,
             SleepTarget(targetMinutes = minutes, effectiveFromDateEpoch = dayStart, updatedAt = now, guid = guid),
         )
-        return "Sleep target set: ${formatMinutesAsHours(minutes)} a night."
+        return if (outcome is WriteThroughOutcome.Refused) {
+            "That target didn't go through: ${outcome.message}"
+        } else {
+            val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)
+                ?.let { " " + queuedSentence(it.reason) } ?: ""
+            "Sleep target set: ${formatMinutesAsHours(minutes)} a night.$queuedNote"
+        }
     }
 
     /** Tonight's (i.e. today's wake-date's) gap - see [SleepLog.sleepDate]'s doc comment for the wake-date convention. */

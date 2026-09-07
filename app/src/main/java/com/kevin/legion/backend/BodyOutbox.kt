@@ -28,10 +28,32 @@ import kotlinx.serialization.json.Json
  * shape (see this file's own doc on [BodyWriteThrough] for where the two designs deliberately
  * diverge). **This is the template for six more aspects.**
  *
- * **Local write always happens first, unconditionally** - the UI never blocks on or lies about a
- * network round trip, same posture [EventsAppointmentWriter]'s own class doc states. A push
- * failure never undoes the local write; it enqueues an [OutboxEntry] so [BodyOutboxDrain] can
- * retry it later. On an unconfigured install nothing is pushed and nothing is queued.
+ * **This paragraph used to read "Local write always happens first, unconditionally", and for the
+ * Supabase transport it still does.** That ordering is now conditional on the transport, because
+ * it was load-bearing in the wrong direction: `.scratch/django-engine/issues/14-*` found eight
+ * validation rules duplicated between Kotlin and Python that could not be deleted while this file
+ * wrote locally first, since deleting one would let Room accept a row Django refuses forever - the
+ * drain retries three times, poisons it, **and the user was told the write succeeded before any of
+ * that**. CLAUDE.md section 7 violated by the storage layer. So:
+ *
+ * - **On [com.kevin.legion.backend.engine.Transport.DJANGO], every UPSERT pushes FIRST.** A 4xx
+ *   refusal writes nothing locally, queues nothing, and hands the engine's own sentence back
+ *   ([WriteThroughOutcome.Refused]). Anything else that failed - unreachable, 5xx, a dead token -
+ *   writes locally, enqueues an [OutboxEntry], and the caller says so in words
+ *   ([WriteThroughOutcome.Queued], ADR 0044 rule 4). This is [ChecklistsWriteThrough]'s shape,
+ *   with the local write moved behind the push.
+ * - **On [com.kevin.legion.backend.engine.Transport.SUPABASE] (still the default for `body`),
+ *   nothing changed at all**: local write first, unconditionally, push after, enqueue on failure,
+ *   and no new words spoken ([WriteThroughOutcome.StoredLocally]). The Supabase failure path
+ *   cannot tell a refusal from a dropped connection in the first place (see
+ *   [EventsOutboxDrain.MAX_ATTEMPTS]'s own doc comment), so server-first there would risk
+ *   discarding a write that was merely offline.
+ * - On an unconfigured install nothing is pushed and nothing is queued, unchanged.
+ *
+ * **DELETES are deliberately still local-first on BOTH transports.** Every guard ticket 14 lists
+ * sits in front of a CREATE, and a refusal-shaped 4xx on a delete is routinely a 404 for a row the
+ * engine never had - refusing to tombstone locally on that would leave a driver unable to delete a
+ * row that only ever existed on his phone. A delete's failure still queues, exactly as before.
  */
 object BodyWriteThrough {
     /** Test seam, same mechanism as [EventsAppointmentWriter.backendOverride]. */
@@ -52,6 +74,72 @@ object BodyWriteThrough {
     private fun backend(context: Context): BodyBackend? {
         backendOverride?.let { return it }
         return EngineBackends(context).bodyBackend()
+    }
+
+    /**
+     * One upsert, described rather than performed - the five things that differ between body's
+     * eight write-through functions, so [write] can hold the ordering rule once instead of eight
+     * times. A plain class, not a data class: it is a parameter bundle, never compared or copied.
+     *
+     * [localId] is read off the INPUT row, exactly as all eight functions did before this bundle
+     * existed. (Room's autoincrement means that is 0 for a fresh insert, so a queued create's
+     * `localId` does not match the row's real id - a pre-existing inaccuracy this ticket
+     * deliberately does not change, since [BodyOutboxDrain] pushes by `guid` from the payload and
+     * never reads `localId` at all.)
+     */
+    private class Upsert(
+        val target: String,
+        val localId: Long,
+        val payload: String,
+        val store: suspend (CarDatabase) -> Unit,
+        val push: suspend (BodyBackend) -> Result<*>,
+    )
+
+    /**
+     * The ordering rule, in one place: see this object's own class doc for why it forks on the
+     * transport. [row] is handed back unchanged on every branch that wrote - none of body's eight
+     * tables needs the id Room assigned (contrast [MemoryWriteThrough.addCompanionMemory], whose
+     * audit line does).
+     *
+     * **The transport read is what a test flips**, not [backendOverride]: an override supplies a
+     * fake backend and says nothing about ordering, so a test wanting the server-first path calls
+     * `EngineTransport(context).setTransport(EngineBackends.ASPECT_BODY, Transport.DJANGO)` and
+     * gets it with whatever backend it already installed. [BodyOutboxDrain.maybeDrain] reads the
+     * transport the same way and for the same reason.
+     */
+    private suspend fun <T> write(context: Context, row: T, upsert: Upsert): WriteThroughOutcome<T> {
+        val db = CarDatabase.getDatabase(context)
+        val backend = backend(context)
+        val serverFirst = EngineTransport(context).transportFor(EngineBackends.ASPECT_BODY) == Transport.DJANGO
+        if (backend == null || !serverFirst) {
+            // Supabase (or an unconfigured install), unchanged: local write first, unconditionally,
+            // then a push whose failure queues, and not a word about any of it.
+            upsert.store(db)
+            val legacyResult = backend?.let { upsert.push(it) }
+            if (legacyResult != null && legacyResult.isFailure) {
+                enqueue(
+                    db, upsert.target, OutboxOperation.UPSERT, upsert.localId, upsert.payload,
+                    legacyResult.exceptionOrNull()?.message,
+                )
+            }
+            return WriteThroughOutcome.StoredLocally(row)
+        }
+        val result = upsert.push(backend)
+        // A refusal ends it BEFORE the local write: nothing in Room, nothing in the outbox, and the
+        // server's own words go back to the caller.
+        val refusal = refusalSentence(result.exceptionOrNull())
+        return if (refusal != null) {
+            WriteThroughOutcome.Refused(refusal)
+        } else {
+            upsert.store(db)
+            if (result.isSuccess) {
+                WriteThroughOutcome.Sent(row)
+            } else {
+                val reason = result.exceptionOrNull()?.message ?: "unknown error"
+                enqueue(db, upsert.target, OutboxOperation.UPSERT, upsert.localId, upsert.payload, reason)
+                WriteThroughOutcome.Queued(row, reason)
+            }
+        }
     }
 
     /**
@@ -109,20 +197,16 @@ object BodyWriteThrough {
         }
     }
 
-    suspend fun addBodyweightLog(context: Context, row: BodyweightLog): BodyweightLog {
-        val db = CarDatabase.getDatabase(context)
-        db.bodyweightLogDao().insert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertBodyweightLog(row.guid, BodyweightLogPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.BODY_BODYWEIGHT_LOGS, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(BodyweightLogPayload.serializer(), BodyweightLogPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return row
-    }
+    suspend fun addBodyweightLog(context: Context, row: BodyweightLog): WriteThroughOutcome<BodyweightLog> = write(
+        context, row,
+        Upsert(
+            target = OutboxTarget.BODY_BODYWEIGHT_LOGS,
+            localId = row.id,
+            payload = Json.encodeToString(BodyweightLogPayload.serializer(), BodyweightLogPayload.from(row)),
+            store = { db -> db.bodyweightLogDao().insert(row) },
+            push = { backend -> backend.upsertBodyweightLog(row.guid, BodyweightLogPayload.from(row).toFields()) },
+        ),
+    )
 
     suspend fun deleteBodyweightLog(context: Context, log: BodyweightLog) {
         val db = CarDatabase.getDatabase(context)
@@ -169,20 +253,16 @@ object BodyWriteThrough {
         }
     }
 
-    suspend fun addMealLog(context: Context, row: MealLog): MealLog {
-        val db = CarDatabase.getDatabase(context)
-        db.mealLogDao().insert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertMealLog(row.guid, MealLogPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.BODY_MEAL_LOGS, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(MealLogPayload.serializer(), MealLogPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return row
-    }
+    suspend fun addMealLog(context: Context, row: MealLog): WriteThroughOutcome<MealLog> = write(
+        context, row,
+        Upsert(
+            target = OutboxTarget.BODY_MEAL_LOGS,
+            localId = row.id,
+            payload = Json.encodeToString(MealLogPayload.serializer(), MealLogPayload.from(row)),
+            store = { db -> db.mealLogDao().insert(row) },
+            push = { backend -> backend.upsertMealLog(row.guid, MealLogPayload.from(row).toFields()) },
+        ),
+    )
 
     suspend fun deleteMealLog(context: Context, log: MealLog) {
         val db = CarDatabase.getDatabase(context)
@@ -223,20 +303,16 @@ object BodyWriteThrough {
 
     /** No delete counterpart - [com.kevin.legion.meals.MealController] never deletes a target row,
      * only writes a new effective-dated one (the "copy forward" shape every target table uses). */
-    suspend fun setMealTarget(context: Context, row: MealTarget): MealTarget {
-        val db = CarDatabase.getDatabase(context)
-        db.mealTargetDao().upsert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertMealTarget(row.guid, MealTargetPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.BODY_MEAL_TARGETS, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(MealTargetPayload.serializer(), MealTargetPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return row
-    }
+    suspend fun setMealTarget(context: Context, row: MealTarget): WriteThroughOutcome<MealTarget> = write(
+        context, row,
+        Upsert(
+            target = OutboxTarget.BODY_MEAL_TARGETS,
+            localId = row.id,
+            payload = Json.encodeToString(MealTargetPayload.serializer(), MealTargetPayload.from(row)),
+            store = { db -> db.mealTargetDao().upsert(row) },
+            push = { backend -> backend.upsertMealTarget(row.guid, MealTargetPayload.from(row).toFields()) },
+        ),
+    )
 
     // --- Sleep -----------------------------------------------------------------------------------
 
@@ -256,20 +332,16 @@ object BodyWriteThrough {
         }
     }
 
-    suspend fun addSleepLog(context: Context, row: SleepLog): SleepLog {
-        val db = CarDatabase.getDatabase(context)
-        db.sleepLogDao().insert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertSleepLog(row.guid, SleepLogPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.BODY_SLEEP_LOGS, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(SleepLogPayload.serializer(), SleepLogPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return row
-    }
+    suspend fun addSleepLog(context: Context, row: SleepLog): WriteThroughOutcome<SleepLog> = write(
+        context, row,
+        Upsert(
+            target = OutboxTarget.BODY_SLEEP_LOGS,
+            localId = row.id,
+            payload = Json.encodeToString(SleepLogPayload.serializer(), SleepLogPayload.from(row)),
+            store = { db -> db.sleepLogDao().insert(row) },
+            push = { backend -> backend.upsertSleepLog(row.guid, SleepLogPayload.from(row).toFields()) },
+        ),
+    )
 
     suspend fun deleteSleepLog(context: Context, log: SleepLog) {
         val db = CarDatabase.getDatabase(context)
@@ -305,20 +377,16 @@ object BodyWriteThrough {
         }
     }
 
-    suspend fun setSleepTarget(context: Context, row: SleepTarget): SleepTarget {
-        val db = CarDatabase.getDatabase(context)
-        db.sleepTargetDao().upsert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertSleepTarget(row.guid, SleepTargetPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.BODY_SLEEP_TARGETS, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(SleepTargetPayload.serializer(), SleepTargetPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return row
-    }
+    suspend fun setSleepTarget(context: Context, row: SleepTarget): WriteThroughOutcome<SleepTarget> = write(
+        context, row,
+        Upsert(
+            target = OutboxTarget.BODY_SLEEP_TARGETS,
+            localId = row.id,
+            payload = Json.encodeToString(SleepTargetPayload.serializer(), SleepTargetPayload.from(row)),
+            store = { db -> db.sleepTargetDao().upsert(row) },
+            push = { backend -> backend.upsertSleepTarget(row.guid, SleepTargetPayload.from(row).toFields()) },
+        ),
+    )
 
     // --- Workouts --------------------------------------------------------------------------------
 
@@ -334,20 +402,16 @@ object BodyWriteThrough {
         }
     }
 
-    suspend fun setWorkoutPlan(context: Context, row: WorkoutPlan): WorkoutPlan {
-        val db = CarDatabase.getDatabase(context)
-        db.workoutPlanDao().upsert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertWorkoutPlan(row.guid, WorkoutPlanPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.BODY_WORKOUT_PLANS, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(WorkoutPlanPayload.serializer(), WorkoutPlanPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return row
-    }
+    suspend fun setWorkoutPlan(context: Context, row: WorkoutPlan): WriteThroughOutcome<WorkoutPlan> = write(
+        context, row,
+        Upsert(
+            target = OutboxTarget.BODY_WORKOUT_PLANS,
+            localId = row.id,
+            payload = Json.encodeToString(WorkoutPlanPayload.serializer(), WorkoutPlanPayload.from(row)),
+            store = { db -> db.workoutPlanDao().upsert(row) },
+            push = { backend -> backend.upsertWorkoutPlan(row.guid, WorkoutPlanPayload.from(row).toFields()) },
+        ),
+    )
 
     @Serializable
     internal data class WorkoutPlanItemPayload(
@@ -366,23 +430,38 @@ object BodyWriteThrough {
     /** One row at a time, matching [com.kevin.legion.workouts.WorkoutController.generatePlan]'s
      * own `upsertAll` local write - each item gets its own [WorkoutPlanItem.guid] and its own
      * upsert/outbox entry, since `origin_guid` (this table's server upsert key) is per-row, not
-     * per-plan. */
-    suspend fun setWorkoutPlanItems(context: Context, rows: List<WorkoutPlanItem>): List<WorkoutPlanItem> {
-        val db = CarDatabase.getDatabase(context)
-        db.workoutPlanItemDao().upsertAll(rows)
-        val backend = backend(context) ?: return rows
-        for (row in rows) {
-            val result = backend.upsertWorkoutPlanItem(row.guid, WorkoutPlanItemPayload.from(row).toFields())
-            if (result.isFailure) {
-                enqueue(
-                    db, OutboxTarget.BODY_WORKOUT_PLAN_ITEMS, OutboxOperation.UPSERT, row.id,
-                    Json.encodeToString(WorkoutPlanItemPayload.serializer(), WorkoutPlanItemPayload.from(row)),
-                    result.exceptionOrNull()?.message,
-                )
-            }
+     * per-plan.
+     *
+     * **Returns one outcome PER ROW, not one for the list**, because on the server-first path a
+     * plan's items no longer share a fate: the engine can take four exercises and refuse the
+     * fifth (a blank name, a non-positive set count - `server/api/body.py`'s
+     * `WorkoutPlanItemSerializer`), and folding that into a single verdict would either hide four
+     * rows that landed or claim one that did not.
+     * [com.kevin.legion.workouts.WorkoutController.generatePlan] is what turns these into words.
+     *
+     * The local write was `upsertAll(rows)` in one call before this ticket; it is per-row now for
+     * the same reason - a refused row must not be written, and a bulk write cannot skip one. */
+    suspend fun setWorkoutPlanItems(
+        context: Context,
+        rows: List<WorkoutPlanItem>,
+    ): List<WriteThroughOutcome<WorkoutPlanItem>> =
+        rows.map { row ->
+            write(
+                context, row,
+                Upsert(
+                    target = OutboxTarget.BODY_WORKOUT_PLAN_ITEMS,
+                    localId = row.id,
+                    payload = Json.encodeToString(
+                        WorkoutPlanItemPayload.serializer(),
+                        WorkoutPlanItemPayload.from(row),
+                    ),
+                    store = { db -> db.workoutPlanItemDao().upsert(row) },
+                    push = { backend ->
+                        backend.upsertWorkoutPlanItem(row.guid, WorkoutPlanItemPayload.from(row).toFields())
+                    },
+                ),
+            )
         }
-        return rows
-    }
 
     @Serializable
     internal data class WorkoutSetLogPayload(
@@ -401,20 +480,16 @@ object BodyWriteThrough {
         }
     }
 
-    suspend fun addWorkoutSetLog(context: Context, row: WorkoutSetLog): WorkoutSetLog {
-        val db = CarDatabase.getDatabase(context)
-        db.workoutSetLogDao().insert(row)
-        val backend = backend(context) ?: return row
-        val result = backend.upsertWorkoutSetLog(row.guid, WorkoutSetLogPayload.from(row).toFields())
-        if (result.isFailure) {
-            enqueue(
-                db, OutboxTarget.BODY_WORKOUT_SET_LOGS, OutboxOperation.UPSERT, row.id,
-                Json.encodeToString(WorkoutSetLogPayload.serializer(), WorkoutSetLogPayload.from(row)),
-                result.exceptionOrNull()?.message,
-            )
-        }
-        return row
-    }
+    suspend fun addWorkoutSetLog(context: Context, row: WorkoutSetLog): WriteThroughOutcome<WorkoutSetLog> = write(
+        context, row,
+        Upsert(
+            target = OutboxTarget.BODY_WORKOUT_SET_LOGS,
+            localId = row.id,
+            payload = Json.encodeToString(WorkoutSetLogPayload.serializer(), WorkoutSetLogPayload.from(row)),
+            store = { db -> db.workoutSetLogDao().insert(row) },
+            push = { backend -> backend.upsertWorkoutSetLog(row.guid, WorkoutSetLogPayload.from(row).toFields()) },
+        ),
+    )
 
     suspend fun deleteWorkoutSetLog(context: Context, log: WorkoutSetLog) {
         val db = CarDatabase.getDatabase(context)

@@ -290,7 +290,7 @@ private fun AddMemoryDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
                         busy = true
                         scope.launch {
                             // Same call remember's dispatch makes: AriaBrain.get(context).remember(text).
-                            result = AriaBrain.get(context).remember(text.trim())
+                            result = AriaBrain.get(context).remember(text.trim()).message
                             busy = false
                         }
                     },

@@ -2590,7 +2590,7 @@ object LiveToolbox {
             "remember" -> if (rememberBlockedByReadThroughTool(touchedReadThroughToolThisTurn)) {
                 result(success = false, message = REMEMBER_MAIL_REFUSAL)
             } else {
-                result(success = true, message = AriaBrain.get(context).remember(args.optString("text")))
+                AriaBrain.get(context).remember(args.optString("text")).let { result(it.success, it.message) }
             }
             "recall_memory" -> recallMemory(context, args.optString("query"))
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
@@ -4319,15 +4319,16 @@ object LiveToolbox {
      * work, so the audit trail is the only place a wrong constraint is ever traceable back to the
      * turn that wrote it.
      */
-    private suspend fun rememberGoalPlanConstraint(context: Context, text: String) {
+    private suspend fun rememberGoalPlanConstraint(context: Context, text: String): String? {
         val trimmed = text.trim()
-        if (trimmed.isBlank()) return
-        if (goalPlanConstraints(context).any { it.equals(trimmed, ignoreCase = true) }) return
+        // Blank, or already on file: nothing to write either way, and the blank check comes first
+        // so a blank constraint never costs a read (`||` short-circuits).
+        if (trimmed.isBlank() || goalPlanConstraints(context).any { it.equals(trimmed, ignoreCase = true) }) return null
 
         val vehicleId = ActiveVehicle.current(context)
         val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
-        val written = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
+        val outcome = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
             context,
             CompanionMemory(
                 vehicleId = vehicleId,
@@ -4338,18 +4339,27 @@ object LiveToolbox {
                 updatedAtMs = now,
             ),
         )
-        val id = written.id
-        db.memoryAuditDao().record(
-            MemoryAudit.Event.WRITTEN,
-            MemoryAudit.Store.COMPANION,
-            // Not "[${CompanionMemory.Category.DRIVER}/...]" - that interpolation's SOURCE TEXT
-            // contains the literal word "DRIVER" inside the string span PromptRoleNamingTest
-            // scans, even though the emitted value is fine at runtime. A stand-alone tag sidesteps
-            // it entirely rather than special-casing this file into that test's allowlist.
-            "[goal-plan constraint, stated] ${GoalPlanAgent.CONSTRAINT_PREFIX}$trimmed",
-            refId = id,
-            vehicleId = vehicleId,
-        )
+        // Refused: nothing stored, so no audit line, and the caller is told in words rather than
+        // the constraint quietly evaporating (server-first write-through,
+        // `.scratch/django-engine/issues/15-*`).
+        val id = outcome.row?.id
+        return if (id == null) {
+            (outcome as com.kevin.legion.backend.WriteThroughOutcome.Refused).message
+        } else {
+            db.memoryAuditDao().record(
+                MemoryAudit.Event.WRITTEN,
+                MemoryAudit.Store.COMPANION,
+                // Not "[${CompanionMemory.Category.DRIVER}/...]" - that interpolation's SOURCE TEXT
+                // contains the literal word "DRIVER" inside the string span PromptRoleNamingTest
+                // scans, even though the emitted value is fine at runtime. A stand-alone tag
+                // sidesteps it entirely rather than special-casing this file into that test's
+                // allowlist.
+                "[goal-plan constraint, stated] ${GoalPlanAgent.CONSTRAINT_PREFIX}$trimmed",
+                refId = id,
+                vehicleId = vehicleId,
+            )
+            null
+        }
     }
 
     /**
@@ -4368,14 +4378,25 @@ object LiveToolbox {
         // regardless of whether a plan can be generated from it right now, and a missing/invalid
         // key must not cost the user having to say it again once the key is fixed.
         val newConstraint = args.optString("new_constraint").trim()
-        if (newConstraint.isNotBlank()) rememberGoalPlanConstraint(context, newConstraint)
+        // A refusal here is reported, never swallowed. The plan below is still generated, because
+        // that is what the user asked for - but it is generated WITHOUT this constraint, since
+        // goalPlanConstraints() reads them back out of the table the refused row never reached.
+        // So the model is told, as its own key, rather than being left to present a plan the user
+        // will read as having honoured something it never saw.
+        val constraintRefusal = if (newConstraint.isNotBlank()) {
+            rememberGoalPlanConstraint(context, newConstraint)
+        } else {
+            null
+        }
 
         if (!GeminiKeyProvider.hasKey()) {
             return result(false, "I need a Gemini key to do that - add your own in Setup to keep going.")
+                .apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
         }
 
         val combinedGoalText = GoalPlanAgent.withConstraints(goalText, goalPlanConstraints(context))
         return mapGoalPlanResult(GoalPlanAgent().generate(context, combinedGoalText))
+            .apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
     }
 
     /**
