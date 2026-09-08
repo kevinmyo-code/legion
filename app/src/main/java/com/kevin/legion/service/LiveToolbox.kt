@@ -2523,15 +2523,21 @@ object LiveToolbox {
             "get_music_queue" -> getMusicQueue(context, args)
             "open_navigation" -> openNavigation(context, args)
             "show_app" -> showApp(context)
-            "set_reminder" -> result(
-                success = true,
-                message = ReminderController.add(context, args.optString("place"), args.optString("text")),
-            )
-            "tag_place" -> result(
-                success = true,
-                message = PlaceController.tagPlace(context, args.optString("label"))
-            )
-            "forget_place" -> result(success = true, message = PlaceController.forgetPlace(context, args.optString("label")))
+            // set_reminder/tag_place/forget_place/register_vehicle: success DERIVED from the
+            // controller's own outcome, never hardcoded. All four used to pass `success = true`
+            // over a `String` that was sometimes a refusal ("I need both a place and what to
+            // remind you about", "I don't have a GPS lock yet", "I don't have a saved place called
+            // X", "I need a valid year, make, and model") - the same shape the `remember` blank
+            // guard had, found on the A25 2026-09-07 and swept the same day.
+            "set_reminder" ->
+                ReminderController.add(context, args.optString("place"), args.optString("text"))
+                    .let { result(it.success, it.message) }
+            "tag_place" ->
+                PlaceController.tagPlace(context, args.optString("label"))
+                    .let { result(it.success, it.message) }
+            "forget_place" ->
+                PlaceController.forgetPlace(context, args.optString("label"))
+                    .let { result(it.success, it.message) }
             "start_voice_note" -> startVoiceNote(context, args)
             "stop_voice_note" -> stopVoiceNote(context)
             "read_voice_note" -> readVoiceNote(context, args)
@@ -2575,12 +2581,9 @@ object LiveToolbox {
             "lookup_vin" -> lookupVin(context)
             "get_specs" -> withResolvedVehicle(context, args) { getSpecs(context, it.obdMac) }
             "check_recalls" -> withResolvedVehicle(context, args) { checkRecalls(context, it.obdMac) }
-            "register_vehicle" -> result(
-                success = true,
-                message = VehicleController.registerDirect(
-                    context, args.optInt("year"), args.optString("make"), args.optString("model")
-                )
-            )
+            "register_vehicle" -> VehicleController.registerDirect(
+                context, args.optInt("year"), args.optString("make"), args.optString("model")
+            ).let { result(it.success, it.message) }
             // Ticket 21 (google-account-integration, "close the remember leak"): refuse in words
             // rather than silently stripping or quietly recording provenance - the mail
             // read-through rule (CLAUDE.md §7, ticket 07) is written as absolute ("mail is read,
@@ -5990,10 +5993,13 @@ object LiveToolbox {
      * means the active car.
      */
     private suspend fun getTrend(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
-        val text = CarToolbelt.trendSummary(context, args.optString("metric"), args.optInt("days", 30), vehicleId)
-        // Preserve the pre-delegation success flag for the two soft-fail sentences.
-        val ok = !text.startsWith("Unknown metric") && !text.startsWith("Not enough history")
-        return result(ok, text)
+        // **This used to read the flag off the sentence**: `val ok = !text.startsWith("Unknown
+        // metric") && !text.startsWith("Not enough history")`, with the comment "preserve the
+        // pre-delegation success flag for the two soft-fail sentences". There were three, not two -
+        // MpgTrust.VOICE_REFUSAL matched neither prefix - so `get_trend` with metric="mpg" reported
+        // success over a refusal. The flag comes from [CarToolbelt.Trend] now; see its own doc.
+        val trend = CarToolbelt.trendSummary(context, args.optString("metric"), args.optInt("days", 30), vehicleId)
+        return result(trend.hasData, trend.text)
     }
 
     /**

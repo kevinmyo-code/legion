@@ -119,7 +119,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
 
-        val ack = PlaceController.tagPlace(context, "work")
+        val ack = PlaceController.tagPlace(context, "work").message
 
         assertTrue(ack.isNotBlank())
         assertEquals(1, backend.upsertCalls)
@@ -133,7 +133,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend(upsertFails = true)
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, "work")
+        val result = PlaceController.tagPlace(context, "work").message
 
         assertTrue(
             "a failed write must say in words that it did not save, never a bare success",
@@ -164,7 +164,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
 
-        val message = PlaceController.forgetPlace(context, "nowhere")
+        val message = PlaceController.forgetPlace(context, "nowhere").message
         assertTrue(message.contains("don't have"))
 
         val boolResult = PlaceController.forget(context, "nowhere")
@@ -177,7 +177,7 @@ class PlaceControllerBackendTest {
         PlaceController.backendOverride = backend
         PlaceController.tagPlace(context, "home")
 
-        val ack = PlaceController.forgetPlace(context, "home")
+        val ack = PlaceController.forgetPlace(context, "home").message
 
         assertTrue(ack.isNotBlank())
         assertTrue(CarDatabase.getDatabase(context).placeDao().getAll().isEmpty())
@@ -195,7 +195,7 @@ class PlaceControllerBackendTest {
         val before = CarDatabase.getDatabase(context).placeDao().getAll().single()
 
         backend.upsertFails = true
-        val result = PlaceController.tagPlace(context, "home")
+        val result = PlaceController.tagPlace(context, "home").message
 
         assertTrue(
             "a failed write must say it did not save",
@@ -214,7 +214,7 @@ class PlaceControllerBackendTest {
         PlaceController.tagPlace(context, "home")
         backend.deleteFails = true
 
-        val message = PlaceController.forgetPlace(context, "home")
+        val message = PlaceController.forgetPlace(context, "home").message
 
         assertTrue(message.contains("nothing was deleted"))
         assertEquals(1, CarDatabase.getDatabase(context).placeDao().getAll().size)
@@ -269,7 +269,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend(upsertRefusal = EngineFailure.Refused(400, serverLabelRefusal))
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, "gym")
+        val result = PlaceController.tagPlace(context, "gym").message
 
         assertTrue(
             "the engine's own explanation must reach the user: was <$result>",
@@ -295,7 +295,7 @@ class PlaceControllerBackendTest {
         )
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, "gym")
+        val result = PlaceController.tagPlace(context, "gym").message
 
         assertTrue(
             "a fault must still say in words that nothing saved: was <$result>",
@@ -315,7 +315,7 @@ class PlaceControllerBackendTest {
         // "by the way" and "location" are not blank as spoken - normalizeLabel strips both to
         // nothing, which is the same refusal by a different road and is worth holding here too.
         for (nothing in listOf("", "   ", "by the way", "location")) {
-            val result = PlaceController.tagPlace(context, nothing)
+            val result = PlaceController.tagPlace(context, nothing).message
             assertTrue(
                 "a label with no name in it must be refused before any write: <$nothing> gave <$result>",
                 result.contains("didn't catch"),
@@ -343,7 +343,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, tooLongLabel)
+        val result = PlaceController.tagPlace(context, tooLongLabel).message
 
         assertEquals("nothing in normalizeLabel shortens this one", 31, tooLongLabel.length)
         assertTrue("the local guard is what answers here: was <$result>", result.contains("didn't catch"))
@@ -361,7 +361,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend(upsertRefusal = EngineFailure.Refused(400, serverLabelRefusal))
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, tooLongLabel)
+        val result = PlaceController.tagPlace(context, tooLongLabel).message
 
         assertEquals("the request must actually be made", 1, backend.upsertAttempts)
         assertTrue(
@@ -384,7 +384,7 @@ class PlaceControllerBackendTest {
         EngineTransport(context).setTransport(EngineBackends.ASPECT_PLACES, Transport.DJANGO)
         PlaceController.backendOverride = null
 
-        val result = PlaceController.tagPlace(context, tooLongLabel)
+        val result = PlaceController.tagPlace(context, tooLongLabel).message
 
         assertTrue("the local guard must still answer: was <$result>", result.contains("didn't catch"))
         assertTrue(

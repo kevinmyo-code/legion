@@ -42,15 +42,20 @@ object AdvisorProposalExecutor {
      * (CLAUDE.md §4 rule 7's "said in words" discipline applied to a rejected write), never a
      * silent no-op the driver has no way to notice.
      *
-     * [WriteFailed] exists because three of the controllers below ([WorkoutController.generatePlan],
-     * [SleepController.setTarget], [ReminderController.add]) signal failure by RETURNING A SPOKEN
-     * FAILURE SENTENCE as a normal `String` rather than throwing - nothing was written, but the
-     * string alone is indistinguishable from a success message without string-matching it, which
-     * would be fragile and rot the moment a controller's wording changes. So this file never reads
-     * the message to decide success; instead each op that wraps one of those three controllers reads
-     * its OWN write back through the DAO afterward and reports [WriteFailed] only when that read-back
-     * proves nothing landed. `accept_proposal` (`service/LiveToolbox.kt`) must treat [WriteFailed]
-     * like [Refused] for the row's lifecycle - leave it retryable, never mark it `accepted`. */
+     * [WriteFailed] exists because the controllers below signal failure by RETURNING A SPOKEN
+     * FAILURE SENTENCE rather than throwing - nothing was written, but the string alone is
+     * indistinguishable from a success message without string-matching it, which would be fragile
+     * and rot the moment a controller's wording changes. So this file never reads the message to
+     * decide success; instead each op that wraps one of them reads its OWN write back through the
+     * DAO afterward and reports [WriteFailed] only when that read-back proves nothing landed.
+     * `accept_proposal` (`service/LiveToolbox.kt`) must treat [WriteFailed] like [Refused] for the
+     * row's lifecycle - leave it retryable, never mark it `accepted`.
+     *
+     * **This used to name three such controllers: [WorkoutController.generatePlan],
+     * [SleepController.setTarget] and [ReminderController.add].** The first two grew a
+     * `WriteOutcome` on 2026-09-07 and the third an [ReminderController.AddOutcome] the same day,
+     * so all three now carry a flag of their own. The read-backs stay regardless - see
+     * [setReminder] for why a flag and a read-back are not the same evidence. */
     sealed class ExecuteResult {
         data class Ok(val message: String) : ExecuteResult()
         data class Refused(val message: String) : ExecuteResult()
@@ -269,9 +274,17 @@ object AdvisorProposalExecutor {
             return ExecuteResult.Refused("That proposal was missing a place or what to remind about.")
         }
         val now = System.currentTimeMillis()
-        val message = ReminderController.add(context, place, text)
+        val outcome = ReminderController.add(context, place, text)
+        // The read-back stays even now that `add` reports its own flag (2026-09-07), and both are
+        // required: the flag is the controller's ASSERTION that it wrote, the read-back is the
+        // PROOF. `landed` alone would also accept a row a later branch failed to attach a trigger
+        // to, since the item itself is real in that case - see [ReminderController.AddOutcome].
         val landed = ReminderController.activeFor(context, place).any { it.text == text && it.createdAt >= now }
-        return if (landed) ExecuteResult.Ok(message) else ExecuteResult.WriteFailed(message)
+        return if (outcome.success && landed) {
+            ExecuteResult.Ok(outcome.message)
+        } else {
+            ExecuteResult.WriteFailed(outcome.message)
+        }
     }
 
     /** `date` is optional and, unlike [ReminderController.add], never place-triggered - a plain

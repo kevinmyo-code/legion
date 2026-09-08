@@ -317,6 +317,71 @@ object MidnightEvents {
         Log.w(TAG, "voice_notes_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /**
+     * A foreground [com.kevin.legion.backend.PlacesBackfill.maybeAutoRun] pass completed - the
+     * phone-to-server half of `places`, which had no mechanism at all on the Django transport
+     * before 2026-09-07 ([com.kevin.legion.backend.PlacesReconcile] is the Supabase-era upload and
+     * stands down entirely on Django).
+     *
+     * **[skipped] and [stopped] are separate parameters, deliberately**, for the reason
+     * [checklistsBackfillSucceeded]'s own doc records at length: collapsing them is what made one
+     * permanently-refused row indistinguishable from a broken sync. A skip is final and the run
+     * carried on past it; a stop is retryable and cost the rest of the run.
+     */
+    fun placesBackfillSucceeded(
+        pushed: Int,
+        alreadyOnEngine: Int,
+        skippedLocalOnlyDeleted: Int,
+        skipped: List<String>,
+        unsyncableTotal: Int,
+        stopped: String?,
+    ) = safe {
+        Log.d(
+            TAG,
+            "places_backfill pushed=$pushed alreadyOnEngine=$alreadyOnEngine " +
+                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted " +
+                "skipped=${skipped.joinToString("; ")} unsyncableTotal=$unsyncableTotal " +
+                "stopped=${stopped ?: "none"}",
+        )
+    }
+
+    /** [com.kevin.legion.backend.PlacesBackfill.maybeAutoRun] threw outright. */
+    fun placesBackfillFailed(e: Throwable) = safe {
+        Log.w(TAG, "places_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /**
+     * A foreground [com.kevin.legion.backend.VoiceNotesBackfill.maybeAutoRun] pass completed - the
+     * phone-to-server half of `voice_notes` for every note that predates the flip.
+     * `VoiceNoteController.syncToBackend` only ever fires on a successful transcription or a
+     * rename, so without this a note transcribed before the flip and never renamed never crossed.
+     *
+     * [deferredStillRecording] has no counterpart on any sibling backfill's line: it counts live
+     * recordings left alone on purpose, which is neither a success nor a refusal and must not read
+     * as either.
+     */
+    fun voiceNotesBackfillSucceeded(
+        pushed: Int,
+        alreadyPresent: Int,
+        deferredStillRecording: Int,
+        skipped: List<String>,
+        unsyncableTotal: Int,
+        stopped: String?,
+    ) = safe {
+        Log.d(
+            TAG,
+            "voice_notes_backfill pushed=$pushed alreadyPresent=$alreadyPresent " +
+                "deferredStillRecording=$deferredStillRecording " +
+                "skipped=${skipped.joinToString("; ")} unsyncableTotal=$unsyncableTotal " +
+                "stopped=${stopped ?: "none"}",
+        )
+    }
+
+    /** [com.kevin.legion.backend.VoiceNotesBackfill.maybeAutoRun] threw outright. */
+    fun voiceNotesBackfillFailed(e: Throwable) = safe {
+        Log.w(TAG, "voice_notes_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A foreground [com.kevin.legion.backend.PantryReconcile.maybeAutoRun] pass completed - same
      * "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. Pantry's only backfill
      * mechanism (`ui/settings/BackendMigrationScreen.kt`'s retirement, live-sync ticket 05). */

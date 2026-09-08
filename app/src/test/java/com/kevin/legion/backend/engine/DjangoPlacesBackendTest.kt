@@ -162,7 +162,7 @@ class DjangoPlacesBackendTest {
             EngineHttp(EngineTestSupport.signedInConfig(context), EngineTestSupport.unreachableClient()),
         )
 
-        val spoken = PlaceController.tagPlace(context, "work")
+        val spoken = PlaceController.tagPlace(context, "work").message
 
         assertTrue(
             "a failed write must say in words that it did not save",

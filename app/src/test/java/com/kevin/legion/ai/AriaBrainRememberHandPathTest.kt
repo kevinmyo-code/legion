@@ -94,19 +94,53 @@ class AriaBrainRememberHandPathTest {
         )
     }
 
+    /**
+     * **This test used to assert the opposite, and the assertion it carried was the bug.** Its
+     * message read "a blank remember is a no-op, not a failure" over `assertTrue(ack.success)`,
+     * on the reasoning that nothing was refused so nothing had failed. What that ignored is what
+     * `success = true` MEANS to the only consumer that reads it: `LiveToolbox`'s dispatch puts it
+     * straight into the tool result, and CLAUDE.md section 7's outcome-verb clause is conditioned
+     * on that flag, so `{"success":true,"message":"Filed away."}` licenses the assistant to say
+     * the thing was filed.
+     *
+     * It did. Found on the A25 2026-09-07 in `conversation_audit`: `remember` called with
+     * `{"text":"\u00a0"}` (a single non-breaking space), that exact result returned, and the
+     * assistant said "Very well, I have filed that away" while `memories` stayed at 8 rows,
+     * `sync_outbox` at 0 and Postgres at 8.
+     */
     @Test
-    fun `blank text is a no-op ack, never an empty row`() = runBlocking {
+    fun `blank text is refused in words, never an empty row and never an ack`() = runBlocking {
         val brain = AriaBrain.get(context)
         val db = CarDatabase.getDatabase(context)
 
         val ack = brain.remember("   ")
 
-        // `.message`, not the bare String this used to return: `remember` answers an
-        // AriaBrain.RememberOutcome now, so a refusal from the engine can be told apart from an
-        // ack (.scratch/django-engine/issues/15-*). A blank remember is still a SUCCESSFUL no-op -
-        // nothing was refused, there was simply nothing to write.
-        assertTrue("a blank remember is a no-op, not a failure", ack.success)
-        assertTrue("still returns an acknowledgement, never silence", ack.message.isNotBlank())
+        assertTrue("a blank remember stored nothing, so it must not report success", !ack.success)
+        assertTrue("still returns a sentence, never silence", ack.message.isNotBlank())
         assertTrue("a blank remember must never write a row", db.memoryDao().getRecent(10).isEmpty())
+    }
+
+    /**
+     * The exact payload the A25 sent, character for character: U+00A0, NO-BREAK SPACE.
+     *
+     * **This is not the same claim as the test above, and running it is how the claim was checked
+     * rather than reasoned.** Java's own `Character.isWhitespace('U+00A0')` returns FALSE - U+00A0
+     * is deliberately excluded there because it is non-breaking - so on a `String.trim()` with
+     * Java's semantics this text would NOT reduce to empty and would take the ordinary write path
+     * instead. Kotlin's `Char.isWhitespace()` is `Character.isWhitespace(ch) ||
+     * Character.isSpaceChar(ch)`, and `isSpaceChar` is true for U+00A0 (category Zs), so
+     * `kotlin.text.trim()` DOES strip it. That difference is the whole reason this call reached the
+     * blank branch at all, and it is worth a test of its own: if a future Kotlin changed it, the
+     * bug would move rather than disappear.
+     */
+    @Test
+    fun `a lone non-breaking space is the blank case, and stores nothing`() = runBlocking {
+        val brain = AriaBrain.get(context)
+        val db = CarDatabase.getDatabase(context)
+
+        val ack = brain.remember("\u00a0")
+
+        assertTrue("U+00A0 alone is not content; nothing was stored", !ack.success)
+        assertTrue("a non-breaking space must never write a row", db.memoryDao().getRecent(10).isEmpty())
     }
 }

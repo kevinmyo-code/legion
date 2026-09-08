@@ -492,11 +492,15 @@ object VoiceNoteController {
         }
     }
 
-    /** [note]'s current columns as the backend's write shape - shared by [rename] and
-     * [syncToBackend] so the two can never disagree about which columns a push carries. **Audio is
-     * absent because [VoiceNoteFields] has no field for it**, not because this function remembers
-     * to leave it out. */
-    private fun fieldsOf(note: VoiceNote) = VoiceNoteFields(
+    /** [note]'s current columns as the backend's write shape - shared by [rename],
+     * [syncToBackend] and [com.kevin.legion.backend.VoiceNotesBackfill] so the three can never
+     * disagree about which columns a push carries. **Audio is absent because [VoiceNoteFields] has
+     * no field for it**, not because this function remembers to leave it out.
+     *
+     * `internal` rather than `private` since 2026-09-07, when the backfill became the third caller:
+     * a second hand-written copy of this mapping in `backend/` is exactly the drift this function
+     * exists to prevent, and it is the mapping the "no audio on the wire" guarantee rests on. */
+    internal fun fieldsOf(note: VoiceNote) = VoiceNoteFields(
         startedAtMs = note.startedAt,
         endedAtMs = note.endedAt,
         title = note.title,

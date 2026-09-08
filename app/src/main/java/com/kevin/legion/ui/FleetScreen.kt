@@ -1557,7 +1557,7 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
                 scope.launch {
                     // The return value IS the outcome - ack or refusal, in the engine's own words
                     // when the server is the one that said no. Discarding it was the defect.
-                    lastActionMessage = PlaceController.tagPlace(context, label)
+                    lastActionMessage = PlaceController.tagPlace(context, label).message
                     showTagDialog = false
                     reloadNonce++
                 }
@@ -1575,7 +1575,7 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
                     // called ..." and "I found ... but couldn't remove it just now - nothing was
                     // deleted", and both used to vanish. The brief named only onTag; leaving this
                     // one silent would have kept half the defect on the same screen.
-                    lastActionMessage = PlaceController.forgetPlace(context, place.label)
+                    lastActionMessage = PlaceController.forgetPlace(context, place.label).message
                     pendingDelete = null
                     reloadNonce++
                 }

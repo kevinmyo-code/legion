@@ -107,58 +107,98 @@ object PlaceController {
     }
 
     /**
-     * Tags the current GPS location under [rawLabel] (normalized). Returns a spoken ack.
+     * What one [tagPlace] or [forgetPlace] call did. Same shape and same reason as
+     * [com.kevin.legion.ai.AriaBrain.RememberOutcome]: both functions returned a bare `String` and
+     * `LiveToolbox`'s `tag_place`/`forget_place` dispatches hardcoded `success = true` over it, so
+     * every refusal below - no label heard, no GPS lock, the engine saying no in its own words, a
+     * Room write that threw, a label that was never saved - reached the model as
+     * `{"success": true, "message": "<a failure>"}`. §7's outcome-verb clause is conditioned on the
+     * tool RESULT, so a lying flag defeats it outright. Corrected 2026-09-07 alongside the
+     * identical hole in `remember`.
+     *
+     * [message] is what the caller speaks either way; `ui/FleetScreen.kt` renders it unchanged.
+     */
+    data class WriteOutcome(val success: Boolean, val message: String)
+
+    /**
+     * Tags the current GPS location under [rawLabel] (normalized). Returns a spoken ack and
+     * whether anything was actually pinned - see [WriteOutcome].
      *
      * Address-based tagging (resolving a spoken address via forward geocoding) is not
      * supported - only "tag where I am right now".
      */
-    suspend fun tagPlace(context: Context, rawLabel: String): String {
+    suspend fun tagPlace(context: Context, rawLabel: String): WriteOutcome {
         // Resolved BEFORE the label is normalized, because which transport this write is going to
         // decides whether the local length cap applies at all - see [serverOwnsTheLabelCap]. This
         // is a pure resolve with no network I/O (see [backend]'s own doc comment), so moving it
         // above the GPS read costs nothing and changes no ordering that matters.
         val backend = backend(context)
         val label = normalizeLabel(rawLabel, capLength = !serverOwnsTheLabelCap(context, backend))
-            ?: return "I didn't catch what to call this spot — try something like 'home' or 'work'."
-
         val loc = LocationController.state.value
-            ?: return "I don't have a GPS lock yet, so I can't pin this spot. Give it a sec and try again."
-
-        if (backend != null) {
-            val remote = backend.upsert(label, loc.latitude, loc.longitude).getOrElse {
-                // A REFUSAL is relayed in the engine's own words; anything else keeps the generic
-                // sentence. See [engineRefusal] for why the two are not the same thing.
-                return engineRefusal(it)
-                    ?: "Something went wrong pinning that spot - it didn't save. Try again in a sec."
-            }
-            // Room is written ONLY here, after a genuine server ACK (ticket 01 ruling 9) - never
-            // ahead of it, and never on the failure branch above.
-            placeDao(context).upsert(
-                TaggedPlace(
-                    label = remote.label,
-                    latitude = remote.latitude,
-                    longitude = remote.longitude,
-                    timestamp = remote.updatedAtMs,
-                    deleted = remote.deleted,
-                )
+        // The two refusals and the two write paths are ONE expression rather than four early
+        // returns, purely to stay under detekt's `ReturnCount`. That rule used to be covered for
+        // this function by a baseline entry, and the entry is keyed on the old `: String`
+        // signature - answering a [WriteOutcome] stales it, so the rule bites again and the
+        // honest answer is to satisfy it rather than to re-baseline. Same order, same sentences,
+        // same behaviour.
+        return when {
+            label == null ->
+                WriteOutcome(false, "I didn't catch what to call this spot — try something like 'home' or 'work'.")
+            loc == null -> WriteOutcome(
+                false,
+                "I don't have a GPS lock yet, so I can't pin this spot. Give it a sec and try again.",
             )
-            return ackFor(label)
+            backend != null -> tagOverBackend(context, backend, label, loc)
+            else -> tagUnconfigured(context, label, loc)
         }
+    }
 
-        // Unconfigured (ticket 15 step 1): `places` is now the single store for this branch too,
-        // so tagging is a plain upsert on its `@PrimaryKey` label - the exact re-tag-overwrites
-        // semantics [TaggedPlace]'s own doc comment describes, reproduced here instead of by hand
-        // against the engine the way the retired code did.
-        //
-        // **The failure is WORDED, not thrown, and that was corrected rather than assumed.** Step 1
-        // originally let a Room failure propagate, on the reasoning that a suspend insert either
-        // completes or throws so there is nothing to check. That is only safe for a function
-        // reachable solely through a voice tool, because `LiveSessionController.dispatch` wraps
-        // every tool call in a catch-all. `tagPlace` is NOT only that: `ui/FleetScreen.kt` calls it
-        // from a bare `scope.launch` with no handler, so a throw there is an unhandled coroutine
-        // exception rather than anything the user can read. Section 7 wants a failure result that
-        // says in words what did not happen, and a crash says nothing at all. Found while tracing
-        // the identical question for `PantryController.writeReceipt` in step 2.
+    /** [tagPlace]'s configured branch. Room is written ONLY after a genuine server ACK (ticket 01
+     * ruling 9) - never ahead of it, and never on the failure branch. */
+    private suspend fun tagOverBackend(
+        context: Context,
+        backend: PlacesBackend,
+        label: String,
+        loc: Location,
+    ): WriteOutcome {
+        val remote = backend.upsert(label, loc.latitude, loc.longitude).getOrElse {
+            // A REFUSAL is relayed in the engine's own words; anything else keeps the generic
+            // sentence. See [engineRefusal] for why the two are not the same thing.
+            return WriteOutcome(
+                false,
+                engineRefusal(it)
+                    ?: "Something went wrong pinning that spot - it didn't save. Try again in a sec.",
+            )
+        }
+        placeDao(context).upsert(
+            TaggedPlace(
+                label = remote.label,
+                latitude = remote.latitude,
+                longitude = remote.longitude,
+                timestamp = remote.updatedAtMs,
+                deleted = remote.deleted,
+            )
+        )
+        return WriteOutcome(true, ackFor(label))
+    }
+
+    /**
+     * [tagPlace]'s unconfigured branch (ticket 15 step 1): `places` is now the single store for
+     * this branch too, so tagging is a plain upsert on its `@PrimaryKey` label - the exact
+     * re-tag-overwrites semantics [TaggedPlace]'s own doc comment describes, reproduced here
+     * instead of by hand against the engine the way the retired code did.
+     *
+     * **The failure is WORDED, not thrown, and that was corrected rather than assumed.** Step 1
+     * originally let a Room failure propagate, on the reasoning that a suspend insert either
+     * completes or throws so there is nothing to check. That is only safe for a function
+     * reachable solely through a voice tool, because `LiveSessionController.dispatch` wraps
+     * every tool call in a catch-all. `tagPlace` is NOT only that: `ui/FleetScreen.kt` calls it
+     * from a bare `scope.launch` with no handler, so a throw there is an unhandled coroutine
+     * exception rather than anything the user can read. Section 7 wants a failure result that
+     * says in words what did not happen, and a crash says nothing at all. Found while tracing
+     * the identical question for `PantryController.writeReceipt` in step 2.
+     */
+    private suspend fun tagUnconfigured(context: Context, label: String, loc: Location): WriteOutcome {
         ensureLegacyReconciled(context)
         return try {
             placeDao(context).upsert(
@@ -170,42 +210,63 @@ object PlaceController {
                     deleted = false,
                 )
             )
-            ackFor(label)
+            WriteOutcome(true, ackFor(label))
         } catch (e: Exception) {
             Log.w(TAG, "unconfigured tagPlace write failed for $label: ${e.message}")
-            "Something went wrong pinning that spot - it didn't save. Try again in a sec."
+            WriteOutcome(false, "Something went wrong pinning that spot - it didn't save. Try again in a sec.")
         }
     }
 
     /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found
-     * or if the delete itself did not actually land (same §7 fix as [tagPlace]). */
-    suspend fun forgetPlace(context: Context, rawLabel: String): String {
+     * or if the delete itself did not actually land (same §7 fix as [tagPlace]).
+     *
+     * **"No such saved place" is [WriteOutcome.success] = false**, not a quiet success: nothing was
+     * deleted, so nothing may be spoken with an outcome verb over it. Same reading
+     * [com.kevin.legion.backend.PlacesBackend.softDelete]'s own `Result.success(false)` already
+     * carries ("must never be reported as a delete having happened"). */
+    suspend fun forgetPlace(context: Context, rawLabel: String): WriteOutcome {
         // Same ordering and the same reason as [tagPlace] - and the cap has to be lifted on BOTH
         // or the pair disagrees: a label the engine accepted for a tag must still be nameable when
         // the user asks to forget it, or the app would answer "I'm not sure which place you mean"
         // about a place it is currently showing them.
         val backend = backend(context)
         val label = normalizeLabel(rawLabel, capLength = !serverOwnsTheLabelCap(context, backend))
-            ?: return "I'm not sure which place you mean."
-
-        if (backend != null) {
-            val didDelete = backend.softDelete(label).getOrElse {
-                return "I found \"$label\" but couldn't remove it just now - nothing was deleted."
-            }
-            if (!didDelete) return "I don't have a saved place called \"$label\"."
-            placeDao(context).delete(label)
-            return forgetAck(label)
+        // One expression rather than three early returns, for exactly the reason [tagPlace]'s own
+        // comment gives: the baseline entry covering `ReturnCount` here was keyed on the old
+        // `: String` signature and no longer matches.
+        return when {
+            label == null -> WriteOutcome(false, "I'm not sure which place you mean.")
+            backend != null -> forgetOverBackend(context, backend, label)
+            else -> forgetUnconfigured(context, label)
         }
+    }
 
-        // Unconfigured (ticket 15 step 1): existence has to be checked against `places` directly
-        // now (there is no server ACK to report a real/fake delete) - a label with no active row
-        // is reported as never-found rather than issuing a soft-delete UPDATE that would match zero
-        // rows and still speak a false "gone."
+    /** `Result.success(false)` from the backend means "no active row matched" and is reported as a
+     * delete that did NOT happen - [com.kevin.legion.backend.PlacesBackend.softDelete]'s own
+     * contract. A `Result.failure` is the request itself not completing, which is a different
+     * sentence. One `when` rather than three returns, for detekt's `ReturnCount`. */
+    private suspend fun forgetOverBackend(context: Context, backend: PlacesBackend, label: String): WriteOutcome {
+        val result = backend.softDelete(label)
+        return when (result.getOrNull()) {
+            null -> WriteOutcome(false, "I found \"$label\" but couldn't remove it just now - nothing was deleted.")
+            false -> WriteOutcome(false, "I don't have a saved place called \"$label\".")
+            else -> {
+                placeDao(context).delete(label)
+                WriteOutcome(true, forgetAck(label))
+            }
+        }
+    }
+
+    /** Unconfigured (ticket 15 step 1): existence has to be checked against `places` directly now
+     * (there is no server ACK to report a real/fake delete) - a label with no active row is
+     * reported as never-found rather than issuing a soft-delete UPDATE that would match zero rows
+     * and still speak a false "gone." */
+    private suspend fun forgetUnconfigured(context: Context, label: String): WriteOutcome {
         ensureLegacyReconciled(context)
-        placeDao(context).getAll().firstOrNull { it.label == label }
-            ?: return "I don't have a saved place called \"$label\"."
+        val present = placeDao(context).getAll().any { it.label == label }
+        if (!present) return WriteOutcome(false, "I don't have a saved place called \"$label\".")
         placeDao(context).delete(label)
-        return forgetAck(label)
+        return WriteOutcome(true, forgetAck(label))
     }
 
     /** Deletes a saved place by label (used by the UI list). Returns true only on a confirmed

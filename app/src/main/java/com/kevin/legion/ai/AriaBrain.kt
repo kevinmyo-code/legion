@@ -159,11 +159,31 @@ class AriaBrain private constructor(context: Context) {
      * is nothing to acknowledge and nothing to audit - the server's own sentence goes back
      * instead, and the `WRITTEN` audit line is skipped, because an audit trail that records a
      * write which did not happen is worse than no audit line at all.
+     *
+     * **Text that trims to nothing is refused for the same reason** - see the blank guard below.
      */
     suspend fun remember(text: String): RememberOutcome = withContext(Dispatchers.IO) {
         val trimmed = text.trim()
-        // Nothing to store (model called remember with no real content) - just ack.
-        if (trimmed.isEmpty()) return@withContext RememberOutcome(true, REMEMBER_ACKS.random())
+        // Nothing to store. **This used to read `RememberOutcome(true, REMEMBER_ACKS.random())`**,
+        // with the comment "model called remember with no real content - just ack", and that ack
+        // was a claim about a write that never happened: the same §7 breach [RememberOutcome]
+        // exists to close, on a different branch than the server refusal it was added for.
+        //
+        // Found on the A25 2026-09-07, in `conversation_audit`: the model called `remember` with
+        // `{"text":"\u00a0"}` - written as the escape here on purpose, since the literal
+        // character is invisible in source - and the tool result came back
+        // `{"success":true,"message":"Filed away."}`, and the assistant said "Very well, I have
+        // filed that away" while Room's `memories` stayed at 8 rows, `sync_outbox` at 0 and
+        // Postgres at 8. U+00A0 trims away here because Kotlin's `Char.isWhitespace()` folds in
+        // `Character.isSpaceChar` (Java's own `Character.isWhitespace` excludes it) - so a
+        // character the model plainly meant as content reaches this branch as nothing at all,
+        // which is exactly why the branch must not speak an ack.
+        if (trimmed.isEmpty()) {
+            return@withContext RememberOutcome(
+                false,
+                "There was nothing in that to save, so I haven't stored anything. Tell me what to remember.",
+            )
+        }
         // Dedup: if we already know this, refresh its recency instead of adding a
         // duplicate row that would waste one of the limited recall slots.
         val existing = memoryDao.findByText(trimmed)

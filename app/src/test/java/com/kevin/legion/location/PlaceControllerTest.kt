@@ -86,7 +86,7 @@ class PlaceControllerTest {
 
     @Test
     fun `tagPlace writes places directly, readable back through all`() = runBlocking {
-        val ack = PlaceController.tagPlace(context, "my work")
+        val ack = PlaceController.tagPlace(context, "my work").message
         assertTrue(ack.isNotBlank())
 
         val places = PlaceController.all(context)
@@ -113,11 +113,11 @@ class PlaceControllerTest {
     @Test
     fun `forgetPlace removes a saved place and reports missing labels`() = runBlocking {
         PlaceController.tagPlace(context, "home")
-        val forgotten = PlaceController.forgetPlace(context, "home")
+        val forgotten = PlaceController.forgetPlace(context, "home").message
         assertTrue(forgotten.isNotBlank())
         assertTrue(PlaceController.all(context).isEmpty())
 
-        val missing = PlaceController.forgetPlace(context, "home")
+        val missing = PlaceController.forgetPlace(context, "home").message
         assertTrue(missing.contains("don't have"))
     }
 

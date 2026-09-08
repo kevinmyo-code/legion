@@ -336,15 +336,24 @@ class MainActivity : ComponentActivity() {
         // had no caller at all). PlacesReconcile immediately above is NOT the missing half - it
         // stands down entirely on the Django transport, by design, and is an upload in any case.
         //
-        // Placed here rather than inside a lifecycleScope block because neither has an outbox to
-        // drain first: PlaceController is pure write-through with no queue, and VoiceNoteController
-        // pushes on the same call that writes. The drain-then-pull ordering every block above
-        // argues for has no subject on these two, so each is a self-contained fire-and-forget call
-        // with its own throttle and its own "not on Django / no token" guard - the same shape as
-        // the two reconciles just above. Both no-op silently on an install that has not flipped its
-        // transport row, which is every install by default.
-        com.kevin.legion.backend.PlacesSync.maybeAutoPull(applicationContext)
-        com.kevin.legion.backend.VoiceNotesSync.maybeAutoPull(applicationContext)
+        // **This used to read "placed here rather than inside a lifecycleScope block because
+        // neither has an outbox to drain first"** - true then, and still true about the OUTBOX:
+        // PlaceController is pure write-through with no queue, and VoiceNoteController pushes on
+        // the same call that writes. What changed on 2026-09-07 is that each aspect gained a
+        // BACKFILL, and a backfill has the same ordering claim on the pull that a drain does.
+        // Each call still carries its own throttle and its own "not on Django / no token" guard,
+        // and all four no-op silently on an install that has not flipped its transport row, which
+        // is every install by default.
+        //
+        // **The backfill runs BEFORE the pull for each**, which is why this became a
+        // lifecycleScope block rather than staying two bare calls: both backfills are `suspend`
+        // (the pulls are fire-and-forget) and the ordering is load-bearing for the same reason
+        // every other block above sequences drain-then-pull. An unsent local row must reach the
+        // engine before a pull weighs an engine copy that does not know about it yet - and for
+        // these two aspects the backfill is the ONLY route a pre-flip row ever crosses by, since
+        // PlaceController has no outbox and VoiceNoteController.syncToBackend only ever fires on a
+        // fresh transcription or a rename. Both no-op silently off Django.
+        lifecycleScope.launch { syncPlacesAndRecordings() }
         // FleetReconcile and FleetSync BOTH write `vehicles_replica`, so they are sequenced in one
         // coroutine rather than launched as two independent fire-and-forget calls.
         //
@@ -413,6 +422,22 @@ class MainActivity : ComponentActivity() {
         // site (its @Synchronized rationale names the race between it and the voice tool
         // dispatch); it just never existed until now.
         SpotifyController.connectSilently(applicationContext)
+    }
+
+    /**
+     * The `places` and `voice_notes` foreground pass, backfill before pull for each - see the
+     * call site in [onResume] for why the ordering is load-bearing and why these two aspects have
+     * no drain to run first.
+     *
+     * A named function rather than four lines inside a `lifecycleScope.launch` block, because
+     * adding them inline pushed [onResume] past detekt's 60-line `LongMethod` ceiling. Reading
+     * order is unchanged, and the block it replaced kept its comment at the call site.
+     */
+    private suspend fun syncPlacesAndRecordings() {
+        com.kevin.legion.backend.PlacesBackfill.maybeAutoRun(applicationContext)
+        com.kevin.legion.backend.PlacesSync.maybeAutoPull(applicationContext)
+        com.kevin.legion.backend.VoiceNotesBackfill.maybeAutoRun(applicationContext)
+        com.kevin.legion.backend.VoiceNotesSync.maybeAutoPull(applicationContext)
     }
 
     companion object {

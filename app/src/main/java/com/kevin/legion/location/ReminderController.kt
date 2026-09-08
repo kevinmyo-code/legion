@@ -24,17 +24,53 @@ import com.kevin.legion.notes.NotesController
  */
 object ReminderController {
 
-    /** Stores a reminder for [placeLabel]; returns a short spoken acknowledgement. */
-    suspend fun add(context: Context, placeLabel: String, text: String): String {
+    /**
+     * What one [add] call did. Same shape and same reason as
+     * [com.kevin.legion.ai.AriaBrain.RememberOutcome] and
+     * [com.kevin.legion.workouts.WorkoutController.WriteOutcome].
+     *
+     * **[add] used to return a bare `String` and `LiveToolbox`'s `set_reminder` dispatch hardcoded
+     * `success = true` over it**, so both of the branches below that write nothing reached the
+     * model as `{"success": true, "message": "<a failure>"}` - and §7's outcome-verb clause is
+     * conditioned on the tool RESULT, so a lying flag defeats it outright. Corrected 2026-09-07
+     * alongside the identical hole in `remember`.
+     *
+     * `AdvisorProposalExecutor.setReminder`'s own doc comment named this exact problem in writing
+     * ("signal failure by RETURNING A SPOKEN FAILURE SENTENCE as a normal `String`... nothing was
+     * written, but the string alone is indistinguishable from a success message without
+     * string-matching it") and worked around it with a DAO read-back. That read-back stays: it
+     * proves the row landed, which a flag from this function only asserts.
+     */
+    data class AddOutcome(val success: Boolean, val message: String)
+
+    /** Stores a reminder for [placeLabel]; returns a short spoken acknowledgement and whether
+     * anything was actually written. */
+    suspend fun add(context: Context, placeLabel: String, text: String): AddOutcome {
         val label = normalizeLabel(placeLabel)
         val body = text.trim()
         if (label.isBlank() || body.isBlank()) {
-            return "I need both a place and what to remind you about."
+            return AddOutcome(false, "I need both a place and what to remind you about.")
         }
         val list = NotesController.theList(context)
         val item = NotesController.addItem(context, list.id, body)
-        NotesController.setPlaceTrigger(context, item, label)
-        return "Got it. I'll remind you to $body when you reach ${displayLabel(label)}."
+        // setPlaceTrigger returns null on a failed write ([NotesController.setTime]'s documented
+        // null-on-failure contract, shared by every field write in that file). The reminder ROW
+        // exists either way, but with no trigger on it the arrival monitor will never see it - so
+        // "I'll remind you when you reach X" would be a promise about a mechanism that is not
+        // wired. Said in words instead, and the item is left in place rather than deleted: it is
+        // a real to-do the user asked for, just not a place-triggered one.
+        //
+        // A `when` rather than a second early return, to stay under detekt's `ReturnCount`.
+        val triggered = NotesController.setPlaceTrigger(context, item, label) != null
+        return if (triggered) {
+            AddOutcome(true, "Got it. I'll remind you to $body when you reach ${displayLabel(label)}.")
+        } else {
+            AddOutcome(
+                false,
+                "I saved \"$body\" as a to-do, but I couldn't attach it to ${displayLabel(label)} - " +
+                    "so I won't be able to raise it when you get there.",
+            )
+        }
     }
 
     /** Active (not-yet-done) reminders bound to [label], across every list - a reminder isn't

@@ -6,6 +6,10 @@ import com.kevin.legion.backend.ChecklistsOutboxDrain
 import com.kevin.legion.backend.ChecklistsSync
 import com.kevin.legion.backend.EventsOutboxDrain
 import com.kevin.legion.backend.EventsSync
+import com.kevin.legion.backend.PlacesBackfill
+import com.kevin.legion.backend.PlacesSync
+import com.kevin.legion.backend.VoiceNotesBackfill
+import com.kevin.legion.backend.VoiceNotesSync
 
 /**
  * The debug Setup screen's "SYNC NOW" row: runs the engine's drain-then-backfill-then-pull for
@@ -33,6 +37,8 @@ class EngineSyncNow(
         val lines = mutableListOf<String>()
         lines += eventsLine()
         lines += checklistsLine()
+        lines += placesLine()
+        lines += voiceNotesLine()
         return lines.joinToString("\n")
     }
 
@@ -77,6 +83,98 @@ class EngineSyncNow(
                 "${drained.poisoned} stuck.$stoppedNote"
         }
         return (line ?: "Checklists: $failed") + note
+    }
+
+    /**
+     * Places: backfill, then pull, in that order and for the reason `MainActivity.onResume` states -
+     * an unsent local row must reach the engine before a pull weighs an engine copy that does not
+     * know about it.
+     *
+     * **`as? DjangoPlacesBackend` is the transport check**, not a cast for convenience: only
+     * `DjangoPlacesBackend` implements the tombstone-carrying `?since=` feed both halves need, so
+     * on Supabase this resolves to null and the line says exactly that rather than half-running.
+     */
+    private suspend fun placesLine(): String {
+        val note = fallbackNote(EngineBackends.ASPECT_PLACES)
+        val backend = backends.placesBackend() as? DjangoPlacesBackend
+            ?: return "Places: not on the engine (transport is Supabase, or no token on this device).$note"
+        var failed: String? = null
+        val line = guardingForeground(onFailure = { failed = it.message ?: "failed, with no message." }) {
+            val backfilled = PlacesBackfill.run(app, backend)
+            val pulled = PlacesSync.pull(app, backend)
+            "Places: pulled ${pulled.inserted} new, ${pulled.updated} updated, " +
+                "${pulled.tombstoned} removed; ${placesBackfillPhrase(backfilled)}." +
+                stoppedNote(backfilled.stopped)
+        }
+        return (line ?: "Places: $failed") + note
+    }
+
+    /** Voice notes: backfill, then pull. Same ordering and the same concrete-class `as?`
+     * transport check as [placesLine], and for the same reason - only `DjangoVoiceNotesBackend`
+     * implements both the write side and the tombstone-carrying `?since=` feed.
+     *
+     * **Nothing on this path touches the `.m4a`** - see
+     * [com.kevin.legion.backend.VoiceNotesBackfill]'s own class doc. */
+    private suspend fun voiceNotesLine(): String {
+        val note = fallbackNote(EngineBackends.ASPECT_VOICE_NOTES)
+        val backend = backends.voiceNotesBackend() as? DjangoVoiceNotesBackend
+            ?: return "Recordings: not on the engine (transport is Supabase, or no token on this device).$note"
+        var failed: String? = null
+        val line = guardingForeground(onFailure = { failed = it.message ?: "failed, with no message." }) {
+            val backfilled = VoiceNotesBackfill.run(app, backend)
+            val pulled = VoiceNotesSync.pull(app, backend)
+            "Recordings: pulled ${pulled.inserted} new, ${pulled.updated} updated, " +
+                "${pulled.tombstoned} removed; ${voiceNotesBackfillPhrase(backfilled)}." +
+                stoppedNote(backfilled.stopped)
+        }
+        return (line ?: "Recordings: $failed") + note
+    }
+
+    /** The one sentence a run that ended early owes, shared by both new lines. A backfill reports a
+     * stop rather than throwing (each one's rule 5), so a partial run has to be said in words here
+     * or it reads as a clean pass - the same clause `checklistsLine` builds inline. */
+    internal fun stoppedNote(stopped: String?): String =
+        if (stopped == null) "" else " Backfill stopped early, and will resume next sync: $stopped"
+
+    /**
+     * Places' backfill clause, in words: how many crossed, how many never will, and why. Same three
+     * branches, and the same argument for them, as [backfillPhrase] - see its doc comment for why
+     * a bare "backfilled 0" over a permanently held-back row is the thing to avoid.
+     *
+     * `internal` for the same reason [backfillPhrase] is: the wording IS the deliverable and
+     * `EngineSyncNowPhraseTest` reaches it directly, because a test that had to go through [run]
+     * would need a live engine and would not be testing the wording at all.
+     */
+    internal fun placesBackfillPhrase(report: PlacesBackfill.Report): String = when {
+        report.skipped.isNotEmpty() ->
+            "sent ${report.pushed}, held back ${report.skipped.size} " +
+                "(kept on this phone, never sent: " +
+                report.skipped.joinToString("; ") { it.reason.trimEnd('.') } + ")"
+        report.unsyncableTotal > 0 ->
+            "sent ${report.pushed} (${report.unsyncableTotal} the engine will not take, " +
+                "kept on this phone and never sent)"
+        else -> "sent ${report.pushed}"
+    }
+
+    /** Voice notes' backfill clause. One branch more than [placesBackfillPhrase]: a live recording
+     * is DEFERRED, which is neither a success nor a refusal, and saying "sent 0" over one would
+     * read as a failure when nothing is wrong at all. */
+    internal fun voiceNotesBackfillPhrase(report: VoiceNotesBackfill.Report): String {
+        val deferred = if (report.deferredStillRecording > 0) {
+            ", ${report.deferredStillRecording} still recording (will go next time)"
+        } else {
+            ""
+        }
+        return when {
+            report.skipped.isNotEmpty() ->
+                "sent ${report.pushed}$deferred, held back ${report.skipped.size} " +
+                    "(kept on this phone, never sent: " +
+                    report.skipped.joinToString("; ") { it.reason.trimEnd('.') } + ")"
+            report.unsyncableTotal > 0 ->
+                "sent ${report.pushed}$deferred (${report.unsyncableTotal} the engine will not " +
+                    "take, kept on this phone and never sent)"
+            else -> "sent ${report.pushed}$deferred"
+        }
     }
 
     /**

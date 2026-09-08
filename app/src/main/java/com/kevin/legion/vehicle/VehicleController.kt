@@ -170,9 +170,15 @@ object VehicleController {
      * stored value alone (same "blank means don't touch" convention [correctVehicle] uses) rather
      * than clobbering it back to empty.
      */
-    suspend fun registerDirect(context: Context, year: Int, make: String, model: String, trim: String = "", engine: String = ""): String {
+    suspend fun registerDirect(context: Context, year: Int, make: String, model: String, trim: String = "", engine: String = ""): WriteOutcome {
+        // **This returned a bare `String` and `LiveToolbox`'s `register_vehicle` dispatch hardcoded
+        // `success = true` over it**, so this refusal - which writes nothing at all - reached the
+        // model as {"success": true, "message": "I need a valid year, make, and model..."}. Same
+        // shape as the `remember` blank guard found on the A25 2026-09-07, swept the same day. It
+        // is [WriteOutcome] rather than a new type because every other write on this object already
+        // uses that one.
         if (year < 1900 || make.isBlank() || model.isBlank())
-            return "I need a valid year, make, and model to register the car."
+            return WriteOutcome(false, "I need a valid year, make, and model to register the car.")
         val vehicleId = ActiveVehicle.current(context)
         val existing = FleetEngineStore.getByMac(context, vehicleId)
         val now = System.currentTimeMillis()
@@ -206,8 +212,11 @@ object VehicleController {
             if (engine.isNotBlank()) FleetEngineStore.setEngine(context, vehicleId, engine, now)
         }
 
-        return "Got it, this is the $year $make $model now. No maintenance schedule on file yet - " +
-            "populate it from the factory recommendation whenever you're ready."
+        return WriteOutcome(
+            true,
+            "Got it, this is the $year $make $model now. No maintenance schedule on file yet - " +
+                "populate it from the factory recommendation whenever you're ready.",
+        )
     }
 
     /**

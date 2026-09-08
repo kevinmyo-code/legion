@@ -32,6 +32,25 @@ object CarToolbelt {
     // --- Formatters ---------------------------------------------------------
 
     /**
+     * What one [trendSummary] call produced: the sentence, and whether it is an ANSWER rather than
+     * one of the three refusals below it.
+     *
+     * **[trendSummary] returned a bare `String` and `LiveToolbox.getTrend` recovered the flag by
+     * sniffing two prefixes** - `!text.startsWith("Unknown metric") && !text.startsWith("Not enough
+     * history")` - which was already wrong for a third refusal at the time it was read on
+     * 2026-09-07: [MpgTrust.VOICE_REFUSAL] matches neither prefix, so `get_trend` with
+     * `metric = "mpg"` reported `{"success": true}` over a sentence that says LEGION will not give
+     * a figure. `"mpg"` is deliberately absent from both callers' declared metric enums, but
+     * nothing enforces a declared enum at the wire level (the same caveat this file's own
+     * belt-and-suspenders comment already makes about the refusal existing here at all), so the
+     * branch is reachable.
+     *
+     * Structural rather than prefix-matched, so the next refusal added below cannot silently be
+     * reported as an answer - which is precisely how the mpg one got through.
+     */
+    data class Trend(val hasData: Boolean, val text: String)
+
+    /**
      * Trend over recorded obd_samples: count, min/max/avg, and a first-half vs
      * second-half comparison. Temperatures are converted to the driver's chosen
      * unit ([com.kevin.legion.util.Temp]). This is the aggregation the Live
@@ -47,29 +66,65 @@ object CarToolbelt {
      * `MaintenanceAgent`/`DiagnosticAgent`/`SymptomAgent`/`ColdStartAgent`
      * themselves was out of ticket 01's explicit §2 controller list).
      */
-    suspend fun trendSummary(context: Context, metric: String, days: Int, vehicleId: String? = null): String {
+    suspend fun trendSummary(context: Context, metric: String, days: Int, vehicleId: String? = null): Trend {
         val d = days.coerceIn(1, 365)
-        // "mpg" is refused HERE, ahead of the metric-to-pid map, rather than simply left out of it
-        // (ticket 09, `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): this
-        // formatter is the single point both LiveToolbox.getTrend AND every investigating sub-agent's
-        // get_trend belt tool (below, [trendTool]) funnel through, so gating it here is defense in
-        // depth against either caller's own enum ever offering "mpg" again - the caller-side enums
-        // are ALSO stripped of "mpg" (belt-and-suspenders, not redundant: a stale client-side cache
-        // of the old declaration should still get a refusal, not a wrong number). Re-enable by
-        // flipping [MpgTrust.SHOW_MPG] alone; the `"mpg" -> "MPG_TRIP"` mapping is restored below so
-        // that flip needs no second change here.
-        if (metric == "mpg" && !MpgTrust.SHOW_MPG) return MpgTrust.VOICE_REFUSAL
-        val pid = when (metric) {
-            "coolant" -> "0105"; "rpm" -> "010C"; "voltage" -> "ATRV"
-            "load" -> "0104"; "fuel_trim" -> "0107"; "mpg" -> "MPG_TRIP"
-            else -> return "Unknown metric '$metric'."
-        }
+        // Both refusals resolved before any I/O, as one expression rather than two early returns.
+        // The `ReturnCount`/`CyclomaticComplexMethod` baseline entries covering this function were
+        // keyed on the old `: String` signature, so answering a [Trend] stales them and the rules
+        // bite again; splitting the guards out satisfies both honestly instead of re-baselining.
+        val pid = pidFor(metric) ?: return Trend(
+            false,
+            if (metric == "mpg") MpgTrust.VOICE_REFUSAL else "Unknown metric '$metric'.",
+        )
         val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
         val samples = CarDatabase.getDatabase(context).odbSampleDao()
             .getRange(vehicle.obdMac, pid, now - d * 86_400_000L, now)
-        if (samples.size < 5) return "Not enough history yet for $metric - keep driving and it builds up."
+        return if (samples.size < 5) {
+            Trend(false, "Not enough history yet for $metric - keep driving and it builds up.")
+        } else {
+            Trend(true, formatTrend(context, metric, d, pid, samples))
+        }
+    }
 
+    /**
+     * The metric-to-PID map, or null for anything this formatter will not answer.
+     *
+     * **"mpg" is refused HERE, ahead of the map, rather than simply left out of it** (ticket 09,
+     * `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): [trendSummary] is
+     * the single point both `LiveToolbox.getTrend` AND every investigating sub-agent's `get_trend`
+     * belt tool ([trendTool]) funnel through, so gating it here is defense in depth against either
+     * caller's own enum ever offering "mpg" again - the caller-side enums are ALSO stripped of
+     * "mpg" (belt-and-suspenders, not redundant: a stale client-side cache of the old declaration
+     * should still get a refusal, not a wrong number). Re-enable by flipping [MpgTrust.SHOW_MPG]
+     * alone; the `"mpg" -> "MPG_TRIP"` mapping is kept below so that flip needs no second change.
+     *
+     * The caller distinguishes the two null cases by re-testing `metric == "mpg"`, which is the one
+     * place the two refusals differ - a suppressed metric gets MpgTrust's own worded refusal, an
+     * unrecognised one gets "unknown metric".
+     */
+    private fun pidFor(metric: String): String? = when {
+        metric == "mpg" && !MpgTrust.SHOW_MPG -> null
+        else -> when (metric) {
+            "coolant" -> "0105"
+            "rpm" -> "010C"
+            "voltage" -> "ATRV"
+            "load" -> "0104"
+            "fuel_trim" -> "0107"
+            "mpg" -> "MPG_TRIP"
+            else -> null
+        }
+    }
+
+    /** The sentence itself, once there is enough history to have one. Split out of [trendSummary]
+     * only to keep that function under detekt's complexity ceiling; the arithmetic is unchanged. */
+    private fun formatTrend(
+        context: Context,
+        metric: String,
+        days: Int,
+        pid: String,
+        samples: List<com.kevin.legion.data.local.OdbSample>,
+    ): String {
         val isTemp = pid == "0105"
         val tempUnit = Temp.unit(context)
         fun conv(v: Double) = if (isTemp) Temp.convert(v, tempUnit) else v
@@ -80,7 +135,7 @@ object CarToolbelt {
         val recent = values.drop(half).average()
         fun f(v: Double) = if (v >= 100) "%.0f".format(v) else "%.1f".format(v)
 
-        return "$metric over $d days: ${values.size} samples, avg ${f(values.average())}$unit " +
+        return "$metric over $days days: ${values.size} samples, avg ${f(values.average())}$unit " +
             "(min ${f(values.min())}, max ${f(values.max())}). " +
             "Recent average ${f(recent)}$unit vs ${f(earlier)}$unit earlier."
     }
@@ -361,7 +416,7 @@ object CarToolbelt {
         ),
         required = listOf("metric"),
         timeoutMs = 5_000,
-    ) { args -> trendSummary(context, args.optString("metric"), args.optInt("days", 30), vehicleId) }
+    ) { args -> trendSummary(context, args.optString("metric"), args.optInt("days", 30), vehicleId).text }
 
     private fun codeHistoryTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_code_history",
