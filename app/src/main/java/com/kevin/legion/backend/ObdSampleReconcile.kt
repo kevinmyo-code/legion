@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.engine.fleet.FleetRecordBridge
 import io.github.jan.supabase.SupabaseClient
@@ -350,15 +353,52 @@ object ObdSampleReconcile {
      * reconcile's only production caller before this ticket was a Settings row nobody had wired up
      * to run automatically (see this object's own class doc for the ticket-30 backlog those rows
      * came from). No-ops silently, with a logged breadcrumb rather than a dialog or a crash, when
-     * Supabase is not configured or nobody is signed in - see [autoRunGate]/[runIfSignedIn] for
-     * the two halves this delegates to. Fire-and-forget on [autoRunScope]; never suspends the
-     * caller.
+     * neither transport is configured or (on Supabase) nobody is signed in.
+     *
+     * **Transport switch (django-engine Phase 5). Unlike [FleetReconcile]/[PantryReconcile]/
+     * [LedgerReconcile]/[PlacesReconcile], this object does NOT decline on Django**: those four
+     * read the frozen, Supabase-era `engine` RecordStore snapshot (a one-time migration with
+     * nowhere else to write), but this object reads the LIVE `obd_samples` table
+     * ([com.kevin.legion.obd.TelemetryRecorder] writes it continuously while a car is driving),
+     * and [FleetBackend.uploadObdSampleBatch] has exactly ONE caller in this codebase - [run],
+     * called from here. Declining would mean a phone's own OBD telemetry never reaches a
+     * Django-backed server AT ALL, the "silent no-op" defect CLAUDE.md's own feature-add checklist
+     * exists to catch. [run]'s own [BATCH_SIZE] (500) already sits well under
+     * [com.kevin.legion.backend.engine.DjangoFleetBackend]'s `OBD_BATCH_MAX` (1000, see that
+     * class's own "Shape 6: obd_samples" comment) - confirmed by reading, not assumed - so this
+     * function needed no new batching to be safe on the Django branch.
+     *
+     * **No longer routes through [autoRunGate]/[runIfSignedIn] here** - both stay exactly as
+     * written, and [ObdSampleReconcileTest] still drives each directly, but [autoRunGate] answers
+     * only for the Supabase branch (it resolves a [SupabaseClient], which a Django-configured
+     * device does not have) and folding a second, Django-shaped gate into it would have meant
+     * choosing between a nullable-union return type or a third return path past detekt's ceiling.
+     * The throttle floor ([isThrottled]/[lastAutoRunAt]) is reserved exactly once per call, shared
+     * across both transports, matching every rewritten sibling `maybeAutoRun` in this ticket
+     * (e.g. [FleetSync.maybeAutoPull]). The Supabase session resolve is SKIPPED on the Django
+     * branch - see [com.kevin.legion.backend.BodySync.maybeAutoPull]'s own doc comment for why.
      */
     fun maybeAutoRun(context: Context) {
-        val client = autoRunGate(context) ?: return
+        val now = System.currentTimeMillis()
+        if (isThrottled(now)) return
         val app = context.applicationContext
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_FLEET)) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_FLEET) == Transport.DJANGO
+        lastAutoRunAt = now
         autoRunScope.launch {
-            runIfSignedIn(app, SupabaseFleetBackend(client), SupabaseAuth(app))
+            if (!onDjango && SupabaseAuth(app).resolveSignedInUserId() == null) return@launch
+            try {
+                val backend = backends.fleetBackend() ?: return@launch
+                val report = run(app, backend).getOrThrow()
+                MidnightEvents.obdSampleAutoReconcileSucceeded(
+                    report.uploaded,
+                    report.skippedUnresolvedVehicle.size + report.skippedPermanentlyUnexportableSampleCount,
+                    report.serverCountAfter,
+                )
+            } catch (e: Exception) {
+                MidnightEvents.obdSampleAutoReconcileFailed(e)
+            }
         }
     }
 }

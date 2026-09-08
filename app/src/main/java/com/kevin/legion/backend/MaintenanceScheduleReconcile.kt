@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.engine.fleet.FleetRecordBridge
@@ -209,16 +212,29 @@ object MaintenanceScheduleReconcile {
      * which is fine to do from inside the launched coroutine since [lastAutoRunAt] is already
      * reserved synchronously below, before the launch.
      */
+    // Transport switch (django-engine Phase 5). Unlike [FleetReconcile]/[PantryReconcile]/
+    // [LedgerReconcile]/[PlacesReconcile], this object does NOT decline on Django: those four read
+    // the frozen, Supabase-era `engine` RecordStore snapshot (a one-time migration with nowhere
+    // else to write), but this object's own class doc states plainly that it reads the LIVE
+    // `maintenance_items` table, and [FleetBackend.upsertMaintenanceSchedule] has exactly ONE
+    // caller in this codebase - this function. Declining here would mean a schedule edited or
+    // created after this ticket never reaches a Django-backed server AT ALL, which is the "silent
+    // no-op" defect CLAUDE.md's own feature-add checklist exists to catch, not a safe fallback.
     fun maybeAutoRun(context: Context) {
         val now = System.currentTimeMillis()
         if (now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_FLEET)) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_FLEET) == Transport.DJANGO
         lastAutoRunAt = now
         autoRunScope.launch {
             try {
-                if (SupabaseAuth(app).resolveSignedInUserId() == null) return@launch
-                val report = run(app, SupabaseFleetBackend(client)).getOrThrow()
+                // The Supabase session resolve is SKIPPED on the Django branch - see
+                // BodySync.maybeAutoPull's own doc comment for why.
+                if (!onDjango && SupabaseAuth(app).resolveSignedInUserId() == null) return@launch
+                val backend = backends.fleetBackend() ?: return@launch
+                val report = run(app, backend).getOrThrow()
                 MidnightEvents.maintenanceScheduleAutoReconcileSucceeded(
                     report.uploaded,
                     report.skippedUnresolvedVehicle.size + report.skippedNoInterval.size,

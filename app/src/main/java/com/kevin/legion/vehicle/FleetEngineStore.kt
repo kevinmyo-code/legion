@@ -10,10 +10,9 @@ import com.kevin.legion.backend.DriveReassignmentUpload
 import com.kevin.legion.backend.DriveUpload
 import com.kevin.legion.backend.FleetBackend
 import com.kevin.legion.backend.ServiceHistoryUpload
-import com.kevin.legion.backend.SupabaseClientProvider
-import com.kevin.legion.backend.SupabaseFleetBackend
 import com.kevin.legion.backend.VehicleSpecUpload
 import com.kevin.legion.backend.VehicleUpload
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.local.BuildEntry
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CodeClearEvent
@@ -276,13 +275,27 @@ object FleetEngineStore {
      * [com.kevin.legion.location.PlaceController.backendOverride]. */
     internal var backendOverride: FleetBackend? = null
 
-    /** Resolves the live [FleetBackend], or null when Supabase is not configured - the caller
-     * words the null case itself (here: "stay on the legacy mirror"), matching
-     * [com.kevin.legion.location.PlaceController]'s own `backend(Context)` contract. */
+    /** Resolves the live [FleetBackend], or null when neither transport is configured - the
+     * caller words the null case itself (here: "stay on the legacy mirror"), matching
+     * [com.kevin.legion.location.PlaceController]'s own `backend(Context)` contract.
+     *
+     * **This used to read `SupabaseClientProvider.get(context) ?: return null` followed by
+     * `SupabaseFleetBackend(client)`, i.e. Supabase or nothing.** It now asks [EngineBackends]
+     * which transport `fleet` is on and gets that same Supabase backend, a `DjangoFleetBackend`,
+     * or null when neither is configured (django-engine Phase 5). `fleet` still DEFAULTS to
+     * Supabase, so an untouched install behaves exactly as it did.
+     *
+     * **[syncVehicleToServer]/[syncServiceHistoryToServer] call [FleetBackend.upsertVehicle]/
+     * [FleetBackend.upsertServiceHistory], the two functions [DjangoFleetBackend] refuses in
+     * words (its own class doc, "THE ONE GAP").** On the Django branch that refusal comes back as
+     * an ordinary [Result.failure] - the SAME shape a Supabase network failure already takes -
+     * and both callers already catch it with `.getOrElse { Log.w(...); return }` rather than
+     * claiming success, because this is documented as a best-effort THIRD write that must never
+     * fail loudly over a local write that already committed. No new dishonesty: the refusal was
+     * already survivable, it just could not previously happen on this transport. */
     private fun backend(context: Context): FleetBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabaseFleetBackend(client)
+        return EngineBackends(context).fleetBackend()
     }
 
     // =============================================================================================
