@@ -1,0 +1,10 @@
+# The Vite bundle, written here by `npm run build` in `server/frontend`
+# (its `build.outDir`). Never committed: it is a build artefact of source that
+# already lives in this repo, it is rewritten wholesale on every build, and the
+# Docker image builds it in its own node stage (web-and-households ticket 09).
+# `web.views.spa_index` refusing in words when it is absent is what makes a
+# checkout without it a clear message rather than a stack trace.
+static/app/
+
+# `collectstatic`'s output. Generated at image build time, same reasoning.
+staticfiles/

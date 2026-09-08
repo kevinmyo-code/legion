@@ -8,6 +8,12 @@ drf-spectacular==0.28.0
 pytest-django==4.11.1
 ruff==0.14.1
 python-dotenv==1.0.1
+# web-and-households ticket 04, 2026-09-08. Gunicorn serves no static files of
+# its own and Cloud Run has nothing in front of the container, so without this
+# the built web bundle has no server. 6.12.0 is the current release (PyPI,
+# checked 2026-09-08; published 2026-02-27) and pulls in nothing transitive -
+# brotli is an extra this does not ask for.
+whitenoise==6.12.0
 
 # Transitive, pinned by `uv pip freeze` against the above.
 asgiref==3.12.1

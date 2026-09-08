@@ -1,10 +1,11 @@
 """Root URL table. Kept flat and legible - each app owns its own `urls.py`
 and this file only says where each one is mounted."""
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from api.views import healthz
+from web.views import spa_index
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -41,4 +42,27 @@ urlpatterns = [
     # these are commit endpoints that return a verdict, not CRUD over a
     # collection, and grouping them under one prefix keeps that visible.
     path("api/ingest/", include("ingest.urls")),
+    # LAST, and it has to be: this pattern matches almost everything, so any
+    # route added below it would be unreachable. Django tries patterns in
+    # order, so putting the catch-all at the end is what lets every real route
+    # above win first.
+    #
+    # The negative lookahead is belt to that braces. Order alone would be
+    # enough today, but the failure mode if someone ever adds a route below
+    # here - or reorders this list - is the worst kind: `/api/...` would answer
+    # 200 with an HTML page instead of JSON, and a client would parse the shell
+    # as a body rather than see an error. The lookahead makes that impossible
+    # regardless of position, and names exactly what Django owns:
+    # `api/` (the contract), `admin/`, `static/` and `media/` (files), and the
+    # two health paths. Everything else is the SPA's, 404s included - an
+    # unknown URL renders the client's own "no such page" rather than Django's,
+    # because the SPA is the thing that knows which of its routes exist.
+    #
+    # `health` alone would cover `healthz` by prefix; both are written out
+    # because both are real entries in this table (see the note above on Cloud
+    # Run reserving `/healthz`) and a reader should not have to spot that one
+    # subsumes the other. The cost is that an SPA route beginning with one of
+    # these words is unreachable - `/health-log` would be swallowed - which is
+    # a real constraint on ticket 05's route names, not a bug here.
+    re_path(r"^(?!api/|admin/|static/|media/|health|healthz).*$", spa_index, name="spa"),
 ]

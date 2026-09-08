@@ -1,0 +1,6 @@
+# `legion/settings.py` lists this directory in STATICFILES_DIRS, and Django
+# raises staticfiles.W004 for an entry that does not exist - so on a fresh
+# clone, before anyone has run `npm run build`, `manage.py check` would report
+# an issue about a directory that is simply empty on purpose. This file is what
+# keeps the directory in git; `server/.gitignore` excludes its only real
+# content, `app/`, because that is build output.

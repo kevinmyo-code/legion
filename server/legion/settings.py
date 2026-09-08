@@ -121,10 +121,21 @@ INSTALLED_APPS = [
     # four gated tables and `ingested_files`, which is why it needs no
     # migrations either.
     "ingest",
+    # web-and-households ticket 04: the SPA shell, and nothing else. No models,
+    # no serializers, one view that hands the browser the built `index.html`.
+    # The web client is a limb like the phone is - it talks to the same API over
+    # the same contract - so Django's only job for it is to serve the bundle.
+    "web",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Immediately after SecurityMiddleware, which is where WhiteNoise's own
+    # documentation puts it and the position matters in both directions: after,
+    # so SecurityMiddleware's HTTPS redirect still applies to a static file;
+    # before everything else, so a hit on `/static/...` is answered and returned
+    # without paying for sessions, auth or CSRF on a file that has no user.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -252,6 +263,65 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+
+# Where `collectstatic` gathers everything, and where WhiteNoise serves from in
+# production. Ephemeral on Cloud Run, which is fine: unlike MEDIA_ROOT below,
+# nothing here is user data - it is build output, written into the image by the
+# Dockerfile (web-and-households ticket 09) and identical on every instance.
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# `server/static/` holds the Vite bundle under `app/`, written there by
+# `npm run build` in `server/frontend` (its `build.outDir`). Listing it as a
+# source directory rather than as STATIC_ROOT is what lets the dev loop work
+# with no `collectstatic` at all: with DEBUG on, the staticfiles finders read it
+# straight from here.
+STATICFILES_DIRS = [BASE_DIR / "static"]
+
+# CompressedManifestStaticFilesStorage does two things that matter once Cloud
+# Run is in front of this: it writes each file under a content-hashed name so a
+# far-future cache header is safe, and it gzips/brotlis alongside so WhiteNoise
+# can serve a pre-compressed body instead of compressing per request.
+#
+# The whole dict is restated because naming STORAGES replaces Django's default
+# wholesale - omitting "default" here would leave file uploads with no storage
+# backend at all, which fails at the first upload rather than at startup.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+
+# Serve the built bundle's own files at the SITE ROOT, not under STATIC_URL.
+#
+# This is not an optimisation, it is what makes the page work at all. Vite is
+# configured with `base: '/'` (see `frontend/vite.config.ts`), so the shell asks
+# for `/assets/index-<hash>.js`, `/sw.js`, `/manifest.webmanifest` - root paths,
+# because a service worker can only control the scope it is served from and a
+# worker under `/static/app/` could not control `/`. Django serves static files
+# under `/static/`, so without this every one of those URLs falls through to the
+# catch-all in `legion/urls.py` and comes back as the HTML shell with a 200.
+# Measured before this setting existed, 2026-09-08:
+# `GET /assets/index-T8X4he9y.js` answered `200 text/html, 1226 bytes`. Nothing
+# errors; the browser simply gets a page where it asked for a script, and the
+# app renders blank.
+#
+# Same two-location rule as `web.views.spa_index`, and for the same reason:
+# STATIC_ROOT after `collectstatic` (which also has the pre-compressed `.gz`
+# siblings), the Vite output directory before it, so `npm run build` plus
+# `runserver` is a complete dev loop.
+_collected_app = STATIC_ROOT / "app"
+_built_app = BASE_DIR / "static" / "app"
+WHITENOISE_ROOT = _collected_app if _collected_app.is_dir() else _built_app
+
+# WhiteNoise ignores Python's `mimetypes` module and carries its own table
+# (`whitenoise/media_types.py`, "so behaviour is consistent across varied
+# environments"), and that table has no `.webmanifest`. It served the PWA
+# manifest as `application/octet-stream` - measured on the dev server
+# 2026-09-08, after a first attempt at fixing this with
+# `mimetypes.add_type()` changed nothing, which is how the private table came
+# to light. A manifest with the wrong content type is worse than a broken one:
+# the page loads, nothing logs, and the browser silently declines to offer
+# "install", which reads as the PWA not working.
+WHITENOISE_MIMETYPES = {".webmanifest": "application/manifest+json"}
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = required_env("MEDIA_ROOT")

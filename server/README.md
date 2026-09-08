@@ -9,10 +9,21 @@ is local setup only.
 
 ```
 cd server
-uv sync
+uv venv
+uv pip install -r requirements.txt
 cp ../deploy/.env.example ../deploy/.env   # fill in SECRET_KEY, DATABASE_URL, etc.
 uv run manage.py migrate
 ```
+
+**This block used to say `uv sync`, and that was wrong** (corrected 2026-09-08,
+web-and-households ticket 04). `pyproject.toml` here has no `[project]` table -
+it carries only ruff and pytest configuration - so uv has no dependency list to
+read from it. `uv lock` refuses outright ("No `project` table found"), `uv.lock`
+is a three-line stub that pins nothing, and `uv sync` therefore syncs the
+environment to an EMPTY dependency set: run against a working venv it uninstalls
+Django, DRF, psycopg and everything else, and on a fresh clone it leaves nothing
+behind for `migrate` to run. `requirements.txt` is the real dependency list and
+`uv pip install -r` is what reads it.
 
 `legion/settings.py` refuses to start with a missing required variable,
 naming it - there is no Kevin-hosted default (CLAUDE.md section 7).
@@ -122,6 +133,76 @@ permanently stale.
 
 `/api/schema/` serves the same document from a running server, and
 `/api/schema/swagger/` renders it. Both are unauthenticated.
+
+## The web client
+
+`server/frontend/` is a React + Vite + TypeScript app (web-and-households
+ticket 04, superseding django-engine ticket 08's HTMX choice). It is a limb
+like the phone is: it talks to the same API over the same contract, and Django
+serves its build output and nothing more.
+
+**Prerequisite: Node 24.** Nothing else - no global npm packages, no
+`npx create` step. Every version is pinned exactly in `package.json`, the same
+way `requirements.txt` pins Python, so `npm ci` reproduces one resolution.
+
+```
+cd server/frontend
+npm ci
+```
+
+### The dev loop
+
+Two processes. Vite on 5173 serves the app and proxies `/api`, `/admin`,
+`/static`, `/media` and `/health` to Django on 8000, so the browser sees one
+origin and the session cookie behaves exactly as it will in production.
+
+```
+cd server && uv run manage.py runserver      # terminal one, port 8000
+cd server/frontend && npm run dev            # terminal two, port 5173, open this one
+```
+
+### After changing the API
+
+`openapi.yaml` is the contract and `src/api/schema.d.ts` is generated from it.
+Regenerate after every `write_openapi`:
+
+```
+npm run gen:api
+```
+
+`npm run check:api` regenerates and then `git diff --exit-code`s the result -
+it fails if the committed types no longer match the committed contract. That is
+the front-end half of the staleness test above, and CI (ticket 08) runs it.
+
+Nothing hand-writes a URL or a body shape. If a path is missing from
+`schema.d.ts` the fix is on the server and then `npm run gen:api`, never a cast.
+
+### Building for Django to serve
+
+```
+npm run build          # tsc -b, then vite build into ../static/app
+```
+
+Then, and only then, `collectstatic` has something to collect:
+
+```
+cd server && uv run manage.py collectstatic --noinput
+```
+
+Order matters: `collectstatic` copies what is on disk, so running it before
+`npm run build` gathers a bundle that is missing or stale. `server/static/app/`
+and `server/staticfiles/` are both gitignored - the Docker image builds them in
+its own node stage (ticket 09).
+
+**Before the bundle exists, `/` answers 503 in words**, not a stack trace:
+"The web client has not been built; run `npm run build` in server/frontend".
+`web/views.py` is the whole of it.
+
+### Tests
+
+```
+npm test               # Vitest + Testing Library
+```
 
 ## Checking for drift
 
