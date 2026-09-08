@@ -3,11 +3,12 @@ map: web-and-households
 ticket: "04"
 title: "Web client stack: React + Vite + TypeScript, a client generated from openapi.yaml, a PWA shell served by Django"
 type: decision
-status: open
+status: resolved
+status-detail: "Kevin, 2026-09-08: React + Vite + TypeScript, client generated from openapi.yaml, PWA shell served by Django. Supersedes django-engine 08's HTMX stack. Scaffold being built under this ticket; screens are 05 and 06, image and domain are 09."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

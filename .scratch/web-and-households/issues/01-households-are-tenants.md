@@ -3,11 +3,12 @@ map: web-and-households
 ticket: "01"
 title: "Households are tenants: one engine can hold more than one family"
 type: decision
-status: open
+status: resolved
+status-detail: "Accepted 2026-09-08 by Kevin, as proposed: one user = one household, shared schema with household_id, Django choke point then RLS, invite-only signup, one owner role for membership only. ADR 0045 accepted; CLAUDE.md sections 1 and 7 and the feature-add checklist edited in the same commit; ADR 0044 rule 3 carries the amendment note. Build: tickets 02, 02b, 03."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

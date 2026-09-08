@@ -6,8 +6,8 @@ type: build
 status: open
 blockers: ["01"]
 blocked-by: ["[[01-households-are-tenants]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 

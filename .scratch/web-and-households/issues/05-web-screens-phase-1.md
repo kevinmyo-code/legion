@@ -6,7 +6,7 @@ type: build
 status: open
 blockers: ["03", "04"]
 blocked-by: ["[[03-accounts-signup-invites]]", "[[04-web-client-stack]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

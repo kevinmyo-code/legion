@@ -6,8 +6,8 @@ type: build
 status: open
 blockers: ["04"]
 blocked-by: ["[[04-web-client-stack]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 

@@ -67,8 +67,11 @@ device model in a prompt had three separate agents reporting work on a phone tha
   never runtime DDL), records are the transactions, capability plugins are the modules, widgets
   are the reporting layer, the xlsx mirror is the audit-and-export surface. Three deliberate
   deviations from real ERP: data trustworthiness is first-class (the §4 gate + provenance), the
-  primary client is a voice agent bound by honesty rules, and the trust model is two adults with
-  BYO everything - so no roles, no tenancy, no approval workflows, ever.
+  primary client is a voice agent bound by honesty rules, and the trust model is a household with
+  BYO everything. **Membership is the only authorization; tenancy is BY HOUSEHOLD and nothing
+  finer** (Kevin, 2026-09-08, ADR 0045: one engine may hold more than one family, each
+  all-or-nothing to its members). One role, `owner`, exists only to invite and remove members. No
+  approval workflows, ever.
 - **Register: Alfred/JARVIS is a BAND, not a name.** A tool with a personality. Not a mascot, not
   the car. Competent, dry, useful. The register copy lives in `ai/Personas.kt`; `AssistantIdentity`
   resolves it. **LEGION is the app; the thing Kevin talks to is a named companion he picks per
@@ -322,7 +325,9 @@ here.
 - **Estimates are labelled as estimates**, in the tool description and in any user-facing string.
 - **Pull-based tools always.** New domains default to tools/sub-agents, not pre-injected context.
 - **Lean Room migrations.** Copy generated SQL verbatim, additive only, no destructive fallback.
-- **The household hosts its own server; nothing Kevin-hosted for anyone else** (AMENDED 2026-09-05
+- **The household hosts its own server; nothing Kevin-hosted for strangers.** AMENDED 2026-09-08
+  (Kevin, ADR 0045): one engine may hold more than one household, and Kevin's engine holding
+  Kevin's parents is the household widened, not a customer. (Earlier AMENDED 2026-09-05
   evening, Kevin, ADR 0044; the morning's "nothing the PHONE depends on" and the pivot's "no
   Kevin-hosted anything" are both superseded). Django plus Postgres in `deploy/docker-compose.yml`
   is the engine and the only writer. The phone reads from its Room replica when the server is
@@ -438,6 +443,8 @@ here.
       never writes Postgres directly. An integrity rule that must hold even if Django has a bug is
       SQL shipped by a Django migration; a business rule lives in Django once, never also in Kotlin.
 - [ ] Server down? The phone still reads from Room, queues the write, and says so in words.
+- [ ] New table, view or report? Scoped by household at the one choke point, listed in
+      `household.tenancy.TENANT_TABLES`, and covered by the tenancy leak test (ADR 0045).
 - [ ] Does it survive clone-and-run by a stranger with their own signing cert?
 - [ ] New tool? Its failure result says in words what did NOT happen, and nothing claims success
       unless the underlying action ran. §7's outcome-verb rule needs a real result to stand on.

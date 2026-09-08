@@ -3,7 +3,8 @@ map: django-engine
 ticket: "08"
 title: "The web app: her limb, installable on an iPhone, the desk for both"
 type: build
-status: open
+status: resolved
+status-detail: "Superseded 2026-09-08 (Kevin): the stack paragraph (Django templates + HTMX) is replaced by web-and-households ticket 04 (React + Vite + TypeScript on a client generated from openapi.yaml); the screens table and the trust-disclosure rule are carried verbatim into web-and-households 05 and 06, the iPhone install check into 05. Nothing was built under this ticket."
 blockers: ["04"]
 blocked-by: ["[[04-domain-api-and-changes-feed]]"]
 open-blockers: 1

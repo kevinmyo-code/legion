@@ -5527,3 +5527,8 @@ Workload Identity Federation instead of SSH (ticket 08).
 **Found while checking:** there is no web app at all - `server/` has no templates and no HTML; the
 "django web app" is admin with three models. And the tenancy RLS in `supabase/migrations/` is keyed
 on `auth.uid()`, which is dead the moment Supabase Auth goes dark at cutover.
+
+**Kevin, 2026-09-08, later the same session:** both accepted as proposed - households as tenants
+(one user, one household) and React + Vite + TypeScript. ADR 0045 is accepted and CLAUDE.md §1, §7
+and the feature-add checklist carry the live rule from this commit. django-engine ticket 08 is
+superseded by web-and-households 04/05/06.

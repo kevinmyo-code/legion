@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 decided: 2026-09-08
 decided-by: Kevin
 supersedes: []
@@ -11,7 +11,7 @@ tags: [adr]
 
 ## Standing
 
-**PROPOSED, awaiting Kevin's ack on `.scratch/web-and-households/issues/01-*.md`.** One Django
+**ACCEPTED 2026-09-08 by Kevin, as proposed.** One Django
 engine holds more than one household. Every data row belongs to exactly one household; every user
 belongs to exactly one household; a member sees everything in their household and nothing outside
 it. There are no roles inside a household except `owner`, which exists only to invite and remove

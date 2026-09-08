@@ -44,6 +44,8 @@ it, and rules live once, in the server.
    implementation exactly as they bound the plpgsql. Same request, same response, same corpus.
 3. **Limbs authenticate with a device token**, one per phone, browser or robot, revocable alone.
    Users are made in the admin. Two adults, no roles, no tenancy, one household per server.
+   **AMENDED 2026-09-08 by [[0045-households-are-tenants]]:** one engine may hold more than one
+   household; users arrive by invite; one role, owner, for membership only. The token rule stands.
 4. **The phone depends on the server to write, and never to read.** Room is a full replica; writes
    wait in the outbox; the app says in words when the server is unreachable. This replaces
    [[0043-django-is-the-second-client]]'s "if Django is down the phone loses freshness, never
