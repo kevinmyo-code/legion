@@ -22,56 +22,53 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-06 early (session 38bf2e3c)
+## Where we stopped - 2026-09-08 early (session 38bf2e3c, ~2 days)
 
-- **The port is live on the laptop.** Django engine runs at `http://192.168.1.117:8000` (`deploy/.env`, gitignored)
-  against the Supabase Postgres as `legion_engine`: 11 Django tables in schema `django`, `checklists*` as
-  Django's first `public` tables (45 public tables now), superuser + household member kevinmyo@gmail.com.
-  Server: 93 tests green. API: /api/events, /api/checklists, /api/changes?since=, /api/schema/. Phone:
-  EngineAuth/EngineConfig/EngineTransport (default SUPABASE per aspect), Setup sign-in row, debug-only
-  cleartext. Phase 3 RAN 09-06: checklist write reached Postgres in a second, a server write reached the phone by
-  poll, an unreachable engine was reported honestly and the queued tick drained. Two of three defects FIXED 09-06 (the events done-toggle now pushes with an outbox fallback plus a
-  one-shot divergence sweep; the backfill skips a refusal and continues, keeping the tick locally).
-  **RESOLVED 09-06, and I was wrong: there was no honesty breach.** The audit rows show the tool was
-  called correctly, returned success, and the row WAS written - then renamed by hand on the phone 26 s
-  later, by Kevin, who was using it during the test. See lessons.md L-2026-09-06. The audit reconcile
-  IS still stale on the server (newest row 09-03) and that is a real, separate defect.
-  Also open: `NotesController.backend()` is hardcoded to Supabase, so a REMINDER's tick ignores the
-  transport switch. Transport default stays SUPABASE in the repo until the run repeats clean.
-  Next was (`research/execution-plan.md`).
-- **Creds Kevin said he will rotate:** legion_reader and legion_engine share the password he pasted; the
-  reader's leaked once into an agent traceback.
+**The port is most of the way done. Django on Cloud Run is real, serving real data, on the phone.**
 
-## Earlier the same session - 2026-09-05
+- **Engine live**: `https://legion-757959564788.us-south1.run.app` (project `legion-engine-260906`,
+  us-south1, min-instances 0, max 4, secrets in Secret Manager). Redeploy:
+  `python deploy/cloudrun/deploy.py --project legion-engine-260906`. **Health is `/health`, NOT
+  `/healthz`** - Cloud Run's frontend reserves that path and answers it itself.
+- **Shape**: Supabase Postgres (data, unmoved) -> Django (every rule, only writer) -> Android + a
+  future head-unit app + a Django-served PWA. ADR 0044. Cutover moves NO rows.
+- **All nine aspects have server routes.** 589 server tests, 85 paths, `server/openapi.yaml` on disk
+  with a staleness test (`cd server && uv run manage.py write_openapi`).
+- **Phone**: 3460 tests. Nine aspects can speak Django; six are wired.
+  - **Hardware-verified and on DJANGO: events, checklists, body, memory.**
+  - **Ready to verify: places, voice notes** - pulls and backfills landed but have never run on the
+    phone. Both currently on SUPABASE.
+  - **Not wired at all: ledger, pantry, fleet.** Backends exist; 19 call sites still hardcode
+    Supabase, so flipping them changes nothing.
 
-- **Phone at Room v66, all verified on the A25.** Checklists (named lists, measured lines, none/daily/
-  weekly schedules, per-day or done-once ticks, history) live on `checklists*` tables - **Room only, no
-  server tables yet**, so `bio` and `errands` do not survive a wipe. Recordings moved to METERS;
-  transcription works for the first time (a doubled `/files/files/` URL had 404'd every attempt) and
-  failures are visible with reason and retry. Month grid marks open todos with a square.
-- **Server coursework is truth as of 09-05 03:39Z.** 123 tasks, 80 Canvas-backed with submission
-  evidence in `structured_meta`, 22 discussion first-post rows, titles carry course names. MATH dates
-  come from the SYLLABUS (WebAssign rolls due dates forward; Canvas placeholders are pointers).
-  Refresh = `tmp/canvas_reconcile.py` over a fresh Canvas API read; it is a snapshot, not sync.
-- **Google Calendar rows are frozen at 09-01** (importer retired). 18 all-day rows corrected 09-05.
-  Decision open: two-clients ticket 06.
-- **Django is THE ENGINE (ADR 0044, evening 09-05).** Shape decided 09-05 late: **Supabase Postgres (data
-  stays put, Django the only writer) > Django on Google Cloud Run (service + Job + Scheduler, the
-  midconerpdash pattern) > Android app and the Django-served PWA.** Media on R2/GCS. Cutover moves no rows. Map `.scratch/django-engine/`, 11 tickets. Every Supabase sync path
-  built 09-02..05 is throwaway once Django owns writes. Two-clients map superseded.
-- **Android architecture: Hilt on KSP, ViewModel per screen** (CLAUDE.md §8, map `.scratch/architecture/`).
-  KSP landed 09-05 (clean compile 3m15s to 2m41s); detekt with a baseline in flight.
-- **In flight when this session paused:** one-today ticket 10 slice A (`manage_checklist` voice
-  tool), then B (retire grocery trip) and C (retire persistent list). Spotify App Remote: fixed 09-05 by registering this machine's debug SHA-1 in the dashboard.
+### Next session, in order
 
-## Owed by Kevin - 2026-09-05
+1. **Hardware-verify places and voice notes**, then flip their defaults. The last two aspects
+   verified this way produced six bugs a green suite had missed.
+2. **Wire ledger, pantry and fleet** (19 call sites), then verify. `obd_samples` is 20,796 rows -
+   the first sync here that moves real volume.
+3. **Ticket 10**: revoke the anon key, disable Realtime and Auth, drop `supabase-kt`.
 
-- **Rotate the Supabase PAT** (`sbp_fce2...`) and the WebAssign login link; both are in the transcript.
-- ~~Add the debug SHA-1 to the Spotify dashboard~~ **Done 09-05**, linked. Cause was the second machine's unregistered fingerprint.
-- Recordings note 2 is an accidental capture of a real kitchen conversation; delete or keep.
-- Phone media volume left at 15/15. "Auntie Greta birthday" is a 1-hour 00:00 UTC event in Google.
-- Drive backup guard refuses every upload since the wipe (8k rows vs a 29k baseline); needs a reset.
-- The `last_obd_mac` hint is null on all 3 cars; fleet will not survive a second wipe until set.
+### Owed by Kevin - decisions, not code
+
+- **A place deleted on the phone that the engine still holds active**: push the delete (destructive)
+  or accept the divergence? It currently sits in `skippedLocalNewer` forever.
+- **`origin_guid` for a server-created vehicle**: the contract keys `/api/fleet/vehicles/` on it with
+  no collection POST, and the phone's upload carries only `serverId`. No route addresses a live
+  upsert.
+- **Fleet provenance differs by transport** - the engine sets it from a per-table default, Supabase
+  takes the caller's value. §4 makes provenance load-bearing.
+- **Drive backup has refused every upload since the wipe** (12,435 rows vs a 29,890 baseline). The
+  guard is right, its baseline is stale. **There is no Drive backup from the past week.**
+- Rotate the Supabase passwords and the phone's device token when convenient.
+
+### The lesson of this session, in one line
+
+**Roughly a dozen defects found by running it on hardware or querying live data; a green suite caught
+none of them.** Three of the four aspects verified had missing PULL paths - writes went up fine and
+nothing came down. And `lessons.md` gained the sharpest one: a test had pinned "a blank remember is a
+no-op, not a failure" as correct, which is why 3438 passing tests never saw thirteen tool results
+claiming a success they had not earned.
 
 ## Read before trusting a green suite
 
