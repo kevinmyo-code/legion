@@ -1,6 +1,65 @@
-# A household fills in its own domain (or uses :80 for a bare-IP/LAN
-# install where TLS is handled elsewhere). Caddy issues and renews the
-# certificate automatically once a real domain is set here.
-:80 {
+# Caddy in front of gunicorn. web-and-households ticket 09; the domain itself is
+# ticket 13's step 2.
+#
+# **A household fills in one variable and gets a certificate.** `LEGION_DOMAIN`
+# and `LEGION_ACME_EMAIL` come from `deploy/.env` through compose's
+# `env_file:` on the `caddy` service - Caddy substitutes `{$NAME}` from its OWN
+# process environment when it parses this file, so the variables have to be in
+# the container, not just in the shell that ran `docker compose up`. That
+# `env_file:` line is what makes this file work; without it both substitutions
+# are empty and the stack silently serves plain HTTP on :80 forever.
+#
+# Every claim below was checked against `caddy validate`/`caddy adapt` with
+# caddy v2.11.4 on 2026-09-08, with the variables set and unset, rather than
+# read off the documentation.
+{
+	# The ACME contact address. Let's Encrypt uses it for expiry and policy
+	# notices; certificates issue without it.
+	#
+	# **The quotes are load-bearing.** Caddy substitutes `{$NAME}` textually
+	# before parsing, so with the variable unset `email {$LEGION_ACME_EMAIL}`
+	# becomes the bare word `email` and Caddy refuses to start:
+	#   Error: adapting config using caddyfile: parsing caddyfile tokens for
+	#   'email': wrong argument count or unexpected line ending after 'email'
+	# Quoted, an unset variable is a valid empty argument and the config
+	# adapts cleanly - measured both ways.
+	#
+	# Setting it also buys a fallback issuer: with an address, Caddy configures
+	# Let's Encrypt AND ZeroSSL; with none, only Let's Encrypt. Worth having on
+	# a box nobody is watching.
+	email "{$LEGION_ACME_EMAIL}"
+}
+
+# The site address, and it is doing two jobs.
+#
+#   LEGION_DOMAIN set (e.g. legion.example.com)
+#       Caddy issues and renews a Let's Encrypt certificate for that name and
+#       adds an automatic HTTP->HTTPS redirect. This is the VM install. It
+#       needs 80 and 443 reachable from the internet under that name, which is
+#       why ticket 13's runbook opens both in the OCI security list AND in
+#       Ubuntu's own iptables, and why Cloudflare stays grey-cloud so the
+#       HTTP-01 challenge reaches this box rather than Cloudflare's edge.
+#
+#   LEGION_DOMAIN unset or empty
+#       `{$NAME:default}` falls back to the text `:80`, so Caddy listens on
+#       port 80 for any hostname and applies no TLS - `adapt` emits exactly
+#       {"listen":[":80"], ... reverse_proxy web:8000} and logs "server is
+#       listening only on the HTTP port, so no automatic HTTPS will be
+#       applied". That is the LAN / bare-IP install, and it is the behaviour
+#       this file had before the variable existed, so a household that never
+#       sets it loses nothing.
+#
+# The equivalent written out, for anyone who would rather not read a default
+# out of a substitution:
+#
+#     :80 {
+#         reverse_proxy web:8000
+#     }
+#
+# **Caddy does not serve the static files itself, on purpose** (ticket 09):
+# WhiteNoise inside gunicorn does, because one place that knows the
+# `staticfiles.json` manifest is enough, and a second one would be a second
+# thing to keep in step with a content hash.
+{$LEGION_DOMAIN::80} {
 	reverse_proxy web:8000
 }

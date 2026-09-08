@@ -65,6 +65,15 @@ services:
       - media:/app/media
     expose:
       - "8000"
+    # No `entrypoint:` override here on purpose: the image's own ENTRYPOINT is
+    # `/app/entrypoint.sh` (web-and-households ticket 09), which runs
+    # `manage.py migrate --noinput` and then execs gunicorn. Restating it here
+    # would be a second copy of the path to keep in step with the Dockerfile,
+    # and the `worker` service below is the one that genuinely has to override
+    # it. That script's own comments carry the "one replica, so migrate cannot
+    # race" reasoning and the `LEGION_SKIP_MIGRATE=1` escape hatch for the day
+    # there is more than one.
+    #
     # In the `full` profile DATABASE_URL in .env points at the `postgres`
     # service above; in `local` it points at Supabase's pooler instead.
     # Either way this container only ever reads DATABASE_URL, never a
@@ -85,12 +94,32 @@ services:
     # job yet. On Cloud Run this container is replaced by a Cloud Run Job
     # fired by Cloud Scheduler (deploy/cloudrun/); supercronic here is for
     # local dev and for a household's own compose-only install only.
+    #
+    # This override REPLACES the image's `/app/entrypoint.sh` ENTRYPOINT, which
+    # is what keeps the worker out of the migrate-on-start path - only `web`
+    # migrates, and there is exactly one of it.
     entrypoint: ["supercronic", "/etc/crontab"]
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     profiles: ["full"]
+    # `env_file` is not optional decoration here (ticket 09). Caddy substitutes
+    # `{$LEGION_DOMAIN}` and `{$LEGION_ACME_EMAIL}` from ITS OWN process
+    # environment when it parses the Caddyfile, so without this line both are
+    # empty inside the container no matter what `.env` says, the site address
+    # falls back to `:80`, and the stack serves plain HTTP under no certificate
+    # while looking entirely healthy. The two variables are documented in
+    # `.env.vm.example`.
+    #
+    # `env_file` hands Caddy the WHOLE file, SECRET_KEY and POSTGRES_PASSWORD
+    # included, which it has no use for. The tighter form is a two-line
+    # `environment:` block naming only `LEGION_DOMAIN` and `LEGION_ACME_EMAIL`
+    # and letting compose interpolate them from the same `.env`. Left as
+    # `env_file` to match `web` and `worker` and to keep one mechanism in this
+    # file; worth revisiting if anything less trusted than Caddy ever joins the
+    # stack.
+    env_file: .env
     depends_on:
       - web
     ports:

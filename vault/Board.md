@@ -54,7 +54,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[02-household-id-on-every-table\|02]] | build | household_id on every data table, backfilled, and one Django choke point |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
-| [[.scratch/web-and-households/map\|web-and-households]] | [[09-static-domain-dockerfile\|09]] | build | Whitenoise, a multi-stage arm64 image with the Vite build, migrate-on-start, and Caddy on the domain |
 
 ## Built, owing a run on hardware
 
@@ -111,6 +110,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it |
 | [[.scratch/wake-word/map\|wake-word]] | [[15-see-a-deaf-mic\|15]] | build | Make a deaf microphone visible |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[08-ci-cd\|08]] | build | CI for server, Android and frontend; CD to Cloud Run through Workload Identity Federation |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[09-static-domain-dockerfile\|09]] | build | Whitenoise, a multi-stage arm64 image with the Vite build, migrate-on-start, and Caddy on the domain |
 
 ## Blocked
 

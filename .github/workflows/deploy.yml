@@ -1,0 +1,138 @@
+# CD to the household's Oracle VM (web-and-households ticket 08's CD half,
+# rewritten for ticket 12's hosting decision).
+#
+# The whole workflow is one SSH call. That is the design, not a shortcut, and
+# the four things a reader usually asks about:
+#
+#   - **`main`, never `dev`.** CLAUDE.md section 8: `dev` is the trunk and
+#     everything lands there; `main` mirrors `dev` and Claude merges it only
+#     when `dev` is green. So `main` is the branch that already means "this was
+#     good enough to publish", and hanging a deploy off `dev` would put every
+#     work-in-progress commit on the box the family uses. `workflow_dispatch`
+#     is here so the first run - and any rollback - can be fired by hand
+#     without inventing a commit.
+#
+#   - **No build step.** The box builds its own image. It is arm64 (Ampere A1),
+#     and building arm64 on GitHub's amd64 runners means QEMU emulation; the
+#     alternative is a registry to push to, credentials for it and a retention
+#     policy for it, all to move bytes between two machines when one of them
+#     could have built them in about a minute. `deploy/vm/deploy.sh` carries
+#     the same reasoning at the point it acts on it. Migrations are not here
+#     either: they run in the `web` container's entrypoint
+#     (`server/entrypoint.sh`), so a container never serves a request against a
+#     schema it has not migrated.
+#
+#   - **Secrets, not variables, for all four values - the hostname included.**
+#     A repository VARIABLE is readable by anyone who can read the repo, and
+#     this repo is public (CLAUDE.md section 13). A hostname is not a
+#     credential, but it is the one piece of information that turns "somebody's
+#     Oracle VM" into "that box, at that address, running Django on 443", which
+#     is enough to point a scanner at. As secrets, the workflow carries no
+#     hostname at all, so a stranger's fork of this repo deploys to their own
+#     box or - with the secrets unset - to nothing.
+#
+#   - **The key on the VM side can do exactly one thing.** Its
+#     `authorized_keys` entry is prefixed
+#     `command="/opt/legion/deploy/vm/deploy.sh",no-port-forwarding,no-pty`, so
+#     sshd runs that script and discards whatever command the client sent. A
+#     leaked `VM_SSH_KEY` therefore buys an attacker one deploy of whatever is
+#     already on `main` - not a shell, not a tunnel into the household's
+#     network, not the `.env` sitting next to the compose file.
+#     `deploy/vm/README.md` has the exact line to paste.
+#
+# `ssh-keyscan` is deliberately absent. Fetching a host key at deploy time and
+# then trusting it verifies nothing - it is TOFU with the T repeated every run,
+# and it would accept a machine-in-the-middle silently. `VM_KNOWN_HOSTS` pins
+# the box's real host key, taken from the box itself when it was provisioned.
+#
+# Untested as of 2026-09-08: ticket 13's VM does not exist yet, so this workflow
+# has never run. It is `built`, not `tested`.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time. Two runs would `git pull` and `docker compose up
+# --build` into the same checkout on the same box simultaneously, and the
+# second would be building from a tree the first was still moving.
+# `cancel-in-progress: false` because a half-finished deploy is worse than a
+# queued one - the in-flight run must be allowed to reach its health check.
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ssh to the VM and run deploy.sh
+    runs-on: ubuntu-latest
+    # deploy.sh's own health poll allows 60s after the build. Ten minutes
+    # covers a cold Docker cache (a full `npm ci` plus `pip install`) and still
+    # fails rather than hanging if the box stops answering mid-build.
+    timeout-minutes: 10
+
+    steps:
+      # No `actions/checkout`. Nothing in this job reads the repository - the
+      # box pulls it itself. Checking it out would only be a slower way to
+      # arrive at the same `ssh`.
+
+      - name: Write the deploy key and the pinned host key
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # `printf %s` rather than `echo`: the key is multi-line and echo's
+          # handling of backslashes is not portable. The trailing newline
+          # matters - OpenSSH rejects a private key file whose final line is
+          # unterminated.
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VM_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          # Fail here, with a sentence, rather than 30 seconds later inside
+          # ssh's own error. An unset secret in a fork is the likely cause and
+          # is worth naming.
+          test -s ~/.ssh/id_ed25519 || {
+            echo "VM_SSH_KEY is empty. Set the four repository secrets - see deploy/vm/README.md." >&2
+            exit 1
+          }
+          test -s ~/.ssh/known_hosts || {
+            echo "VM_KNOWN_HOSTS is empty. It is the box's own host key line - see deploy/vm/README.md." >&2
+            exit 1
+          }
+
+      - name: Deploy
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+        # The secrets go through `env` rather than being interpolated straight
+        # into the command line: `${{ }}` substitutes into the script text
+        # before the shell sees it, so a value containing a shell metacharacter
+        # would be executed rather than passed. Nothing here is attacker-
+        # controlled, but the safe form costs one line.
+        #
+        # `StrictHostKeyChecking=yes` turns an unrecognised host key into a
+        # failure instead of a prompt, which on a non-interactive runner would
+        # otherwise hang until the job timeout. `IdentitiesOnly=yes` stops ssh
+        # offering any other key an agent might have. `-T` because the
+        # authorized_keys entry says `no-pty` and asking for one is a warning
+        # for no gain.
+        #
+        # The command is passed even though sshd's forced command overrides it.
+        # It costs nothing, it documents what this run intends, and it means the
+        # same line works from a laptop with an unrestricted key.
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes \
+            -T \
+            "$VM_USER@$VM_HOST" \
+            /opt/legion/deploy/vm/deploy.sh

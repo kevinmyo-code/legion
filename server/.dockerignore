@@ -1,0 +1,50 @@
+# What never enters the build context. Docker does NOT read `.gitignore`, so
+# every artefact `server/.gitignore` keeps out of the repo has to be named
+# again here or it rides into the image from the developer's own working tree.
+#
+# Two of these are correctness, not size, and they are the reason this file
+# exists at all (web-and-households ticket 09):
+#
+#   static/app    The Vite bundle. Stage 1 of the Dockerfile builds it fresh;
+#                 `COPY . .` in stage 2 would otherwise lay the DEVELOPER's
+#                 last local build down first. `COPY` merges into a directory
+#                 rather than replacing it, so files from an older build with
+#                 different content hashes would survive alongside the new
+#                 ones, and `collectstatic` would hash and ship them. The
+#                 image would serve a mix of two builds with nothing broken
+#                 enough to notice.
+#   staticfiles/  `collectstatic`'s output, including `staticfiles.json` - the
+#                 manifest `CompressedManifestStaticFilesStorage` resolves
+#                 every `{% static %}` name through. Same shape: the build
+#                 rewrites the manifest but not the stale hashed files beside
+#                 it.
+#
+# Everything else here is size or hygiene.
+.venv/
+frontend/node_modules/
+frontend/.tanstack/
+frontend/dist/
+static/app/
+staticfiles/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+# A secret must never be baked into an image layer. `.env` lives in `deploy/`
+# and is outside this context anyway; this line is the guard for the day
+# somebody drops one in here instead.
+.env
+
+# pytest's own output from a local run. `junit-after.xml` was sitting in this
+# directory when the image was first written.
+junit*.xml
+
+# `server/tests/` is deliberately NOT excluded. `requirements.txt` already
+# installs pytest and pytest-django into the image, the suite is about 1 MB of
+# source, and being able to run it inside the running container against the
+# real Postgres is a diagnostic worth having on migration night (ticket 13,
+# step 3) - "does the engine agree with its own database on this box" is not a
+# question a laptop can answer. Excluding them would save a megabyte and cost
+# that.
