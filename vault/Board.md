@@ -52,6 +52,10 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[01-households-are-tenants\|01]] | decision | Households are tenants: one engine can hold more than one family |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[04-web-client-stack\|04]] | decision | Web client stack: React + Vite + TypeScript, a client generated from openapi.yaml, a PWA shell served by Django |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[08-ci-cd\|08]] | build | CI for server, Android and frontend; CD to Cloud Run through Workload Identity Federation |
 
 ## Built, owing a run on hardware
 
@@ -144,6 +148,13 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[02-household-id-on-every-table\|02]] | build | household_id on every data table, backfilled, and one Django choke point  waiting on [[01-households-are-tenants\|01]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[02b-rls-belt\|02]] | build | Postgres RLS keyed on a session variable Django sets per request  waiting on [[02b-rls-belt\|02]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[03-accounts-signup-invites\|03]] | build | Accounts: signup, create a household, invite codes, join, members; session auth for the browser  waiting on [[02b-rls-belt\|02]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[05-web-screens-phase-1\|05]] | build | Web screens, phase 1: sign in, sign up, household, Today, Lists, Settings; installed on an iPhone  waiting on [[03-accounts-signup-invites\|03]], [[04-web-client-stack\|04]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[06-web-screens-phase-2\|06]] | build | Web screens, phase 2: Ledger, Pantry, Body, Fleet, Places, Voice notes, and a glanceable home  waiting on [[05-web-screens-phase-1\|05]], [[11-report-endpoints\|11]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[09-static-domain-dockerfile\|09]] | build | Whitenoise, a multi-stage Dockerfile with the Vite build, and a custom domain on Cloud Run  waiting on [[04-web-client-stack\|04]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | [[11-report-endpoints\|11]] | build | Report endpoints: aggregates computed once, described in the contract, unverified carried through  waiting on [[02b-rls-belt\|02]] |
 
 ## KIV
 
@@ -201,3 +212,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 15 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | 12 | 11 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |

@@ -1,0 +1,189 @@
+{
+  "nodes": [
+    {
+      "id": "b353b4718692c03d",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/01-households-are-tenants.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "93e13e7d91baac11",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/04-web-client-stack.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "fd78e894ef95e2e4",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/07-email-delivery.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a836f8aa7f4bcdcb",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/08-ci-cd.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "385f5faa91e0ec77",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/10-no-cube.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "aeee06cd6cf59030",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/02-household-id-on-every-table.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7fa2857c96b17849",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/02b-rls-belt.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "05762a9d03f109d2",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/09-static-domain-dockerfile.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d4c411e09667eac9",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/03-accounts-signup-invites.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b5116a06e36ca084",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/11-report-endpoints.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "04592ae241c3cd37",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/05-web-screens-phase-1.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3b9681918237e456",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/06-web-screens-phase-2.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "3260ceb56ad464be",
+      "fromNode": "b353b4718692c03d",
+      "fromSide": "right",
+      "toNode": "aeee06cd6cf59030",
+      "toSide": "left"
+    },
+    {
+      "id": "67a0303c4fcf861f",
+      "fromNode": "7fa2857c96b17849",
+      "fromSide": "right",
+      "toNode": "7fa2857c96b17849",
+      "toSide": "left"
+    },
+    {
+      "id": "3f185d3707763017",
+      "fromNode": "7fa2857c96b17849",
+      "fromSide": "right",
+      "toNode": "d4c411e09667eac9",
+      "toSide": "left"
+    },
+    {
+      "id": "3eb2e8c7d796a58a",
+      "fromNode": "d4c411e09667eac9",
+      "fromSide": "right",
+      "toNode": "04592ae241c3cd37",
+      "toSide": "left"
+    },
+    {
+      "id": "5714b630925a6b40",
+      "fromNode": "93e13e7d91baac11",
+      "fromSide": "right",
+      "toNode": "04592ae241c3cd37",
+      "toSide": "left"
+    },
+    {
+      "id": "4f526fad02ea4457",
+      "fromNode": "04592ae241c3cd37",
+      "fromSide": "right",
+      "toNode": "3b9681918237e456",
+      "toSide": "left"
+    },
+    {
+      "id": "11e8be7d8160775e",
+      "fromNode": "b5116a06e36ca084",
+      "fromSide": "right",
+      "toNode": "3b9681918237e456",
+      "toSide": "left"
+    },
+    {
+      "id": "effdda8b2623f6a1",
+      "fromNode": "93e13e7d91baac11",
+      "fromSide": "right",
+      "toNode": "05762a9d03f109d2",
+      "toSide": "left"
+    },
+    {
+      "id": "12230a4f4a0a8a38",
+      "fromNode": "7fa2857c96b17849",
+      "fromSide": "right",
+      "toNode": "b5116a06e36ca084",
+      "toSide": "left"
+    }
+  ]
+}

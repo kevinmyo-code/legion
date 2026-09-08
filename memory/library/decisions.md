@@ -5493,3 +5493,37 @@ decision in MEMORY.md, and it stops being deferrable at the fleet flip.
 **Owed: none of this has run on hardware.** No device was attached for the whole session. The
 routing compiles, the untouched Supabase branches are still green, and the Django path - auth-skip
 behaviour, real HTTP round trips, the refusal's wire shape - has never executed.
+
+## 2026-09-08 - One engine, many households: the web-and-households map
+
+Kevin brought a Gemini architecture discussion (Supabase > Cube > Django > React/PWA, Android
+sideloaded, one always-on VM, GitHub Actions over SSH) and asked whether LEGION uses the libraries
+and hosting it names, whether Cube is needed, and for a plan that lets his parents register and
+create their own household. The map is `.scratch/web-and-households/map.md`; the checked table is
+in it. Three rulings came out of the charting and are recorded here, one of them pending his ack.
+
+**No Cube (resolved at charting, ticket 10).** Roughly 30k rows under a 500 MB ceiling, rules living
+once in Django by ADR 0044, Cloud Run at min-instances 0 with no volume for Cube Store, and tenancy
+that would otherwise be enforced twice. The escalation is named so it is checkable: a report over
+500 ms becomes a Postgres materialized view refreshed by the worker, never a second rules layer.
+
+**React + Vite + TypeScript for the web client (ticket 04, recommended, for Kevin's word).** This
+restores ADR 0040's original stack and supersedes django-engine ticket 08's Django-templates + HTMX
+paragraph. The improvement over the doc is that the client is generated from `server/openapi.yaml`,
+so a server change is a compile error in the web build. Recharts first; ECharts only for a
+Canvas-scale series.
+
+**Households are tenants (ticket 01, ADR 0045 proposed).** Reopens CLAUDE.md §1 "no tenancy, ever"
+and ADR 0044 rule 3 on Kevin's own words. Shared schema, `household_id` on all 44 tables, one Django
+choke point, then RLS keyed on a per-request session variable; invite-only signup; one role, owner,
+for membership only. Recorded as proposed; CLAUDE.md is edited only in the commit that accepts it.
+
+**Checked and left alone:** Cloud Run over the doc's always-on VM (Oracle A1 was rejected three days
+earlier and the reason still holds); per-device tokens over the doc's JWT; Ktor and kotlinx over
+Retrofit and Moshi; no Vico, Kizitonwose or Coil on the phone, which is the specialised client and
+already has a tested chart kit. Taken from the doc: CI in GitHub Actions and a deploy through
+Workload Identity Federation instead of SSH (ticket 08).
+
+**Found while checking:** there is no web app at all - `server/` has no templates and no HTML; the
+"django web app" is admin with three models. And the tenancy RLS in `supabase/migrations/` is keyed
+on `auth.uid()`, which is dead the moment Supabase Auth goes dark at cutover.
