@@ -22,44 +22,39 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-08 early (session 38bf2e3c, ~2 days)
+## Where we stopped - 2026-09-08 late (session 0151LEjT)
 
-**The port is most of the way done. Django on Cloud Run is real, serving real data, on the phone.**
+**All nine aspects are now wired to Django. Nothing new has run on hardware.**
 
-- **Engine live**: `https://legion-757959564788.us-south1.run.app` (project `legion-engine-260906`,
-  us-south1, min-instances 0, max 4, secrets in Secret Manager). Redeploy:
-  `python deploy/cloudrun/deploy.py --project legion-engine-260906`. **Health is `/health`, NOT
-  `/healthz`** - Cloud Run's frontend reserves that path and answers it itself.
-- **Shape**: Supabase Postgres (data, unmoved) -> Django (every rule, only writer) -> Android + a
-  future head-unit app + a Django-served PWA. ADR 0044. Cutover moves NO rows.
-- **All nine aspects have server routes.** 589 server tests, 85 paths, `server/openapi.yaml` on disk
-  with a staleness test (`cd server && uv run manage.py write_openapi`).
-- **Phone**: 3460 tests. Nine aspects can speak Django; six are wired.
-  - **Hardware-verified and on DJANGO: events, checklists, body, memory.**
-  - **Ready to verify: places, voice notes** - pulls and backfills landed but have never run on the
-    phone. Both currently on SUPABASE.
-  - **Not wired at all: ledger, pantry, fleet.** Backends exist; 19 call sites still hardcode
-    Supabase, so flipping them changes nothing.
+- **Engine**: `https://legion-757959564788.us-south1.run.app` (project `legion-engine-260906`).
+  Redeploy `python deploy/cloudrun/deploy.py --project legion-engine-260906`. **Health is `/health`,
+  NOT `/healthz`** - Cloud Run reserves that path and answers it itself.
+- **Phone: 3460 tests, 0 failures (JUnit XML, 2026-09-08 late).** `c2bff0f`/`6c0440f`/`4bd90ec`
+  routed the last 19 call sites (ledger 8, pantry 4, fleet 7) through `EngineBackends`. **Unpushed.**
+- **On DJANGO and hardware-verified: events, checklists, body, memory. Nothing else.** Places, voice
+  notes, ledger, pantry and fleet are wired but never run, and still default to SUPABASE -
+  `DJANGO_BY_DEFAULT` is unchanged. Wiring flips no default; that belongs with each hardware run.
+- Why two fleet reconciles route on Django while four decline: `library/decisions.md` 2026-09-08.
 
 ### Next session, in order
 
-1. **Hardware-verify places and voice notes**, then flip their defaults. The last two aspects
-   verified this way produced six bugs a green suite had missed.
-2. **Wire ledger, pantry and fleet** (19 call sites), then verify. `obd_samples` is 20,796 rows -
-   the first sync here that moves real volume.
-3. **Ticket 10**: revoke the anon key, disable Realtime and Auth, drop `supabase-kt`.
+1. **Get a phone attached** - `adb devices` was empty all session, so nothing below could start.
+2. **Verify places and voice notes**, then flip them. The last two aspects done this way produced
+   six bugs a green suite had missed.
+3. **Then ledger, pantry, fleet.** `obd_samples` is 20,796 rows, the first sync moving real volume.
+4. **Ticket 10**: revoke the anon key, disable Realtime and Auth, drop `supabase-kt`.
 
 ### Owed by Kevin - decisions, not code
 
+- **`origin_guid` for a server-created vehicle. Now load-bearing**: `FleetEngineStore` is routed, so
+  on Django `upsertVehicle`/`upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions
+  ("THE ONE GAP"). Callers swallow it as a best-effort third write - it fails quietly, but it fails.
+- **Fleet provenance differs by transport** (engine: per-table default; Supabase: caller's value).
+  §4 makes provenance load-bearing. Settle before the fleet flip.
 - **A place deleted on the phone that the engine still holds active**: push the delete (destructive)
-  or accept the divergence? It currently sits in `skippedLocalNewer` forever.
-- **`origin_guid` for a server-created vehicle**: the contract keys `/api/fleet/vehicles/` on it with
-  no collection POST, and the phone's upload carries only `serverId`. No route addresses a live
-  upsert.
-- **Fleet provenance differs by transport** - the engine sets it from a per-table default, Supabase
-  takes the caller's value. §4 makes provenance load-bearing.
-- **Drive backup has refused every upload since the wipe** (12,435 rows vs a 29,890 baseline). The
-  guard is right, its baseline is stale. **There is no Drive backup from the past week.**
+  or accept the divergence? Sits in `skippedLocalNewer` forever today.
+- **Drive backup has refused every upload since the wipe** (12,435 rows vs a 29,890 baseline). Guard
+  right, baseline stale. **No Drive backup from the past week.**
 - Rotate the Supabase passwords and the phone's device token when convenient.
 
 ### The lesson of this session, in one line

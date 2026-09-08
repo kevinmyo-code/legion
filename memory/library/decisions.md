@@ -5456,3 +5456,40 @@ keep the tick locally rather than delete a thing the user actually did to make a
 **Ruling: the transport default stays SUPABASE in the repo** until defects 1 and 3 are fixed and the
 run repeats. The phone is left on DJANGO for events and checklists so the next pass starts where this
 one stopped.
+
+## 2026-09-08 - The last 19 call sites route through EngineBackends, and two fleet reconciles do NOT decline
+
+The Django-engine port had ledger, pantry and fleet fully built at the backend layer and unwired:
+`EngineBackends` already exposed all four accessors, and the Django implementations were complete
+(`DjangoFleetBackend` overrides all ten `fetchChanged*Since` plus the `fetchActive*` set and
+`fetchObdSamplesSince`), but nineteen call sites still constructed a `Supabase*Backend` inline, so
+flipping a transport row for these aspects changed nothing. All nineteen now resolve through
+`EngineBackends`: `c2bff0f` (ledger, 8), `6c0440f` (pantry, 4), `4bd90ec` (fleet, 7). 3460 tests, 0
+failures, before and after each commit.
+
+**No default moved.** `EngineTransport.DJANGO_BY_DEFAULT` is still `events` + `checklists` only.
+Wiring makes a flip POSSIBLE; the flip itself belongs with that aspect's own run on the phone,
+which is the discipline the last four aspects were held to.
+
+**The call worth recording: `MaintenanceScheduleReconcile` and `ObdSampleReconcile` route on the
+Django branch where `Fleet`/`Ledger`/`Pantry`/`PlacesReconcile` decline.** The four decliners are
+each, in their own class doc, "the one-time (and re-runnable) Phase 4 step 1/2 job" uploading the
+frozen Supabase-era ENGINE record store - a migration with nowhere else to write, so declining on a
+transport that never held that store is correct. The two routed ones are ongoing upload paths for
+LIVE Room tables (`maintenance_items`, `obd_samples`) on an advancing high-water mark, and each is
+the SOLE caller of its `FleetBackend` upsert. Declining them would have meant a schedule edit or the
+phone's own OBD telemetry never reaching a Django-backed server at all - the silent-no-op shape
+CLAUDE.md's checklist and this port's own worst defects keep producing. The names are the trap here:
+six files ending `Reconcile`, two of which are a different thing.
+
+**What this makes load-bearing, and it is now owed rather than theoretical.** `FleetEngineStore` is
+routed, so on Django `upsertVehicle`/`upsertServiceHistory` reach the two functions
+`DjangoFleetBackend` refuses in words ("THE ONE GAP", keyed on `origin_guid` with no route for a
+live upsert). Both callers already wrap the call as a best-effort third write after a local commit,
+so the refusal arrives as an ordinary `Result.failure` and nothing claims a success it did not have
+- but a vehicle or service-history edit does not reach the engine. That is the `origin_guid`
+decision in MEMORY.md, and it stops being deferrable at the fleet flip.
+
+**Owed: none of this has run on hardware.** No device was attached for the whole session. The
+routing compiles, the untouched Supabase branches are still green, and the Django path - auth-skip
+behaviour, real HTTP round trips, the refusal's wire shape - has never executed.
