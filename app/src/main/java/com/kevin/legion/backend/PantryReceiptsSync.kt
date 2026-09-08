@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
@@ -194,13 +197,21 @@ object PantryReceiptsSync {
         val now = System.currentTimeMillis()
         if (now - lastAutoPullAt < AUTO_PULL_MIN_INTERVAL_MS) return
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
+        // Transport switch (django-engine Phase 5). The gate is EngineBackends.isConfiguredFor
+        // rather than a raw SupabaseClientProvider read, so a device whose `pantry` row is flipped
+        // to Django is not turned away for having no Supabase project - same substitution
+        // BodySync.maybeAutoPull's own doc comment records for `body`.
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_PANTRY)) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_PANTRY) == Transport.DJANGO
         lastAutoPullAt = now
         autoPullScope.launch {
             try {
-                val userId = resolveUserIdForAutoPull(SupabaseAuth(app))
-                if (userId == null) return@launch
-                val report = pull(app, SupabasePantryBackend(client))
+                // The Supabase session resolve is SKIPPED on the Django branch - see
+                // BodySync.maybeAutoPull's own doc comment for why.
+                if (!onDjango && resolveUserIdForAutoPull(SupabaseAuth(app)) == null) return@launch
+                val backend = backends.pantryBackend() ?: return@launch
+                val report = pull(app, backend)
                 MidnightEvents.pantryReceiptsAutoPullSucceeded(
                     report.inserted, report.alreadyPresent, report.unrecognizedProvenance.size, report.linesInserted,
                 )

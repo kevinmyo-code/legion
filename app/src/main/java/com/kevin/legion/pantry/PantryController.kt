@@ -7,8 +7,8 @@ import com.kevin.legion.backend.CommitOutcome
 import com.kevin.legion.backend.PantryBackend
 import com.kevin.legion.backend.PantryPhotoBackend
 import com.kevin.legion.backend.SupabaseClientProvider
-import com.kevin.legion.backend.SupabasePantryBackend
 import com.kevin.legion.backend.SupabasePhotoBackend
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.data.PantryPhotoStore
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
@@ -103,12 +103,21 @@ object PantryController {
     @Volatile
     internal var backendOverride: PantryBackend? = null
 
-    /** Resolves the active backend, or null when Supabase is not configured - the signal every
-     * function below branches on. Never performs network I/O itself. */
+    /** Resolves the active backend, or null when neither transport is configured - the signal
+     * every function below branches on. Never performs network I/O itself.
+     *
+     * **This used to read `SupabaseClientProvider.get(context) ?: return null` followed by
+     * `SupabasePantryBackend(client)`, i.e. Supabase or nothing.** It now asks [EngineBackends]
+     * which transport `pantry` is on and gets that same Supabase backend, a `DjangoPantryBackend`,
+     * or null when neither is configured (django-engine Phase 5). `pantry` still DEFAULTS to
+     * Supabase, so an untouched install behaves exactly as it did.
+     *
+     * **No auth wait, unchanged.** This resolves inside a receipt-commit path that must not
+     * block - same posture as [com.kevin.legion.location.PlaceController]'s own backend resolver,
+     * see [EngineBackends.placesBackend]'s own doc comment for why the wait stays out. */
     private fun backend(context: Context): PantryBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabasePantryBackend(client)
+        return EngineBackends(context).pantryBackend()
     }
 
     /** Test seam: settable from a unit test so a [PantryPhotoBackend] fake can be injected without

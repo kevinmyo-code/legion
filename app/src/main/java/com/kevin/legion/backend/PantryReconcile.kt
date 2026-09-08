@@ -3,6 +3,9 @@ package com.kevin.legion.backend
 import android.content.Context
 import androidx.room.withTransaction
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
@@ -397,6 +400,16 @@ object PantryReconcile {
      * caller.
      */
     fun maybeAutoRun(context: Context) {
+        // Transport switch (django-engine Phase 5), and this one DECLINES rather than re-points -
+        // same reasoning [PlacesReconcile.maybeAutoRun]'s own comment gives. This reconcile is the
+        // Supabase-era engine-retirement migration: it reads the on-device `engine` RecordStore
+        // and pushes those rows to the server that owns `pantry` now. Running it against Django
+        // would need its own end-to-end proof (the upload, the diff, and the `runIfSignedIn` gate
+        // all assume a Supabase session), and running it against SUPABASE while `pantry` is
+        // flipped to Django would push migration rows into a project the phone has stopped
+        // reading - a silent split brain. So it stands down and says nothing happened, which is
+        // true. Re-pointing it is its own ticket.
+        if (EngineTransport(context).transportFor(EngineBackends.ASPECT_PANTRY) == Transport.DJANGO) return
         val client = autoRunGate(context) ?: return
         val app = context.applicationContext
         autoRunScope.launch {

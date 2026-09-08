@@ -5,6 +5,9 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.channel
@@ -61,9 +64,17 @@ object PantryReceiptsRealtime {
     // Same cold-start-safe shape as LedgerTransactionsRealtime.subscribe's own doc comment: the
     // auth check happens inside `scope.launch` via SupabaseAuth.resolveSignedInUserId (suspend),
     // never synchronously before it.
+    //
+    // The transport switch (django-engine Phase 5), same guard [LedgerTransactionsRealtime.subscribe]
+    // already carries and for the same reason: Realtime is Supabase's mechanism, so an aspect
+    // moved to the Django engine must not also hold a `postgres_changes` socket open against a
+    // project it no longer reads. Folded into ONE guard with the pre-existing `channel != null`
+    // check, same shape, to stay inside detekt's two-return ceiling without a suppression.
     private fun subscribe(context: Context) {
+        val onDjango =
+            EngineTransport(context).transportFor(EngineBackends.ASPECT_PANTRY) == Transport.DJANGO
+        if (onDjango || channel != null) return
         val client = SupabaseClientProvider.get(context) ?: return
-        if (channel != null) return
 
         scope.launch {
             if (SupabaseAuth(context).resolveSignedInUserId() == null) return@launch
