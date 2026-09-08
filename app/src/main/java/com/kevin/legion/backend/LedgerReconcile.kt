@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.engine.ledger.LedgerAspectSeeder
@@ -252,8 +255,20 @@ object LedgerReconcile {
      * reserved synchronously below, before the launch.
      */
     fun maybeAutoRun(context: Context) {
+        // Transport switch (django-engine Phase 5), and this one DECLINES rather than re-points -
+        // same reasoning [PlacesReconcile.maybeAutoRun]'s own comment gives. This reconcile is the
+        // Supabase-era engine-retirement migration: it reads the on-device `engine` RecordStore
+        // and pushes those rows to the server that owns `ledger` now. Running it against Django
+        // would need its own end-to-end proof (the upload, the diff, and the `SupabaseAuth` gate
+        // all assume a Supabase session), and running it against SUPABASE while `ledger` is
+        // flipped to Django would push migration rows into a project the phone has stopped
+        // reading - a silent split brain. So it stands down and says nothing happened, which is
+        // true. Re-pointing it is its own ticket. Folded into ONE guard with the pre-existing
+        // throttle check, same shape [BodyRealtime.subscribe]'s own doc comment uses, to stay
+        // inside detekt's two-return ceiling without a suppression.
+        val onDjango = EngineTransport(context).transportFor(EngineBackends.ASPECT_LEDGER) == Transport.DJANGO
         val now = System.currentTimeMillis()
-        if (now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
+        if (onDjango || now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
         val app = context.applicationContext
         val client = SupabaseClientProvider.get(app) ?: return
         lastAutoRunAt = now

@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.BudgetTarget
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Category
@@ -141,15 +144,27 @@ object LedgerConfigBackfill {
      * reasoning as [BodyBackfill.maybeAutoRun]'s own class doc gives for body: an unsent local row
      * must reach the server before the pull weighs last-write-wins against a server copy that does
      * not know about it yet. No-ops silently when Supabase is not configured or nobody is signed
-     * in. */
+     * in.
+     *
+     * Transport switch (django-engine Phase 5): the gate and the backend both come from
+     * [EngineBackends] now, so a device whose `ledger` row is flipped to Django is not turned away
+     * for having no Supabase project. `ledger` still defaults to Supabase. On Django there is no
+     * Supabase session to resolve, so [runIfSignedIn]'s gate is bypassed rather than failed - same
+     * shape [BodyBackfill.maybeAutoRun]'s own doc comment states. */
     suspend fun maybeAutoRun(context: Context) {
         val now = System.currentTimeMillis()
         if (now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
+        val backends = EngineBackends(app)
+        if (!backends.isConfiguredFor(EngineBackends.ASPECT_LEDGER)) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_LEDGER) == Transport.DJANGO
         lastAutoRunAt = now
         try {
-            val report = runIfSignedIn(app, SupabaseAuth(app), SupabaseLedgerConfigBackend(client)) ?: return
+            val backend = backends.ledgerConfigBackend() ?: return
+            val report = when {
+                onDjango -> run(app, backend)
+                else -> runIfSignedIn(app, SupabaseAuth(app), backend)
+            } ?: return
             MidnightEvents.ledgerConfigBackfillSucceeded(report.pushed, report.alreadyPresent, report.skippedLocalOnlyDeleted, report.failed)
         } catch (e: Exception) {
             MidnightEvents.ledgerConfigBackfillFailed(e)

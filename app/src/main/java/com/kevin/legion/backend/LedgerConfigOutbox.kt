@@ -2,6 +2,9 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.BudgetTarget
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Category
@@ -27,10 +30,16 @@ object LedgerConfigWriteThrough {
     @Volatile
     internal var backendOverride: LedgerConfigBackend? = null
 
+    /**
+     * **This used to read `SupabaseClientProvider.get(context) ?: return null` followed by
+     * `SupabaseLedgerConfigBackend(client)`, i.e. Supabase or nothing.** It now asks
+     * [EngineBackends] which transport `ledger` is on and gets that same Supabase backend, a
+     * `DjangoLedgerConfigBackend`, or null when neither is configured (django-engine Phase 5).
+     * `ledger` still DEFAULTS to Supabase, so an untouched install behaves exactly as it did.
+     */
     private fun backend(context: Context): LedgerConfigBackend? {
         backendOverride?.let { return it }
-        val client = SupabaseClientProvider.get(context) ?: return null
-        return SupabaseLedgerConfigBackend(client)
+        return EngineBackends(context).ledgerConfigBackend()
     }
 
     /** See [MemoryWriteThrough.cancelPendingCreateIfPending]'s own doc comment for the full
@@ -297,13 +306,21 @@ object LedgerConfigOutboxDrain {
     }
 
     /** `MainActivity.onResume`'s hook - see this object's own class doc for the ordering that
-     * matters. No-ops silently when Supabase is not configured or nobody is signed in. */
+     * matters. No-ops silently when Supabase is not configured or nobody is signed in.
+     *
+     * Transport switch (django-engine Phase 5). The backend comes from [EngineBackends] now,
+     * which answers Supabase or Django per [EngineTransport]; `ledger` still defaults to Supabase.
+     * The Supabase session gate below is SKIPPED on the Django branch, same reasoning
+     * [BodyOutboxDrain.maybeDrain]'s own doc comment gives: a device signed in to an engine has no
+     * Supabase session to resolve, so gating on one would leave a flipped aspect silently never
+     * draining. */
     suspend fun maybeDrain(context: Context) {
         val app = context.applicationContext
-        val client = SupabaseClientProvider.get(app) ?: return
-        if (SupabaseAuth(app).resolveSignedInUserId() == null) return
+        val onDjango = EngineTransport(app).transportFor(EngineBackends.ASPECT_LEDGER) == Transport.DJANGO
+        val backend = EngineBackends(app).ledgerConfigBackend() ?: return
+        if (!onDjango && SupabaseAuth(app).resolveSignedInUserId() == null) return
         try {
-            val report = drain(app, SupabaseLedgerConfigBackend(client))
+            val report = drain(app, backend)
             MidnightEvents.ledgerConfigOutboxDrainSucceeded(report.succeeded, report.stillPending, report.poisoned)
         } catch (e: Exception) {
             MidnightEvents.ledgerConfigOutboxDrainFailed(e)
