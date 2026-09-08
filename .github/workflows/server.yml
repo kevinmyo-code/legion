@@ -1,0 +1,165 @@
+# CI for the Django engine (web-and-households ticket 08).
+#
+# What this is checking, and why each piece is the shape it is:
+#
+#   - **A real Postgres, never SQLite.** `server/tests/conftest.py` exits the whole session if
+#     `DATABASES['default']['ENGINE']` is not postgresql, on purpose (CLAUDE.md sections 4 and 5:
+#     the gate depends on Postgres numeric semantics and on triggers SQLite does not have). So the
+#     job brings up a `postgres:16` service container and points `DATABASE_URL` at it.
+#   - **The role needs CREATEDB.** pytest-django creates and drops its own test database per run,
+#     and `conftest.py` additionally refuses to apply the legacy test schema unless the connected
+#     database's name contains "test" - which it does, because Django names it `test_<NAME>`. The
+#     container's `postgres` superuser satisfies both.
+#   - **Every variable `legion/settings.py` calls `required_env()` on is set below.** That function
+#     raises naming the variable rather than falling back to a default (there is no Kevin-hosted
+#     default, CLAUDE.md section 7), so a missing one here is an import-time crash, not a test
+#     failure with a useful message.
+#   - **`LEGION_PG_URL` is deliberately NOT set.** It configures the `readonly` alias against the
+#     live Supabase database; `tests/test_legacy_models_readonly.py` carries a module-level
+#     `pytest.mark.skipif("readonly" not in settings.DATABASES)`, so those tests skip here exactly
+#     as they do on a machine without an agent's `.claude/mcp.env` loaded. CI must never hold a
+#     credential to the household's real database.
+#   - **Totals come from the JUnit XML, never the console summary** (CLAUDE.md section 6). pytest's
+#     exit code already fails the job; the XML step is what makes the number in the log a number
+#     somebody can check, and it fails if the file is missing or empty, which otherwise reads
+#     exactly like a pass.
+#
+# There is no `frontend.yml` beside this file yet: `server/frontend/` is web-and-households ticket
+# 04's to create, and a workflow for a directory that does not exist would be red on every push.
+
+name: Server
+
+on:
+  push:
+    paths:
+      - 'server/**'
+      - '.github/workflows/server.yml'
+  pull_request:
+    paths:
+      - 'server/**'
+      - '.github/workflows/server.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ruff, contract, pytest
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: legion
+        ports:
+          - 5432:5432
+        # Without a health check the first psycopg connection races the container's own
+        # initdb and fails with "the database system is starting up".
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      # Not a secret: a throwaway value for a throwaway database, and it is written here in the
+      # open on purpose so nobody mistakes it for one that matters. The real SECRET_KEY belongs to
+      # whatever runs the engine and is handed to it there; nothing in this repo, and nothing in
+      # Actions, ever holds its value.
+      SECRET_KEY: ci-only-not-a-real-secret-key-0000000000
+      DJANGO_DEBUG: 'false'
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      MEDIA_ROOT: /tmp/legion-media
+      # `legion/settings.py` parses this by hand and rejects any scheme that is not
+      # postgres/postgresql, then sets `search_path=django,public` on the connection.
+      # `core/migrations/0001_create_django_schema.py` creates the `django` schema itself -
+      # Postgres does not create a schema just because search_path names one.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/legion
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # NOT `uv sync`, and the reason is worth writing down: `server/pyproject.toml` has no
+      # `[project]` table and `server/uv.lock` locks zero packages (three lines: version,
+      # revision, requires-python). `uv sync` against them exits 0 having installed NOTHING -
+      # verified 2026-09-08 by running it against copies of both files - so a job that used it
+      # would fail later at `import django` with a confusing message. `requirements.txt` is the
+      # pinned set ("Pinned per ticket 01 ... so a clone reproduces this exact resolution"), and
+      # it is what actually reproduces the environment. If `pyproject.toml` ever grows a real
+      # `[project]` table with dependencies, this step becomes `uv sync --frozen`.
+      #
+      # Every `uv run` below carries `--no-sync` for the same reason: it must use the
+      # environment this step just built and never re-derive one from that empty lock.
+      - name: Create the environment from the pinned requirements
+        run: |
+          uv venv --python 3.13
+          uv pip install -r requirements.txt
+
+      - name: ruff
+        run: uv run --no-sync ruff check .
+
+      # The contract check, and it is the same failure the staleness test
+      # (`tests/test_openapi_schema.py`) raises - run here as its own step so a stale contract is
+      # named in one line instead of inside a nine-minute suite. `write_openapi` resolves the file
+      # from `settings.BASE_DIR`, so it writes `server/openapi.yaml` whatever the cwd.
+      #
+      # The pathspec is relative on purpose: this job's working directory is `server/`, and
+      # `git diff --exit-code server/openapi.yaml` from in here would match nothing and exit 0 -
+      # a check that passes because it looked in the wrong place is worse than no check.
+      - name: OpenAPI contract is not stale
+        run: |
+          uv run --no-sync manage.py write_openapi
+          git diff --exit-code -- openapi.yaml
+
+      - name: pytest
+        run: uv run --no-sync pytest --junitxml=junit.xml
+
+      # CLAUDE.md section 6: read the totals from the XML, never from the console summary. pytest's
+      # own exit code has already failed the job on a test failure; what this adds is a printed,
+      # checkable number and a hard failure when the XML is missing or reports zero tests - an
+      # empty results file reads exactly like a pass to anything that only looks at an exit code.
+      - name: Totals from the JUnit XML
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import sys, xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("junit.xml")
+          if not path.exists():
+              sys.exit("junit.xml was not written: pytest did not get far enough to report.")
+          root = ET.parse(path).getroot()
+          suites = root.findall("testsuite") or [root]
+          tests = sum(int(s.get("tests", 0)) for s in suites)
+          failures = sum(int(s.get("failures", 0)) for s in suites)
+          errors = sum(int(s.get("errors", 0)) for s in suites)
+          skipped = sum(int(s.get("skipped", 0)) for s in suites)
+          print(f"tests={tests} failures={failures} errors={errors} skipped={skipped}")
+          if tests == 0:
+              sys.exit("The XML reports zero tests. Nothing ran; that is not a pass.")
+          if failures or errors:
+              for case in root.iter("testcase"):
+                  if case.find("failure") is not None or case.find("error") is not None:
+                      print(f"  FAILED {case.get('classname')}::{case.get('name')}")
+              sys.exit(f"{failures} failures, {errors} errors.")
+          EOF
+
+      - name: Upload the JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-junit-xml
+          path: server/junit.xml
+          if-no-files-found: warn

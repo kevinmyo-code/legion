@@ -1,0 +1,171 @@
+# CI for the phone app (web-and-households ticket 08).
+#
+# The command is the one `.claude/skills/verify/SKILL.md` already runs before every commit, with
+# its exact task names - `compileDebugKotlin -Pnokey`, `testDebugUnitTest`, `:app:detekt`. A CI
+# that checked something slightly different from what a human runs locally would disagree with the
+# local verdict sooner or later, and the disagreement is what nobody would trust.
+#
+# Three things here are not obvious:
+#
+#   - **`-Pnokey` is the honest path.** It bakes an EMPTY Gemini/TomTom/AirNow key, which is what a
+#     stranger's clone gets (`app/build.gradle.kts`). A build that only compiles with a key in
+#     `local.properties` is not green, and CI has no keys.
+#   - **`gradlew` is committed non-executable** (mode 100644 - it was authored on Windows), so the
+#     runner cannot run `./gradlew` without a `chmod +x` first. This is not cosmetic; it is a hard
+#     "Permission denied" on the first step otherwise.
+#   - **Totals come from the JUnit XML, never Gradle's console summary** (CLAUDE.md section 6). The
+#     step below also fails when the results directory is EMPTY, because a missing results file
+#     reads exactly like a pass to anything that only checks an exit code.
+#
+# Roborazzi needs no task of its own: its screenshot tests are Robolectric unit tests that run
+# inside `testDebugUnitTest` and fail there on a golden diff (`app/src/test/snapshots/README.md`).
+# The record task is deliberately never run from CI - re-recording a baseline automatically would
+# turn every regression into the new truth.
+
+name: Android
+
+on:
+  push:
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: compile, unit tests, detekt
+    runs-on: ubuntu-latest
+    # The unit suite is ~3,500 tests including Robolectric and Roborazzi; the default 360-minute
+    # limit would let a hung Gradle daemon burn six hours of runner time before anyone noticed.
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 17, matched to the plugin rather than guessed: AGP 9.2.1's own
+      # `AndroidPluginBaseServices.minRequiredJavaVersion()` returns `JavaVersion.VERSION_17`
+      # (read from the AGP 9.2.1 sources jar, 2026-09-08). This is the JDK that RUNS Gradle; the
+      # bytecode the app compiles to is unchanged at Java 11, set by `compileOptions` /
+      # `kotlinOptions { jvmTarget = "11" }` in `app/build.gradle.kts`.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # `local.properties` is gitignored (it holds a machine's SDK path and, locally, the API
+      # keys). The runner image ships the Android SDK and exports ANDROID_SDK_ROOT/ANDROID_HOME,
+      # so the file is written from whichever of those is set rather than hardcoded.
+      - name: Point local.properties at the runner's SDK
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "${sdk}" ]; then
+            echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set on this runner."
+            exit 1
+          fi
+          echo "sdk.dir=${sdk}" > local.properties
+          cat local.properties
+
+      # compileSdk is 36. The runner image usually has it, but "usually" is how a build breaks on
+      # an image bump, so the platform is installed explicitly when an sdkmanager can be found.
+      # Licenses are accepted first because sdkmanager refuses to install otherwise; that command
+      # exits non-zero when `yes` closes the pipe early, which is why its status is ignored - the
+      # install below is the step that must actually succeed.
+      - name: Ensure the compileSdk platform is installed
+        run: |
+          set -uo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if command -v sdkmanager >/dev/null 2>&1; then
+            sdkmanager="sdkmanager"
+          elif [ -x "${sdk}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            sdkmanager="${sdk}/cmdline-tools/latest/bin/sdkmanager"
+          else
+            echo "No sdkmanager on this runner; leaving the SDK as the image shipped it."
+            exit 0
+          fi
+          yes | "${sdkmanager}" --licenses > /dev/null 2>&1 || true
+          "${sdkmanager}" "platforms;android-36" > /dev/null
+
+      - name: Make the Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Only the default branch writes the shared cache; every other ref reads it. Without
+          # this, a branch's one-off dependency set evicts entries the trunk build depends on.
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
+      # `--no-daemon`: a runner is a fresh VM that is destroyed afterwards, so a daemon left alive
+      # buys nothing and can hold the build open past the job.
+      - name: compile, test, detekt
+        run: ./gradlew compileDebugKotlin -Pnokey testDebugUnitTest :app:detekt --no-daemon
+
+      - name: Totals from the JUnit XML
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import glob, sys, xml.etree.ElementTree as ET
+
+          files = glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
+          tests = failures = errors = skipped = 0
+          failed_cases = []
+          for path in files:
+              root = ET.parse(path).getroot()
+              attrib = root.attrib
+              tests += int(attrib.get('tests', 0))
+              failures += int(attrib.get('failures', 0))
+              errors += int(attrib.get('errors', 0))
+              skipped += int(attrib.get('skipped', 0))
+              for case in root.iter('testcase'):
+                  if case.find('failure') is not None or case.find('error') is not None:
+                      failed_cases.append(f"{case.get('classname')}::{case.get('name')}")
+          print(f"files={len(files)} tests={tests} failures={failures} "
+                f"errors={errors} skipped={skipped}")
+          # An empty or missing results directory is a FAILURE, not a pass: it is what a build
+          # that never reached the test task looks like, and it is indistinguishable from success
+          # to anything that only reads an exit code.
+          if not files or tests == 0:
+              sys.exit("No test results were written. Nothing ran; that is not a pass.")
+          for name in failed_cases:
+              print(f"  FAILED {name}")
+          if failures or errors:
+              sys.exit(f"{failures} failures, {errors} errors.")
+          EOF
+
+      - name: Upload the unit-test XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-results
+          path: app/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: warn
+
+      # Only on failure, and only because a Roborazzi diff is unreadable as text: the whole point
+      # of a golden-image failure is that somebody opens the two pictures and the diff between
+      # them. `app/src/test/snapshots/` (the committed baselines) is deliberately NOT uploaded -
+      # it is already in the repo.
+      - name: Upload Roborazzi diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roborazzi-diffs
+          path: |
+            app/build/outputs/roborazzi/**
+            app/build/reports/roborazzi/**
+          if-no-files-found: ignore
