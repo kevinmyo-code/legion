@@ -265,9 +265,12 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 # Where `collectstatic` gathers everything, and where WhiteNoise serves from in
-# production. Ephemeral on Cloud Run, which is fine: unlike MEDIA_ROOT below,
-# nothing here is user data - it is build output, written into the image by the
-# Dockerfile (web-and-households ticket 09) and identical on every instance.
+# production. Deliberately says nothing about WHERE that runs: this comment
+# first read "ephemeral on Cloud Run", and hosting was reopened the same day it
+# was written (web-and-households ticket 12, the Oracle VM). Nothing here is
+# user data either way - it is build output, written into the image by the
+# Dockerfile (ticket 09) and identical on every instance, so a host that wipes
+# it on restart and one that does not are the same to this setting.
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # `server/static/` holds the Vite bundle under `app/`, written there by
