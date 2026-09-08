@@ -7,6 +7,8 @@ import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.backend.engine.engineRefusalSentence
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.TaggedPlace
@@ -45,6 +47,15 @@ object PlaceController {
     private const val TAG = "PlaceController"
 
     private const val MATCH_RADIUS_M = 150f
+
+    /** The local pre-validation cap, applied only where no server enforces one - see
+     * [normalizeLabel]'s own doc comment. Deliberately the SAME number as
+     * `server/api/places.py`'s `PlaceSerializer.LABEL_MAX_LENGTH`: while two copies of a rule
+     * exist, a client that refuses at a DIFFERENT length than the server does is worse than either
+     * one alone, because the two disagree about the same label. Named rather than inline so the
+     * duplication is visible to whoever deletes this guard the day `places` joins
+     * `DJANGO_BY_DEFAULT`. */
+    private const val MAX_LOCAL_LABEL_LENGTH = 30
 
     /**
      * Test seam: settable from a unit test so a [PlacesBackend] fake can be injected without a
@@ -102,13 +113,17 @@ object PlaceController {
      * supported - only "tag where I am right now".
      */
     suspend fun tagPlace(context: Context, rawLabel: String): String {
-        val label = normalizeLabel(rawLabel)
+        // Resolved BEFORE the label is normalized, because which transport this write is going to
+        // decides whether the local length cap applies at all - see [serverOwnsTheLabelCap]. This
+        // is a pure resolve with no network I/O (see [backend]'s own doc comment), so moving it
+        // above the GPS read costs nothing and changes no ordering that matters.
+        val backend = backend(context)
+        val label = normalizeLabel(rawLabel, capLength = !serverOwnsTheLabelCap(context, backend))
             ?: return "I didn't catch what to call this spot — try something like 'home' or 'work'."
 
         val loc = LocationController.state.value
             ?: return "I don't have a GPS lock yet, so I can't pin this spot. Give it a sec and try again."
 
-        val backend = backend(context)
         if (backend != null) {
             val remote = backend.upsert(label, loc.latitude, loc.longitude).getOrElse {
                 // A REFUSAL is relayed in the engine's own words; anything else keeps the generic
@@ -165,9 +180,14 @@ object PlaceController {
     /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found
      * or if the delete itself did not actually land (same §7 fix as [tagPlace]). */
     suspend fun forgetPlace(context: Context, rawLabel: String): String {
-        val label = normalizeLabel(rawLabel) ?: return "I'm not sure which place you mean."
-
+        // Same ordering and the same reason as [tagPlace] - and the cap has to be lifted on BOTH
+        // or the pair disagrees: a label the engine accepted for a tag must still be nameable when
+        // the user asks to forget it, or the app would answer "I'm not sure which place you mean"
+        // about a place it is currently showing them.
         val backend = backend(context)
+        val label = normalizeLabel(rawLabel, capLength = !serverOwnsTheLabelCap(context, backend))
+            ?: return "I'm not sure which place you mean."
+
         if (backend != null) {
             val didDelete = backend.softDelete(label).getOrElse {
                 return "I found \"$label\" but couldn't remove it just now - nothing was deleted."
@@ -268,6 +288,27 @@ object PlaceController {
     }
 
     /**
+     * True when the write this call is about to make will genuinely reach an engine that enforces
+     * the label length ITSELF - the only condition under which [normalizeLabel]'s local cap may
+     * stand down.
+     *
+     * **Both halves are load-bearing, and dropping either one reopens ticket 14's trap.** The
+     * transport must be [Transport.DJANGO] (Supabase's `public.places` has
+     * `check (length(trim(label)) > 0)` and no length bound at all), AND a backend must actually
+     * have resolved - a device set to Django with no engine address or token resolves to `null`
+     * here and falls through to the unconfigured branch, which writes STRAIGHT INTO ROOM with no
+     * server anywhere in the path. Testing only the transport would let a misheard sentence be
+     * stored as a place name on exactly that device.
+     *
+     * Reading [EngineTransport] rather than the CLASS of [backend] is deliberate, and matches the
+     * note in `BodyWriteThrough.write`: a [backendOverride] supplies a fake and says nothing about
+     * which transport is live, so a test wanting this path flips the transport row.
+     */
+    private fun serverOwnsTheLabelCap(context: Context, backend: PlacesBackend?): Boolean =
+        backend != null &&
+            EngineTransport(context).transportFor(EngineBackends.ASPECT_PLACES) == Transport.DJANGO
+
+    /**
      * Cleans a spoken label down to a name, or null when there is no usable name in it.
      *
      * **The 30-character cap now ALSO lives in the engine** (django-engine ticket 14):
@@ -275,22 +316,37 @@ object PlaceController {
      * sentence [tagPlace] relays verbatim, and `supabase/migrations/20260907000200_places_label_length.sql`
      * is the matching CHECK (UNAPPLIED as of 2026-09-07). The server is the authority.
      *
-     * **The Kotlin copy is still here, and deleting it today would lose the rule rather than move
-     * it.** Ticket 14 asks for the deletion, on the reasoning that [tagPlace] is a synchronous
-     * write-through with no outbox so the refusal reaches the user before anything is stored. That
-     * is true of the DJANGO transport. It is not true of the other two, and `places` is on neither
-     * of them by choice: [com.kevin.legion.backend.engine.EngineTransport.DJANGO_BY_DEFAULT] is
+     * **[capLength] is how that authority is honoured without losing the rule where the server has
+     * none.** Found on the A25 on 2026-09-07: a 31-character label was refused HERE, with "I didn't
+     * catch what to call this spot", and never reached the engine at all - so the sentence
+     * [engineRefusal] exists to relay was structurally unreachable, and the server's careful
+     * wording (it names the length, the limit, and what a name that long usually is) could never be
+     * read by anybody. That is a rule the server owns being pre-empted by a client copy, which is
+     * the exact drift ticket 14 was opened to remove.
+     *
+     * **The cap is lifted ONLY on the Django path, and that narrowness IS ticket 14's own trap.**
+     * That ticket asks for the Kotlin copy to be deleted outright, on the reasoning that [tagPlace]
+     * is a synchronous write-through with no outbox so the refusal reaches the user before anything
+     * is stored. That is true of the DJANGO transport and of no other:
+     * [com.kevin.legion.backend.engine.EngineTransport.DJANGO_BY_DEFAULT] is
      * `{"events", "checklists"}`, so an untouched install runs this aspect on Supabase - where
      * `public.places` has `check (length(trim(label)) > 0)` and no length bound at all - or, with
      * no project saved, straight into Room with no server in the path whatsoever. On both, deleting
-     * this line means a misheard sentence is simply stored as a place name.
+     * this line means a misheard sentence is simply stored as a place name, which is the "let Room
+     * accept a row the server would refuse" failure ticket 14 spells out for the eight guards it
+     * protects. So the guard stays, and steps aside only for the one caller with a real server
+     * behind it - [serverOwnsTheLabelCap] is how that is decided.
      *
-     * **So the deletion is owed the day `places` joins `DJANGO_BY_DEFAULT`, and not before.** Until
-     * then this is the pre-validation ADR 0042 explicitly permits ("a client may pre-validate for a
-     * faster error message, never as the only check") - it is no longer the only check, which is
-     * the half of that sentence this ticket actually fixed.
+     * **The deletion ticket 14 asks for is owed the day `places` joins `DJANGO_BY_DEFAULT`, and not
+     * before.** Until then this is the pre-validation ADR 0042 explicitly permits ("a client may
+     * pre-validate for a faster error message, never as the only check") - and on the transport
+     * where it is no longer the only check, it is no longer applied either.
+     *
+     * **The blank-label refusal is NOT conditional and never becomes so.** It is one of ticket 14's
+     * eight duplicates that must not be deleted, and unlike the length cap it costs nothing: a
+     * blank label has no server sentence worth reaching, because there is nothing to name.
      */
-    private fun normalizeLabel(raw: String): String? {
+    private fun normalizeLabel(raw: String, capLength: Boolean): String? {
         var s = raw.lowercase()
             .replace(Regex("\\bby the way\\b"), " ")
             .replace(Regex("\\b(location|place|spot|address)\\b"), " ")
@@ -298,7 +354,13 @@ object PlaceController {
             .replace(Regex("\\s+"), " ")
             .trim()
         s = s.removePrefix("my ").removePrefix("the ").removePrefix("a ").trim()
-        if (s.isBlank() || s.length > 30) return null
+        // Two distinct rules, named rather than run together, because only ONE of them is
+        // conditional: the blank guard always applies (ticket 14's own list of what must not be
+        // deleted), the length cap only where no server enforces one. They share a single `return`
+        // to stay under detekt's ReturnCount, not because they are the same rule.
+        val noNameInIt = s.isBlank()
+        val tooLongForThisTransport = capLength && s.length > MAX_LOCAL_LABEL_LENGTH
+        if (noNameInIt || tooLongForThisTransport) return null
 
         return when (s) {
             "work", "office", "job", "where i work" -> "work"

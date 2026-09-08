@@ -4,8 +4,11 @@ import android.location.Location
 import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.PlacesBackendException
 import com.kevin.legion.backend.RemotePlace
+import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.testutil.RoomTestReset
@@ -45,12 +48,19 @@ class PlaceControllerBackendTest {
     ) : PlacesBackend {
         val rows = seed.associateBy { it.label }.toMutableMap()
         var upsertCalls = 0
+
+        /** Every upsert the controller ATTEMPTED, including the ones this fake then refuses -
+         * where [upsertCalls] counts only the ones that stored a row. The label-cap tests below
+         * need the first number, because the whole question there is whether the request was made
+         * at all. */
+        var upsertAttempts = 0
         var clock = 1_000L
 
         override suspend fun fetchActive(): Result<List<RemotePlace>> =
             Result.success(rows.values.filterNot { it.deleted })
 
         override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> {
+            upsertAttempts++
             val refusal = upsertRefusal
             val failure: Throwable? = when {
                 refusal != null -> EngineHttpException(refusal)
@@ -313,5 +323,73 @@ class PlaceControllerBackendTest {
         }
         assertEquals("nothing may reach the server", 0, backend.upsertCalls)
         assertTrue(CarDatabase.getDatabase(context).placeDao().getAll().isEmpty())
+    }
+
+    /** 31 characters - one past `PlaceSerializer.LABEL_MAX_LENGTH`, which is the length
+     * [serverLabelRefusal] above is the engine's real answer to. */
+    private val tooLongLabel = "coffee shop on north westheimer"
+
+    @Test
+    fun `on Supabase the local label cap still applies and nothing reaches the server`() = runBlocking {
+        // The trap from django-engine ticket 14, held as a test: `public.places` has
+        // `check (length(trim(label)) > 0)` and NO length bound, and this transport writes the
+        // replica off a server ACK that would happily arrive. Deleting the local cap here does not
+        // move the rule to a server - it deletes the rule.
+        assertEquals(
+            "this test is only meaningful while places still defaults to Supabase",
+            Transport.SUPABASE,
+            EngineTransport(context).transportFor(EngineBackends.ASPECT_PLACES),
+        )
+        val backend = FakePlacesBackend()
+        PlaceController.backendOverride = backend
+
+        val result = PlaceController.tagPlace(context, tooLongLabel)
+
+        assertEquals("nothing in normalizeLabel shortens this one", 31, tooLongLabel.length)
+        assertTrue("the local guard is what answers here: was <$result>", result.contains("didn't catch"))
+        assertEquals("and nothing may be attempted against the server", 0, backend.upsertAttempts)
+        assertTrue(CarDatabase.getDatabase(context).placeDao().getAll().isEmpty())
+    }
+
+    @Test
+    fun `on Django the label cap defers to the server, whose sentence reaches the user`() = runBlocking {
+        // The A25 defect of 2026-09-07: the local cap returned "I didn't catch what to call this
+        // spot" and the request was never made, so PlaceController.engineRefusal - a function whose
+        // own doc names this exact case as what it relays - could not fire. The engine's wording is
+        // the deliverable: it names the length, the limit, and what a name that long usually is.
+        EngineTransport(context).setTransport(EngineBackends.ASPECT_PLACES, Transport.DJANGO)
+        val backend = FakePlacesBackend(upsertRefusal = EngineFailure.Refused(400, serverLabelRefusal))
+        PlaceController.backendOverride = backend
+
+        val result = PlaceController.tagPlace(context, tooLongLabel)
+
+        assertEquals("the request must actually be made", 1, backend.upsertAttempts)
+        assertTrue(
+            "the engine's own explanation must reach the user: was <$result>",
+            result.contains("31 characters long") && result.contains("at most 30"),
+        )
+        assertFalse("the local guard's sentence must not be what answers", result.contains("didn't catch"))
+        assertTrue(
+            "a refused write still writes nothing",
+            CarDatabase.getDatabase(context).placeDao().getAll().isEmpty(),
+        )
+    }
+
+    @Test
+    fun `on Django with no engine resolved, the local cap is still the only guard there is`() = runBlocking {
+        // Transport flipped but NO backend - a device set to Django with no address or token. The
+        // unconfigured branch writes straight into Room with no server in the path, so lifting the
+        // cap on the transport alone would store a misheard sentence as a place name. This is the
+        // half of serverOwnsTheLabelCap that is easy to drop and impossible to notice.
+        EngineTransport(context).setTransport(EngineBackends.ASPECT_PLACES, Transport.DJANGO)
+        PlaceController.backendOverride = null
+
+        val result = PlaceController.tagPlace(context, tooLongLabel)
+
+        assertTrue("the local guard must still answer: was <$result>", result.contains("didn't catch"))
+        assertTrue(
+            "and nothing may be stored locally either",
+            CarDatabase.getDatabase(context).placeDao().getAll().isEmpty(),
+        )
     }
 }

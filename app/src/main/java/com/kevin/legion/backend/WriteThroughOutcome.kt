@@ -2,6 +2,7 @@ package com.kevin.legion.backend
 
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.backend.engine.engineRefusalSentence
 
 /**
  * What one write-through attempt actually did, for the aspects that push BEFORE they write
@@ -61,10 +62,31 @@ sealed interface WriteThroughOutcome<out T> {
  * [EngineFailure.Unauthorized] is likewise not a refusal of the ROW - the device's token is wrong,
  * which says nothing about the write - so it queues too, and the queue's own bounded attempts
  * ([BodyOutboxDrain.MAX_ATTEMPTS]) stop it retrying forever.
+ *
+ * **The sentence is UNWRAPPED from DRF's envelope; [EngineFailure.Refused.body] stays verbatim.**
+ * This function used to return `failure.body` itself, which put the raw envelope in front of the
+ * user: on the A25 on 2026-09-07 a rejected workout set was read out as
+ * `That set didn't go through: {"reps":["0 is not a valid reps. It must be greater than 0."]}`,
+ * and [MemoryOutbox] leaked identically because it calls this same function. [engineRefusalSentence]
+ * was written for exactly this and was simply not called from here. It is presentation and nothing
+ * else - it never rewords, never shortens, and hands a body it cannot parse (the gate answers with
+ * a plain sentence, not JSON) straight back untouched - so every behavioural decision that reads
+ * [EngineFailure.Refused.body] still sees the engine's bytes. That split is the one
+ * [engineRefusalSentence]'s own doc comment already documents.
  */
 internal fun refusalSentence(cause: Throwable?): String? {
     val failure = (cause as? EngineHttpException)?.failure as? EngineFailure.Refused ?: return null
-    return if (failure.status in CLIENT_ERROR_MIN..CLIENT_ERROR_MAX) failure.body else null
+    // No `takeIf { it.isNotBlank() }` here, deliberately, unlike
+    // [com.kevin.legion.location.PlaceController.engineRefusal]: that one falls back to its own
+    // generic sentence, where a null from HERE means "not a refusal" and would send a row the
+    // server has already rejected into the outbox to be retried until it poisons. An empty 4xx
+    // body stays an empty refusal, exactly as it was before the unwrapping was added, so this
+    // change moves no branch.
+    return if (failure.status in CLIENT_ERROR_MIN..CLIENT_ERROR_MAX) {
+        engineRefusalSentence(failure.body)
+    } else {
+        null
+    }
 }
 
 /** 400-499, spelled as two constants rather than one `400..499` range purely because detekt's

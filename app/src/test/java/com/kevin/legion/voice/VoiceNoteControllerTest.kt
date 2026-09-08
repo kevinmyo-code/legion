@@ -3,6 +3,12 @@ package com.kevin.legion.voice
 import com.kevin.legion.backend.RemoteVoiceNote
 import com.kevin.legion.backend.VoiceNoteFields
 import com.kevin.legion.backend.VoiceNotesBackend
+import com.kevin.legion.backend.VoiceNotesBackendException
+import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.VoiceNote
 import com.kevin.legion.data.local.VoiceNoteKind
@@ -320,15 +326,146 @@ class VoiceNoteControllerTest {
     // -------------------------------------------------------------------- rename
 
     @Test
-    fun `rename updates the title and reports false for an unknown id`() = runControllerTest {
+    fun `rename updates the title and reports NotFound for an unknown id`() = runControllerTest {
         val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
         VoiceNoteController.stop(context)
 
-        assertTrue(VoiceNoteController.rename(context, started.noteId, "Standup notes"))
+        assertEquals(
+            VoiceNoteController.RenameResult.Renamed,
+            VoiceNoteController.rename(context, started.noteId, "Standup notes"),
+        )
         assertEquals("Standup notes", dao().getById(started.noteId)!!.title)
 
-        assertFalse("a rename against an id with no row must report false, never a rename that happened",
-            VoiceNoteController.rename(context, 999_999L, "Nothing"))
+        assertEquals(
+            "a rename against an id with no row must never be reported as a rename that happened",
+            VoiceNoteController.RenameResult.NotFound,
+            VoiceNoteController.rename(context, 999_999L, "Nothing"),
+        )
+    }
+
+    /** Flips `voice_notes` to the engine. The override supplies the BACKEND; the transport supplies
+     * the ORDER, and they are separate knobs on purpose - the same split `BodyWriteThrough.write`'s
+     * own doc comment records. */
+    private fun voiceNotesOnDjango() =
+        EngineTransport(context).setTransport(EngineBackends.ASPECT_VOICE_NOTES, Transport.DJANGO)
+
+    @Test
+    fun `on Django a refused rename writes nothing to Room and hands back the server's sentence`() =
+        runControllerTest {
+            // The A25 defect of 2026-09-07: rename did `dao.update` FIRST and swallowed the push
+            // failure into a Log.w, then returned true regardless. Room kept a title the server had
+            // rejected, and the user was told it worked.
+            voiceNotesOnDjango()
+            val backend = FakeVoiceNotesBackend()
+            VoiceNoteController.backendOverride = backend
+            val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
+            VoiceNoteController.stop(context)
+            val titleBefore = dao().getById(started.noteId)!!.title
+
+            backend.upsertResult = Result.failure(
+                EngineHttpException(
+                    EngineFailure.Refused(400, """{"title":["This field may not be blank."]}"""),
+                ),
+            )
+            val result = VoiceNoteController.rename(context, started.noteId, "   ")
+
+            assertTrue(
+                "a refusal is its own branch, never Renamed",
+                result is VoiceNoteController.RenameResult.Refused,
+            )
+            assertEquals(
+                "the engine's own sentence, unwrapped from DRF's envelope",
+                "This field may not be blank.",
+                (result as VoiceNoteController.RenameResult.Refused).message,
+            )
+            assertEquals(
+                "a refused rename must leave Room exactly as it was",
+                titleBefore,
+                dao().getById(started.noteId)!!.title,
+            )
+        }
+
+    @Test
+    fun `on Django an unreachable engine renames locally and says the server does not have it`() =
+        runControllerTest {
+            voiceNotesOnDjango()
+            val backend = FakeVoiceNotesBackend()
+            VoiceNoteController.backendOverride = backend
+            val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
+            VoiceNoteController.stop(context)
+
+            backend.upsertResult = Result.failure(
+                EngineHttpException(
+                    EngineFailure.Unreachable(
+                        "http://192.168.1.117:8000",
+                        "Nothing was sent - the engine is unreachable.",
+                    ),
+                ),
+            )
+            val result = VoiceNoteController.rename(context, started.noteId, "Kitchen notes")
+
+            assertTrue(
+                "an unreachable engine is a fault, not a refusal",
+                result is VoiceNoteController.RenameResult.SavedOnThisPhoneOnly,
+            )
+            val message = (result as VoiceNoteController.RenameResult.SavedOnThisPhoneOnly).message
+            assertTrue("the divergence is stated, not implied: <$message>", message.contains("server didn't get it"))
+            assertFalse(
+                "and it must never claim a queue - voice notes has no outbox: <$message>",
+                message.contains("queued"),
+            )
+            assertEquals(
+                "the rename IS applied locally on this branch",
+                "Kitchen notes",
+                dao().getById(started.noteId)!!.title,
+            )
+        }
+
+    @Test
+    fun `no audio is ever sent on a rename`() = runControllerTest {
+        // Verified working on the A25 and required to stay that way. The guarantee is structural -
+        // VoiceNoteFields has no audio field and `public.voice_notes` has no such column - and this
+        // asserts the push shape the new server-first path actually builds rather than trusting it.
+        voiceNotesOnDjango()
+        val backend = FakeVoiceNotesBackend()
+        VoiceNoteController.backendOverride = backend
+        val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
+        VoiceNoteController.stop(context)
+        val audioPath = dao().getById(started.noteId)!!.audioPath
+        assertTrue("the row really does hold a local audio path that could leak", audioPath != null)
+
+        VoiceNoteController.rename(context, started.noteId, "Kitchen notes")
+
+        val pushed = backend.upserts.map { it.second }
+        assertTrue("the rename must actually have pushed", pushed.isNotEmpty())
+        for (fields in pushed) {
+            assertFalse(
+                "no field on the wire may carry the audio path",
+                listOfNotNull(fields.title, fields.summary, fields.transcript).any { it.contains("voicenotes") },
+            )
+        }
+        assertTrue("and the local file is untouched by a rename", File(audioPath!!).exists())
+    }
+
+    @Test
+    fun `on Supabase a rename behaves exactly as it did before this ticket`() = runControllerTest {
+        // No setTransport call: voice_notes defaults to SUPABASE and this install has not flipped.
+        assertEquals(
+            Transport.SUPABASE,
+            EngineTransport(context).transportFor(EngineBackends.ASPECT_VOICE_NOTES),
+        )
+        val backend = FakeVoiceNotesBackend()
+        VoiceNoteController.backendOverride = backend
+        val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
+        VoiceNoteController.stop(context)
+
+        backend.upsertResult = Result.failure(VoiceNotesBackendException("simulated network failure"))
+        val result = VoiceNoteController.rename(context, started.noteId, "Standup notes")
+
+        // The old behaviour, unchanged and deliberately so: local write first, push after, failure
+        // logged and swallowed, and the caller told the rename happened.
+        assertEquals(VoiceNoteController.RenameResult.Renamed, result)
+        assertEquals("Standup notes", dao().getById(started.noteId)!!.title)
     }
 
     // -------------------------------------------------------------------- delete (ADR 0041 cascade)

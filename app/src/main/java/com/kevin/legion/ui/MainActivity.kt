@@ -330,6 +330,21 @@ class MainActivity : ComponentActivity() {
         // from is retired in the same change that added these three calls.
         com.kevin.legion.backend.PlacesReconcile.maybeAutoRun(applicationContext)
         com.kevin.legion.backend.PantryReconcile.maybeAutoRun(applicationContext)
+        // The two server-to-phone paths that did not exist until 2026-09-07, both found missing on
+        // the A25: a place inserted server-side never arrived across SYNC NOW, a re-entry and a cold
+        // start, and voice notes had no pull of any kind (DjangoVoiceNotesBackend.fetchChangedSince
+        // had no caller at all). PlacesReconcile immediately above is NOT the missing half - it
+        // stands down entirely on the Django transport, by design, and is an upload in any case.
+        //
+        // Placed here rather than inside a lifecycleScope block because neither has an outbox to
+        // drain first: PlaceController is pure write-through with no queue, and VoiceNoteController
+        // pushes on the same call that writes. The drain-then-pull ordering every block above
+        // argues for has no subject on these two, so each is a self-contained fire-and-forget call
+        // with its own throttle and its own "not on Django / no token" guard - the same shape as
+        // the two reconciles just above. Both no-op silently on an install that has not flipped its
+        // transport row, which is every install by default.
+        com.kevin.legion.backend.PlacesSync.maybeAutoPull(applicationContext)
+        com.kevin.legion.backend.VoiceNotesSync.maybeAutoPull(applicationContext)
         // FleetReconcile and FleetSync BOTH write `vehicles_replica`, so they are sequenced in one
         // coroutine rather than launched as two independent fire-and-forget calls.
         //

@@ -1,7 +1,9 @@
 package com.kevin.legion.backend.engine
 
 import com.kevin.legion.backend.PlacesBackend
+import com.kevin.legion.backend.PlacesIncrementalPull
 import com.kevin.legion.backend.RemotePlace
+import java.time.Instant
 import java.time.OffsetDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -81,7 +83,7 @@ private data class DjangoPlaceWrite(
  * does not have would make "did that save?" depend on which row the debug Setup screen has flipped,
  * which is the kind of divergence the whole two-transport period exists to avoid.
  */
-class DjangoPlacesBackend(http: EngineHttp) : PlacesBackend {
+class DjangoPlacesBackend(http: EngineHttp) : PlacesBackend, PlacesIncrementalPull {
 
     private val table = EngineSyncedTable(
         http = http,
@@ -96,6 +98,23 @@ class DjangoPlacesBackend(http: EngineHttp) : PlacesBackend {
             // interface's contract is "every active (not soft-deleted) place row", and this is
             // the route that answers exactly that question.
             table.fetchActive().map { it.toRemote() }
+        }
+
+    /**
+     * The incremental pull, `GET /api/places/?since=<iso>` - **tombstones included**, paged.
+     *
+     * **`fetchActive` above could not have served [com.kevin.legion.backend.PlacesSync], and that
+     * is why this exists.** `?active=1` narrows to `deleted_at is null` server-side, so a place
+     * forgotten on the web limb simply stops appearing in that feed - indistinguishable from a
+     * place that was never there. The merge's tombstone branch needs the row itself, carrying its
+     * `deleted_at`, which is what `?since=` answers with.
+     *
+     * See [PlacesIncrementalPull] for why this is a second interface rather than a third function
+     * on [PlacesBackend].
+     */
+    override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemotePlace>> =
+        translatingEngineCall("load changed places") {
+            table.fetchChangedSince(Instant.ofEpochMilli(sinceMs).toString()).map { it.toRemote() }
         }
 
     override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> =

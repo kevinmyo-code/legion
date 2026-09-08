@@ -158,6 +158,55 @@ class BodyServerFirstWriteTest {
         assertEquals("and the push was actually attempted", 1, backend.setLogPushes)
     }
 
+    /**
+     * The A25 defect of 2026-09-07, in a test: the raw DRF envelope reached the user as
+     * `That set didn't go through: {"reps":["0 is not a valid reps. It must be greater than 0."]}`.
+     * Every real refusal from `server/api/body.py` arrives in this shape - a serializer's
+     * `ValidationError` on a named field - so the case above (a bare sentence in the body) is the
+     * one that never happens in production and this one is the one that always does.
+     */
+    @Test
+    fun `a DRF field-error body reaches the user as a readable sentence, not JSON`() = runBlocking {
+        onDjango()
+        backend.setLogResult = refused(400, """{"reps":["0 is not a valid reps. It must be greater than 0."]}""")
+
+        val outcome = logOneSet()
+
+        assertFalse("a refused write is not a success", outcome.success)
+        assertEquals(
+            "the envelope is gone and the engine's own sentence is all that is left",
+            "That set didn't go through: 0 is not a valid reps. It must be greater than 0.",
+            outcome.message,
+        )
+        assertFalse("no brace may survive into spoken copy: ${outcome.message}", outcome.message.contains("{"))
+        assertFalse("nor an escaped quote: ${outcome.message}", outcome.message.contains("\\\""))
+    }
+
+    /**
+     * DRF's other refusal shape, `{"detail": ...}` - what an `APIException` renders as, where the
+     * case above is what a serializer's per-field `ValidationError` renders as. Unwrapped by the
+     * same helper and read out the same way.
+     *
+     * **400, not 403, and that is not an arbitrary choice.** `EngineHttp.classify` files 401 and
+     * 403 under [EngineFailure.Unauthorized], never under [EngineFailure.Refused] - see
+     * [com.kevin.legion.location.PlaceController.engineRefusal]'s own doc comment - so a
+     * `Refused(403, ...)` is a shape production can never produce and testing it would prove
+     * nothing about the app.
+     */
+    @Test
+    fun `a DRF detail body reads the same way`() = runBlocking {
+        onDjango()
+        backend.setLogResult = refused(400, """{"detail":"JSON parse error - Expecting value."}""")
+
+        val outcome = logOneSet()
+
+        assertFalse(outcome.success)
+        assertEquals(
+            "That set didn't go through: JSON parse error - Expecting value.",
+            outcome.message,
+        )
+    }
+
     @Test
     fun `a 500 is not a refusal - the write lands locally, queues, and says so`() = runBlocking {
         onDjango()

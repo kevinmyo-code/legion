@@ -295,6 +295,26 @@ fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
 }
 
 /**
+ * The line to show after a rename, or null when there is nothing to say because it simply worked.
+ *
+ * Pure and file-visible rather than inline in [VoiceNoteDetailScreen], for two reasons: that
+ * composable already sits at detekt's cyclomatic-complexity ceiling, and the WORDING is the
+ * deliverable here - a screen that renders the server's refusal is only useful if the refusal
+ * actually reaches this function, and that is checkable without a Compose harness.
+ *
+ * [VoiceNoteController.RenameResult.Refused] and
+ * [VoiceNoteController.RenameResult.SavedOnThisPhoneOnly] both carry a sentence written to be read
+ * by a person - the engine's own words in the first case - and neither is reworded here.
+ */
+internal fun renameNotice(result: VoiceNoteController.RenameResult): String? = when (result) {
+    VoiceNoteController.RenameResult.Renamed -> null
+    VoiceNoteController.RenameResult.NotFound ->
+        "That recording is no longer here, so nothing was renamed."
+    is VoiceNoteController.RenameResult.Refused -> result.message
+    is VoiceNoteController.RenameResult.SavedOnThisPhoneOnly -> result.message
+}
+
+/**
  * Detail: full transcript, summary, playback, rename, delete. Every write here - rename, delete -
  * calls [VoiceNoteController] directly, same call the voice tools make.
  *
@@ -316,6 +336,13 @@ fun VoiceNoteDetailScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
+
+    /** What the last rename actually did, when that was anything other than a plain success -
+     * the server's own sentence on a refusal, or "renamed here, not on the server" when the engine
+     * could not be reached. `VoiceNoteController.rename` used to return a bare Boolean this screen
+     * discarded, so a rename the server rejected closed the dialog with nothing said. Rendered
+     * beside [deleteError], which already had this shape. */
+    var renameError by remember { mutableStateOf<String?>(null) }
     var playing by remember { mutableStateOf(false) }
     // Local, immediate feedback that the tap registered - VoiceNoteController.retryTranscription
     // is fire-and-forget (same shape stop() itself uses), so this reads "Retrying..." the instant
@@ -334,7 +361,14 @@ fun VoiceNoteDetailScreen(
             onDismiss = { showRenameDialog = false },
             onRename = { newTitle ->
                 scope.launch {
-                    VoiceNoteController.rename(context, note.id, newTitle)
+                    // The result is surfaced rather than discarded, the same way `delete` already
+                    // surfaces its own Failed branch just below. `rename` used to return a bare
+                    // Boolean that was `true` even when the push failed; it is now server-first on
+                    // the engine and reports the server's own words on a refusal. The branch-to-
+                    // sentence mapping lives in the pure [renameNotice] below rather than inline,
+                    // both because a composable this size is already at detekt's complexity ceiling
+                    // and because the WORDING is worth being able to test without a screen.
+                    renameError = renameNotice(VoiceNoteController.rename(context, note.id, newTitle))
                     showRenameDialog = false
                     onRenamed()
                 }
@@ -377,6 +411,10 @@ fun VoiceNoteDetailScreen(
                 }
             }
             deleteError?.let {
+                Text(it, style = LegionType.stamp, color = LocalLegionSemantics.current.estimated,
+                    modifier = Modifier.padding(horizontal = 12.dp))
+            }
+            renameError?.let {
                 Text(it, style = LegionType.stamp, color = LocalLegionSemantics.current.estimated,
                     modifier = Modifier.padding(horizontal = 12.dp))
             }

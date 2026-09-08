@@ -1429,6 +1429,21 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
     var showTagDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<TaggedPlace?>(null) }
 
+    /**
+     * What the last tag or forget actually SAID. Both [PlaceController.tagPlace] and
+     * [PlaceController.forgetPlace] return a sentence - an ack, or a refusal in the engine's own
+     * words - and this screen discarded both, so a place the server refused (an over-long label is
+     * the case found on the A25 on 2026-09-07) simply closed the dialog and left the list unchanged
+     * with nothing said at all. CLAUDE.md §7: a failure result has to say in words what did not
+     * happen, and a sentence nobody renders says nothing.
+     *
+     * **Persistent until the next action, never auto-cleared on a timer**, unlike
+     * `AssistantStrip`'s flashed notice: that one accompanies speech the user has already heard,
+     * where this is the only account of the write there is. A refusal that fades before it is read
+     * is the same defect in a slower form.
+     */
+    var lastActionMessage by remember { mutableStateOf<String?>(null) }
+
     // Same shape TodayScreen/NotesScreen's own calendar-grant launchers use: request, then bump
     // a reload nonce so the screen re-queries on the same load path a fresh open uses.
     val requestLocation = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -1494,6 +1509,18 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            // The controller's own sentence, rendered rather than dropped - see
+            // [lastActionMessage]. A DeckPane rather than a bare Text so a refusal reads as a
+            // reported state on this screen's own furniture, and because the message can run to
+            // two or three lines (the engine's label refusal names the length, the limit and what
+            // a name that long usually is) which neither DeckRow nor DeckFeedRow will wrap.
+            lastActionMessage?.let { message ->
+                Spacer(Modifier.height(12.dp))
+                com.kevin.legion.ui.common.DeckPane(header = "Last action") {
+                    Text(message, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
 
             if (places.isEmpty()) {
@@ -1528,7 +1555,9 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
             onDismiss = { showTagDialog = false },
             onTag = { label ->
                 scope.launch {
-                    PlaceController.tagPlace(context, label)
+                    // The return value IS the outcome - ack or refusal, in the engine's own words
+                    // when the server is the one that said no. Discarding it was the defect.
+                    lastActionMessage = PlaceController.tagPlace(context, label)
                     showTagDialog = false
                     reloadNonce++
                 }
@@ -1542,7 +1571,11 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
             onDismiss = { pendingDelete = null },
             onConfirm = {
                 scope.launch {
-                    PlaceController.forgetPlace(context, place.label)
+                    // Same discard, same fix: forgetPlace reports "I don't have a saved place
+                    // called ..." and "I found ... but couldn't remove it just now - nothing was
+                    // deleted", and both used to vanish. The brief named only onTag; leaving this
+                    // one silent would have kept half the defect on the same screen.
+                    lastActionMessage = PlaceController.forgetPlace(context, place.label)
                     pendingDelete = null
                     reloadNonce++
                 }

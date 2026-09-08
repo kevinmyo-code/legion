@@ -110,6 +110,31 @@ class MemoryServerFirstWriteTest {
         assertEquals(1, backend.companionPushes)
     }
 
+    /**
+     * Memory shares [refusalSentence] with body, so it leaked the raw DRF envelope identically -
+     * see that function's own doc comment for the sentence the A25 spoke on 2026-09-07. This is
+     * the same fix seen from the other caller, because the same helper serves both and a fix
+     * proven on one says nothing about the other reaching it.
+     */
+    @Test
+    fun `a DRF field-error body is unwrapped before it reaches the caller`() = runBlocking {
+        onDjango()
+        backend.companionResult = Result.failure(
+            EngineHttpException(EngineFailure.Refused(400, """{"text":["This field may not be blank."]}""")),
+        )
+
+        val outcome = MemoryWriteThrough.addCompanionMemory(context, freshMemory())
+
+        assertTrue(outcome is WriteThroughOutcome.Refused)
+        assertEquals(
+            "This field may not be blank.",
+            (outcome as WriteThroughOutcome.Refused).message,
+        )
+        val db = CarDatabase.getDatabase(context)
+        assertTrue("still nothing written", db.companionMemoryDao().getAll().isEmpty())
+        assertTrue("still nothing queued", db.outboxDao().getAll().isEmpty())
+    }
+
     @Test
     fun `a 500 keeps the memory and queues it, and is not reported as a refusal`() = runBlocking {
         onDjango()

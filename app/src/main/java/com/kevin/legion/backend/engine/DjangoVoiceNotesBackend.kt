@@ -3,6 +3,7 @@ package com.kevin.legion.backend.engine
 import com.kevin.legion.backend.RemoteVoiceNote
 import com.kevin.legion.backend.VoiceNoteFields
 import com.kevin.legion.backend.VoiceNotesBackend
+import com.kevin.legion.backend.VoiceNotesIncrementalPull
 import java.time.Instant
 import java.time.OffsetDateTime
 import kotlinx.serialization.SerialName
@@ -115,7 +116,7 @@ private data class DjangoVoiceNoteWrite(
  * evidence discarded. The refusal arrives here as [EngineFailure.Refused] carrying the server's
  * sentence verbatim - [prefixEngineFailure] deliberately does not prefix that branch.
  */
-class DjangoVoiceNotesBackend(http: EngineHttp) : VoiceNotesBackend {
+class DjangoVoiceNotesBackend(http: EngineHttp) : VoiceNotesBackend, VoiceNotesIncrementalPull {
 
     private val table = EngineSyncedTable(
         http = http,
@@ -132,20 +133,23 @@ class DjangoVoiceNotesBackend(http: EngineHttp) : VoiceNotesBackend {
     /**
      * The incremental pull, `GET /api/voice_notes/?since=<iso>` - **tombstones included**, paged.
      *
-     * **This is NOT on [VoiceNotesBackend], deliberately.** That interface has only a full
-     * `fetchActive` today because there is no `VoiceNotesSync` at all: nothing merges voice notes
-     * into Room from a watermark yet, so adding `fetchChangedSince` to the interface would oblige
-     * `SupabaseVoiceNotesBackend` to grow an implementation with no caller on either transport.
-     * The capability is built and tested here, on the transport that has it, so the sync this
-     * aspect still owes can be written against a pull that already exists rather than inventing
-     * one at the same time as the merge rules.
+     * **This is NOT on [VoiceNotesBackend], and the reason has changed.** This comment used to say
+     * the function had no caller at all - "there is no `VoiceNotesSync`... the capability is built
+     * and tested here, on the transport that has it, so the sync this aspect still owes can be
+     * written against a pull that already exists". [com.kevin.legion.backend.VoiceNotesSync] is
+     * that owed sync and it exists now (built 2026-09-07, after the A25 run found this function
+     * with no caller and voice notes with no server-to-phone path at all). What has NOT changed is
+     * why it stays off [VoiceNotesBackend]: adding it there would oblige
+     * [com.kevin.legion.backend.SupabaseVoiceNotesBackend] to grow an implementation with no caller
+     * on that transport. It is declared on [VoiceNotesIncrementalPull] instead, which only this
+     * class implements - see that interface's own doc comment.
      *
      * **Tombstones are not filtered.** A soft-deleted row is precisely what a merge's tombstone
      * branch exists to receive - the bug [com.kevin.legion.backend.EventsBackend.fetchChangedSince]'s
      * own doc comment traces at length for the `fetchActive`-only shape, avoided here from the
      * start.
      */
-    suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteVoiceNote>> =
+    override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteVoiceNote>> =
         translatingEngineCall("load changed recordings") {
             table.fetchChangedSince(Instant.ofEpochMilli(sinceMs).toString()).map { it.toRemote() }
         }

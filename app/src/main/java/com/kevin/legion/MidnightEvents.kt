@@ -277,6 +277,46 @@ object MidnightEvents {
         Log.w(TAG, "places_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /**
+     * A foreground [com.kevin.legion.backend.PlacesSync.maybeAutoPull] pass completed - the
+     * server-to-phone half of `places`, which had no mechanism at all before 2026-09-07. Distinct
+     * from [placesAutoReconcileSucceeded] just above, which is the Supabase-era engine-retirement
+     * UPLOAD and stands down entirely on the Django transport.
+     */
+    fun placesAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, skippedTombstoneNoLocalMatch: Int) = safe {
+        Log.d(
+            TAG,
+            "places_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch",
+        )
+    }
+
+    /** [com.kevin.legion.backend.PlacesSync.maybeAutoPull] failed - degraded to this log line,
+     * same posture as [bodyAutoPullFailed]. */
+    fun placesAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "places_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /**
+     * A foreground [com.kevin.legion.backend.VoiceNotesSync.maybeAutoPull] pass completed.
+     * [skippedNoTranscript] has no counterpart on any other aspect's pull line: it counts server
+     * rows this phone declined to insert because they carry no transcript and this phone holds no
+     * audio for them, so the row would have no anchor at all - see that sync's own `mergeInto`.
+     */
+    fun voiceNotesAutoPullSucceeded(inserted: Int, updated: Int, tombstoned: Int, skippedTombstoneNoLocalMatch: Int, skippedNoTranscript: Int) = safe {
+        Log.d(
+            TAG,
+            "voice_notes_auto_pull inserted=$inserted updated=$updated tombstoned=$tombstoned " +
+                "skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch skippedNoTranscript=$skippedNoTranscript",
+        )
+    }
+
+    /** [com.kevin.legion.backend.VoiceNotesSync.maybeAutoPull] failed - degraded to this log line,
+     * same posture as [bodyAutoPullFailed]. */
+    fun voiceNotesAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "voice_notes_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A foreground [com.kevin.legion.backend.PantryReconcile.maybeAutoRun] pass completed - same
      * "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. Pantry's only backfill
      * mechanism (`ui/settings/BackendMigrationScreen.kt`'s retirement, live-sync ticket 05). */

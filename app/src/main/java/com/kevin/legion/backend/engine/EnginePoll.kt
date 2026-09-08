@@ -118,6 +118,21 @@ class EnginePoll(
          * be one more thing to get wrong on a household server nobody is paying per request for. */
         const val DEFAULT_INTERVAL_MS = 60_000L
 
+        /**
+         * **Two aspects, and the two that were added on 2026-09-07 deliberately are not here.**
+         * [com.kevin.legion.backend.PlacesSync] and [com.kevin.legion.backend.VoiceNotesSync] both
+         * gained a pull that day and both stayed out of this list, each for its own reason stated
+         * in its own `maybeAutoPull` doc comment: a saved place changes a handful of times a year
+         * and is read from the Room replica on the geofence hot path, so a request a minute buys
+         * freshness nobody is waiting for; and voice notes are sync-and-not-Realtime by Kevin's own
+         * 2026-09-04 ruling, which this poll IS the Realtime replacement for - adding them here
+         * would re-adopt by the back door the mechanism that ruling declines. Both are served by
+         * the foreground cold-start-and-resume pull instead, which is the mechanism that
+         * demonstrably delivered body's server-side change on the A25.
+         *
+         * A third entry is a decision about that aspect's read pattern, not a line to add because
+         * the aspect happens to be on Django.
+         */
         private val COVERED_ASPECTS =
             listOf(EngineBackends.ASPECT_EVENTS, EngineBackends.ASPECT_CHECKLISTS)
 

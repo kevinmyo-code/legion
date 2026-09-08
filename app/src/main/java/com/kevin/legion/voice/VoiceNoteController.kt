@@ -6,6 +6,11 @@ import com.kevin.legion.ai.VoiceNoteAgent
 import com.kevin.legion.backend.VoiceNoteFields
 import com.kevin.legion.backend.VoiceNotesBackend
 import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.backend.engine.EngineTransport
+import com.kevin.legion.backend.engine.Transport
+import com.kevin.legion.backend.engine.engineRefusalSentence
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.VoiceNote
 import com.kevin.legion.data.local.VoiceNoteDao
@@ -286,16 +291,8 @@ object VoiceNoteController {
      * next mutation (a rename, a later successful transcribe) retries the same upsert. */
     internal suspend fun syncToBackend(context: Context, note: VoiceNote) {
         val backend = backend(context) ?: return
-        val fields = VoiceNoteFields(
-            startedAtMs = note.startedAt,
-            endedAtMs = note.endedAt,
-            title = note.title,
-            summary = note.summary,
-            transcript = note.transcript,
-            kind = note.kind,
-            interrupted = note.interrupted,
-        )
-        val remote = backend.upsert(note.serverId, fields).getOrElse {
+        // fieldsOf, shared with rename, so the two pushes can never carry different column sets.
+        val remote = backend.upsert(note.serverId, fieldsOf(note)).getOrElse {
             Log.w(TAG, "syncToBackend: upsert failed for note ${note.id}: ${it.message}")
             return
         }
@@ -390,16 +387,157 @@ object VoiceNoteController {
 
     // -------------------------------------------------------------------- rename / delete
 
-    /** Renames a note by [id]. Returns false for an id with no row - never reported as a rename
-     * having happened (§7's outcome-verb rule applied to a plain CRUD op, same posture as
-     * [com.kevin.legion.location.PlaceController.forget]). */
-    suspend fun rename(context: Context, id: Long, newTitle: String): Boolean {
-        val note = dao(context).getById(id) ?: return false
+    /**
+     * What [rename] hands back. **This used to be a bare `Boolean`, and the boolean was a lie in
+     * two directions**: it returned `true` whether or not the write reached the server, because
+     * the local `dao.update` happened first and [syncToBackend]'s failure was swallowed into a
+     * `Log.w` nobody reads. Found on the A25, 2026-09-07.
+     *
+     * Four branches because four different sentences follow from them - the same shape, and the
+     * same reasoning, as [com.kevin.legion.backend.WriteThroughOutcome]'s.
+     */
+    sealed interface RenameResult {
+        /** The new title is in Room, and on the server if there is one. The only branch a caller
+         * may speak an unqualified "renamed" off. */
+        data object Renamed : RenameResult
+
+        /** No such id - already deleted, or a stale reference. Never reported as a rename having
+         * happened. */
+        data object NotFound : RenameResult
+
+        /** The engine received the rename, understood it, and said no. **Nothing was written
+         * locally**, so Room and the server still agree, and [message] is the server's own sentence
+         * for the caller to relay - unwrapped from DRF's envelope, never reworded. */
+        data class Refused(val message: String) : RenameResult
+
+        /** The engine could not be reached (or answered a 5xx, which is a fault and not a refusal).
+         * The new title IS in Room and the server does not have it. [message] says exactly that, in
+         * words - never "queued", because voice notes has no outbox and claiming one would be the
+         * §7 breach this whole change exists to close. */
+        data class SavedOnThisPhoneOnly(val message: String) : RenameResult
+    }
+
+    /**
+     * Renames a note by [id].
+     *
+     * **Server-first on the Django transport, exactly as `BodyWriteThrough`/`MemoryWriteThrough`
+     * now are** (`.scratch/django-engine/issues/15-*`): the push happens BEFORE the local write, a
+     * refusal writes nothing at all, and the server's own sentence comes back for the caller to
+     * relay. This closes the shape ticket 14 names as the reason six other Kotlin guards cannot yet
+     * be deleted - a local-first write lets Room accept a row the server will refuse forever, while
+     * the user has already been told it worked.
+     *
+     * **Unchanged on Supabase and on an unconfigured install**, deliberately: local write first,
+     * push after, failure logged, [RenameResult.Renamed] either way. That path has never said
+     * anything else and this ticket's brief freezes it.
+     *
+     * **The audio is not involved on any branch.** [syncToBackend] builds a [VoiceNoteFields] with
+     * no audio in it because neither [VoiceNoteFields] nor `public.voice_notes` has such a field;
+     * this function only ever changes a title.
+     */
+    suspend fun rename(context: Context, id: Long, newTitle: String): RenameResult {
+        val note = dao(context).getById(id) ?: return RenameResult.NotFound
         val updated = note.copy(title = newTitle)
+        val backend = backend(context)
+        val serverFirst = backend != null &&
+            EngineTransport(context).transportFor(EngineBackends.ASPECT_VOICE_NOTES) == Transport.DJANGO
+        return if (serverFirst) {
+            renameServerFirst(context, updated, backend!!)
+        } else {
+            renameLocalFirst(context, updated)
+        }
+    }
+
+    /** Supabase, or an unconfigured install: byte-for-byte the behaviour [rename] has always had -
+     * local write, then a push whose failure is logged and swallowed, and `Renamed` either way.
+     * [syncToBackend] is a no-op when no backend is configured. Split out of [rename] only to keep
+     * each function under detekt's `ReturnCount`; nothing about the path changed. */
+    private suspend fun renameLocalFirst(context: Context, updated: VoiceNote): RenameResult {
         dao(context).update(updated)
         syncToBackend(context, updated)
-        return true
+        return RenameResult.Renamed
     }
+
+    /**
+     * The Django path: push, then write - **and on a refusal, do not write at all.** The row keeps
+     * the title the server still believes it has, so the two never diverge and there is no poisoned
+     * value for a later pull to argue with.
+     *
+     * The local write covers the success branch AND the fault/unreachable branch, which are two
+     * different sentences (see [RenameResult]) off the same Room state. The `serverId` is stamped
+     * from the ACK when there is one - a first push mints it - the same way [syncToBackend] does.
+     */
+    private suspend fun renameServerFirst(
+        context: Context,
+        updated: VoiceNote,
+        backend: VoiceNotesBackend,
+    ): RenameResult {
+        val result = backend.upsert(updated.serverId, fieldsOf(updated))
+        val refusal = renameRefusalSentence(result.exceptionOrNull())
+        if (refusal != null) return RenameResult.Refused(refusal)
+
+        val remote = result.getOrNull()
+        dao(context).update(
+            if (remote != null && remote.serverId != updated.serverId) {
+                updated.copy(serverId = remote.serverId)
+            } else {
+                updated
+            },
+        )
+        return if (result.isSuccess) {
+            RenameResult.Renamed
+        } else {
+            val reason = result.exceptionOrNull()?.message ?: "unknown error"
+            RenameResult.SavedOnThisPhoneOnly("Renamed on this phone, but the server didn't get it. ($reason)")
+        }
+    }
+
+    /** [note]'s current columns as the backend's write shape - shared by [rename] and
+     * [syncToBackend] so the two can never disagree about which columns a push carries. **Audio is
+     * absent because [VoiceNoteFields] has no field for it**, not because this function remembers
+     * to leave it out. */
+    private fun fieldsOf(note: VoiceNote) = VoiceNoteFields(
+        startedAtMs = note.startedAt,
+        endedAtMs = note.endedAt,
+        title = note.title,
+        summary = note.summary,
+        transcript = note.transcript,
+        kind = note.kind,
+        interrupted = note.interrupted,
+    )
+
+    /**
+     * The engine's own refusal sentence when [cause] is a rename the server rejected, null for
+     * everything else - **including a 5xx, which is a fault rather than something the user asked
+     * for and was told no about.**
+     *
+     * A near-copy of [com.kevin.legion.backend.refusalSentence], and not a call to it, for one
+     * reason: that function is `internal` to the `backend` package's write-through pair and its
+     * doc comment is written around an OUTBOX ("a 5xx falls through to the queue like any other
+     * failure"), which voice notes does not have. The behaviour is identical; only the sentence
+     * that follows the null differs. Both unwrap DRF's envelope through the same
+     * [engineRefusalSentence], so the two can never disagree about what the user reads.
+     */
+    private fun renameRefusalSentence(cause: Throwable?): String? {
+        val refused = (cause as? EngineHttpException)?.failure as? EngineFailure.Refused
+        // A blank body must NOT fall through to null: null means "not a refusal", and a 4xx that
+        // fell through would take the local-write branch and report a rename the server had already
+        // rejected as saved. It stays a refusal, with a sentence of this file's own used only when
+        // the engine supplied none.
+        return refused
+            ?.takeIf { it.status in HTTP_BAD_REQUEST..HTTP_LAST_CLIENT_ERROR }
+            ?.let {
+                engineRefusalSentence(it.body).ifBlank {
+                    "The server wouldn't take that name, and didn't say why. Nothing was changed."
+                }
+            }
+    }
+
+    /** DRF's `status.HTTP_400_BAD_REQUEST` and the top of the 4xx block - the range
+     * [renameRefusalSentence] relays. Same two constants, same reasoning, as
+     * [com.kevin.legion.location.PlaceController]'s own pair. */
+    private const val HTTP_BAD_REQUEST = 400
+    private const val HTTP_LAST_CLIENT_ERROR = 499
 
     /** What [delete] hands back - every branch worded so a caller can surface it directly, same
      * §7 posture [VoiceNoteStartResult.Refused]'s own doc comment describes. */

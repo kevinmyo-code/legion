@@ -88,3 +88,23 @@ interface VoiceNotesBackend {
  * owned by this package, never a raw supabase-kt/Ktor exception, same posture as
  * [EventsBackendException]. */
 class VoiceNotesBackendException(message: String) : Exception(message)
+
+/**
+ * The incremental, tombstone-carrying voice-notes pull. Separate from [VoiceNotesBackend] for
+ * exactly the reason [com.kevin.legion.backend.engine.DjangoVoiceNotesBackend.fetchChangedSince]'s
+ * own doc comment already gives for keeping that function off the interface: adding it to
+ * [VoiceNotesBackend] would oblige [SupabaseVoiceNotesBackend] to grow an implementation with no
+ * caller on that transport. See [PlacesIncrementalPull], which is the same seam for the same
+ * reason.
+ *
+ * **The audio has nothing to do with any of this**, and cannot acquire anything to do with it:
+ * [RemoteVoiceNote] has no audio field, `public.voice_notes` has no such column, and this interface
+ * hands back [RemoteVoiceNote] and nothing else. A pull can carry text onto the phone; it can never
+ * carry a recording off one.
+ */
+interface VoiceNotesIncrementalPull {
+    /** Every `public.voice_notes` row whose `updated_at` is at or after [sinceMs], **tombstones
+     * included** - the shape a merge's tombstone branch needs and [VoiceNotesBackend.fetchActive]
+     * structurally cannot provide. A [sinceMs] of 0 means "everything", never "nothing". */
+    suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteVoiceNote>>
+}

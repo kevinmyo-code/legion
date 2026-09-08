@@ -59,3 +59,33 @@ interface PlacesBackend {
  * test never need to construct one of those - same posture as [AuthRejectedException]/
  * [AuthNetworkException] in `SupabaseAuth.kt`. */
 class PlacesBackendException(message: String) : Exception(message)
+
+/**
+ * The incremental, tombstone-carrying places pull - **a separate interface from [PlacesBackend],
+ * and deliberately so.**
+ *
+ * [PlacesBackend.fetchActive] is a full read of the live set, which is everything
+ * [PlacesReconcile] ever needed: it uploads, reads the server's active rows back and refreshes the
+ * replica from them. A merge PULL needs the opposite shape - only what changed since a watermark,
+ * **tombstones included** - because a soft-deleted row is precisely what a merge's tombstone branch
+ * exists to receive, and an active-only feed can only ever say "this row is here", never "this row
+ * is gone".
+ *
+ * **Why not simply add the function to [PlacesBackend].** That would oblige
+ * [SupabasePlacesBackend] to grow an implementation with no caller: `places` on Supabase is served
+ * by [PlacesReconcile] and has been since Phase 4, and this ticket changes nothing about that path
+ * (its brief: on Supabase every one of these behaves exactly as it does today). A narrow second
+ * interface says the same thing structurally instead of in a comment - [PlacesSync.maybeAutoPull]
+ * asks for one with `as?` and gets null on Supabase, so the pull cannot run on a transport that
+ * has no route to answer it. Same reasoning
+ * [com.kevin.legion.backend.engine.DjangoVoiceNotesBackend.fetchChangedSince]'s own doc comment
+ * gives for keeping that function off [VoiceNotesBackend].
+ */
+interface PlacesIncrementalPull {
+    /**
+     * Every `public.places` row whose `updated_at` is at or after [sinceMs], **tombstones
+     * included**. A [sinceMs] of 0 means "everything", never "nothing" - see
+     * [PlacesPullCursor]'s own doc comment for why that default is the safe direction.
+     */
+    suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemotePlace>>
+}
