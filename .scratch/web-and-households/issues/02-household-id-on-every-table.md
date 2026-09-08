@@ -87,6 +87,7 @@ db_column="household_id", on_delete=models.DO_NOTHING)` so the ORM knows the col
 ## Done means
 
 `cd server && uv run pytest`: every pre-existing test green, the new tenancy suite green, 0
-skipped beyond the LEGION_PG_URL-gated legacy set. Migration applied to the live database with
-row counts per table unchanged before and after (the query is in the report). `openapi.yaml`
+skipped beyond the LEGION_PG_URL-gated legacy set. Migration applied to the live database - Supabase today, the VM's Postgres once ticket 13 has
+moved it; the dump carries whichever state it finds - with row counts per table unchanged before
+and after (the query is in the report). `openapi.yaml`
 regenerated and its staleness test green. `household_id` appears on no response body.

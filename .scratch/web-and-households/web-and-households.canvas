@@ -31,19 +31,19 @@
       "color": "1"
     },
     {
-      "id": "a836f8aa7f4bcdcb",
+      "id": "385f5faa91e0ec77",
       "type": "file",
-      "file": ".scratch/web-and-households/issues/08-ci-cd.md",
+      "file": ".scratch/web-and-households/issues/10-no-cube.md",
       "x": 0,
       "y": 450,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
-      "id": "385f5faa91e0ec77",
+      "id": "cd65083be4637331",
       "type": "file",
-      "file": ".scratch/web-and-households/issues/10-no-cube.md",
+      "file": ".scratch/web-and-households/issues/12-hosting-oracle-vm.md",
       "x": 0,
       "y": 600,
       "width": 320,
@@ -71,11 +71,21 @@
       "color": "1"
     },
     {
+      "id": "a836f8aa7f4bcdcb",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/08-ci-cd.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "05762a9d03f109d2",
       "type": "file",
       "file": ".scratch/web-and-households/issues/09-static-domain-dockerfile.md",
       "x": 520,
-      "y": 300,
+      "y": 450,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -96,6 +106,16 @@
       "file": ".scratch/web-and-households/issues/11-report-endpoints.md",
       "x": 1040,
       "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "382dd4cc0fdec74b",
+      "type": "file",
+      "file": ".scratch/web-and-households/issues/13-vm-provision-migrate-cutover.md",
+      "x": 1040,
+      "y": 300,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -172,8 +192,22 @@
       "toSide": "left"
     },
     {
+      "id": "df3f56b57c5e3e5d",
+      "fromNode": "cd65083be4637331",
+      "fromSide": "right",
+      "toNode": "a836f8aa7f4bcdcb",
+      "toSide": "left"
+    },
+    {
       "id": "effdda8b2623f6a1",
       "fromNode": "93e13e7d91baac11",
+      "fromSide": "right",
+      "toNode": "05762a9d03f109d2",
+      "toSide": "left"
+    },
+    {
+      "id": "2983fc0691fc8e28",
+      "fromNode": "cd65083be4637331",
       "fromSide": "right",
       "toNode": "05762a9d03f109d2",
       "toSide": "left"
@@ -183,6 +217,20 @@
       "fromNode": "7fa2857c96b17849",
       "fromSide": "right",
       "toNode": "b5116a06e36ca084",
+      "toSide": "left"
+    },
+    {
+      "id": "d8090b2f504c14e0",
+      "fromNode": "cd65083be4637331",
+      "fromSide": "right",
+      "toNode": "382dd4cc0fdec74b",
+      "toSide": "left"
+    },
+    {
+      "id": "f404167517af7a55",
+      "fromNode": "05762a9d03f109d2",
+      "fromSide": "right",
+      "toNode": "382dd4cc0fdec74b",
       "toSide": "left"
     }
   ]

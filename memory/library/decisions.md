@@ -5532,3 +5532,27 @@ on `auth.uid()`, which is dead the moment Supabase Auth goes dark at cutover.
 (one user, one household) and React + Vite + TypeScript. ADR 0045 is accepted and CLAUDE.md §1, §7
 and the feature-add checklist carry the live rule from this commit. django-engine ticket 08 is
 superseded by web-and-households 04/05/06.
+
+## 2026-09-08 - Hosting reopened: an always-on Oracle VM, Postgres in compose, Pay As You Go
+
+Kevin, on being told the Cloud Run cold start measured 5.4 s: *"why cold start? wont the linux vm we
+host on be always on"* and then *"we are reopening the oracle VM. new hosting decisions."* Asked the two
+forks: Postgres moves onto the VM in compose (the `full` profile the compose file already defines),
+and the OCI tenancy upgrades to Pay As You Go.
+
+This reverses the 2026-09-05 entries above twice over. The survey that day held two things against
+Oracle: the A1 allowance was halved on 2026-06-15 (to 2 OCPU / 12 GB, confirmed against Oracle's own
+Always Free page and InfoQ's report of the unannounced change) and idle Always-Free instances are
+reclaimed (7-day window, CPU 95th percentile under 20 %, network under 20 %, memory under 20 %). A
+Pay As You Go tenancy keeps the 4 OCPU / 24 GB shape at $0 inside the free limits, and is reported -
+by Oracle's community forum, not by the docs - as exempt from reclamation. The survey did not
+consider the upgrade; that was the omission, the same shape as the Cloud Run omission the same day.
+
+What is given up: Google running the box. The household is now the sysadmin, which is ADR 0044 rule
+5 read literally, and backups (django-engine 06) stop being deferrable - a restore drill gates the
+cutover. What is gained: no cold start, no 500 MB ceiling, no idle pause, one shape for BYO and for
+Kevin, and the doc's recipe (Actions builds, SSHes, `compose up -d --build`) applies as written. Cloud
+Run stays deployed at min-instances 0 for thirty days as the rollback. Cube is still not part of it.
+
+Ruling: `.scratch/web-and-households/issues/12-hosting-oracle-vm.md`. The move: ticket 13. Tickets
+08 and 09 rewritten the same hour; their Cloud Run drafts are in git history.

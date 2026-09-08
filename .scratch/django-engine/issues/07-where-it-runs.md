@@ -4,7 +4,7 @@ ticket: "07"
 title: "Where it runs"
 type: decision
 status: resolved
-status-detail: "Decided 2026-09-05 (Kevin), amended the same night: database = the existing Supabase Postgres (pooler), Django the only writer; compute = Google Cloud Run service + Cloud Run Job on Cloud Scheduler, the pattern already running in midconerpdash; media = Cloudflare R2 or GCS; Cloudflare in front for the domain. Home box dropped."
+status-detail: "Decided 2026-09-05 (Kevin), amended the same night: database = the existing Supabase Postgres (pooler), Django the only writer; compute = Google Cloud Run service + Cloud Run Job on Cloud Scheduler, the pattern already running in midconerpdash; media = Cloudflare R2 or GCS; Cloudflare in front for the domain. Home box dropped. REOPENED 2026-09-08 (Kevin) after the Cloud Run cold start measured 5.4 s: an always-on Oracle Cloud A1 VM on a Pay As You Go tenancy runs the compose full profile - Postgres, Django, worker, Caddy - and Cloud Run and Supabase retire thirty days after cutover. Ruling: web-and-households ticket 12; the move: ticket 13."
 blockers: []
 blocked-by: []
 open-blockers: 0

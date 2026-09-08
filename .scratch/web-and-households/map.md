@@ -4,8 +4,8 @@ title: "One engine, many households, a real web client"
 charted: 2026-09-08
 charted-by: "Kevin + Fable"
 effort: "`.scratch/web-and-households/`"
-tickets: 12
-open: 12
+tickets: 14
+open: 14
 status: open
 tags: [map]
 ---
@@ -40,7 +40,7 @@ Three things are true today and the plan follows from them:
 | Supabase with built-in Auth, RLS, Realtime | Supabase as **managed Postgres only**; Auth/Realtime/PostgREST go dark at cutover (django-engine 10) | Doc is wrong for LEGION. The `auth.uid()`-keyed RLS policies are dead after cutover; tenancy must be enforced in Django and re-keyed in SQL (ticket 02b) |
 | React + Vite + TS, Tailwind, shadcn/ui, ECharts, monolith in the Django repo, Vite build into `static/`, one `index.html` shell | Nothing. ADR 0040 originally named React + Vite + TS; ticket 08 later chose Django templates + HTMX | **Adopt React + Vite + TS** (ticket 04), supersede ticket 08's HTMX choice. Improvement over the doc: generate the TypeScript client from `openapi.yaml` so drift is a compile error, not a runtime surprise. Recharts via shadcn charts first; ECharts only if a Canvas-scale chart (OBD telemetry, 20k points) needs it |
 | Multi-tenancy: shared schema + `company_id` column, enforced in Cube security context + Django middleware; signup creates group in Django | One household, a membership flag, no tenant column anywhere | **Shared schema + `household_id`**, enforced at ONE Django choke point (`SyncedModelViewSet.get_queryset`) plus Postgres RLS keyed on a session variable Django sets per request (tickets 02, 02b). Invite-only signup (ticket 03); open signup is a one-env-var switch, off by default |
-| One always-on Ubuntu VM (Oracle A1 free) running Cube + Django in compose; GitHub Actions SSH-deploys; or Render free tier | **Cloud Run** service + Job + Scheduler, min 0, deployed by `deploy/cloudrun/deploy.py`; compose kept for the BYO path; no CI at all | **Keep Cloud Run.** Oracle A1 was already rejected 2026-09-05 (halved, reclaims idle instances); Render sleeps 30-60 s vs Cloud Run's ~2 s. Take the doc's CI/CD idea: GitHub Actions for tests, and deploy to Cloud Run through Workload Identity Federation, no SSH, no long-lived key (ticket 08) |
+| One always-on Ubuntu VM (Oracle A1 free) running Cube + Django in compose; GitHub Actions SSH-deploys; or Render free tier | **Cloud Run** service + Job + Scheduler, min 0, deployed by `deploy/cloudrun/deploy.py`; compose kept for the BYO path; no CI at all | **The doc wins, minus Cube - REOPENED by Kevin 2026-09-08** after the cold start was measured at 5.4 s. The map first said "keep Cloud Run" on the strength of the 2026-09-05 survey's Oracle objections (halved allowance, reclamation); a Pay As You Go tenancy answers both. Oracle A1 VM, Postgres in compose, Caddy, Actions deploying over SSH (tickets 12, 13, 08, 09) |
 | Android: Vico charts, Kizitonwose calendar, Ktor **or** Retrofit, kotlinx-serialization **or** Moshi, Coil, Room, Porcupine wake word | Ktor+OkHttp (`EngineHttp`), kotlinx-serialization, Room on KSP, Compose/M3, hand-built `DeckCharts` (Tufte kit, tested), Vosk wake word. No Vico, Kizitonwose, Coil, Retrofit, Moshi | **Add nothing.** Ktor and kotlinx are the doc's own first picks and are in. `DeckCharts` exists and quant-viz ruled "no new chart types"; charting for the family belongs on the web (ADR 0040: the phone is the specialised client). A second HTTP or JSON stack is drift. Hilt (architecture ticket) is decided and NOT landed - unchanged by this map |
 | JWT for the phone | Per-device opaque token, revocable alone (ADR 0044 rule 3) | Keep tokens. JWT loses per-device revocation without a denylist |
 | Django templates only as an `index.html` shell | Agree | Ticket 04 |
@@ -74,10 +74,13 @@ Three things are true today and the plan follows from them:
 | 09 | build | Static serving (whitenoise), multi-stage Dockerfile with the Vite build, custom domain on Cloud Run | 04 |
 | 10 | decision | No Cube. Resolved here with the reasoning; the escalation trigger is named | - |
 | 11 | build | Report endpoints the dashboard reads: aggregates computed once, `unverified` carried through | 02 |
+| 12 | decision | Hosting: always-on Oracle VM, Postgres in compose, PAYG tenancy. Resolved on Kevin's words; reopens django-engine 07 | - |
+| 13 | build | The move: provision, migrate the data, cut over, backups drilled, retire Cloud Run and Supabase | 12, 09 |
 
-**Order.** 01 is Kevin's ack. 02 and 04 start together (disjoint files). 08 can start now. 03 after
-02. 05 after 03 and 04. 11 after 02. 06 last. 07 is independent and can stay open for a while:
-invite links work without mail.
+**Order.** 01 is Kevin's ack. 02 and 04 start together (disjoint files). 08's CI half can start
+now. 03 after 02. 05 after 03 and 04. 11 after 02. 09 after 04; 13 after 09, and 13 gates nothing
+on this map but everything on the phone's URL. 06 last. 07 is independent and can stay open for a
+while: invite links work without mail.
 
 **Execution.** Opus builders, one Gradle/one pytest writer at a time (MEMORY: contention fakes a
 pass). Server and web work in `server/`; nothing in this map touches `app/` except a one-line link
