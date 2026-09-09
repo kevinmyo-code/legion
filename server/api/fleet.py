@@ -150,6 +150,7 @@ from rest_framework.views import APIView
 from api.schema import DetailSerializer, paged_serializer
 from api.sync import PAGE_SIZE, paginate_since, parse_since, save_or_400
 from api.synced import (
+    HouseholdScopedPrimaryKeyRelatedField,
     SyncedModelViewSet,
     SyncedSerializer,
     blank_error,
@@ -157,6 +158,7 @@ from api.synced import (
     minimum_error,
     range_error,
 )
+from household.tenancy import household_of, scoped
 from legacy.enums import Provenance
 from legacy.models.fleet import (
     BuildEntry,
@@ -368,7 +370,7 @@ class ServiceHistorySerializer(SyncedSerializer):
     estimate be shown as a measurement.
     """
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
 
@@ -456,7 +458,7 @@ class DriveSerializer(_SyncIdSerializer):
     not read as a drive that burned none.
     """
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
     # DETERMINISTIC, not USER: a drive is measured by the dongle and finalised
@@ -522,7 +524,7 @@ class CodeEventSerializer(_SyncIdSerializer):
     """Field-for-field `RemoteCodeEvent` / `CodeEventUpload`: one ELM327 DTC
     read plus its Mode 02 freeze frame."""
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
     default_provenance = Provenance.DETERMINISTIC
@@ -582,7 +584,7 @@ class CodeClearEventSerializer(_SyncIdSerializer):
     reach this table, which is why they are not in the allowed set.
     """
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
     default_provenance = Provenance.DETERMINISTIC
@@ -691,7 +693,7 @@ class OilAnalysisSerializer(_SyncIdSerializer):
     here is as trustworthy as the typing.
     """
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
 
@@ -746,7 +748,7 @@ class BuildEntrySerializer(_SyncIdSerializer):
     driver-authored logbook line (a mod, part, repair, consumable, or general
     spend entry)."""
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
 
@@ -813,10 +815,10 @@ class DriveReassignmentSerializer(_SyncIdSerializer):
     correction is a legitimate no-op write.
     """
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
-    new_vehicle_id = serializers.PrimaryKeyRelatedField(
+    new_vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="new_vehicle", queryset=Vehicle.objects.all()
     )
 
@@ -957,7 +959,7 @@ class VehicleSpecSerializer(SyncedSerializer):
     as an actual moment in 1970.
     """
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
     default_provenance = Provenance.DETERMINISTIC
@@ -1042,7 +1044,7 @@ class MaintenanceScheduleSerializer(SyncedSerializer):
     `service_history` row against these intervals.
     """
 
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = HouseholdScopedPrimaryKeyRelatedField(
         source="vehicle", queryset=Vehicle.objects.all()
     )
 
@@ -1244,7 +1246,10 @@ class MaintenanceScheduleViewSet(_FleetViewSet):
         )
 
     def _lookup_pair(self, vehicle_id, service_name):
-        return self.model().objects.filter(
+        # `self.queryset()`, not `self.model().objects` - this is the one read
+        # path in this file that does not go through the inherited `_lookup`,
+        # and it needs the household filter for the same reason that one does.
+        return self.queryset().filter(
             vehicle_id=vehicle_id, service_name=service_name
         ).first()
 
@@ -1273,10 +1278,16 @@ class MaintenanceScheduleViewSet(_FleetViewSet):
         # `upsert` - both halves of it.
         data["vehicle_id"] = vehicle_id
         data["service_name"] = service_name
+        # `self.serializer_context()`, the same one the generic `upsert`
+        # passes. This override predates ADR 0045 and had no context at all;
+        # without it `SyncedSerializer.create` has no household to write into
+        # and `HouseholdScopedPrimaryKeyRelatedField` has no set to narrow to,
+        # and both refuse in words rather than guessing.
+        context = self.serializer_context()
         if instance is None:
-            serializer = self.serializer_class(data=data)
+            serializer = self.serializer_class(data=data, context=context)
         else:
-            serializer = self.serializer_class(instance, data=data)
+            serializer = self.serializer_class(instance, data=data, context=context)
         serializer.is_valid(raise_exception=True)
         saved, error = save_or_400(serializer.save)
         if error is not None:
@@ -1521,7 +1532,10 @@ def _required_vehicle(request, *, required: bool):
             f"Nothing was returned. ?vehicle={raw!r} is not a uuid. It is a `vehicles.id`, "
             f"which GET /api/fleet/vehicles/ returns as each row's `id`."
         )
-    vehicle = Vehicle.objects.filter(id=parsed).first()
+    # Scoped: a vehicle in ANOTHER household is not a vehicle this caller may
+    # name, and the 404 below says exactly that in the words it already used -
+    # "there is no such car" is true from inside this household.
+    vehicle = scoped(Vehicle, request).filter(id=parsed).first()
     if vehicle is None:
         return None, _refuse(
             f"Nothing was returned. No vehicle has id {parsed}. This is a 404 rather than an "
@@ -1580,8 +1594,14 @@ class ObdSampleListView(APIView):
         if error is not None:
             return error
         since = parse_since(request.query_params.get("since"))
+        # The household filter is redundant given `vehicle` was resolved inside
+        # it, and it is here anyway: a second reader of this line should not
+        # have to trace `_required_vehicle` to know the feed is scoped, and a
+        # future edit that resolves the vehicle differently must not silently
+        # widen it.
         queryset = (
-            ObdSample.objects.filter(vehicle=vehicle, recorded_at__gte=since)
+            scoped(ObdSample, request)
+            .filter(vehicle=vehicle, recorded_at__gte=since)
             .order_by("recorded_at", "pk")
         )
         page, next_since = paginate_since(queryset, cursor_field="recorded_at")
@@ -1635,7 +1655,9 @@ class ObdSampleCountView(APIView):
         vehicle, error = _required_vehicle(request, required=False)
         if error is not None:
             return error
-        queryset = ObdSample.objects.all()
+        # `?vehicle=` is OPTIONAL on this route, so without the household
+        # filter a bare count would be a count of every household's telemetry.
+        queryset = scoped(ObdSample, request)
         if vehicle is not None:
             queryset = queryset.filter(vehicle=vehicle)
         return Response({"count": queryset.count()})
@@ -1653,7 +1675,8 @@ class ObdSampleCountView(APIView):
 # many rows it wrote is one whose idempotency claim cannot be tested.
 _OBD_INSERT_HEAD = (
     "insert into public.obd_samples "
-    "(id, vehicle_id, pid, value, unit, recorded_at, lat, lng, created_at) values "
+    "(id, household_id, vehicle_id, pid, value, unit, recorded_at, lat, lng, created_at) "
+    "values "
 )
 _OBD_INSERT_TAIL = (
     " on conflict (vehicle_id, pid, recorded_at) do nothing returning id"
@@ -1662,7 +1685,7 @@ _OBD_INSERT_TAIL = (
 # `api/synced.py` sets out at length: Django does not run on the database's
 # machine, the two clocks were measured half a second apart on 2026-09-06, and
 # one clock for every write removes the whole class of failure.
-_OBD_ROW_PLACEHOLDERS = "(%s, %s, %s, %s, %s, %s, %s, %s, statement_timestamp())"
+_OBD_ROW_PLACEHOLDERS = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, statement_timestamp())"
 
 
 class ObdSampleBatchView(APIView):
@@ -1743,7 +1766,9 @@ class ObdSampleBatchView(APIView):
         # would refuse the statement anyway, and a 400 naming the id is a
         # better answer than the database's own message.
         wanted = {row["vehicle_id"] for row in rows}
-        known = set(Vehicle.objects.filter(id__in=wanted).values_list("id", flat=True))
+        known = set(
+            scoped(Vehicle, request).filter(id__in=wanted).values_list("id", flat=True)
+        )
         missing = sorted(str(v) for v in wanted - known)
         if missing:
             return _refuse(
@@ -1767,6 +1792,7 @@ class ObdSampleBatchView(APIView):
             deduped.append(row)
         duplicates_in_batch = len(rows) - len(deduped)
 
+        household = household_of(request)
         inserted = 0
         if deduped:
             params: list = []
@@ -1779,6 +1805,12 @@ class ObdSampleBatchView(APIView):
                         # `default gen_random_uuid()` never gets the chance to
                         # fire and a NULL would be sent instead.
                         uuid.uuid4(),
+                        # ADR 0045. This is the one write in this file that
+                        # bypasses a serializer entirely (see the comment above
+                        # `_OBD_INSERT_HEAD` for why it is raw SQL), so it is
+                        # also the one place `household_id` has to be named by
+                        # hand rather than assigned by `SyncedSerializer`.
+                        household.id,
                         row["vehicle_id"],
                         row["pid"],
                         row["value"],

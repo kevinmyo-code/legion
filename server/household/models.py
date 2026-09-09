@@ -1,10 +1,22 @@
-"""Users, membership, and device tokens.
+"""Households, users, membership, and device tokens.
 
-One household per server (ADR 0044, CLAUDE.md section 1: two adults, no
-roles, no tenancy, ever). There is no signup and no invite flow - accounts
-are made with `manage.py createsuperuser` or the admin, same ruling as
-backend-erp ticket 02's dashboard-created-accounts call, moved from the
-Supabase dashboard to this one.
+**ADR 0045 replaced "one household per server" with "households are
+tenants" on 2026-09-08.** One engine holds more than one household; every
+data row belongs to exactly one household (`household/tenancy.py` holds the
+list of tables carrying the column); every user belongs to exactly one
+household; a member sees everything in their household and nothing outside
+it. There are no roles inside a household except `owner`, which exists only
+to invite and remove members, and there are no approval workflows: an
+invite is a code, not a request.
+
+**This docstring used to say** "One household per server (ADR 0044,
+CLAUDE.md section 1: two adults, no roles, no tenancy, ever). There is no
+signup and no invite flow - accounts are made with `manage.py
+createsuperuser` or the admin". The second half is still true TODAY and is
+what ticket 03 changes: signup, invite codes and join are that ticket, not
+this one, so until it lands accounts are still made with `createsuperuser`,
+the admin, or `manage.py add_household_member` - each of which now has to
+say WHICH household, because there can be more than one.
 """
 from __future__ import annotations
 
@@ -15,6 +27,32 @@ import uuid
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
+from django.utils.functional import cached_property
+
+
+class Household(models.Model):
+    """One family on one engine (ADR 0045).
+
+    The id is a uuid rather than a serial because it is written into
+    `household_id` on every row of forty-three `public` tables and travels with
+    a `pg_dump` into other environments; a sequence number would collide the
+    first time two dumps met. The bootstrap household's id is chosen by the
+    operator once and read from `LEGION_BOOTSTRAP_HOUSEHOLD_ID` - never minted
+    randomly by a migration, for the reason `household.tenancy` sets out.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # SET_NULL rather than CASCADE: deleting the person who made the household
+    # must never delete the household, and with it every row every OTHER member
+    # of it owns.
+    created_by = models.ForeignKey(
+        "household.User", null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class UserManager(BaseUserManager):
@@ -76,6 +114,19 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self) -> str:
         return self.email
 
+    @cached_property
+    def household(self) -> Household | None:
+        """The household this user belongs to, or None for a user who belongs
+        to none (which `IsHouseholdMember` refuses outright before any view
+        runs, so inside a view this is never None).
+
+        Cached for the life of the request's `User` instance: every scoped
+        query in `api/` reads it, and without the cache a list route would
+        re-query `household_householdmember` once per serializer field.
+        """
+        member = HouseholdMember.objects.filter(user=self).select_related("household").first()
+        return member.household if member is not None else None
+
 
 def _generate_device_key() -> str:
     """32 bytes of randomness, hex-encoded. Shown to the caller exactly once
@@ -129,14 +180,35 @@ class DeviceToken(models.Model):
 
 
 class HouseholdMember(models.Model):
-    """Django-side mirror of the `public.household_members` shape (kept in
-    ticket 02) so `IsHouseholdMember` needs no raw SQL to answer 'is this
-    user in the household'. One household per server, so this is really a
-    flag, not a join table to a household entity that does not exist here.
+    """Which household a user belongs to, and whether they may invite others.
+
+    **This docstring used to read** "Django-side mirror of the
+    `public.household_members` shape ... One household per server, so this is
+    really a flag, not a join table to a household entity that does not exist
+    here." The household entity exists now (`Household` above, ADR 0045), so
+    this IS the join table, and `IsHouseholdMember` still answers "is this
+    user a member of any household" with no raw SQL.
+
+    **Still one-to-one with `User`, deliberately.** ADR 0045: "every user
+    belongs to exactly one household". A person in two households would need
+    every request to say which one it meant, and there is no place on the wire
+    to say it - the device token identifies a user and nothing more. A second
+    household is a second account.
     """
 
+    OWNER = "owner"
+    MEMBER = "member"
+    ROLE_CHOICES = [(OWNER, "owner"), (MEMBER, "member")]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="household_member")
+    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="members")
+    # The ONE role, and it governs membership only - never data. ADR 0045:
+    # "There are no roles inside a household except `owner`, which exists only
+    # to invite and remove members." An owner and a member see exactly the same
+    # rows; nothing in `api/` reads this column, and if something ever does,
+    # that is a new ruling and not a refactor.
+    role = models.CharField(max_length=8, choices=ROLE_CHOICES, default=MEMBER)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
-        return self.user.email
+        return f"{self.user.email} ({self.household.name}, {self.role})"

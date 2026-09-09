@@ -10,6 +10,7 @@ from __future__ import annotations
 from django.db import models
 
 from legacy.enums import Provenance
+from legacy.models.tenancy import household_field, household_unique
 
 
 class Memory(models.Model):
@@ -20,11 +21,16 @@ class Memory(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "memories"
+        constraints = [
+            household_unique("memories", "origin_guid"),
+        ]
 
 
 class MemoryAudit(models.Model):
@@ -44,11 +50,16 @@ class MemoryAudit(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "memory_audit"
+        constraints = [
+            household_unique("memory_audit", "origin_guid"),
+        ]
 
 
 class CompanionMemory(models.Model):
@@ -67,11 +78,16 @@ class CompanionMemory(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "companion_memories"
+        constraints = [
+            household_unique("companion_memories", "origin_guid"),
+        ]
 
 
 class ConversationAudit(models.Model):
@@ -92,7 +108,11 @@ class ConversationAudit(models.Model):
     recorded_at = models.DateTimeField()
     created_at = models.DateTimeField()
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "conversation_audit"
-        unique_together = (("device_id", "local_id"),)
+        constraints = [
+            household_unique("conversation_audit", "device_id", "local_id"),
+        ]

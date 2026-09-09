@@ -16,21 +16,28 @@ from django.db import models
 
 from legacy.enums import Provenance
 from legacy.models.ingest import IngestedFile
+from legacy.models.tenancy import household_field, household_unique
 
 
 class Category(models.Model):
     id = models.UUIDField(primary_key=True)
-    name = models.TextField(unique=True)
+    name = models.TextField()
     is_food_category = models.BooleanField()
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "categories"
+        constraints = [
+            household_unique("categories", "name"),
+            household_unique("categories", "origin_guid"),
+        ]
 
 
 class CategoryRule(models.Model):
@@ -42,11 +49,16 @@ class CategoryRule(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "category_rules"
+        constraints = [
+            household_unique("category_rules", "origin_guid"),
+        ]
 
 
 class BudgetTarget(models.Model):
@@ -59,12 +71,17 @@ class BudgetTarget(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "budget_targets"
-        unique_together = (("category", "currency", "effective_from_month"),)
+        constraints = [
+            household_unique("budget_targets", "category", "currency", "effective_from_month"),
+            household_unique("budget_targets", "origin_guid"),
+        ]
 
 
 class Statement(models.Model):
@@ -89,6 +106,8 @@ class Statement(models.Model):
     # statement must always say which of the four it is.
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
+
+    household = household_field()
 
     class Meta:
         managed = False
@@ -126,8 +145,13 @@ class LedgerTransaction(models.Model):
     )
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
-    origin_guid = models.TextField(null=True, unique=True)
+    origin_guid = models.TextField(null=True)
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "ledger_transactions"
+        constraints = [
+            household_unique("ledger_transactions", "origin_guid"),
+        ]

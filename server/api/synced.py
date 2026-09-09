@@ -123,6 +123,7 @@ from rest_framework.response import Response
 
 from api.schema import SyncedAutoSchema
 from api.sync import paginate_since, parse_since, save_or_400
+from household.tenancy import household_of
 from legacy.enums import Provenance
 
 # What `?active=1` accepts. Anything else - including `active=0` and
@@ -193,6 +194,23 @@ class SyncedSerializer(serializers.ModelSerializer):
     # enum (see `api/voice_notes.py`).
     default_provenance: str = Provenance.USER
 
+    def household(self):
+        """The household this write belongs to, from the serializer context.
+
+        A missing context entry is a programming error - a view that built
+        this serializer without one - and it raises rather than defaulting,
+        because every value it could default to is another family's rows.
+        """
+        household = self.context.get("household")
+        if household is None:
+            raise RuntimeError(
+                f"Nothing was written. {type(self).__name__} was built without a "
+                f"`household` in its context, so there is no household to write this "
+                f"row into. Every view that saves a SyncedSerializer passes one - see "
+                f"SyncedModelViewSet.serializer_context."
+            )
+        return household
+
     def to_internal_value(self, data):
         if hasattr(data, "keys"):
             unknown = sorted(set(data.keys()) - set(self.fields))
@@ -232,6 +250,21 @@ class SyncedSerializer(serializers.ModelSerializer):
         # sixteen tables that existed before fleet.
         if "id" in field_names:
             validated_data["id"] = uuid.uuid4()
+        # ADR 0045. The household comes from the REQUEST, never from the body -
+        # `household` is on no serializer's `Meta.fields`, so a client that
+        # sends one gets `to_internal_value`'s unknown-field 400 rather than a
+        # row in somebody else's house. Set here rather than in each subclass
+        # for the same reason authentication is set on the base viewset: an
+        # aspect that forgot the line would be an aspect that quietly wrote
+        # untenanted rows, and the only way to make that impossible is to give
+        # nobody the line to forget.
+        if "household" not in field_names:
+            raise RuntimeError(
+                f"Nothing was written. {model._meta.db_table} has no `household` field, so "
+                f"this row could not be scoped to a household. Every table in "
+                f"`household.tenancy.TENANT_TABLES` must carry one."
+            )
+        validated_data["household"] = self.household()
         validated_data["created_at"] = Now()
         validated_data["updated_at"] = Now()
         if "provenance" in field_names:
@@ -255,6 +288,41 @@ class SyncedSerializer(serializers.ModelSerializer):
         # instant the UPDATE lands.
         instance.refresh_from_db()
         return instance
+
+
+class HouseholdScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
+    """A `PrimaryKeyRelatedField` that can only ever resolve a row in the
+    request's own household.
+
+    `api/fleet.py` has ten of these, every one of them
+    `queryset=Vehicle.objects.all()`. Unnarrowed, they are a write path
+    ACROSS households: household B could `PUT` a service record naming
+    household A's vehicle id, and the row would be stored - B's
+    `household_id`, A's car. Nothing else in this file would have caught it,
+    because the row itself is scoped correctly; it is the value INSIDE the
+    row that points out of the household.
+
+    `get_queryset()` is overridden rather than the `queryset` attribute
+    because `server/openapi.yaml` must not change: drf-spectacular reads
+    `field.queryset.model._meta.pk` to decide the parameter type and never
+    calls `get_queryset()`, so the schema still describes a uuid and the
+    narrowing is invisible on the wire. A pk that names a row in another
+    household is then indistinguishable from a pk that names nothing, and
+    gets DRF's own "object does not exist" 400 - which is the honest answer,
+    since from inside this household there IS no such vehicle.
+    """
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        household = self.context.get("household")
+        if household is None:
+            raise RuntimeError(
+                f"Nothing was written. A {type(self).__name__} for "
+                f"{self.field_name!r} was used without a `household` in the serializer "
+                f"context, so the set of rows it may point at could not be narrowed. "
+                f"See api/synced.SyncedModelViewSet.serializer_context."
+            )
+        return queryset.filter(household=household)
 
 
 class SyncedModelViewSet(viewsets.ViewSet):
@@ -391,8 +459,39 @@ class SyncedModelViewSet(viewsets.ViewSet):
 
     # -- helpers ------------------------------------------------------------
 
+    def household(self):
+        """ADR 0045's choke point. Every read and every write below is scoped
+        to this and to nothing else."""
+        return household_of(self.request)
+
+    def queryset(self):
+        """`Model.objects` narrowed to the request's household.
+
+        **There is no other read path in this viewset**, and that is a
+        property worth keeping: `list`, `retrieve`, `upsert` and `destroy`
+        all reach the database through this method or through `_lookup`
+        below, which itself calls it. A `self.model().objects.` anywhere in
+        this file that is not this line is a defect.
+        """
+        return self.model().objects.filter(household=self.household())
+
+    def serializer_context(self) -> dict:
+        """What every serializer this viewset builds is handed.
+
+        `household` is here rather than on each `serializer_class(...)` call
+        because `SyncedSerializer.create` and
+        `HouseholdScopedPrimaryKeyRelatedField.get_queryset` both refuse
+        outright without it - so a call site that forgot would fail loudly
+        rather than write an untenanted row, and this method is what means
+        no call site has to remember.
+        """
+        return {
+            "revive_tombstone": self.put_revives_tombstone,
+            "household": self.household(),
+        }
+
     def _lookup(self, identity):
-        return self.model().objects.filter(**{self.identity_field: identity}).first()
+        return self.queryset().filter(**{self.identity_field: identity}).first()
 
     def _not_found(self, identity) -> Response:
         return Response(
@@ -420,7 +519,7 @@ class SyncedModelViewSet(viewsets.ViewSet):
         comment it comes from.
         """
         since = parse_since(request.query_params.get("since"))
-        queryset = self.model().objects.filter(**{f"{self.cursor_field}__gte": since})
+        queryset = self.queryset().filter(**{f"{self.cursor_field}__gte": since})
         if self.has_tombstones and request.query_params.get("active", "").strip().lower() in TRUTHY:
             queryset = queryset.filter(deleted_at__isnull=True)
         # Secondary sort on the primary key so a page boundary is stable
@@ -462,7 +561,7 @@ class SyncedModelViewSet(viewsets.ViewSet):
         key (voice notes) - everywhere else the client mints the identity
         and PUT is both create and update, so a second create path would be
         a second way to do one thing."""
-        serializer = self.serializer_class(data=request.data)
+        serializer = self.serializer_class(data=request.data, context=self.serializer_context())
         serializer.is_valid(raise_exception=True)
         instance, error = save_or_400(serializer.save)
         if error is not None:
@@ -497,7 +596,7 @@ class SyncedModelViewSet(viewsets.ViewSet):
         # `ChecklistItemListCreateView.post` gives its `checklist_id`.
         data[self.identity_field] = identity
 
-        context = {"revive_tombstone": self.put_revives_tombstone}
+        context = self.serializer_context()
         if instance is None:
             serializer = self.serializer_class(data=data, context=context)
         else:

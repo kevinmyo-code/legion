@@ -6,6 +6,7 @@ from __future__ import annotations
 from django.db import models
 
 from legacy.enums import Provenance
+from legacy.models.tenancy import household_field, household_unique
 
 
 class BodyweightLog(models.Model):
@@ -18,11 +19,16 @@ class BodyweightLog(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "bodyweight_logs"
+        constraints = [
+            household_unique("bodyweight_logs", "origin_guid"),
+        ]
 
 
 class SleepLog(models.Model):
@@ -37,41 +43,58 @@ class SleepLog(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "sleep_logs"
+        constraints = [
+            household_unique("sleep_logs", "origin_guid"),
+        ]
 
 
 class SleepTarget(models.Model):
     id = models.UUIDField(primary_key=True)
     target_minutes = models.IntegerField()
-    effective_from_date = models.DateField(unique=True)
+    effective_from_date = models.DateField()
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "sleep_targets"
+        constraints = [
+            household_unique("sleep_targets", "effective_from_date"),
+            household_unique("sleep_targets", "origin_guid"),
+        ]
 
 
 class WorkoutPlan(models.Model):
     id = models.UUIDField(primary_key=True)
     sessions_per_week = models.IntegerField()
-    effective_from_week = models.DateField(unique=True)
+    effective_from_week = models.DateField()
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "workout_plans"
+        constraints = [
+            household_unique("workout_plans", "effective_from_week"),
+            household_unique("workout_plans", "origin_guid"),
+        ]
 
 
 class WorkoutPlanItem(models.Model):
@@ -89,12 +112,17 @@ class WorkoutPlanItem(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "workout_plan_items"
-        unique_together = (("exercise", "effective_from_week"),)
+        constraints = [
+            household_unique("workout_plan_items", "exercise", "effective_from_week"),
+            household_unique("workout_plan_items", "origin_guid"),
+        ]
 
 
 class WorkoutSetLog(models.Model):
@@ -110,11 +138,16 @@ class WorkoutSetLog(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "workout_set_logs"
+        constraints = [
+            household_unique("workout_set_logs", "origin_guid"),
+        ]
 
 
 class Goal(models.Model):
@@ -134,8 +167,13 @@ class Goal(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "goals"
+        constraints = [
+            household_unique("goals", "origin_guid"),
+        ]

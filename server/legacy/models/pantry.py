@@ -11,11 +11,12 @@ from django.db import models
 
 from legacy.enums import Provenance
 from legacy.models.ingest import IngestedFile
+from legacy.models.tenancy import household_field, household_unique
 
 
 class GroceryStaple(models.Model):
     id = models.UUIDField(primary_key=True)
-    name = models.TextField(unique=True)
+    name = models.TextField()
     display_name = models.TextField()
     times_bought = models.IntegerField()
     last_bought_at = models.DateTimeField()
@@ -23,11 +24,17 @@ class GroceryStaple(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "grocery_staples"
+        constraints = [
+            household_unique("grocery_staples", "name"),
+            household_unique("grocery_staples", "origin_guid"),
+        ]
 
 
 class MealLog(models.Model):
@@ -44,11 +51,16 @@ class MealLog(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "meal_logs"
+        constraints = [
+            household_unique("meal_logs", "origin_guid"),
+        ]
 
 
 class MealTarget(models.Model):
@@ -57,16 +69,22 @@ class MealTarget(models.Model):
     protein_g = models.FloatField()
     carbs_g = models.FloatField()
     fat_g = models.FloatField()
-    effective_from_date = models.DateField(unique=True)
+    effective_from_date = models.DateField()
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "meal_targets"
+        constraints = [
+            household_unique("meal_targets", "effective_from_date"),
+            household_unique("meal_targets", "origin_guid"),
+        ]
 
 
 class Receipt(models.Model):
@@ -95,12 +113,17 @@ class Receipt(models.Model):
     photo_object_path = models.TextField(null=True)
     provenance = models.TextField(choices=Provenance.choices)  # no DB default
     created_at = models.DateTimeField()
-    origin_guid = models.TextField(null=True, unique=True)
+    origin_guid = models.TextField(null=True)
     unaccounted_cents = models.BigIntegerField(null=True)
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "receipts"
+        constraints = [
+            household_unique("receipts", "origin_guid"),
+        ]
 
 
 class ReceiptLineItem(models.Model):
@@ -132,8 +155,13 @@ class ReceiptLineItem(models.Model):
     )
     provenance = models.TextField(choices=Provenance.choices)  # no DB default
     created_at = models.DateTimeField()
-    origin_guid = models.TextField(null=True, unique=True)
+    origin_guid = models.TextField(null=True)
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "receipt_line_items"
+        constraints = [
+            household_unique("receipt_line_items", "origin_guid"),
+        ]

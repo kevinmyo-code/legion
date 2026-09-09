@@ -83,6 +83,7 @@ from checklists.serializers import (
     ChecklistSerializer,
     ChecklistTickSerializer,
 )
+from household.tenancy import scoped
 from legacy.models.dates import Event
 
 # The two hand-written aspects (Phase 2), then everything on the generic
@@ -239,13 +240,25 @@ class ChangesView(APIView):
         # asking every caller to remember to encode it.
         body: dict = {"server_time": DateTimeField().to_representation(server_time)}
 
+        # ADR 0045: every key in this body is scoped to the requesting
+        # household. This feed is the one route that reads EVERY table at
+        # once, so an unscoped query here would leak an entire other family's
+        # database in a single response - which is why `scoped()` is spelled
+        # out on each of the four below rather than applied once somewhere a
+        # later reader would have to go and find.
         if "events" in requested:
-            events = Event.objects.filter(updated_at__gte=since).order_by("updated_at")
+            events = scoped(Event, request).filter(updated_at__gte=since).order_by("updated_at")
             body["events"] = EventSerializer(events, many=True).data
         if "checklists" in requested:
-            checklists = Checklist.objects.filter(updated_at__gte=since).order_by("updated_at")
-            items = ChecklistItem.objects.filter(updated_at__gte=since).order_by("updated_at")
-            ticks = ChecklistTick.objects.filter(updated_at__gte=since).order_by("updated_at")
+            checklists = (
+                scoped(Checklist, request).filter(updated_at__gte=since).order_by("updated_at")
+            )
+            items = (
+                scoped(ChecklistItem, request).filter(updated_at__gte=since).order_by("updated_at")
+            )
+            ticks = (
+                scoped(ChecklistTick, request).filter(updated_at__gte=since).order_by("updated_at")
+            )
             body["checklists"] = ChecklistSerializer(checklists, many=True).data
             body["checklist_items"] = ChecklistItemSerializer(items, many=True).data
             body["checklist_ticks"] = ChecklistTickSerializer(ticks, many=True).data
@@ -267,7 +280,11 @@ class ChangesView(APIView):
             for viewset in SYNCED_ASPECTS.get(aspect, ()):
                 model = viewset.model()
                 cursor = viewset.cursor_field
-                rows = model.objects.filter(**{f"{cursor}__gte": since}).order_by(cursor, "pk")
+                rows = (
+                    scoped(model, request)
+                    .filter(**{f"{cursor}__gte": since})
+                    .order_by(cursor, "pk")
+                )
                 body[viewset.table] = viewset.serializer_class(rows, many=True).data
 
         return Response(body)

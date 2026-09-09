@@ -35,6 +35,7 @@ from api.schema import (
     paged_serializer,
 )
 from api.sync import paginate_since, parse_since, save_or_400
+from household.tenancy import household_of, scoped
 from legacy.enums import Provenance
 from legacy.models.dates import Event
 
@@ -209,6 +210,18 @@ class EventSerializer(serializers.ModelSerializer):
         # created here carries Provenance.USER, matching the column's own
         # DB default - never accepted from the caller (read_only above).
         validated_data["provenance"] = Provenance.USER
+        # ADR 0045. From the REQUEST, never the body: `household` is not in
+        # `Meta.fields` above, so it is not a value a caller can send. This
+        # serializer predates `api/synced.SyncedSerializer` (it is the Phase 2
+        # slice) and does the same assignment by hand for the same reason
+        # every field it sets by hand is set by hand.
+        household = self.context.get("household")
+        if household is None:
+            raise RuntimeError(
+                "Nothing was written. EventSerializer was built without a `household` in "
+                "its context, so there is no household to write this event into."
+            )
+        validated_data["household"] = household
         instance = Event.objects.create(**validated_data)
         # `Now()` is an unevaluated SQL expression until Postgres runs it;
         # the in-memory instance still holds the expression object, not a
@@ -250,7 +263,7 @@ class EventListCreateView(APIView):
     )
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
-        queryset = Event.objects.filter(updated_at__gte=since).order_by("updated_at")
+        queryset = scoped(Event, request).filter(updated_at__gte=since).order_by("updated_at")
         page, next_since = paginate_since(queryset)
         return Response({"results": EventSerializer(page, many=True).data, "next": next_since})
 
@@ -286,11 +299,17 @@ class EventListCreateView(APIView):
         # application layer too.
         origin_guid = request.data.get("origin_guid")
         if origin_guid:
-            existing = Event.objects.filter(origin_guid=origin_guid).first()
+            # Scoped, and the scoping is what keeps the idempotency honest:
+            # unscoped, household B's retry of ITS origin_guid would find
+            # household A's row and be answered with A's event as though it
+            # were the one B just created.
+            existing = scoped(Event, request).filter(origin_guid=origin_guid).first()
             if existing is not None:
                 return Response(EventSerializer(existing).data, status=status.HTTP_200_OK)
 
-        serializer = EventSerializer(data=request.data)
+        serializer = EventSerializer(
+            data=request.data, context={"household": household_of(request)}
+        )
         serializer.is_valid(raise_exception=True)
         instance, error = save_or_400(lambda: serializer.save())
         if error is not None:
@@ -301,8 +320,8 @@ class EventListCreateView(APIView):
 class EventDetailView(APIView):
     """`PATCH`/`DELETE /api/events/<id>`."""
 
-    def _get_object(self, pk):
-        return Event.objects.filter(pk=pk).first()
+    def _get_object(self, pk, request):
+        return scoped(Event, request).filter(pk=pk).first()
 
     @extend_schema(
         operation_id="api_events_partial_update",
@@ -322,7 +341,7 @@ class EventDetailView(APIView):
         },
     )
     def patch(self, request, pk):
-        instance = self._get_object(pk)
+        instance = self._get_object(pk, request)
         if instance is None:
             return Response({"detail": f"No event with id {pk}."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -361,7 +380,7 @@ class EventDetailView(APIView):
         responses={204: NO_CONTENT, 404: NOT_FOUND},
     )
     def delete(self, request, pk):
-        instance = self._get_object(pk)
+        instance = self._get_object(pk, request)
         if instance is None:
             return Response({"detail": f"No event with id {pk}."}, status=status.HTTP_404_NOT_FOUND)
         # Idempotent, matching EventsBackend.softDelete's own contract: a

@@ -63,6 +63,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from household.tenancy import household_of
 from ingest import gate
 from ingest.dedup import ExistingRow, resolve_dedup
 from legacy.enums import IngestState, Provenance
@@ -285,7 +286,7 @@ def _require_sha(payload: dict[str, Any], rpc_name: str) -> str:
     return sha
 
 
-def _already_committed(sha: str) -> IngestedFile | None:
+def _already_committed(sha: str, household) -> IngestedFile | None:
     """Step 1 of both RPCs. Idempotency keyed on the content hash.
 
     This is what makes a lost acknowledgement retryable instead of ambiguous.
@@ -296,10 +297,24 @@ def _already_committed(sha: str) -> IngestedFile | None:
     until it gets a definite answer rather than narrating a state it cannot
     determine.
     """
-    return IngestedFile.objects.filter(content_sha256=sha, state=IngestState.INGESTED).first()
+    # Household-scoped (ADR 0045), and this one matters more than most: the
+    # content hash is a property of the FILE, so two households ingesting the
+    # same bank statement produce the same sha. Unscoped, the second household
+    # would be told "already committed" about a document it has never seen,
+    # and would end up with a file row it does not own and no transactions at
+    # all. `ingested_files.content_sha256` is re-keyed to
+    # `(household_id, content_sha256)` for the same reason.
+    return (
+        IngestedFile.objects.filter(
+            household=household, content_sha256=sha, state=IngestState.INGESTED
+        )
+        .first()
+    )
 
 
-def _upsert_file(payload: dict[str, Any], sha: str, state: str, reason: str | None) -> IngestedFile:
+def _upsert_file(
+    payload: dict[str, Any], sha: str, state: str, reason: str | None, household
+) -> IngestedFile:
     """`insert into public.ingested_files (...) values (...) on conflict
     (content_sha256) do update set ...`, both RPCs' version and
     `private.quarantine_file`'s, which differ only in the state and the reason.
@@ -319,6 +334,7 @@ def _upsert_file(payload: dict[str, Any], sha: str, state: str, reason: str | No
         size_bytes = int(size_bytes) if size_bytes.strip() else None
     row = IngestedFile(
         id=uuid.uuid4(),
+        household=household,
         content_sha256=sha,
         source_file_id=payload.get("source_file_id"),
         display_name=payload.get("display_name"),
@@ -336,14 +352,18 @@ def _upsert_file(payload: dict[str, Any], sha: str, state: str, reason: str | No
         update_conflicts=True,
         update_fields=["state", "quarantine_reason", "last_attempt_at", "source_file_id",
                        "display_name", "size_bytes"],
-        unique_fields=["content_sha256"],
+        # `(household, content_sha256)`, matching the re-keyed unique index -
+        # a plain `content_sha256` target no longer names a constraint, and
+        # Postgres would refuse the statement outright rather than silently
+        # conflict on the wrong thing.
+        unique_fields=["household", "content_sha256"],
     )
     # bulk_create's returned instance holds the id it TRIED to insert, which is
     # not the stored id when the conflict path ran. Read the row back.
-    return IngestedFile.objects.get(content_sha256=sha)
+    return IngestedFile.objects.get(household=household, content_sha256=sha)
 
 
-def _quarantine(payload: dict[str, Any], sha: str, reason: str) -> Response:
+def _quarantine(payload: dict[str, Any], sha: str, reason: str, household) -> Response:
     """`private.quarantine_file`, and note what it writes: ONLY the file row.
 
     That is the whole point. A quarantined document leaves a reason and no data,
@@ -354,7 +374,7 @@ def _quarantine(payload: dict[str, Any], sha: str, reason: str) -> Response:
     roll back the quarantine record too, and the file would come back on the
     next scan with no memory of why it failed, forever.
     """
-    _upsert_file(payload, sha, IngestState.QUARANTINED, reason)
+    _upsert_file(payload, sha, IngestState.QUARANTINED, reason, household)
     return Response(
         {"outcome": gate.QUARANTINED, "reason": reason, "inserted": 0},
         status=status.HTTP_200_OK,
@@ -408,7 +428,7 @@ class StatementIngestView(_IngestView):
         try:
             payload = self._payload(request)
             with transaction.atomic():
-                return self._commit(payload)
+                return self._commit(payload, household_of(request))
         except gate.GateInputError as exc:
             # Not a quarantine: the gate could not run at all. See
             # GateInputError's own docstring for why collapsing the two would
@@ -424,10 +444,10 @@ class StatementIngestView(_IngestView):
             # already rolled everything back, so nothing partial survives.
             return Response({"detail": str(exc).strip()}, status=status.HTTP_400_BAD_REQUEST)
 
-    def _commit(self, payload: dict[str, Any]) -> Response:
+    def _commit(self, payload: dict[str, Any], household) -> Response:
         sha = _require_sha(payload, "commit_statement")
 
-        existing = _already_committed(sha)
+        existing = _already_committed(sha, household)
         if existing is not None:
             return Response(
                 {
@@ -463,7 +483,7 @@ class StatementIngestView(_IngestView):
             provenance=provenance,
         )
         if not verdict.committed:
-            return _quarantine(payload, sha, verdict.reason or "")
+            return _quarantine(payload, sha, verdict.reason or "", household)
 
         # Gate passed. Only now does anything but the file row get written.
         lines = [
@@ -484,10 +504,11 @@ class StatementIngestView(_IngestView):
         nickname = payload.get("account_nickname")
         currency = payload.get("currency")
 
-        file_row = _upsert_file(payload, sha, IngestState.INGESTED, None)
+        file_row = _upsert_file(payload, sha, IngestState.INGESTED, None, household)
 
         statement = Statement.objects.create(
             id=uuid.uuid4(),
+            household=household,
             ingested_file=file_row,
             account_last4=last4,
             account_nickname=nickname,
@@ -527,6 +548,7 @@ class StatementIngestView(_IngestView):
         # carries over unchanged - two accounts sharing a last four collide,
         # which is what the nickname is for elsewhere.
         superseded, _ = LedgerTransaction.objects.filter(
+            household=household,
             provenance=Provenance.UNRECONCILED,
             account_last4=last4,
             txn_date__gte=min_date,
@@ -535,14 +557,17 @@ class StatementIngestView(_IngestView):
 
         dedup = resolve_dedup(
             lines,
-            self._credit_pool(last4, nickname, min_date, max_date),
-            self._enumerated_windows(last4, nickname, statement.id, min_date, max_date),
+            self._credit_pool(last4, nickname, min_date, max_date, household),
+            self._enumerated_windows(
+                last4, nickname, statement.id, min_date, max_date, household
+            ),
         )
 
         LedgerTransaction.objects.bulk_create(
             [
                 LedgerTransaction(
                     id=uuid.uuid4(),
+                    household=household,
                     statement=statement,
                     account_last4=last4,
                     account_nickname=nickname,
@@ -587,7 +612,7 @@ class StatementIngestView(_IngestView):
         )
 
     def _credit_pool(
-        self, last4: object, nickname: object, from_date: date, to_date: date
+        self, last4: object, nickname: object, from_date: date, to_date: date, household
     ) -> list[ExistingRow]:
         """`for rec in select ... from public.ledger_transactions where
         account_last4 = ... and account_nickname = ... and txn_date between ...
@@ -597,6 +622,10 @@ class StatementIngestView(_IngestView):
         far-future row with the same key would absorb an incoming one.
         """
         rows = LedgerTransaction.objects.filter(
+            # Scoped: another household's transactions are not testimony about
+            # this one's, and a row of theirs absorbing an incoming line here
+            # would drop it silently.
+            household=household,
             account_last4=last4,
             account_nickname=nickname,
             txn_date__gte=from_date,
@@ -606,7 +635,13 @@ class StatementIngestView(_IngestView):
         return [ExistingRow(txn_date=d, amount_cents=a, description=desc) for d, a, desc in rows]
 
     def _enumerated_windows(
-        self, last4: object, nickname: object, exclude_id, from_date: date, to_date: date
+        self,
+        last4: object,
+        nickname: object,
+        exclude_id,
+        from_date: date,
+        to_date: date,
+        household,
     ) -> list[tuple[date, date]]:
         """`private.ledger_enumerated_windows`: spans another committed statement
         already listed completely.
@@ -622,6 +657,7 @@ class StatementIngestView(_IngestView):
         """
         rows = (
             LedgerTransaction.objects.filter(
+                household=household,
                 statement__account_last4=last4,
                 statement__account_nickname=nickname,
             )
@@ -661,16 +697,16 @@ class ReceiptIngestView(_IngestView):
         try:
             payload = self._payload(request)
             with transaction.atomic():
-                return self._commit(payload)
+                return self._commit(payload, household_of(request))
         except gate.GateInputError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except DatabaseError as exc:
             return Response({"detail": str(exc).strip()}, status=status.HTTP_400_BAD_REQUEST)
 
-    def _commit(self, payload: dict[str, Any]) -> Response:
+    def _commit(self, payload: dict[str, Any], household) -> Response:
         sha = _require_sha(payload, "commit_receipt")
 
-        existing = _already_committed(sha)
+        existing = _already_committed(sha, household)
         if existing is not None:
             return Response(
                 {
@@ -712,12 +748,13 @@ class ReceiptIngestView(_IngestView):
             other_charges_cents=other,
         )
         if not verdict.committed:
-            return _quarantine(payload, sha, verdict.reason or "")
+            return _quarantine(payload, sha, verdict.reason or "", household)
 
-        file_row = _upsert_file(payload, sha, IngestState.INGESTED, None)
+        file_row = _upsert_file(payload, sha, IngestState.INGESTED, None, household)
 
         receipt = Receipt.objects.create(
             id=uuid.uuid4(),
+            household=household,
             ingested_file=file_row,
             store=payload.get("store"),
             purchase_date=_parse_date(payload.get("purchase_date"), "purchase_date"),
@@ -745,6 +782,7 @@ class ReceiptIngestView(_IngestView):
             [
                 ReceiptLineItem(
                     id=uuid.uuid4(),
+                    household=household,
                     receipt=receipt,
                     name=item.get("name"),
                     quantity=item.get("quantity"),

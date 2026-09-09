@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.db import models
 
 from legacy.enums import Provenance
+from legacy.models.tenancy import household_field, household_unique
 
 
 class VoiceNote(models.Model):
@@ -32,6 +33,8 @@ class VoiceNote(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "voice_notes"
@@ -49,7 +52,26 @@ class ItemList(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
+    # **The one `origin_guid` in this app that stays globally unique, and it
+    # is not an oversight.** ADR 0045 re-keys every per-server unique key to
+    # `(household_id, <col>)`; this one cannot be, because `ListItem` below is
+    # a foreign key to THIS COLUMN (`to_field="origin_guid"`, see its
+    # docstring). Postgres will not let a unique constraint another table's
+    # foreign key depends on be dropped, and Django refuses the model outright
+    # with `fields.E311: 'ItemList.origin_guid' must be unique because it is
+    # referenced by a foreign key`. `household/tenancy_sql.py` reaches the same
+    # conclusion from the catalog and skips it with a note.
+    #
+    # What that costs, stated rather than glossed: two households cannot use
+    # the same `origin_guid` on `item_lists`. It is a client-minted uuid, so
+    # in practice they never will - but the isolation here is arithmetic, not
+    # architecture, and that is worth knowing. `list_items` is scoped by its
+    # OWN `household_id` like every other table; a child list item's household
+    # must equal its parent list's, which `tests/test_tenancy.py` asserts
+    # rather than assumes.
     origin_guid = models.TextField(unique=True)
+
+    household = household_field()
 
     class Meta:
         managed = False
@@ -99,8 +121,13 @@ class ListItem(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(unique=True)
+    origin_guid = models.TextField()
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "list_items"
+        constraints = [
+            household_unique("list_items", "origin_guid"),
+        ]

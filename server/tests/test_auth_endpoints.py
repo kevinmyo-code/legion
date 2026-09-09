@@ -9,14 +9,19 @@ from household.models import DeviceToken, HouseholdMember, User
 pytestmark = pytest.mark.django_db
 
 
-def _make_member(email: str = "kevin@example.com", password: str = "correct horse battery") -> User:
+def _make_member(
+    household, email: str = "kevin@example.com", password: str = "correct horse battery"
+) -> User:
+    """ADR 0045: a `HouseholdMember` names a household now, so every caller
+    below takes the `household_a` fixture and hands it in. That is the ONLY
+    change in this file - the four tests themselves are untouched."""
     user = User.objects.create_user(email=email, password=password)
-    HouseholdMember.objects.create(user=user)
+    HouseholdMember.objects.create(user=user, household=household)
     return user
 
 
-def test_wrong_password_returns_401_and_mints_no_token():
-    _make_member()
+def test_wrong_password_returns_401_and_mints_no_token(household_a):
+    _make_member(household_a)
     client = APIClient()
 
     response = client.post(
@@ -30,8 +35,8 @@ def test_wrong_password_returns_401_and_mints_no_token():
     assert DeviceToken.objects.count() == 0
 
 
-def test_right_password_returns_a_token_that_passes_me():
-    user = _make_member()
+def test_right_password_returns_a_token_that_passes_me(household_a):
+    user = _make_member(household_a)
     client = APIClient()
 
     login = client.post(
@@ -54,8 +59,8 @@ def test_right_password_returns_a_token_that_passes_me():
     assert me.data["device_name"] == "Test phone"
 
 
-def test_revoked_token_gets_401():
-    user = _make_member()
+def test_revoked_token_gets_401(household_a):
+    user = _make_member(household_a)
     _token, raw_key = DeviceToken.issue(user, "Test phone")
     from django.utils import timezone
 
@@ -69,8 +74,8 @@ def test_revoked_token_gets_401():
     assert response.status_code == 401
 
 
-def test_logout_revokes_only_the_calling_token():
-    user = _make_member()
+def test_logout_revokes_only_the_calling_token(household_a):
+    user = _make_member(household_a)
     _first, first_key = DeviceToken.issue(user, "Phone A")
     _second, second_key = DeviceToken.issue(user, "Phone B")
 

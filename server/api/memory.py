@@ -264,7 +264,12 @@ class CompanionMemoryViewSet(_MemoryViewSet):
         vehicle = (request.query_params.get("vehicle") or "").strip()
 
         since = parse_since(request.query_params.get("since"))
-        queryset = self.model().objects.filter(**{f"{self.cursor_field}__gte": since})
+        # `self.queryset()`, the inherited household filter - see the note
+        # above about this method being a copy of the base `list` that has
+        # already drifted once. ADR 0045's scoping is not something a copy is
+        # allowed to miss, so it comes from the base class rather than being
+        # re-spelled here.
+        queryset = self.queryset().filter(**{f"{self.cursor_field}__gte": since})
         if self.has_tombstones and request.query_params.get("active", "").strip().lower() in TRUTHY:
             queryset = queryset.filter(deleted_at__isnull=True)
         if vehicle:
