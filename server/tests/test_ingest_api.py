@@ -437,7 +437,7 @@ def test_ingest_requires_a_household_token(client):
 # ---------------------------------------------------------------------------
 
 
-def test_a_gated_statement_supersedes_provisional_rows_in_its_window(auth_client):
+def test_a_gated_statement_supersedes_provisional_rows_in_its_window(auth_client, household_a):
     """Rule 7's fourth condition: provisional rows are transient. "When a file
     that DID pass the gate commits over the same account and dates, the
     provisional rows in that window are deleted, so an unverified row can never
@@ -446,9 +446,18 @@ def test_a_gated_statement_supersedes_provisional_rows_in_its_window(auth_client
     The provisional row is built directly rather than posted, because no endpoint
     can create one - which is the finding that made rule 7 ingestion its own
     ticket.
+
+    **It names `household_a` explicitly (ADR 0045).** Every other row in this
+    file arrives through the API, which stamps the household from the calling
+    token; this one bypasses that path by construction, so it is the one place
+    the column has to be supplied by hand. `auth_client`'s own user is a member
+    of `household_a`, so this is the household the gate will scope its
+    supersede query to - the point of the test is that the row is FOUND, and a
+    row in any other household would prove the opposite.
     """
     LedgerTransaction.objects.create(
         id=uuid.uuid4(),
+        household=household_a,
         statement=None,
         account_last4="1234",
         account_nickname="checking",

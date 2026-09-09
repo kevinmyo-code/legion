@@ -12,6 +12,7 @@ import os
 
 import pytest
 from django.conf import settings
+from django.core.management.commands import flush as _flush_command
 from rest_framework.test import APIClient
 
 from tests.legacy_test_schema import (
@@ -36,6 +37,57 @@ from tests.legacy_test_schema import (
 # `deploy/.env` keeps it, and the test database is a throwaway either way.
 os.environ.setdefault("LEGION_BOOTSTRAP_HOUSEHOLD_ID", "00000000-0000-4000-8000-00000000ffff")
 os.environ.setdefault("LEGION_BOOTSTRAP_HOUSEHOLD_NAME", "Test bootstrap household")
+
+
+# ADR 0045, and this is a TEST-HARNESS fix for a production constraint that is
+# deliberately being kept.
+#
+# The forty-three legacy tables are `managed = False`, so Django's post-test
+# flush - which truncates only the tables belonging to MANAGED models - never
+# touches them. That was already true and already worked around here
+# (`_clear_events` in test_events_api.py). Tenancy made it fail loudly: those
+# tables now carry `household_id REFERENCES django.household_household (id)`,
+# and Postgres refuses to TRUNCATE a table that an un-truncated table
+# references, empty or not - the check is structural, not row-count based. So
+# every `transaction=True` test died in teardown with
+#
+#     cannot truncate a table referenced in a foreign key constraint
+#     DETAIL: Table "events" references "household_household".
+#
+# **The foreign key stays.** CLAUDE.md section 7: an integrity rule that must
+# hold even when Django has a bug is SQL shipped by a migration, and
+# "household_id names a household that exists" is exactly that. Dropping the
+# REFERENCES clause would make 649 tests pass by making the database weaker,
+# which is the wrong direction, and it would leave RLS (ticket 02b) as the only
+# thing standing between a bug and a row scoped to a household that never
+# existed.
+#
+# So the flush cascades instead. `allow_cascade=True` is what Django itself
+# passes whenever `TransactionTestCase.available_apps` is set; pytest-django
+# does not expose that attribute, so the default is forced here instead. It is
+# scoped to the test session by living in conftest, it only ever widens what a
+# flush of a THROWAWAY test database truncates, and the five tests that need
+# `transaction=True` need it for a real reason (a Postgres trigger-clock
+# artefact that only appears inside a wrapping transaction - see
+# test_events_api.py's own module docstring).
+# Patched on the `flush` COMMAND's own imported name, deliberately, and the
+# first attempt got this wrong in a way worth recording: patching
+# `BaseDatabaseOperations.sql_flush` changed nothing at all, because the
+# PostgreSQL backend overrides that method
+# (`django/db/backends/postgresql/operations.py`), and this project only ever
+# runs against Postgres. `django.core.management.sql.sql_flush` is the one
+# function the command actually calls, on any backend, so it is the honest
+# place to widen the default.
+_ORIGINAL_SQL_FLUSH = _flush_command.sql_flush
+
+
+def _sql_flush_with_cascade(style, connection, reset_sequences=True, allow_cascade=False):
+    return _ORIGINAL_SQL_FLUSH(
+        style, connection, reset_sequences=reset_sequences, allow_cascade=True
+    )
+
+
+_flush_command.sql_flush = _sql_flush_with_cascade
 
 # `legacy` is deliberately `managed = False` with `MIGRATION_MODULES =
 # {"legacy": None}` (legion/settings.py) - Supabase's own migrations own
@@ -275,11 +327,28 @@ def bootstrap_household(db):
     own, so the 589 tests that existed before ADR 0045 keep working with no
     per-test edit: they ask for `household_user` or `auth_client` exactly as
     they did, and get a member of this household.
+
+    **`get_or_create`, not `get`, and the "or create" half is load-bearing.**
+    The migration makes this row once, at test-database creation. A
+    `transaction=True` test tears down by TRUNCATE rather than rollback, and
+    that truncation now CASCADEs (see the `sql_flush` patch at the top of this
+    file), so it takes `household_household` with it - including the row the
+    migration made. Every test after the first such teardown then found
+    nothing and failed with `Household.DoesNotExist` at setup, which reads like
+    a tenancy bug and is really a teardown artefact.
+
+    Recreating it is exact rather than approximate: the household is defined
+    entirely by `LEGION_BOOTSTRAP_HOUSEHOLD_ID` and
+    `LEGION_BOOTSTRAP_HOUSEHOLD_NAME`, both pinned at this module's import, so
+    the row this rebuilds is the row the migration built, id included.
     """
     from household.models import Household
-    from household.tenancy import bootstrap_household_id
+    from household.tenancy import bootstrap_household_id, bootstrap_household_name
 
-    return Household.objects.get(id=bootstrap_household_id())
+    household, _ = Household.objects.get_or_create(
+        id=bootstrap_household_id(), defaults={"name": bootstrap_household_name()}
+    )
+    return household
 
 
 @pytest.fixture
