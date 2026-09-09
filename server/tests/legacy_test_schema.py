@@ -73,6 +73,31 @@ Guarded twice, the same way the events SQL is: it is layered on top of
 pytest-django's `django_db_setup`, which only ever targets the test
 database it just created, AND `conftest.apply_legacy_test_schema` refuses
 to execute unless the connected database's own name contains "test".
+
+## The tenancy column is NOT in this file, on purpose (ADR 0045)
+
+Every `create table` below is the table in its PRE-tenancy shape - no
+`household_id`, and the unique keys still per-server. `tests/conftest.py`
+runs `household.tenancy_sql.apply_all` immediately after these blocks, which
+is the SAME function `household/migrations/0002_households_are_tenants.py`
+calls against the live database and the same one `manage.py tenancy_sql`
+prints.
+
+That was a choice with a cost either way. Hand-writing `household_id uuid not
+null` into forty `create table` statements here would have been a mirror of
+what the migration produces - and the planner, the part that reads each
+table's unique keys off the catalog and rebuilds them, would then have been
+exercised by nothing at all while the suite went green against DDL that
+merely looked like its output. Running the real thing means the suite proves
+the migration; `tests/test_tenancy.py` holds the hand-written expectation
+(`REKEYED`, `UNTOUCHED`) so the planner is not checked only against itself.
+
+**Four tenant tables are still absent from this mirror entirely** - `goals`,
+`conversation_audit`, `item_lists` and `list_items`. Nothing has ever written
+to them through this server, so nothing here has ever needed them.
+`tests/test_tenancy.TABLES_ABSENT_FROM_THE_TEST_MIRROR` names them and
+asserts the absence, so adding one without its column fails rather than
+passing quietly.
 """
 from __future__ import annotations
 

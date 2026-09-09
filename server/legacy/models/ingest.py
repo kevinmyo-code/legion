@@ -19,11 +19,12 @@ from __future__ import annotations
 from django.db import models
 
 from legacy.enums import IngestState
+from legacy.models.tenancy import household_field, household_unique
 
 
 class IngestedFile(models.Model):
     id = models.UUIDField(primary_key=True)
-    content_sha256 = models.TextField(unique=True)
+    content_sha256 = models.TextField()
     source_file_id = models.TextField(null=True)
     display_name = models.TextField(null=True)
     size_bytes = models.BigIntegerField(null=True)
@@ -32,6 +33,11 @@ class IngestedFile(models.Model):
     first_seen_at = models.DateTimeField()
     last_attempt_at = models.DateTimeField()
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "ingested_files"
+        constraints = [
+            household_unique("ingested_files", "content_sha256"),
+        ]

@@ -14,6 +14,7 @@ from __future__ import annotations
 from django.db import models
 
 from legacy.enums import Provenance
+from legacy.models.tenancy import household_field, household_unique
 
 
 class Vehicle(models.Model):
@@ -35,13 +36,18 @@ class Vehicle(models.Model):
     # index, not a partial one - Postgres treats every NULL as distinct from
     # every other NULL under a unique constraint, so nullable-and-unique is
     # the correct, faithful pairing here.
-    origin_guid = models.TextField(null=True, unique=True)
+    origin_guid = models.TextField(null=True)
     archived = models.BooleanField()
     last_obd_mac = models.TextField(null=True)
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "vehicles"
+        constraints = [
+            household_unique("vehicles", "origin_guid"),
+        ]
 
 
 class VehicleSpec(models.Model):
@@ -80,6 +86,8 @@ class VehicleSpec(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "vehicle_specs"
@@ -87,7 +95,7 @@ class VehicleSpec(models.Model):
 
 class Drive(models.Model):
     id = models.UUIDField(primary_key=True)
-    sync_id = models.TextField(unique=True)
+    sync_id = models.TextField()
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", on_delete=models.DO_NOTHING, related_name="+"
     )
@@ -101,14 +109,19 @@ class Drive(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "drives"
+        constraints = [
+            household_unique("drives", "sync_id"),
+        ]
 
 
 class DriveReassignment(models.Model):
     id = models.UUIDField(primary_key=True)
-    sync_id = models.TextField(unique=True)
+    sync_id = models.TextField()
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", on_delete=models.DO_NOTHING, related_name="+"
     )
@@ -122,14 +135,19 @@ class DriveReassignment(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "drive_reassignments"
+        constraints = [
+            household_unique("drive_reassignments", "sync_id"),
+        ]
 
 
 class CodeEvent(models.Model):
     id = models.UUIDField(primary_key=True)
-    sync_id = models.TextField(unique=True)
+    sync_id = models.TextField()
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", on_delete=models.DO_NOTHING, related_name="+"
     )
@@ -142,14 +160,19 @@ class CodeEvent(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "code_events"
+        constraints = [
+            household_unique("code_events", "sync_id"),
+        ]
 
 
 class CodeClearEvent(models.Model):
     id = models.UUIDField(primary_key=True)
-    sync_id = models.TextField(unique=True)
+    sync_id = models.TextField()
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", on_delete=models.DO_NOTHING, related_name="+"
     )
@@ -165,9 +188,14 @@ class CodeClearEvent(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "code_clear_events"
+        constraints = [
+            household_unique("code_clear_events", "sync_id"),
+        ]
 
 
 class ObdSample(models.Model):
@@ -189,6 +217,8 @@ class ObdSample(models.Model):
     lng = models.FloatField(null=True)
     created_at = models.DateTimeField()
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "obd_samples"
@@ -200,7 +230,7 @@ class ObdSample(models.Model):
 
 class OilAnalysis(models.Model):
     id = models.UUIDField(primary_key=True)
-    sync_id = models.TextField(unique=True)
+    sync_id = models.TextField()
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", on_delete=models.DO_NOTHING, related_name="+"
     )
@@ -233,9 +263,14 @@ class OilAnalysis(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "oil_analyses"
+        constraints = [
+            household_unique("oil_analyses", "sync_id"),
+        ]
 
 
 class ServiceHistory(models.Model):
@@ -252,11 +287,16 @@ class ServiceHistory(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(null=True, unique=True)
+    origin_guid = models.TextField(null=True)
+
+    household = household_field()
 
     class Meta:
         managed = False
         db_table = "service_history"
+        constraints = [
+            household_unique("service_history", "origin_guid"),
+        ]
 
 
 class MaintenanceSchedule(models.Model):
@@ -273,6 +313,8 @@ class MaintenanceSchedule(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
+
+    household = household_field()
 
     class Meta:
         managed = False
@@ -304,6 +346,8 @@ class ChassisQuirk(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "chassis_quirks"
@@ -311,7 +355,7 @@ class ChassisQuirk(models.Model):
 
 class BuildEntry(models.Model):
     id = models.UUIDField(primary_key=True)
-    sync_id = models.TextField(unique=True)
+    sync_id = models.TextField()
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", on_delete=models.DO_NOTHING, related_name="+"
     )
@@ -328,6 +372,11 @@ class BuildEntry(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "build_entries"
+        constraints = [
+            household_unique("build_entries", "sync_id"),
+        ]

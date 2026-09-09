@@ -6,6 +6,8 @@ everyone else (`household/management/commands/add_household_member.py`).
 """
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -49,9 +51,52 @@ def test_add_household_member_creates_then_is_idempotent(capsys):
     call_command("add_household_member", "second@example.com")
     assert HouseholdMember.objects.filter(user=user).count() == 1
     second_output = capsys.readouterr().out
-    assert "already a household member" in second_output
+    # ADR 0045 changed this sentence and only this sentence: "already a
+    # household member" was unambiguous when there was one household, and the
+    # command now names which one they are in.
+    assert "is already a member of" in second_output
 
 
 def test_add_household_member_unknown_email_errors_in_words():
     with pytest.raises(CommandError, match="No user with email"):
         call_command("add_household_member", "nobody@example.com")
+
+
+def test_add_household_member_refuses_to_guess_between_two_households(monkeypatch):
+    """ADR 0045's whole point, at the one door that predates it.
+
+    With more than one household and none of them named by
+    `LEGION_BOOTSTRAP_HOUSEHOLD_ID`, there is no household this command may
+    pick. It says so and adds nobody, rather than choosing the oldest and
+    reporting success - putting a person in the wrong family is exactly the
+    failure tenancy exists to prevent.
+
+    The env var is pointed at a uuid no household has, rather than unset: an
+    UNSET one falls through to "the only household if there is exactly one",
+    which is a different branch and is covered by every other test in this
+    file. This is the branch where the operator HAS named one and it is gone.
+    """
+    from household.models import Household
+
+    monkeypatch.setenv("LEGION_BOOTSTRAP_HOUSEHOLD_ID", str(uuid.uuid4()))
+    Household.objects.create(name="Second household")
+    Household.objects.create(name="Third household")
+    user = User.objects.create_user(email="stranded@example.com", password="correct horse battery")
+
+    with pytest.raises(CommandError, match="none of them is named by"):
+        call_command("add_household_member", "stranded@example.com")
+
+    assert not HouseholdMember.objects.filter(user=user).exists()
+
+
+def test_add_household_member_takes_an_explicit_household():
+    from household.models import Household
+
+    other = Household.objects.create(name="Parents")
+    User.objects.create_user(email="mum@example.com", password="correct horse battery")
+
+    call_command("add_household_member", "mum@example.com", "--household", str(other.id), "--owner")
+
+    member = HouseholdMember.objects.get(user__email="mum@example.com")
+    assert member.household_id == other.id
+    assert member.role == HouseholdMember.OWNER

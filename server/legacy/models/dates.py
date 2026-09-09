@@ -8,6 +8,7 @@ from django.db import models
 
 from legacy.enums import Provenance
 from legacy.models.fleet import Vehicle
+from legacy.models.tenancy import household_field, household_unique
 
 
 class Event(models.Model):
@@ -24,7 +25,7 @@ class Event(models.Model):
     # closest built-in approximation (it never emits DDL for this model
     # anyway) and is behaviourally equivalent for reads: Postgres already
     # treats every NULL as distinct under a plain unique constraint too.
-    google_event_id = models.TextField(null=True, unique=True)
+    google_event_id = models.TextField(null=True)
     done = models.BooleanField()
     done_at = models.DateTimeField(null=True)
     sort_order = models.IntegerField(null=True)
@@ -46,16 +47,22 @@ class Event(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
-    origin_guid = models.TextField(null=True, unique=True)
+    origin_guid = models.TextField(null=True)
     structured_meta = models.JSONField(null=True)
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", null=True, on_delete=models.DO_NOTHING, related_name="+"
     )
     kind = models.TextField()  # CHECK: reminder | event | task; DB default 'reminder'
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "events"
+        constraints = [
+            household_unique("events", "google_event_id"),
+            household_unique("events", "origin_guid"),
+        ]
 
 
 class EventSkip(models.Model):
@@ -65,6 +72,8 @@ class EventSkip(models.Model):
     )
     skip_date = models.DateField()
     created_at = models.DateTimeField()
+
+    household = household_field()
 
     class Meta:
         managed = False

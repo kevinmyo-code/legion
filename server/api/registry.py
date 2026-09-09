@@ -22,6 +22,7 @@ from api.pantry import PANTRY_VIEWSETS
 from api.places import PlaceViewSet
 from api.synced import SyncedModelViewSet
 from api.voice_notes import VoiceNoteViewSet
+from household.tenancy import TENANT_TABLES
 
 SYNCED_VIEWSETS: list[type[SyncedModelViewSet]] = [
     PlaceViewSet,
@@ -63,3 +64,28 @@ SYNCED_VIEWSETS: list[type[SyncedModelViewSet]] = [
 SYNCED_ASPECTS: dict[str, list[type[SyncedModelViewSet]]] = {}
 for _viewset in SYNCED_VIEWSETS:
     SYNCED_ASPECTS.setdefault(_viewset.aspect, []).append(_viewset)
+
+
+# ADR 0045's coverage check, at import time rather than in a test.
+#
+# A table routed here that is NOT in `household.tenancy.TENANT_TABLES` would be
+# a table the migration never gave a `household_id` to, whose
+# `SyncedModelViewSet.queryset()` would then raise `FieldError` on the first
+# request - a 500 on a route that used to work, discovered by whoever hit it.
+# This turns that into a refusal to start, naming the table, which is the same
+# posture `legion/settings.required_env` takes for a missing secret: the
+# failure a household can actually act on is the loud one at boot.
+#
+# `tests/test_tenancy.py` closes the other direction (a name in TENANT_TABLES
+# that no `public` table carries) against `information_schema`; between them
+# the list cannot drift from either side.
+_untenanted = sorted(
+    viewset.table for viewset in SYNCED_VIEWSETS if viewset.table not in TENANT_TABLES
+)
+if _untenanted:
+    raise RuntimeError(
+        f"These tables are routed by this registry but are not in "
+        f"household.tenancy.TENANT_TABLES, so they carry no household_id and cannot be "
+        f"scoped to a household: {', '.join(_untenanted)}. Add them to that list and to "
+        f"the migration, or the API will serve one family another family's rows."
+    )

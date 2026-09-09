@@ -21,6 +21,7 @@ from checklists.serializers import (
     ChecklistTickSerializer,
     TickRequestSerializer,
 )
+from household.tenancy import household_of, scoped
 
 CHECKLIST_TAGS = ["checklists"]
 
@@ -35,7 +36,7 @@ IDEMPOTENT_REPEAT = (
 )
 
 
-def _idempotent_or_none(model, sync_id):
+def _idempotent_or_none(model, sync_id, request):
     """`sync_id` honoured on POST for idempotent create (this ticket's own
     rule 5: "the phone retries") - a retried create with the same
     `sync_id` returns the row that already exists rather than making a
@@ -45,7 +46,11 @@ def _idempotent_or_none(model, sync_id):
     too rather than matching two callers who both sent nothing."""
     if not sync_id:
         return None
-    return model.objects.filter(sync_id=sync_id).first()
+    # Household-scoped (ADR 0045). Unscoped, household B's retry of its own
+    # `sync_id` would find household A's row and be answered with A's data as
+    # though it were the row B had just created - the same trap
+    # `api/events.py`'s POST idempotency has, closed the same way.
+    return scoped(model, request).filter(sync_id=sync_id).first()
 
 
 class ChecklistListCreateView(APIView):
@@ -68,7 +73,9 @@ class ChecklistListCreateView(APIView):
     )
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
-        queryset = Checklist.objects.filter(updated_at__gte=since).order_by("updated_at")
+        queryset = (
+            scoped(Checklist, request).filter(updated_at__gte=since).order_by("updated_at")
+        )
         page, next_since = paginate_since(queryset)
         return Response({"results": ChecklistSerializer(page, many=True).data, "next": next_since})
 
@@ -86,13 +93,21 @@ class ChecklistListCreateView(APIView):
         },
     )
     def post(self, request):
-        existing = _idempotent_or_none(Checklist, request.data.get("sync_id"))
+        existing = _idempotent_or_none(Checklist, request.data.get("sync_id"), request)
         if existing is not None:
             return Response(ChecklistSerializer(existing).data, status=status.HTTP_200_OK)
 
         serializer = ChecklistSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        instance, error = save_or_400(lambda: serializer.save())
+        # ADR 0045: the household comes from the request, never the body -
+        # `household` is on no serializer's `Meta.fields`. `ChecklistItem` and
+        # `ChecklistTick` are NOT assigned one here on purpose: their models
+        # derive it from their parent in `save()`, because an item's household
+        # IS its checklist's and two places to set it is two places to get it
+        # wrong.
+        instance, error = save_or_400(
+            lambda: serializer.save(household=household_of(request))
+        )
         if error is not None:
             return error
         return Response(ChecklistSerializer(instance).data, status=status.HTTP_201_CREATED)
@@ -101,8 +116,8 @@ class ChecklistListCreateView(APIView):
 class ChecklistDetailView(APIView):
     """`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>`."""
 
-    def _get(self, checklist_id):
-        return Checklist.objects.filter(pk=checklist_id).first()
+    def _get(self, checklist_id, request):
+        return scoped(Checklist, request).filter(pk=checklist_id).first()
 
     @extend_schema(
         operation_id="api_checklists_retrieve",
@@ -110,7 +125,7 @@ class ChecklistDetailView(APIView):
         responses={200: ChecklistSerializer, 404: NOT_FOUND},
     )
     def get(self, request, checklist_id):
-        instance = self._get(checklist_id)
+        instance = self._get(checklist_id, request)
         if instance is None:
             return Response(
                 {"detail": f"No checklist with id {checklist_id}."},
@@ -125,7 +140,7 @@ class ChecklistDetailView(APIView):
         responses={200: ChecklistSerializer, 400: WRITE_REFUSED, 404: NOT_FOUND},
     )
     def patch(self, request, checklist_id):
-        instance = self._get(checklist_id)
+        instance = self._get(checklist_id, request)
         if instance is None:
             return Response(
                 {"detail": f"No checklist with id {checklist_id}."},
@@ -152,7 +167,7 @@ class ChecklistDetailView(APIView):
         },
     )
     def delete(self, request, checklist_id):
-        instance = self._get(checklist_id)
+        instance = self._get(checklist_id, request)
         if instance is None:
             return Response(
                 {"detail": f"No checklist with id {checklist_id}."},
@@ -202,7 +217,8 @@ class ChecklistItemListCreateView(APIView):
     def get(self, request, checklist_id):
         since = parse_since(request.query_params.get("since"))
         queryset = (
-            ChecklistItem.objects.filter(checklist_id=checklist_id, updated_at__gte=since)
+            scoped(ChecklistItem, request)
+            .filter(checklist_id=checklist_id, updated_at__gte=since)
             .order_by("updated_at")
         )
         page, next_since = paginate_since(queryset)
@@ -227,13 +243,13 @@ class ChecklistItemListCreateView(APIView):
         },
     )
     def post(self, request, checklist_id):
-        if not Checklist.objects.filter(pk=checklist_id).exists():
+        if not scoped(Checklist, request).filter(pk=checklist_id).exists():
             return Response(
                 {"detail": f"No checklist with id {checklist_id}."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        existing = _idempotent_or_none(ChecklistItem, request.data.get("sync_id"))
+        existing = _idempotent_or_none(ChecklistItem, request.data.get("sync_id"), request)
         if existing is not None:
             return Response(ChecklistItemSerializer(existing).data, status=status.HTTP_200_OK)
 
@@ -253,8 +269,12 @@ class ChecklistItemListCreateView(APIView):
 class ChecklistItemDetailView(APIView):
     """`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>/items/<item_id>`."""
 
-    def _get(self, checklist_id, item_id):
-        return ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
+    def _get(self, checklist_id, item_id, request):
+        return (
+            scoped(ChecklistItem, request)
+            .filter(pk=item_id, checklist_id=checklist_id)
+            .first()
+        )
 
     @extend_schema(
         operation_id="api_checklists_items_retrieve",
@@ -262,7 +282,7 @@ class ChecklistItemDetailView(APIView):
         responses={200: ChecklistItemSerializer, 404: NOT_FOUND},
     )
     def get(self, request, checklist_id, item_id):
-        instance = self._get(checklist_id, item_id)
+        instance = self._get(checklist_id, item_id, request)
         if instance is None:
             return Response(
                 {"detail": f"No item {item_id} on checklist {checklist_id}."},
@@ -288,7 +308,7 @@ class ChecklistItemDetailView(APIView):
         },
     )
     def patch(self, request, checklist_id, item_id):
-        instance = self._get(checklist_id, item_id)
+        instance = self._get(checklist_id, item_id, request)
         if instance is None:
             return Response(
                 {"detail": f"No item {item_id} on checklist {checklist_id}."},
@@ -320,7 +340,7 @@ class ChecklistItemDetailView(APIView):
         },
     )
     def delete(self, request, checklist_id, item_id):
-        instance = self._get(checklist_id, item_id)
+        instance = self._get(checklist_id, item_id, request)
         if instance is None:
             return Response(
                 {"detail": f"No item {item_id} on checklist {checklist_id}."},
@@ -372,7 +392,11 @@ class ChecklistItemTickView(APIView):
         },
     )
     def post(self, request, checklist_id, item_id):
-        item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
+        item = (
+            scoped(ChecklistItem, request)
+            .filter(pk=item_id, checklist_id=checklist_id)
+            .first()
+        )
         if item is None:
             return Response(
                 {"detail": f"No item {item_id} on checklist {checklist_id}."},
@@ -385,6 +409,12 @@ class ChecklistItemTickView(APIView):
         value = request_serializer.validated_data.get("value")
         source = request_serializer.validated_data.get("source", "USER_REPORTED")
 
+        # Not `scoped(...)`, and that is deliberate rather than a miss: `item`
+        # was resolved through `scoped(ChecklistItem, request)` above, and a
+        # tick's household is its item's by construction
+        # (`ChecklistTick.save`). Filtering on the item IS the household
+        # filter here. The same is true of the `delete` handler below and of
+        # the `objects.create` in `_write`, whose household is derived.
         existing = ChecklistTick.objects.filter(item=item, day=day).first()
 
         def _write():
@@ -454,13 +484,18 @@ class ChecklistItemUntickView(APIView):
         },
     )
     def delete(self, request, checklist_id, item_id, day):
-        item = ChecklistItem.objects.filter(pk=item_id, checklist_id=checklist_id).first()
+        item = (
+            scoped(ChecklistItem, request)
+            .filter(pk=item_id, checklist_id=checklist_id)
+            .first()
+        )
         if item is None:
             return Response(
                 {"detail": f"No item {item_id} on checklist {checklist_id}."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Scoped through `item` - see the note in `ChecklistTickView.post`.
         tick = ChecklistTick.objects.filter(item=item, day=day).first()
         if tick is not None and tick.deleted_at is None:
             # The database's clock - see ChecklistDetailView.delete above.

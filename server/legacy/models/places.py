@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.db import models
 
 from legacy.enums import Provenance
+from legacy.models.tenancy import household_field, household_unique
 
 
 class Place(models.Model):
@@ -12,7 +13,7 @@ class Place(models.Model):
     almost every other table in this app."""
 
     id = models.UUIDField(primary_key=True)
-    label = models.TextField(unique=True)
+    label = models.TextField()
     latitude = models.FloatField()
     longitude = models.FloatField()
     provenance = models.TextField(choices=Provenance.choices)
@@ -20,6 +21,11 @@ class Place(models.Model):
     updated_at = models.DateTimeField()
     deleted_at = models.DateTimeField(null=True)
 
+    household = household_field()
+
     class Meta:
         managed = False
         db_table = "places"
+        constraints = [
+            household_unique("places", "label"),
+        ]
