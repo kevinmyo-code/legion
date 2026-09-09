@@ -22,39 +22,50 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-08 late (session 0151LEjT)
+## Where we stopped - 2026-09-08 night (session 0151LEjT)
 
-**All nine aspects are now wired to Django. Nothing new has run on hardware.**
+**`dev` expects a column the live database does not have. Read this before running anything.**
 
-- **Engine**: `https://legion-757959564788.us-south1.run.app` (project `legion-engine-260906`).
-  Redeploy `python deploy/cloudrun/deploy.py --project legion-engine-260906`. **Health is `/health`,
-  NOT `/healthz`** - Cloud Run reserves that path and answers it itself.
-- **Phone: 3460 tests, 0 failures (JUnit XML, 2026-09-08 late).** `c2bff0f`/`6c0440f`/`4bd90ec`
-  routed the last 19 call sites (ledger 8, pantry 4, fleet 7) through `EngineBackends`. **Unpushed.**
-- **On DJANGO and hardware-verified: events, checklists, body, memory. Nothing else.** Places, voice
-  notes, ledger, pantry and fleet are wired but never run, and still default to SUPABASE -
-  `DJANGO_BY_DEFAULT` is unchanged. Wiring flips no default; that belongs with each hardware run.
-- Why two fleet reconciles route on Django while four decline: `library/decisions.md` 2026-09-08.
+- **`dev` is `cad1706`.** ADR 0045 (households are tenants) is merged: `household_id` on 43 tables,
+  one choke point, 651 passed / 0 failures on CI. **The migration is NOT applied to live**, so a row
+  fetch against the live database fails with `column events.household_id does not exist`. `/health`
+  still answers `{"db":"ok"}`, which makes it look fine until you fetch a row. Either apply it or
+  work on a commit before `cad1706`.
+- **Apply it with:** `LEGION_BOOTSTRAP_HOUSEHOLD_ID=<a uuid you keep forever>` then
+  `manage.py migrate`. Print the SQL first with `manage.py tenancy_sql`. It refuses to run without
+  that variable rather than mint one. **Kevin had not approved applying it when the session ended.**
+- **Backup, verified, taken 2026-09-08 21:38:**
+  `C:\Users\kevin\legion-backups\legion-pre-tenancy-20260908-213847.dump` (custom format, `public`
+  + `django`, 56 tables, `pg_restore --list` clean). **The first real backup since the xlsx mirror
+  retired** - Drive backup has refused every upload for over a week.
+- **New map: `web-and-households`** (14 tickets). Landed today: the React+Vite+TS scaffold served by
+  Django (`server/frontend/`), CI for server and Android, an arm64 image with migrate-on-start,
+  Caddy, an SSH deploy script. **Hosting reopened: Oracle A1 VM on Pay As You Go, Postgres in
+  compose, Cloud Run and Supabase retire** (ticket 12; the move is ticket 13).
+- **Android CI is RED and the cause is known.** Three `DatabaseSnapshot` tests assert that
+  Robolectric's SQLite *cannot* do `VACUUM INTO`. On Linux it can, so the export takes the fast path
+  and the two "the fallback ran" assertions fall with it. Screenshots are fine. The fix is a
+  decision: assert the OUTCOME (a readable database file) rather than which branch ran.
 
 ### Next session, in order
 
-1. **Get a phone attached** - `adb devices` was empty all session, so nothing below could start.
-2. **Verify places and voice notes**, then flip them. The last two aspects done this way produced
-   six bugs a green suite had missed.
-3. **Then ledger, pantry, fleet.** `obd_samples` is 20,796 rows, the first sync moving real volume.
-4. **Ticket 10**: revoke the anon key, disable Realtime and Auth, drop `supabase-kt`.
+1. **Decide on the live migration** (the audit was cut short mid-review; it had found the scoping
+   solid). Then apply it, or `dev` stays broken against live data.
+2. **Fix the three Android tests**, or Android CI stays red for everyone.
+3. **Ticket 03** (accounts: signup, invite codes, session login) - the next thing blocking a web app
+   Kevin's parents can sign into. Then 05 (screens), 11 (reports).
+4. Ticket 13's VM move; django-engine 06 (nightly backups) now GATES that cutover.
 
 ### Owed by Kevin - decisions, not code
 
-- **`origin_guid` for a server-created vehicle. Now load-bearing**: `FleetEngineStore` is routed, so
-  on Django `upsertVehicle`/`upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions
-  ("THE ONE GAP"). Callers swallow it as a best-effort third write - it fails quietly, but it fails.
-- **Fleet provenance differs by transport** (engine: per-table default; Supabase: caller's value).
-  §4 makes provenance load-bearing. Settle before the fleet flip.
-- **A place deleted on the phone that the engine still holds active**: push the delete (destructive)
-  or accept the divergence? Sits in `skippedLocalNewer` forever today.
-- **Drive backup has refused every upload since the wipe** (12,435 rows vs a 29,890 baseline). Guard
-  right, baseline stale. **No Drive backup from the past week.**
+- **Apply the tenancy migration to live?** 43 tables, 44 unique-index re-keys, backup exists.
+- **Oracle:** upgrade the tenancy to Pay As You Go and create the A1 VM (his card, his tenancy).
+  PAYG exemption from idle reclamation is REPORTED, not documented - worth one support ticket.
+- **`origin_guid` for a server-created vehicle.** Now load-bearing: `FleetEngineStore` is routed, so
+  on Django `upsertVehicle`/`upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions.
+- **Fleet provenance differs by transport** - but checked 2026-09-08: the server's per-table default
+  equals every existing row's value on all 8 fleet tables, and the phone sends constants. Mechanism
+  only, no divergence today.
 - Rotate the Supabase passwords and the phone's device token when convenient.
 
 ### The lesson of this session, in one line
