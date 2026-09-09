@@ -110,7 +110,7 @@ services:
     # empty inside the container no matter what `.env` says, the site address
     # falls back to `:80`, and the stack serves plain HTTP under no certificate
     # while looking entirely healthy. The two variables are documented in
-    # `.env.vm.example`.
+    # `.env.example`, alongside every other one this stack reads.
     #
     # `env_file` hands Caddy the WHOLE file, SECRET_KEY and POSTGRES_PASSWORD
     # included, which it has no use for. The tighter form is a two-line

@@ -19,7 +19,7 @@ a deploy that repaired its own prerequisites would hide the day one of them disa
 |---|---|
 | The repo cloned at **`/opt/legion`** | Hardcoded in `deploy.sh` and in the forced command below. Not configurable on purpose: the path is half of what the SSH key is allowed to do. |
 | A non-root **`legion`** user, in the **`docker`** group | `deploy.sh` runs `docker compose` with no `sudo`. Group membership needs a fresh login to take effect - a first attempt that fails with "permission denied while trying to connect to the Docker daemon" usually means the session predates the `usermod`. |
-| **`/opt/legion/deploy/.env`**, filled in | Every service reads it. `deploy.sh` passes it explicitly with `--env-file` so the result does not depend on which directory the script was invoked from. Start from `deploy/.env.example`, and add `LEGION_DOMAIN` and `LEGION_ACME_EMAIL` from `deploy/.env.vm.example` - Caddy reads those two and nothing else does. |
+| **`/opt/legion/deploy/.env`**, filled in | Every service reads it. `deploy.sh` passes it explicitly with `--env-file` so the result does not depend on which directory the script was invoked from. Copy `deploy/.env.example`; `LEGION_DOMAIN` and `LEGION_ACME_EMAIL` are in it, and Caddy is the only reader of those two. |
 | Docker Engine + the compose plugin, **arm64** | From Docker's own apt repository, not Ubuntu's `docker.io`. The image is built on the box (see below). |
 | The checkout on `main`, not diverged | `deploy.sh` uses `git pull --ff-only`. A box somebody edited in place refuses to deploy rather than silently merging the edit - that is an operator problem for a human, not something a robot resolves at 3am. |
 
