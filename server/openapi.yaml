@@ -6478,20 +6478,6 @@ components:
       required:
       - db
       - detail
-    HouseholdSummary:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        role:
-          type: string
-      required:
-      - id
-      - name
-      - role
     IngestOutcome:
       type: object
       description: |-
@@ -6829,14 +6815,9 @@ components:
           format: email
         device_name:
           type: string
-        household:
-          allOf:
-          - $ref: '#/components/schemas/HouseholdSummary'
-          nullable: true
       required:
       - device_name
       - email
-      - household
       - user_id
     MealLog:
       type: object

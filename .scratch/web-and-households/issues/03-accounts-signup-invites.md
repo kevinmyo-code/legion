@@ -4,6 +4,18 @@ ticket: "03"
 title: "Accounts: signup, create a household, invite codes, join, members; session auth for the browser"
 type: build
 status: open
+status-detail: >
+  Narrow slice built 2026-09-10: session login/logout, GET /api/auth/csrf,
+  SessionAuthentication added to /api/auth/me alongside the device token,
+  and `manage.py add_household_member --password` to onboard an existing
+  household's second adult without a signup flow. Deliberately excludes
+  signup, invite codes, creates_household, household rename, member
+  removal, and device-list endpoints - Kevin, 2026-09-10: onboarding his
+  wife into the existing household; signup and invites deferred to the
+  rest of this ticket. The session/CSRF contract (household nullable on
+  both /me and session login, no assumption of a single household) is
+  built as the foundation the deferred signup work sits on, not as a
+  throwaway.
 blockers: ["02"]
 blocked-by: ["[[02b-rls-belt]]"]
 open-blockers: 1

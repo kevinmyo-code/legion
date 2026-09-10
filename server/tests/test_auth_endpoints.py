@@ -128,7 +128,10 @@ def test_session_login_returns_me_shape_and_sets_a_session_cookie(household_a):
     assert response.status_code == 200
     assert response.data["email"] == "wife@example.com"
     assert response.data["device_name"] == ""
-    assert response.data["household"]["id"] == str(household_a.id)
+    # No `household` field: tests/test_tenancy.py's
+    # test_no_openapi_component_declares_household_id forbids any response
+    # from carrying tenancy - the user already knows which one it is in.
+    assert "household" not in response.data
     assert "token" not in response.data
     assert "sessionid" in response.cookies
     # A session login must never mint a device token - ADR 0044 rule 3.
@@ -165,7 +168,6 @@ def test_session_login_then_me_works_over_the_session_cookie(household_a):
     me = client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.data["email"] == "wife@example.com"
-    assert me.data["household"]["id"] == str(household_a.id)
 
 
 def test_me_still_works_over_a_device_token(household_a):
@@ -181,7 +183,6 @@ def test_me_still_works_over_a_device_token(household_a):
 
     assert response.status_code == 200
     assert response.data["device_name"] == "Test phone"
-    assert response.data["household"]["id"] == str(household_a.id)
 
 
 def test_session_logout_ends_the_session(household_a):
@@ -298,7 +299,6 @@ def test_non_member_gets_403_under_a_session(household_a):
     # Login itself only checks the password, not membership - it is
     # AllowAny, the same as the device-token LoginView.
     assert login.status_code == 200
-    assert login.data["household"] is None
 
     me = client.get("/api/auth/me")
     assert me.status_code == 403

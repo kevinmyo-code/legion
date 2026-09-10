@@ -21,7 +21,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from household.models import DeviceToken, HouseholdMember
+from household.models import DeviceToken
 from household.serializers import (
     LoginRequestSerializer,
     LoginResponseSerializer,
@@ -30,18 +30,6 @@ from household.serializers import (
 )
 
 AUTH_TAGS = ["auth"]
-
-
-def _household_summary(user) -> dict | None:
-    """The `household` field both `/me` and session login return: which
-    family this user is in, and their role in it. `None` for a `User` row
-    with no `HouseholdMember` yet - reachable from session login (which,
-    unlike `/me`, runs before `IsHouseholdMember` could ever refuse it) even
-    though it is not reachable from `/me` in practice."""
-    member = HouseholdMember.objects.filter(user=user).select_related("household").first()
-    if member is None:
-        return None
-    return {"id": member.household_id, "name": member.household.name, "role": member.role}
 
 
 class LoginView(APIView):
@@ -205,12 +193,7 @@ class SessionLoginView(APIView):
 
         login(request, user)
         body = MeResponseSerializer(
-            {
-                "user_id": user.id,
-                "email": user.email,
-                "device_name": "",
-                "household": _household_summary(user),
-            }
+            {"user_id": user.id, "email": user.email, "device_name": ""}
         ).data
         return Response(body, status=status.HTTP_200_OK)
 
@@ -310,11 +293,6 @@ class MeView(APIView):
         token = request.auth
         device_name = token.name if isinstance(token, DeviceToken) else ""
         body = MeResponseSerializer(
-            {
-                "user_id": request.user.id,
-                "email": request.user.email,
-                "device_name": device_name,
-                "household": _household_summary(request.user),
-            }
+            {"user_id": request.user.id, "email": request.user.email, "device_name": device_name}
         ).data
         return Response(body, status=status.HTTP_200_OK)

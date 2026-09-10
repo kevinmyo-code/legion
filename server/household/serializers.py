@@ -3,10 +3,17 @@ provenance work - that starts in ticket 03 - this file just describes the
 request/response bodies the auth endpoints promise.
 
 **2026-09-10 (web-and-households ticket 03 narrow slice):** added the
-session-login request shape and a `household` field shared by `/me` and
-session login, so a browser can tell which family it landed in without a
-second round trip. Device-token login and `/me`'s `device_name` are
-unchanged - a session has no device to name, so it sends `""`."""
+session-login request shape, reusing `MeResponseSerializer` for its
+response body - same shape `/me` already returns. Device-token login and
+`/me`'s `device_name` are unchanged - a session has no device to name, so
+it sends `""`. **No `household` field was added here**:
+`tests/test_tenancy.py::test_no_openapi_component_declares_household_id`
+is a standing rule that no OpenAPI component may expose `household` or
+`household_id` at all - a client cannot honestly read or choose its own
+tenancy, ADR 0045's "one user, one household" makes the id redundant to
+ask for, and ticket 03's own design puts household info on its own
+`GET /api/households/me` endpoint (not yet built), not on every response
+that happens to authenticate someone."""
 from __future__ import annotations
 
 from rest_framework import serializers
@@ -32,14 +39,7 @@ class SessionLoginRequestSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
 
-class HouseholdSummarySerializer(serializers.Serializer):
-    id = serializers.UUIDField()
-    name = serializers.CharField()
-    role = serializers.CharField()
-
-
 class MeResponseSerializer(serializers.Serializer):
     user_id = serializers.UUIDField()
     email = serializers.EmailField()
     device_name = serializers.CharField()
-    household = HouseholdSummarySerializer(allow_null=True)

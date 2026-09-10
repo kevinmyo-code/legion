@@ -2867,12 +2867,6 @@ export interface components {
             db: string;
             detail: string;
         };
-        HouseholdSummary: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            role: string;
-        };
         /**
          * @description The 200 body, and it covers BOTH no-write outcomes because they are one
          *     status code and a client branches on `outcome`, not on the shape.
@@ -3042,7 +3036,6 @@ export interface components {
             /** Format: email */
             email: string;
             device_name: string;
-            household: components["schemas"]["HouseholdSummary"] | null;
         };
         /**
          * @description Base for every serializer this viewset drives.
