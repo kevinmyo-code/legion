@@ -1,0 +1,152 @@
+{
+  "nodes": [
+    {
+      "id": "22338cad00b457a5",
+      "type": "file",
+      "file": ".scratch/one-home/issues/01-what-the-shell-is-without-meters.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0bb2ce677631888b",
+      "type": "file",
+      "file": ".scratch/one-home/issues/04-where-the-advisors-day-list-lands.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8963bcb84835b053",
+      "type": "file",
+      "file": ".scratch/one-home/issues/06-news-sources-and-what-may-be-kept.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "91325369a7834ea7",
+      "type": "file",
+      "file": ".scratch/one-home/issues/02-rehome-the-orphans.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a35d01545043c579",
+      "type": "file",
+      "file": ".scratch/one-home/issues/05-the-advisor-writes-a-checklist.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4965c0224f89a90d",
+      "type": "file",
+      "file": ".scratch/one-home/issues/07-the-news-surface.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9319e0f1c4890b5c",
+      "type": "file",
+      "file": ".scratch/one-home/issues/03-calendar-becomes-home.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c91f0c2cf8e053e0",
+      "type": "file",
+      "file": ".scratch/one-home/issues/03b-delete-meters.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1e839d0ec13fe7e3",
+      "type": "file",
+      "file": ".scratch/one-home/issues/08-ship-pass.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e6d593997c5054eb",
+      "fromNode": "22338cad00b457a5",
+      "fromSide": "right",
+      "toNode": "91325369a7834ea7",
+      "toSide": "left"
+    },
+    {
+      "id": "3e56e51521ba2483",
+      "fromNode": "22338cad00b457a5",
+      "fromSide": "right",
+      "toNode": "c91f0c2cf8e053e0",
+      "toSide": "left"
+    },
+    {
+      "id": "aac8e9dc46ec96cf",
+      "fromNode": "91325369a7834ea7",
+      "fromSide": "right",
+      "toNode": "c91f0c2cf8e053e0",
+      "toSide": "left"
+    },
+    {
+      "id": "b1862868bb56d967",
+      "fromNode": "0bb2ce677631888b",
+      "fromSide": "right",
+      "toNode": "a35d01545043c579",
+      "toSide": "left"
+    },
+    {
+      "id": "7635674c16e795ab",
+      "fromNode": "8963bcb84835b053",
+      "fromSide": "right",
+      "toNode": "4965c0224f89a90d",
+      "toSide": "left"
+    },
+    {
+      "id": "675f013f5ed2bf26",
+      "fromNode": "c91f0c2cf8e053e0",
+      "fromSide": "right",
+      "toNode": "1e839d0ec13fe7e3",
+      "toSide": "left"
+    },
+    {
+      "id": "05fdb9c70834bbb4",
+      "fromNode": "a35d01545043c579",
+      "fromSide": "right",
+      "toNode": "1e839d0ec13fe7e3",
+      "toSide": "left"
+    },
+    {
+      "id": "962c6595d151f07c",
+      "fromNode": "4965c0224f89a90d",
+      "fromSide": "right",
+      "toNode": "1e839d0ec13fe7e3",
+      "toSide": "left"
+    }
+  ]
+}
