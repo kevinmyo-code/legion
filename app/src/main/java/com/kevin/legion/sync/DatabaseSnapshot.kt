@@ -64,6 +64,14 @@ import org.json.JSONObject
  * certainly has a modern-enough SQLite for `VACUUM INTO` to succeed there; the fallback
  * exists for the minSdk 24 floor this app declares, which that one device cannot speak for.
  *
+ * **Whether `VACUUM INTO` throws is a fact about the RUNNING PLATFORM's bundled SQLite, not
+ * about this app** - Robolectric's Linux CI runner ships a build that supports it where the
+ * Windows dev box's does not. [DatabaseSnapshotExportTest] originally asserted the Windows
+ * answer as if it were universal and broke the day Linux CI was switched on (2026-09); it now
+ * records which answer an environment gives without asserting one, and exercises the
+ * checkpoint+copy branch via [exportLocalCopy]'s `forceFallback` test seam instead of relying
+ * on the platform to refuse `VACUUM INTO` for it.
+ *
  * ## Generations
  *
  * Uploads are named `legion_backup_<epochMillis>.db.gz` + a companion
@@ -140,6 +148,18 @@ object DatabaseSnapshot {
     /** Which path [exportLocalCopy] actually took - exposed so tests can pin BOTH branches,
      * not just whichever one the test environment happens to support. */
     enum class ExportMethod { VACUUM_INTO, CHECKPOINT_COPY }
+
+    /**
+     * TEST-ONLY seam: when non-null, replaces `sourceFile.renameTo(liveDb)` inside
+     * [installDatabaseFile] so [DatabaseSnapshotRestoreTest] can force a failed install
+     * deterministically on ANY OS. The previous mechanism held an exclusive file lock on the
+     * source file and relied on Windows's mandatory file locking to make the OS itself refuse
+     * the rename - that does not hold on Linux (POSIX `rename()` does not consult open
+     * descriptors), so the same test passed on Kevin's Windows dev box and failed on Linux CI
+     * (2026-09 incident). Left `null` in production; only ever set, and reset to `null` again,
+     * from within a test.
+     */
+    internal var installRenameOverride: ((File, File) -> Boolean)? = null
 
     /** Schema `user_version` + total user-row count recorded alongside a generation. */
     data class Metadata(val timestampMs: Long, val schemaVersion: Int, val rowCount: Long) {
@@ -553,7 +573,7 @@ object DatabaseSnapshot {
             // throw (SecurityException), not just return false - both outcomes must trigger
             // rollback, not just the boolean path the previous version handled.
             val installed = try {
-                sourceFile.renameTo(liveDb)
+                (installRenameOverride ?: File::renameTo)(sourceFile, liveDb)
             } catch (t: Throwable) {
                 Log.w(TAG, "install rename threw", t)
                 false
@@ -646,11 +666,23 @@ object DatabaseSnapshot {
      * failure - see this object's class doc comment for why the fallback is real and
      * expected, not defensive theatre. `internal` (not `private`) so tests can pin which
      * branch actually ran, per environment.
+     *
+     * [forceFallback] is a TEST-ONLY seam, default `false` in every production call site.
+     * Whether `VACUUM INTO` throws is a fact about the platform's bundled SQLite, not about
+     * this app - Robolectric's Linux runner supports it where its Windows one does not, so a
+     * test that relied on the real call throwing to reach the checkpoint+copy branch passed
+     * on one OS and failed on the other (CI incident, 2026-09). Setting this `true` skips
+     * straight past the `VACUUM INTO` attempt so [DatabaseSnapshotExportTest] can exercise
+     * the fallback branch deterministically, on either platform, without depending on the
+     * environment refusing to cooperate.
      */
-    internal fun exportLocalCopy(context: Context, dest: File): ExportMethod {
+    internal fun exportLocalCopy(context: Context, dest: File, forceFallback: Boolean = false): ExportMethod {
         if (dest.exists()) dest.delete()
         val db = CarDatabase.getDatabase(context).openHelper.writableDatabase
         return try {
+            if (forceFallback) {
+                throw IllegalStateException("forceFallback: exercising checkpoint+copy directly (test seam)")
+            }
             db.execSQL("VACUUM INTO ?", arrayOf(dest.absolutePath))
             if (!dest.exists() || dest.length() == 0L) {
                 throw IllegalStateException("VACUUM INTO reported success but produced no file")

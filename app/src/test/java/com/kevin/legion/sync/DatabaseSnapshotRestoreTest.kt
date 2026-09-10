@@ -44,6 +44,9 @@ class DatabaseSnapshotRestoreTest {
         // java.io.File state under context.filesDir/cacheDir is NOT reset automatically.
         File(context.filesDir, "pre_restore_backups").deleteRecursively()
         File(context.getDatabasePath(CarDatabase.DATABASE_FILE_NAME).path + ".replaced-by-restore").delete()
+        // Same belt-and-braces for the test-only rename seam: a test that threw before its own
+        // `finally` reset it would otherwise leave every subsequent test forcing failed installs.
+        DatabaseSnapshot.installRenameOverride = null
     }
 
     /** Writes a real, independently-openable SQLite file with a `probe` table holding one
@@ -133,24 +136,16 @@ class DatabaseSnapshotRestoreTest {
 
         val liveDb = context.getDatabasePath(CarDatabase.DATABASE_FILE_NAME)
 
-        // Force `sourceFile.renameTo(liveDb)` to fail without depending on any
-        // platform-specific SecurityException plumbing: hold an exclusive lock on the
-        // SOURCE file for the duration of the restore attempt. This test runs on Windows
-        // (this repo's dev environment), where an open file handle reliably blocks a
-        // rename/move of that same file by another handle - the OS itself refuses the
-        // operation, giving a real (not simulated) renameTo failure.
-        //
-        // WINDOWS-DEPENDENT, and this test QUIETLY STOPS TESTING ANYTHING if that changes
-        // (senior-dev review, 2026-08-12). Windows enforces mandatory locking on an open
-        // handle; POSIX does not - `rename()` there does not consult open descriptors, and
-        // this RandomAccessFile takes no advisory FileChannel.lock(). So on a Linux or macOS
-        // runner the rename would SUCCEED, the install would report success, and the
-        // rollback branch this test exists to prove would never execute - while the test
-        // itself might still pass for the wrong reason. Today's only runner is Kevin's
-        // Windows box (CLAUDE.md §6), so this holds. Anyone moving CI off Windows must
-        // replace this mechanism (inject a failing install step) rather than assume the
-        // green tick still means the rollback path works.
-        val lock = java.io.RandomAccessFile(syntheticBackup, "rw")
+        // FORMERLY: forced `sourceFile.renameTo(liveDb)` to fail by holding an exclusive lock
+        // on the SOURCE file, relying on Windows's mandatory file locking to make the OS
+        // itself refuse the rename. That was WINDOWS-DEPENDENT and flagged as such at review
+        // time (2026-08-12): POSIX `rename()` does not consult open file descriptors, so on
+        // Linux the lock did nothing, the rename SUCCEEDED, and the rollback branch this test
+        // exists to prove never ran - while the test itself still reported a false pass, right
+        // up until Android CI actually ran it on Linux (2026-09) and the assertion below caught
+        // the real symptom. Replaced with DatabaseSnapshot.installRenameOverride, a test-only
+        // seam that forces the rename to fail deterministically regardless of OS.
+        DatabaseSnapshot.installRenameOverride = { _, _ -> false }
         try {
             val recovery = DatabaseSnapshot.LocalRecovery(
                 file = syntheticBackup, timestampMs = 2L,
@@ -163,7 +158,7 @@ class DatabaseSnapshotRestoreTest {
                 result is DatabaseSnapshot.RestoreResult.Failed,
             )
         } finally {
-            lock.close()
+            DatabaseSnapshot.installRenameOverride = null
         }
 
         // The critical assertion: the live database must still be OPENABLE AND READABLE after
