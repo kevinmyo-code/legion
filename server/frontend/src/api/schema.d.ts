@@ -29,6 +29,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/auth/devices`. The calling user's own LIVE device tokens.
+         *
+         *     Own, not the household's: a device token is a credential belonging to one
+         *     person, and ADR 0045's owner role governs membership, never someone
+         *     else's phone. An owner who wants a person gone removes the member, which
+         *     revokes their tokens (`DELETE /api/households/me/members/<user_id>`).
+         *
+         *     Revoked tokens are not listed. The list answers "what can currently reach
+         *     this account", which is the question a person opens this screen to ask; a
+         *     login history is a different feature and this is not a half-built one.
+         */
+        get: operations["api_auth_devices_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/devices/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * @description `DELETE /api/auth/devices/<id>`. Revokes one of the calling user's own
+         *     device tokens - the hands path to "I lost my phone".
+         *
+         *     Scoped to `request.user`, so another member's token id 404s rather than
+         *     403s: from here that token does not exist, and a 403 would confirm that
+         *     it does.
+         */
+        delete: operations["api_auth_devices_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/invite/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/auth/invite/<code>`. What this code will do, without
+         *     spending it.
+         *
+         *     Ticket 05's `/join/<code>` screen calls this on load: a person who was
+         *     sent a link has to be told whether it still works, and whether following
+         *     it joins a family or starts one, BEFORE they type a password into a form
+         *     that then fails. Nothing here increments `used_count` - previewing a code
+         *     is not using it.
+         *
+         *     Anonymous, and throttled on the same `signup` scope as the redemption
+         *     endpoint, so the two together give a stranger five guesses a minute at
+         *     the code space rather than ten.
+         *
+         *     A code that does not exist answers 404; a real code that is revoked,
+         *     expired or spent answers 200 with `live: false` and a `reason`. The split
+         *     is deliberate - "you mistyped it" and "it expired" are different things
+         *     for the screen to say, and a 12-character random code is not a namespace
+         *     an attacker enumerates five guesses a minute.
+         */
+        get: operations["api_auth_invite_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -159,6 +247,40 @@ export interface paths {
          *     `SessionAuthentication` to turn that off.
          */
         post: operations["api_auth_session_logout_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/auth/signup`. Creates a user, puts them in a household, and
+         *     issues a device token - the whole of "my wife wants to use this" in one
+         *     call.
+         *
+         *     **Invite-only by default (ADR 0045 decision 3).** With no
+         *     `LEGION_OPEN_SIGNUP`, a request carrying no `invite_code` is refused
+         *     outright; this is a household engine, not a service with a sign-up page.
+         *     With the switch on, a codeless request founds a household - and a request
+         *     that DOES carry a code is still honoured exactly as it would be with the
+         *     switch off, so the second adult on a stranger's compose stack joins the
+         *     first one's household rather than founding a rival one.
+         *
+         *     **Atomic, and the invite row is locked.** Everything below is one
+         *     transaction: a refused password must not leave a user behind, and a
+         *     `max_uses` of one must mean one even if two people press the button
+         *     together (`Invite.find(for_update=True)`).
+         */
+        post: operations["api_auth_signup_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1454,6 +1576,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/households/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET`/`PATCH /api/households/me` - the caller's household.
+         *
+         *     GET is open to any member: the roster is not owner-only information, and
+         *     a member who could not see who else is in their household would have no
+         *     way to check they joined the right one. PATCH (rename) is owner-only,
+         *     which is why `get_permissions` splits by method rather than the class
+         *     carrying one permission for both.
+         */
+        get: operations["api_households_me_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description `GET`/`PATCH /api/households/me` - the caller's household.
+         *
+         *     GET is open to any member: the roster is not owner-only information, and
+         *     a member who could not see who else is in their household would have no
+         *     way to check they joined the right one. PATCH (rename) is owner-only,
+         *     which is why `get_permissions` splits by method rather than the class
+         *     carrying one permission for both.
+         */
+        patch: operations["api_households_me_partial_update"];
+        trace?: never;
+    };
+    "/api/households/me/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET`/`POST /api/households/me/invites`. Owner-only, both.
+         *
+         *     **The code comes back in full exactly once, from POST.** GET lists it
+         *     again for LIVE invites only, which is a deliberate and narrow
+         *     re-exposure: an owner who minted a code and lost the message has to be
+         *     able to read it back, and a live code is one that is going to be typed
+         *     into a signup form anyway. A spent, expired or revoked code is not listed
+         *     at all, so its value never appears again.
+         */
+        get: operations["api_households_me_invites_list"];
+        put?: never;
+        /**
+         * @description `GET`/`POST /api/households/me/invites`. Owner-only, both.
+         *
+         *     **The code comes back in full exactly once, from POST.** GET lists it
+         *     again for LIVE invites only, which is a deliberate and narrow
+         *     re-exposure: an owner who minted a code and lost the message has to be
+         *     able to read it back, and a live code is one that is going to be typed
+         *     into a signup form anyway. A spent, expired or revoked code is not listed
+         *     at all, so its value never appears again.
+         */
+        post: operations["api_households_me_invites_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/me/invites/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * @description `DELETE /api/households/me/invites/<code>`. Revokes a code this
+         *     household minted, so nobody else can sign up with it.
+         *
+         *     Revoke rather than delete: `revoked_at` is why
+         *     `Invite.unavailable_reason` can tell someone holding the link "that was
+         *     revoked by the person who made it" instead of "no such code", which is
+         *     the difference between a person who knows to ask again and a person who
+         *     thinks they mistyped it.
+         */
+        delete: operations["api_households_me_invites_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/households/me/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * @description `DELETE /api/households/me/members/<user_id>`. Removes a person from
+         *     this household.
+         *
+         *     **Three things happen together, and the second and third are the point.**
+         *     The membership row goes, every live device token that person holds is
+         *     revoked, and every invite they minted is revoked. Without the token
+         *     revocation a removed person keeps a working phone; without the invite
+         *     revocation they keep a working back door, which is the same failure one
+         *     step removed. A Django session they hold survives as a cookie, but it now
+         *     authenticates a user who is in no household, so `IsHouseholdMember`
+         *     refuses every request it makes.
+         *
+         *     **The `User` row itself is NOT deleted**, deliberately: their rows in the
+         *     household's data carry `household_id`, not a user id that would dangle,
+         *     and deleting an account is a different decision from removing it from a
+         *     family. They keep an account that belongs to no household until someone
+         *     invites them into one.
+         *
+         *     **The last owner cannot be removed, including by themself.** A household
+         *     with no owner has nobody who can invite or remove anyone ever again, and
+         *     there is no admin above it to fix that - ADR 0045 has no roles above
+         *     `owner` and no approval workflow to appeal to.
+         */
+        delete: operations["api_households_me_members_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ingest/files/": {
         parameters: {
             query?: never;
@@ -2707,6 +2965,21 @@ export interface components {
             detail: string;
         };
         /**
+         * @description One live device token of the calling user. **Never the key** - the
+         *     server holds only its hash and could not return it if it wanted to
+         *     (`household/models.py:hash_device_key`).
+         */
+        DeviceToken: {
+            id: number;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_seen_at: string | null;
+            /** @description True for the token that made this request, so a client can avoid revoking the device it is running on by accident. */
+            current: boolean;
+        };
+        /**
          * @description Field-for-field `RemoteDrive` / `DriveUpload`.
          *
          *     `gallons` is null, never 0.0, when MAF was silent for the whole drive.
@@ -2868,6 +3141,35 @@ export interface components {
             detail: string;
         };
         /**
+         * @description `GET`/`PATCH /api/households/me` - the household resource itself.
+         *
+         *     `id` is the household's own id, on the household's own endpoint, and is
+         *     the one place a household uuid appears on this API. That is not the
+         *     thing `test_no_openapi_component_declares_household_id` forbids: it
+         *     forbids a tenancy field on a DATA row, where a client could either learn
+         *     something it cannot act on or, worse, choose its own tenancy by sending
+         *     one. A resource describing itself is not that.
+         */
+        Household: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            members: components["schemas"]["HouseholdMember"][];
+        };
+        HouseholdMember: {
+            /** @description `owner` or `member`. The ONLY role there is, and it governs membership alone (ADR 0045): an owner may invite and remove people, and sees exactly the same rows a member does. */
+            role: string;
+            /** Format: uuid */
+            user_id: string;
+            /** Format: email */
+            email: string;
+            name: string;
+            /** Format: date-time */
+            joined_at: string;
+        };
+        /**
          * @description The 200 body, and it covers BOTH no-write outcomes because they are one
          *     status code and a client branches on `outcome`, not on the shape.
          *
@@ -2940,6 +3242,67 @@ export interface components {
              * @description The last time this content was posted, rewritten on every commit and every retry. The column this feed's `?since=` and `next` are keyed on.
              */
             readonly last_attempt_at: string;
+        };
+        /**
+         * @description One live invite, code included.
+         *
+         *     The code is here on purpose and only for live invites: an owner who
+         *     minted a code yesterday and lost the message has to be able to read it
+         *     back, and `GET /api/households/me/invites` returns only invites that are
+         *     still live (`household/households.py:InviteListCreateView`), so a spent,
+         *     expired or revoked code is never listed at all.
+         */
+        Invite: {
+            id: number;
+            code: string;
+            join_url: string;
+            creates_household: boolean;
+            max_uses: number;
+            used_count: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * @description `POST /api/households/me/invites`. Every field optional: the common
+         *     case is an owner minting a code for one more adult in their own
+         *     household, and that is what the defaults are.
+         */
+        InviteCreateRequest: {
+            /**
+             * @description True mints a code that FOUNDS a household rather than joining this one. The first person to sign up with it names the household and becomes its owner; later uses join what the first one founded.
+             * @default false
+             */
+            creates_household: boolean;
+            /** @default 2 */
+            max_uses: number;
+            /** @default 14 */
+            expires_in_days: number;
+        };
+        /**
+         * @description `GET /api/auth/invite/<code>` - what a code will do, WITHOUT spending
+         *     it. Ticket 05's `/join/<code>` screen renders this before anyone types a
+         *     password.
+         *
+         *     Anonymous, so it says as little as it can get away with: whether the
+         *     code is live, whether signing up with it joins a household or founds
+         *     one, and - only when it joins an existing one - that household's NAME,
+         *     so the person can tell they are joining the right family. Never its id
+         *     (nothing a signed-out stranger can do with a uuid is honest), never who
+         *     minted it, never how many uses are left when it is dead.
+         */
+        InvitePreview: {
+            code: string;
+            live: boolean;
+            creates_household: boolean;
+            /** @description The household this code joins, or null when it founds a new one and the person signing up gets to name it. */
+            household_name: string | null;
+            uses_left: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** @description Why the code cannot be used, in words, or null when it can. */
+            reason: string | null;
         };
         /**
          * @description One `public.ledger_transactions` row.
@@ -3728,6 +4091,9 @@ export interface components {
             structured_meta?: unknown;
             kind?: string;
         };
+        PatchedHouseholdPatchRequest: {
+            name?: string;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -3938,6 +4304,33 @@ export interface components {
             /** Format: email */
             email: string;
             password: string;
+        };
+        /**
+         * @description `POST /api/auth/signup`.
+         *
+         *     `invite_code` is `required=False` at the SERIALIZER level and required
+         *     at the VIEW level unless `LEGION_OPEN_SIGNUP` is on - the two are
+         *     different questions and only the view knows the answer to the second.
+         *     Declaring it required here would make the open-signup switch
+         *     unreachable; declaring it optional here and forgetting the view check
+         *     would make every engine open. `household/views.py:SignupView` is where
+         *     the second half lives, and `tests/test_accounts.py` pins both.
+         *
+         *     `name` is one field, not `first_name`/`last_name`: a person types their
+         *     name once on a signup form, and this server has no use for the halves.
+         *     It lands in `User.first_name`.
+         */
+        SignupRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @default  */
+            name: string;
+            /** @default  */
+            invite_code: string;
+            /** @default  */
+            household_name: string;
+            device_name: string;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -4352,6 +4745,95 @@ export interface operations {
             };
         };
     };
+    api_auth_devices_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live device tokens for the calling user, newest first. Never a key - the server holds only hashes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceToken"][];
+                };
+            };
+        };
+    };
+    api_auth_devices_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description That device token is revoked and every other device keeps working. Already-revoked is the same answer: the outcome asked for holds. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No device token of yours has that id. Nothing was revoked. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_invite_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The code exists. `live` says whether it can still be used and `reason` says why not when it cannot. Nothing was spent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description No invite has that code. Nothing was spent. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Rate limited: 5/min per IP, shared with POST /api/auth/signup. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_auth_login_create: {
         parameters: {
             query?: never;
@@ -4523,6 +5005,50 @@ export interface operations {
             };
             /** @description No active session, or a missing/invalid CSRF token. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_signup_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["SignupRequest"];
+                "multipart/form-data": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description The account exists, is a member of a household, and `token` is a new device token for it - shown ONCE, exactly as POST /api/auth/login returns one. Send it as `Authorization: Token <key>`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description NOTHING was created. `detail` names which of these it was: no invite code on an invite-only engine, a code that does not exist, a code that is revoked/expired/spent, an email already registered, a rejected password, or a missing `household_name` for a code that founds a household. A field-level shape error answers with the field-keyed body instead. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Rate limited: 5 signup attempts a minute per IP, shared with GET /api/auth/invite/{code} so guessing codes cannot be split across the two. Nothing was created. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6992,6 +7518,219 @@ export interface operations {
                 content?: never;
             };
             /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_households_me_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's household and everyone in it, oldest member first. `id` is the household's own id - this is the household resource, and the one place on this API a household uuid appears. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Household"];
+                };
+            };
+            /** @description The credential is live but its user is in no household. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_households_me_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedHouseholdPatchRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedHouseholdPatchRequest"];
+                "multipart/form-data": components["schemas"]["PatchedHouseholdPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Renamed. The body is the household as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Household"];
+                };
+            };
+            /** @description Nothing was changed: this route is owner-only. `owner` is the ONLY role there is and it governs membership alone - an owner and a member see exactly the same data (ADR 0045). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_households_me_invites_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live invites minted by this household, newest first, code included. Revoked, expired and fully-used invites are not listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invite"][];
+                };
+            };
+            /** @description Nothing was changed: this route is owner-only. `owner` is the ONLY role there is and it governs membership alone - an owner and a member see exactly the same data (ADR 0045). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_households_me_invites_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InviteCreateRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["InviteCreateRequest"];
+                "multipart/form-data": components["schemas"]["InviteCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description A new invite. `join_url` is the whole thing to send someone - it carries the code and points at the SPA's /join screen on this same host. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invite"];
+                };
+            };
+            /** @description Nothing was changed: this route is owner-only. `owner` is the ONLY role there is and it governs membership alone - an owner and a member see exactly the same data (ADR 0045). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_households_me_invites_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description That code is revoked and can no longer be signed up with. Revoking an already-revoked code is the same answer: the outcome asked for holds. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing was changed: this route is owner-only. `owner` is the ONLY role there is and it governs membership alone - an owner and a member see exactly the same data (ADR 0045). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description This household minted no invite with that code. Nothing was revoked. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_households_me_members_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. Their device tokens are revoked and the invites they minted are revoked. Their account still exists and belongs to no household. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nobody was removed: they are the last owner of this household. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Nothing was changed: this route is owner-only. `owner` is the ONLY role there is and it governs membership alone - an owner and a member see exactly the same data (ADR 0045). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Nobody with that user id is in this household. Nobody was removed. */
             404: {
                 headers: {
                     [name: string]: unknown;

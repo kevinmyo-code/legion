@@ -22,6 +22,10 @@ urlpatterns = [
     path("healthz", healthz, name="healthz"),
     path("health", healthz, name="health"),
     path("api/auth/", include("household.urls")),
+    # web-and-households ticket 03. Its own mount rather than folded into
+    # `household.urls`, because these routes are the household RESOURCE an
+    # owner administers and those are the doors a credential goes through.
+    path("api/households/", include("household.urls_households")),
     # `server/openapi.yaml` (map's handoff artefact to ticket 09) is
     # regenerated from this endpoint by `manage.py spectacular`.
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

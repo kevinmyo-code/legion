@@ -359,7 +359,35 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         # Ticket 01: login is rate-limited 5/min per IP.
         "login": "5/min",
+        # web-and-households ticket 03. Its own scope rather than sharing
+        # `login`, because the two doors are abused differently: `login`
+        # guards a known email against password guessing, `signup` guards
+        # the invite-code space against enumeration. Sharing one budget
+        # would mean a burst of signup attempts locks the household OUT of
+        # logging in, which is the wrong trade. Carried by `SignupView` and
+        # by `InvitePreviewView` together, deliberately: previewing a code
+        # and redeeming one are the same guess from the same stranger, so
+        # they must not each get five a minute.
+        "signup": "5/min",
     },
+}
+
+# web-and-households ticket 03, ADR 0045 decision 3: "Open signup is an
+# environment switch, off by default, for a stranger's own compose stack."
+#
+# OFF is the default and there is deliberately no `required_env` for it -
+# unlike `DJANGO_DEBUG`, an operator who has not thought about this must get
+# the CLOSED behaviour, not a crash that tempts them into setting the first
+# value that makes it start. On, `POST /api/auth/signup` accepts a request
+# with no `invite_code` and founds a household for it; an invite code that IS
+# supplied is still honoured exactly as it would be with this off, so a
+# stranger's second adult joins by code rather than founding a second
+# household nobody wanted.
+LEGION_OPEN_SIGNUP = os.environ.get("LEGION_OPEN_SIGNUP", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
 }
 
 SPECTACULAR_SETTINGS = {

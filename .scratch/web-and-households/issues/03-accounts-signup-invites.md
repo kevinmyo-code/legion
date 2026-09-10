@@ -3,19 +3,32 @@ map: web-and-households
 ticket: "03"
 title: "Accounts: signup, create a household, invite codes, join, members; session auth for the browser"
 type: build
-status: open
+status: built
 status-detail: >
-  Narrow slice built 2026-09-10: session login/logout, GET /api/auth/csrf,
-  SessionAuthentication added to /api/auth/me alongside the device token,
-  and `manage.py add_household_member --password` to onboard an existing
-  household's second adult without a signup flow. Deliberately excludes
-  signup, invite codes, creates_household, household rename, member
-  removal, and device-list endpoints - Kevin, 2026-09-10: onboarding his
-  wife into the existing household; signup and invites deferred to the
-  rest of this ticket. The session/CSRF contract (household nullable on
-  both /me and session login, no assumption of a single household) is
-  built as the foundation the deferred signup work sits on, not as a
-  throwaway.
+  Built in full 2026-09-10 (feat/accounts), on top of the session/CSRF slice
+  that landed the same morning. Landed: the `Invite` model and migration
+  0003 (code, nullable household, creates_household, created_by, max_uses,
+  used_count, expires_at, revoked_at, plus a CHECK that an invite either
+  joins a household or creates one); POST /api/auth/signup, throttled on its
+  own `signup` scope at 5/min, atomic, taking a row lock on the invite so
+  max_uses is real; GET /api/auth/invite/<code>, which describes a code
+  without spending it for ticket 05's /join screen and shares the signup
+  throttle so codes cannot be enumerated across two doors; GET/PATCH
+  /api/households/me; POST/GET/DELETE on /api/households/me/invites;
+  DELETE /api/households/me/members/<user_id>, which revokes the removed
+  person's device tokens AND the invites they minted and refuses to remove
+  the last owner in words; GET/DELETE /api/auth/devices; LEGION_OPEN_SIGNUP
+  (off by default, and an invite code is still honoured when it is on);
+  and `manage.py create_household --name --owner-email [--password] [--id]`.
+  52 new tests in tests/test_accounts.py, openapi.yaml and
+  frontend/src/api/schema.d.ts regenerated.
+  OWED: no run against a real deployment - every claim here is from the
+  pytest suite against the remote Postgres, nothing has been exercised
+  through a browser, and the /join/<code> screen that consumes the preview
+  endpoint is ticket 05 and does not exist yet. GET /api/auth/me still does
+  NOT carry a household field: this ticket's own table asked for one and
+  tests/test_tenancy.py forbids it, so household display is GET
+  /api/households/me instead.
 blockers: ["02"]
 blocked-by: ["[[02b-rls-belt]]"]
 open-blockers: 1
@@ -59,6 +72,20 @@ join it. That is how one code reaches both parents.
 | `DELETE /api/households/me/invites/<code>` | owner | Revokes | 404 |
 | `DELETE /api/households/me/members/<user_id>` | owner | Removes a member and revokes their device tokens; owner cannot remove themself while the last owner | 400 in words |
 | `GET/DELETE /api/auth/devices` | member | List own device tokens; revoke one by id | - |
+
+**As built, 2026-09-10, one row of that table differs and the difference is
+deliberate.** `GET /api/auth/me` does NOT carry `household: {id, name, role}`.
+`tests/test_tenancy.py::test_no_openapi_component_declares_household_id` is a
+standing rule that no OpenAPI component may declare a `household` or
+`household_id` property at all, and it caught the first attempt to add one
+here. Household display is `GET /api/households/me`, which is the household
+resource and may name itself; `/me` returns the same three fields it always
+did. Two other rows gained detail rather than changing: `DELETE
+/api/households/me/members/<user_id>` also revokes the invites that person
+minted (a removed person keeping a live code is the same failure as keeping a
+working phone), and `GET /api/auth/invite/<code>` shares the `signup` throttle
+scope so a stranger gets five guesses a minute across both doors rather than
+five at each.
 
 DRF settings: `DEFAULT_AUTHENTICATION_CLASSES = [DeviceTokenAuthentication, SessionAuthentication]`
 (token first so a phone never pays a session lookup). CSRF applies only on the session path, which
