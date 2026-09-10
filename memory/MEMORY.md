@@ -22,50 +22,54 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-10 night (session 0151LEjT, continued)
+## Where we stopped - 2026-09-10 late (session 0151LEjT, continued)
 
-- **`dev` is `544388e`, pushed.** The tenancy migration IS applied to live now (Kevin approved
-  2026-09-10); the `column events.household_id does not exist` warning that headed this section for
-  two days is gone. Cloud Run redeployed after it, `/api/auth/csrf` verified 200. **Android CI is
-  GREEN for the first time** (`ce75737`) - the three `DatabaseSnapshot` tests assert the outcome now,
-  through test-only seams, not which branch ran.
-- **The phone is fully on Django.** `EngineTransport.DJANGO_BY_DEFAULT` holds all nine aspects as of
-  `f96821e`, not two. Not a waiver of "never ahead of a hardware run": `household_id NOT NULL` has no
-  default and the Supabase backends know nothing of households, so Supabase-by-default was a write
-  that fails, not a working path. 3485 tests, 0 failures. **Ledger, pantry and fleet have still never
-  run against Django on the A25** - compiled and unit-tested only. That is the next hardware session.
-- **Oracle is DEAD** (Kevin, 2026-09-10): all three availability domains out of A1 capacity. Staying
-  on Cloud Run + Supabase Postgres for two households. `deploy/vm/PROVISION.md` survives for its two
-  traps only. Tickets 12/13 need re-resolving against that.
-- **Ticket 03** (signup, households, invite codes) was building in `.claude/worktrees/accounts` when
-  this session ended. **`feat/openapi-clients` is mid-merge and NOT clean**: its agent died to a rate
-  limit leaving ~33 conflict blocks, and it still carries a duplicate ADR 0045 that must renumber to
-  0048 (the head-unit one).
+- **`dev` is `711e2be`, pushed, 3487 tests / 0 failures.** Earlier today: tenancy migration applied
+  to live, Cloud Run redeployed, Android CI green for the first time, phone flipped fully to Django
+  (all nine aspects in `DJANGO_BY_DEFAULT`).
+- **New map `one-home`, charted and almost entirely built** (Kevin: *"chart it and work on it"*, then
+  *"run everything with your taste"* - so tickets 01, 04 and 06 were decided by Opus, not by him, and
+  the tickets and `library/decisions.md` both say so). CALENDAR is HOME; METERS and the whole tab row
+  are deleted; the ASK picker lives at `LegionRoute.ASK`; the advisor writes a real recurring
+  `checklists` row instead of `"Plan: "`-prefixed `list_items`. **Ticket 07 (news surface) is the only
+  unbuilt one** and is in flight on `feat/news-surface`.
+- **Three bugs found that were not the task**, all now fixed: a migration writing
+  `ADD COLUMN ... DEFAULT NULL`, which records a literal `'NULL'` default Room's generated schema does
+  not have and **fails the upgrade for every existing install**; three dangling deep-link route
+  strings (`notes` and `today` were already a crash on tapping an old notification, before any of
+  today's work); and a generated schema JSON never staged.
+- **`web-and-households` 03 merged** - signup, invite codes, household members, session auth.
+  Merging it conflicted only on the two GENERATED files; the fix is to re-run
+  `obsidian_sync.py` + `pending_wiki.py` on the merge result, never to pick a side.
+- **No phone.** `adb devices` is empty (checked with the full SDK path, daemon restarted). Everything
+  hardware-dependent is parked in one-home ticket 08 rather than claimed.
 
 ### Next session, in order
 
-1. **Hardware run on the A25**: ledger, pantry, fleet against Django. Everything else is unit tests.
-2. Finish ticket 03, then 05 (screens), 11 (reports). Rescue or abandon `feat/openapi-clients`.
-3. Re-resolve tickets 12/13 now that the VM is dead.
+1. **Get the phone attached, then run one-home ticket 08.** The queue is real: cold start on HOME, a
+   notification tap (the renamed route), the ASK picker in its new home, a checklist surviving a
+   night, and command-center 12's newsletter tap owed since 2026-08-22.
+2. Finish/merge `feat/news-surface`. Rescue or abandon `feat/openapi-clients` (still mid-merge, ~33
+   conflicts, duplicate ADR 0045 to renumber to 0048).
+3. Ledger, pantry and fleet against Django on the A25 - still never run.
+4. Re-resolve `web-and-households` 12/13 now the Oracle VM is dead.
 
 ### Owed by Kevin - decisions, not code
 
-- **Android UI restructure, raised 2026-09-10 and unanswered**: retire the Meters page, rename
-  Calendar to HOME, retire today's plan in favour of advisor-populated workout todos, add a news
-  feed. Most maps to existing tickets (command-center 01/08/12 built, aspect-advisors 04/09 resolved,
-  one-today 08/09 open). **Gmail as a feed source is constrained by CLAUDE.md §7 third-party
-  read-through; RSS is not.** A ticket was offered and not yet asked for.
-- **`origin_guid` for a server-created vehicle.** Load-bearing now that fleet is routed to Django:
-  `upsertVehicle`/`upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions.
+- **Any of the three taste calls above is cheap to overturn** - each ticket records the reasoning and
+  what it rejected. 01 (no tab row) is the one that changes the most if he disagrees.
+- **`origin_guid` for a server-created vehicle**: fleet is routed to Django, so `upsertVehicle`/
+  `upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions.
 - **Voice-note audio still has no durable store** (ADR 0041 keeps all three artefacts together).
 - Rotate the Supabase passwords and the phone's device token when convenient.
 
 ### The lesson of this session, in one line
 
-**Two tests I "fixed" were describing two different devices.** `EngineBackendsTest` built a signed-OUT
-`EngineTransport` while its backends came from a signed-IN config; the assertions only agreed while
-both answered SUPABASE, and the default flip pulled them apart. A test whose halves disagree about
-the fixture passes for the wrong reason until something moves.
+**A decision that names a file to delete should name the PROPERTY that makes deleting it safe.**
+Ticket 04 said to delete `GoalChecklistPanel` because the calendar rendered it; ticket 02 removed that
+call site hours later, leaving `BodyScreen` - which hosts `+ LOG SET` inside the panel - as the only
+caller. Obeying the ticket literally would have deleted `log_workout_set`'s hands path, the exact ADR
+0035 failure the same map was enforcing one screen over.
 
 ## Read before trusting a green suite
 
