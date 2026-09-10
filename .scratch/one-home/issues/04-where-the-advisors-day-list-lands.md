@@ -148,3 +148,37 @@ smaller cost than blocking a capability Kevin asked for behind a ticket nobody h
 
 The advisor's PROMPT - what makes a good workout list - is `aspect-advisors` 04, resolved. This
 decides where the output goes and nothing about what it says.
+
+
+---
+
+## AMENDED at build time, 2026-09-10: the panel was repointed, not deleted
+
+**This resolution said `GoalChecklistPanel` would be DELETED "because the checklist section already
+renders it". That was wrong, and it is corrected here rather than left reading as though it had been
+obeyed.**
+
+The sentence was written believing the CALENDAR day view rendered the panel - in which case the
+recurring-checklist section beside it genuinely did cover the same ground. By the time ticket 05 was
+built, ticket 02's HOME restructure had already removed that call site, and `ui/BodyScreen.kt` was
+the only caller left.
+
+BodyScreen is not a second copy of the calendar. The panel there also hosts the TRAINING affordances
+that `goal-plans` ticket 08 deliberately moved INTO it when it deleted the standalone TRAINING pane:
+`+ LOG SET` and the exercise-progression drilldown. **Deleting the panel would have taken
+`log_workout_set`'s hands path with it** - the exact ADR 0035 failure ticket 02 exists to prevent,
+one screen over, and this map would have committed it while enforcing it elsewhere in the same
+session.
+
+So the panel stays and its DATA moved: it reads the advisor's checklist by
+`AdvisorProposalExecutor.BIO_CHECKLIST_SOURCE_KEY` through `ChecklistController`, instead of reading
+`GoalChecklistSync`. **Everything this resolution actually decided is unchanged** - the prefix
+mechanism is retired, tick history comes from `ChecklistTick`, undone `Plan: ` rows migrate and
+ticked ones do not, and meals and sleep moved across with workouts. Only the sentence about deleting
+a file was wrong.
+
+**The lesson, which is the reusable part:** this resolution named a file to delete on the strength of
+who called it, and the caller set changed underneath it between the decision and the build - by
+another ticket on the same map, the same day. A decision that names a deletion should name the
+PROPERTY that makes the deletion safe (here: "nothing else reaches a capability through it"), because
+that survives a refactor and a call-site list does not.
