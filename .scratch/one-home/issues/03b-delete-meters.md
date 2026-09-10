@@ -3,11 +3,20 @@ map: one-home
 ticket: "03b"
 title: "Delete MetersScreen once its orphans have somewhere to live"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: >
+  Built 2026-09-10. MetersScreen.kt, LegionRoute.METERS, its NavHost
+  registration and LegionTabRow all deleted, plus TOP_LEVEL/topLevelOf/
+  label - the row was their only production caller. "meters" joined
+  LEGACY_DEEP_LINK_ROUTES on a different argument from the other three:
+  no notification named it, but Navigation restores its back stack from
+  saved state, so a saved stack naming a deleted destination crashes with
+  no stale notification involved. Four tab tests deleted (nothing left to
+  assert), two added pinning that demotion is not deletion. 3492 tests, 0
+  failures. Owes the device run (ticket 08).
 blockers: ["01", "02"]
 blocked-by: ["[[01-what-the-shell-is-without-meters]]", "[[02-rehome-the-orphans]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

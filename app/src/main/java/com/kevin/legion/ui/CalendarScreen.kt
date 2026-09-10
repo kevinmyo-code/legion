@@ -116,8 +116,12 @@ import kotlinx.coroutines.launch
  *   Every row here keeps its checkbox, same write funnel as before.
  *
  * **The completion ratio counts tasks (and reminders) only, never events** - `ui/goals/
- * GoalChecklistPanel.kt`'s own "N TODAY" accent below is scoped to the BIO checklist, a wholly
- * separate table this screen's own agenda has no ratio of its own to get wrong; see
+ * GoalChecklistPanel.kt`'s own "N TODAY" accent used to sit below this section, scoped to the BIO
+ * checklist, a wholly separate table this screen's own agenda has no ratio of its own to get wrong;
+ * **that panel is gone (one-home map, ticket 04's resolution, 2026-09-10)** - see this screen's own
+ * call site below for where it used to render - but the underlying claim still holds for the
+ * CHECKLISTS sections that replace it (one-today ticket 09): a checklist's own progress renders on
+ * its own section header and never folds into [notDone]/[done] below. See
  * `.scratch/one-today/issues/08-events-are-not-todos.md` point 4 for the density-dot audit this
  * screen's own [MonthCell.eventCount]/[eventDotCount] were checked against (they count workload,
  * not completion, and were left as an honest "how busy" figure rather than folded into this rule).
@@ -183,6 +187,20 @@ fun CalendarScreen(
     /** Nonce-keyed for the same reason `ui/MainActivity.kt`'s own `openItemNonce` is - a REPEAT tap
      * on the same notification while this screen is already open must still re-open the dialog. */
     highlightItemNonce: Int = 0,
+    // The meter rows below the day view (one-home ticket 02, `ui/HomeMeterBands.kt`) - the exact
+    // callbacks `ui/MetersScreen.kt`'s own "C" tab used to take, rehomed onto the one screen the
+    // app now opens to. Defaults to a no-op, matching every other `onOpen*` default this file's
+    // predecessors used, so any existing preview/test that constructs [CalendarScreen] directly
+    // does not need updating for a param it never exercises.
+    onOpenBody: () -> Unit = {},
+    onOpenMoney: () -> Unit = {},
+    onOpenFleet: () -> Unit = {},
+    onOpenPantry: () -> Unit = {},
+    // The ASK pane's new destination (ticket 01's resolution: its own route, not a pane on HOME).
+    onOpenAsk: () -> Unit = {},
+    onOpenMedia: () -> Unit = {},
+    onOpenVoiceNotes: () -> Unit = {},
+    onOpenChecklists: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -255,6 +273,58 @@ fun CalendarScreen(
     // transport, so nothing about this screen changes there.
     var queuedChecklistItemIds by remember { mutableStateOf(emptySet<Long>()) }
     var reloadNonce by remember { mutableStateOf(0) }
+
+    // The meter bands rendered below the day view (one-home ticket 02) - the exact set of
+    // one-shot reads `ui/MetersScreen.kt`'s own `LaunchedEffect` used to make, moved verbatim onto
+    // this screen's own reload cadence rather than sharing [reloadNonce] above: nothing here reads
+    // or writes a `ListItem`/`Event`/checklist row, so a tick on the day view has no reason to
+    // re-trigger a ledger/fleet/weather refetch, and vice versa. See `ui/HomeMeterBands.kt`'s own
+    // file doc for what renders from this state.
+    var metersState by remember { mutableStateOf(com.kevin.legion.ui.MetersUiState()) }
+    var metersReloadNonce by remember { mutableStateOf(0) }
+
+    LaunchedEffect(metersReloadNonce) {
+        val now = System.currentTimeMillis()
+        val db = CarDatabase.getDatabase(context)
+
+        val mealTarget = db.mealTargetDao().currentTarget(com.kevin.legion.meals.dayStartEpoch(now))
+        val mealGap = com.kevin.legion.meals.MealController.dayGap(context, now)
+
+        val budget = com.kevin.legion.ledger.LedgerController.budgetVsActual(
+            context,
+            com.kevin.legion.ledger.LedgerEntity.US,
+            YearMonth.now(),
+        )
+
+        val ledgerBalances = com.kevin.legion.ledger.LedgerController.accountBalances(context)
+        val nominatedAccountId = com.kevin.legion.ledger.LedgerNominatedAccountPreferences.nominatedAccountId.value
+
+        val vehicle = com.kevin.legion.vehicle.VehicleController.currentVehicle(context)
+        val currentMileage = com.kevin.legion.vehicle.VehicleController.currentMileage(vehicle)
+        val items = com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac)
+        val maintenanceRows = com.kevin.legion.ui.fleet.buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now)
+        val maintenanceUnknownCount = items.count { com.kevin.legion.vehicle.VehicleController.isUnknown(it) }
+
+        val checklistCount = ChecklistController.allChecklists(context).size
+        val voiceNotesCount = VoiceNoteController.listNotes(context).size
+
+        val weather = com.kevin.legion.weather.WeatherController.refresh()
+
+        metersState = com.kevin.legion.ui.MetersUiState(
+            loading = false,
+            mealGap = mealGap,
+            hasMealTarget = mealTarget != null,
+            budget = budget,
+            ledgerBalances = ledgerBalances,
+            nominatedAccountId = nominatedAccountId,
+            maintenanceRows = maintenanceRows,
+            maintenanceUnknownCount = maintenanceUnknownCount,
+            checklistCount = checklistCount,
+            voiceNotesCount = voiceNotesCount,
+            weather = weather,
+            nowMs = now,
+        )
+    }
 
     LaunchedEffect(displayedMonth, reloadNonce) {
         monthLoading = true
@@ -537,17 +607,11 @@ fun CalendarScreen(
         // The old "BACK TO MONTH" link is gone (fixed on-device 2026-09-01) - there is no
         // longer a month-only state to return to; the grid above is always visible already, and
         // [selectedDayStart] is never null, so this section always has a day to render.
-        // The day's plan checklist (rehomed from the deleted `ui/TodayScreen.kt`'s HERO pane,
-        // one-today ticket 07) - ONLY on today's own day view: a checklist of "today's items" is
-        // nonsense sitting under a day in March, so a day view that is not today omits this pane
-        // entirely rather than showing it empty (this ticket's own instruction).
-        val todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
-        if (selectedDayStart == todayStart) {
-            com.kevin.legion.ui.goals.GoalChecklistPanel(
-                compact = true,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
+        // `GoalChecklistPanel` ("today's plan") retired here (one-home map, ticket 04's
+        // resolution, 2026-09-10, Kevin: "today's plan > no need since we have bio to do list") -
+        // render side only; `advisor/GoalChecklistSync.kt` is untouched and owned by a concurrent
+        // session retiring its generation half separately. The CHECKLISTS section below (one-today
+        // ticket 09) already covers the same idea through the real recurring-checklist table.
         val notDone = dayRows.filter { !it.done }
         val done = dayRows.filter { it.done }
         Column(Modifier.padding(horizontal = 12.dp)) {
@@ -676,6 +740,27 @@ fun CalendarScreen(
                 }
             }
         }
+
+        // The meter bands (one-home ticket 02): Needs you / Body / Money / Fleet / Lists /
+        // Recordings, then the world (weather/area/newsletters), then rows for ASK and the media
+        // mini-bar - see `ui/HomeMeterBands.kt`'s own file doc for the full band order ticket 01's
+        // resolution fixed. Rendered below the day's own sections (SCHEDULE/RECORDED/CHECKLISTS/
+        // YET TO DO/DONE above), inside the same scrolling Column. **Unlike the retired
+        // GoalChecklistPanel, these are NOT scoped to today** - budget/maintenance/checklist
+        // counts are month/whole-app readings, not a per-day agenda, so they render under every
+        // day view exactly as `ui/MetersScreen.kt` rendered them regardless of which day the
+        // calendar's own grid had selected.
+        HomeMeterBands(
+            state = metersState,
+            onOpenBody = onOpenBody,
+            onOpenMoney = onOpenMoney,
+            onOpenFleet = onOpenFleet,
+            onOpenPantry = onOpenPantry,
+            onOpenAsk = onOpenAsk,
+            onOpenMedia = onOpenMedia,
+            onOpenVoiceNotes = onOpenVoiceNotes,
+            onOpenChecklists = onOpenChecklists,
+        )
     }
 
     // The reminder editor (this screen's own file doc comment) - the SAME [ItemEditDialog]

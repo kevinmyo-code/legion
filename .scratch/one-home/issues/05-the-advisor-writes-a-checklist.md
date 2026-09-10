@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["04"]
 blocked-by: ["[[04-where-the-advisors-day-list-lands]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 

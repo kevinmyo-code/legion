@@ -3,12 +3,18 @@ map: one-home
 ticket: "04"
 title: "Today's plan retires: which table the advisor's day-list lands in"
 type: decision
-status: open
-status-detail: ""
+status: resolved
+status-detail: >
+  Resolved 2026-09-10 by Opus on Kevin's "run everything with your taste".
+  The advisor writes a recurring `checklists` row; GoalChecklistPanel and
+  GoalChecklistSync's ITEM_PREFIX both retire. Existing "Plan: " rows are
+  migrated, not abandoned. Meals and sleep follow workouts into checklists
+  - one mechanism, not one and a half. Builds against the checklists table
+  as it stands; one-today 09 widens that table, it does not replace it.
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -84,3 +90,61 @@ playbook, resolved) and is not reopened. This is about where the output goes.
 
 Kevin confirms the target table, rules on the four consequences, and picks the order against
 `one-today` 09. Then ticket 05 is buildable.
+
+
+---
+
+## Resolution, 2026-09-10
+
+**The advisor writes a recurring `checklists` row.** `GoalChecklistPanel` is deleted;
+`GoalChecklistSync`'s prefix mechanism retires with it.
+
+The capability is right and only its storage was wrong, which is why this is a re-point and not a
+rebuild. `ITEM_PREFIX = "Plan: "` is a string used to find your own rows in a table that belongs to
+something else - it cannot survive a user typing "Plan: call mum", it cannot record a tick history,
+and it has no identity a foreign key could point at. `checklists` + `ChecklistTick` has all three,
+already renders on the day view, and is already ticked through `ChecklistController`.
+
+### The four consequences, ruled
+
+**1. The prefix mechanism goes.** No string matching to identify machine-written rows. The checklist
+row is the identity.
+
+**2. Tick history comes with it.** `ChecklistTick` is per-day and browsable, which is the
+*"end of day it records and resets. i can look back and see what i did"* half of Kevin's 2026-09-04
+quote that `list_items` structurally cannot do. This is a gain, not a side effect, and ticket 05's
+device step is where it gets confirmed.
+
+**3. Existing `Plan: ` rows are MIGRATED, not left to age out.** This is the consequence the ticket
+flagged as the one that must not be chosen silently, so it is chosen loudly: a one-shot migration
+moves live `Plan: `-prefixed `list_items` onto the checklist the advisor now owns, and nothing keeps
+generating them. Leaving them half-managed - no longer regenerated, still matched by a prefix nothing
+owns - is the option that produces rows nobody can explain in a month.
+
+**Undone rows migrate; already-ticked ones are left alone.** A done row is a record of a day that
+already happened, and rewriting history to make a migration tidy is worse than a slightly untidy
+migration. Room migration rules apply in full (CLAUDE.md §5): verbatim generated SQL, additive,
+`exportSchema`, a migration test, `SCHEMA_VERSION` bumped in lockstep.
+
+**4. Meals and sleep follow workouts into checklists.** Kevin named workouts only, and the temptation
+is to move only what he named. That leaves `GoalChecklistSync` alive for two of its three sources -
+so the prefix survives, the panel survives, and consequence 1 is not actually done. **A mechanism
+retired for two of three reasons is not retired.** One mechanism, or the old one stays and this
+decision buys nothing.
+
+### Order against `one-today` 09
+
+**Build 05 now, against `checklists` as it stands.**
+
+09's subject is *user-authored* lists - Kevin typing "3 sets goblet squats" himself. Its data-layer
+work widens what a checklist can express; it does not replace the table, and `ChecklistController` /
+`ChecklistTick` are what it builds on. So this is not the fork the ticket feared: 05 writes through
+the controller, and a controller is exactly the seam that absorbs a schema widening.
+
+**The risk accepted:** if 09 changes the tick semantics rather than the shape, 05 revisits. That is a
+smaller cost than blocking a capability Kevin asked for behind a ticket nobody has started.
+
+### Not reopened
+
+The advisor's PROMPT - what makes a good workout list - is `aspect-advisors` 04, resolved. This
+decides where the output goes and nothing about what it says.

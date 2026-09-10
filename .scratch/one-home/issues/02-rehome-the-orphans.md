@@ -3,11 +3,21 @@ map: one-home
 ticket: "02"
 title: "Rehome the orphans before anything is deleted - the Ask panel first"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: >
+  Built 2026-09-10. ASK picker moved to its own route
+  (LegionRoute.ASK, ui/ask/AskScreen.kt); NewsDigestCard extracted to
+  ui/world/; AreaCard rehomed; the three pure functions to
+  ui/MeterReadings.kt with MetersScreenTest renamed to MeterReadingsTest,
+  14 tests before and after. Meter rows are ui/HomeMeterBands.kt under
+  HOME's day view. ADR 0035 is now enforced by
+  GeneratedViewHandsPathTest, which walks the source tree and fails if the
+  runner has no caller under ui/ - including a negative proof, since the
+  obvious one (delete the screen) stops the tree compiling instead.
+  3494 tests, 0 failures. Owes the device run (ticket 08).
 blockers: ["01"]
 blocked-by: ["[[01-what-the-shell-is-without-meters]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

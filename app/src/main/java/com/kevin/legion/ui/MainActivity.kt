@@ -697,13 +697,12 @@ private fun LegionShell(
                         // app, not just on the surface currently in view.
                         cursorSolid = fleetSweepActive || shellStatus.alarmCount > 0,
                     )
-                    // The three-way tab switch (calendar-home cutover, 2026-09-01) - directly
-                    // under [StatusLine], NOT at the bottom: Kevin asked for the bottom headers
-                    // retired, and the bottom bar stays AssistantStrip's alone (see the
-                    // `bottomBar` slot's own comment above). Absent on DRIVING along with
-                    // StatusLine - same reasoning, nothing about driving mode should invite a tab
-                    // switch either.
-                    LegionTabRow(navController)
+                    // [LegionTabRow] DELETED 2026-09-10 (one-home ticket 03b, on ticket 01's
+                    // resolution). It switched between two tabs; METERS is gone, and a row
+                    // containing one always-selected label is not a navigation control - it is a
+                    // heading that costs 56dp on every screen and does nothing when tapped. HOME is
+                    // the app now, and the drill-downs are reached by tapping the row that
+                    // summarises them, exactly as they were reached from METERS.
                 }
                 NavHost(
                     navController = navController,
@@ -750,29 +749,26 @@ private fun LegionShell(
             // link (`openItemId`/`openItemNonce`, this file's own state above) fed
             // `ui/NotesScreen.kt` exclusively before that screen was deleted; `CalendarScreen`'s own
             // file doc comment has the full account of how it opens the same [ItemEditDialog] now.
+            // HOME now renders the meter bands below the day view (one-home ticket 02,
+            // `.scratch/one-home/issues/02-rehome-the-orphans.md`) - the exact callback set
+            // `ui/MetersScreen.kt`'s own "C" tab used to take (that screen's history is kept
+            // below on [LegionRoute.METERS]'s own registration until ticket 03b deletes it).
             composable(LegionRoute.HOME) {
-                CalendarScreen(highlightItemId = openItemId, highlightItemNonce = openItemNonce)
-            }
-            // The third tab ("C" - Kevin, verbatim, [LegionRoute.METERS]'s own doc comment). A
-            // SKELETON (this ticket) - every callback below taps through to an already-registered
-            // destination, exactly the "every home pane taps through to its module" rule [TODAY]'s
-            // own composable block already follows.
-            composable(LegionRoute.METERS) {
-                MetersScreen(
+                CalendarScreen(
+                    highlightItemId = openItemId,
+                    highlightItemNonce = openItemNonce,
                     onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
                     onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
                     onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
-                    // onOpenNotes REMOVED (one-today ticket 10 slice C, 2026-09-05) - the
-                    // "Persistent list" row it fed is gone from [MetersScreen]; see that screen's
-                    // own removal comment.
                     onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
-                    // onOpenGroceriesList REMOVED (one-today ticket 10 slice B, 2026-09-05) - the
-                    // "Groceries trip" row it fed is gone from [MetersScreen]; the shopping list is
-                    // a checklist now, reached through onOpenChecklists below.
+                    // The Ask pane's new destination (ticket 01's resolution: its own route, not
+                    // a pane welded onto HOME) - see `ui/ask/AskScreen.kt`'s own registration below.
+                    onOpenAsk = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
                     // The media mini-bar's own tap-through (rehomed from the deleted
-                    // `ui/TodayScreen.kt`, one-today ticket 07) - the media control panel
-                    // command-center ticket 04 built, nested under Spotify's own settings route
-                    // (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's own doc comment).
+                    // `ui/TodayScreen.kt`, one-today ticket 07, then `ui/MetersScreen.kt`, one-home
+                    // ticket 02) - the media control panel command-center ticket 04 built, nested
+                    // under Spotify's own settings route (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's
+                    // own doc comment).
                     onOpenMedia = {
                         navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
                     },
@@ -789,6 +785,19 @@ private fun LegionShell(
                     },
                 )
             }
+            // The Ask hands path's own route (one-home ticket 02, ADR 0035) - see
+            // `ui/ask/AskScreen.kt`. Reached from the "Ask" row `ui/HomeMeterBands.kt` renders on
+            // HOME, never from Settings and never as a pane welded onto HOME's own scroll (ticket
+            // 01's resolution).
+            composable(LegionRoute.ASK) {
+                com.kevin.legion.ui.ask.AskScreen()
+            }
+            // [LegionRoute.METERS] and `ui/MetersScreen.kt` DELETED 2026-09-10 (one-home ticket
+            // 03b). Its capabilities were not dropped - ticket 02 rehomed every one of them first,
+            // which is why those were two tickets: the ASK picker to [LegionRoute.ASK], the
+            // newsletters card and AreaCard to HOME, the breach/hero functions to
+            // `ui/MeterReadings.kt`, and the meter rows themselves to `ui/HomeMeterBands.kt` under
+            // the day view. Nothing here is a route any more, so nothing needs a registration.
             // `ui/TodayScreen.kt`, its composable(LegionRoute.TODAY) registration, and the TODAY
             // route constant were all deleted 2026-09-01 (one-today ticket 07) - every survivor on
             // that screen had a live caller and a real reason to exist, so each was rehomed rather
@@ -1099,107 +1108,13 @@ private const val STATUS_POLL_MS = 4_000L
 /** [LegionShell]'s clock poll interval - once a minute, per this ticket's build brief, not once a second. */
 private const val CLOCK_POLL_MS = 60_000L
 
-// [HARD_KEYS]/[LegionHardKeyRow] DELETED (2026-09-01 calendar-home cutover, Kevin verbatim:
-// "retire the bottom headers like cred fleet etc") - the five-key bottom row (cyberdeck-ui ticket
-// 05's Answer) reskinned five of the old six [LegionRoute.TOP_LEVEL] routes as physical hard-keys;
-// none of TODAY/BODY/NOTES/FLEET/MONEY is a tab any more (see each route's own doc comment for
-// where it is still reached from), so there is nothing left for a five-key row to select between.
-// [LegionTabRow] below is its replacement, over the NEW three-route [LegionRoute.TOP_LEVEL], moved
-// to the TOP of the shell rather than the bottom.
-
-/**
- * The tab switch (2026-09-01 calendar-home cutover, Kevin verbatim: "retire the bottom
- * headers like cred fleet etc"). Same visual grammar [LegionHardKeyRow] used to (full-width equal
- * flex, stencil caps, 1px [LegionSemantics.ruleFaint] separators between tabs, a 2px
- * [LegionSemantics.rule] edge rule, the active tab INVERTED to amber fill/ground-colour text) -
- * only the row's PLACEMENT (top, under [StatusLine], not bottom) and the routes it switches between
- * ([LegionRoute.TOP_LEVEL]) changed. Same tap-to-navigate-with-popUpTo-to-start-destination wiring
- * and the same [LegionRoute.topLevelOf] selection derivation (a sub-route like `calendar/agenda`
- * would keep CALENDAR lit) as the row this replaces.
- *
- * **CORRECTED 2026-09-01, same day: three tabs down to two.** This started the cutover as
- * CALENDAR/METERS/SETTINGS (the "three-way" this doc comment used to call it); Kevin, on seeing it
- * running: *"setup is being duplicated. keep the top right corner one and drop the one beside
- * meters"* - [LegionRoute.TOP_LEVEL]'s own doc comment has the full account. [SETTINGS] lights no
- * tab here any more (`settings/key` and every other settings sub-route now falls through
- * [LegionRoute.topLevelOf] to null, which is correct, not a regression - see that function's own
- * doc comment); [StatusLine]'s SETUP stamp is the only way in.
- */
-@Composable
-private fun LegionTabRow(navController: NavHostController) {
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route
-    val selectedTab = LegionRoute.topLevelOf(currentRoute)
-    val sem = LocalLegionSemantics.current
-    val density = LocalDensity.current
-    val edgeStroke = with(density) { 2.dp.toPx() }
-    val sepStroke = with(density) { 1.dp.toPx() }
-    // Fixed on-device 2026-09-01: a full-fill amber slab behind the selected third was the loudest
-    // thing on every screen and swamped the content beneath it (`AssistantStrip`/`StatusLine`
-    // included). [activeStroke] gives the SAME amber a hairline treatment instead - [DeckAmber]'s
-    // own doc in `Color.kt` already names "active nav key" as one of its designated uses, so this
-    // is that documented role read literally rather than a new colour or a new visual idiom.
-    val activeStroke = with(density) { 2.dp.toPx() }
-    val tabs = LegionRoute.TOP_LEVEL
-    val activeColor = MaterialTheme.colorScheme.primary
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(TAB_ROW_HEIGHT)
-            .background(MaterialTheme.colorScheme.surface)
-            // The 2px edge rule, drawn on the Row itself so it reads as one panel seam rather than
-            // per-tab borders - same reasoning [LegionHardKeyRow] used, at the row's BOTTOM edge
-            // now (this row sits above the content it separates from, not below it).
-            .drawBehind {
-                drawLine(sem.rule, Offset(0f, size.height), Offset(size.width, size.height), edgeStroke)
-            },
-    ) {
-        tabs.forEachIndexed { index, route ->
-            val active = selectedTab == route
-            // Text-colour change plus a bottom hairline, never a fill: selection reads as "this
-            // one is lit", the content underneath stays the loudest thing on screen.
-            val fg = if (active) activeColor else sem.faint
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .let { base ->
-                        if (index < tabs.lastIndex) {
-                            base.drawBehind {
-                                drawLine(sem.ruleFaint, Offset(size.width, 0f), Offset(size.width, size.height), sepStroke)
-                            }
-                        } else base
-                    }
-                    .let { base ->
-                        if (active) {
-                            base.drawBehind {
-                                drawLine(
-                                    activeColor,
-                                    Offset(0f, size.height - activeStroke / 2f),
-                                    Offset(size.width, size.height - activeStroke / 2f),
-                                    activeStroke,
-                                )
-                            }
-                        } else base
-                    }
-                    .clickable {
-                        if (currentRoute != route) {
-                            navController.navigate(route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = false
-                                }
-                                launchSingleTop = true
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(LegionRoute.label(route).uppercase(), style = MaterialTheme.typography.labelLarge, color = fg)
-            }
-        }
-    }
-}
-
-/** The tab row's fixed height - same value [LegionHardKeyRow]'s own `HARD_KEY_ROW_HEIGHT` used, matching M3 `NavigationBar`'s default. */
-private val TAB_ROW_HEIGHT = 56.dp
+// [HARD_KEYS]/[LegionHardKeyRow] DELETED 2026-09-01 (calendar-home cutover, Kevin verbatim:
+// "retire the bottom headers like cred fleet etc"). [LegionTabRow] replaced it over a
+// two-route [LegionRoute.TOP_LEVEL], moved to the TOP of the shell - and was itself DELETED
+// 2026-09-10 (one-home ticket 03b) when METERS retired and TOP_LEVEL emptied.
+//
+// **Both deletions are the same shape and it is worth saying once.** A row that selects
+// between N places stops being a control when N reaches one; keeping it would have left a
+// permanently-lit label taking 56dp of every screen. `LegionRoute.TOP_LEVEL`, `topLevelOf`
+// and `label` went with it - this row was their only production caller, grep-confirmed
+// before deletion, the same way the six dead `label` branches were confirmed on 2026-09-01.

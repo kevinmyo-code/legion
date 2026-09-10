@@ -15,9 +15,9 @@ package com.kevin.legion.ui
  * and did not remove the other.
  *
  * **CORRECTED 2026-09-01, later the same day: down to TWO top-level tabs.** The "three top-level
- * tabs" paragraph immediately below is kept for its history, but [SETTINGS] came off [TOP_LEVEL]
+ * tabs" paragraph immediately below is kept for its history, but [SETTINGS] came off `TOP_LEVEL`
  * again within hours of landing on it - Kevin, on seeing it running: *"setup is being duplicated.
- * keep the top right corner one and drop the one beside meters."* [TOP_LEVEL]'s own doc comment
+ * keep the top right corner one and drop the one beside meters."* `TOP_LEVEL`'s own tombstone
  * has the full account.
  *
  * **Three top-level tabs as of the 2026-09-01 calendar-home cutover (Kevin, verbatim): "month grid
@@ -100,16 +100,18 @@ object LegionRoute {
      */
     const val HOME = "home"
 
-    /**
-     * The third tab ("C", Kevin verbatim: "C as another tab... those we tap through from view C the
-     * meters"), 2026-09-01 - see [com.kevin.legion.ui.MetersScreen]. A dashboard of at-a-glance
-     * meters that tap through to [BODY]/[MONEY]/[FLEET]/[MONEY_PANTRY], the same "every pane taps
-     * through to its module" rule the deleted `ui/TodayScreen.kt` already applied. (Used to also tap
-     * through to `NOTES` - that row and route are both deleted, one-today ticket 10 slice C,
-     * 2026-09-05.) Built as a skeleton in the calendar-home ticket; one-today ticket 07 added
-     * weather/area/newsletters/the media mini-bar, rehomed off that same deleted screen.
-     */
-    const val METERS = "meters"
+    // METERS ("meters") DELETED 2026-09-10, one-home ticket 03b. It was the "C" tab of the
+    // 2026-09-01 calendar-home cutover (Kevin: "C as another tab... those we tap through from
+    // view C the meters") and it lasted nine days. Kevin, 2026-09-10: *"thinking of retiring
+    // meters page. just everything on home page"*.
+    //
+    // **Every capability on it was rehomed BEFORE the screen was deleted** (ticket 02, which
+    // exists for exactly that reason): the ASK picker became [ASK], the newsletters card and
+    // AreaCard moved to HOME, the breach and hero functions to `ui/MeterReadings.kt`, and the
+    // meter rows to `ui/HomeMeterBands.kt`, rendered under HOME's day view. The drill-down
+    // routes it tapped through to - [BODY], [MONEY], [FLEET], [MONEY_PANTRY], [CHECKLISTS] -
+    // are untouched and still registered; they were never tabs, and deleting one would break
+    // an EXTRA_ROUTE deep link.
 
     /**
      * The widget pager, `com.kevin.legion.ui.widgets.WidgetPagerRoot`, hosted as an ordinary
@@ -155,6 +157,19 @@ object LegionRoute {
      */
     const val CHECKLISTS = "checklists"
 
+    /**
+     * The `show_generated_view` hands path (ADR 0035), given its own route (one-home ticket 01/02,
+     * 2026-09-10, `.scratch/one-home/issues/02-rehome-the-orphans.md`) - see
+     * [com.kevin.legion.ui.ask.AskScreen]. Previously a `DeckPane` welded inside `ui/MetersScreen.kt`
+     * (2026-09-01); pulled out into its own destination when that screen folded into [HOME] rather
+     * than being left a pane on an already-long HOME scroll (ticket 01's own resolution: "not a pane
+     * on HOME... its own route keeps HOME short, keeps the capability discoverable, and gives it a
+     * destination a deep link and a test can both name"). Reached from a row on [HOME]. No
+     * sub-routes: the five closed-enum pickers and the run/refusal state are internal Compose state
+     * inside the one screen, same convention every other leaf route in this file already follows.
+     */
+    const val ASK = "ask"
+
     // VOICE_NOTES: not added here. A concurrent session (same day, ticket 04) registered
     // SETTINGS_VOICE_NOTES -> ui/voicenotes/VoiceNotesScreen.kt below instead - see that
     // constant's own doc comment. A second top-level route to the same screen was drafted here
@@ -182,7 +197,7 @@ object LegionRoute {
      * resolution). Deliberately NOT under [FLEET] as a `fleet/driving` sub-route: ticket 20's build
      * brief calls this "a destination outside the shell chrome" (no StatusLine, no hard-key row -
      * see [com.kevin.legion.ui.MainActivity]'s [LegionShell] branching on this route), and nesting
-     * it under `fleet/` would still light the FLEET hard key via [topLevelOf]'s prefix match, which
+     * it under `fleet/` would have lit the FLEET hard key via `topLevelOf`'s prefix match (both the
      * is chrome this screen is explicitly built to not have. A top-level route with no hard key of
      * its own (same shape as [SETTINGS]) is the correct fit, not a fifth thing FLEET owns.
      */
@@ -315,71 +330,29 @@ object LegionRoute {
      */
     const val SETTINGS_HELP = "settings/help"
 
-    /** The TWO top-level destinations, in display order.
-     *
-     * **[SETTINGS] dropped off this list 2026-09-01** (Kevin, on seeing it running: *"setup is being
-     * duplicated. keep the top right corner one and drop the one beside meters"*). It was reachable
-     * two ways at once - a tab here AND [com.kevin.legion.ui.common.StatusLine]'s SETUP stamp, whose
-     * own doc comment already called itself "the only way into" settings. The stamp wins: it costs
-     * no width in a row whose whole point is sparseness, and it was there first. [SETTINGS] is very
-     * much still a registered destination - it is simply not a tab.
-     *
-     * Was six earlier the same day (`TODAY`, [MONEY], [BODY], [FLEET], [NOTES], [SETTINGS]; before
-     * that, the four-tab shape [HOME]'s class doc still records), then three at the
-     * calendar-home cutover. [MONEY]/[BODY]/[FLEET]/[NOTES] are not gone, only demoted - see each
-     * one's own doc comment. `TODAY` is gone outright: one-today ticket 07 deleted the screen and
-     * the constant once every survivor on it was rehomed.
-     *
-     * **A route not on this list lights no tab, and that is now correct rather than a bug.**
-     * [topLevelOf] returns null inside `settings/`, so the row shows neither tab selected while you
-     * are in Setup - which is true, because Setup is not one of them. The 2026-08-02 defect that
-     * comment below records was the opposite case: a SUB-route of a real tab going dark.
-     *
-     * Assistant is still NOT one of them - it's a mode, not a place (original resolution §5, still
-     * true). */
-    val TOP_LEVEL = listOf(HOME, METERS)
-
-    /**
-     * The top-level tab [route] belongs to, or null if it belongs to none.
-     * A sub-route is its tab's route plus a `/` segment (`fleet/places` under
-     * `fleet`), which is what makes the prefix test sufficient - and why the
-     * `/` is part of the test rather than a bare `startsWith`, so a future
-     * top-level `fleetsomething` could never be swallowed by `fleet`.
-     *
-     * The bottom bar's selected state is derived through here rather than by
-     * exact route equality. With equality, every sub-route lit no tab at all:
-     * open `settings/key` and the whole bar went dark, which reads as "you
-     * have left the app's navigation" when you have not. Caught on the A17K
-     * 2026-08-02.
-     */
-    fun topLevelOf(route: String?): String? =
-        TOP_LEVEL.firstOrNull { route == it || route?.startsWith("$it/") == true }
-
-    /**
-     * Short label for a top-level route's tab. **DASHBOARD/TODAY/MONEY/BODY/FLEET/NOTES branches
-     * removed 2026-09-01** (calendar-home cutover) rather than kept dead: [LegionHardKeyRow], the
-     * only caller besides this file's own tests, was deleted in the same cutover
-     * ([com.kevin.legion.ui.MainActivity]'s three-way HOME/METERS/SETTINGS switch reads none of
-     * this function at all - see that switch's own comment), and nothing else in the tree ever
-     * called [label] with one of those six constants. Grep-confirmed before deletion.
-     *
-     * **[SETTINGS] branch dropped too, same session (2026-09-01), for the same reason it dropped
-     * off [TOP_LEVEL] above.** [LegionTabRow] is the only production caller of this function and it
-     * iterates [TOP_LEVEL] alone, which no longer includes [SETTINGS] - so `label(SETTINGS)` was
-     * grep-confirmed reachable only from this file's own test. `else -> route` covers it exactly
-     * as it would any other unlisted route, which is the same fallback [SETTINGS_ASSISTANT] and
-     * every other settings sub-route already got before this branch existed. The branch used to
-     * return "Setup" rather than "Settings" - the longer word wrapped to "Setting / s" in the bottom
-     * bar on a 720px-wide device (observed 2026-08-07, back when [LegionHardKeyRow] had five tabs)
-     * - preserved here since that measurement lives nowhere else now that the branch is gone; the
-     * SETUP stamp [com.kevin.legion.ui.common.StatusLine] renders is its own separate literal string,
-     * unaffected by this deletion either way.
-     */
-    fun label(route: String): String = when (route) {
-        HOME -> "Home"
-        METERS -> "Meters"
-        else -> route
-    }
+    // TOP_LEVEL, topLevelOf and label DELETED 2026-09-10, one-home ticket 03b, on ticket 01's
+    // resolution: **there are no top-level tabs any more.** HOME is what the app opens to and the
+    // only surface you land on; everything else is a drill-down reached by tapping the row that
+    // summarises it, which is how METERS already reached them.
+    //
+    // The list held six routes on 2026-08-07, three at the 2026-09-01 calendar-home cutover, two
+    // hours later that same day when SETTINGS came off it (Kevin: *"setup is being duplicated. keep
+    // the top right corner one and drop the one beside meters"*), and zero now. **Each step removed
+    // a second way to reach one place, and this is that same complaint one level up** - Kevin,
+    // 2026-09-10: *"just everything on home page"*.
+    //
+    // All three went together because `LegionTabRow` was the only production caller of any of them,
+    // grep-confirmed before deletion. A tab row that selects between one destination is not a
+    // control; it is a permanently-lit heading costing 56dp on every screen.
+    //
+    // **What they knew that is worth not losing.** `topLevelOf` matched a sub-route by its `tab/`
+    // prefix rather than by equality, because equality lit no tab at all inside `settings/key` and
+    // the whole bar went dark - observed on the A17K, 2026-08-02. `label` returned "Setup" rather
+    // than "Settings" because the longer word wrapped to "Setting / s" at 720px. Both facts live
+    // nowhere else now; if a tab row is ever reintroduced, they are the two traps it walks into.
+    //
+    // [SETTINGS] is unaffected and was never the reason: it has been reached from
+    // [com.kevin.legion.ui.common.StatusLine]'s SETUP stamp since 2026-09-01, and still is.
 
     /**
      * Route strings that older builds baked into notifications, mapped to where they should land
@@ -405,6 +378,14 @@ object LegionRoute {
         "calendar" to HOME,
         "notes" to HOME,
         "today" to HOME,
+        // **`"meters"` joined them 2026-09-10 (ticket 03b), and for a reason the other three did not
+        // have.** No notification ever named METERS - it was a tab, not an alarm target. But a tab
+        // is something the user can be SITTING on when the process is killed, and Navigation
+        // restores its back stack from saved state on the way back up. A saved stack naming a
+        // destination the graph no longer has is the same `IllegalArgumentException` by a different
+        // road, and it needs no stale notification to arrive - just a backgrounded app and a
+        // sideload.
+        "meters" to HOME,
     )
 
     /**

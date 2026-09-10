@@ -37,50 +37,55 @@ import org.junit.Test
  * behaviour. The genuinely new coverage is [LegionRoute.LEGACY_DEEP_LINK_ROUTES] at the bottom of
  * this file - the route STRING changed too, and a notification posted by an older build outlives
  * the build that posted it.
+ *
+ * **AMENDED 2026-09-10, later the same day (ticket 03b): the tab assertions are gone entirely.**
+ * `TOP_LEVEL`, `topLevelOf` and `label` were deleted when METERS retired and the tab row went with
+ * it, so four tests here had nothing left to assert. They were replaced rather than removed - see
+ * the block comment where they used to be, and the two tests that stand in their place, which pin
+ * the property that outlived them: **demoting a destination is not deleting it.**
  */
 class LegionRouteTest {
 
+    // ---------------------------------------------------------------- there are no tabs any more
+    //
+    // **Four tests were deleted here on 2026-09-10 (one-home ticket 03b)**: they asserted that HOME
+    // and METERS were the two top-level tabs, that `topLevelOf` resolved each and returned null
+    // inside `settings/`, and that `label` read "Home"/"Meters" with a fallthrough for SETTINGS.
+    // `TOP_LEVEL`, `topLevelOf` and `label` no longer exist, so those tests could not be rewritten -
+    // there is nothing left to assert about a tab row that is gone. See `LegionRoute.kt`'s tombstone
+    // where they used to live; it keeps the two on-device facts they encoded (the `tab/` prefix
+    // match, and "Setup" wrapping at 720px) since those live nowhere else now.
+    //
+    // What replaces them is the property that actually matters after the deletion, and it is not
+    // about tabs at all.
+
     @Test
-    fun `HOME and METERS are the only top-level tabs, SETTINGS and the three demoted routes are not`() {
-        assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.HOME))
-        assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.METERS))
-        assertEquals(2, LegionRoute.TOP_LEVEL.size)
-        for (demoted in listOf(LegionRoute.SETTINGS, LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET)) {
-            assertTrue("$demoted must stay a real route, just not a tab", !LegionRoute.TOP_LEVEL.contains(demoted))
+    fun `retiring the tab row did not delete a single destination behind it`() {
+        // The real risk in 03b was never the row. It was that "retire METERS" would be read as
+        // "delete what METERS reached" - and every one of these is a live EXTRA_ROUTE target or a
+        // drill-down HOME's meter rows tap through to. They were demoted from tabs on 2026-09-01 and
+        // demoted again to nothing on 2026-09-10; **demoted is not deleted**, and a route deleted
+        // here fails at a notification tap rather than at compile time.
+        val mustSurvive = listOf(
+            LegionRoute.HOME, LegionRoute.BODY, LegionRoute.MONEY, LegionRoute.MONEY_PANTRY,
+            LegionRoute.FLEET, LegionRoute.FLEET_PLACES, LegionRoute.CHECKLISTS,
+            LegionRoute.DASHBOARD, LegionRoute.SETTINGS, LegionRoute.ASK,
+        )
+        for (route in mustSurvive) {
+            assertTrue("a route must be a non-empty string, '$route' is not", route.isNotBlank())
         }
+        // Distinct, because two constants collapsing onto one string is a silent mis-navigation
+        // rather than a crash - the failure mode that has no error message at all.
+        assertEquals("two routes share a string", mustSurvive.size, mustSurvive.toSet().size)
     }
 
     @Test
-    fun `topLevelOf resolves HOME and METERS, not a demoted route`() {
-        assertEquals(LegionRoute.HOME, LegionRoute.topLevelOf(LegionRoute.HOME))
-        assertEquals(LegionRoute.METERS, LegionRoute.topLevelOf(LegionRoute.METERS))
-        // MONEY is a real, standalone route, not a HOME/METERS sub-route (no "home/" or
-        // "meters/" prefix) - it correctly lights no tab at all now, the same shape DASHBOARD and
-        // DRIVING already lit nothing under the five-tab shape (and TODAY did too, before one-today
-        // ticket 07 deleted it outright).
-        assertNull(LegionRoute.topLevelOf(LegionRoute.MONEY))
-    }
-
-    @Test
-    fun `topLevelOf(settings-key) is null, and that is intended, not a defect`() {
-        // CORRECTED 2026-09-01: SETTINGS came off TOP_LEVEL (see this suite's own class doc), so a
-        // settings sub-route lighting NO tab is now the correct answer, not the 2026-08-02 defect
-        // `topLevelOf`'s own doc comment records (a real tab's own sub-route going dark). SETTINGS
-        // is simply not one of the tabs any more; [StatusLine]'s SETUP stamp is the only way in and
-        // does not depend on a tab being lit.
-        assertNull(LegionRoute.topLevelOf(LegionRoute.SETTINGS_KEY))
-    }
-
-    @Test
-    fun `label reads Home and Meters for the two tabs, and falls through for SETTINGS`() {
-        // "Calendar" until 2026-09-10. LegionTabRow uppercases what it gets, so this renders HOME.
-        assertEquals("Home", LegionRoute.label(LegionRoute.HOME))
-        assertEquals("Meters", LegionRoute.label(LegionRoute.METERS))
-        // CORRECTED 2026-09-01: label() no longer special-cases SETTINGS ("Setup") - the branch was
-        // unreachable from its only production caller ([LegionTabRow], which iterates TOP_LEVEL
-        // alone) once SETTINGS came off that list, so it was dropped rather than kept dead. This
-        // pins the `else -> route` fallback it now shares with every other unlisted route.
-        assertEquals(LegionRoute.SETTINGS, LegionRoute.label(LegionRoute.SETTINGS))
+    fun `ASK is a route of its own, which is what keeps show_generated_view a hands path`() {
+        // Ticket 01 put the picker on its own route rather than in Settings or inline on HOME.
+        // `ui/ask/GeneratedViewHandsPathTest.kt` is what enforces ADR 0035 itself; this only pins
+        // that the route exists and is not accidentally an alias of HOME.
+        assertTrue(LegionRoute.ASK.isNotBlank())
+        assertTrue("ASK must not collapse onto HOME", LegionRoute.ASK != LegionRoute.HOME)
     }
 
     @Test
@@ -125,17 +130,23 @@ class LegionRouteTest {
     }
 
     @Test
-    fun `notes and today were already dangling before the rename, and are covered too`() {
+    fun `notes, today and meters all resolve, and meters is there for a different reason`() {
         // NOTES deleted 2026-09-05 (one-today 10 slice C), TODAY deleted 2026-09-01 (ticket 07).
         // Both had their live callers repointed; neither had anything covering a notification
-        // ALREADY in the shade. Found while adding the map above, so fixed with it.
+        // ALREADY in the shade. Found while adding the map, so fixed with it.
         assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("notes"))
         assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("today"))
+        // METERS (deleted 2026-09-10) is here on a different argument and it is worth keeping
+        // straight: no notification ever named it, because it was a TAB rather than an alarm
+        // target. A tab is something you can be sitting on when the process is killed, and
+        // Navigation restores its back stack from saved state - so a saved stack naming a deleted
+        // destination is the same crash by a road that needs no stale notification at all.
+        assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("meters"))
     }
 
     @Test
     fun `a live route passes through resolveDeepLink untouched`() {
-        for (route in listOf(LegionRoute.HOME, LegionRoute.METERS, LegionRoute.FLEET_PLACES, LegionRoute.MONEY_PANTRY_IMPORT)) {
+        for (route in listOf(LegionRoute.HOME, LegionRoute.ASK, LegionRoute.FLEET_PLACES, LegionRoute.MONEY_PANTRY_IMPORT)) {
             assertEquals(route, LegionRoute.resolveDeepLink(route))
         }
     }
@@ -158,7 +169,7 @@ class LegionRouteTest {
         // The map's whole purpose is defeated if it points at a destination that was itself later
         // deleted - that would trade one crash for another. Pinned against the declared constants.
         val live = setOf(
-            LegionRoute.HOME, LegionRoute.METERS, LegionRoute.DASHBOARD, LegionRoute.BODY,
+            LegionRoute.HOME, LegionRoute.ASK, LegionRoute.DASHBOARD, LegionRoute.BODY,
             LegionRoute.MONEY, LegionRoute.FLEET, LegionRoute.SETTINGS,
         )
         for ((legacy, target) in LegionRoute.LEGACY_DEEP_LINK_ROUTES) {

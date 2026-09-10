@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["06"]
 blocked-by: ["[[06-news-sources-and-what-may-be-kept]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 

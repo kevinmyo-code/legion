@@ -5630,3 +5630,58 @@ companion, in the previous voice. Switching by hand changed the label and nothin
 switch has had this wiring since 2026-07-16 (`ActiveVehicle.notifyResolutionChanged`); the companion
 switch never did. `CompanionProfileStore.notifyCompanionChanged` is the fix, and the hands path now
 gets the same spoken handover the voice path does.
+
+
+## 2026-09-10 - the HOME restructure, and three decisions taken on delegated taste
+
+Kevin, on the Android app: *"calendar home page > today's plan > no need since we have bio to do
+list. the advisor would tell me what would be a good daily todo list for workouts > and populate it
+that way. A news feed page > pulled from my gmail or just rss feeds. thinking of retiring meters
+page. just everything on home page (rename it from calendar)"* - then, on being handed the three open
+decisions the map produced: **_"run everything with your taste"_**.
+
+So 01, 04 and 06 below were decided by Opus, not by Kevin, and that is recorded here rather than left
+to look like his rulings. Map: `.scratch/one-home/`.
+
+**CALENDAR is HOME** (ticket 03, built, `09c4a77`). The route constant, the route string and the tab
+label all moved; `ui/CalendarScreen.kt` keeps its name because it still renders a month grid with a
+day view. What stopped being true is that the TAB was called one.
+
+**Changing a route string surfaced a defect that predated it.** Deep links navigate
+`navController.navigate(rawString)`, and Navigation throws `IllegalArgumentException` for a
+destination not in the graph. A reminder notification sits in the shade until tapped, across
+sideloads. `"notes"` (deleted 2026-09-05) and `"today"` (2026-09-01) were **already** a crash on
+tapping an old notification - each had its live callers repointed and nothing covering a notification
+already posted. `LegionRoute.LEGACY_DEEP_LINK_ROUTES` now maps all three to HOME. An unknown route
+still passes through untouched: landing it on the home screen would hide a bug behind a
+plausible-looking screen.
+
+**No tab row at all** (ticket 01). `TOP_LEVEL` empties, `LegionTabRow` goes, HOME is the only
+top-level surface and the drill-downs stay on the meter rows that already reach them. The two-tab row
+arrived 2026-09-01, briefly held three, and lost SETTINGS within hours because a second route to the
+same place read as duplication - the same complaint, one level up. The ASK panel gets its own route
+reached from a HOME row: not Settings, because ADR 0035's second reason is that a voice-only
+capability is *invisible* and Settings is where you configure the app rather than use it; not a pane
+on HOME, because it is five pickers competing with the day for the top of a glance surface. **A pane
+with nothing to say renders nothing** - "everything on home page" needs one limit and that is it.
+
+**The advisor writes a recurring `checklists` row** (ticket 04). `GoalChecklistPanel` and
+`GoalChecklistSync`'s `ITEM_PREFIX = "Plan: "` both retire. Read as two instructions Kevin's sentence
+says "delete X" then "build X" - the one thing called *today's plan* IS an advisor-written daily
+workout list. The capability was right and its storage was wrong: a prefix used to find your own rows
+in someone else's table cannot survive a user typing "Plan: call mum", records no tick history, and
+has no identity a key could point at. Meals and sleep follow workouts across, because a mechanism
+retired for two of its three sources is not retired. Existing undone `Plan: ` rows migrate; already
+ticked ones are left alone, since rewriting a day that already happened to tidy a migration is worse
+than an untidy migration.
+
+**A news feed ships with both sources; items are read-through, subscriptions persist** (ticket 06).
+RSS existed nowhere - grep returned zero. The two honest readings of CLAUDE.md sec 7 disagree: the
+line is *provenance* (mail arrives unasked, a feed is chosen - ADR 0041's carve-out turned on exactly
+that), or the line is *authorship* (a headline is still someone else's writing). **The deciding reason
+was neither.** One option required amending a standing privacy rule and the other did not, and
+delegated taste over a map's decisions is not authority to widen a CLAUDE.md rule on Kevin's behalf -
+a rule loosened by an agent exercising taste is invisible afterwards. The conservative option was
+fully functional, so it won on that alone. The substantive argument agrees: he authors a voice note,
+he does not author a headline. **sec 7 is unchanged and no ADR was written.** If offline reading turns
+out to matter, that is a real reason to reopen it, with an argument, by Kevin.

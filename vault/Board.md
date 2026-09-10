@@ -42,9 +42,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[06-kotlin-bump-and-compose-pin\|06]] | task | Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
-| [[.scratch/one-home/map\|one-home]] | [[01-what-the-shell-is-without-meters\|01]] | decision | One tab or none: what the shell is when METERS is gone |
-| [[.scratch/one-home/map\|one-home]] | [[04-where-the-advisors-day-list-lands\|04]] | decision | Today's plan retires: which table the advisor's day-list lands in |
-| [[.scratch/one-home/map\|one-home]] | [[06-news-sources-and-what-may-be-kept\|06]] | decision | News feed sources, and what a feed is allowed to keep |
+| [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |
+| [[.scratch/one-home/map\|one-home]] | [[07-the-news-surface\|07]] | build | The news surface: sources, refresh on demand, and three distinct failure sentences |
 | [[.scratch/one-today/map\|one-today]] | [[02-ticking-an-appointment\|02]] | build | You cannot cross off a calendar item, and the field is not what is missing |
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | Delete what the audit found dead in the day-to-day area |
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
@@ -103,6 +102,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[32-sitrep-on-demand-only\|32]] | build | Sitreps happen when asked, never on a schedule |
 | [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
+| [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
 | [[.scratch/one-today/map\|one-today]] | [[05-maintenance-has-no-date-axis\|05]] | build | MAINTENANCE 0 DUE is computed against nothing |
 | [[.scratch/one-today/map\|one-today]] | [[07-what-becomes-of-todayscreen\|07]] | build | TodayScreen is half-emptied. Rehome the survivors, then delete it. |
@@ -147,10 +147,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
-| [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first  waiting on [[01-what-the-shell-is-without-meters\|01]] |
-| [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[01-what-the-shell-is-without-meters\|01]], [[02-rehome-the-orphans\|02]] |
-| [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist  waiting on [[04-where-the-advisors-day-list-lands\|04]] |
-| [[.scratch/one-home/map\|one-home]] | [[07-the-news-surface\|07]] | build | The news surface: sources, refresh on demand, and three distinct failure sentences  waiting on [[06-news-sources-and-what-may-be-kept\|06]] |
+| [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
 | [[.scratch/one-home/map\|one-home]] | [[08-ship-pass\|08]] | task | Ship pass: the shell on the A25, and every reasoned claim settled  waiting on [[03b-delete-meters\|03]], [[05-the-advisor-writes-a-checklist\|05]], [[07-the-news-surface\|07]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[03-transcribe-and-summarize\|03]] | build | One upload, a transcript and a summary out  waiting on [[01-the-recorder-and-the-mic\|01]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
@@ -211,7 +208,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
-| [[.scratch/one-home/map\|one-home]] | 9 | 9 | [[.scratch/one-home/one-home.canvas\|open]] |
+| [[.scratch/one-home/map\|one-home]] | 9 | 6 | [[.scratch/one-home/one-home.canvas\|open]] |
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
