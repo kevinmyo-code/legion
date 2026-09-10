@@ -340,6 +340,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "household.authentication.DeviceTokenAuthentication",
+        # Second, not first: a phone request always carries `Authorization:
+        # Token <key>` and DeviceTokenAuthentication resolves it without
+        # touching the session store, so listing this after it means a
+        # phone call never pays a session lookup. The browser carries no
+        # Authorization header, so this is the one that resolves it - and
+        # DRF's SessionAuthentication enforces CSRF on unsafe methods by
+        # design once it does (see household/views.py:SessionLogoutView).
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "household.permissions.IsHouseholdMember",

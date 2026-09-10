@@ -4,6 +4,31 @@
  */
 
 export interface paths {
+    "/api/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/auth/csrf`. Ensures the `csrftoken` cookie is set so the
+         *     browser has something to echo back in `X-CSRFToken` on the session login
+         *     POST and everything session-authenticated after it
+         *     (`frontend/src/api/client.ts`'s `djangoSession` middleware reads this
+         *     exact cookie name). Anonymous and side-effect-free beyond the cookie
+         *     itself - `ensure_csrf_cookie` forces Django to set it even though this
+         *     view reads nothing that would otherwise trigger it.
+         */
+        get: operations["api_auth_csrf_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -62,13 +87,78 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * @description `GET /api/auth/me`. This is the phone's membership check - if this
-         *     call succeeds, the calling token is live and its user is a household
-         *     member; if it 401s or 403s, the phone knows to ask for a new token.
+         * @description `GET /api/auth/me`. This is the membership check for both credentials
+         *     - if this call succeeds, the calling token or session is live and its
+         *     user is a household member; if it 401s or 403s, the caller knows to ask
+         *     for a new one. `DEFAULT_AUTHENTICATION_CLASSES` tries the device token
+         *     first and the session second, so a phone request never pays a session
+         *     lookup.
          */
         get: operations["api_auth_me_retrieve"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/auth/session/login`. Sets a Django session cookie for the
+         *     browser. Deliberately mints NO device token - a session and a token are
+         *     different credentials with different revocation stories (ADR 0044 rule
+         *     3) - and is throttled the same as `LoginView`, same scope, so the two
+         *     login doors share one rate budget rather than doubling the attempts a
+         *     leaked email tolerates.
+         *
+         *     Anonymous by construction (`authentication_classes = []`, same as
+         *     `LoginView`): this is the request that CREATES the session, so there is
+         *     nothing yet for `SessionAuthentication` to attach to, and DRF's own
+         *     `APIView.as_view()` exempts every view from Django's blanket CSRF
+         *     middleware for exactly this reason - CSRF protection for the session
+         *     path starts at the NEXT request, once `SessionAuthentication` has a
+         *     logged-in user to enforce it against (see `SessionLogoutView`).
+         */
+        post: operations["api_auth_session_login_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/auth/session/logout`. Ends the Django session. Never
+         *     touches a device token - `authentication_classes` names only
+         *     `SessionAuthentication`, so a request carrying a device token instead of
+         *     a session cookie authenticates as nobody here and is refused by the
+         *     default `IsHouseholdMember` permission, the same as any other
+         *     unauthenticated request.
+         *
+         *     Reachable only once a session already exists, which is exactly the case
+         *     `rest_framework.authentication.SessionAuthentication.authenticate()`
+         *     calls `enforce_csrf()` on - so this endpoint requires `X-CSRFToken`
+         *     without anything here asking for it by hand. Do not subclass
+         *     `SessionAuthentication` to turn that off.
+         */
+        post: operations["api_auth_session_logout_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2777,6 +2867,12 @@ export interface components {
             db: string;
             detail: string;
         };
+        HouseholdSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            role: string;
+        };
         /**
          * @description The 200 body, and it covers BOTH no-write outcomes because they are one
          *     status code and a client branches on `outcome`, not on the shape.
@@ -2946,6 +3042,7 @@ export interface components {
             /** Format: email */
             email: string;
             device_name: string;
+            household: components["schemas"]["HouseholdSummary"] | null;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -3840,6 +3937,16 @@ export interface components {
             origin_guid?: string | null;
         };
         /**
+         * @description `POST /api/auth/session/login`. No `device_name` - a browser session
+         *     is not a device token (ADR 0044 rule 3: different credentials, different
+         *     revocation stories) and mints none.
+         */
+        SessionLoginRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+        };
+        /**
          * @description Base for every serializer this viewset drives.
          *
          *     Two behaviours, both ticket 04's own text:
@@ -4234,6 +4341,24 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    api_auth_csrf_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `csrftoken` cookie is set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     api_auth_login_create: {
         parameters: {
             query?: never;
@@ -4314,7 +4439,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The token is live and its user is a household member. `device_name` is the name the token was issued under at login. */
+            /** @description The token or session is live and its user is a household member. `device_name` is the name the token was issued under at login, or empty for a session. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4323,7 +4448,7 @@ export interface operations {
                     "application/json": components["schemas"]["MeResponse"];
                 };
             };
-            /** @description No token, an unknown token, or a revoked one. Ask for a new one. */
+            /** @description No credential, an unknown token, or a revoked one. Ask for a new one. */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -4332,7 +4457,78 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
-            /** @description The token is live but its user is not a household member. A `User` row alone is not enough - see `manage.py add_household_member`. */
+            /** @description The credential is live but its user is not a household member. A `User` row alone is not enough - see `manage.py add_household_member`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_session_login_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionLoginRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["SessionLoginRequest"];
+                "multipart/form-data": components["schemas"]["SessionLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description A Django session cookie is set. Body is the same shape `/api/auth/me` returns; `device_name` is always empty since a session names no device. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Wrong email or password, or the account is inactive. No session was created. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Rate limited: 5 attempts a minute per IP, shared with `/api/auth/login`. `detail` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_session_logout_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No active session, or a missing/invalid CSRF token. */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -5556,3 +5556,21 @@ Run stays deployed at min-instances 0 for thirty days as the rollback. Cube is s
 
 Ruling: `.scratch/web-and-households/issues/12-hosting-oracle-vm.md`. The move: ticket 13. Tickets
 08 and 09 rewritten the same hour; their Cloud Run drafts are in git history.
+
+## 2026-09-10 - The web client is built in full, and there is no deploy deadline
+
+Kevin, after the tenancy migration landed and the question was whether to trim ticket 03 down to
+session auth for one person: *"we need to build the browser/mobile wrapper with household creation
+and user signup etc. then open shows calendar and todo lists. i'll do the oracle VM meanwhile. no
+need to rush to deploy it. do it right."*
+
+Three things settled by that sentence. **Ticket 03 is built in full** - signup, household creation
+and invite codes, not the one-wife slice that would have got her signed in this week; the narrow
+session-auth dispatch already in flight becomes its foundation rather than its replacement.
+**Ticket 05's route table is unchanged and was already right**: `/login`, `/signup` + `/join/<code>`,
+`/` as Today, `/lists`, `/settings/household`. And **the deploy stops being the pacing item** -
+Cloud Run was offered as the fast path to his wife's iPhone this week and explicitly declined in
+favour of doing it properly, with the Oracle VM (ticket 13 section 1) moving to Kevin's own hands.
+
+The first user is his wife, into the existing "Home" household. Parents come later, which is what
+makes the invite-code path worth building rather than a second household nobody needs yet.

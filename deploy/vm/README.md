@@ -2,10 +2,11 @@
 
 What `deploy/vm/deploy.sh` and `.github/workflows/deploy.yml` expect to find, and nothing else.
 **This is not the provisioning runbook.** Creating the tenancy, the machine, the firewall rules,
-the DNS record and the first `docker compose up` - and moving the data onto it - is
-[[13-vm-provision-migrate-cutover]] (`.scratch/web-and-households/issues/13-vm-provision-migrate-cutover.md`), which
-Kevin runs himself because every step touches his Oracle tenancy, his domain or his card. Read that
-first if the box does not exist yet.
+the DNS record and the first `docker compose up` is **`PROVISION.md`, beside this file** - follow
+that at a terminal. Its plan and verification bar are [[13-vm-provision-migrate-cutover]]
+(`.scratch/web-and-households/issues/13-vm-provision-migrate-cutover.md`), and moving the data onto
+the box is that ticket's section 3. Kevin runs all of it himself because every step touches his
+Oracle tenancy, his domain or his card. Read `PROVISION.md` first if the box does not exist yet.
 
 Hosting decision: [[12-hosting-oracle-vm]]. CI/CD ticket: [[08-ci-cd]]. Image and Caddyfile:
 [[09-static-domain-dockerfile]].

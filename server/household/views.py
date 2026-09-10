@@ -1,25 +1,47 @@
-"""The three auth endpoints ticket 01 promises: log in, log out, and 'who
-and what device am I' - the phone's own membership check.
-"""
+"""The auth endpoints: log in, log out, and 'who and what device am I' - the
+phone's own membership check, plus (web-and-households ticket 03 narrow
+slice, 2026-09-10) a Django session pair for the browser and a csrf-cookie
+primer.
+
+Two credentials live side by side on purpose (ADR 0044 rule 3): a device
+token, one per phone/robot, revocable alone; and a Django session, one per
+browser tab's cookie jar, CSRF-protected the way a cookie credential has to
+be. Neither path mints the other's credential."""
 from __future__ import annotations
 
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, login, logout
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from household.models import DeviceToken
+from household.models import DeviceToken, HouseholdMember
 from household.serializers import (
     LoginRequestSerializer,
     LoginResponseSerializer,
     MeResponseSerializer,
+    SessionLoginRequestSerializer,
 )
 
 AUTH_TAGS = ["auth"]
+
+
+def _household_summary(user) -> dict | None:
+    """The `household` field both `/me` and session login return: which
+    family this user is in, and their role in it. `None` for a `User` row
+    with no `HouseholdMember` yet - reachable from session login (which,
+    unlike `/me`, runs before `IsHouseholdMember` could ever refuse it) even
+    though it is not reachable from `/me` in practice."""
+    member = HouseholdMember.objects.filter(user=user).select_related("household").first()
+    if member is None:
+        return None
+    return {"id": member.household_id, "name": member.household.name, "role": member.role}
 
 
 class LoginView(APIView):
@@ -121,10 +143,142 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class SessionLoginView(APIView):
+    """`POST /api/auth/session/login`. Sets a Django session cookie for the
+    browser. Deliberately mints NO device token - a session and a token are
+    different credentials with different revocation stories (ADR 0044 rule
+    3) - and is throttled the same as `LoginView`, same scope, so the two
+    login doors share one rate budget rather than doubling the attempts a
+    leaked email tolerates.
+
+    Anonymous by construction (`authentication_classes = []`, same as
+    `LoginView`): this is the request that CREATES the session, so there is
+    nothing yet for `SessionAuthentication` to attach to, and DRF's own
+    `APIView.as_view()` exempts every view from Django's blanket CSRF
+    middleware for exactly this reason - CSRF protection for the session
+    path starts at the NEXT request, once `SessionAuthentication` has a
+    logged-in user to enforce it against (see `SessionLogoutView`).
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    @extend_schema(
+        operation_id="api_auth_session_login_create",
+        tags=AUTH_TAGS,
+        request=SessionLoginRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=MeResponseSerializer,
+                description=(
+                    "A Django session cookie is set. Body is the same shape `/api/auth/me` "
+                    "returns; `device_name` is always empty since a session names no device."
+                ),
+            ),
+            401: OpenApiResponse(
+                response=DetailSerializer,
+                description="Wrong email or password, or the account is inactive. No "
+                "session was created.",
+            ),
+            429: OpenApiResponse(
+                response=DetailSerializer,
+                description="Rate limited: 5 attempts a minute per IP, shared with "
+                "`/api/auth/login`. `detail` says when to try again.",
+            ),
+        },
+    )
+    def post(self, request):
+        serializer = SessionLoginRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = authenticate(
+            request, username=data["email"], password=data["password"]
+        )
+        if user is None or not user.is_active:
+            return Response(
+                {"detail": "Invalid email or password."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        login(request, user)
+        body = MeResponseSerializer(
+            {
+                "user_id": user.id,
+                "email": user.email,
+                "device_name": "",
+                "household": _household_summary(user),
+            }
+        ).data
+        return Response(body, status=status.HTTP_200_OK)
+
+
+class SessionLogoutView(APIView):
+    """`POST /api/auth/session/logout`. Ends the Django session. Never
+    touches a device token - `authentication_classes` names only
+    `SessionAuthentication`, so a request carrying a device token instead of
+    a session cookie authenticates as nobody here and is refused by the
+    default `IsHouseholdMember` permission, the same as any other
+    unauthenticated request.
+
+    Reachable only once a session already exists, which is exactly the case
+    `rest_framework.authentication.SessionAuthentication.authenticate()`
+    calls `enforce_csrf()` on - so this endpoint requires `X-CSRFToken`
+    without anything here asking for it by hand. Do not subclass
+    `SessionAuthentication` to turn that off.
+    """
+
+    authentication_classes = [SessionAuthentication]
+
+    @extend_schema(
+        operation_id="api_auth_session_logout_create",
+        tags=AUTH_TAGS,
+        request=None,
+        responses={
+            204: OpenApiResponse(description="The session is ended."),
+            403: OpenApiResponse(
+                response=DetailSerializer,
+                description="No active session, or a missing/invalid CSRF token.",
+            ),
+        },
+    )
+    def post(self, request):
+        logout(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CsrfView(APIView):
+    """`GET /api/auth/csrf`. Ensures the `csrftoken` cookie is set so the
+    browser has something to echo back in `X-CSRFToken` on the session login
+    POST and everything session-authenticated after it
+    (`frontend/src/api/client.ts`'s `djangoSession` middleware reads this
+    exact cookie name). Anonymous and side-effect-free beyond the cookie
+    itself - `ensure_csrf_cookie` forces Django to set it even though this
+    view reads nothing that would otherwise trigger it.
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="api_auth_csrf_retrieve",
+        tags=AUTH_TAGS,
+        responses={200: OpenApiResponse(description="The `csrftoken` cookie is set.")},
+    )
+    @method_decorator(ensure_csrf_cookie)
+    def get(self, request):
+        return Response({})
+
+
 class MeView(APIView):
-    """`GET /api/auth/me`. This is the phone's membership check - if this
-    call succeeds, the calling token is live and its user is a household
-    member; if it 401s or 403s, the phone knows to ask for a new token."""
+    """`GET /api/auth/me`. This is the membership check for both credentials
+    - if this call succeeds, the calling token or session is live and its
+    user is a household member; if it 401s or 403s, the caller knows to ask
+    for a new one. `DEFAULT_AUTHENTICATION_CLASSES` tries the device token
+    first and the session second, so a phone request never pays a session
+    lookup."""
 
     @extend_schema(
         operation_id="api_auth_me_retrieve",
@@ -133,19 +287,21 @@ class MeView(APIView):
             200: OpenApiResponse(
                 response=MeResponseSerializer,
                 description=(
-                    "The token is live and its user is a household member. `device_name` is "
-                    "the name the token was issued under at login."
+                    "The token or session is live and its user is a household member. "
+                    "`device_name` is the name the token was issued under at login, or "
+                    "empty for a session."
                 ),
             ),
             401: OpenApiResponse(
                 response=DetailSerializer,
-                description="No token, an unknown token, or a revoked one. Ask for a new one.",
+                description="No credential, an unknown token, or a revoked one. Ask for a "
+                "new one.",
             ),
             403: OpenApiResponse(
                 response=DetailSerializer,
                 description=(
-                    "The token is live but its user is not a household member. A `User` row "
-                    "alone is not enough - see `manage.py add_household_member`."
+                    "The credential is live but its user is not a household member. A "
+                    "`User` row alone is not enough - see `manage.py add_household_member`."
                 ),
             ),
         },
@@ -154,6 +310,11 @@ class MeView(APIView):
         token = request.auth
         device_name = token.name if isinstance(token, DeviceToken) else ""
         body = MeResponseSerializer(
-            {"user_id": request.user.id, "email": request.user.email, "device_name": device_name}
+            {
+                "user_id": request.user.id,
+                "email": request.user.email,
+                "device_name": device_name,
+                "household": _household_summary(request.user),
+            }
         ).data
         return Response(body, status=status.HTTP_200_OK)

@@ -8,13 +8,14 @@ blockers: ["12", "09"]
 blocked-by: ["[[12-hosting-oracle-vm]]", "[[09-static-domain-dockerfile]]"]
 open-blockers: 1
 ready: false
+status-detail: "Kevin is provisioning the Oracle VM himself, 2026-09-10. Section 1 of this ticket (tenancy upgrade, machine, network, iptables) is his; the runbook, the arm64 image, the deploy script and the data move stay here. He also ruled the same day that there is NO rush to deploy - 'do it right' - so the web client is built and verified properly before any cutover, rather than shipped to Cloud Run to meet a date."
 tags: [ticket]
 ---
 
 # The move
 
-Everything here is a runbook in `deploy/vm/README.md`, written in the same start-to-finish register
-as `deploy/cloudrun/README.md`, and every step below is a checkbox in it. **Kevin runs the steps
+Everything here is a runbook in **`deploy/vm/PROVISION.md`** (written 2026-09-10; `README.md` beside
+it is the DEPLOY's prerequisites, a different subject), and every step below is a checkbox in it. **Kevin runs the steps
 that touch his Oracle tenancy, his domain and his card; an agent writes them, checks them against
 Oracle's own docs, and does not execute them.**
 
@@ -43,7 +44,9 @@ Oracle's own docs, and does not execute them.**
 - Cloudflare DNS: `A legion.<domain> -> <reserved IP>`, proxy OFF (grey cloud) so Let's Encrypt's
   HTTP-01 challenge reaches Caddy. Proxy ON is a later choice and needs Full (strict) with an
   origin certificate; not now.
-- **Migrations run on start.** `deploy/entrypoint.sh` (new, ticket 09 ships it in the image):
+- **Migrations run on start.** `server/entrypoint.sh` - **not `deploy/entrypoint.sh`, which is what
+  this line said until 2026-09-10 and was never reachable**: the image's build context is `server/`
+  in all three places that build it, and `COPY ../` is not expressible. Ticket 09 ships it:
   `python manage.py migrate --noinput` then `exec gunicorn ...`. One `web` replica, so this is not
   a race; the comment says so and says what changes if it ever becomes two.
 - `docker compose up -d`; `docker compose logs -f web` until gunicorn is listening;

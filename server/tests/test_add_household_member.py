@@ -100,3 +100,47 @@ def test_add_household_member_takes_an_explicit_household():
     member = HouseholdMember.objects.get(user__email="mum@example.com")
     assert member.household_id == other.id
     assert member.role == HouseholdMember.OWNER
+
+
+def test_add_household_member_password_creates_a_new_user_and_membership(capsys):
+    """web-and-households ticket 03 narrow slice, 2026-09-10: this is the
+    exact command Kevin runs to onboard his wife. No `User` row exists yet,
+    so `--password` is what creates one."""
+    assert not User.objects.filter(email="wife@example.com").exists()
+
+    call_command(
+        "add_household_member", "wife@example.com", "--password", "correct horse battery"
+    )
+
+    user = User.objects.get(email="wife@example.com")
+    assert user.check_password("correct horse battery")
+    assert HouseholdMember.objects.filter(user=user).exists()
+
+    output = capsys.readouterr().out
+    assert "Created user" in output
+    assert "correct horse battery" not in output
+
+
+def test_add_household_member_password_never_resets_an_existing_password(capsys):
+    """Idempotent re-run: the second call still carries --password (a
+    first-run script that always passes it), and it must not touch the
+    live password or even acknowledge it beyond a warning."""
+    User.objects.create_user(email="wife@example.com", password="the real password")
+    call_command("add_household_member", "wife@example.com", "--password", "the real password")
+    capsys.readouterr()
+
+    call_command("add_household_member", "wife@example.com", "--password", "a different one")
+
+    user = User.objects.get(email="wife@example.com")
+    assert user.check_password("the real password")
+    assert not user.check_password("a different one")
+    output = capsys.readouterr().out
+    assert "ignored" in output
+    assert "a different one" not in output
+
+
+def test_add_household_member_rejects_a_weak_password():
+    with pytest.raises(CommandError, match="was rejected"):
+        call_command("add_household_member", "weak@example.com", "--password", "1234")
+
+    assert not User.objects.filter(email="weak@example.com").exists()

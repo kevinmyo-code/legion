@@ -18,11 +18,21 @@ household or the only one there is, and the command REFUSES in words when
 this engine holds several and none is named - putting a person in the wrong
 family and reporting success is the failure this whole ticket exists to make
 impossible.
+
+**2026-09-10 (web-and-households ticket 03 narrow slice): `--password`
+creates the `User` too, when it does not already exist.** This is the whole
+"onboard a second adult" path for now - full signup/invites is ticket 03's
+larger, deferred scope. `--password` is IGNORED once a `User` with that
+email already exists (idempotent re-run never silently resets a live
+password), and the raw password is never echoed back on stdout - only the
+fact that an account was made, same posture as `DeviceToken.issue` never
+persisting a raw key.
 """
 from __future__ import annotations
 
 import uuid
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from household.models import Household, HouseholdMember, User
@@ -31,13 +41,24 @@ from household.tenancy import BOOTSTRAP_ID_ENV, resolve_default_household
 
 class Command(BaseCommand):
     help = (
-        "Adds an existing user to a household (grants IsHouseholdMember). Idempotent. "
-        "Pass --household to say which; without it, the bootstrap household or the only "
-        "one there is."
+        "Adds a user to a household (grants IsHouseholdMember). Idempotent. Pass "
+        "--password to create the user first if they do not exist yet. Pass --household "
+        "to say which household; without it, the bootstrap household or the only one "
+        "there is."
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("email", type=str, help="Email of an existing User.")
+        parser.add_argument("email", type=str, help="Email of the User.")
+        parser.add_argument(
+            "--password",
+            type=str,
+            default=None,
+            help=(
+                "Creates the User with this password if no User with this email exists "
+                "yet. Ignored (with a warning) if the user already exists - re-running "
+                "this command never resets a live password."
+            ),
+        )
         parser.add_argument(
             "--household",
             type=str,
@@ -55,13 +76,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         email = options["email"]
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist as exc:
-            raise CommandError(
-                f"No user with email {email!r}. Create one first with "
-                f"'manage.py createsuperuser' or the admin."
-            ) from exc
+        user = User.objects.filter(email=email).first()
+        if user is None:
+            user = self._create_user(email, options["password"])
+        elif options["password"]:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{email} already exists; --password was given but is ignored. "
+                    f"Nobody's password was changed."
+                )
+            )
 
         existing = HouseholdMember.objects.filter(user=user).select_related("household").first()
         if existing is not None:
@@ -106,3 +130,25 @@ class Command(BaseCommand):
                 f"command may pick without guessing. Say which with --household <uuid>."
             )
         return household
+
+    def _create_user(self, email: str, password: str | None) -> User:
+        if not password:
+            raise CommandError(
+                f"No user with email {email!r}. Create one first with "
+                f"'manage.py createsuperuser' or the admin, or pass --password to create "
+                f"one here."
+            )
+        try:
+            from django.contrib.auth.password_validation import validate_password
+
+            validate_password(password)
+        except DjangoValidationError as exc:
+            raise CommandError(
+                f"Password for {email!r} was rejected: {'; '.join(exc.messages)}. Nobody "
+                f"was created."
+            ) from exc
+        user = User.objects.create_user(email=email, password=password)
+        # The password itself is never written to stdout, here or anywhere else in this
+        # command - same posture as DeviceToken.issue() never persisting a raw key.
+        self.stdout.write(self.style.SUCCESS(f"Created user {email}."))
+        return user
