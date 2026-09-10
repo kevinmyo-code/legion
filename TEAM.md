@@ -13,6 +13,34 @@ Five seats. `CLAUDE.md` holds the rules; these files hold only what is specific 
 Dispatch is the default, not an escalation (CLAUDE.md §8, standing). Judgement still applies: a
 one-line fix does not need an agent.
 
+## Every concurrent agent gets its own worktree (Kevin, standing, 2026-09-10)
+
+*"btw other terminals here are runnig agents, please use worktrees."* More than one agent in one
+checkout is how work gets clobbered, and the recipe already existed as a memory before it was a
+rule:
+
+```
+git worktree add .claude/worktrees/<name> -b feat/<thing> dev
+cp local.properties .claude/worktrees/<name>/local.properties   # gitignored, so a fresh worktree has no sdk.dir
+```
+
+`.claude/worktrees/` is gitignored for this. Separate checkout, separate build dir, separate Gradle
+daemon, shared `.git`.
+
+**What it cost to learn twice.** A build once queued 40 minutes behind another session's busy tree
+and ran in 5 in a worktree. Then on 2026-09-10 the orchestrator ran `git add -A` in the shared tree
+and committed ~1300 lines of a builder's IN-FLIGHT work to `dev`, unverified, while that builder was
+still editing. Nothing was lost and `manage.py check` passed, but the commit asserted work nobody
+had run the suite against.
+
+**So, two rules, and the second is the one that actually saves you:**
+
+1. Dispatch a concurrent agent into its own worktree, not the shared tree.
+2. **Never `git add -A` in a tree another agent is working in.** Stage your own paths and use
+   `git commit -F msg -- <paths>`. A pathspec commit leaves another agent's index entries alone; the
+   cost is that the wiki hook's regenerated output does not ride along, so run
+   `obsidian_sync.py`/`pending_wiki.py` and stage those explicitly.
+
 ## Rewritten 2026-09-01, and why it matters more than the tidying
 
 The previous roster was six agents and 438 lines. Roughly half of `coding.md` was **factually
