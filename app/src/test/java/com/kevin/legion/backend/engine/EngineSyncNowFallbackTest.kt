@@ -48,9 +48,15 @@ class EngineSyncNowFallbackTest {
 
     @Test
     fun `an aspect that was never on Django says nothing extra`() {
+        // **`ledger` used to be this test's example and stopped being one on 2026-09-10**, when
+        // all nine aspects moved into EngineTransport.DJANGO_BY_DEFAULT: ledger now HAS a Django
+        // default, so on a signed-out device it genuinely did fall back and the note correctly
+        // says so. There is no longer any KNOWN aspect that was never on Django, so the example
+        // has to be a name that is not an aspect - which is also the only case the note is really
+        // claiming anything about.
         val syncNow = EngineSyncNow(context, EngineBackends(context, signedOutConfig()))
 
-        assertEquals("", syncNow.fallbackNote("ledger"))
+        assertEquals("", syncNow.fallbackNote("some-future-aspect-nobody-named-yet"))
     }
 
     @Test

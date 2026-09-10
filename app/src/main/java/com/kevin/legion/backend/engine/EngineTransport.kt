@@ -98,12 +98,44 @@ class EngineTransport(
         private const val PREFS = "engine_transport"
 
         /**
-         * The aspects whose shipped default is [Transport.DJANGO] - the Phase 2 slice, and only
-         * once the engine is usable (see [defaultFor]). Adding an aspect here is the committed
-         * cutover for it and belongs with that aspect's own end-to-end run on the phone, never
-         * ahead of it.
+         * The aspects whose shipped default is [Transport.DJANGO] - and as of 2026-09-10 that is
+         * ALL NINE, which is a deliberate departure from how this set was grown until now.
+         *
+         * **The old rule, and why it stopped applying.** This comment used to read: "Adding an
+         * aspect here is the committed cutover for it and belongs with that aspect's own
+         * end-to-end run on the phone, never ahead of it." That rule existed to stop an unverified
+         * Django path replacing a WORKING Supabase one. It was right, and it is now moot for the
+         * last three: ADR 0045's tenancy migration put `household_id NOT NULL` with no default on
+         * all forty-three `public` tables, and the phone's Supabase backends do not know that
+         * column exists - grep `household` in `SupabaseLedgerBackend`, `SupabasePantryBackend` or
+         * `SupabaseFleetBackend` and you get nothing. So every write on that path now fails a
+         * NOT NULL constraint. There is no working path left to protect, and Django's backends do
+         * set the column.
+         *
+         * Kevin, 2026-09-10, told the above: *"yes flip it, fully django."*
+         *
+         * **What is verified and what is not, stated plainly rather than implied by membership
+         * here.** events, checklists, body and memory were run end to end on the A25. places and
+         * voice notes had their pull path exercised and nothing more. **ledger, pantry and fleet
+         * have never run against Django on hardware at all** - they are here because the
+         * alternative is a path that cannot work, not because they were proven. The first person
+         * to run them should expect to find things; three of the four aspects verified this way
+         * produced defects a green suite had missed.
+         *
+         * Still conditional on the engine being usable (see [defaultFor]): an install with no
+         * engine or no token falls back to Supabase for everything, exactly as before.
          */
-        val DJANGO_BY_DEFAULT: Set<String> = setOf("events", "checklists")
+        val DJANGO_BY_DEFAULT: Set<String> = setOf(
+            "events",
+            "checklists",
+            "body",
+            "memory",
+            "places",
+            "voice_notes",
+            "ledger",
+            "pantry",
+            "fleet",
+        )
 
         /**
          * The aspects the debug toggle screen lists - the Phase 2 slice (events, checklists) plus

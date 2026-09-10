@@ -65,8 +65,18 @@ class EngineTransportTest {
 
         assertTrue(transport.isFallingBackToSupabase("events"))
         assertTrue(transport.isFallingBackToSupabase("checklists"))
-        // Never on an aspect whose default was Supabase all along - there is nothing to report.
-        assertFalse(transport.isFallingBackToSupabase("ledger"))
+        // **Every KNOWN aspect reports it now**, `ledger` included. This line used to read
+        // `assertFalse(...isFallingBackToSupabase("ledger"))` with the comment "never on an aspect
+        // whose default was Supabase all along - there is nothing to report", and that was correct
+        // until 2026-09-10, when all nine moved into DJANGO_BY_DEFAULT. There is no longer an
+        // aspect whose default is Supabase, so there is no longer a case where falling back is
+        // silent.
+        for (aspect in EngineTransport.KNOWN_ASPECTS) {
+            assertTrue("$aspect falls back and must say so", transport.isFallingBackToSupabase(aspect))
+        }
+        // An aspect this class has never heard of still reports nothing: it was never on Django,
+        // so nothing fell back. That is the case the `ledger` assertion used to cover.
+        assertFalse(transport.isFallingBackToSupabase("some-future-aspect-nobody-named-yet"))
     }
 
     // ------------------------------------------------------------------ the flip: engine present
@@ -82,14 +92,33 @@ class EngineTransportTest {
     }
 
     @Test
-    fun `the other seven aspects stay on SUPABASE even with an engine signed in`() {
+    fun `signed in to an engine, every known aspect defaults to DJANGO`() {
+        // **This test used to be `the other seven aspects stay on SUPABASE even with an engine
+        // signed in`**, and it computed `KNOWN_ASPECTS - DJANGO_BY_DEFAULT` and asserted the
+        // remainder was seven aspects still on Supabase. That set is empty as of 2026-09-10: all
+        // nine aspects are in DJANGO_BY_DEFAULT (see its own doc comment for why the "never ahead
+        // of a hardware run" rule stopped applying - the Supabase write path cannot satisfy
+        // `household_id NOT NULL` and so is not a working path to protect).
+        //
+        // What the old test really protected was that a default is a DEFAULT and not a hardcode.
+        // That property is pinned below by flipping one back rather than by counting a remainder.
         val transport = signedIn()
 
-        val untouched = EngineTransport.KNOWN_ASPECTS - EngineTransport.DJANGO_BY_DEFAULT
-        assertEquals(7, untouched.size)
-        for (aspect in untouched) {
-            assertEquals("$aspect must not have moved", Transport.SUPABASE, transport.transportFor(aspect))
+        assertEquals(emptyList<String>(), EngineTransport.KNOWN_ASPECTS - EngineTransport.DJANGO_BY_DEFAULT)
+        for (aspect in EngineTransport.KNOWN_ASPECTS) {
+            assertEquals("$aspect defaults to Django", Transport.DJANGO, transport.transportFor(aspect))
         }
+    }
+
+    @Test
+    fun `a row flipped to SUPABASE is honoured even though Django is the default`() {
+        // The toggle still moves an aspect BOTH ways. Now that every default is Django this is the
+        // direction that can regress unnoticed, so it is the one pinned explicitly.
+        val transport = signedIn()
+        transport.setTransport("ledger", Transport.SUPABASE)
+
+        assertEquals(Transport.SUPABASE, transport.transportFor("ledger"))
+        assertEquals("only the flipped row moves", Transport.DJANGO, transport.transportFor("pantry"))
     }
 
     @Test
