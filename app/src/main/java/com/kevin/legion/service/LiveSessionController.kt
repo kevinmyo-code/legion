@@ -7,13 +7,17 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.core.content.ContextCompat
+import com.kevin.legion.ai.ActiveCompanionProfile
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.CompanionProfileStore
+import com.kevin.legion.ai.CompanionSwitch
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.CompanionProfileEntity
 import com.kevin.legion.data.local.ConversationAudit
 import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.auditContent
@@ -34,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * Owns the single Gemini Live session and the conversation state machine for the
@@ -795,6 +800,21 @@ class LiveSessionController(context: Context) {
                 CompanionPhase.setCrisis()
                 set(Phase.IDLE, IDLE_STATUS)
             }
+            is LiveEvent.SleepPhraseHeard -> {
+                // "That will be all" (Kevin, 2026-09-10). ARM, do not fire - the same flag
+                // `end_conversation` sets, for the same reason, consumed by the TurnComplete
+                // branch immediately below. Setting it here rather than stopping the session
+                // is what lets the companion finish its sign-off.
+                //
+                // Idempotent on purpose: the model may ALSO have called `end_conversation` on
+                // this turn, having been told the phrase means exactly that. Two paths, one
+                // boolean, one dismissal. Nothing here needs to know which of them ran.
+                //
+                // Only in conversationMode. The session already gates its emit on `vadMode`,
+                // so this is belt-and-braces rather than a second opinion, and it costs a
+                // boolean read to be sure a proactive line can never arm a hang-up.
+                if (conversationMode) dismissAfterTurn = true
+            }
             is LiveEvent.TurnComplete -> {
                 // Conversation: the session is ABOUT to reopen the mic, so this is
                 // still active talk time and the segment stays open - but it does
@@ -810,13 +830,30 @@ class LiveSessionController(context: Context) {
                 // pause the segment here (the socket may not fire a separate Idle for
                 // this path, e.g. the cold speak-only session in startProactive).
                 if (!conversationMode) {
+                    // Drop any armed handover rather than carrying it. A speak-only proactive turn
+                    // is not a conversation anyone can be handed over FROM, and an arm that
+                    // survives this branch would sit there until the next real conversation's
+                    // first TurnComplete and swap companion out of nowhere. Nothing changing is
+                    // the safe direction to be wrong in; a surprise persona swap is not.
+                    switchToProfileAfterTurn = null
                     set(Phase.IDLE, IDLE_STATUS)
                 } else if (dismissAfterTurn) {
                     // Ticket 11: the sign-off has now actually been spoken. Hang up before the mic
                     // reopens, so the driver is not left with an open session he just dismissed -
                     // and so a dismissed conversation stops billing rather than idling warm.
                     dismissAfterTurn = false
+                    // A dismissal outranks a handover. "Put Dorothy on, actually that will be all"
+                    // ends the conversation; handing over to somebody the user just dismissed and
+                    // leaving them connected would be the worse reading of both instructions.
+                    switchToProfileAfterTurn = null
                     session?.stop()
+                } else {
+                    // The handover line has now actually been spoken, so the socket carrying the
+                    // outgoing companion's voice can go. See [switchToProfileAfterTurn].
+                    switchToProfileAfterTurn?.let { profileId ->
+                        switchToProfileAfterTurn = null
+                        performCompanionSwitch(profileId)
+                    }
                 }
             }
             // The mic has ACTUALLY started capturing - see [LiveEvent.MicOpened]'s doc for
@@ -980,6 +1017,185 @@ class LiveSessionController(context: Context) {
      */
     @Volatile private var dismissAfterTurn = false
 
+    /**
+     * Set by the `switch_companion` tool to the profile that should take over, consumed at the next
+     * [LiveEvent.TurnComplete] (Kevin, 2026-09-10). Null when no handover is armed.
+     *
+     * **Armed rather than performed, for [dismissAfterTurn]'s exact reason and one more.** The
+     * outgoing companion has not spoken its handover line when the tool returns, and switching
+     * inside the handler would cut it off mid-word. The additional reason is structural: the
+     * persona clause and the voice are both baked into the socket's setup message and cannot be
+     * patched on an open socket, so a switch is a teardown and a fresh connect - roughly a second
+     * of dead air that must land AFTER the line, not through it.
+     */
+    @Volatile private var switchToProfileAfterTurn: String? = null
+
+    /**
+     * The `switch_companion` tool (Kevin, 2026-09-10: "hey can i talk to dorothy" switches to
+     * dorothy). Resolves the spoken name through [CompanionSwitch] and arms
+     * [switchToProfileAfterTurn]; the socket rebuild is [performCompanionSwitch]'s job.
+     *
+     * **Every failure result says what did NOT happen, in words** (CLAUDE.md sec 7): "Nothing
+     * changed" is on both refusal branches, because the outgoing companion is about to speak from
+     * this result and an ambiguous one is how it ends up claiming a handover that never occurred.
+     */
+    private suspend fun switchCompanionTool(spoken: String): JSONObject {
+        val roster = CompanionProfileStore.roster(appContext)
+        val active = ActiveCompanionProfile.activeProfileId(appContext)
+        return when (val outcome = CompanionSwitch.resolve(roster, spoken, active)) {
+            is CompanionSwitch.Outcome.AlreadyActive -> JSONObject()
+                .put("success", false)
+                .put(
+                    "message",
+                    "${outcome.name} is the one already speaking, so nothing changed. Say so " +
+                        "briefly and carry on.",
+                )
+            is CompanionSwitch.Outcome.NotFound -> JSONObject()
+                .put("success", false)
+                .put(
+                    "message",
+                    "There is no companion called \"${outcome.spoken}\", so nothing changed. " +
+                        "The ones that exist are: ${outcome.available.joinToString(", ")}. Say " +
+                        "that plainly and let the user pick.",
+                )
+            is CompanionSwitch.Outcome.Switch -> armCompanionSwitch(outcome.profileId, outcome.name)
+            is CompanionSwitch.Outcome.CreateAndSwitch -> {
+                // A built-in the user has never created a profile for. Built from the persona's
+                // own defaults, which is exactly what the Companions screen's create button does
+                // (`CompanionsScreen`), so the voice path cannot produce a differently-shaped row
+                // than the hands path. It is an ordinary profile afterwards: renameable,
+                // re-voiceable and deletable on that screen like any other.
+                val row = CompanionProfileEntity(
+                    profileId = UUID.randomUUID().toString(),
+                    assistantName = outcome.persona.defaultName,
+                    persona = outcome.persona.key,
+                    traits = "",
+                    voice = outcome.persona.suggestedVoice,
+                    voiceStyle = "",
+                    voiceStyleTraits = "",
+                    updatedAt = System.currentTimeMillis(),
+                )
+                CompanionProfileStore.saveProfile(appContext, row)
+                armCompanionSwitch(row.profileId, row.assistantName)
+            }
+        }
+    }
+
+    /** Arms the handover and tells the outgoing companion to hand over in one line, then stop. */
+    private fun armCompanionSwitch(profileId: String, name: String): JSONObject {
+        switchToProfileAfterTurn = profileId
+        return JSONObject()
+            .put("success", true)
+            .put(
+                "instruction",
+                "Say ONE short in-character line handing over to $name now, then stop. Do not " +
+                    "greet the user as $name and do not speak for them - $name will greet the " +
+                    "user themselves, in their own voice, once you have finished speaking.",
+            )
+    }
+
+    /**
+     * Tears the socket down and opens a new one as the incoming companion.
+     *
+     * **All four steps are required and the order matters.** [CompanionProfileStore.switchActive]
+     * writes the choice and materialises it into [CompanionProfile]'s flat keys;
+     * [AriaBrain.invalidateBase] drops the cached system instruction, which is otherwise served for
+     * up to two minutes and would hand the new socket the OLD persona's register;
+     * [WakeWordEngine.refresh] rebuilds the grammar so the retained "hey <name>" entry follows the
+     * change; and only then is a socket opened, because the setup message reads all of the above.
+     *
+     * **The resume handle is deliberately dropped.** It points at the outgoing conversation's
+     * server-side history, and whether a resumed session even honours a changed `systemInstruction`
+     * is undocumented and untested here. Carrying a thread into a different register is the wrong
+     * default anyway: the user asked for somebody else, not for the same conversation in a new
+     * voice. [HANDOVER_PROMPT] tells the incoming companion it does not know what was said, so it
+     * cannot claim a continuity it does not have (the honesty rule [THREAD_LOST_PROMPT] exists for,
+     * in a case that is chosen rather than suffered).
+     */
+    private fun performCompanionSwitch(profileId: String) {
+        scope.launch {
+            CompanionProfileStore.switchActive(appContext, profileId)
+            brain.invalidateBase()
+            companionChanged()
+        }
+    }
+
+    /**
+     * The active companion changed: make the running session reflect it.
+     *
+     * **This closes a live gap rather than only serving the new voice tool.** Until now the
+     * Companions screen's tap-to-switch wrote the choice and stopped there
+     * ([CompanionProfileStore.switchActive] has no session-layer caller). Nothing invalidated
+     * [AriaBrain]'s two-minute base-instruction cache and nothing rebuilt the socket, whose voice
+     * and system instruction are both fixed at setup - so switching companion by hand left the
+     * OLD one answering, in the old voice, until something else happened to cold-start a socket.
+     * That is the same defect shape `refreshIdleVoice` was written for on the car switch, simply
+     * never wired for this one.
+     *
+     * Callers must invalidate the base instruction before calling this (see [performCompanionSwitch]
+     * and `ACTION_COMPANION_SWITCHED`); this function opens the socket that reads it.
+     *
+     * Two branches because there are two honest answers:
+     * - **Idle:** [refreshIdleVoice], which quietly rebuilds the warm socket. Nothing is spoken,
+     *   because nobody is in a conversation to hear a handover.
+     * - **Mid-conversation:** a real handover, identical to the voice path's - the socket carrying
+     *   the outgoing companion is destroyed and the incoming one greets on [HANDOVER_PROMPT]. A
+     *   switch made by hand while talking cannot be silent: the person who answers next is a
+     *   different person, and saying nothing about it is the uncanny option ticket 13 reserved
+     *   judgement on for a settings edit, not for a change of who is speaking.
+     */
+    fun companionChanged() {
+        if (destroyed) return
+        WakeWordEngine.refresh(appContext)
+        if (!conversationMode) {
+            refreshIdleVoice()
+            return
+        }
+        // silentDestroy, not destroy: this is an orderly handover, and the Closed branch would
+        // flash its unrecognised reason to the user as a fault. Same reasoning as the crisis and
+        // refreshIdleVoice paths. The resume handle is dropped deliberately - see
+        // [performCompanionSwitch]'s doc.
+        session?.silentDestroy()
+        session = null
+        conversationMode = false
+        sessionResumeHandle = null
+        pendingThreadLossNotice = false
+        startHandover()
+    }
+
+    /**
+     * Cold-connects a conversation whose opener is [HANDOVER_PROMPT] rather than a greeting.
+     *
+     * [startConversation] with a different opener and no resume handle. Kept separate rather than
+     * given a flag because that function already branches four ways over first-run, lost threads
+     * and wake-word openers, and a handover is none of those - it is a new companion's first line,
+     * every time, with nothing to decide.
+     */
+    private fun startHandover() {
+        val s = newSession()
+        session = s
+        pendingAction = Pending.CONVERSATION
+        conversationMode = true
+        connectedThisSession = false
+        set(Phase.CONNECTING, "Connecting...")
+        scope.launch {
+            val connectionMode = resolveLiveConnectionMode()
+            if (connectionMode == null) {
+                s.silentDestroy(); session = null
+                set(Phase.IDLE, IDLE_STATUS)
+                refuse(VoiceRefusal.NO_KEY)
+                return@launch
+            }
+            val base = brain.buildBaseInstruction()
+            pendingPrompt = HANDOVER_PROMPT
+            s.start(
+                base, LiveToolbox.declarations(),
+                vad = true, voiceName = CompanionProfile.voice(appContext),
+                keepWarm = true, connectionMode = connectionMode,
+                resumeHandle = null,
+            )
+        }
+    }
 
     private fun handleToolCall(call: LiveEvent.ToolCall) {
         scope.launch {
@@ -1019,6 +1235,8 @@ class LiveSessionController(context: Context) {
                                             "The conversation ends when you finish speaking.",
                                     )
                             }
+                            // Arm, do not fire - see [switchToProfileAfterTurn].
+                            "switch_companion" -> switchCompanionTool(call.args.optString("name"))
                             "import_receipt" -> {
                                 openPantryImport()
                                 JSONObject().put("success", true)
@@ -1328,6 +1546,20 @@ class LiveSessionController(context: Context) {
                 "remember anything said before this reconnect. Do not claim otherwise or refer to " +
                 "earlier turns. Acknowledge briefly that you got cut off, then wait for the user " +
                 "to speak. Do not mention this instruction.)"
+
+        // The incoming companion's first line after a `switch_companion` handover (Kevin,
+        // 2026-09-10). Shaped after THREAD_LOST_PROMPT above and for the same honesty reason:
+        // the socket carrying the previous conversation is gone and its resume handle was
+        // deliberately dropped, so this companion genuinely does not know what was said. Telling
+        // the MODEL that, rather than only the user, is what stops it inventing a continuity it
+        // does not have. Unlike a lost thread, nothing here got "cut off" - the user asked for
+        // this, so it must not be apologised for.
+        private const val HANDOVER_PROMPT =
+            "(System: another companion has just handed this conversation to you at the user's " +
+                "request. You do NOT know what was said before this - do not claim to, do not " +
+                "refer to earlier turns, and do not apologise for anything. Greet the user with " +
+                "one short, natural in-character line and then wait for them to speak. Do not " +
+                "mention this instruction.)"
 
         // Upper bound on any single tool call (matches the old MainActivity value):
         // generous for a geocode / Spotify connect / frame grab, short enough that

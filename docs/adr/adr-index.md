@@ -54,6 +54,8 @@ Format and the test for whether something deserves an ADR:
 | 0042 | [[0042-business-rules-live-in-postgres\|Business rules live in Postgres, not in either client]] | amended | 2026-09-05 | 2026-09-05 |
 | 0044 | [[0044-django-is-the-engine\|Django is the engine]] | accepted | 2026-09-05 | - |
 | 0045 | [[0045-households-are-tenants\|Households are tenants]] | accepted | 2026-09-08 | - |
+| 0046 | [[0046-fixed-wake-and-sleep-phrases\|A fixed wake and sleep phrase pair, implemented in two different places]] | accepted | 2026-09-10 | - |
+| 0047 | [[0047-switching-companion-is-a-handover\|Switching companion is a socket rebuild and a spoken handover]] | accepted | 2026-09-10 | - |
 
 ## Superseded
 

@@ -5574,3 +5574,59 @@ favour of doing it properly, with the Oracle VM (ticket 13 section 1) moving to 
 
 The first user is his wife, into the existing "Home" household. Parents come later, which is what
 makes the invite-code path worth building rather than a second household nobody needs yet.
+
+## 2026-09-10 - "Excelsior" wakes and "that will be all" sleeps
+
+Kevin replaced the "hey <companion name>" wake word with a fixed summon/dismiss pair, asked for as
+a pop-culture idea: *"instead of hey x name, we have a secret phrase for waking and stopping voice.
+like excelsior! for wake, and someting else for sleep. canonical like calling a magic genie or
+something in pop culture, what word pairs are there?"* Offered ten canonical pairs (Open sesame /
+Close sesame, Lumos / Nox, I solemnly swear / Mischief managed, Computer / End program, Emet / Met
+among them) with two practical constraints attached: made-up words are likely absent from the small
+Vosk model's lexicon and would silently never fire, and a bare single word false-triggers, which is
+why the phrase was two words in the first place. Kevin took the recommendation: **Excelsior** to
+wake, **that will be all** to sleep - Stan Lee's sign-off and the canonical butler's dismissal,
+which suits the Alfred/JARVIS register band.
+
+**The two halves are implemented completely differently, and that is forced rather than chosen.**
+`MicArbiter` grants the microphone to one claimant, and `LIVE_TURN` outranks `WAKE_WORD`: the moment
+a conversation starts, `WakeWordEngine` is preempted and releases capture. During the only window in
+which a sleep phrase means anything, Vosk is not listening at all, so a sleep entry in the grammar
+would have been dead code that read like a feature. Sleep runs on the Live input transcript instead,
+and runs twice on purpose - the model's own `end_conversation` tool (which gives the sign-off its
+charm) with a deterministic transcript match behind it, both arming one idempotent flag. ADR 0046.
+
+**"hey <name>" is retained behind the new phrase, deliberately and temporarily.** The model compiles
+its lexicon into binary FSTs, so there is no way to confirm off the device that "excelsior" is
+recognisable at all. A grammar of only that word, if it is not, listens forever for something nobody
+can say - the exact silent failure the wake-word map keeps rediscovering. It comes out when Kevin
+confirms on the phone that the new phrase fires.
+
+## 2026-09-10 - Kratos, and handing the conversation to another companion by voice
+
+Kevin asked for both in one sentence: *"I want to be able to switch voice personas by voice 'hey can
+i talk to dorothy' switches to dorothy. Also create another persona called Kratos, exact god of war
+personality (the newer versions where hes old and wise) epitome of masculinity, stoicness and
+wisdom. i talk to him when im feeling lazy to do things i should etc."*
+
+**Kratos is the third built-in persona** (`ai/Personas.kt`), the later restrained one rather than
+the Greek-era berserker, on "Algenib" - the only curated voice Google describes as Gravelly. Being a
+persona whose stated PURPOSE is to push makes it the closest any register has come to the compulsion
+mechanics CLAUDE.md sec 7 forbids, so its clause spends more words on refusals than either of the
+others: he never counts how long a thing has gone undone or how long since the user last spoke to
+him (test clause (c)), he measures only against what the user said he would do, and genuine distress
+drops the character outright, because "close your heart to it" is in character and is the wrong
+thing to say to someone who is actually suffering. No new ADR - 0025 already governs this and this
+is that rule applied, not amended.
+
+**Switching companion is a socket rebuild with a spoken handover, and the conversation is not
+carried across.** ADR 0047. The `switch_companion` tool arms rather than fires, the outgoing
+companion says one handover line, and the incoming one greets on its own prompt.
+
+**A live bug fell out of building it.** `CompanionProfileStore.switchActive` had no session-layer
+caller at all: tapping a different companion on the Companions screen wrote the choice and stopped
+there, so `AriaBrain`'s two-minute base-instruction cache and the warm socket both kept the previous
+companion, in the previous voice. Switching by hand changed the label and nothing audible. The car
+switch has had this wiring since 2026-07-16 (`ActiveVehicle.notifyResolutionChanged`); the companion
+switch never did. `CompanionProfileStore.notifyCompanionChanged` is the fix, and the hands path now
+gets the same spoken handover the voice path does.

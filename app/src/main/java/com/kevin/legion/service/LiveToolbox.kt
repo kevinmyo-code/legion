@@ -512,6 +512,9 @@ object LiveToolbox {
             description = "End the conversation because the user has signalled they are DONE " +
                 "talking to you - 'never mind', 'nothing', 'I'm good', 'that's all', 'go away', " +
                 "'I don't need you right now'. " +
+                "**'That will be all' is the user's chosen dismissal phrase and ALWAYS means " +
+                "this.** Treat it as unambiguous however politely it is said, including with a " +
+                "trailing 'please', 'thanks' or 'for now'. " +
                 "**'Go to sleep', 'sleep', 'go dormant' and 'stand down' mean exactly this too: " +
                 "stop listening and go quiet.** They are about YOU going dormant, not about the " +
                 "user going to bed - do not wish them goodnight, do not comment on the hour, and " +
@@ -525,6 +528,31 @@ object LiveToolbox {
                 "they are dismissing YOU, not rejecting an offer.",
             params = obj(),
             required = emptyList(),
+        ))
+
+        // Switching who is answering, by voice (Kevin, 2026-09-10: "hey can i talk to dorothy"
+        // switches to dorothy). Handled by LiveSessionController, not here, for the same reason
+        // end_conversation is: the voice and the system instruction are fixed at socket setup, so
+        // a switch is a new socket, and only the controller can open one.
+        //
+        // The hands path this needs (ADR 0035) already exists and predates it: the Companions
+        // screen's tap-to-switch, through the same CompanionProfileStore.switchActive.
+        fns.put(fn(
+            name = "switch_companion",
+            description = "Hand the conversation over to a DIFFERENT companion by name - " +
+                "'can I talk to Dorothy', 'put Kratos on', 'switch to Alfred', 'I want to speak " +
+                "to someone else'. The named companion takes over and answers from the next turn " +
+                "on, in their own voice. " +
+                "You will be told whether it worked; say one SHORT line handing over and then " +
+                "stop. Do not greet the user as the new companion yourself - they will do that " +
+                "themselves, in their own voice, a moment later. " +
+                "The conversation so far is NOT carried across: whoever takes over will not know " +
+                "what was just said, so never promise that they will. " +
+                "Do NOT call this when the user merely MENTIONS another companion, asks who else " +
+                "there is, or asks what one of them is like - only when they are asking to talk " +
+                "to that one INSTEAD of you.",
+            params = obj("name" to schema("string", "The companion to hand over to, as the user said it.")),
+            required = listOf("name"),
         ))
 
         fns.put(fn(

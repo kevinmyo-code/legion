@@ -339,10 +339,22 @@ class ChecklistControllerTest {
 
     @Test
     fun `a WEEKLY MON,WED,FRI list is absent on Tuesday and present on Wednesday`() = runBlocking {
-        val checklist = ChecklistController.createChecklist(
-            context, "lifting",
-            scheduleKind = "WEEKLY", scheduleEvery = 1, scheduleDaysOfWeek = "MONDAY,WEDNESDAY,FRIDAY",
-        )
+        // Inserted with a backdated createdAt rather than through createChecklist, which stamps
+        // "now" from the wall clock. This test asserted against fixed 2026-09 dates while creating
+        // the list today, so it passed until the real date overtook them and then failed on
+        // 2026-09-10 with nothing about checklists having changed. Every other date-sensitive test
+        // in this file already backdates for exactly this reason (see backdatedChecklist).
+        val checklist = run {
+            val row = Checklist(
+                name = "lifting",
+                recursDaily = false,
+                createdAt = epochMs(2026, 1, 1),
+                scheduleKind = "WEEKLY",
+                scheduleEvery = 1,
+                scheduleDaysOfWeek = "MONDAY,WEDNESDAY,FRIDAY",
+            )
+            row.copy(id = CarDatabase.getDatabase(context).checklistDao().insert(row))
+        }
         // 2026-09-07 is a Monday, so 2026-09-08 is Tuesday and 2026-09-09 is Wednesday.
         val tuesday = day(2026, 9, 8)
         val wednesday = day(2026, 9, 9)

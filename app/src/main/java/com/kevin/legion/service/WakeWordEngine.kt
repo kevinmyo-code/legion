@@ -34,10 +34,18 @@ import org.vosk.Recognizer
 import java.io.File
 
 /**
- * The shipping custom wake word: "hey <companion name>" (`.scratch/custom-wake-word/`,
- * `memory/library/decisions.md` 2026-07-19). Vosk with a runtime-reconfigurable grammar
- * built from [CompanionProfile.name] - the only approach that supports an arbitrary
- * driver-chosen name without per-phrase training at build time.
+ * The shipping wake phrase: **"excelsior"** (Kevin, 2026-09-10), with "hey <companion name>"
+ * retained behind it (`.scratch/custom-wake-word/`, `memory/library/decisions.md` 2026-07-19).
+ * Vosk with a runtime-reconfigurable grammar, which is what let the phrase be an arbitrary
+ * user-chosen name in the first place and is what now lets it be a fixed word instead, with no
+ * per-phrase training at build time either way. [WakePhrases] owns both phrases and the reasoning;
+ * this engine owns the microphone.
+ *
+ * **This engine is the WAKE half only.** The matching "that will be all" sleep phrase is not and
+ * cannot be a grammar entry here: [MicArbiter] hands the microphone to `LIVE_TURN` the moment a
+ * conversation starts, so during the only window in which a sleep phrase means anything, this
+ * engine has already been preempted and released its capture. Sleep runs on the Live transcript
+ * instead - see [WakePhrases].
  *
  * Opt-in, off by default, supplements push-to-talk rather than replacing it: [start]
  * no-ops unless the driver has flipped the [WakeWordPreferences] Setup toggle on.
@@ -257,6 +265,18 @@ object WakeWordEngine {
     }
 
     /**
+     * The grammar phrases, now owned by [WakePhrases.grammar] (Kevin, 2026-09-10): the fixed
+     * "excelsior" wake phrase, with "hey <name>" retained behind it until the phone confirms the
+     * new one fires. Read [WakePhrases]' doc for why the wake half is a Vosk phrase and the sleep
+     * half provably cannot be one, and for the single-word exemption to ticket 07's rule below.
+     *
+     * **A blank name no longer yields an empty list.** [WakePhrases.WAKE] does not depend on a
+     * companion name, so the paragraph below describing an empty grammar now only applies if
+     * someone deletes that constant. [start]'s refusal is kept exactly as it is - a guard that
+     * cannot currently trigger is the cheap half of this; removing it and being wrong is not.
+     *
+     * The original reasoning, still binding on the "hey <name>" entry:
+     *
      * "Hey <name>" - a two-word phrase, not a bare word (custom-wake-word ticket 07,
      * 2026-07-19 field data). A bare single word false-triggers too easily on ordinary
      * cabin conversation, radio, or podcasts that happen to say a common short name; the
@@ -280,12 +300,8 @@ object WakeWordEngine {
      * starting. Un-hardcoding also restores [refresh] to the working part it was designed for:
      * the phrase list varies with the profile again, so a name change actually rebuilds it.
      */
-    private fun buildTargetWords(context: Context): List<String> {
-        val words = linkedSetOf<String>()
-        val name = CompanionProfile.name(context).trim().lowercase()
-        if (name.isNotBlank()) words.add("hey $name")
-        return words.toList()
-    }
+    private fun buildTargetWords(context: Context): List<String> =
+        WakePhrases.grammar(CompanionProfile.name(context))
 
     /**
      * Opens the microphone and drives [Recognizer] from our own read loop.

@@ -1,9 +1,16 @@
 # Vosk model (custom wake word)
 
 This directory lives under `app/src/main/assets/` so it ships in every build, including
-release: the custom wake word ("hey <name>", `WakeWordEngine`) is a real, paid-tier,
+release: the wake phrase ("excelsior", see `WakePhrases` and `WakeWordEngine`) is a real,
 opt-in shipping feature (memory/library/decisions.md 2026-07-19), not debug-only
-scaffolding. This is where the Vosk small English model must be unzipped before building.
+scaffolding.
+
+**The model's lexicon is not inspectable from this repo.** `vosk-model-small-en-us-0.15`
+compiles its words into `graph/*.fst`, so there is no word list to grep and no way to
+confirm off the device that "excelsior" is recognisable at all. That is why
+`WakePhrases.grammar` keeps "hey \<name\>" as a second entry until the phone confirms the
+new phrase fires; a grammar of only unrecognisable words listens forever for something
+nobody can say. This is where the Vosk small English model must be unzipped before building.
 It is intentionally **not committed** (see `.gitignore`) - a driver who never opts in
 never pays the size cost of a redownload, but anyone who does build the app needs it
 present locally first.

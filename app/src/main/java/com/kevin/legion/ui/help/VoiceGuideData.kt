@@ -31,7 +31,7 @@ object VoiceGuideData {
         val entries: List<Entry>,
     )
 
-    val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button or say the wake word, then just talk. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
+    val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"Excelsior\" if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
 
     val GROUPS: List<Group> = listOf(
         Group(
@@ -45,7 +45,8 @@ object VoiceGuideData {
                 Entry(name = "get_reported_crime_history", say = "What's the crime history around here?", does = "Reported offenses for the nearest police or sheriff's agency, from the FBI's Crime Data Explorer - agency-wide, roughly a year old, and voluntarily reported. It will not tell you whether somewhere is \"safe\"; nothing can answer that honestly from this data.", hands = "Voice only."),
                 Entry(name = "show_app", say = "Open the ledger", does = "Opens a screen in the app for you.", hands = "Is itself navigation - every screen it can open is also reachable directly from the app's own tabs."),
                 Entry(name = "finish_intro", say = "I'm done setting up", does = "Finishes first-run setup.", hands = "Onboarding screen's own final step."),
-                Entry(name = "end_conversation", say = "Go to sleep", does = "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight.", hands = "Voice only - closing the app or its notification is the nearest hands equivalent."),
+                Entry(name = "end_conversation", say = "That will be all", does = "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight.", hands = "Voice only - closing the app or its notification is the nearest hands equivalent."),
+                Entry(name = "switch_companion", say = "Can I talk to Dorothy?", does = "Hands the conversation to a different companion. They answer from the next turn on, in their own voice, and they will not know what was said before the handover.", hands = "Companions screen - tap whichever one you want."),
             ),
         ),
         Group(
@@ -244,6 +245,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 118 as of the last regeneration. */
-    val TOOL_COUNT: Int = 118
+    /** Total entries across every group above - 119 as of the last regeneration. */
+    val TOOL_COUNT: Int = 119
 }

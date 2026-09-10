@@ -410,6 +410,14 @@ class AriaForegroundService : Service() {
             WakeWordEngine.refresh(this)
         }
 
+        // The active companion changed. Unlike the car switch above this does NOT go straight to
+        // refreshIdleVoice: a companion switch made mid-conversation has to hand over out loud
+        // rather than no-op, which is the branch companionChanged() owns (it refreshes the wake
+        // grammar itself, so there is no WakeWordEngine call to repeat here).
+        if (intent?.action == ACTION_COMPANION_SWITCHED) {
+            sessionController.companionChanged()
+        }
+
         return START_STICKY
     }
 
@@ -1106,6 +1114,20 @@ class AriaForegroundService : Service() {
          * new car's voice.
          */
         const val ACTION_CAR_SWITCHED = "com.kevin.legion.CAR_SWITCHED"
+
+        /**
+         * The active COMPANION changed (Kevin, 2026-09-10) - by hand on the Companions screen, or
+         * by the `switch_companion` voice tool. Both the voice and the persona clause are fixed at
+         * socket setup, so a warm or live socket is still holding the previous companion until it
+         * is rebuilt. [LiveSessionController.companionChanged] is that rebuild, and its doc
+         * describes the gap this action closes: the hands path has never reached the session layer
+         * at all.
+         *
+         * Senders must call [com.kevin.legion.ai.AriaBrain.invalidateBase] themselves before
+         * firing this - see [com.kevin.legion.ai.CompanionProfileStore.notifyCompanionChanged],
+         * which does both, and which is what callers should actually use.
+         */
+        const val ACTION_COMPANION_SWITCHED = "com.kevin.legion.COMPANION_SWITCHED"
 
         // Settle time after start before the opener, so it doesn't talk over
         // the engine cranking / the driver getting situated.

@@ -1,8 +1,10 @@
 package com.kevin.legion.ai
 
 import android.content.Context
+import android.content.Intent
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionProfileEntity
+import com.kevin.legion.service.AriaForegroundService
 import java.util.UUID
 
 /**
@@ -228,6 +230,35 @@ object CompanionProfileStore {
     suspend fun switchActive(context: Context, profileId: String) {
         ActiveCompanionProfile.setActiveProfileId(context, profileId)
         materializeActive(context)
+    }
+
+    /**
+     * Tells the running assistant that the active companion changed (Kevin, 2026-09-10).
+     *
+     * **[switchActive] alone was never enough, and that was a live bug.** It writes the choice and
+     * materialises the flat keys, and nothing else. But [AriaBrain] caches the assembled system
+     * instruction for two minutes, and the Live socket bakes both the persona clause AND the voice
+     * into its one-shot setup message - so a switch made on the Companions screen left the previous
+     * companion answering, in the previous voice, until something unrelated happened to cold-start
+     * a socket. The car switch has had this wiring since 2026-07-16
+     * (`ActiveVehicle.notifyResolutionChanged`, which this deliberately mirrors); the companion
+     * switch never did.
+     *
+     * Call AFTER [switchActive] (or after [saveProfile] adopts a new profile as active). Split from
+     * `switchActive` rather than folded into it so the voice path, which tears the socket down
+     * itself as part of a spoken handover, is not racing a second rebuild fired from underneath it.
+     *
+     * `startService` is wrapped: the assistant service may legitimately not be running (the user
+     * turned it off), in which case there is no socket holding a stale identity and nothing to do.
+     */
+    fun notifyCompanionChanged(context: Context) {
+        AriaBrain.get(context).invalidateBase()
+        runCatching {
+            context.startService(
+                Intent(context, AriaForegroundService::class.java)
+                    .setAction(AriaForegroundService.ACTION_COMPANION_SWITCHED)
+            )
+        }
     }
 
     /**

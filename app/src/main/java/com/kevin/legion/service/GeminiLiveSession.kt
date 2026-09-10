@@ -105,6 +105,18 @@ sealed interface LiveEvent {
      */
     data object CrisisDetected : LiveEvent
     /**
+     * [WakePhrases.isSleepPhrase] matched the completed turn transcript: the user said "that will
+     * be all" (Kevin, 2026-09-10). The deterministic backstop behind the model's own
+     * `end_conversation` tool - see [WakePhrases] for why sleep cannot be a Vosk grammar phrase
+     * the way the wake phrase is.
+     *
+     * **Emitted immediately BEFORE [TurnComplete], and the order is load-bearing.** The owner is
+     * expected to ARM its dismissal on this and let [TurnComplete] fire it, exactly as
+     * `end_conversation` does, so the companion still gets to speak its sign-off. An owner that
+     * stopped the session on this event directly would cut that off mid-word.
+     */
+    data object SleepPhraseHeard : LiveEvent
+    /**
      * The conversation ended but the socket is being kept warm (connected, mic
      * closed). A tap resumes instantly via [GeminiLiveSession.beginConversation]
      * with no reconnect. The socket fully closes (â†’ [Closed]) after the warm hold.
@@ -1435,6 +1447,18 @@ class GeminiLiveSession(
             toolCalledThisTurn = false
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
+            // "That will be all" - the deterministic half of the dismissal (Kevin, 2026-09-10).
+            // Evaluated HERE, on `heard`, because this is the one point where the COMPLETE turn
+            // transcript exists: WakePhrases.isSleepPhrase anchors at the end of the utterance,
+            // and anchoring is only meaningful against a finished one. Emitted before
+            // TurnComplete so the owner's arm-then-fire ordering holds; see [SleepPhraseHeard].
+            //
+            // Only in `vadMode`. A proactive line or an onboarding prompt is not a conversation
+            // the user can dismiss, and the transcript on those turns is not theirs to act on.
+            if (vadMode && WakePhrases.isSleepPhrase(heard)) {
+                Log.d(TAG, "Sleep phrase heard - arming dismissal")
+                emit(LiveEvent.SleepPhraseHeard)
+            }
             emit(LiveEvent.TurnComplete)
 
             // DIAGNOSTIC (B9/B10/B12, remove once root-caused): the exact flags this

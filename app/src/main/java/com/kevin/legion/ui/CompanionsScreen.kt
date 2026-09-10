@@ -97,6 +97,11 @@ fun CompanionsScreen(onBack: () -> Unit) {
         onActivate = { profileId ->
             scope.launch {
                 CompanionProfileStore.switchActive(context, profileId)
+                // Without this the switch never reached the running assistant: the base
+                // instruction stayed cached for two minutes and the warm socket kept the previous
+                // companion's voice and register, so tapping a different companion here changed
+                // the label and nothing audible. See notifyCompanionChanged's doc.
+                CompanionProfileStore.notifyCompanionChanged(context)
                 reloadNonce++
             }
         },
