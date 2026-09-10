@@ -3,16 +3,21 @@ map: one-home
 ticket: "03"
 title: "CALENDAR becomes HOME"
 type: build
-status: open
+status: built
 status-detail: >
-  Rename only. Split from the METERS deletion on 2026-09-10 so it could
-  proceed: the rename is decided by Kevin's own words ("rename it from
-  calendar") and depends on neither ticket 01's shell decision nor ticket
-  02's rehoming. The deletion moved to 03b, which stays blocked.
+  Built 2026-09-10, commit 09c4a77. Rename only - split from the METERS
+  deletion so it could proceed, since the rename is decided by Kevin's own
+  words and the deletion is not; 03b holds that half. Route constant, route
+  string and label all moved. Changing the string surfaced a pre-existing
+  defect: deep links navigate a raw string and Navigation throws on a
+  destination not in the graph, so already-posted notifications naming
+  "notes" (deleted 2026-09-05) and "today" (2026-09-01) were already a
+  crash on tap. LEGACY_DEEP_LINK_ROUTES covers all three. 3491 tests, 0
+  failures; docs_check and voice_guide clean. Owes the device run.
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
