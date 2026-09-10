@@ -22,6 +22,118 @@ paths:
       responses:
         '200':
           description: The `csrftoken` cookie is set.
+  /api/auth/devices:
+    get:
+      operationId: api_auth_devices_list
+      description: |-
+        `GET /api/auth/devices`. The calling user's own LIVE device tokens.
+
+        Own, not the household's: a device token is a credential belonging to one
+        person, and ADR 0045's owner role governs membership, never someone
+        else's phone. An owner who wants a person gone removes the member, which
+        revokes their tokens (`DELETE /api/households/me/members/<user_id>`).
+
+        Revoked tokens are not listed. The list answers "what can currently reach
+        this account", which is the question a person opens this screen to ask; a
+        login history is a different feature and this is not a half-built one.
+      tags:
+      - auth
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceToken'
+          description: Live device tokens for the calling user, newest first. Never
+            a key - the server holds only hashes.
+  /api/auth/devices/{token_id}:
+    delete:
+      operationId: api_auth_devices_destroy
+      description: |-
+        `DELETE /api/auth/devices/<id>`. Revokes one of the calling user's own
+        device tokens - the hands path to "I lost my phone".
+
+        Scoped to `request.user`, so another member's token id 404s rather than
+        403s: from here that token does not exist, and a 403 would confirm that
+        it does.
+      parameters:
+      - in: path
+        name: token_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - auth
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: 'That device token is revoked and every other device keeps
+            working. Already-revoked is the same answer: the outcome asked for holds.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No device token of yours has that id. Nothing was revoked.
+  /api/auth/invite/{code}:
+    get:
+      operationId: api_auth_invite_retrieve
+      description: |-
+        `GET /api/auth/invite/<code>`. What this code will do, without
+        spending it.
+
+        Ticket 05's `/join/<code>` screen calls this on load: a person who was
+        sent a link has to be told whether it still works, and whether following
+        it joins a family or starts one, BEFORE they type a password into a form
+        that then fails. Nothing here increments `used_count` - previewing a code
+        is not using it.
+
+        Anonymous, and throttled on the same `signup` scope as the redemption
+        endpoint, so the two together give a stranger five guesses a minute at
+        the code space rather than ten.
+
+        A code that does not exist answers 404; a real code that is revoked,
+        expired or spent answers 200 with `live: false` and a `reason`. The split
+        is deliberate - "you mistyped it" and "it expired" are different things
+        for the screen to say, and a 12-character random code is not a namespace
+        an attacker enumerates five guesses a minute.
+      parameters:
+      - in: path
+        name: code
+        schema:
+          type: string
+        required: true
+      tags:
+      - auth
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitePreview'
+          description: The code exists. `live` says whether it can still be used and
+            `reason` says why not when it cannot. Nothing was spent.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No invite has that code. Nothing was spent.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Rate limited: 5/min per IP, shared with POST /api/auth/signup.'
   /api/auth/login:
     post:
       operationId: api_auth_login_create
@@ -221,6 +333,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No active session, or a missing/invalid CSRF token.
+  /api/auth/signup:
+    post:
+      operationId: api_auth_signup_create
+      description: |-
+        `POST /api/auth/signup`. Creates a user, puts them in a household, and
+        issues a device token - the whole of "my wife wants to use this" in one
+        call.
+
+        **Invite-only by default (ADR 0045 decision 3).** With no
+        `LEGION_OPEN_SIGNUP`, a request carrying no `invite_code` is refused
+        outright; this is a household engine, not a service with a sign-up page.
+        With the switch on, a codeless request founds a household - and a request
+        that DOES carry a code is still honoured exactly as it would be with the
+        switch off, so the second adult on a stranger's compose stack joins the
+        first one's household rather than founding a rival one.
+
+        **Atomic, and the invite row is locked.** Everything below is one
+        transaction: a refused password must not leave a user behind, and a
+        `max_uses` of one must mean one even if two people press the button
+        together (`Invite.find(for_update=True)`).
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: 'The account exists, is a member of a household, and `token`
+            is a new device token for it - shown ONCE, exactly as POST /api/auth/login
+            returns one. Send it as `Authorization: Token <key>`.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'NOTHING was created. `detail` names which of these it was:
+            no invite code on an invite-only engine, a code that does not exist, a
+            code that is revoked/expired/spent, an email already registered, a rejected
+            password, or a missing `household_name` for a code that founds a household.
+            A field-level shape error answers with the field-keyed body instead.'
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Rate limited: 5 signup attempts a minute per IP, shared with
+            GET /api/auth/invite/{code} so guessing codes cannot be split across the
+            two. Nothing was created.'
   /api/body/bodyweight_logs/:
     get:
       operationId: api_body_bodyweight_logs_list
@@ -3507,6 +3682,262 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/households/me:
+    get:
+      operationId: api_households_me_retrieve
+      description: |-
+        `GET`/`PATCH /api/households/me` - the caller's household.
+
+        GET is open to any member: the roster is not owner-only information, and
+        a member who could not see who else is in their household would have no
+        way to check they joined the right one. PATCH (rename) is owner-only,
+        which is why `get_permissions` splits by method rather than the class
+        carrying one permission for both.
+      tags:
+      - households
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Household'
+          description: The caller's household and everyone in it, oldest member first.
+            `id` is the household's own id - this is the household resource, and the
+            one place on this API a household uuid appears.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The credential is live but its user is in no household.
+    patch:
+      operationId: api_households_me_partial_update
+      description: |-
+        `GET`/`PATCH /api/households/me` - the caller's household.
+
+        GET is open to any member: the roster is not owner-only information, and
+        a member who could not see who else is in their household would have no
+        way to check they joined the right one. PATCH (rename) is owner-only,
+        which is why `get_permissions` splits by method rather than the class
+        carrying one permission for both.
+      tags:
+      - households
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedHouseholdPatchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedHouseholdPatchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedHouseholdPatchRequest'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Household'
+          description: Renamed. The body is the household as stored.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this route is owner-only. `owner` is
+            the ONLY role there is and it governs membership alone - an owner and
+            a member see exactly the same data (ADR 0045).'
+  /api/households/me/invites:
+    get:
+      operationId: api_households_me_invites_list
+      description: |-
+        `GET`/`POST /api/households/me/invites`. Owner-only, both.
+
+        **The code comes back in full exactly once, from POST.** GET lists it
+        again for LIVE invites only, which is a deliberate and narrow
+        re-exposure: an owner who minted a code and lost the message has to be
+        able to read it back, and a live code is one that is going to be typed
+        into a signup form anyway. A spent, expired or revoked code is not listed
+        at all, so its value never appears again.
+      tags:
+      - households
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Invite'
+          description: Live invites minted by this household, newest first, code included.
+            Revoked, expired and fully-used invites are not listed.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this route is owner-only. `owner` is
+            the ONLY role there is and it governs membership alone - an owner and
+            a member see exactly the same data (ADR 0045).'
+    post:
+      operationId: api_households_me_invites_create
+      description: |-
+        `GET`/`POST /api/households/me/invites`. Owner-only, both.
+
+        **The code comes back in full exactly once, from POST.** GET lists it
+        again for LIVE invites only, which is a deliberate and narrow
+        re-exposure: an owner who minted a code and lost the message has to be
+        able to read it back, and a live code is one that is going to be typed
+        into a signup form anyway. A spent, expired or revoked code is not listed
+        at all, so its value never appears again.
+      tags:
+      - households
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InviteCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InviteCreateRequest'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invite'
+          description: A new invite. `join_url` is the whole thing to send someone
+            - it carries the code and points at the SPA's /join screen on this same
+            host.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this route is owner-only. `owner` is
+            the ONLY role there is and it governs membership alone - an owner and
+            a member see exactly the same data (ADR 0045).'
+  /api/households/me/invites/{code}:
+    delete:
+      operationId: api_households_me_invites_destroy
+      description: |-
+        `DELETE /api/households/me/invites/<code>`. Revokes a code this
+        household minted, so nobody else can sign up with it.
+
+        Revoke rather than delete: `revoked_at` is why
+        `Invite.unavailable_reason` can tell someone holding the link "that was
+        revoked by the person who made it" instead of "no such code", which is
+        the difference between a person who knows to ask again and a person who
+        thinks they mistyped it.
+      parameters:
+      - in: path
+        name: code
+        schema:
+          type: string
+        required: true
+      tags:
+      - households
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: 'That code is revoked and can no longer be signed up with.
+            Revoking an already-revoked code is the same answer: the outcome asked
+            for holds.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this route is owner-only. `owner` is
+            the ONLY role there is and it governs membership alone - an owner and
+            a member see exactly the same data (ADR 0045).'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: This household minted no invite with that code. Nothing was
+            revoked.
+  /api/households/me/members/{user_id}:
+    delete:
+      operationId: api_households_me_members_destroy
+      description: |-
+        `DELETE /api/households/me/members/<user_id>`. Removes a person from
+        this household.
+
+        **Three things happen together, and the second and third are the point.**
+        The membership row goes, every live device token that person holds is
+        revoked, and every invite they minted is revoked. Without the token
+        revocation a removed person keeps a working phone; without the invite
+        revocation they keep a working back door, which is the same failure one
+        step removed. A Django session they hold survives as a cookie, but it now
+        authenticates a user who is in no household, so `IsHouseholdMember`
+        refuses every request it makes.
+
+        **The `User` row itself is NOT deleted**, deliberately: their rows in the
+        household's data carry `household_id`, not a user id that would dangle,
+        and deleting an account is a different decision from removing it from a
+        family. They keep an account that belongs to no household until someone
+        invites them into one.
+
+        **The last owner cannot be removed, including by themself.** A household
+        with no owner has nobody who can invite or remove anyone ever again, and
+        there is no admin above it to fix that - ADR 0045 has no roles above
+        `owner` and no approval workflow to appeal to.
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - households
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Removed. Their device tokens are revoked and the invites they
+            minted are revoked. Their account still exists and belongs to no household.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nobody was removed: they are the last owner of this household.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this route is owner-only. `owner` is
+            the ONLY role there is and it governs membership alone - an owner and
+            a member see exactly the same data (ADR 0045).'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nobody with that user id is in this household. Nobody was removed.
   /api/ingest/files/:
     get:
       operationId: api_ingest_files_list
@@ -6139,6 +6570,34 @@ components:
           type: string
       required:
       - detail
+    DeviceToken:
+      type: object
+      description: |-
+        One live device token of the calling user. **Never the key** - the
+        server holds only its hash and could not return it if it wanted to
+        (`household/models.py:hash_device_key`).
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        current:
+          type: boolean
+          description: True for the token that made this request, so a client can
+            avoid revoking the device it is running on by accident.
+      required:
+      - created_at
+      - current
+      - id
+      - last_seen_at
+      - name
     Drive:
       type: object
       description: |-
@@ -6478,6 +6937,60 @@ components:
       required:
       - db
       - detail
+    Household:
+      type: object
+      description: |-
+        `GET`/`PATCH /api/households/me` - the household resource itself.
+
+        `id` is the household's own id, on the household's own endpoint, and is
+        the one place a household uuid appears on this API. That is not the
+        thing `test_no_openapi_component_declares_household_id` forbids: it
+        forbids a tenancy field on a DATA row, where a client could either learn
+        something it cannot act on or, worse, choose its own tenancy by sending
+        one. A resource describing itself is not that.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/HouseholdMember'
+      required:
+      - created_at
+      - id
+      - members
+      - name
+    HouseholdMember:
+      type: object
+      properties:
+        role:
+          type: string
+          description: '`owner` or `member`. The ONLY role there is, and it governs
+            membership alone (ADR 0045): an owner may invite and remove people, and
+            sees exactly the same rows a member does.'
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+      required:
+      - email
+      - joined_at
+      - name
+      - role
+      - user_id
     IngestOutcome:
       type: object
       description: |-
@@ -6604,6 +7117,109 @@ components:
       - size_bytes
       - source_file_id
       - state
+    Invite:
+      type: object
+      description: |-
+        One live invite, code included.
+
+        The code is here on purpose and only for live invites: an owner who
+        minted a code yesterday and lost the message has to be able to read it
+        back, and `GET /api/households/me/invites` returns only invites that are
+        still live (`household/households.py:InviteListCreateView`), so a spent,
+        expired or revoked code is never listed at all.
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        join_url:
+          type: string
+        creates_household:
+          type: boolean
+        max_uses:
+          type: integer
+        used_count:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - code
+      - created_at
+      - creates_household
+      - expires_at
+      - id
+      - join_url
+      - max_uses
+      - used_count
+    InviteCreateRequest:
+      type: object
+      description: |-
+        `POST /api/households/me/invites`. Every field optional: the common
+        case is an owner minting a code for one more adult in their own
+        household, and that is what the defaults are.
+      properties:
+        creates_household:
+          type: boolean
+          default: false
+          description: True mints a code that FOUNDS a household rather than joining
+            this one. The first person to sign up with it names the household and
+            becomes its owner; later uses join what the first one founded.
+        max_uses:
+          type: integer
+          maximum: 50
+          minimum: 1
+          default: 2
+        expires_in_days:
+          type: integer
+          maximum: 365
+          minimum: 1
+          default: 14
+    InvitePreview:
+      type: object
+      description: |-
+        `GET /api/auth/invite/<code>` - what a code will do, WITHOUT spending
+        it. Ticket 05's `/join/<code>` screen renders this before anyone types a
+        password.
+
+        Anonymous, so it says as little as it can get away with: whether the
+        code is live, whether signing up with it joins a household or founds
+        one, and - only when it joins an existing one - that household's NAME,
+        so the person can tell they are joining the right family. Never its id
+        (nothing a signed-out stranger can do with a uuid is honest), never who
+        minted it, never how many uses are left when it is dead.
+      properties:
+        code:
+          type: string
+        live:
+          type: boolean
+        creates_household:
+          type: boolean
+        household_name:
+          type: string
+          nullable: true
+          description: The household this code joins, or null when it founds a new
+            one and the person signing up gets to name it.
+        uses_left:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+          description: Why the code cannot be used, in words, or null when it can.
+      required:
+      - code
+      - creates_household
+      - expires_at
+      - household_name
+      - live
+      - reason
+      - uses_left
     LedgerTransaction:
       type: object
       description: |-
@@ -8206,6 +8822,12 @@ components:
           nullable: true
         kind:
           type: string
+    PatchedHouseholdPatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
     Place:
       type: object
       description: |-
@@ -8651,6 +9273,48 @@ components:
           type: string
           writeOnly: true
       required:
+      - email
+      - password
+    SignupRequest:
+      type: object
+      description: |-
+        `POST /api/auth/signup`.
+
+        `invite_code` is `required=False` at the SERIALIZER level and required
+        at the VIEW level unless `LEGION_OPEN_SIGNUP` is on - the two are
+        different questions and only the view knows the answer to the second.
+        Declaring it required here would make the open-signup switch
+        unreachable; declaring it optional here and forgetting the view check
+        would make every engine open. `household/views.py:SignupView` is where
+        the second half lives, and `tests/test_accounts.py` pins both.
+
+        `name` is one field, not `first_name`/`last_name`: a person types their
+        name once on a signup form, and this server has no use for the halves.
+        It lands in `User.first_name`.
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+        name:
+          type: string
+          default: ''
+          maxLength: 150
+        invite_code:
+          type: string
+          default: ''
+          maxLength: 64
+        household_name:
+          type: string
+          default: ''
+          maxLength: 120
+        device_name:
+          type: string
+          maxLength: 255
+      required:
+      - device_name
       - email
       - password
     SleepLog:

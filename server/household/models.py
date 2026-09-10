@@ -12,14 +12,20 @@ invite is a code, not a request.
 **This docstring used to say** "One household per server (ADR 0044,
 CLAUDE.md section 1: two adults, no roles, no tenancy, ever). There is no
 signup and no invite flow - accounts are made with `manage.py
-createsuperuser` or the admin". The second half is still true TODAY and is
-what ticket 03 changes: signup, invite codes and join are that ticket, not
-this one, so until it lands accounts are still made with `createsuperuser`,
-the admin, or `manage.py add_household_member` - each of which now has to
-say WHICH household, because there can be more than one.
+createsuperuser` or the admin". Then, after ADR 0045, it said the second
+half was "still true TODAY", because signup and invites were ticket 03's
+deferred half.
+
+**Both halves are now history.** `Invite` is at the bottom of this file,
+`POST /api/auth/signup` redeems a code, and `manage.py create_household`
+founds one from the command line - web-and-households ticket 03, built
+2026-09-10. `createsuperuser`, the admin and `manage.py
+add_household_member` all still work and are still the compose-bootstrap
+path; they are no longer the only path.
 """
 from __future__ import annotations
 
+import datetime
 import hashlib
 import secrets
 import uuid
@@ -212,3 +218,199 @@ class HouseholdMember(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.email} ({self.household.name}, {self.role})"
+
+
+INVITE_CODE_LENGTH = 12
+DEFAULT_INVITE_DAYS = 14
+DEFAULT_INVITE_USES = 2
+
+
+def generate_invite_code() -> str:
+    """Twelve URL-safe characters from nine bytes of `secrets` randomness.
+
+    Nine bytes is exactly twelve base64url characters, so the `[:12]` slice
+    below truncates nothing - it is there to make the column's `max_length`
+    and the generator's output impossible to disagree about, and to keep the
+    length fixed if the byte count is ever changed by someone reading only
+    one of the two numbers.
+
+    `secrets`, never `random`: this is a credential. Seventy-two bits is far
+    more than a code that expires in a fortnight, is capped at a couple of
+    uses, and is only ever redeemed through a throttled endpoint needs.
+    """
+    return secrets.token_urlsafe(9)[:INVITE_CODE_LENGTH]
+
+
+class Invite(models.Model):
+    """A code that lets someone sign up - either into an existing household,
+    or (`creates_household`) to found one.
+
+    ADR 0045: "an invite is a code, not a request". There is no approval
+    step, nothing to accept on the owner's side, and no pending state: a
+    live code works and a dead one does not.
+
+    **The code is stored in the clear, and that is a real difference from
+    `DeviceToken`, which stores only a hash.** It has to be: an owner lists
+    their live invites to re-share one, and `GET /api/auth/invite/<code>`
+    tells the person holding it what it will do before they spend it, and
+    neither is possible against a hash. What is kept from `DeviceToken.issue`
+    is the shape that matters at the API edge - `mint()` returns the code
+    alongside the row, the creating response is the one place it is put on
+    the wire in full, and it is never written to a log. The exposure is
+    bounded the way a hash is not: a code expires, has a use count, and can
+    be revoked, none of which is true of a device key.
+
+    `household` is nullable ONLY for an unspent `creates_household` code -
+    the household it points at does not exist yet, because the person who
+    signs up names it. The first such signup fills it in, so later uses of
+    the same code join the household the first one founded. That is how one
+    code reaches both of Kevin's parents.
+    """
+
+    code = models.CharField(
+        max_length=INVITE_CODE_LENGTH, unique=True, default=generate_invite_code
+    )
+    household = models.ForeignKey(
+        Household, null=True, blank=True, on_delete=models.CASCADE, related_name="invites"
+    )
+    creates_household = models.BooleanField(default=False)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="invites")
+    max_uses = models.PositiveSmallIntegerField(default=DEFAULT_INVITE_USES)
+    used_count = models.PositiveSmallIntegerField(default=0)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["code"])]
+        constraints = [
+            # An invite either joins a household that exists or creates one.
+            # A row with neither would be a code that signup could not honour
+            # in any branch, and CLAUDE.md section 7 is explicit that an
+            # integrity rule which must hold even when Django has a bug is SQL
+            # shipped by a migration rather than a check in Python. The view
+            # still refuses such a row in words, because a 500 from a
+            # constraint tells the person signing up nothing.
+            models.CheckConstraint(
+                condition=models.Q(creates_household=True) | models.Q(household__isnull=False),
+                name="invite_joins_or_creates_a_household",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        # Deliberately NOT the code. `__str__` is what lands in an admin log
+        # line, a repr in a traceback and a `print` in a shell, and a
+        # credential that leaks into any of those is a credential that leaked.
+        where = self.household.name if self.household_id else "a new household"
+        return f"Invite for {where} ({self.used_count}/{self.max_uses} used)"
+
+    @property
+    def is_expired(self) -> bool:
+        from django.utils import timezone
+
+        return self.expires_at <= timezone.now()
+
+    @property
+    def is_spent(self) -> bool:
+        return self.used_count >= self.max_uses
+
+    @property
+    def is_live(self) -> bool:
+        return self.revoked_at is None and not self.is_expired and not self.is_spent
+
+    def unavailable_reason(self) -> str | None:
+        """Why this code cannot be used, in words a person can act on, or
+        None when it can.
+
+        One function rather than a check per call site: the signup endpoint's
+        400 and the preview endpoint's `reason` must never be able to
+        disagree about whether a code is live, and three copies of the same
+        three-way check is three chances for them to.
+        """
+        if self.revoked_at is not None:
+            return "That invite code was revoked by the person who made it."
+        if self.is_expired:
+            return "That invite code has expired. Ask for a new one."
+        if self.is_spent:
+            return (
+                f"That invite code has already been used {self.used_count} "
+                f"of {self.max_uses} times. Ask for a new one."
+            )
+        return None
+
+    @classmethod
+    def mint(
+        cls,
+        created_by: User,
+        household: Household | None,
+        *,
+        creates_household: bool = False,
+        max_uses: int = DEFAULT_INVITE_USES,
+        expires_in_days: int = DEFAULT_INVITE_DAYS,
+    ) -> tuple[Invite, str]:
+        """Create an invite and return it alongside its code.
+
+        Same shape as `DeviceToken.issue` for the same reason: the caller is
+        handed the secret as a return value, at the one moment it is meant to
+        travel, rather than fishing it back off the row later out of habit.
+
+        Retries on the unique constraint rather than checking first, because
+        checking first is a race - two mints in the same millisecond would
+        both find the code free. Three attempts against a 72-bit space is
+        already theatre; it is here so an astronomically unlikely collision
+        is a retry and not a 500.
+        """
+        from django.db import IntegrityError
+        from django.utils import timezone
+
+        expires_at = timezone.now() + datetime.timedelta(days=expires_in_days)
+        for _attempt in range(3):
+            code = generate_invite_code()
+            try:
+                invite = cls.objects.create(
+                    code=code,
+                    household=household,
+                    creates_household=creates_household,
+                    created_by=created_by,
+                    max_uses=max_uses,
+                    expires_at=expires_at,
+                )
+            except IntegrityError:
+                continue
+            return invite, code
+        raise RuntimeError(
+            "No invite was created: three generated codes all collided with an existing "
+            "one, which should be impossible at this code length. Nothing was written."
+        )
+
+    @classmethod
+    def find(cls, code: str, *, for_update: bool = False) -> Invite | None:
+        """The invite with this code, live or not, or None.
+
+        The `filter` is an indexed equality lookup and Postgres's default
+        collation is byte-exact, so `compare_digest` after it changes no
+        outcome today. It is here because "the database compared it for us"
+        is a claim about a collation setting, and a credential comparison
+        that depends on one is a credential comparison nobody re-checks when
+        the setting changes.
+
+        `for_update=True` takes a row lock, which is what makes `max_uses`
+        real: without it two signups redeeming the last use of the same code
+        both read `used_count` before either writes, and both get in. It
+        drops the `select_related` when it does, and that is not tidiness -
+        Postgres refuses `FOR UPDATE` against the nullable side of an outer
+        join, and `household` is nullable here by design, so the two cannot
+        be combined at all. The caller inside the lock reads
+        `invite.household` with one extra query instead.
+        """
+        if not code:
+            return None
+        queryset = cls.objects.select_for_update() if for_update else cls.objects.select_related(
+            "household"
+        )
+        candidate = queryset.filter(code=code).first()
+        if candidate is None:
+            return None
+        if not secrets.compare_digest(candidate.code, code):
+            return None
+        return candidate
