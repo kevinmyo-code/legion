@@ -3,12 +3,22 @@ map: one-home
 ticket: "05"
 title: "An advisor proposes the day's workout list and it lands as a recurring checklist"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: >
+  Built 2026-09-10. GoalChecklistSync deleted; the advisor writes a
+  recurring checklists row through AdvisorProposalExecutor's allowlisted
+  create_checklist op, found again by sourceKey. Caught a migration bug
+  that would have shipped: ADD COLUMN ... DEFAULT NULL records a literal
+  'NULL' default that Room's generated schema does not have, failing the
+  upgrade for every existing install. GoalChecklistPanel was REPOINTED,
+  not deleted - ticket 04 was wrong about that and is amended in place;
+  deleting it would have taken log_workout_set's hands path with it.
+  3487 tests, 0 failures (3492 - 20 + 12 + 3). Owes the device run,
+  including the overnight reset, which needs a real night.
 blockers: ["04"]
 blocked-by: ["[[04-where-the-advisors-day-list-lands]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
