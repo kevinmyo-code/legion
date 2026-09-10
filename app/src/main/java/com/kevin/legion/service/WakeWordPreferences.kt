@@ -3,7 +3,7 @@ package com.kevin.legion.service
 import android.content.Context
 
 /**
- * Whether the driver has opted into the custom wake word ("hey <assistant name>").
+ * Whether the user has opted into the wake phrase ("excelsior" - see [WakePhrases]).
  * Off by default (this object only stores the driver's own on/off choice),
  * supplements push-to-talk rather than replacing it. Mirrors [ProactivePreferences]'s
  * shape. No tier gating - the commercial model (billing/, RuntimeMode) was retired

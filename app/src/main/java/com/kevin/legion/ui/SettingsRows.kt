@@ -565,11 +565,12 @@ fun WakeWordRow(enabled: Boolean, companionName: String?, onToggle: (Boolean) ->
                                 "Off - press to talk. Turning this on listens for a wake phrase " +
                                     "continuously while the assistant is running."
                             companionName.isNullOrBlank() ->
-                                "On - but no companion is active yet, so there is no name to listen " +
-                                    "for. Pick one in Companions."
+                                "On - say \"Excelsior\" to start a turn, \"that will be all\" to " +
+                                    "end one. Press to talk still works."
                             else ->
-                                "On - say \"hey ${companionName.lowercase()}\" to start a turn. " +
-                                    "Press to talk still works."
+                                "On - say \"Excelsior\" (or \"hey ${companionName.lowercase()}\") " +
+                                    "to start a turn, \"that will be all\" to end one. Press to " +
+                                    "talk still works."
                         },
                         style = LegionType.stamp,
                         color = sem.faint,
