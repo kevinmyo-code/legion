@@ -1,6 +1,7 @@
 package com.kevin.legion.advisor
 
 import android.content.Context
+import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.goals.GoalController
@@ -36,6 +37,26 @@ import org.json.JSONObject
  * aspect advisor that owns it, it never writes.
  */
 object AdvisorProposalExecutor {
+
+    /** The `create_checklist` op name - one-home ticket 05, added to [AdvisorBriefs.BIO]'s own
+     * `writableOps` only. Kevin's own ask named workouts ("the advisor would tell me what would be
+     * a good daily todo list for workouts and populate it that way"); BIO already owns meals and
+     * sleep too, so an advisor free to include a meal or sleep line in the same list needs no
+     * second op. */
+    const val OP_CREATE_CHECKLIST = "create_checklist"
+
+    /** [com.kevin.legion.data.local.Checklist.sourceKey] for the one checklist BIO's advisor owns
+     * - fixed, never user-visible, so [createChecklist] can find and update the SAME row on every
+     * later run instead of creating a duplicate (one-home ticket 05's idempotence requirement,
+     * ticket 04's "identify the checklist it owns by a real key, not by matching text").
+     * [WellbeingDigestAlarmReceiver] is the one external reader. **Must equal
+     * `checklistSourceKey(AdvisorBriefs.BIO)`** - kept as a separate compile-time constant rather
+     * than calling that private function from here, deliberately, so this object's own
+     * initialization never depends on [AdvisorBriefs]' - two `object`s that each reference the
+     * other at property-init time is exactly the kind of cross-init ordering subtlety worth not
+     * introducing for one string. `AdvisorProposalExecutorCreateChecklistTest` pins the equality
+     * by test instead. */
+    const val BIO_CHECKLIST_SOURCE_KEY = "advisor:bio_checklist"
 
     /** What running one proposal did. [message] is what `accept_proposal`'s tool response hands
      * back to the live model to speak - true either way, since a refusal must be said in words
@@ -96,6 +117,7 @@ object AdvisorProposalExecutor {
             "set_maintenance_item" -> setMaintenanceItem(context, obj)
             "set_reminder" -> setReminder(context, obj)
             "add_task" -> addTask(context, obj)
+            OP_CREATE_CHECKLIST -> createChecklist(context, brief, obj)
             else -> ExecuteResult.Refused("I don't know how to write a \"$op\" proposal.")
         }
     }
@@ -307,4 +329,104 @@ object AdvisorProposalExecutor {
         NotesController.addItemDue(context, list.id, text, startsAt)
         return ExecuteResult.Ok("Added: $text.")
     }
+
+    // --- BIO checklist (one-home ticket 05) -----------------------------------------------------
+
+    /**
+     * Writes (or re-writes) the ONE recurring checklist [brief]'s aspect owns - today only BIO
+     * ([OP_CREATE_CHECKLIST] is not on any other aspect's `writableOps`). `proposalJson` carries
+     * `name` (the checklist's title) and `items` (a JSON array of line texts, e.g. "3 sets x 10
+     * reps - Goblet squat") - the advisor's own composed list, matching Kevin's ask verbatim
+     * ("the advisor would tell me what would be a good daily todo list... and populate it that
+     * way"), never derived here from [com.kevin.legion.data.local.MealTarget]/[com.kevin.legion.data.local.SleepTarget]/
+     * [com.kevin.legion.data.local.WorkoutPlanItem] rows - those already have their own accept
+     * step (`set_meal_target`/`set_sleep_target`/`create_workout_plan`) and this op is a distinct,
+     * separately-accepted proposal, per rule 3 below.
+     *
+     * **Every item text is stored with [DigestText.estimate] applied** - CLAUDE.md §7's rule that
+     * an advisor's suggested set/rep count is the model's opinion, not a measurement Kevin
+     * recorded: "(estimate)" is appended to the stored [com.kevin.legion.data.local.ChecklistItem.text]
+     * itself, the same word [DigestText] already uses everywhere else in this package for exactly
+     * this claim, so the label survives on every surface that ever renders the row - a screen, a
+     * digest, a spoken read-back - without each one having to remember to add it.
+     *
+     * **Idempotent by a real key, not by matching text** (one-home ticket 04's binding rule,
+     * restated in [BIO_CHECKLIST_SOURCE_KEY]'s own doc comment). A second `create_checklist`
+     * proposal - tomorrow, or five minutes later - finds the SAME checklist via
+     * [ChecklistController.getChecklistBySourceKey] and diffs its items against the newly proposed
+     * list: an item whose text is no longer wanted is soft-deleted
+     * ([ChecklistController.deleteItem]), a wanted item not yet present is added
+     * ([ChecklistController.addItem]), and an item present in both is left completely alone - its
+     * tick history for days already past is never touched. **Never a second checklist**, which is
+     * the exact "fourteen copies of the same list" defect the ticket names by hand.
+     *
+     * `scheduleKind = "DAILY", scheduleEvery = 1` on creation - a recurring daily checklist, per
+     * ticket 04 consequence 2 ("tick history comes for free... per-day and browsable", the *"end of
+     * day it records and resets"* half of Kevin's 2026-09-04 quote [ChecklistTick] already
+     * implements). The checklist's schedule is set once, at creation, and never rewritten by a
+     * later call - only its name and items update.
+     */
+    private suspend fun createChecklist(context: Context, brief: AdvisorBrief, obj: JSONObject): ExecuteResult {
+        val name = obj.optString("name").trim()
+        if (name.isBlank()) return ExecuteResult.Refused("That proposal didn't include a checklist name.")
+
+        val itemsArray = obj.optJSONArray("items")
+        if (itemsArray == null || itemsArray.length() == 0) {
+            return ExecuteResult.Refused("That proposal didn't include any checklist items.")
+        }
+        val wantedRaw = (0 until itemsArray.length())
+            .mapNotNull { itemsArray.optString(it)?.trim()?.takeIf { text -> text.isNotBlank() } }
+        if (wantedRaw.isEmpty()) {
+            return ExecuteResult.Refused("That proposal's checklist items were all blank.")
+        }
+        // Labelled once, here, so every stored row already carries the word - see this function's
+        // own doc comment for why the label lives in the text rather than relying on a renderer.
+        val wantedTexts = wantedRaw.map { DigestText.estimate(it) }.toSet()
+
+        val sourceKey = checklistSourceKey(brief)
+        val existing = ChecklistController.getChecklistBySourceKey(context, sourceKey)
+
+        val checklist = if (existing != null) {
+            if (existing.name != name) {
+                ChecklistController.renameChecklist(context, existing.id, name)
+            }
+            existing
+        } else {
+            ChecklistController.createChecklist(
+                context,
+                name = name,
+                scheduleKind = "DAILY",
+                scheduleEvery = 1,
+                sourceKey = sourceKey,
+            )
+        }
+
+        val currentItems = ChecklistController.itemsFor(context, checklist.id)
+        val currentTexts = currentItems.map { it.text }.toSet()
+
+        currentItems.filter { it.text !in wantedTexts }.forEach { ChecklistController.deleteItem(context, it.id) }
+
+        var nextSortOrder = currentItems.size
+        wantedTexts.filter { it !in currentTexts }.forEach { text ->
+            ChecklistController.addItem(context, checklist.id, text, sortOrder = nextSortOrder)
+            nextSortOrder += 1
+        }
+
+        // Read-back, matching this file's own "verify by reading, never by trusting the write
+        // call" posture (see [setSleepTarget]/[createWorkoutPlan]'s own doc comments) - a checklist
+        // whose items do not now match the wanted set means something above silently failed to
+        // land, and that must report WriteFailed, never Ok.
+        val landedTexts = ChecklistController.itemsFor(context, checklist.id).map { it.text }.toSet()
+        return if (landedTexts == wantedTexts) {
+            ExecuteResult.Ok("Checklist \"$name\" set with ${wantedTexts.size} item(s).")
+        } else {
+            ExecuteResult.WriteFailed("That checklist didn't fully land - some items may be missing. Try proposing again.")
+        }
+    }
+
+    /** [brief.aspect]-scoped source key - only [BIO_CHECKLIST_SOURCE_KEY] is reachable today since
+     * [OP_CREATE_CHECKLIST] sits solely on [AdvisorBriefs.BIO]'s `writableOps`, but keying by
+     * aspect rather than hardcoding BIO's constant here means a second aspect gaining this op later
+     * needs no change to this function. */
+    private fun checklistSourceKey(brief: AdvisorBrief): String = "advisor:${brief.aspect.key}_checklist"
 }

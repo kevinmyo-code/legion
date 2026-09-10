@@ -16,6 +16,14 @@ interface ChecklistDao {
     @Query("SELECT * FROM checklists WHERE deleted = 0 AND (archived = 0 OR :includeArchived = 1) ORDER BY sortOrder ASC, name ASC")
     suspend fun getAll(includeArchived: Boolean): List<Checklist>
 
+    /** The one checklist a machine writer owns, found by its real key (one-home ticket 05) rather
+     * than by matching display text - see [Checklist.sourceKey]'s own doc comment for the
+     * `ITEM_PREFIX` hack this replaces. `archived` is not excluded here: a caller re-running its
+     * own write must still find and revive its own row rather than creating a second one because
+     * the first was archived. */
+    @Query("SELECT * FROM checklists WHERE deleted = 0 AND sourceKey = :sourceKey LIMIT 1")
+    suspend fun getBySourceKey(sourceKey: String): Checklist?
+
     /** Every non-deleted checklist regardless of [Checklist.archived] - the raw input to
      * `ChecklistController`'s "which checklists apply to a given day" read. **Trap 1's gate is
      * deliberately NOT expressed as SQL here.** [Checklist.createdAt] is a raw millisecond

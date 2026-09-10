@@ -2877,3 +2877,24 @@ val MIGRATION_67_68 = object : Migration(SCHEMA_V67, SCHEMA_V68) {
         )
     }
 }
+
+private const val SCHEMA_V69 = 69
+
+/**
+ * One nullable column and nothing else - `checklists.sourceKey` (one-home ticket 05). Purely
+ * additive, no row rewritten, no index added: [Checklist.sourceKey] is null on every row that
+ * exists before this migration runs (nobody had a machine-owned checklist yet - the mechanism this
+ * column exists for, [com.kevin.legion.advisor.AdvisorProposalExecutor]'s `create_checklist` op,
+ * is new in the same ticket), so there is nothing to back-fill.
+ *
+ * `ALTER TABLE ... ADD COLUMN`, not a table rebuild - see [MIGRATION_66_67]'s own doc comment for
+ * why a nullable column with no CHECK needs nothing more (same posture CLAUDE.md section 5's
+ * "widening an enum is not a migration" note describes, applied to a nullable TEXT column instead
+ * of an enum). Copied verbatim out of the generated `69.json`, which is the only edit CLAUDE.md
+ * section 5 permits.
+ */
+val MIGRATION_68_69 = object : Migration(SCHEMA_V68, SCHEMA_V69) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `checklists` ADD COLUMN `sourceKey` TEXT DEFAULT NULL")
+    }
+}
