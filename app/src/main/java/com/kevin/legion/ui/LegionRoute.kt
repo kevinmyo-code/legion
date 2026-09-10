@@ -155,6 +155,19 @@ object LegionRoute {
      */
     const val CHECKLISTS = "checklists"
 
+    /**
+     * The `show_generated_view` hands path (ADR 0035), given its own route (one-home ticket 01/02,
+     * 2026-09-10, `.scratch/one-home/issues/02-rehome-the-orphans.md`) - see
+     * [com.kevin.legion.ui.ask.AskScreen]. Previously a `DeckPane` welded inside `ui/MetersScreen.kt`
+     * (2026-09-01); pulled out into its own destination when that screen folded into [HOME] rather
+     * than being left a pane on an already-long HOME scroll (ticket 01's own resolution: "not a pane
+     * on HOME... its own route keeps HOME short, keeps the capability discoverable, and gives it a
+     * destination a deep link and a test can both name"). Reached from a row on [HOME]. No
+     * sub-routes: the five closed-enum pickers and the run/refusal state are internal Compose state
+     * inside the one screen, same convention every other leaf route in this file already follows.
+     */
+    const val ASK = "ask"
+
     // VOICE_NOTES: not added here. A concurrent session (same day, ticket 04) registered
     // SETTINGS_VOICE_NOTES -> ui/voicenotes/VoiceNotesScreen.kt below instead - see that
     // constant's own doc comment. A second top-level route to the same screen was drafted here

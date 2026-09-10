@@ -750,13 +750,54 @@ private fun LegionShell(
             // link (`openItemId`/`openItemNonce`, this file's own state above) fed
             // `ui/NotesScreen.kt` exclusively before that screen was deleted; `CalendarScreen`'s own
             // file doc comment has the full account of how it opens the same [ItemEditDialog] now.
+            // HOME now renders the meter bands below the day view (one-home ticket 02,
+            // `.scratch/one-home/issues/02-rehome-the-orphans.md`) - the exact callback set
+            // `ui/MetersScreen.kt`'s own "C" tab used to take (that screen's history is kept
+            // below on [LegionRoute.METERS]'s own registration until ticket 03b deletes it).
             composable(LegionRoute.HOME) {
-                CalendarScreen(highlightItemId = openItemId, highlightItemNonce = openItemNonce)
+                CalendarScreen(
+                    highlightItemId = openItemId,
+                    highlightItemNonce = openItemNonce,
+                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
+                    onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
+                    onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
+                    onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
+                    // The Ask pane's new destination (ticket 01's resolution: its own route, not
+                    // a pane welded onto HOME) - see `ui/ask/AskScreen.kt`'s own registration below.
+                    onOpenAsk = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
+                    // The media mini-bar's own tap-through (rehomed from the deleted
+                    // `ui/TodayScreen.kt`, one-today ticket 07, then `ui/MetersScreen.kt`, one-home
+                    // ticket 02) - the media control panel command-center ticket 04 built, nested
+                    // under Spotify's own settings route (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's
+                    // own doc comment).
+                    onOpenMedia = {
+                        navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
+                    },
+                    // The recordings-UI ticket's own relocation (2026-09-04): the RECORDINGS
+                    // pane's count row taps through to the same LegionRoute.SETTINGS_VOICE_NOTES
+                    // screen the old Data & privacy row used to open - only the entry point moved.
+                    onOpenVoiceNotes = {
+                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
+                    },
+                    // One-today ticket 09's LISTS row - the recurring checklists management
+                    // screen.
+                    onOpenChecklists = {
+                        navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true }
+                    },
+                )
             }
-            // The third tab ("C" - Kevin, verbatim, [LegionRoute.METERS]'s own doc comment). A
-            // SKELETON (this ticket) - every callback below taps through to an already-registered
-            // destination, exactly the "every home pane taps through to its module" rule [TODAY]'s
-            // own composable block already follows.
+            // The Ask hands path's own route (one-home ticket 02, ADR 0035) - see
+            // `ui/ask/AskScreen.kt`. Reached from the "Ask" row `ui/HomeMeterBands.kt` renders on
+            // HOME, never from Settings and never as a pane welded onto HOME's own scroll (ticket
+            // 01's resolution).
+            composable(LegionRoute.ASK) {
+                com.kevin.legion.ui.ask.AskScreen()
+            }
+            // The third tab ("C" - Kevin, verbatim, [LegionRoute.METERS]'s own doc comment). Its
+            // capabilities all moved to HOME/[LegionRoute.ASK] above (one-home ticket 02) - this
+            // registration, and the screen it opens, are kept live only until ticket 03b deletes
+            // them (`.scratch/one-home/issues/03b-delete-meters.md`: "do nothing here until ticket
+            // 01 says METERS is retired and ticket 02 is green" - it now is).
             composable(LegionRoute.METERS) {
                 MetersScreen(
                     onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },

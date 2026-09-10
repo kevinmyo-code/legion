@@ -16,13 +16,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * [buildMeterBreaches] is the one new pure function `MetersScreen.kt` adds - see its own doc
- * comment for why only three of the screen's five meters have a breach condition at all. Plain
- * JUnit, no Compose/Android dependency, matching every other pure-builder test in this package
- * ([TodayGapResolversTest] chief among them - `budgetFixture` below mirrors that file's own helper
- * rather than sharing it, since that one is `private` to its class).
+ * **Moved verbatim from `MetersScreenTest.kt` (one-home ticket 02, 2026-09-10)** once the pure
+ * functions these tests pin now live in `ui/MeterReadings.kt` rather than `ui/MetersScreen.kt` -
+ * same package, same assertions, same 14 cases; only the file this class sits in changed.
+ * [buildMeterBreaches] is the one non-trivial builder - see its own doc comment for why only three
+ * of HOME's five meters have a breach condition at all. Plain JUnit, no Compose/Android dependency,
+ * matching every other pure-builder test in this package ([TodayGapResolversTest] chief among them -
+ * `budgetFixture` below mirrors that file's own helper rather than sharing it, since that one is
+ * `private` to its class).
  */
-class MetersScreenTest {
+class MeterReadingsTest {
 
     private fun budgetFixture(
         lines: List<BudgetLine>,

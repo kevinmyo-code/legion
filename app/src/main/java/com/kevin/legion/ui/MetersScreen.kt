@@ -1,19 +1,14 @@
 package com.kevin.legion.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,10 +24,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Checklist
-import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.VoiceNoteKind
 import com.kevin.legion.ledger.AccountBalance
-import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
@@ -52,8 +45,6 @@ import com.kevin.legion.service.QueryAggregation
 import com.kevin.legion.service.QueryGrouping
 import com.kevin.legion.service.QuerySource
 import com.kevin.legion.service.QueryWindow
-import com.kevin.legion.sitrep.SitrepBuilder
-import com.kevin.legion.sitrep.SitrepModule
 import com.kevin.legion.ui.common.DeckMeter
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
@@ -67,7 +58,7 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.voicenotes.RecordControlRow
 import com.kevin.legion.ui.world.AreaCard
-import com.kevin.legion.util.clockTime
+import com.kevin.legion.ui.world.NewsDigestCard
 import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
@@ -225,39 +216,9 @@ fun MetersScreen(
     )
 }
 
-/** One-shot suspend reads only - see [MetersScreen]'s own `LaunchedEffect`. [connectionState] is
- * deliberately NOT part of this snapshot: it is a live [kotlinx.coroutines.flow.StateFlow] read
- * straight from [ObdBluetoothManager] inside [MetersContent], the one meter on this screen that
- * genuinely changes without a reload, matching how [FleetScreen] already reads the same flow. */
-data class MetersUiState(
-    val loading: Boolean = true,
-    val mealGap: DailyMealGap = DailyMealGap.NotLogged,
-    val hasMealTarget: Boolean = false,
-    val budget: BudgetVsActual? = null,
-    /** Restored 2026-09-01 (TodayScreen's CRED tile made this same pair of reads before it was
-     * deleted) - feeds [buildCredBalanceLine] via [groupAccountBalances], same "grouping is a
-     * render-site concern" discipline that function's own doc comment states. */
-    val ledgerBalances: List<AccountBalance> = emptyList(),
-    val nominatedAccountId: String? = null,
-    val maintenanceRows: List<DueRowView> = emptyList(),
-    val maintenanceUnknownCount: Int = 0,
-    // persistentOpenCount REMOVED (one-today ticket 10 slice C, 2026-09-05) - it fed the
-    // "Persistent list" row, retired alongside the screen it opened; see [MetersScreen]'s own
-    // `onOpenNotes` removal comment.
-    // groceriesTripOpenCount REMOVED (one-today ticket 10 slice B, 2026-09-05) - it fed the
-    // "Groceries trip" row, retired alongside the trip surface itself; see [MetersScreen]'s own
-    // "LISTS" read comment.
-    /** The LISTS pane's third row (one-today ticket 09) - non-archived [Checklist] count, not a
-     * today's-tick-state count; see [MetersScreen]'s "CHECKLISTS" read comment. */
-    val checklistCount: Int = 0,
-    /** The RECORDINGS pane's own count row - see [MetersScreen]'s "RECORDINGS" read comment. */
-    val voiceNotesCount: Int = 0,
-    /** Rehomed from `TodayUiState.weather` (one-today ticket 07) - `null` until the first
-     * successful Open-Meteo fetch, rendered by [weatherLine] as its own honest sentence rather
-     * than a blank line. */
-    val weather: WeatherController.WeatherInfo? = null,
-    val nowMs: Long = System.currentTimeMillis(),
-)
+// [MetersUiState] MOVED to `ui/HomeMeterBands.kt` (one-home ticket 02, 2026-09-10) - same package,
+// so [MetersScreen]/[MetersContent] below still resolve it with no import. See that file's own doc
+// comment; this screen is itself retired by ticket 03b once this ticket is green.
 
 /** Plain UI: [state] plus callbacks, no controller/DB reference - see [MetersScreen]'s file doc. */
 @Composable
@@ -735,201 +696,21 @@ fun MetersContent(
     }
 }
 
-/**
- * The Groceries meter's hero: the actual spend, never the budget target. A pure wrapper around
- * [formatMoney] rather than an inline expression at the call site so this exact regression - a
- * confident hero number that is not the number its own caption promises - has a unit test pinned
- * to it (see `MetersScreenTest`'s own case). [BudgetLine.gap]'s own `actual` field is the money
- * that was really spent this month on this category; `target` is the budget line's ceiling and
- * `gap` is the REMAINING/OVER distance between the two ([buildBudgetLineGapRowData]'s own doc) -
- * three different numbers, and only `actual` belongs in a row whose label reads "Groceries" and
- * whose caption directly beneath states "USD X of USD Y".
- */
-fun groceriesHeroValue(line: BudgetLine, currency: LedgerCurrency): String =
-    formatMoney(line.gap.actual, currency)
-
 /** Cycles [current] to the next member of its own enum, wrapping - the tap-to-cycle picker every
- * [DeckRow] in the ASK pane above uses, so choosing a value never opens a second surface. */
+ * [DeckRow] in the ASK pane above uses, so choosing a value never opens a second surface. Also
+ * moved verbatim into `ui/ask/AskScreen.kt` (different package, so no redeclaration conflict) -
+ * kept here, private, only until ticket 03b deletes this whole file. */
 private inline fun <reified T : Enum<T>> cycle(current: T): T {
     val values = enumValues<T>()
     return values[(current.ordinal + 1) % values.size]
 }
 
-/**
- * The Money pane's uncategorised-exclusion caveat, `null` exactly when there is nothing to
- * disclose - restored 2026-09-01 (this sentence rode on `TodayScreen`'s CRED tile and was dropped,
- * silently, in the calendar-home cutover to this pane).
- *
- * **Deliberately NOT a passthrough of [uncategorizedExcludedSentence]** - that builder is
- * empty-safe by its own design (it always returns a sentence, wording the zero case as "Nothing
- * uncategorised this month..." rather than returning nothing), which is correct for a surface with
- * room for a permanent caveat line but would be furniture on a pane this sparse: a sentence that
- * reads the same whether there is something to disclose or not is not a disclosure, CLAUDE.md's
- * standing "a disclosure is never furniture" rule. So the gate is here, at the call site, extracted
- * into its own plain-JUnit-testable function rather than left inline in the composable - and it is
- * a gate, never a second reading of the figure: the non-zero branch still asks
- * [uncategorizedExcludedSentence] for the words, once.
- */
-fun moneyUncategorizedSentence(budget: BudgetVsActual): String? {
-    if (budget.uncategorized.spentCents == 0L) return null
-    return uncategorizedExcludedSentence(budget.uncategorized, budget.entity.currency)
-}
+// groceriesHeroValue, moneyUncategorizedSentence, MetersBreachTarget, MeterBreach and
+// buildMeterBreaches all MOVED to `ui/MeterReadings.kt` (one-home ticket 02, 2026-09-10) - same
+// package (`com.kevin.legion.ui`), so [MetersContent] above still resolves them with no import.
+// See that file's own doc comment; this screen is itself retired by ticket 03b once this ticket
+// is green.
 
-// ------------------------------------------------------------- Needs-you breach detection (new)
-
-/** Which callback a [MeterBreach] taps through to - see [MetersContent]'s own `when` for the real
- * navigation lambda each one resolves to. No [BODY]/[NOTES] member: neither Intake nor the Lists
- * pane currently has a breach condition this file defines (see [buildMeterBreaches]'s own doc for
- * exactly which three do), and inventing a target nothing ever returns would be dead code a later
- * change could silently miss wiring correctly. */
-enum class MetersBreachTarget { MONEY, MONEY_PANTRY, FLEET }
-
-/** One breaching meter, worded rather than coloured (CLAUDE.md §7's "never colour alone" applied to
- * this screen's own new pane) - [reason] is a full sentence fragment ready to sit in a [DeckRow]'s
- * value slot, e.g. "over budget by $42", never a bare boolean the row would have to re-word itself. */
-data class MeterBreach(val label: String, val reason: String, val target: MetersBreachTarget)
-
-/**
- * The new pure logic this ticket adds (everything else in [MetersContent] re-shapes an
- * already-existing builder). Three breach conditions, matching the three concrete types the brief
- * names ("overdue, over budget, behind target") that actually apply to this screen's five meters -
- * intake and the two list counts have no breach condition defined here, on purpose: CLAUDE.md's
- * "do not invent computation" reads onto breach detection as much as onto a meter's own reading, and
- * nothing in this ticket's brief describes what "breaching" would even mean for a calorie count or
- * an open-task count.
- *
- * **Money and Groceries both require a real, positive target before they can be "over" it** - the
- * same `target > 0` guard [BudgetLineRow]/this file's own [DeckMeter] calls already use, because a
- * month with no budget set is an empty state, not a breach (CLAUDE.md's empty-vs-unreadable
- * discipline again: "no budget set" and "over budget" are different facts about the same null gap).
- * **Money's own total deliberately excludes the Groceries line's own overage from double-reporting
- * as a SEPARATE breach reason** - it does not: [BudgetVsActual.spentCents] already sums every
- * category's actual, Groceries included, so a Groceries overage that also pushes the whole month
- * over is reported as ONE Money breach AND, separately, its own Groceries breach - two true facts
- * about two different totals, not one fact stated twice, matching how the Money and Groceries
- * [DeckPane] rows already render as two separate lines below.
- */
-fun buildMeterBreaches(budget: BudgetVsActual?, maintenanceRows: List<DueRowView>): List<MeterBreach> {
-    val breaches = mutableListOf<MeterBreach>()
-
-    if (budget != null) {
-        val targetCents = budget.lines.sumOf { it.gap.target }
-        val spentCents = budget.spentCents
-        if (targetCents > 0 && spentCents > targetCents) {
-            val overCents = spentCents - targetCents
-            breaches += MeterBreach(
-                label = "Money",
-                reason = "over budget by ${formatMoney(overCents, budget.entity.currency)}",
-                target = MetersBreachTarget.MONEY,
-            )
-        }
-
-        val groceriesLine = budget.lines.firstOrNull { it.category == "Groceries" }
-        if (groceriesLine != null && groceriesLine.gap.target > 0 && groceriesLine.gap.gap < 0) {
-            val overCents = -groceriesLine.gap.gap
-            breaches += MeterBreach(
-                label = "Groceries",
-                reason = "over budget by ${formatMoney(overCents, budget.entity.currency)}",
-                target = MetersBreachTarget.MONEY_PANTRY,
-            )
-        }
-    }
-
-    val overdueCount = maintenanceRows.count { it.overdue }
-    if (overdueCount > 0) {
-        breaches += MeterBreach(
-            label = "Maintenance",
-            reason = if (overdueCount == 1) "1 item overdue" else "$overdueCount items overdue",
-            target = MetersBreachTarget.FLEET,
-        )
-    }
-
-    return breaches
-}
-
-// ------------------------------------------------------------- Newsletters (rehomed from TodayScreen)
-
-/**
- * Newsletters digest tile. **Rehomed verbatim from the deleted `ui/TodayScreen.kt`** (one-today
- * ticket 07, 2026-09-01) - command-center ticket 01's own build, no logic changed by the move.
- * Wraps [SitrepBuilder.build] scoped to [SitrepModule.NEWS] alone - the exact machinery the
- * scheduled sitrep already uses for its own NEWS section (`SitrepBuilder`'s own class doc:
- * read-through, background Gmail fetch permitted only inside a sitrep the user scheduled or
- * explicitly asked for), never a second summarization path.
- *
- * **Deliberately the one tile on this screen with NO auto-fetch.** Every other reading on this
- * screen (including [AreaCard] above) fetches once on first compose, which the original ticket
- * still counted as "on demand" (opening the screen is the demand). Newsletters is different by
- * that ticket's own explicit instruction ("On-demand only (a tap)") - a newsletter check folds
- * several message bodies into one prompt and pays for a real LLM call, where the others are one
- * metadata search; the tap is what keeps that cost tied to an actual ask rather than every visit
- * to this screen.
- *
- * In-memory only (`remember`, no Room row, no cache file) - navigating away and back starts blank
- * again - refresh is a user act, never a background poll.
- *
- * **No setup required (command-center ticket 12, Kevin: "take from my gmail > summarize").**
- * [SitrepBuilder.build] falls back to a no-config Gmail search when
- * [com.kevin.legion.sitrep.SitrepSettings.newsletterSenders] is empty
- * (`SitrepBuilder.NO_CONFIG_NEWSLETTER_QUERY`), so this card needs no setup of its own.
- */
-@Composable
-private fun NewsDigestCard(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val sem = LocalLegionSemantics.current
-    var state by remember { mutableStateOf<NewsDigestState>(NewsDigestState.Idle) }
-
-    fun check() {
-        state = NewsDigestState.Loading
-        scope.launch {
-            // SitrepBuilder.build already returns every real outcome as its own worded sentence
-            // (NewsOutcome's four failure/empty branches plus the happy path) - this card never
-            // has to re-derive success/failure, only display what came back.
-            val text = SitrepBuilder.build(context, setOf(SitrepModule.NEWS))
-            state = NewsDigestState.Ready(text, System.currentTimeMillis())
-        }
-    }
-
-    DeckPane(header = "Newsletters", modifier = modifier) {
-        when (val s = state) {
-            is NewsDigestState.Idle -> {
-                Text(
-                    "Not checked this session - a check reads newsletter-shaped mail from your Gmail and summarizes it.",
-                    style = LegionType.stamp,
-                    color = sem.faint,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-                TextButton(onClick = { check() }) { Text("CHECK NEWSLETTERS") }
-            }
-            is NewsDigestState.Loading -> Row(
-                Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                Text("Checking your newsletters...", style = LegionType.stamp, color = sem.faint)
-            }
-            is NewsDigestState.Ready -> {
-                Text(s.text, style = MaterialTheme.typography.bodySmall, color = sem.data)
-                Text(
-                    "fetched ${clockTime(s.fetchedAtMs)}",
-                    style = LegionType.stamp,
-                    color = sem.faint,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                TextButton(onClick = { check() }) { Text("CHECK AGAIN") }
-            }
-        }
-    }
-}
-
-/** [NewsDigestCard]'s own three states - a sealed type for the same reason every other on-demand
- * card on this screen uses one ([AreaCard]'s own `AreaCardState`): "not yet asked", "asked,
- * waiting", and "asked, got an answer" are three different facts a nullable string cannot keep
- * apart. */
-private sealed class NewsDigestState {
-    object Idle : NewsDigestState()
-    object Loading : NewsDigestState()
-    data class Ready(val text: String, val fetchedAtMs: Long) : NewsDigestState()
-}
+// NewsDigestCard and its own NewsDigestState MOVED to `ui/world/NewsDigestCard.kt` (one-home
+// ticket 02, 2026-09-10), public there so `ui/HomeMeterBands.kt` can call it too - see that file's
+// own doc comment for the full history.
