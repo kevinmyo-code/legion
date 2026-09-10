@@ -3,12 +3,12 @@ map: web-and-households
 ticket: "13"
 title: "The move: provision the Oracle VM, migrate Postgres, cut over, retire Cloud Run and Supabase"
 type: build
-status: open
+status: resolved
 blockers: ["12", "09"]
 blocked-by: ["[[12-hosting-oracle-vm]]", "[[09-static-domain-dockerfile]]"]
 open-blockers: 1
 ready: false
-status-detail: "Kevin is provisioning the Oracle VM himself, 2026-09-10. Section 1 of this ticket (tenancy upgrade, machine, network, iptables) is his; the runbook, the arm64 image, the deploy script and the data move stay here. He also ruled the same day that there is NO rush to deploy - 'do it right' - so the web client is built and verified properly before any cutover, rather than shipped to Cloud Run to meet a date."
+status-detail: "DROPPED 2026-09-10 (Kevin): 'kill oracle vm decision'. There is no VM and no move; the engine stays on Cloud Run (ticket 12's reversal). Nothing here was built. What survives and is worth keeping is deploy/vm/PROVISION.md and deploy/vm/deploy.sh - if a box is ever wanted again, the runbook and the two traps it records (Oracle's Ubuntu images drop 80/443 in iptables even after the VCN security list is right; Cloudflare proxying breaks the ACME challenge) are the expensive half. The section-3 data move is moot: the tenancy migration is applied to the live Supabase database and the phone already talks to Cloud Run. Superseded context, 2026-09-10 earlier:  Section 1 of this ticket (tenancy upgrade, machine, network, iptables) is his; the runbook, the arm64 image, the deploy script and the data move stay here. He also ruled the same day that there is NO rush to deploy - 'do it right' - so the web client is built and verified properly before any cutover, rather than shipped to Cloud Run to meet a date."
 tags: [ticket]
 ---
 

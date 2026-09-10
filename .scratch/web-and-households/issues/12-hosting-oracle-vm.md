@@ -4,7 +4,7 @@ ticket: "12"
 title: "Hosting: an always-on Oracle Cloud VM runs the whole stack in compose; Cloud Run and Supabase retire"
 type: decision
 status: resolved
-status-detail: "Kevin, 2026-09-08: 'we are reopening the oracle VM. new hosting decisions.' Then, asked the two forks: Postgres moves onto the VM in compose (the full profile), and the tenancy upgrades to Pay As You Go. Reopens django-engine ticket 07 (Cloud Run, 2026-09-05). Build: ticket 13."
+status-detail: "REVERSED 2026-09-10 (Kevin): 'kill oracle vm decision'. Cloud Run stays, no VM. Three availability domains in us-chicago-1 all answered 'Out of capacity for shape VM.Standard.A1.Flex' - AD-1, AD-2 and AD-3, with a fully correct form. The Ampere A1 free-tier shortage is not something a retry loop fixes on a schedule, and the engine already runs. The trade Kevin accepted: a 5.4s cold start at min-instances 0, because the alternative is roughly $40-50/month to keep one instance warm. What the VM was ALSO going to buy - Postgres off Supabase's 500MB free tier, and durable media - is answered separately: the database stays on Supabase for now, and receipt photos turn out not to need persisting at all (see below). Original ruling, 2026-09-08, kept for its reasoning:  'we are reopening the oracle VM. new hosting decisions.' Then, asked the two forks: Postgres moves onto the VM in compose (the full profile), and the tenancy upgrades to Pay As You Go. Reopens django-engine ticket 07 (Cloud Run, 2026-09-05). Build: ticket 13."
 blockers: []
 blocked-by: []
 open-blockers: 0

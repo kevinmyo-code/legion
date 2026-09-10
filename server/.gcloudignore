@@ -1,0 +1,38 @@
+# What `gcloud builds submit` uploads as the build context.
+#
+# **gcloud does NOT read `.dockerignore`.** It reads this file, and with no
+# `.gcloudignore` present it uploads everything under `server/` - which on
+# 2026-09-10 meant 35,149 files and 363.9 MiB, almost all of it
+# `frontend/node_modules` (332 MB) and `.venv` (105 MB). Both are rebuilt inside
+# the image (`npm ci` in the node stage, `pip install` in the python stage), so
+# uploading them is pure waste and slows every deploy.
+#
+# Keep this in step with `.dockerignore`: that one governs `docker build`
+# locally and in compose, this one governs Cloud Build. Two files, same intent,
+# because two tools read different names.
+
+.git
+.gitignore
+
+# Rebuilt by `pip install -r requirements.txt` in the image.
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Rebuilt by `npm ci` in the node stage.
+frontend/node_modules/
+
+# Build outputs - the image produces its own.
+frontend/dist/
+static/app/
+staticfiles/
+
+# Never ship secrets or local state.
+.env
+*.sqlite3
+media/
+
+# Test noise.
+.pytest_cache/
+junit*.xml

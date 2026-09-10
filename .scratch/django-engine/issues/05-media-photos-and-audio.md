@@ -4,7 +4,7 @@ ticket: "05"
 title: "Media: receipt photos and voice-note audio on a volume, served only to a token"
 type: build
 status: open
-status-detail: "Repointed 2026-09-05: media goes to Cloudflare R2 (S3 API), not a local MEDIA_ROOT on the box. Ticket 07."
+status-detail: "NARROWED 2026-09-10 (Kevin): 'receipt photos are a one time use, we dont need to keep it in memory.' The RECEIPT half of this ticket is retired - a photo is an input to the section 4 gate, not the evidence it leaves behind, and rule 8's anchors (printed total, subtotal, tax) live in their own columns already. So no R2, no durable store, and Cloud Run's ephemeral MEDIA_ROOT is no longer a data-loss bug for pantry. VOICE-NOTE AUDIO IS A DIFFERENT QUESTION and is NOT retired by this: ADR 0041 makes a recording Kevin starts first-party and says the audio, transcript and summary are retained together, so audio still needs somewhere durable to live. Repointed 2026-09-05: media goes to Cloudflare R2 (S3 API), not a local MEDIA_ROOT on the box. Ticket 07."
 blockers: ["04"]
 blocked-by: ["[[04-domain-api-and-changes-feed]]"]
 open-blockers: 1

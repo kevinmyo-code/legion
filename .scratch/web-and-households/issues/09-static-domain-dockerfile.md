@@ -33,10 +33,16 @@ section measuring 5.4 s. Both findings are in git history; neither applies to an
 - **Whitenoise** serves `/static/` from gunicorn behind Caddy with far-future caching on hashed
   filenames (`CompressedManifestStaticFilesStorage`, ticket 04 already wires it). Caddy could serve
   the files itself; it does not, because one place that knows the static manifest is enough.
-- **Media** lands on the `media` compose volume (`MEDIA_ROOT=/app/media`), which is exactly what
-  the compose file already does. django-engine 05's R2 repoint is **reversed** by ticket 12: a box
-  with a 200 GB free disk does not need a second object store for receipts. The backup in ticket 13
-  covers the volume as well as the database.
+- **Media: receipt photos are NOT kept, ruled 2026-09-10 by Kevin** - *"receipt photos are a one
+  time use, we dont need to keep it in memory."* A photo is an INPUT to the section 4 gate, not the
+  evidence the gate leaves behind. Section 4 rule 8 demands the ANCHORS be persisted - the printed
+  total, the subtotal, the tax - and the server schema stores those in their own columns, which is
+  precisely the fix rule 8's own history called for after three receipts became unverifiable when
+  their photos were lost. So the photo may be uploaded, gated and discarded, and Cloud Run's
+  ephemeral `MEDIA_ROOT` stops being a data-loss bug. **This retires django-engine ticket 05's R2
+  repoint and the whole durable-media question with it.** What must NEVER be discarded is the
+  anchors; a future path that stores a photo and no anchors would be the same failure wearing new
+  clothes.
 - **Domain:** `deploy/Caddyfile` gets `legion.<domain> { reverse_proxy web:8000 }`; Caddy issues and
   renews the Let's Encrypt certificate. Cloudflare is DNS only (grey cloud) so HTTP-01 reaches the
   box. `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` carry the name; the Android `ServerConfig` default

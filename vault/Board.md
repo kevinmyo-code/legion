@@ -152,7 +152,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[05-web-screens-phase-1\|05]] | build | Web screens, phase 1: sign in, sign up, household, Today, Lists, Settings; installed on an iPhone  waiting on [[03-accounts-signup-invites\|03]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[06-web-screens-phase-2\|06]] | build | Web screens, phase 2: Ledger, Pantry, Body, Fleet, Places, Voice notes, and a glanceable home  waiting on [[05-web-screens-phase-1\|05]], [[11-report-endpoints\|11]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[11-report-endpoints\|11]] | build | Report endpoints: aggregates computed once, described in the contract, unverified carried through  waiting on [[02b-rls-belt\|02]] |
-| [[.scratch/web-and-households/map\|web-and-households]] | [[13-vm-provision-migrate-cutover\|13]] | build | The move: provision the Oracle VM, migrate Postgres, cut over, retire Cloud Run and Supabase  waiting on [[09-static-domain-dockerfile\|09]] |
 
 ## KIV
 
@@ -210,4 +209,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 15 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
-| [[.scratch/web-and-households/map\|web-and-households]] | 14 | 10 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
+| [[.scratch/web-and-households/map\|web-and-households]] | 14 | 9 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
