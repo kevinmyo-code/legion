@@ -4,10 +4,18 @@
       "command": "python",
       "args": [
         "tools/mcp/launch.py",
-        "--require", "LEGION_PG_URL",
-        "--alias", "DATABASE_URI=LEGION_PG_URL",
+        "--require",
+        "LEGION_PG_URL",
+        "--alias",
+        "DATABASE_URI=LEGION_PG_URL",
         "--",
-        "uvx", "--python", "3.13", "--with", "mcp<2", "postgres-mcp", "--access-mode=restricted"
+        "uvx",
+        "--python",
+        "3.13",
+        "--with",
+        "mcp<2",
+        "postgres-mcp",
+        "--access-mode=restricted"
       ]
     },
     "mobile": {
@@ -15,7 +23,9 @@
       "args": [
         "tools/mcp/launch.py",
         "--",
-        "npx", "-y", "@mobilenext/mobile-mcp@1.0.2"
+        "npx",
+        "-y",
+        "@mobilenext/mobile-mcp@1.0.2"
       ]
     },
     "gradle": {
@@ -23,7 +33,11 @@
       "args": [
         "tools/mcp/launch.py",
         "--",
-        "uv", "run", "--project", "tools/mcp/gradle", "tools/mcp/gradle/server.py"
+        "uv",
+        "run",
+        "--project",
+        "tools/mcp/gradle",
+        "tools/mcp/gradle/server.py"
       ]
     },
     "board": {
@@ -31,7 +45,44 @@
       "args": [
         "tools/mcp/launch.py",
         "--",
-        "uv", "run", "--project", "tools/mcp/board", "tools/mcp/board/server.py"
+        "uv",
+        "run",
+        "--project",
+        "tools/mcp/board",
+        "tools/mcp/board/server.py"
+      ]
+    },
+    "shadcn": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--",
+        "npx",
+        "-y",
+        "shadcn@4.21.0",
+        "mcp",
+        "--cwd",
+        "server/frontend"
+      ]
+    },
+    "playwright": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--",
+        "npx",
+        "-y",
+        "@playwright/mcp@0.0.80"
+      ]
+    },
+    "chrome-devtools": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--",
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@1.9.0"
       ]
     }
   }

@@ -1,6 +1,6 @@
 # TEAM.md
 
-Four seats. `CLAUDE.md` holds the rules; these files hold only what is specific to a seat.
+Five seats. `CLAUDE.md` holds the rules; these files hold only what is specific to a seat.
 
 | Agent | For |
 |---|---|
@@ -8,6 +8,7 @@ Four seats. `CLAUDE.md` holds the rules; these files hold only what is specific 
 | `auditor` | Reading code adversarially — defects, arithmetic, data integrity, diff review |
 | `device` | Anything needing the real phone |
 | `scout` | Read-only breadth search across code, library or maps |
+| `frontend` | The web client's UI and UX — studies shipped apps, then designs and builds the screen |
 
 Dispatch is the default, not an escalation (CLAUDE.md §8, standing). Judgement still applies: a
 one-line fix does not need an agent.
@@ -53,6 +54,22 @@ through a session where `coding` was dispatched a dozen times. They are now `aud
 retrieval half is what `scout` does; its filing half was always done inline.
 
 Add a seat when a dispatch is genuinely ambiguous between two existing ones, not before.
+
+## The fifth seat, added 2026-09-10 (Kevin)
+
+`frontend` passes that test rather than dodging it: a web screen was going to `builder`, and
+`builder`'s job is to execute a spec exactly, which is the right instinct and the wrong one for a
+screen nobody has specified. The web client's design is genuinely undecided - the phone's is
+settled and its chart vocabulary frozen - so the work that was missing was not writing the
+component, it was deciding what the component should be. This seat looks at how shipped products
+solve the screen first, writes the notes down where the next dispatch can read them, and only then
+builds.
+
+Kevin's own framing: *"a frontend sub agent who will browse real apps with chrome and take notes on
+ui ux and do the design."* The looking is half the seat, not a preamble to it.
+
+**It owns `server/frontend/` and nothing on the phone.** Two surfaces, two registers, two users;
+consistency between them is not a goal and a cross-surface tidy-up is out of scope.
 
 ## Completion contract
 
