@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
     // same Intent - deepLinkRoute above drives the navigation, openItemId drives what the
     // destination does once it's there. **REPOINTED one-today ticket 10 slice C, 2026-09-05:
     // EXTRA_ROUTE used to be LegionRoute.NOTES (the bottom nav landed on the now-deleted
-    // `ui/NotesScreen.kt`) - it is LegionRoute.CALENDAR now, and openItemId/openItemNonce feed
+    // `ui/NotesScreen.kt`) - it is LegionRoute.HOME now, and openItemId/openItemNonce feed
     // CalendarScreen's own highlightItemId/highlightItemNonce params instead of NotesScreen's
     // openItemId/openItemNonce.** Nonce-keyed for the same reason deepLinkNonce is: a REPEAT tap on
     // the same item's notification while the app is already foregrounded delivers onNewIntent with
@@ -491,7 +491,12 @@ private fun LegionShell(
     // see MainActivity.deepLinkNonce's doc comment. Does nothing for the
     // ordinary launcher-icon path, where deepLinkRoute is null.
     LaunchedEffect(deepLinkNonce) {
-        deepLinkRoute?.let { navController.navigate(it) }
+        // Resolved, not navigated raw. A notification posted by an older build carries whatever
+        // route string THAT build had, and it is tapped by whichever build is installed when the
+        // user gets to it - `navigate` throws IllegalArgumentException on a destination that is not
+        // in the graph, so an un-resolved stale route is a crash on a notification tap.
+        // [LegionRoute.LEGACY_DEEP_LINK_ROUTES] has the three that are known dangling.
+        LegionRoute.resolveDeepLink(deepLinkRoute)?.let { navController.navigate(it) }
     }
 
     // The Spotify OAuth token exchange (2026-08-12). Runs HERE, above the NavHost, not inside
@@ -683,7 +688,7 @@ private fun LegionShell(
                         // ticket 07) - retargeted to CALENDAR, which lands a tapped alarm on the day
                         // its reminder actually belongs to (that screen's own day view); see
                         // [ShellStatus]'s own doc for why Money is not the target.
-                        onOpenAlarm = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                        onOpenAlarm = { navController.navigate(LegionRoute.HOME) { launchSingleTop = true } },
                         // Ticket 07 answer §1, "the cursor yields": solid, not blinking, for
                         // exactly as long as FLEET's own uplink sweep is genuinely running -
                         // see [fleetSweepActive]'s own doc above for how that boolean gets here -
@@ -703,13 +708,13 @@ private fun LegionShell(
                 NavHost(
                     navController = navController,
                     // CALENDAR is the start destination as of the 2026-09-01 calendar-home cutover
-                    // (Kevin, verbatim, [LegionRoute.CALENDAR]'s own doc comment: "month grid
+                    // (Kevin, verbatim, [LegionRoute.HOME]'s own doc comment: "month grid
                     // primary"). Was TODAY from the 2026-08-07 brief (itself a supersession of
                     // FLEET under ticket 07's original four-tab shape); cutover 5
                     // (`docs/architecture/cutover5-2026-08-24.md`) briefly made the widget pager
                     // (DASHBOARD) the start destination instead, REVERTED 2026-08-25 - see that
                     // doc's postscript. See LegionRoute's doc comment for the full route map/history.
-                    startDestination = LegionRoute.CALENDAR,
+                    startDestination = LegionRoute.HOME,
                     modifier = Modifier.weight(1f),
                     // Command-center ticket 14: one fade-through, defined once here, no per-route
                     // override anywhere below. `LegionMotion.ROUTE_FADE_MS`/`STANDARD_EASING` are
@@ -745,7 +750,7 @@ private fun LegionShell(
             // link (`openItemId`/`openItemNonce`, this file's own state above) fed
             // `ui/NotesScreen.kt` exclusively before that screen was deleted; `CalendarScreen`'s own
             // file doc comment has the full account of how it opens the same [ItemEditDialog] now.
-            composable(LegionRoute.CALENDAR) {
+            composable(LegionRoute.HOME) {
                 CalendarScreen(highlightItemId = openItemId, highlightItemNonce = openItemNonce)
             }
             // The third tab ("C" - Kevin, verbatim, [LegionRoute.METERS]'s own doc comment). A

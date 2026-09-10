@@ -131,7 +131,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             // hands surface now (see that screen's own file doc comment), and its own
             // `highlightItemId`/`highlightItemNonce` params read EXTRA_OPEN_ITEM_ID the same way
             // NotesScreen's `openItemId`/`openItemNonce` used to.
-            putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.CALENDAR)
+            putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.HOME)
             putExtra(EXTRA_OPEN_ITEM_ID, item.id)
         }
         val openPi = PendingIntent.getActivity(

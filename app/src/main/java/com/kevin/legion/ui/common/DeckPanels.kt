@@ -852,7 +852,7 @@ fun DeckSectionRule(label: String, modifier: Modifier = Modifier) {
  *    surface that owned the list, not any one aspect). That ALERTS pane was retired by Kevin on
  *    2026-08-22 ("alerts tab in home is useless. retire it. delete") and `ui/TodayScreen.kt` itself
  *    was deleted 2026-09-01 (one-today ticket 07) - `onOpenAlarm` now navigates to
- *    `LegionRoute.CALENDAR`, landing a tapped alarm on the day its reminder actually belongs to.
+ *    `LegionRoute.HOME`, landing a tapped alarm on the day its reminder actually belongs to.
  *    An active vehicle fault (DTC) is ticket 04's
  *    OTHER named ALARM example and is deliberately NOT a second source feeding [alarmCount] here -
  *    see `IngestedFileDao.countQuarantined`'s own doc for why (a DTC read is a live OBD scan, not

@@ -195,7 +195,7 @@ internal fun legacyRouteForAspect(aspectName: String): String? = when (aspectNam
     // ticket 10 slice C, 2026-09-05 (that screen is deleted): `ui/CalendarScreen.kt` is the
     // Notes-aspect hands surface now, same repoint `service/ReminderAlarmReceiver.kt`'s own
     // notification deep link made.
-    "Notes" -> com.kevin.legion.ui.LegionRoute.CALENDAR
+    "Notes" -> com.kevin.legion.ui.LegionRoute.HOME
     "Places" -> com.kevin.legion.ui.LegionRoute.FLEET_PLACES
     else -> null
 }

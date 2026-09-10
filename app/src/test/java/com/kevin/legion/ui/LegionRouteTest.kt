@@ -14,7 +14,7 @@ import org.junit.Test
 
 /**
  * **CORRECTED 2026-09-01: two top-level tabs, not three.** The calendar-home cutover landed
- * [LegionRoute.CALENDAR]/[LegionRoute.METERS]/[LegionRoute.SETTINGS] as three tabs the same day
+ * [LegionRoute.HOME]/[LegionRoute.METERS]/[LegionRoute.SETTINGS] as three tabs the same day
  * this suite's own doc comment used to describe; [SETTINGS] came off [LegionRoute.TOP_LEVEL] again
  * hours later (Kevin, on seeing it running: "setup is being duplicated. keep the top right corner
  * one and drop the one beside meters") - [LegionRoute.TOP_LEVEL]'s own doc comment has the full
@@ -29,13 +29,20 @@ import org.junit.Test
  * **`LegionRoute.NOTES` is gone too, same shape, one-today ticket 10 slice C (2026-09-05)** -
  * `ui/NotesScreen.kt` deleted once its own survivor (a reminder's edit affordance) was rehomed
  * onto `ui/CalendarScreen.kt`'s day view; the Notes aspect's legacy route below now resolves to
- * [LegionRoute.CALENDAR] instead.
+ * [LegionRoute.HOME] instead.
+ *
+ * **RENAMED 2026-09-10: `LegionRoute.CALENDAR` is [LegionRoute.HOME]** (Kevin: *"just everything on
+ * home page (rename it from calendar)"*). Every assertion below that named the old constant names
+ * the new one; none of them changed meaning, because the tab being renamed is not the tab changing
+ * behaviour. The genuinely new coverage is [LegionRoute.LEGACY_DEEP_LINK_ROUTES] at the bottom of
+ * this file - the route STRING changed too, and a notification posted by an older build outlives
+ * the build that posted it.
  */
 class LegionRouteTest {
 
     @Test
-    fun `CALENDAR and METERS are the only top-level tabs, SETTINGS and the three demoted routes are not`() {
-        assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.CALENDAR))
+    fun `HOME and METERS are the only top-level tabs, SETTINGS and the three demoted routes are not`() {
+        assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.HOME))
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.METERS))
         assertEquals(2, LegionRoute.TOP_LEVEL.size)
         for (demoted in listOf(LegionRoute.SETTINGS, LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET)) {
@@ -44,10 +51,10 @@ class LegionRouteTest {
     }
 
     @Test
-    fun `topLevelOf resolves CALENDAR and METERS, not a demoted route`() {
-        assertEquals(LegionRoute.CALENDAR, LegionRoute.topLevelOf(LegionRoute.CALENDAR))
+    fun `topLevelOf resolves HOME and METERS, not a demoted route`() {
+        assertEquals(LegionRoute.HOME, LegionRoute.topLevelOf(LegionRoute.HOME))
         assertEquals(LegionRoute.METERS, LegionRoute.topLevelOf(LegionRoute.METERS))
-        // MONEY is a real, standalone route, not a CALENDAR/METERS sub-route (no "calendar/" or
+        // MONEY is a real, standalone route, not a HOME/METERS sub-route (no "home/" or
         // "meters/" prefix) - it correctly lights no tab at all now, the same shape DASHBOARD and
         // DRIVING already lit nothing under the five-tab shape (and TODAY did too, before one-today
         // ticket 07 deleted it outright).
@@ -65,8 +72,9 @@ class LegionRouteTest {
     }
 
     @Test
-    fun `label reads Calendar and Meters for the two tabs, and falls through for SETTINGS`() {
-        assertEquals("Calendar", LegionRoute.label(LegionRoute.CALENDAR))
+    fun `label reads Home and Meters for the two tabs, and falls through for SETTINGS`() {
+        // "Calendar" until 2026-09-10. LegionTabRow uppercases what it gets, so this renders HOME.
+        assertEquals("Home", LegionRoute.label(LegionRoute.HOME))
         assertEquals("Meters", LegionRoute.label(LegionRoute.METERS))
         // CORRECTED 2026-09-01: label() no longer special-cases SETTINGS ("Setup") - the branch was
         // unreachable from its only production caller ([LegionTabRow], which iterates TOP_LEVEL
@@ -78,12 +86,13 @@ class LegionRouteTest {
     @Test
     fun `every seeded aspect's legacy route, when present, is a real LegionRoute constant`() {
         // LegionRoute.NOTES dropped out of `known` one-today ticket 10 slice C, 2026-09-05 (the
-        // constant is deleted); LegionRoute.CALENDAR is added in its place - the Notes aspect's own
+        // constant is deleted); LegionRoute.HOME is added in its place - the Notes aspect's own
         // legacy route (`ui/widgets/WidgetPagerScreen.kt`'s `legacyRouteForAspect`) is repointed
-        // there now.
+        // there now. It was `LegionRoute.CALENDAR` when repointed; same constant, renamed
+        // 2026-09-10.
         val known = setOf(
             LegionRoute.FLEET, LegionRoute.MONEY, LegionRoute.MONEY_PANTRY,
-            LegionRoute.CALENDAR, LegionRoute.FLEET_PLACES,
+            LegionRoute.HOME, LegionRoute.FLEET_PLACES,
         )
         val names = listOf(
             FleetAspectSeeder.ASPECT_NAME, LedgerAspectSeeder.ASPECT_NAME, PantryAspectSeeder.ASPECT_NAME,
@@ -101,5 +110,64 @@ class LegionRouteTest {
     @Test
     fun `an unrecognised aspect name carries no legacy route`() {
         assertNull(legacyRouteForAspect("Some New Aspect A Driver Just Created"))
+    }
+
+    // ------------------------------------------------------- the route string changed, not just the name
+
+    @Test
+    fun `a deep link carrying the old calendar route lands on HOME rather than crashing`() {
+        // The 2026-09-10 rename moved the route STRING from "calendar" to "home". A reminder
+        // notification carries whatever string the build that POSTED it had, and is tapped by
+        // whichever build is installed by then - `navController.navigate` throws
+        // IllegalArgumentException for a destination the graph does not contain, so an unresolved
+        // "calendar" is a crash on a notification tap, not a mis-navigation.
+        assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("calendar"))
+    }
+
+    @Test
+    fun `notes and today were already dangling before the rename, and are covered too`() {
+        // NOTES deleted 2026-09-05 (one-today 10 slice C), TODAY deleted 2026-09-01 (ticket 07).
+        // Both had their live callers repointed; neither had anything covering a notification
+        // ALREADY in the shade. Found while adding the map above, so fixed with it.
+        assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("notes"))
+        assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("today"))
+    }
+
+    @Test
+    fun `a live route passes through resolveDeepLink untouched`() {
+        for (route in listOf(LegionRoute.HOME, LegionRoute.METERS, LegionRoute.FLEET_PLACES, LegionRoute.MONEY_PANTRY_IMPORT)) {
+            assertEquals(route, LegionRoute.resolveDeepLink(route))
+        }
+    }
+
+    @Test
+    fun `an unknown route is passed through, not defaulted to HOME`() {
+        // Deliberate. Landing an unrecognised route on the home screen would hide a bug behind a
+        // plausible-looking screen; the map is for routes known to have existed and known where
+        // they went. Anything else is a defect and should behave as one.
+        assertEquals("some-route-nobody-declared", LegionRoute.resolveDeepLink("some-route-nobody-declared"))
+    }
+
+    @Test
+    fun `no route extra at all resolves to nothing, which is the ordinary launcher start`() {
+        assertNull(LegionRoute.resolveDeepLink(null))
+    }
+
+    @Test
+    fun `every legacy route maps to a route that still exists`() {
+        // The map's whole purpose is defeated if it points at a destination that was itself later
+        // deleted - that would trade one crash for another. Pinned against the declared constants.
+        val live = setOf(
+            LegionRoute.HOME, LegionRoute.METERS, LegionRoute.DASHBOARD, LegionRoute.BODY,
+            LegionRoute.MONEY, LegionRoute.FLEET, LegionRoute.SETTINGS,
+        )
+        for ((legacy, target) in LegionRoute.LEGACY_DEEP_LINK_ROUTES) {
+            assertTrue("'$legacy' maps to '$target', which is not a live route", target in live)
+        }
+        // And a legacy key must never be a live route itself, or the map would silently redirect
+        // a working destination.
+        for (legacy in LegionRoute.LEGACY_DEEP_LINK_ROUTES.keys) {
+            assertTrue("'$legacy' is both legacy and live", legacy !in live)
+        }
     }
 }

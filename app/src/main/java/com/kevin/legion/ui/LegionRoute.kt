@@ -3,6 +3,17 @@ package com.kevin.legion.ui
 /**
  * Every route in the single-activity shell.
  *
+ * **RENAMED 2026-09-10: the [HOME] tab is what `CALENDAR` was.** Kevin: *"just everything on home
+ * page (rename it from calendar)"*. The route string went `"calendar"` to `"home"` with it, so the
+ * old one is carried in [LEGACY_DEEP_LINK_ROUTES] - a notification outlives the build that posted
+ * it, and `navigate` throws on a route the graph does not have.
+ * `.scratch/one-home/issues/03-calendar-becomes-home.md`. The screen itself did not change: it is
+ * still `ui/CalendarScreen.kt`, still a month grid with a day view, and the file keeps its name
+ * because it still renders a calendar - what stopped being true is that the TAB was called one.
+ * **[METERS] is untouched here.** Retiring it is a separate, still-open decision
+ * (`.scratch/one-home/issues/01-what-the-shell-is-without-meters.md`); this entry renamed one tab
+ * and did not remove the other.
+ *
  * **CORRECTED 2026-09-01, later the same day: down to TWO top-level tabs.** The "three top-level
  * tabs" paragraph immediately below is kept for its history, but [SETTINGS] came off [TOP_LEVEL]
  * again within hours of landing on it - Kevin, on seeing it running: *"setup is being duplicated.
@@ -13,7 +24,7 @@ package com.kevin.legion.ui
  * primary. tapping a day on the month opens up view B. C as another tab. retire the bottom headers
  * like cred fleet etc. those we tap through from view C the meters."** This SUPERSEDES the five-tab
  * shape below (itself a supersession of the original four - see that entry's own history, kept for
- * the same reason this one is): [CALENDAR] is now the start destination (a month grid, with the
+ * the same reason this one is): [HOME] is now the start destination (a month grid, with the
  * selected-day agenda as internal Compose state - "view B" - rather than a nav argument, same
  * convention this file's own doc comment already establishes below), [METERS] is the new "C" tab -
  * a dashboard of at-a-glance meters that tap THROUGH to [BODY]/[MONEY]/[FLEET]/[NOTES]/etc, which
@@ -24,7 +35,7 @@ package com.kevin.legion.ui
  * lands on directly. `TODAY` itself, and the `ui/TodayScreen.kt` it named, were deleted 2026-09-01
  * (one-today ticket 07) once every survivor it carried had a rehomed caller - [CalendarScreen]'s day
  * view (the plan checklist), [MetersScreen] (weather/area/newsletters/media), a Settings row
- * (the DASHBOARD button), and [CALENDAR] itself (`onOpenAlarm`'s target).
+ * (the DASHBOARD button), and [HOME] itself (`onOpenAlarm`'s target).
  *
  * **Five top-level tabs, 2026-08-07 to 2026-09-01 (superseded above, kept for its own history)**
  * (was four - ticket 07's original resolution §5 shape is superseded below, not amended in
@@ -37,7 +48,7 @@ package com.kevin.legion.ui
  * destination and HOME hard key's target; REVERTED 2026-08-25** (see that doc's postscript) -
  * Kevin field-tested the pager overnight and ruled "revert everything to classic". `today/` was the
  * start destination again, exactly as before cutover 5, until the 2026-09-01 calendar-home cutover
- * above made [CALENDAR] the start destination instead, and one-today ticket 07 deleted `today/`
+ * above made [HOME] the start destination instead, and one-today ticket 07 deleted `today/`
  * outright once its survivors were all rehomed (see above). `dashboard/` (the widget pager) STAYS IN
  * THE CODEBASE, reachable as an opt-in surface via a "Dashboard" row in [SETTINGS] (moved off
  * `today/`'s own now-deleted "DASHBOARD" button by that same ticket) - it is not deleted, only
@@ -70,17 +81,24 @@ package com.kevin.legion.ui
  */
 object LegionRoute {
     /**
+     * **RENAMED from `CALENDAR` ("calendar") on 2026-09-10** (Kevin: *"just everything on home page
+     * (rename it from calendar)"*, `.scratch/one-home/issues/03-calendar-becomes-home.md`). The
+     * screen is unchanged and is still a month grid with a day view; what changed is that it stopped
+     * being one tab among several and became the place the app opens to. The old route string lives
+     * on in [LEGACY_DEEP_LINK_ROUTES] because notifications posted by an older build outlive the
+     * build that posted them.
+     *
      * The start destination as of the 2026-09-01 calendar-home cutover (Kevin, verbatim: "month
      * grid primary. tapping a day on the month opens up view B") - see [com.kevin.legion.ui.CalendarScreen].
      * No sub-routes: the selected day's agenda ("view B") is internal Compose state inside that
      * screen, same convention `ui/NotesScreen.kt`'s own (now-deleted, one-today ticket 10 slice C)
-     * LISTS | CALENDAR toggle used to establish - [CALENDAR] itself is now where a reminder's edit
+     * LISTS | HOME toggle used to establish - [HOME] itself is now where a reminder's edit
      * affordance lives (see [com.kevin.legion.ui.CalendarScreen]'s own file doc comment).
      * Replaced `TODAY` as `startDestination` and as the shell's HOME target; `TODAY` and the
      * screen it named were deleted outright 2026-09-01 (one-today ticket 07), once its survivors
      * were all rehomed - see this file's class doc.
      */
-    const val CALENDAR = "calendar"
+    const val HOME = "home"
 
     /**
      * The third tab ("C", Kevin verbatim: "C as another tab... those we tap through from view C the
@@ -99,7 +117,7 @@ object LegionRoute {
      * (`docs/architecture/cutover5-2026-08-24.md`) briefly made this the [NavHost]'s
      * `startDestination` and the HOME hard key's target; **reverted 2026-08-25** after Kevin lived
      * with it overnight and ruled "revert everything to classic" - `today/` was the start destination
-     * and HOME hard key's target again, until the 2026-09-01 calendar-home cutover made [CALENDAR]
+     * and HOME hard key's target again, until the 2026-09-01 calendar-home cutover made [HOME]
      * both instead. This route is NOT deleted: it stays reachable as an opt-in surface from a
      * "Dashboard" row in [SETTINGS] (moved off `today/`'s own now-deleted "DASHBOARD" button by
      * one-today ticket 07, 2026-09-01, when that screen was deleted), so the pager/widgets/generic
@@ -114,10 +132,10 @@ object LegionRoute {
     // 2026-08-07), `ui/NotesScreen.kt`, itself deleted with this slice ("everything is a checklist
     // now": a dateless open reminder migrated onto a "Todo" checklist,
     // `notes/ReminderChecklistMigration.kt`, and a dated/place-triggered/repeating reminder is
-    // edited from [CALENDAR]'s own day view instead - see `ui/CalendarScreen.kt`'s own file doc
+    // edited from [HOME]'s own day view instead - see `ui/CalendarScreen.kt`'s own file doc
     // comment). Every former caller ([com.kevin.legion.service.ReminderAlarmReceiver]'s
     // notification deep link, `ui/widgets/WidgetPagerScreen.kt`'s `legacyRouteForAspect`,
-    // `ui/MetersScreen.kt`'s now-deleted "Persistent list" row) is repointed at [CALENDAR].
+    // `ui/MetersScreen.kt`'s now-deleted "Persistent list" row) is repointed at [HOME].
 
     /**
      * Recurring checklists (`.scratch/one-today/issues/09-a-list-you-tick-every-day.md`) - see
@@ -217,7 +235,7 @@ object LegionRoute {
      * The driver's own editor for [com.kevin.legion.advisor.PrimingTopic]'s four bodies of
      * doctrine (2026-08-18) - see [com.kevin.legion.ui.companions.PlaybookScreen]. The list-to-
      * editor drill-down inside it is internal Compose state, same posture `ui/NotesScreen.kt`'s
-     * own (now-deleted, one-today ticket 10 slice C) LISTS | CALENDAR toggle used to state, so
+     * own (now-deleted, one-today ticket 10 slice C) LISTS | HOME toggle used to state, so
      * this is one route, not five.
      */
     const val SETTINGS_PLAYBOOKS = "settings/playbooks"
@@ -307,7 +325,7 @@ object LegionRoute {
      * much still a registered destination - it is simply not a tab.
      *
      * Was six earlier the same day (`TODAY`, [MONEY], [BODY], [FLEET], [NOTES], [SETTINGS]; before
-     * that, the four-tab shape [CALENDAR]'s class doc still records), then three at the
+     * that, the four-tab shape [HOME]'s class doc still records), then three at the
      * calendar-home cutover. [MONEY]/[BODY]/[FLEET]/[NOTES] are not gone, only demoted - see each
      * one's own doc comment. `TODAY` is gone outright: one-today ticket 07 deleted the screen and
      * the constant once every survivor on it was rehomed.
@@ -319,7 +337,7 @@ object LegionRoute {
      *
      * Assistant is still NOT one of them - it's a mode, not a place (original resolution §5, still
      * true). */
-    val TOP_LEVEL = listOf(CALENDAR, METERS)
+    val TOP_LEVEL = listOf(HOME, METERS)
 
     /**
      * The top-level tab [route] belongs to, or null if it belongs to none.
@@ -341,7 +359,7 @@ object LegionRoute {
      * Short label for a top-level route's tab. **DASHBOARD/TODAY/MONEY/BODY/FLEET/NOTES branches
      * removed 2026-09-01** (calendar-home cutover) rather than kept dead: [LegionHardKeyRow], the
      * only caller besides this file's own tests, was deleted in the same cutover
-     * ([com.kevin.legion.ui.MainActivity]'s three-way CALENDAR/METERS/SETTINGS switch reads none of
+     * ([com.kevin.legion.ui.MainActivity]'s three-way HOME/METERS/SETTINGS switch reads none of
      * this function at all - see that switch's own comment), and nothing else in the tree ever
      * called [label] with one of those six constants. Grep-confirmed before deletion.
      *
@@ -358,8 +376,43 @@ object LegionRoute {
      * unaffected by this deletion either way.
      */
     fun label(route: String): String = when (route) {
-        CALENDAR -> "Calendar"
+        HOME -> "Home"
         METERS -> "Meters"
         else -> route
     }
+
+    /**
+     * Route strings that older builds baked into notifications, mapped to where they should land
+     * today. Read by [resolveDeepLink].
+     *
+     * **This is not tidiness, it is a crash.** A deep link is navigated with
+     * `navController.navigate(route)` on a raw string, and Navigation throws
+     * `IllegalArgumentException` for a destination that is not in the graph. A reminder
+     * notification sits in the shade until it is tapped, which can be days - and across a sideload
+     * it can easily be tapped by a build that no longer has the route the notification names.
+     *
+     * `"calendar"` is here because of the 2026-09-10 rename above. **`"notes"` and `"today"` were
+     * already dangling before it** - `NOTES` was deleted 2026-09-05 (one-today ticket 10 slice C)
+     * and `TODAY` on 2026-09-01 (ticket 07), each with its callers repointed but with nothing
+     * covering a notification already posted. Both are repointed at [HOME], which is where their
+     * content went.
+     *
+     * A route NOT in this map is passed through untouched rather than defaulted to [HOME]: an
+     * unknown route is a bug, and quietly landing on the home screen would hide it. This map is for
+     * routes that are known to have existed and known where they went.
+     */
+    val LEGACY_DEEP_LINK_ROUTES = mapOf(
+        "calendar" to HOME,
+        "notes" to HOME,
+        "today" to HOME,
+    )
+
+    /**
+     * The route a deep link should actually navigate to, given the string it carried.
+     *
+     * Null in, null out - an ordinary launcher-icon start carries no route extra at all, and that
+     * is not an error.
+     */
+    fun resolveDeepLink(route: String?): String? =
+        route?.let { LEGACY_DEEP_LINK_ROUTES[it] ?: it }
 }
