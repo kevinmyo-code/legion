@@ -22,14 +22,26 @@ import org.robolectric.RuntimeEnvironment
  * **`VACUUM INTO` was spiked first, per CLAUDE.md's L10/L14 lesson ("run the spike before
  * porting the rest").** The spike (this test's first case) found it throws
  * `near "INTO": syntax error` under Robolectric 4.13's bundled SQLite (`sqlite4java`, a
- * statically-linked build that predates SQLite 3.27, the version `VACUUM INTO` shipped in).
- * That is a REPRODUCED failure of the exact code [DatabaseSnapshot] runs, not an inference
- * from documentation - see [DatabaseSnapshot]'s class doc comment for why this generalizes
- * to real risk on this app's minSdk 24 floor. Because of that finding, [DatabaseSnapshot]
- * does not depend on `VACUUM INTO` unconditionally: it tries it, and on ANY failure falls
- * back to `PRAGMA wal_checkpoint(TRUNCATE)` + a plain file copy. This test class pins BOTH
- * branches so a future SQLite/Robolectric upgrade that starts supporting `VACUUM INTO`
- * doesn't silently stop exercising the fallback this app's real minSdk floor still needs.
+ * statically-linked build that predates SQLite 3.27, the version `VACUUM INTO` shipped in) -
+ * on Kevin's Windows dev box, which was this project's only runner at the time. That is a
+ * REPRODUCED failure of the exact code [DatabaseSnapshot] runs, not an inference from
+ * documentation - see [DatabaseSnapshot]'s class doc comment for why this generalizes to real
+ * risk on this app's minSdk 24 floor. Because of that finding, [DatabaseSnapshot] does not
+ * depend on `VACUUM INTO` unconditionally: it tries it, and on ANY failure falls back to
+ * `PRAGMA wal_checkpoint(TRUNCATE)` + a plain file copy.
+ *
+ * **CORRECTED 2026-09: the spike's finding was a fact about Kevin's Windows machine, and the
+ * first test below asserted it as if it were universal.** When Android CI switched on a Linux
+ * runner, that runner's Robolectric SQLite build turned out to support `VACUUM INTO` fine -
+ * the assertion `threw` failed there, and because the real fast path then succeeded, the
+ * second test (which asserted the checkpoint+copy branch was TAKEN) failed right behind it.
+ * Both tests were asserting an environment limitation, which differs per OS, rather than a
+ * product behaviour. The fix: the first test below no longer asserts an answer, only records
+ * which one this platform gives (the reasoning above still stands and is worth keeping - it
+ * is why the fallback exists at all); the second test now drives the fallback branch directly
+ * via [DatabaseSnapshot.exportLocalCopy]'s `forceFallback` test seam, so it genuinely exercises
+ * the checkpoint+copy path (the thing that protects a real device too old for `VACUUM INTO`)
+ * deterministically, on either platform, rather than depending on the platform to cooperate.
  */
 @RunWith(RobolectricTestRunner::class)
 class DatabaseSnapshotExportTest {
@@ -55,7 +67,7 @@ class DatabaseSnapshotExportTest {
 
 
     @Test
-    fun `VACUUM INTO is not supported by Robolectric's bundled SQLite - the spike this app's fallback exists for`() = runBlocking {
+    fun `spike - records whether this platform's Robolectric SQLite supports VACUUM INTO, asserting neither answer`() = runBlocking {
         val db = CarDatabase.getDatabase(context)
         db.categoryDao().allNames() // touch the DB so it's actually open
 
@@ -69,12 +81,19 @@ class DatabaseSnapshotExportTest {
         } catch (t: Throwable) {
             true
         }
-        assertTrue(
-            "expected VACUUM INTO to fail under Robolectric's bundled SQLite (documents the " +
-                "environment DatabaseSnapshot.exportLocalCopy's fallback protects against); if this " +
-                "now passes, the fallback-branch assertion below still must hold on its own",
-            threw,
+        // No assertion on `threw` itself - see class doc comment (CORRECTED 2026-09) for why
+        // this used to fail the build on Linux CI. This is a spike, kept for its documentation
+        // value: it still runs the exact statement DatabaseSnapshot.exportLocalCopy runs, and
+        // still proves that WHEN it succeeds, it produces a real, non-empty file rather than
+        // silently doing nothing - the one thing worth pinning about the fast path here, since
+        // the fallback branch below is what actually gets exercised deterministically now.
+        println(
+            "[DatabaseSnapshotExportTest] VACUUM INTO ${if (threw) "unsupported" else "supported"} " +
+                "on this platform's Robolectric-bundled SQLite",
         )
+        if (!threw) {
+            assertTrue("VACUUM INTO reported success but produced no file", dest.exists() && dest.length() > 0)
+        }
     }
 
     @Test
@@ -86,11 +105,14 @@ class DatabaseSnapshotExportTest {
         val dest = File(context.cacheDir, "export_fallback_spike.db")
         if (dest.exists()) dest.delete()
 
-        val method = DatabaseSnapshot.exportLocalCopy(context, dest)
+        // forceFallback = true drives the checkpoint+copy branch directly, regardless of
+        // whether THIS platform's SQLite happens to support VACUUM INTO (see class doc
+        // comment, CORRECTED 2026-09) - the point of this test is that the fallback path
+        // itself produces a correct, readable file, not which branch an environment picks.
+        val method = DatabaseSnapshot.exportLocalCopy(context, dest, forceFallback = true)
 
         assertEquals(
-            "Robolectric's bundled SQLite doesn't support VACUUM INTO (see the test above) - " +
-                "exportLocalCopy should have taken the checkpoint+copy fallback branch",
+            "forceFallback=true should always take the checkpoint+copy branch",
             DatabaseSnapshot.ExportMethod.CHECKPOINT_COPY,
             method,
         )
