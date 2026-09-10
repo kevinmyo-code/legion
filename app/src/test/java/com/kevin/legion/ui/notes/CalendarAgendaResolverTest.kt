@@ -317,9 +317,9 @@ class CalendarAgendaResolverTest {
         // pipeline, so this fixture drops it the same way before building the row, rather than
         // teaching [buildMonthOpenTodoCounts] a second filter it should never need.
         val items = listOf(
-            ListItem(id = 1, listId = 1, text = com.kevin.legion.advisor.GoalChecklistSync.ITEM_PREFIX + "Stretch", startsAt = dayStartMs(2026, 9, 9)),
+            ListItem(id = 1, listId = 1, text = com.kevin.legion.advisor.AdvisorChecklistMigration.RETIRED_ITEM_PREFIX + "Stretch", startsAt = dayStartMs(2026, 9, 9)),
         )
-        val filtered = items.filterNot { it.text.startsWith(com.kevin.legion.advisor.GoalChecklistSync.ITEM_PREFIX) }
+        val filtered = items.filterNot { it.text.startsWith(com.kevin.legion.advisor.AdvisorChecklistMigration.RETIRED_ITEM_PREFIX) }
         val rows = buildInboxRows(filtered, now = 0L)
         val dayStarts = listOf(dayStartMs(2026, 9, 9))
 

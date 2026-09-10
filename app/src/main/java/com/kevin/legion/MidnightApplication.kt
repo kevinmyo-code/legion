@@ -317,20 +317,26 @@ class MidnightApplication : Application() {
                 }.onFailure { MidnightEvents.appStartWorkFailed("clear_this_car_sentinel", it) }
             }
 
-            // goal-plans ticket 06: "a materializer that runs on app open, and for the current day
-            // at acceptance". `accept_goal_plan` (`service/LiveToolbox.kt`) covers the second half;
-            // this is the first - the BIO checklist's plan lines are now ordinary ONE-OFF list
-            // items materialized fresh per day (ticket 06 replaced ticket 04's recurring-item
-            // design after finding a recurring item can never be ticked), so a day that turns over
-            // while the app is closed needs today's rows created the next time the app is opened,
-            // not just the next time a plan is accepted. Idempotent (see
-            // GoalChecklistSync.materializeToday's own doc comment for how), same L12 reasoning as
-            // every other block in this gated section: it must run unconditionally on process
-            // start, not from a service that might not be running.
+            // **CORRECTED, one-home ticket 05.** This used to say "a materializer that runs on app
+            // open, and for the current day at acceptance" and called
+            // `GoalChecklistSync.materializeToday` here - that whole mechanism retired with ticket
+            // 04's ruling ("the advisor writes a recurring checklists row", not a daily-regenerated
+            // list_items row). Nothing takes its place at app-open: a checklist's items are static
+            // once `AdvisorProposalExecutor`'s `create_checklist` op (or `AdvisorChecklistMigration`,
+            // just below) writes them, and `ChecklistController.itemsWithTickState` already
+            // computes each day's tick state fresh from `ChecklistTick`, live, with no
+            // materialization step required - the "reset every day" behaviour Kevin asked for comes
+            // from the per-`(item, day)` tick row, not from a job that rebuilds the item list.
+            //
+            // One-home ticket 04 decision 3: any `"Plan: "`-prefixed row left over from the retired
+            // mechanism is carried onto the new checklist once (undone rows only - a ticked one is
+            // left alone, see AdvisorChecklistMigration's own class doc). Same guard shape as the
+            // grocery/reminder checklist migrations above: a SharedPreferences flag, safe to call
+            // unconditionally on every process start.
             appScope.launch {
                 runCatching {
-                    com.kevin.legion.advisor.GoalChecklistSync.materializeToday(this@MidnightApplication)
-                }.onFailure { MidnightEvents.appStartWorkFailed("materialize_goal_checklist", it) }
+                    com.kevin.legion.advisor.AdvisorChecklistMigration.migrateIfNeeded(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("migrate_plan_lines_to_checklist", it) }
             }
 
             // The mirror/sync lifecycle triggers (aspect-engine ticket 20, senior review MUST-FIX

@@ -473,7 +473,22 @@ object NotesController {
      * reminder to sweep, mark missed, or show twice, even though it is stored in the same table. */
     suspend fun allItems(context: Context): List<ListItem> =
         allNotesItems(context).filterNot {
-            it.text.startsWith(com.kevin.legion.advisor.GoalChecklistSync.ITEM_PREFIX)
+            // **This is a tombstone filter as of 2026-09-10 (one-home ticket 05), not a live
+            // mechanism.** `GoalChecklistSync` is deleted and nothing writes a `"Plan: "` row any
+            // more, so on a clean install this filter matches nothing at all.
+            //
+            // It stays because the migration deliberately did NOT move every legacy row.
+            // `AdvisorChecklistMigration` carries the UNDONE ones onto the real checklist and
+            // leaves the already-TICKED ones exactly where they are - ticket 04's resolution, in
+            // its own words: "a done row is a record of a day that already happened, and rewriting
+            // history to make a migration tidy is worse than a slightly untidy migration."
+            //
+            // Those survivors were hidden from this stream before the migration, and dropping the
+            // filter would surface a pile of old machine-written lines in the Inbox and the day
+            // view's Done section on the first launch after upgrading - a visible regression
+            // produced by a cleanup, which is the worst kind. Delete this only when the legacy rows
+            // are gone from real devices, not when the code that wrote them is.
+            it.text.startsWith(com.kevin.legion.advisor.AdvisorChecklistMigration.RETIRED_ITEM_PREFIX)
         }
 
     /**

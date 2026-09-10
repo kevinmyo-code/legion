@@ -88,4 +88,18 @@ data class Checklist(
      * [com.kevin.legion.notes.parseWeekdays]), reused rather than inventing a second one. Null for
      * every other [scheduleKind]. */
     val scheduleDaysOfWeek: String? = null,
+    /** **Added one-home ticket 05, retiring `advisor/GoalChecklistSync.kt`'s `ITEM_PREFIX =
+     * "Plan: "` string-matching hack.** That mechanism found "its own" rows in `list_items` by
+     * scanning display text for a prefix - which could not survive a user typing a line that
+     * happened to start the same way, could not record a tick history, and had no identity a
+     * foreign key could point at (one-home ticket 04's resolution, verbatim). A machine writer
+     * that owns a checklist (today: [com.kevin.legion.advisor.AdvisorProposalExecutor]'s
+     * `create_checklist` op) stamps a fixed, non-user-facing string here at creation -
+     * [com.kevin.legion.advisor.AdvisorProposalExecutor.BIO_CHECKLIST_SOURCE_KEY] is the one value
+     * in use today - and finds the SAME row again on a later run via
+     * [com.kevin.legion.data.local.ChecklistDao.getBySourceKey], never by matching [name] or any
+     * item's [ChecklistItem.text]. Null on every checklist a person creates by hand - a real key
+     * identifies OWNERSHIP of the container, not a search term, so there is nothing for a hand-made
+     * checklist to carry here. */
+    val sourceKey: String? = null,
 )

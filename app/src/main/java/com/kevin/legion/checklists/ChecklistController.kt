@@ -94,6 +94,11 @@ object ChecklistController {
         scheduleKind: String? = null,
         scheduleEvery: Int? = null,
         scheduleDaysOfWeek: String? = null,
+        /** [Checklist.sourceKey] - null for every hand-made checklist. A machine writer (today:
+         * [com.kevin.legion.advisor.AdvisorProposalExecutor]'s `create_checklist` op) passes its
+         * own fixed key so [getChecklistBySourceKey] can find this exact row again later - see
+         * that field's own doc comment. */
+        sourceKey: String? = null,
     ): Checklist {
         val checklist = Checklist(
             name = name,
@@ -101,11 +106,17 @@ object ChecklistController {
             scheduleKind = scheduleKind,
             scheduleEvery = scheduleEvery,
             scheduleDaysOfWeek = scheduleDaysOfWeek,
+            sourceKey = sourceKey,
         )
         val id = db(context).checklistDao().insert(checklist)
         sync(context).checklistChanged(id)
         return checklist.copy(id = id)
     }
+
+    /** The one checklist a machine writer owns, by its real key - see [Checklist.sourceKey]'s own
+     * doc comment. Null when no checklist has ever been created under [sourceKey] yet. */
+    suspend fun getChecklistBySourceKey(context: Context, sourceKey: String): Checklist? =
+        db(context).checklistDao().getBySourceKey(sourceKey)
 
     /** Sets or clears a checklist's schedule after creation - [scheduleKind] null clears it back to
      * "applies every day" ([Checklist.scheduleKind]'s own doc comment). All three columns are

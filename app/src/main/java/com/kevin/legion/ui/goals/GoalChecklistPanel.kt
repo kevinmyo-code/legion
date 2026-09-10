@@ -20,9 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.advisor.GoalChecklistSync
-import com.kevin.legion.advisor.GoalChecklistSync.GoalChecklistItemView
-import com.kevin.legion.data.local.ListItem
+import com.kevin.legion.advisor.AdvisorProposalExecutor
+import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckTag
@@ -31,59 +30,42 @@ import com.kevin.legion.ui.common.GapEmptyRow
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
-import com.kevin.legion.util.shortDate
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 
 /**
- * The BIO daily checklist panel (ticket 04, `goal-plans`, adherence reworked by ticket 06) -
- * "today's items", derived from whatever `generate_goal_plan`/`accept_goal_plan` last wrote,
- * self-contained the same way [GoalsPanel] is (its own doc comment explains why: not part of
- * [com.kevin.legion.ui.BodyScreen]'s batched load, and a screen this reads from can change out
- * from under it between visits with no event this panel is otherwise told about).
+ * The BIO daily checklist panel, on `ui/BodyScreen.kt`.
  *
- * [compact] switches between the full [com.kevin.legion.ui.BodyScreen] rendering (every line, plus
- * this ticket's recent-completion record) and the HOME section's "at a glance" rendering (item
- * text only, capped, no completion detail) - one panel, two call sites, rather than two composables
- * that could quietly drift on what "today's items" means.
+ * **REPOINTED 2026-09-10 (one-home ticket 05) and the source of the lines is the whole change.**
+ * It used to read `advisor/GoalChecklistSync.kt`, which materialised today's lines into `list_items`
+ * and found them again by scanning display text for `ITEM_PREFIX = "Plan: "`. That mechanism is
+ * retired (one-home ticket 04): a prefix cannot survive a user typing a line that starts the same
+ * way, records no tick history, and has no identity a key could point at. The advisor now writes a
+ * real recurring checklist through [AdvisorProposalExecutor]'s allowlisted `create_checklist` op,
+ * stamped with [AdvisorProposalExecutor.BIO_CHECKLIST_SOURCE_KEY], and this panel finds it by that
+ * key - never by name, never by matching an item's text.
  *
- * **Has a real tick box now (ticket 07), correcting an earlier reading of ticket 04's "do not build
- * a second ticking path" rule.** An earlier version of this doc comment read that rule as "no
- * on-screen tick affordance at all" - that reading was wrong. The rule forbids a second ticking
- * MECHANISM (a parallel store, a different notion of "done"), not a second CALLER of the one
- * mechanism that already exists. The [Checkbox] below calls [GoalChecklistSync.toggle], which calls
- * [com.kevin.legion.notes.NotesController.tick]/`untick` directly - the exact functions
- * `service/LiveToolbox.kt`'s `manage_item` dispatch already calls for a spoken tick. Same path, a
- * finger on it instead of a voice. **ADR 0035 now makes this mandatory, not merely permitted:**
- * every voice capability needs a non-voice path, and a checklist tickable only by voice fails in
- * exactly the moment it gets used - at the gym, in a kitchen, next to someone asleep, none of which
- * are good places to expect the wake word to land. Ticket 06 is what made ticking a plan line
- * actually WORK at all (each line is now an ordinary one-off [com.kevin.legion.data.local.ListItem],
- * so [com.kevin.legion.notes.NotesController.tick] no longer refuses it) - see [GoalChecklistSync]'s
- * own class doc for the full account of why ticket 04's original recurring-item design could never
- * be ticked at all.
+ * **Ticket 04's resolution said this panel would be DELETED, and that was wrong.** It was written
+ * believing the calendar day view rendered it, in which case the checklist section there already
+ * covered it. By the time ticket 05 was built, ticket 02's HOME restructure had removed that call
+ * site, and `ui/BodyScreen.kt` was the ONLY caller left - where the panel also hosts the relocated
+ * TRAINING affordances ([onLogSet], [onOpenTrainingDrilldown]) that `goal-plans` ticket 08 moved
+ * into it. Deleting it would have taken `log_workout_set`'s hands path with it, which is the exact
+ * ADR 0035 failure one-home ticket 02 exists to prevent, one screen over. So the panel stays and its
+ * DATA moved, which is what ticket 04 actually decided.
  *
- * **No score, no streak, no percentage** (ticket 04's own binding rule, CLAUDE.md §7, restated by
- * ticket 06: "adherence becomes truthful... still shown, never scored"). What this panel shows is
- * EXACTLY what [GoalChecklistSync.currentItems] returns and nothing derived from it: today's lines,
- * whether each is done, and - full mode only - the [ListItem.doneAt] timestamps of the same line's
- * completions on OTHER days within [GoalChecklistSync.RECENT_COMPLETION_WINDOW_DAYS]. Unlike ticket
- * 04's shipped version, this is a genuine completion record now, not an explicit-skip proxy for
- * one - a real `doneAt` exists because ticket 06 made every plan line a tickable one-off item. An
- * empty completion list still gets a worded caption rather than silently reading as "done every
- * day", matching CLAUDE.md §4's "unreadable and empty are different sentences" posture carried over
- * from ledger/pantry to this domain.
+ * **Unreadable and empty are different sentences** (CLAUDE.md §1). Three distinct states, never
+ * collapsed: no checklist exists yet (the advisor has not written one), the checklist exists and has
+ * no lines, and the checklist could not be READ - [ChecklistController.ChecklistItemsResult.Failed]
+ * carries a reason and it is shown rather than rendered as an empty day.
  *
- * **Hosts the relocated TRAINING affordances now (ticket 08, `goal-plans`, Kevin: "bio page >
- * training and checklist > retire training page. delete it.").** `ui/BodyScreen.kt` deleted its
- * standalone TRAINING `DeckPane`; ADR 0035's hands path for `log_workout_set` (the `+ LOG SET`
- * dialog) and the exercise-progression drilldown did not go with it - they render from here now,
- * in FULL mode only ([compact] `== false`; HOME's glance card gets neither). **This panel still
- * owns no controller call or DAO of its own for either one** - [onLogSet] and
- * [onOpenTrainingDrilldown] are callbacks into `BodyScreen`'s EXISTING `showLogSet` dialog state
- * and its EXISTING top-level [com.kevin.legion.ui.BodyDrilldown] swap, both null by default so
- * every other caller (and every preview) is unaffected. See `ui/BodyScreen.kt`'s own file doc
- * comment for why the swap mechanism itself stays there rather than a second one nesting inside
- * this panel's own `LazyColumn` item.
+ * **No score, no streak, no percentage** (ticket 04's binding rule, CLAUDE.md §7). The completion
+ * record below is [ChecklistController.checklistHistory] read back as plain dates - never "X of Y
+ * days", never a percentage. An empty history gets a worded caption rather than silently reading as
+ * "done every day".
+ *
+ * [compact] switches between the full rendering and an at-a-glance one; both call the same loader,
+ * rather than two composables that could drift on what "today's items" means.
  */
 @Composable
 fun GoalChecklistPanel(
@@ -94,188 +76,213 @@ fun GoalChecklistPanel(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var items by remember { mutableStateOf<List<GoalChecklistItemView>>(emptyList()) }
-    var loaded by remember { mutableStateOf(false) }
+    var state by remember { mutableStateOf<PanelState>(PanelState.Loading) }
+    var refusal by remember { mutableStateOf<String?>(null) }
 
-    // Shared by the initial load and every tap - a tick/untick writes through
-    // GoalChecklistSync.toggle and then re-reads exactly the same way a fresh compose would, so
-    // this panel never guesses what the new state is from the tap alone (a second write landing
-    // between the tap and the reload - e.g. a spoken tick from the SAME plan line - would leave a
-    // guessed state wrong; a re-read cannot be).
+    // Shared by the initial load and every tap - a tick/untick writes through ChecklistController
+    // and then re-reads exactly the way a fresh compose would, so this panel never guesses the new
+    // state from the tap alone. A second write landing between the tap and the reload (a spoken
+    // tick on the SAME line) would leave a guessed state wrong; a re-read cannot be.
     suspend fun reload() {
-        items = GoalChecklistSync.currentItems(context)
-        loaded = true
-    }
-
-    LaunchedEffect(Unit) { reload() }
-
-    val sem = LocalLegionSemantics.current
-    DeckPane(
-        header = if (compact) "Today's plan" else "Checklist",
-        headerAccent = if (items.isNotEmpty()) "${items.size} TODAY" else null,
-        modifier = modifier,
-    ) {
-        when {
-            !loaded -> {} // no flicker of an empty state before the one load this panel ever does
-            items.isEmpty() -> GapEmptyRow(
-                label = "No plan yet",
-                message = "Say \"I want to lose fat and gain muscle\" (or however you'd put your BIO goal) to get one.",
-            )
-            else -> {
-                val shown = if (compact) items.take(HOME_ITEM_CAP) else items
-                shown.forEach { item ->
-                    GoalChecklistItemRow(
-                        item,
-                        showCompletionHistory = !compact,
-                        onToggle = { scope.launch { GoalChecklistSync.toggle(context, item.id); reload() } },
-                    )
-                }
-                if (compact && items.size > HOME_ITEM_CAP) {
-                    Text(
-                        "+${items.size - HOME_ITEM_CAP} more on Body",
-                        style = LegionType.stamp,
-                        color = sem.faint,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
-                }
+        val checklist = ChecklistController.getChecklistBySourceKey(
+            context,
+            AdvisorProposalExecutor.BIO_CHECKLIST_SOURCE_KEY,
+        )
+        if (checklist == null) {
+            state = PanelState.NoChecklist
+            return
+        }
+        state = when (val res = ChecklistController.itemsWithTickState(context, checklist.id)) {
+            is ChecklistController.ChecklistItemsResult.Failed -> PanelState.Unreadable(res.reason)
+            is ChecklistController.ChecklistItemsResult.Loaded -> {
+                val today = ChecklistController.today()
+                // Full mode only: the completion record costs a second read over a window, and the
+                // glance card does not render it.
+                val history = if (compact) emptyList() else ChecklistController.checklistHistory(
+                    context,
+                    checklist.id,
+                    fromDay = today - RECENT_COMPLETION_WINDOW_DAYS,
+                    toDay = today - 1,
+                )
+                PanelState.Loaded(
+                    items = res.items,
+                    completionsByItemId = history
+                        .filter { it.ticked }
+                        .groupBy({ it.item.id }, { it.day }),
+                )
             }
         }
-        // Ticket 08's relocated TRAINING affordances - full mode only, and only when the caller
-        // (BodyScreen) actually wired them, so HOME's compact card and every preview stay exactly
-        // as they were before this ticket.
-        if (!compact) {
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                onLogSet?.let { onClick ->
-                    Text(
-                        "+ LOG SET",
-                        style = LegionType.stamp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { onClick() },
+    }
+
+    LaunchedEffect(compact) { reload() }
+
+    val sem = LocalLegionSemantics.current
+    val loadedItems = (state as? PanelState.Loaded)?.items.orEmpty()
+    DeckPane(
+        header = if (compact) "Today's plan" else "Checklist",
+        headerAccent = if (loadedItems.isNotEmpty()) "${loadedItems.size} TODAY" else null,
+        modifier = modifier,
+    ) {
+        when (val s = state) {
+            // No flicker of an empty state before the one load this panel does.
+            PanelState.Loading -> {}
+
+            PanelState.NoChecklist -> GapEmptyRow(
+                label = "No plan yet",
+                message = "Say \"I want to lose fat and gain muscle\" (or however you'd put your " +
+                    "BIO goal) to get one.",
+            )
+
+            // NOT the same sentence as "no plan yet". The checklist is there and something went
+            // wrong reading it; saying "no plan" would tell you that you have nothing to do when in
+            // fact the app cannot see.
+            is PanelState.Unreadable -> GapEmptyRow(
+                label = "Could not read today's plan",
+                message = s.reason,
+            )
+
+            is PanelState.Loaded -> {
+                if (s.items.isEmpty()) {
+                    // A third distinct case: the checklist exists and is empty. Nothing is wrong and
+                    // there is nothing to do.
+                    GapEmptyRow(
+                        label = "Nothing on today's plan",
+                        message = "The list is there, it just has no lines on it right now.",
                     )
+                } else {
+                    val shown = if (compact) s.items.take(HOME_ITEM_CAP) else s.items
+                    shown.forEach { itemState ->
+                        ChecklistLineRow(
+                            itemState = itemState,
+                            showCompletionHistory = !compact,
+                            recentCompletionDays = s.completionsByItemId[itemState.item.id].orEmpty(),
+                            onToggle = {
+                                scope.launch {
+                                    if (itemState.ticked) {
+                                        ChecklistController.untick(context, itemState.item.id)
+                                        refusal = null
+                                    } else {
+                                        // A measured line with no number is a SKIP, never a silent
+                                        // done (ChecklistController's own ruling, "a number is the
+                                        // point"). The refusal is SHOWN - a refusal that stops being
+                                        // rendered is a silent failure.
+                                        when (val out = ChecklistController.tick(context, itemState.item.id)) {
+                                            is ChecklistController.TickOutcome.Refused ->
+                                                refusal = out.message
+                                            ChecklistController.TickOutcome.Ticked ->
+                                                refusal = null
+                                        }
+                                    }
+                                    reload()
+                                }
+                            },
+                        )
+                    }
+                    refusal?.let {
+                        Text(
+                            it,
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
+                    if (compact && s.items.size > HOME_ITEM_CAP) {
+                        Text(
+                            "+${s.items.size - HOME_ITEM_CAP} more on Body",
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
                 }
-                onOpenTrainingDrilldown?.let { onClick ->
-                    Text(
-                        "TRAINING HISTORY",
-                        style = LegionType.stamp,
-                        color = sem.faint,
-                        modifier = Modifier.padding(start = 16.dp).clickable { onClick() },
-                    )
+
+                // The relocated TRAINING affordances (`goal-plans` ticket 08). FULL mode only; the
+                // glance card gets neither. This panel still owns no controller call or DAO of its
+                // own for either - both are callbacks into BodyScreen's EXISTING dialog state and
+                // its EXISTING top-level drilldown swap.
+                if (!compact) {
+                    onLogSet?.let {
+                        DeckRow(label = "+ LOG SET", value = "", modifier = Modifier.clickable(onClick = it))
+                    }
+                    onOpenTrainingDrilldown?.let {
+                        DeckRow(label = "Training history", value = "", modifier = Modifier.clickable(onClick = it))
+                    }
                 }
             }
         }
     }
 }
 
-/** HOME's "at a glance" cap - matches the same instinct [com.kevin.legion.ui.TodayScreen]'s ALERTS
- * pane caps at five with a worded overflow line, sized down here because a checklist line is
- * usually longer text than an alert row. */
+/** What the panel is showing. A sealed type rather than a nullable list plus a boolean, because the
+ * three not-loaded cases say genuinely different things and a boolean pair would let two of them be
+ * true at once. */
+private sealed interface PanelState {
+    object Loading : PanelState
+    /** The advisor has never written one. */
+    object NoChecklist : PanelState
+    /** It exists and the read failed. NOT the same as having nothing to do. */
+    data class Unreadable(val reason: String) : PanelState
+    data class Loaded(
+        val items: List<ChecklistController.ItemState>,
+        val completionsByItemId: Map<Long, List<Int>>,
+    ) : PanelState
+}
+
+/** How far back the completion record looks. Carried over unchanged from the retired
+ * `GoalChecklistSync.RECENT_COMPLETION_WINDOW_DAYS`. */
+private const val RECENT_COMPLETION_WINDOW_DAYS = 7
+
+/** The glance card's line cap - the HOME pane caps at five with a worded overflow line, sized down
+ * here because a checklist line is usually longer text than an alert row. */
 private const val HOME_ITEM_CAP = 3
 
 @Composable
-private fun GoalChecklistItemRow(
-    item: GoalChecklistItemView,
+private fun ChecklistLineRow(
+    itemState: ChecklistController.ItemState,
     showCompletionHistory: Boolean,
+    recentCompletionDays: List<Int>,
     onToggle: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     Column(Modifier.padding(bottom = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Tapping ticks; tapping again unticks - both through GoalChecklistSync.toggle, which
-            // is NotesController.tick/untick called directly (see the class doc above). No new
-            // write path, no local "optimistic" flip of `done` here - the checkbox always shows
-            // whatever GoalChecklistSync.currentItems last read back, never a guess.
-            Checkbox(checked = item.done, onCheckedChange = { onToggle() })
+            // Tapping ticks; tapping again unticks - both through ChecklistController.tick/untick,
+            // the exact functions `service/LiveToolbox.kt` already calls for a spoken tick. Same
+            // mechanism, a finger on it instead of a voice (ADR 0035). No optimistic local flip: the
+            // checkbox always shows what the last read back said, never a guess.
+            Checkbox(checked = itemState.ticked, onCheckedChange = { onToggle() })
             DeckRow(
-                label = item.text,
-                value = if (item.done) "DONE" else "",
-                tag = if (item.done) { { DeckTag("DONE", DeckTagStyle.INVERTED_GREEN) } } else null,
+                label = itemState.item.text,
+                value = if (itemState.ticked) "DONE" else "",
+                tag = if (itemState.ticked) { { DeckTag("DONE", DeckTagStyle.INVERTED_GREEN) } } else null,
                 modifier = Modifier.weight(1f),
             )
         }
         if (showCompletionHistory) {
-            // A genuine record now (ticket 06) - [item.recentCompletionDates] is real `doneAt`
-            // history, not the explicit-skip proxy ticket 04 shipped. Still worded as a plain
-            // fact, never a grade: no "X of Y days", no percentage - CLAUDE.md §7's compulsion
-            // ban applies to a screen just as much as it applies to a spoken raise.
-            val caption = if (item.recentCompletionDates.isEmpty()) {
-                "Nothing marked done in the last week for this line - an empty history here " +
-                    "just means it hasn't been ticked yet, not that it was missed."
+            // A plain fact, never a grade: no "X of Y days", no percentage - CLAUDE.md §7's
+            // compulsion ban applies to a screen as much as to a spoken raise.
+            val caption = if (recentCompletionDays.isEmpty()) {
+                "No completions recorded in the last $RECENT_COMPLETION_WINDOW_DAYS days"
             } else {
-                "Done: " + item.recentCompletionDates.joinToString(", ") { shortDate(it) }
+                "Done " + recentCompletionDays.sortedDescending()
+                    .joinToString(", ") { LocalDate.ofEpochDay(it.toLong()).toString() }
             }
             Text(
                 caption,
                 style = LegionType.stamp,
                 color = sem.faint,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.padding(start = 48.dp, bottom = 4.dp),
             )
         }
     }
 }
 
-// ------------------------------------------------------------------------- previews
-//
-// [GoalChecklistPanel] itself owns LocalContext/CarDatabase reads the moment it composes (same
-// reasoning [GoalsPanel]'s own preview section gives), so only the plain `@Composable` row below
-// is previewed directly - rendering was not performed in this execution environment (no Compose
-// preview renderer available here), carried forward explicitly per L11 rather than claimed done.
-
+@Preview
 @Composable
-private fun GoalChecklistPreviewContent() {
-    Surface(color = MaterialTheme.colorScheme.background) {
-        Column {
-            DeckPane(header = "Checklist", headerAccent = "3 TODAY") {
-                GoalChecklistItemRow(
-                    GoalChecklistItemView(
-                        "Hit 2,300 kcal / 180g protein", done = false, doneAt = null, recentCompletionDates = emptyList(),
-                    ),
-                    showCompletionHistory = true,
-                )
-                GoalChecklistItemRow(
-                    GoalChecklistItemView(
-                        "Sleep 8h", done = true, doneAt = System.currentTimeMillis(),
-                        recentCompletionDates = listOf(System.currentTimeMillis() - 86_400_000L),
-                    ),
-                    showCompletionHistory = true,
-                )
-                GoalChecklistItemRow(
-                    GoalChecklistItemView(
-                        "Squat: 9 sets this week", done = false, doneAt = null, recentCompletionDates = emptyList(),
-                    ),
-                    showCompletionHistory = true,
-                )
-            }
+private fun GoalChecklistPanelPreview() {
+    LegionTheme {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            GoalChecklistPanel()
         }
     }
-}
-
-@Composable
-private fun GoalChecklistEmptyPreviewContent() {
-    Surface(color = MaterialTheme.colorScheme.background) {
-        DeckPane(header = "Checklist") {
-            GapEmptyRow(
-                label = "No plan yet",
-                message = "Say \"I want to lose fat and gain muscle\" (or however you'd put your BIO goal) to get one.",
-            )
-        }
-    }
-}
-
-@Preview(name = "Checklist panel - populated, full", showBackground = true)
-@Composable
-private fun PreviewGoalChecklistPopulated() {
-    LegionTheme { GoalChecklistPreviewContent() }
-}
-
-@Preview(name = "Checklist panel - no plan yet", showBackground = true)
-@Composable
-private fun PreviewGoalChecklistEmpty() {
-    LegionTheme { GoalChecklistEmptyPreviewContent() }
-}
-
-/** The Oppo A17K's narrow-width case, same one [GoalsPanel]'s own previews check. */
-@Preview(name = "Checklist panel - 320dp narrow", widthDp = 320, showBackground = true)
-@Composable
-private fun PreviewGoalChecklistNarrow() {
-    LegionTheme { GoalChecklistPreviewContent() }
 }

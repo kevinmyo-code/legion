@@ -242,10 +242,11 @@ class GoalPlanAgent(
      * null, say) is simply skipped, matching every voice-side tool's own "omit what the goal does
      * not call for" contract.
      *
-     * Also materializes today's checklist afterward, via [GoalChecklistSync.materializeToday] - the
-     * same call `acceptGoalPlanTool`'s dispatch makes once every write has landed, so a plan
-     * accepted from the screen shows up on the checklist immediately, not only after the next app
-     * open.
+     * **It no longer materializes a checklist afterward** (one-home ticket 05, 2026-09-10). It used
+     * to call `GoalChecklistSync.materializeToday`, deriving today's lines from the targets this
+     * function had just written. The advisor composes the list itself now and writes it as a real
+     * recurring checklist through [AdvisorProposalExecutor]'s `create_checklist` op, so there is
+     * nothing left here to derive.
      */
     suspend fun acceptWholePlan(context: Context, plan: GoalPlan): GoalPlan {
         // The meal/sleep target outcomes are still discarded here, exactly as they were before
@@ -264,7 +265,11 @@ class GoalPlanAgent(
             )
         }
         val accepted = accept(context, plan)
-        GoalChecklistSync.materializeToday(context)
+        // `GoalChecklistSync.materializeToday(context)` used to run here, deriving today's lines
+        // from the targets just written. Deleted 2026-09-10 (one-home ticket 05): the advisor now
+        // composes the list itself and writes it as a real recurring checklist through
+        // `AdvisorProposalExecutor`'s `create_checklist` op, so there is nothing left to derive and
+        // nothing to materialise on a schedule. See `ui/goals/GoalChecklistPanel.kt`'s doc comment.
         return accepted
     }
 
