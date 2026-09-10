@@ -22,59 +22,50 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-08 night (session 0151LEjT)
+## Where we stopped - 2026-09-10 night (session 0151LEjT, continued)
 
-**`dev` expects a column the live database does not have. Read this before running anything.**
-
-- **`dev` is `cad1706`.** ADR 0045 (households are tenants) is merged: `household_id` on 43 tables,
-  one choke point, 651 passed / 0 failures on CI. **The migration is NOT applied to live**, so a row
-  fetch against the live database fails with `column events.household_id does not exist`. `/health`
-  still answers `{"db":"ok"}`, which makes it look fine until you fetch a row. Either apply it or
-  work on a commit before `cad1706`.
-- **Apply it with:** `LEGION_BOOTSTRAP_HOUSEHOLD_ID=<a uuid you keep forever>` then
-  `manage.py migrate`. Print the SQL first with `manage.py tenancy_sql`. It refuses to run without
-  that variable rather than mint one. **Kevin had not approved applying it when the session ended.**
-- **Backup, verified, taken 2026-09-08 21:38:**
-  `C:\Users\kevin\legion-backups\legion-pre-tenancy-20260908-213847.dump` (custom format, `public`
-  + `django`, 56 tables, `pg_restore --list` clean). **The first real backup since the xlsx mirror
-  retired** - Drive backup has refused every upload for over a week.
-- **New map: `web-and-households`** (14 tickets). Landed today: the React+Vite+TS scaffold served by
-  Django (`server/frontend/`), CI for server and Android, an arm64 image with migrate-on-start,
-  Caddy, an SSH deploy script. **Hosting reopened: Oracle A1 VM on Pay As You Go, Postgres in
-  compose, Cloud Run and Supabase retire** (ticket 12; the move is ticket 13).
-- **Android CI is RED and the cause is known.** Three `DatabaseSnapshot` tests assert that
-  Robolectric's SQLite *cannot* do `VACUUM INTO`. On Linux it can, so the export takes the fast path
-  and the two "the fallback ran" assertions fall with it. Screenshots are fine. The fix is a
-  decision: assert the OUTCOME (a readable database file) rather than which branch ran.
+- **`dev` is `544388e`, pushed.** The tenancy migration IS applied to live now (Kevin approved
+  2026-09-10); the `column events.household_id does not exist` warning that headed this section for
+  two days is gone. Cloud Run redeployed after it, `/api/auth/csrf` verified 200. **Android CI is
+  GREEN for the first time** (`ce75737`) - the three `DatabaseSnapshot` tests assert the outcome now,
+  through test-only seams, not which branch ran.
+- **The phone is fully on Django.** `EngineTransport.DJANGO_BY_DEFAULT` holds all nine aspects as of
+  `f96821e`, not two. Not a waiver of "never ahead of a hardware run": `household_id NOT NULL` has no
+  default and the Supabase backends know nothing of households, so Supabase-by-default was a write
+  that fails, not a working path. 3485 tests, 0 failures. **Ledger, pantry and fleet have still never
+  run against Django on the A25** - compiled and unit-tested only. That is the next hardware session.
+- **Oracle is DEAD** (Kevin, 2026-09-10): all three availability domains out of A1 capacity. Staying
+  on Cloud Run + Supabase Postgres for two households. `deploy/vm/PROVISION.md` survives for its two
+  traps only. Tickets 12/13 need re-resolving against that.
+- **Ticket 03** (signup, households, invite codes) was building in `.claude/worktrees/accounts` when
+  this session ended. **`feat/openapi-clients` is mid-merge and NOT clean**: its agent died to a rate
+  limit leaving ~33 conflict blocks, and it still carries a duplicate ADR 0045 that must renumber to
+  0048 (the head-unit one).
 
 ### Next session, in order
 
-1. **Decide on the live migration** (the audit was cut short mid-review; it had found the scoping
-   solid). Then apply it, or `dev` stays broken against live data.
-2. **Fix the three Android tests**, or Android CI stays red for everyone.
-3. **Ticket 03** (accounts: signup, invite codes, session login) - the next thing blocking a web app
-   Kevin's parents can sign into. Then 05 (screens), 11 (reports).
-4. Ticket 13's VM move; django-engine 06 (nightly backups) now GATES that cutover.
+1. **Hardware run on the A25**: ledger, pantry, fleet against Django. Everything else is unit tests.
+2. Finish ticket 03, then 05 (screens), 11 (reports). Rescue or abandon `feat/openapi-clients`.
+3. Re-resolve tickets 12/13 now that the VM is dead.
 
 ### Owed by Kevin - decisions, not code
 
-- **Apply the tenancy migration to live?** 43 tables, 44 unique-index re-keys, backup exists.
-- **Oracle:** upgrade the tenancy to Pay As You Go and create the A1 VM (his card, his tenancy).
-  PAYG exemption from idle reclamation is REPORTED, not documented - worth one support ticket.
-- **`origin_guid` for a server-created vehicle.** Now load-bearing: `FleetEngineStore` is routed, so
-  on Django `upsertVehicle`/`upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions.
-- **Fleet provenance differs by transport** - but checked 2026-09-08: the server's per-table default
-  equals every existing row's value on all 8 fleet tables, and the phone sends constants. Mechanism
-  only, no divergence today.
+- **Android UI restructure, raised 2026-09-10 and unanswered**: retire the Meters page, rename
+  Calendar to HOME, retire today's plan in favour of advisor-populated workout todos, add a news
+  feed. Most maps to existing tickets (command-center 01/08/12 built, aspect-advisors 04/09 resolved,
+  one-today 08/09 open). **Gmail as a feed source is constrained by CLAUDE.md §7 third-party
+  read-through; RSS is not.** A ticket was offered and not yet asked for.
+- **`origin_guid` for a server-created vehicle.** Load-bearing now that fleet is routed to Django:
+  `upsertVehicle`/`upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions.
+- **Voice-note audio still has no durable store** (ADR 0041 keeps all three artefacts together).
 - Rotate the Supabase passwords and the phone's device token when convenient.
 
 ### The lesson of this session, in one line
 
-**Roughly a dozen defects found by running it on hardware or querying live data; a green suite caught
-none of them.** Three of the four aspects verified had missing PULL paths - writes went up fine and
-nothing came down. And `lessons.md` gained the sharpest one: a test had pinned "a blank remember is a
-no-op, not a failure" as correct, which is why 3438 passing tests never saw thirteen tool results
-claiming a success they had not earned.
+**Two tests I "fixed" were describing two different devices.** `EngineBackendsTest` built a signed-OUT
+`EngineTransport` while its backends came from a signed-IN config; the assertions only agreed while
+both answered SUPABASE, and the default flip pulled them apart. A test whose halves disagree about
+the fixture passes for the wrong reason until something moves.
 
 ## Read before trusting a green suite
 

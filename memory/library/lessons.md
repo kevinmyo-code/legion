@@ -1064,3 +1064,32 @@ Cheap tell, worth reaching for next time: if a change to an index is meant to un
 **exercise that exact write against it in a rolled-back transaction before shipping**. The agent that
 found this did precisely that - bare form refused, predicated form accepted, both inside a transaction
 it rolled back - and settled in one query what I had reasoned about twice and got wrong twice.
+
+## L-2026-09-10: A test whose fixture halves disagree passes for the wrong reason
+
+Flipping `EngineTransport.DJANGO_BY_DEFAULT` from two aspects to all nine broke five tests. Four
+rewrites were right. Two assertions in `EngineBackendsTest` I rewrote to `Transport.DJANGO` came back
+`expected:<DJANGO> but was:<SUPABASE>`, and I reached for the test body before reading the fixture.
+
+The cause was already in the file before I touched it. The test built its transport as
+`EngineTransport(context)` - the default constructor, a signed-OUT device - while its backends came
+from `backends()`, which passes `EngineTestSupport.signedInConfig(context)`. **Two objects describing
+two different devices, asserted against each other in one test.** It had never mattered, because
+`DJANGO_BY_DEFAULT` is conditional on the engine being usable and both halves answered SUPABASE for
+those aspects either way. The flip pulled them apart and the latent disagreement surfaced as my bug.
+
+**The general shape: a test can agree with itself for a reason that has nothing to do with the
+property it claims to pin.** Both halves returning the same value is not evidence they are measuring
+the same thing - it can equally mean the axis under test is currently flat, so every fixture answers
+alike. That is invisible while the default holds and arrives as a mystery failure the day it moves.
+
+The tell was there in the failure text and I walked past it: the transport said SUPABASE while the
+backends were resolving Django in the same test. **When two collaborators in one test disagree about
+the world, suspect the fixture before the assertion.** Cheap check when changing any default: grep the
+failing test for every construction of the thing whose default moved, and confirm they are built from
+the same config. Two constructors in one test is the smell.
+
+Second-order, and the reason this cost a round trip rather than a minute: my first repair attempt was
+a patch script written from a summary of the file rather than the file. It asserted the opposite of
+what was there and its anchors would have matched nothing. **Read the file before writing the patch,
+even when you believe you already know what is in it.**
