@@ -87,7 +87,17 @@ class GoalPlanAgentAcceptWholePlanTest {
     }
 
     @Test
-    fun `materializes today's checklist as part of the same call`() = runBlocking {
+    fun `it no longer materializes a checklist, and the target it wrote is still there`() = runBlocking {
+        // **Reversed 2026-09-10 (one-home ticket 05).** This used to assert that accepting a plan
+        // also materialized today's checklist, via `GoalChecklistSync.materializeToday` - lines
+        // DERIVED from the targets this call had just written ("2300 kcal" came from the meal
+        // target, not from anything the advisor composed).
+        //
+        // That mechanism is retired. The advisor composes the list itself and writes it as a real
+        // recurring checklist through AdvisorProposalExecutor's `create_checklist` op, so there is
+        // nothing here to derive and nothing to materialize. What this call still owes is its
+        // WRITES, and that is what is pinned now - the assertion moved from a side effect to the
+        // thing the function is actually for.
         val plan = GoalPlan(
             rationale = "Starting point.",
             mealTarget = GoalPlanMealTarget(caloriesKcal = 2300, proteinG = 180.0, carbsG = 220.0, fatG = 70.0),
@@ -95,9 +105,15 @@ class GoalPlanAgentAcceptWholePlanTest {
 
         GoalPlanAgent().acceptWholePlan(context, plan)
 
-        val items = GoalChecklistSync.currentItems(context)
-        assertEquals(1, items.size)
-        assertTrue(items.single().text.contains("2300 kcal"))
+        val target = com.kevin.legion.data.local.CarDatabase.getDatabase(context)
+            .mealTargetDao().currentTarget(System.currentTimeMillis())
+        assertEquals(2300, target?.caloriesKcal)
+        // And no checklist appeared as a side effect of accepting a plan: only an explicit
+        // `create_checklist` proposal writes one now.
+        assertTrue(
+            "accepting a plan must not conjure a checklist",
+            com.kevin.legion.checklists.ChecklistController.allChecklists(context).isEmpty(),
+        )
     }
 
     // --- parseDeadline: MM/dd/yyyy in, epoch millis out, never a thrown exception ----------------

@@ -44,7 +44,7 @@ object AdvisorChecklistMigration {
      * literal purely to find old rows one last time. [GoalChecklistSync] itself is deleted; this
      * migration is the one piece of code in the codebase still allowed to know that prefix ever
      * existed. */
-    private const val RETIRED_ITEM_PREFIX = "Plan: "
+    const val RETIRED_ITEM_PREFIX = "Plan: "
 
     /** Default name for a checklist this migration creates from scratch (no `create_checklist`
      * proposal has ever run) - renamed for free the first time the advisor's own proposal supplies

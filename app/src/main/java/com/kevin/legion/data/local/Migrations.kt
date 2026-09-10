@@ -2895,6 +2895,14 @@ private const val SCHEMA_V69 = 69
  */
 val MIGRATION_68_69 = object : Migration(SCHEMA_V68, SCHEMA_V69) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("ALTER TABLE `checklists` ADD COLUMN `sourceKey` TEXT DEFAULT NULL")
+        // **No `DEFAULT NULL` clause, and the omission is the point.** Writing one makes SQLite
+        // record the literal string `NULL` as the column's default (`PRAGMA table_info` reports
+        // `dflt_value = 'NULL'`), while Room's generated v69 schema declares plain `sourceKey TEXT`
+        // with no default at all. Room validates the migrated table against that schema when it
+        // opens the database, so the mismatch is not cosmetic - it fails the upgrade for every
+        // existing install with "Migration didn't properly handle checklists". A nullable column
+        // already defaults to NULL; saying so explicitly is what breaks it.
+        // Caught by Migration68To69Test comparing against the generated schema, 2026-09-10.
+        db.execSQL("ALTER TABLE `checklists` ADD COLUMN `sourceKey` TEXT")
     }
 }

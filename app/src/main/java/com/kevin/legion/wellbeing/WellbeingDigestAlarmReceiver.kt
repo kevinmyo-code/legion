@@ -4,7 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.kevin.legion.MidnightEvents
-import com.kevin.legion.advisor.GoalChecklistSync
+import com.kevin.legion.advisor.AdvisorProposalExecutor
+import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.service.ProactiveBus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,13 +60,33 @@ class WellbeingDigestAlarmReceiver : BroadcastReceiver() {
     }
 
     private suspend fun fire(context: Context) {
-        runCatching { GoalChecklistSync.materializeToday(context) }
-            .onFailure { MidnightEvents.appStartWorkFailed("wellbeing_digest_materialize_failed", it) }
-
-        val itemTexts = runCatching { GoalChecklistSync.currentItems(context) }
+        // **Repointed 2026-09-10 (one-home ticket 05).** This read `GoalChecklistSync` - it
+        // materialized today's lines first, then read them back. That mechanism is retired; the
+        // advisor writes a real recurring checklist through `AdvisorProposalExecutor`, found by
+        // [AdvisorProposalExecutor.BIO_CHECKLIST_SOURCE_KEY]. **There is nothing to materialize any
+        // more**, so the first call is gone rather than replaced - a recurring checklist simply
+        // exists; it does not need a nightly job to bring it into being.
+        //
+        // Failure stays non-fatal and reported, exactly as before: this runs on an alarm, and a
+        // digest that cannot read its list must still re-arm tomorrow's (see this class's own doc
+        // comment). An empty list is a normal outcome and is NOT an error - `buildRaise` decides
+        // whether silence is the right answer.
+        val itemTexts = runCatching {
+            val checklist = ChecklistController.getChecklistBySourceKey(
+                context,
+                AdvisorProposalExecutor.BIO_CHECKLIST_SOURCE_KEY,
+            ) ?: return@runCatching emptyList<String>()
+            when (val res = ChecklistController.itemsWithTickState(context, checklist.id)) {
+                // Unreadable is not empty (CLAUDE.md §1). Throwing here routes it to the same
+                // `wellbeing_digest_read_failed` event a thrown read would, rather than quietly
+                // becoming "nothing on your plan tonight".
+                is ChecklistController.ChecklistItemsResult.Failed ->
+                    error("checklist unreadable: ${res.reason}")
+                is ChecklistController.ChecklistItemsResult.Loaded -> res.items.map { it.item.text }
+            }
+        }
             .onFailure { MidnightEvents.appStartWorkFailed("wellbeing_digest_read_failed", it) }
             .getOrNull()
-            ?.map { it.text }
             .orEmpty()
 
         val raise = WellbeingDigestBuilder.buildRaise(itemTexts)
