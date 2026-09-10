@@ -34,7 +34,16 @@ compose, per that ruling.
 | Public IP | **Reserved**, not ephemeral | An ephemeral IP changes on stop/start and takes your DNS with it |
 | SSH key | Paste your public key at creation | There is no password login |
 
-Region: your home region. Note the latency from Houston — §7 asks you to record it.
+**Home region is `us-chicago-1`** (fixed at signup, 2026-09-10; it cannot be changed later). Good
+for Houston — better than Ashburn, which is where the signup verification mail came from and is not
+the same thing. §7 asks you to record the real latency from a phone.
+
+**Trial versus PAYG, check this before choosing the shape.** The signup mail describes a free trial
+with credits and says billing is still being set up. A trial tenancy may only offer the Always-Free
+allowance (2 OCPU / 12 GB), not the 4 OCPU / 24 GB this runbook assumes. Confirm in
+Billing & Cost Management that the upgrade actually completed; if it has not, either finish it or
+build the box at 2/12 and resize later — an A1.Flex shape can be scaled without rebuilding, but the
+idle-reclamation exposure in §1 stays until the tenancy is PAYG.
 
 ## 3. Networking — the step that costs people an evening
 
