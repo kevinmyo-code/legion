@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["01", "02"]
 blocked-by: ["[[01-what-the-shell-is-without-meters]]", "[[02-rehome-the-orphans]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

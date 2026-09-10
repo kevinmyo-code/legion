@@ -3,12 +3,17 @@ map: one-home
 ticket: "06"
 title: "News feed sources, and what a feed is allowed to keep"
 type: decision
-status: open
-status-detail: ""
+status: resolved
+status-detail: >
+  Resolved 2026-09-10 by Opus on Kevin's "run everything with your taste".
+  Both sources ship. Subscriptions (the feed URLs Kevin types) are HIS data
+  and persist; feed ITEMS and mail are read-through, exactly as mail
+  already is. CLAUDE.md section 7 is NOT amended - the option that needed
+  no rule change was available and was taken.
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -80,3 +85,64 @@ stored item is a copy of what someone published, never a source of record for an
 Kevin rules on 1-4. If (1) is "persisted", this decision changes a CLAUDE.md §7 boundary and must be
 filed to `library/decisions.md` **and** applied to CLAUDE.md in the same commit, with an ADR if it
 stands (the §13 test). If (1) is "read-through", §7 is unchanged and no ADR is needed.
+
+
+---
+
+## Resolution, 2026-09-10
+
+**Both sources ship. Subscriptions persist. Items do not.**
+
+### 1. Persisted or read-through: read-through, for items
+
+Feed items and mail are fetched, rendered, dropped. No Room row, no cache file, not even the summary
+- `NewsDigestCard`'s existing posture, extended to RSS rather than relaxed for it.
+
+**The deciding reason is not which reading of §7 is more correct. It is that one option required
+amending a CLAUDE.md rule and the other did not.** *"Run everything with your taste"* delegates the
+decisions on this map; it does not read as authority to widen a standing privacy rule on Kevin's
+behalf, and a rule loosened by an agent exercising taste is exactly the kind of change that is
+invisible afterwards. The conservative option was available and fully functional, so it wins on that
+alone.
+
+The substantive argument is also live and points the same way. A feed item is other people's writing,
+published to everyone; subscribing changes who chose to receive it, not who wrote it. ADR 0041's
+carve-out turned on Kevin having *created* the artefact by pressing record - he authors a voice note.
+He does not author a headline. **Provenance explains why mail is constrained; it does not by itself
+license storing anything he opted into.**
+
+If offline reading later turns out to matter, that is a real reason to reopen this with a real
+argument attached, and it should be reopened by Kevin, not assumed by a build.
+
+### 2. Subscriptions are Kevin's own data and persist
+
+A list of feed URLs he typed is unambiguously his, under any reading. Persisted, synced like any
+other record, and adding or removing one is a hands path (ADR 0035). Stated separately here so it
+cannot get swept into (1) by association: **the list of what to read is his; what it says is not.**
+
+### 3. RSS is in scope now, not later
+
+*"gmail or just rss feeds"* permits shipping Gmail alone, and that was the cheap answer. Taking it
+would leave the page a promotion of one existing card, which does not answer *"a news feed page"* -
+Gmail newsletters are a narrow slice of what a feed is for, and the whole ask reads as wanting
+something to read that is not his inbox.
+
+With items read-through, RSS costs a fetcher, a parser and a subscription table. No storage posture
+to design, because (1) settled it.
+
+### 4. The feed is NOT a tab
+
+Ticket 01 resolved to no tab row at all, so option B there is moot. The feed is a row on HOME opening
+its own route, the same shape the ASK panel got.
+
+### The constraint that binds regardless
+
+Nothing from this surface may become a ledger row, a macro, a maintenance date or any asserted
+figure. A headline states no total, so §4's gate has no purchase - and that is not permission to
+treat what a feed says as fact. If a summary mentions a number, it is the article's number and is
+rendered as the article's.
+
+### Consequence for CLAUDE.md
+
+**None. §7 is unchanged and no ADR is needed.** That was a deciding factor rather than a happy
+outcome, per (1). Ticket 07 builds against the rule exactly as written.
