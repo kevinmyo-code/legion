@@ -2906,3 +2906,24 @@ val MIGRATION_68_69 = object : Migration(SCHEMA_V68, SCHEMA_V69) {
         db.execSQL("ALTER TABLE `checklists` ADD COLUMN `sourceKey` TEXT")
     }
 }
+
+private const val SCHEMA_V70 = 70
+
+/**
+ * One new table, `feed_subscriptions` (one-home ticket 07) - the RSS feed URLs Kevin typed. See
+ * [FeedSubscription]'s own doc comment for why it carries no sync columns.
+ *
+ * `CREATE TABLE`, not a rebuild - there is nothing to preserve. Copied verbatim out of the
+ * generated `70.json` with `${TABLE_NAME}` substituted, the only edit CLAUDE.md section 5 permits.
+ */
+val MIGRATION_69_70 = object : Migration(SCHEMA_V69, SCHEMA_V70) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `feed_subscriptions` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`url` TEXT NOT NULL, `title` TEXT, `addedAtMs` INTEGER NOT NULL)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_feed_subscriptions_url` ON `feed_subscriptions` (`url`)",
+        )
+    }
+}
