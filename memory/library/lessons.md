@@ -1093,3 +1093,35 @@ Second-order, and the reason this cost a round trip rather than a minute: my fir
 a patch script written from a summary of the file rather than the file. It asserted the opposite of
 what was there and its anchors would have matched nothing. **Read the file before writing the patch,
 even when you believe you already know what is in it.**
+
+## L-2026-09-10: A migration that re-keys every unique index breaks every client that names one
+
+`SupabaseConversationAuditBackend` upserts with `onConflict = "client_uuid"`. The 2026-09-08 tenancy
+migration read each tenant table's unique keys off the Postgres catalogs, dropped them, and rebuilt
+them scoped by household - so that index became `(household_id, client_uuid)`, a bare
+`ON CONFLICT (client_uuid)` stopped being inferable, and **every conversation-audit upload has failed
+since.** Found in logcat on the A25 two days later, by an agent running a ship pass for an unrelated
+ticket.
+
+**This is L-2026-09-07 again, from the opposite direction, one day after it was written.** That entry
+says a constraint is not only a rule but an INTERFACE, and that anything a client names in an
+`ON CONFLICT` clause must be inferable from that clause alone. It was learned against a PARTIAL index
+- an index too narrow to infer. This time the index got too WIDE. Same rule, same failure, and the
+lesson did not prevent it.
+
+**Why it did not: the lesson was filed as a fact about indexes, and the thing that broke it was a
+migration that never looked at an index individually.** 0002 re-keyed 44 of them generically, off the
+catalogs, and had no way to know that one was a conflict target a client names by hand. A rule about
+how to write an index does not reach code that rewrites all of them at once.
+
+**So the rule that graduates is about the SEARCH, not the index:** when a change re-keys constraints
+wholesale, the matching client-side search is mandatory and it is cheap - grep every `onConflict =`
+and `on_conflict=` and check each against what was rebuilt. Doing that here took one command and
+turned "one bug" into "one live bug plus eight dormant ones behind a toggle that still works".
+
+**Second, sharper point: the failure was silent for two days.** Nothing surfaces a failed upload. The
+rows queue on the phone, `/health` answers `{"db":"ok"}`, and the suite is green because no test
+exercises a real upsert against a real schema. **A write path with no failure surface is not a write
+path, it is a hope** - and this one was only found because somebody happened to have a phone attached
+and logcat open for a different reason. `.scratch/django-engine/issues/17-*.md` owns the fix and the
+check that should have existed.

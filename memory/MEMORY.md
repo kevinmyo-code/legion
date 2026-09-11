@@ -41,17 +41,31 @@ believed.
 - **`web-and-households` 03 merged** - signup, invite codes, household members, session auth.
   Merging it conflicted only on the two GENERATED files; the fix is to re-run
   `obsidian_sync.py` + `pending_wiki.py` on the merge result, never to pick a side.
-- **No phone.** `adb devices` is empty (checked with the full SDK path, daemon restarted). Everything
-  hardware-dependent is parked in one-home ticket 08 rather than claimed.
+- **The phone is BACK, over wireless debugging, and the ship pass ran.** Pairing needed both halves
+  and they are different ports: `adb pair 192.168.1.37:42085 <code>`, then the CONNECT port comes from
+  `adb mdns services` (`_adb-tls-connect._tcp`, was `:37779`). Pairing is saved; a reconnect later
+  only needs the connect step. `adb` is NOT on PATH -
+  `/c/Users/kevin/AppData/Local/Android/Sdk/platform-tools/adb.exe`.
+- **one-home ticket 08 is RESOLVED.** On-device and green: cold start on HOME with no tab row, all
+  five drill-downs by finger, all seven route strings (including the four dead ones) with a clean
+  logcat, the ASK picker rendering a real generated view, **the newsletter tap owed since
+  2026-08-22**, and RSS add + fetch. Skipped with reasons, not silently: airplane-mode (the only ADB
+  link is that same Wi-Fi), the advisor round-trip (no speaker in the room), the overnight reset.
+  46 screenshots kept.
+- **A live bug found in logcat while doing it: `django-engine` 17.** Every conversation-audit upload
+  has failed since the 2026-09-08 tenancy migration re-keyed the unique index its `ON CONFLICT` names.
+  It is the only write path still hardwired to Supabase. Silent for two days - the rows queue,
+  `/health` says ok, the suite is green. Eight more Supabase upserts are dormant behind the same
+  landmine, reachable if any aspect is toggled back.
 
 ### Next session, in order
 
-1. **Get the phone attached, then run one-home ticket 08.** The queue is real: cold start on HOME, a
-   notification tap (the renamed route), the ASK picker in its new home, a checklist surviving a
-   night, and command-center 12's newsletter tap owed since 2026-08-22.
-2. Finish/merge `feat/news-surface`. Rescue or abandon `feat/openapi-clients` (still mid-merge, ~33
-   conflicts, duplicate ADR 0045 to renumber to 0048).
-3. Ledger, pantry and fleet against Django on the A25 - still never run.
+1. **`django-engine` 17** - conversation audit is uploading nothing. Move it to Django rather than
+   patching the on-conflict string, and decide whether the eight dormant Supabase upserts are a real
+   fallback or dead code.
+2. Ledger, pantry and fleet against Django on the A25 - still never run, and the phone is connected.
+3. Rescue or abandon `feat/openapi-clients` (mid-merge, ~33 conflicts, duplicate ADR 0045 to
+   renumber to 0048).
 4. Re-resolve `web-and-households` 12/13 now the Oracle VM is dead.
 
 ### Owed by Kevin - decisions, not code
