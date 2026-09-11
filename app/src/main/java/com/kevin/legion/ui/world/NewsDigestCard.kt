@@ -38,7 +38,12 @@ import kotlinx.coroutines.launch
  * only inside a sitrep the user scheduled or explicitly asked for), never a second summarization
  * path.
  *
- * **Deliberately the one tile in the "world" band with NO auto-fetch.** Every other reading in
+ * **Deliberately NO auto-fetch, and the tap is the demand.** This said "the one tile in the world
+ * band" until 2026-09-10, when one-home ticket 07 moved it off HOME into `ui/news/NewsScreen.kt`
+ * beside the RSS feeds - it is not in a band any more, and it is no longer the only thing here that
+ * refuses to poll: the whole News surface does. **The posture is unchanged and is the reason this
+ * file was extracted verbatim rather than rewritten** (ticket 02): read-through, nothing to Room,
+ * not even the summary, and no fetch until someone asks. Every other reading in
  * that band ([AreaCard] included) fetches once on first compose, which the original ticket still
  * counted as "on demand" (opening the screen is the demand). Newsletters is different by that
  * ticket's own explicit instruction ("On-demand only (a tap)") - a newsletter check folds several

@@ -146,3 +146,31 @@ rendered as the article's.
 
 **None. §7 is unchanged and no ADR is needed.** That was a deciding factor rather than a happy
 outcome, per (1). Ticket 07 builds against the rule exactly as written.
+
+
+---
+
+## AMENDED at build time, 2026-09-10: subscriptions are LOCAL-ONLY for now
+
+Point 2 above says a subscription is *"persisted, synced like any other record"*. **It is persisted.
+It is not synced**, and this records that rather than leaving the resolution claiming something the
+code does not do.
+
+`data/local/FeedSubscription.kt` is a plain Room table with no `syncId`, no `serverId` and no Django
+leg. The builder surfaced the fork instead of quietly picking a side, which was right: this map's own
+execution note scopes it to `app/`, and ADR 0044 says a write path is **a Django endpoint first and a
+Kotlin caller second** - so building an Android-side sync leg here would have been the wrong half of
+the work, done in the wrong order, on a map that does not touch `server/`.
+
+The precedent it followed is real: `SitrepModuleSetting` and `SitrepSchedule` are Kevin's own
+device-local config and are not synced either.
+
+**What that costs, stated plainly rather than discovered later.** A feed list is not obviously the
+same kind of thing as a sitrep schedule. It is content Kevin curates, the web client will plausibly
+want it, and a second household member cannot see his feeds. If the answer is that it should sync,
+that is a server endpoint plus an Android caller, and it is now [[09-sync-the-feed-subscriptions]]
+rather than a sentence in a resolution nobody rechecked.
+
+**Nothing about the ITEMS changes.** Point 1 is untouched and is the half that actually bears on
+CLAUDE.md §7: feed items and mail are read-through, never stored, and there is no items table to
+sync even if someone wanted one.

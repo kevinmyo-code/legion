@@ -3,12 +3,22 @@ map: one-home
 ticket: "07"
 title: "The news surface: sources, refresh on demand, and three distinct failure sentences"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: >
+  Built 2026-09-10. RSS/Atom fetcher on Ktor + platform XmlPullParser (no new
+  dependency), a feed_subscriptions table (v70, migration test compares against
+  the generated JSON), and ui/news/NewsScreen.kt on its own route off a HOME
+  row - the same shape ASK got. Gmail's NewsDigestCard reused verbatim, not
+  rewritten. Four distinct RSS outcome sentences with a test that they really
+  are four. Items are never stored, so the "a stored item never reaches
+  episodic memory" step is not applicable rather than skipped - there is no
+  stored item. 3503 tests, 0 failures. Subscriptions are local-only, NOT synced
+  as ticket 06 said - that gap is 06's amendment plus ticket 09. Owes the
+  device run.
 blockers: ["06"]
 blocked-by: ["[[06-news-sources-and-what-may-be-kept]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

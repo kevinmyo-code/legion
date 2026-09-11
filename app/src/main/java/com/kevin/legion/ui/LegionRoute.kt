@@ -10,9 +10,10 @@ package com.kevin.legion.ui
  * `.scratch/one-home/issues/03-calendar-becomes-home.md`. The screen itself did not change: it is
  * still `ui/CalendarScreen.kt`, still a month grid with a day view, and the file keeps its name
  * because it still renders a calendar - what stopped being true is that the TAB was called one.
- * **[METERS] is untouched here.** Retiring it is a separate, still-open decision
- * (`.scratch/one-home/issues/01-what-the-shell-is-without-meters.md`); this entry renamed one tab
- * and did not remove the other.
+ * **METERS was untouched by the RENAME and deleted hours later the same day** (ticket 03b, once
+ * ticket 01 ruled and ticket 02 had rehomed everything living inside it). This paragraph said
+ * "[METERS] is untouched here... this entry renamed one tab and did not remove the other", which was
+ * true when written and false by the end of the day - see METERS' own tombstone below.
  *
  * **CORRECTED 2026-09-01, later the same day: down to TWO top-level tabs.** The "three top-level
  * tabs" paragraph immediately below is kept for its history, but [SETTINGS] came off `TOP_LEVEL`
@@ -92,7 +93,7 @@ object LegionRoute {
      * grid primary. tapping a day on the month opens up view B") - see [com.kevin.legion.ui.CalendarScreen].
      * No sub-routes: the selected day's agenda ("view B") is internal Compose state inside that
      * screen, same convention `ui/NotesScreen.kt`'s own (now-deleted, one-today ticket 10 slice C)
-     * LISTS | HOME toggle used to establish - [HOME] itself is now where a reminder's edit
+     * LISTS | CALENDAR toggle used to establish - [HOME] itself is now where a reminder's edit
      * affordance lives (see [com.kevin.legion.ui.CalendarScreen]'s own file doc comment).
      * Replaced `TODAY` as `startDestination` and as the shell's HOME target; `TODAY` and the
      * screen it named were deleted outright 2026-09-01 (one-today ticket 07), once its survivors
@@ -262,7 +263,7 @@ object LegionRoute {
      * The driver's own editor for [com.kevin.legion.advisor.PrimingTopic]'s four bodies of
      * doctrine (2026-08-18) - see [com.kevin.legion.ui.companions.PlaybookScreen]. The list-to-
      * editor drill-down inside it is internal Compose state, same posture `ui/NotesScreen.kt`'s
-     * own (now-deleted, one-today ticket 10 slice C) LISTS | HOME toggle used to state, so
+     * own (now-deleted, one-today ticket 10 slice C) LISTS | CALENDAR toggle used to state, so
      * this is one route, not five.
      */
     const val SETTINGS_PLAYBOOKS = "settings/playbooks"
