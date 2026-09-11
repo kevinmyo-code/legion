@@ -170,6 +170,18 @@ object LegionRoute {
      */
     const val ASK = "ask"
 
+    /**
+     * "A news feed page" (Kevin, 2026-09-10, one-home ticket 07) - see
+     * [com.kevin.legion.ui.news.NewsScreen]. Given its own route on the same reasoning [ASK] got
+     * (ticket 06 resolution point 4: "the feed is a row on HOME opening its own route... NOT a
+     * tab" - one-home ticket 01 already ruled out a second tab). Reached from a row on [HOME];
+     * hosts BOTH sources ticket 06 admitted - [com.kevin.legion.ui.world.NewsDigestCard] (Gmail,
+     * reused unmodified, no longer rendered inline on HOME) and RSS (new). No sub-routes: the
+     * subscription list and each feed's check state are internal Compose state inside the one
+     * screen, same convention every other leaf route in this file follows.
+     */
+    const val NEWS = "news"
+
     // VOICE_NOTES: not added here. A concurrent session (same day, ticket 04) registered
     // SETTINGS_VOICE_NOTES -> ui/voicenotes/VoiceNotesScreen.kt below instead - see that
     // constant's own doc comment. A second top-level route to the same screen was drafted here

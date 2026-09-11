@@ -33,7 +33,6 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.voicenotes.RecordControlRow
 import com.kevin.legion.ui.world.AreaCard
-import com.kevin.legion.ui.world.NewsDigestCard
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.voice.VoiceNoteController
 import com.kevin.legion.voice.VoiceNoteStartResult
@@ -46,13 +45,16 @@ import kotlinx.coroutines.launch
  * second tab (`.scratch/one-home/issues/01-what-the-shell-is-without-meters.md`'s Resolution).
  * [CalendarScreen] renders the day first and this composable directly beneath it, in the band
  * order that resolution fixed: Needs you (breaches, conditional) -> the meters as rows (Body,
- * Money, Fleet, Lists, Recordings) -> the world (weather, [AreaCard], newsletters) -> rows for ASK
- * and the media mini-bar.
+ * Money, Fleet, Lists, Recordings) -> the world (weather, [AreaCard]) -> rows for NEWS, ASK and
+ * the media mini-bar.
  *
  * **Every reading here is unchanged from `MetersScreen.kt` - only the file and the caller moved.**
  * The ASK pane itself did NOT move here: ticket 01's resolution gives it its own route
  * ([LegionRoute.ASK], see `ui/ask/AskScreen.kt`), so what HOME renders for it is a single
- * navigation row, never the five-picker panel.
+ * navigation row, never the five-picker panel. **The newsletters card left this file a second
+ * time** (one-home ticket 07): it rendered inline here from ticket 02 until ticket 07 gave the
+ * whole news surface its own route ([LegionRoute.NEWS], see `ui/news/NewsScreen.kt`), on the exact
+ * same reasoning ticket 01 gave ASK - HOME now renders a single "News" row for it too.
  *
  * **A pane with nothing to say renders nothing, not an empty pane** (ticket 01's own rule, "Needs
  * you" was always this way). Body/Money/Fleet/Lists/Recordings always have something to render (a
@@ -82,6 +84,10 @@ fun HomeMeterBands(
     onOpenFleet: () -> Unit,
     onOpenPantry: () -> Unit,
     onOpenAsk: () -> Unit,
+    // The news feed's own destination (one-home ticket 07, ticket 06 resolution point 4) - a
+    // single navigation row here, never [NewsDigestCard] itself (that moved inside
+    // `ui/news/NewsScreen.kt`, same shape [onOpenAsk]'s own doc comment describes for ASK).
+    onOpenNews: () -> Unit = {},
     onOpenMedia: () -> Unit = {},
     onOpenVoiceNotes: () -> Unit = {},
     onOpenChecklists: () -> Unit = {},
@@ -364,8 +370,17 @@ fun HomeMeterBands(
     )
     AreaCard(modifier = Modifier.padding(horizontal = 12.dp))
 
-    // ---------------------------------------------------------------- NEWSLETTERS
-    NewsDigestCard(modifier = Modifier.padding(start = 12.dp, top = 9.dp, end = 12.dp))
+    // ---------------------------------------------------------------- NEWS
+    // one-home ticket 07: the newsletters card moved OFF HOME's own scroll and into
+    // `ui/news/NewsScreen.kt` alongside the new RSS section, on the same reasoning ticket 01 gave
+    // the ASK pane below - a single navigation row here, never the card itself.
+    DeckPane(header = "News", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+        DeckRow(
+            label = "Newsletters and feeds",
+            value = "open",
+            modifier = Modifier.clickable(onClick = onOpenNews),
+        )
+    }
 
     // ---------------------------------------------------------------- ASK
     // ADR 0035's hands path, given its own route (ticket 01's resolution) - a single navigation

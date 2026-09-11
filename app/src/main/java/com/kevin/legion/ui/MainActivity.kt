@@ -764,6 +764,9 @@ private fun LegionShell(
                     // The Ask pane's new destination (ticket 01's resolution: its own route, not
                     // a pane welded onto HOME) - see `ui/ask/AskScreen.kt`'s own registration below.
                     onOpenAsk = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
+                    // The news feed's own route (one-home ticket 07) - see
+                    // `ui/news/NewsScreen.kt`'s own registration below.
+                    onOpenNews = { navController.navigate(LegionRoute.NEWS) { launchSingleTop = true } },
                     // The media mini-bar's own tap-through (rehomed from the deleted
                     // `ui/TodayScreen.kt`, one-today ticket 07, then `ui/MetersScreen.kt`, one-home
                     // ticket 02) - the media control panel command-center ticket 04 built, nested
@@ -791,6 +794,13 @@ private fun LegionShell(
             // 01's resolution).
             composable(LegionRoute.ASK) {
                 com.kevin.legion.ui.ask.AskScreen()
+            }
+            // The news feed's own route (one-home ticket 07, ticket 06 resolution point 4) - see
+            // `ui/news/NewsScreen.kt`. Reached from the "News" row `ui/HomeMeterBands.kt` renders
+            // on HOME, which no longer renders `NewsDigestCard` inline (it moved inside this
+            // screen, unmodified).
+            composable(LegionRoute.NEWS) {
+                com.kevin.legion.ui.news.NewsScreen()
             }
             // [LegionRoute.METERS] and `ui/MetersScreen.kt` DELETED 2026-09-10 (one-home ticket
             // 03b). Its capabilities were not dropped - ticket 02 rehomed every one of them first,

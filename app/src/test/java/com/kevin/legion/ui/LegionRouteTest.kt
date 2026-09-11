@@ -69,7 +69,7 @@ class LegionRouteTest {
         val mustSurvive = listOf(
             LegionRoute.HOME, LegionRoute.BODY, LegionRoute.MONEY, LegionRoute.MONEY_PANTRY,
             LegionRoute.FLEET, LegionRoute.FLEET_PLACES, LegionRoute.CHECKLISTS,
-            LegionRoute.DASHBOARD, LegionRoute.SETTINGS, LegionRoute.ASK,
+            LegionRoute.DASHBOARD, LegionRoute.SETTINGS, LegionRoute.ASK, LegionRoute.NEWS,
         )
         for (route in mustSurvive) {
             assertTrue("a route must be a non-empty string, '$route' is not", route.isNotBlank())
@@ -86,6 +86,15 @@ class LegionRouteTest {
         // that the route exists and is not accidentally an alias of HOME.
         assertTrue(LegionRoute.ASK.isNotBlank())
         assertTrue("ASK must not collapse onto HOME", LegionRoute.ASK != LegionRoute.HOME)
+    }
+
+    @Test
+    fun `NEWS is a route of its own too, same reasoning as ASK`() {
+        // one-home ticket 07, ticket 06 resolution point 4: the feed is a row on HOME opening its
+        // own route, never a tab and never a pane welded onto HOME's own scroll.
+        assertTrue(LegionRoute.NEWS.isNotBlank())
+        assertTrue("NEWS must not collapse onto HOME", LegionRoute.NEWS != LegionRoute.HOME)
+        assertTrue("NEWS must not collapse onto ASK", LegionRoute.NEWS != LegionRoute.ASK)
     }
 
     @Test

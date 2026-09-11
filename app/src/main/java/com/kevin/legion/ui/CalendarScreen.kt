@@ -198,6 +198,9 @@ fun CalendarScreen(
     onOpenPantry: () -> Unit = {},
     // The ASK pane's new destination (ticket 01's resolution: its own route, not a pane on HOME).
     onOpenAsk: () -> Unit = {},
+    // The news feed's own destination (one-home ticket 07, ticket 06 resolution point 4) -
+    // same shape as [onOpenAsk] above.
+    onOpenNews: () -> Unit = {},
     onOpenMedia: () -> Unit = {},
     onOpenVoiceNotes: () -> Unit = {},
     onOpenChecklists: () -> Unit = {},
@@ -757,6 +760,7 @@ fun CalendarScreen(
             onOpenFleet = onOpenFleet,
             onOpenPantry = onOpenPantry,
             onOpenAsk = onOpenAsk,
+            onOpenNews = onOpenNews,
             onOpenMedia = onOpenMedia,
             onOpenVoiceNotes = onOpenVoiceNotes,
             onOpenChecklists = onOpenChecklists,
