@@ -87,7 +87,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Button>
       </nav>
 
-      <main className="flex-1 p-4 pb-20 md:pb-4">{children}</main>
+      {/* A ceiling, not a corset. The Today route used to carry `max-w-lg`, which
+          rendered the whole screen into a ~512px column inside a 1707px window and
+          left the workbench about 70% empty. Width now comes from the content;
+          `max-w-6xl` only stops a line of text running the full span of an
+          ultrawide, which is its own kind of unreadable. */}
+      <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-20 md:pb-4 lg:p-8">{children}</main>
 
       <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t bg-background md:hidden">
         {NAV_ITEMS.map((item) => {
