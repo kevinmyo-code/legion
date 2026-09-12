@@ -37,7 +37,7 @@
     <div style="display: flex; flex-direction: column; gap: 2px">
       <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px">
         <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: oklch(0.52 0.012 70)">Due</div>
-        <div style="font-size: 12px; color: oklch(0.52 0.012 70)">3 left</div>
+        <div style="font-size: 12px; color: oklch(0.52 0.012 70)">{{leftLabel}}</div>
       </div>
 
       <sc-for list="{{due}}" as="row" hint-placeholder-count="3">
@@ -136,7 +136,9 @@ class Component extends DCLogic {
       { id: 'waterfall', title: 'Module 2: Assignment 2 - Waterfall Model', meta: 'COSC 4320 - due Sun 23:59' },
       { id: 'discussion', title: 'Discussion-2-Incremental Advantage Delivery', meta: 'COSC 4320 - due Sun 23:59' },
     ];
+    const left = rows.filter((r) => !this.state.done[r.id]).length;
     return {
+      leftLabel: left === 0 ? 'all done' : left + ' left',
       due: rows.map((r) => {
         const done = !!this.state.done[r.id];
         return {

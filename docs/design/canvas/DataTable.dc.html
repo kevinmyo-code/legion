@@ -24,7 +24,7 @@
     <div style="display: flex; align-items: flex-end; justify-content: space-between">
       <div>
         <div style="font-family: 'Newsreader', Georgia, serif; font-size: 30px; line-height: 1.1; letter-spacing: -0.015em">Pantry</div>
-        <div style="font-size: 13.5px; color: oklch(0.52 0.012 70); margin-top: 5px">148 items - the same table shape Body, Fleet and Places use</div>
+        <div style="font-size: 13.5px; color: oklch(0.52 0.012 70); margin-top: 5px">Showing 8 of 148 - the same table shape Body, Fleet and Places use</div>
       </div>
       <div style="display: flex; gap: 9px">
         <button class="chip">
@@ -37,7 +37,7 @@
 
   <!-- selection bar: editing is bulk-capable, because this is the workbench -->
   <div style="margin: 0 32px 14px; background: oklch(0.94 0.014 55); border: 1px solid oklch(0.86 0.03 55); border-radius: 10px; padding: 9px 14px; display: flex; align-items: center; gap: 12px">
-    <div style="font-size: 13px; font-weight: 500; color: oklch(0.34 0.05 50)">2 selected</div>
+    <div style="font-size: 13px; font-weight: 500; color: oklch(0.34 0.05 50)">{{selLabel}}</div>
     <div style="width: 1px; height: 18px; background: oklch(0.84 0.03 55)"></div>
     <button class="chip" style="height: 28px; background: transparent; border-color: oklch(0.84 0.03 55)">Set category</button>
     <button class="chip" style="height: 28px; background: transparent; border-color: oklch(0.84 0.03 55)">Move to list</button>
@@ -75,7 +75,7 @@
               <td class="td" style="text-align: right; font-variant-numeric: tabular-nums">
                 {{r.kcal}}
                 <sc-if value="{{r.est}}" hint-placeholder-val="{{ true }}">
-                  <span style="display: block; font-size: 11px; color: oklch(0.50 0.07 60); margin-top: 2px">estimate</span>
+                  <span style="display: block; font-size: 11px; color: oklch(0.47 0.07 60); margin-top: 2px">estimate</span>
                 </sc-if>
               </td>
               <td class="td" style="color: oklch(0.52 0.012 70); font-variant-numeric: tabular-nums">{{r.added}}</td>
@@ -89,7 +89,7 @@
     </div>
 
     <div style="margin-top: 14px; font-size: 12.5px; line-height: 1.55; color: oklch(0.50 0.012 70); max-width: 760px">
-      Calories are marked <span style="color: oklch(0.45 0.07 60)">estimate</span> in words on every row that
+      Calories are marked <span style="color: oklch(0.47 0.07 60)">estimate</span> in words on every row that
       carries one. A receipt never prints a macro, so these were guessed from the product name - they are
       excluded from the reconciliation check and are never presented as measured.
     </div>
@@ -112,9 +112,11 @@ class Component extends DCLogic {
       { id: 'e', name: 'Olive oil', cat: 'Pantry', qty: '500 ml', kcal: '4,020', est: true, added: '06 Sep' },
       { id: 'f', name: 'Eggs, large', cat: 'Protein', qty: '18', kcal: '1,260', est: true, added: '06 Sep' },
       { id: 'g', name: 'Spinach', cat: 'Produce', qty: '10 oz', kcal: '65', est: true, added: '06 Sep' },
-      { id: 'h', name: 'Coffee beans', cat: 'Pantry', qty: '12 oz', kcal: '10', est: true, added: '02 Sep' },
+      { id: 'h', name: 'Coffee beans', cat: 'Pantry', qty: '12 oz', kcal: '1,550', est: true, added: '02 Sep' },
     ];
+    const count = Object.values(this.state.sel).filter(Boolean).length;
     return {
+      selLabel: count === 1 ? '1 selected' : count + ' selected',
       rows: rows.map((r) => {
         const sel = !!this.state.sel[r.id];
         return {
