@@ -22,68 +22,58 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-09-10 late (session 0151LEjT, continued)
+## Where we stopped - 2026-09-11 night (session 0151LEjT)
 
-- **`dev` is `711e2be`, pushed, 3487 tests / 0 failures.** Earlier today: tenancy migration applied
-  to live, Cloud Run redeployed, Android CI green for the first time, phone flipped fully to Django
-  (all nine aspects in `DJANGO_BY_DEFAULT`).
-- **New map `one-home`, charted and almost entirely built** (Kevin: *"chart it and work on it"*, then
-  *"run everything with your taste"* - so tickets 01, 04 and 06 were decided by Opus, not by him, and
-  the tickets and `library/decisions.md` both say so). CALENDAR is HOME; METERS and the whole tab row
-  are deleted; the ASK picker lives at `LegionRoute.ASK`; the advisor writes a real recurring
-  `checklists` row instead of `"Plan: "`-prefixed `list_items`. **Ticket 07 (news surface) is the only
-  unbuilt one** and is in flight on `feat/news-surface`.
-- **Three bugs found that were not the task**, all now fixed: a migration writing
-  `ADD COLUMN ... DEFAULT NULL`, which records a literal `'NULL'` default Room's generated schema does
-  not have and **fails the upgrade for every existing install**; three dangling deep-link route
-  strings (`notes` and `today` were already a crash on tapping an old notification, before any of
-  today's work); and a generated schema JSON never staged.
-- **`web-and-households` 03 merged** - signup, invite codes, household members, session auth.
-  Merging it conflicted only on the two GENERATED files; the fix is to re-run
-  `obsidian_sync.py` + `pending_wiki.py` on the merge result, never to pick a side.
-- **The phone is BACK, over wireless debugging, and the ship pass ran.** Pairing needed both halves
-  and they are different ports: `adb pair 192.168.1.37:42085 <code>`, then the CONNECT port comes from
-  `adb mdns services` (`_adb-tls-connect._tcp`, was `:37779`). Pairing is saved; a reconnect later
-  only needs the connect step. `adb` is NOT on PATH -
-  `/c/Users/kevin/AppData/Local/Android/Sdk/platform-tools/adb.exe`.
-- **one-home ticket 08 is RESOLVED.** On-device and green: cold start on HOME with no tab row, all
-  five drill-downs by finger, all seven route strings (including the four dead ones) with a clean
-  logcat, the ASK picker rendering a real generated view, **the newsletter tap owed since
-  2026-08-22**, and RSS add + fetch. Skipped with reasons, not silently: airplane-mode (the only ADB
-  link is that same Wi-Fi), the advisor round-trip (no speaker in the room), the overnight reset.
-  46 screenshots kept.
-- **A live bug found in logcat while doing it: `django-engine` 17.** Every conversation-audit upload
-  has failed since the 2026-09-08 tenancy migration re-keyed the unique index its `ON CONFLICT` names.
-  It is the only write path still hardwired to Supabase. Silent for two days - the rows queue,
-  `/health` says ok, the suite is green. Eight more Supabase upserts are dormant behind the same
-  landmine, reachable if any aspect is toggled back.
+- **`dev` is `f52b355`, pushed, tree clean.** Android 3508 tests / 0 failures; server 717 passed /
+  42 skipped. Cloud Run redeployed and verified serving the new bundle.
+- **The web app went from a login page to something usable.** Today (events + what is due, tasks
+  tickable) and Lists (checklists, tick/untick) are live at
+  `https://legion-757959564788.us-south1.run.app`. **Nobody has loaded them against real household
+  data** - built and tested against a mock over real HTTP, and the narrow/mobile layout is inferred
+  from Tailwind classes, never seen. Kevin is the first real user; treat his first login as the test.
+- **Same account, phone and web, was already true** - `DeviceToken.user` is a FK to `User` and
+  session login authenticates the same row. Kevin's account has 13 device tokens. He was setting his
+  own web password via `manage.py changepassword kevinmyo@gmail.com` (settings.py loads `deploy/.env`,
+  so that works against live with no extra setup).
+- **`read_calendar` could not see a single assignment** and is fixed. It queried `EventKind.EVENT`;
+  every assignment is `EventKind.TASK` - 145 of 314 rows on the A25 - and **no tool in the toolbox
+  returned one**, which was also an ADR 0035 gap. It now reads both kinds and reports `kind`/`done`.
+  Its description still claimed to read "GOOGLE CALENDAR", false since Google was cut.
+- **one-home shipped and was hardware-verified** (ticket 08 resolved on the A25): HOME with no tab
+  row, all drill-downs, all seven route strings, the ASK picker, and the newsletter tap owed since
+  2026-08-22. Skipped with reasons: airplane-mode, the advisor round-trip, the overnight reset.
+- **Board correction:** `web-and-households` 02 read `open` while having been applied to live since
+  2026-09-10. `02b` (Postgres RLS) is genuinely still open - checked, no `ROW LEVEL SECURITY` in
+  `server/`.
 
 ### Next session, in order
 
-1. **`django-engine` 17** - conversation audit is uploading nothing. Move it to Django rather than
-   patching the on-conflict string, and decide whether the eight dormant Supabase upserts are a real
-   fallback or dead code.
-2. Ledger, pantry and fleet against Django on the A25 - still never run, and the phone is connected.
-3. Rescue or abandon `feat/openapi-clients` (mid-merge, ~33 conflicts, duplicate ADR 0045 to
-   renumber to 0048).
-4. Re-resolve `web-and-households` 12/13 now the Oracle VM is dead.
+1. **Kevin logs into the web app and says what is broken.** Two specific unknowns: do Sunday's seven
+   assignments land on Sunday (the timezone fix is ported but unverified against his data), and does
+   the bottom nav behave at phone width.
+2. **`django-engine` 17** - conversation-audit uploads dead since the tenancy migration re-keyed the
+   index its `ON CONFLICT` names. WIP preserved on `fix/audit-to-django` (`d98866f`), **unverified -
+   the full server suite was never run against it.**
+3. **`web-and-households` 05/06** - the rest of phase 1, then the aspect screens.
+4. **Ledger, pantry and fleet on the A25** - still never verified against Django; two attempts today
+   died to a flat battery and a token stop.
+5. **`feat/openapi-clients`** - 6 commits ahead, merge resolved, ADR renumbered to 0048,
+   `compileDebugKotlin` passes. Owes a test run before merging.
 
 ### Owed by Kevin - decisions, not code
 
-- **Any of the three taste calls above is cheap to overturn** - each ticket records the reasoning and
-  what it rejected. 01 (no tab row) is the one that changes the most if he disagrees.
-- **`origin_guid` for a server-created vehicle**: fleet is routed to Django, so `upsertVehicle`/
-  `upsertServiceHistory` hit `DjangoFleetBackend`'s two refused functions.
-- **Voice-note audio still has no durable store** (ADR 0041 keeps all three artefacts together).
-- Rotate the Supabase passwords and the phone's device token when convenient.
+- **`one-home` ticket 09**: do feed subscriptions sync, or are they device-local config? Built
+  local-only; ticket 06's resolution said "synced" and is amended to match the code.
+- **Canvas has no sync at all.** The only data is a snapshot from 2026-09-01, ten days stale, whose
+  own note says it was truncated at 50KB of an unknown larger total. Not ticketed yet, on purpose.
+- **`origin_guid` for a server-created vehicle** - `DjangoFleetBackend`'s two refused functions.
+- **Voice-note audio still has no durable store** (ADR 0041).
 
 ### The lesson of this session, in one line
 
-**A decision that names a file to delete should name the PROPERTY that makes deleting it safe.**
-Ticket 04 said to delete `GoalChecklistPanel` because the calendar rendered it; ticket 02 removed that
-call site hours later, leaving `BodyScreen` - which hosts `+ LOG SET` inside the panel - as the only
-caller. Obeying the ticket literally would have deleted `log_workout_set`'s hands path, the exact ADR
-0035 failure the same map was enforcing one screen over.
+**One query against the real database settled in seconds what two source-reading passes got wrong in
+opposite directions.** Two stale comments said "nothing writes TASK yet"; 145 rows existed. A stale
+comment is not ignored, it is believed - and the phone was attached the whole time.
 
 ## Read before trusting a green suite
 
