@@ -169,8 +169,32 @@ class ChangesView(APIView):
         },
     )
     def get(self, request):
-        raw_aspects = request.query_params.get("aspects", "")
-        requested = [a.strip() for a in raw_aspects.split(",") if a.strip()]
+        # **Both spellings, and the bug that forced this.** `aspects` is declared
+        # in `openapi.yaml` as `type: array` with no `style`/`explode`, and
+        # OpenAPI's default for a query array is `style: form, explode: true` -
+        # repeated params, `?aspects=events&aspects=checklists`. This read
+        # `query_params.get("aspects")`, which on a repeated param returns the
+        # LAST value only, so a client obeying the published contract asked for
+        # events and checklists and got `["checklists"]`.
+        #
+        # It failed silently and it failed in the worst direction: the response
+        # is a 200 with `events: []`, which is indistinguishable from a household
+        # that genuinely has no events. The web app's Today screen said "Nothing
+        # on the calendar today" for every day, while the database held 467 rows.
+        # Found 2026-09-12 by querying the API by hand after the screen and the
+        # data disagreed.
+        #
+        # The server was wrong, not the generated client: the spec said repeated
+        # and the implementation only read comma-separated. Rather than narrow
+        # the spec and regenerate every client, accept BOTH - `getlist` picks up
+        # every repeated occurrence, and each one is still comma-split so the
+        # documented `?aspects=events,checklists` keeps working unchanged.
+        requested = [
+            aspect.strip()
+            for raw in request.query_params.getlist("aspects")
+            for aspect in raw.split(",")
+            if aspect.strip()
+        ]
         if not requested:
             requested = list(KNOWN_ASPECTS)
 

@@ -43,6 +43,44 @@ def test_aspects_filter_selects_only_the_named_aspect(auth_client):
     assert "events" not in checklists_only.data
 
 
+def test_repeated_aspects_params_work_as_well_as_the_comma_form(auth_client):
+    """**The regression guard for a silent empty calendar, 2026-09-12.**
+
+    `aspects` is declared in `openapi.yaml` as `type: array` with no
+    `style`/`explode`, so OpenAPI's default applies: `explode: true`, meaning
+    repeated params. A generated TypeScript client sent exactly that, and this
+    endpoint read `query_params.get("aspects")` - which returns only the LAST
+    occurrence - so `?aspects=events&aspects=checklists` asked for both and got
+    `["checklists"]`.
+
+    The response was a 200 with no `events` key at all, which the web app
+    rendered as "Nothing on the calendar today" on every single day while the
+    database held 467 events. **A contract mismatch that returns a cheerful 200
+    is worse than one that 400s**, which is why both spellings are pinned here
+    rather than only the one the server happened to implement.
+    """
+    auth_client.post("/api/events", {"title": "an event"}, format="json")
+    auth_client.post("/api/checklists/", {"name": "a checklist"}, format="json")
+
+    repeated = auth_client.get("/api/changes?aspects=events&aspects=checklists")
+    assert repeated.status_code == 200
+    assert "events" in repeated.data, "repeated params dropped the first aspect"
+    assert "checklists" in repeated.data
+    assert len(repeated.data["events"]) == 1
+
+    # The documented comma form keeps working - this fix widens what is
+    # accepted, it does not move the contract.
+    comma = auth_client.get("/api/changes?aspects=events,checklists")
+    assert set(comma.data.keys()) == set(repeated.data.keys())
+
+    # And the two spellings may be mixed, which is what a client assembling a
+    # query from several places will eventually send.
+    mixed = auth_client.get("/api/changes?aspects=events&aspects=checklists,body")
+    assert "events" in mixed.data
+    assert "checklists" in mixed.data
+    assert "bodyweight_logs" in mixed.data
+
+
 def test_unknown_aspect_is_400_naming_the_allowed_set(auth_client):
     """**This test used to send `aspects=ledger`**, then `aspects=fleet`, and
     both are real aspects now - ledger when its routes landed, fleet when its
