@@ -1,0 +1,73 @@
+{
+  "nodes": [
+    {
+      "id": "ed7ee53d0d670fbe",
+      "type": "file",
+      "file": ".scratch/chief-of-staff/issues/01-is-career-a-seventh-aspect.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3847a67b23943345",
+      "type": "file",
+      "file": ".scratch/chief-of-staff/issues/02-what-a-net-worth-may-be.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7545a4e76f404e42",
+      "type": "file",
+      "file": ".scratch/chief-of-staff/issues/03-assets-and-liabilities.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "53a7b95db3d497ec",
+      "type": "file",
+      "file": ".scratch/chief-of-staff/issues/05-one-outstanding-view.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a8a295a2f67bcd71",
+      "type": "file",
+      "file": ".scratch/chief-of-staff/issues/06-canvas-sync.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "893165a64e0e7c02",
+      "type": "file",
+      "file": ".scratch/chief-of-staff/issues/04-net-worth-is-never-one-number.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "7876e4f1c52aae29",
+      "fromNode": "3847a67b23943345",
+      "fromSide": "right",
+      "toNode": "893165a64e0e7c02",
+      "toSide": "left"
+    }
+  ]
+}
