@@ -51,6 +51,22 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // **Take over on the next load, do not wait for every tab to close.**
+        // `registerType: 'autoUpdate'` installs the new worker but, on its own,
+        // leaves it in `waiting` until the last client holding the OLD worker
+        // goes away - and a PWA added to a home screen, or a tab left open, can
+        // hold it for days. The symptom is not an error: the app simply keeps
+        // serving the previous build, so a deploy looks like it did nothing.
+        // Found 2026-09-12 when the phone kept rendering the pre-shell layout
+        // after the Today/Lists deploy, and again an hour earlier when the login
+        // screen still read "Not connected yet" from a build two days old.
+        //
+        // Safe here because `/api/` is NetworkOnly (below): taking over
+        // mid-session can swap the shell under a user, but it can never serve
+        // them a cached figure, which is the failure CLAUDE.md section 4 cares
+        // about. The shell may be stale, the data may not.
+        skipWaiting: true,
+        clientsClaim: true,
         // Without this, the service worker answers EVERY navigation with the
         // cached `index.html`, including the ones Django owns. `/admin` would
         // render the SPA shell, `/api` HTML instead of JSON, `/media` a page
