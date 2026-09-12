@@ -1,0 +1,90 @@
+{
+  "nodes": [
+    {
+      "id": "bf7cc0477b2075e6",
+      "type": "file",
+      "file": ".scratch/web-surface/issues/01-the-horizon.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "12b9ab72f021abab",
+      "type": "file",
+      "file": ".scratch/web-surface/issues/02-today-rebuilt.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "afc6617c72ac3891",
+      "type": "file",
+      "file": ".scratch/web-surface/issues/03-desktop-is-not-the-phone.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "bf7826585f11d58c",
+      "type": "file",
+      "file": ".scratch/web-surface/issues/04-the-desktop-shell.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "66170ee6691d1eea",
+      "type": "file",
+      "file": ".scratch/web-surface/issues/05-look-back.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "748d2c45da3fec73",
+      "type": "file",
+      "file": ".scratch/web-surface/issues/06-stale-is-a-third-sentence.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "23308f36c80fb69b",
+      "type": "file",
+      "file": ".scratch/web-surface/issues/07-rebrief-aspect-screens.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "72831c716d3b8011",
+      "fromNode": "bf7cc0477b2075e6",
+      "fromSide": "right",
+      "toNode": "23308f36c80fb69b",
+      "toSide": "left"
+    },
+    {
+      "id": "67ea25f4b7875a97",
+      "fromNode": "afc6617c72ac3891",
+      "fromSide": "right",
+      "toNode": "23308f36c80fb69b",
+      "toSide": "left"
+    }
+  ]
+}

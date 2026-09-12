@@ -55,6 +55,12 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
+| [[.scratch/web-surface/map\|web-surface]] | [[01-the-horizon\|01]] | decision | The horizon: what Today shows beyond tomorrow, and how a cliff reads as a cliff |
+| [[.scratch/web-surface/map\|web-surface]] | [[02-today-rebuilt\|02]] | build | Today, rebuilt |
+| [[.scratch/web-surface/map\|web-surface]] | [[03-desktop-is-not-the-phone\|03]] | decision | Desktop is not the phone reflowed: what the workbench shows that the PWA never does |
+| [[.scratch/web-surface/map\|web-surface]] | [[04-the-desktop-shell\|04]] | build | The desktop shell |
+| [[.scratch/web-surface/map\|web-surface]] | [[05-look-back\|05]] | build | Look-back |
+| [[.scratch/web-surface/map\|web-surface]] | [[06-stale-is-a-third-sentence\|06]] | build | Stale is a third sentence |
 
 ## Built, owing a run on hardware
 
@@ -160,6 +166,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[05-web-screens-phase-1\|05]] | build | Web screens, phase 1: sign in, sign up, household, Today, Lists, Settings; installed on an iPhone  waiting on [[03-accounts-signup-invites\|03]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[06-web-screens-phase-2\|06]] | build | Web screens, phase 2: Ledger, Pantry, Body, Fleet, Places, Voice notes, and a glanceable home  waiting on [[05-web-screens-phase-1\|05]], [[11-report-endpoints\|11]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[11-report-endpoints\|11]] | build | Report endpoints: aggregates computed once, described in the contract, unverified carried through  waiting on [[02b-rls-belt\|02]] |
+| [[.scratch/web-surface/map\|web-surface]] | [[07-rebrief-aspect-screens\|07]] | task | Re-brief web-and-households 06 with what the real data turned out to look like  waiting on [[01-the-horizon\|01]], [[03-desktop-is-not-the-phone\|03]] |
 
 ## KIV
 
@@ -220,3 +227,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 15 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 9 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
+| [[.scratch/web-surface/map\|web-surface]] | 7 | 7 | [[.scratch/web-surface/web-surface.canvas\|open]] |
