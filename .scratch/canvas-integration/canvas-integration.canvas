@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "id": "e63ef89e29f432ab",
+      "type": "file",
+      "file": ".scratch/canvas-integration/issues/01-sunday-reads-empty.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}
