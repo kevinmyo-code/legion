@@ -3,11 +3,11 @@ map: web-and-households
 ticket: "02"
 title: "household_id on every data table, backfilled, and one Django choke point"
 type: build
-status: open
+status: built
 blockers: ["01"]
 blocked-by: ["[[01-households-are-tenants]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
