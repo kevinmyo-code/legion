@@ -110,3 +110,8 @@ server/*.egg-info/
 # .claude/mcp.env holds LEGION_PG_URL and CANVAS_TOKEN. The repo is public; never commit it.
 .claude/mcp.env
 tools/mcp/*/.venv/
+
+# Seeded design-canvas payloads: 2.4 MB of editor code, regenerated from the
+# .dc.html sources and canvas.json beside them. The sources are what is worth keeping.
+docs/design/canvas/*.html
+!docs/design/canvas/*.dc.html

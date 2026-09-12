@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Geist:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Geist', system-ui, -apple-system, sans-serif; }
+    a { color: oklch(0.58 0.12 45); } a:hover { color: oklch(0.48 0.12 45); }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 880px; height: 700px; background: oklch(0.96 0.006 85); padding: 28px; display: flex; flex-direction: column; gap: 18px; color: oklch(0.22 0.012 60)">
+
+  <div>
+    <div style="font-family: 'Newsreader', Georgia, serif; font-size: 24px">Empty is not the same as unreachable</div>
+    <div style="font-size: 14px; color: oklch(0.52 0.012 70); margin-top: 5px; max-width: 640px; line-height: 1.5">
+      Two different facts, two different sentences, never one blank state. The left screen says there is nothing to do. The right one says the app cannot see, and never implies the day is clear.
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 28px; flex-grow: 1">
+
+    <!-- EMPTY -->
+    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px">
+      <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: oklch(0.58 0.12 155)">Empty - the read worked</div>
+      <div style="flex-grow: 1; background: oklch(0.985 0.006 85); border: 1px solid oklch(0.90 0.008 80); border-radius: 16px; padding: 22px; display: flex; flex-direction: column">
+        <div style="font-family: 'Newsreader', Georgia, serif; font-size: 24px">Today</div>
+        <div style="font-size: 13px; color: oklch(0.52 0.012 70); margin-top: 4px">Friday, 12 September</div>
+
+        <div style="margin-top: 26px; font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: oklch(0.52 0.012 70)">Due</div>
+        <div style="margin-top: 10px; font-size: 15px; color: oklch(0.42 0.012 65)">Nothing due today.</div>
+
+        <div style="margin-top: 26px; font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: oklch(0.52 0.012 70)">On today</div>
+        <div style="margin-top: 10px; font-size: 15px; color: oklch(0.42 0.012 65)">Nothing on the calendar today.</div>
+
+        <div style="margin-top: auto; padding-top: 20px; font-size: 12.5px; color: oklch(0.58 0.012 70); border-top: 1px solid oklch(0.93 0.006 80)">
+          Two sentences, not one. They come from two different reads, so a clear calendar and an empty
+          checklist never collapse into a single &quot;nothing here&quot;.
+        </div>
+      </div>
+    </div>
+
+    <!-- UNREACHABLE -->
+    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px">
+      <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: oklch(0.58 0.12 25)">Unreachable - the read failed</div>
+      <div style="flex-grow: 1; background: oklch(0.985 0.006 85); border: 1px solid oklch(0.90 0.008 80); border-radius: 16px; padding: 22px; display: flex; flex-direction: column">
+        <div style="font-family: 'Newsreader', Georgia, serif; font-size: 24px">Today</div>
+        <div style="font-size: 13px; color: oklch(0.52 0.012 70); margin-top: 4px">Friday, 12 September</div>
+
+        <div style="margin-top: 26px; border: 1px solid oklch(0.58 0.12 25); background: oklch(0.975 0.014 25); border-radius: 12px; padding: 16px">
+          <div style="display: flex; gap: 11px; align-items: flex-start">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="oklch(0.52 0.14 25)" stroke-width="1.9" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9.2"/></svg>
+            <div>
+              <div style="font-size: 15px; font-weight: 500; color: oklch(0.40 0.13 25)">Couldn&#39;t reach the engine</div>
+              <div style="font-size: 13.5px; line-height: 1.5; color: oklch(0.45 0.06 40); margin-top: 5px">
+                This is not the same as having nothing due. Your day may have items on it that this screen cannot see right now.
+              </div>
+              <div style="font-size: 12.5px; color: oklch(0.52 0.03 50); margin-top: 9px">Last read 2 hours ago, 07:14</div>
+              <div style="display: flex; gap: 8px; margin-top: 13px">
+                <button style="height: 36px; padding: 0 15px; border-radius: 9px; border: none; background: oklch(0.58 0.12 25); color: oklch(0.99 0.01 25); font-size: 13.5px; font-weight: 500; font-family: inherit; cursor: pointer">Try again</button>
+                <button style="height: 36px; padding: 0 15px; border-radius: 9px; border: 1px solid oklch(0.85 0.02 40); background: transparent; color: oklch(0.40 0.04 45); font-size: 13.5px; font-family: inherit; cursor: pointer">Show what was saved</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: auto; padding-top: 20px; font-size: 12.5px; color: oklch(0.58 0.012 70); border-top: 1px solid oklch(0.93 0.006 80)">
+          No empty-state wording anywhere on this screen. It never says &quot;nothing due&quot; when the truth is
+          &quot;cannot see&quot;.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":880,"height":700}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
