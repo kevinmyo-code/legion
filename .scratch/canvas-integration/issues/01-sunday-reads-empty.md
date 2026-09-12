@@ -3,12 +3,20 @@ map: canvas-integration
 ticket: "01"
 title: "Seven things are due Sunday and the assistant says it knows of none"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: >
+  Built 2026-09-11. Settled on the device, and the timezone theory was WRONG:
+  the rows carry allDay=0 and a true instant, so the local-day bucketing was
+  always correct. The bug was read_calendar querying EventKind.EVENT while
+  every assignment is EventKind.TASK - 145 of 314 rows on the A25, and no tool
+  in the toolbox returned one of them. Now reads both kinds and reports `kind`
+  and `done` so the model can tell "happens" from "due". The description, which
+  still claimed to read GOOGLE CALENDAR and explicitly not LEGION's own data,
+  was rewritten. 3508 tests, 0 failures. Owes a spoken check on the phone.
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -108,3 +116,75 @@ week Canvas knows about and LEGION does not.
   on 2026-09-01.
 - Check the Friday case too (`2026-09-12T04:59:59Z` -> Fri 23:59 local). A fix that only special-cases
   Sunday is not a fix.
+
+
+---
+
+## RESOLVED 2026-09-11, and the first theory in this ticket was wrong
+
+**The timezone diagnosis above is incorrect and is left standing as written**, because the way it was
+wrong is the useful part.
+
+Pulled the Room database off the A25 (`adb exec-out run-as com.kevin.legion cat databases/...`, all
+three files - the first attempt used `adb shell` and came back malformed from CRLF translation plus a
+missing WAL). Ground truth:
+
+```
+events rows: 314
+by kind:     event 161 | reminder 8 | task 145
+```
+
+And the Sunday rows themselves:
+
+```
+kind=task  allDay=0  done=0  utc=2026-09-14 04:59:00  ->  local 2026-09-13 23:59 Sun
+kind=task  allDay=0  done=0  utc=2026-09-14 04:59:59  ->  local 2026-09-13 23:59 Sun   (x4 more)
+kind=task  allDay=0  done=1  utc=2026-09-12 04:59:59  ->  local 2026-09-11 23:59 Fri
+```
+
+**`allDay = 0` and a true instant.** The storage was right all along, and
+`activeByKindInLocalWindow` was already bucketing them onto the correct local day. Nothing about the
+import or the timezone was broken.
+
+**The bug was one word: `read_calendar` asked for `EventKind.EVENT`, and every assignment is
+`EventKind.TASK`.** 145 rows, structurally invisible. `read_list` is reminders, `manage_checklist` is
+checklists, and `NotesController.openAppointments` is TASK-filtered but exists to match a spoken
+title for `manage_item`. **No tool returned a task**, which also made it an ADR 0035 gap: not a
+capability with a weak hands path, a capability with none.
+
+### Why I talked myself out of the right answer
+
+This was my first hypothesis. I discarded it on two pieces of evidence, both of which were wrong:
+
+1. `EventsBackend.kt:42` says of TASK: *"Nothing writes this yet"*, and `NotesController.kt:929`
+   repeats it: *"nothing writes one yet - Canvas is its own ticket"*. **Both are stale.** 145 task
+   rows exist on the device. **A stale comment is not ignored, it is believed** - CLAUDE.md's own
+   warning, and it cost a full detour into a timezone theory.
+2. `APPOINTMENT` was renamed to `EVENT`, not `TASK`, so I reasoned the imported rows must be events.
+   True of the rename, false of the data.
+
+**The lesson is not "read the code more carefully". It is that one query against the real database
+settled in seconds what two source-reading passes got wrong in opposite directions.** The phone was
+available the whole time.
+
+### What landed
+
+- `readCalendar` queries EVENT and TASK, merged and sorted by start.
+- Each row now reports `kind`, and `done` for a task, so the model can distinguish a class that
+  passes from a quiz that is due and say whether it is already submitted.
+- The tool description was rewritten. It claimed to read *"Kevin's GOOGLE CALENDAR"* and *"This does
+  NOT read LEGION's own list"* - both false since one-today ticket 01 cut Google entirely. It now
+  names tasks and says explicitly to use the tool for "what's due". **A description naming a system
+  the app no longer talks to steers the model away from the tool for exactly the questions it
+  answers.**
+- The empty sentence became "Nothing on the calendar and nothing due in that window" - the old one
+  answered a question about deadlines with a sentence about appointments.
+- `ReadCalendarTaskVisibilityTest`, 5 tests, fixtured on the REAL rows including the Monday-UTC
+  timestamps. A test that "simplified" those to a midnight-aligned Sunday would pass against the
+  broken code, so the off-by-one and the kind filter are exercised together.
+
+### Still owed
+
+A spoken check on the phone: ask what is due Sunday and hear the seven items. The fix is unit-tested
+at the same seam `readCalendar` calls, which is not the same as the model actually reaching for this
+tool and reading the answer aloud.

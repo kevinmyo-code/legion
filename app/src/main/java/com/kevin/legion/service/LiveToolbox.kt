@@ -1851,14 +1851,24 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "read_calendar",
-            description = "Read events from Kevin's GOOGLE CALENDAR over a date range - the same " +
-                "calendar `manage_item`'s appointment kind writes to, and every calendar Kevin has " +
-                "on this device whether he owns it or only subscribes to it, so a holiday or a " +
-                "shared calendar he can't edit still shows up here. This does NOT read LEGION's " +
-                "own list - reminders and to-dos live on `manage_item`/`read_list`, never here, " +
-                "and this tool never returns them. Returns each event's title, start, end, and " +
-                "whether it is all-day. Read-only: you cannot create, edit, or delete anything " +
-                "with this tool - use manage_item for that.",
+            // **Rewritten 2026-09-11.** It said "Kevin's GOOGLE CALENDAR" and "This does NOT read
+            // LEGION's own list", and both had stopped being true: one-today ticket 01 cut Google
+            // entirely ("One calendar, and it is ours"), so this reads LEGION's own `events` table
+            // and nothing else. A description that names a system the app no longer talks to is not
+            // cosmetic - it steers the model away from the tool for exactly the questions the tool
+            // now answers.
+            description = "Read Kevin's calendar over a date range - LEGION's own calendar, the " +
+                "only one there is. Returns TWO kinds of row and the difference matters: a " +
+                "`kind` of \"event\" is something that HAPPENS at a time and simply passes " +
+                "whether or not he engages with it (a class, a birthday), while \"task\" is " +
+                "something DUE that he has to do - an assignment, a quiz, a homework deadline - " +
+                "and carries `done` saying whether it is finished. **School and coursework " +
+                "deadlines are tasks, so use this tool for 'what's due', 'what do I have due " +
+                "Sunday', 'what's due for school this week', not only for 'what's on my " +
+                "calendar'.** Each row gives title, start, end, all_day, kind, and done for a " +
+                "task. This does not return reminders or checklist items - those are " +
+                "`read_list` and `manage_checklist`. Read-only: use manage_item to change " +
+                "anything.",
             params = obj(
                 "from" to schema("string", "First day of the window, yyyy-MM-dd. Call " +
                     "get_current_time first if you need to know what 'today' is."),
@@ -3377,8 +3387,29 @@ object LiveToolbox {
         // midnight of its date, not a device-zone instant, so a plain window compare can speak the
         // wrong day aloud (found 2026-09-01, "the due dates seem to be advanced by 1 day"; see that
         // function's own doc comment).
-        val events = CarDatabase.getDatabase(context).eventDao()
-            .activeByKindInLocalWindow(EventKind.EVENT, startMs, endMs, zone)
+        // **BOTH kinds, and reading only EventKind.EVENT is the bug this fixes (2026-09-11).**
+        // Kevin: *"the AI doesnt see anything thats due on sunday for sch. i asked it and it didnt
+        // know."* Seven assignments were due that Sunday. Every one of them is `kind = task`, this
+        // query asked for `kind = event`, and so the model was handed an empty window and said so -
+        // which reads exactly like "you have nothing due", the worst way for this to fail.
+        //
+        // 145 of the 314 rows on the real device are tasks (counted on the A25, 2026-09-11). Nothing
+        // in the toolbox returned a single one of them: `read_list` is reminders, `manage_checklist`
+        // is checklists, and `NotesController.openAppointments` is TASK-filtered but exists to MATCH
+        // a spoken title for `manage_item`, not to read a day. **Assignments were unreachable by
+        // voice entirely**, which is also an ADR 0035 gap - a capability with no hands path is
+        // unfinished, and this one had no path at all.
+        //
+        // The dates themselves were always right and that is worth recording, because the first
+        // suspicion was a timezone fault: these rows carry `allDay = 0` and a true instant
+        // (`2026-09-14T04:59Z` = Sunday 23:59 in Houston), so [activeByKindInLocalWindow] buckets
+        // them onto the correct local day already. Canvas writes an 11:59pm local deadline as
+        // `04:59Z the next day`; the storage handles it. Only the `kind` filter was wrong.
+        val dao = CarDatabase.getDatabase(context).eventDao()
+        val events = (
+            dao.activeByKindInLocalWindow(EventKind.EVENT, startMs, endMs, zone) +
+                dao.activeByKindInLocalWindow(EventKind.TASK, startMs, endMs, zone)
+            ).sortedBy { it.startsAt ?: Long.MAX_VALUE }
         val arr = JSONArray()
         for (event in events) {
             val eventStart = event.startsAt ?: continue
@@ -3397,6 +3428,12 @@ object LiveToolbox {
                         else "${com.kevin.legion.util.shortDate(eventEnd)} ${com.kevin.legion.util.clockTime(eventEnd)}",
                     )
                     .put("all_day", event.allDay)
+                    // An event PASSES; a task gets DONE (one-today ticket 08). Without this the
+                    // model cannot tell "your 09:30 class" from "a quiz due tonight", and would
+                    // have to guess from the title - so it is told, and told whether the task is
+                    // already finished rather than being left to imply it.
+                    .put("kind", event.kind)
+                    .also { o -> if (event.kind == EventKind.TASK) o.put("done", event.done) }
                     .also { o ->
                         // event.structuredMeta is already a JSON object string (parsed once, at
                         // import, from the source description's `LEGION::v1` block) - decode it
@@ -3410,7 +3447,12 @@ object LiveToolbox {
             )
         }
         val o = JSONObject().put("success", true).put("count", arr.length()).put("events", arr)
-        if (arr.length() == 0) o.put("message", "Nothing on the calendar in that window.")
+        // Says what was actually looked at. "Nothing on the calendar" invited the model to answer a
+        // question about DEADLINES with a sentence about appointments, which is how a window that
+        // excluded every task still sounded authoritative.
+        if (arr.length() == 0) {
+            o.put("message", "Nothing on the calendar and nothing due in that window.")
+        }
         return o
     }
 

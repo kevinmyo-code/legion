@@ -27,7 +27,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[28-service-history-reads-still-serve-the-legacy-table\|28]] | build | 28-service-history-reads-still-serve-the-legacy-table |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[29-audit-rows-age-out-before-they-are-uploaded\|29]] | decision | 29-audit-rows-age-out-before-they-are-uploaded |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
-| [[.scratch/canvas-integration/map\|canvas-integration]] | [[01-sunday-reads-empty\|01]] | build | Seven things are due Sunday and the assistant says it knows of none |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
 | [[.scratch/django-engine/map\|django-engine]] | [[12-pytest-leaves-a-connection-behind\|12]] | build | Every pytest run leaves a connection on test_postgres and breaks the next one |
@@ -76,6 +75,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[17-dates-is-engine-only\|17]] | decision | 17-dates-is-engine-only |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[18-the-generic-ui-still-runs-on-the-engine\|18]] | decision | 18-the-generic-ui-still-runs-on-the-engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[20-the-reminder-default-made-the-retraction-delete-appointments\|20]] | decision | 20-the-reminder-default-made-the-retraction-delete-appointments |
+| [[.scratch/canvas-integration/map\|canvas-integration]] | [[01-sunday-reads-empty\|01]] | build | Seven things are due Sunday and the assistant says it knows of none |
 | [[.scratch/command-center/map\|command-center]] | [[02-settings-submenus\|02]] | build | Settings stops being one long wall |
 | [[.scratch/command-center/map\|command-center]] | [[03-body-writes-by-hand\|03]] | build | The Body tab learns to write |
 | [[.scratch/command-center/map\|command-center]] | [[04-media-panel\|04]] | build | Music gets buttons |
