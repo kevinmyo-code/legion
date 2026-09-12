@@ -103,5 +103,13 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: true,
+    // Fixed to a real, non-UTC zone (not the host machine's own) so the
+    // local-day arithmetic in `src/lib/day.ts` is tested against an actual
+    // UTC offset - the exact bug class the phone found (a UTC date-part
+    // slice reading as the wrong day). Set here, once, before any worker
+    // touches `Date`: V8 caches the resolved local timezone on first use, so
+    // reassigning `process.env.TZ` from inside a running test file is not
+    // reliable when Vitest reuses a worker across files.
+    env: { TZ: 'America/Chicago' },
   },
 })
