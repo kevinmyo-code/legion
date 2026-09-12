@@ -30,7 +30,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
-| [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[05-one-outstanding-view\|05]] | build | One outstanding view: what needs doing, across checklists, reminders and tasks |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[06-canvas-sync\|06]] | build | Canvas sync on the server, so schoolwork is current enough to advise on |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
@@ -86,6 +85,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[18-the-generic-ui-still-runs-on-the-engine\|18]] | decision | 18-the-generic-ui-still-runs-on-the-engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[20-the-reminder-default-made-the-retraction-delete-appointments\|20]] | decision | 20-the-reminder-default-made-the-retraction-delete-appointments |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | [[01-sunday-reads-empty\|01]] | build | Seven things are due Sunday and the assistant says it knows of none |
+| [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[05-one-outstanding-view\|05]] | build | One outstanding view: what needs doing, across checklists, reminders and tasks |
 | [[.scratch/command-center/map\|command-center]] | [[02-settings-submenus\|02]] | build | Settings stops being one long wall |
 | [[.scratch/command-center/map\|command-center]] | [[03-body-writes-by-hand\|03]] | build | The Body tab learns to write |
 | [[.scratch/command-center/map\|command-center]] | [[04-media-panel\|04]] | build | Music gets buttons |

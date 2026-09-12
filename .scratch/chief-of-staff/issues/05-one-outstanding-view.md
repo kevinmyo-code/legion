@@ -3,12 +3,20 @@ map: chief-of-staff
 ticket: "05"
 title: "One outstanding view: what needs doing, across checklists, reminders and tasks"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: >
+  Built 2026-09-12. outstanding/Outstanding.kt holds the ranking as pure,
+  tested functions; OutstandingController only fetches, from the three stores
+  that already exist. Ranked by when a thing stops being possible, never by
+  which table it came from: overdue first (most overdue leading), then dated
+  soonest-first, then undated, then today's already-ticked lines last so a
+  finished day reads as finished. A checklist line is never overdue - it
+  resets tonight, so it can only be unticked. 3518 tests, 0 failures. Owes a
+  caller: nothing reads it yet, and a device run.
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
