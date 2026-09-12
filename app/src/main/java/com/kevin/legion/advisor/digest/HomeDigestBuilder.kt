@@ -13,6 +13,8 @@ import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.outstanding.OutstandingController
+import com.kevin.legion.outstanding.OutstandingItem
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.plan.combinedTier
 import com.kevin.legion.util.compactDate
@@ -88,10 +90,58 @@ object HomeDigestBuilder : DigestBuilder {
             missed = com.kevin.legion.notes.NotesController.missedItems(context),
         )
 
+        // chief-of-staff ticket 05. One ranked answer to "what needs doing", spanning the three
+        // stores that hold it - checklists with their per-day ticks, list_items reminders, and
+        // events where `kind = TASK`. [logHeadline] above reads reminders and nothing else, so
+        // coursework deadlines and today's checklist lines have never reached HOME at all.
+        val outstandingLine = outstandingHeadline(OutstandingController.all(context, now = now))
+
         val goals = db.goalDao().allCurrentGoals()
         val exceptionsLine = exceptionsLine(goals, now)
 
-        return listOf(bioLine, credLine, fleetLine, logLine, exceptionsLine).joinToString("\n")
+        return listOf(bioLine, credLine, fleetLine, logLine, outstandingLine, exceptionsLine)
+            .joinToString("\n")
+    }
+
+    // ---------------------------------------------------------------------- OUTSTANDING headline
+
+    /**
+     * What needs doing, across all three stores, as ONE line.
+     *
+     * **Why this is not [logHeadline] again.** That one reads `list_items` - reminders, and only
+     * reminders. A coursework deadline is an `EventKind.TASK` row and a bio-plan line is a checklist
+     * tick, so neither has ever reached HOME. On 2026-09-12 that meant nine deadlines due the next
+     * night, and one already two days past, were nowhere in the digest the cross-aspect advisor
+     * reasons from.
+     *
+     * **One line, naming ONE thing.** Ticket 09's ruling stands: HOME spots the cross-aspect
+     * connection and defers domain depth to the aspect advisor rather than improvising. A roll-up
+     * listing twelve rows would be LOG's own digest in miniature, which is what that ticket
+     * rejected. So this reports the count, how many are late, and the single most pressing item.
+     *
+     * **No trust tier, deliberately.** Every figure here is a count of rows a person authored or an
+     * import wrote - nothing estimated, reconciled or converted - so there is no provenance to
+     * carry, unlike [bioHeadline]'s kilograms or [credHeadline]'s money. `internal` for direct unit
+     * testing.
+     */
+    internal fun outstandingHeadline(items: List<OutstandingItem>): String {
+        val live = items.filterNot { it.done }
+        if (live.isEmpty()) return DigestText.line("OUTSTANDING", "nothing outstanding")
+
+        val overdue = live.count { it.overdue }
+        val head = if (overdue > 0) "${live.size} open, $overdue past its date" else "${live.size} open"
+
+        // `items` arrives already ranked - OutstandingController returns rankOutstanding's order -
+        // so the first live row IS the one worth naming, and there is no second sort here to
+        // disagree with it.
+        val lead = live.first()
+        val what = lead.source?.let { "$it - ${lead.title}" } ?: lead.title
+        val label = when {
+            lead.overdue -> "most overdue"
+            lead.dueAtMs != null -> "next"
+            else -> "top"
+        }
+        return DigestText.line("OUTSTANDING", "$head; $label: $what")
     }
 
     // ------------------------------------------------------------------------------ BIO headline
