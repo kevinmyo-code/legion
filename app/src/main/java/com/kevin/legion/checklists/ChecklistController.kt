@@ -15,6 +15,10 @@ import com.kevin.legion.notes.Recurrence
 import com.kevin.legion.notes.parseWeekdays
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * The single write/read path for recurring checklists (`.scratch/one-today/issues/08-events-are-not-todos.md`'s
@@ -62,6 +66,53 @@ object ChecklistController {
      * time is what lets the debug transport row take effect without a process restart. */
     private fun sync(context: Context) =
         ChecklistsWriteThrough(context, backendOverride ?: EngineBackends(context).checklistsBackend())
+
+    /**
+     * Test seam: settable from a unit test so [tick]/[untick]'s fire-and-forget push runs on a
+     * scope the test's own `runTest` can actually wait on, instead of a real background thread pool
+     * a test has no deterministic way to await. **Exact same shape and exact same reason as
+     * [com.kevin.legion.voice.VoiceNoteController.controllerScopeOverride]** - that seam's own doc
+     * comment names the failure by hand: "a fire-and-forget `controllerScope.launch` on a REAL
+     * `Dispatchers.IO` thread pool has no deterministic finish time a test can wait on... enough to
+     * turn that latent gap into cross-test corruption", `UncaughtExceptionsBeforeTest` blaming
+     * whichever unrelated test happened to be running when a PREVIOUS test's leaked write finally
+     * landed against a Robolectric shadow layer already torn down for a different test method. A
+     * first cut of this ticket's fix used a bare `CopyOnWriteArrayList<Job>` + an
+     * `awaitPendingPushesForTest()` a test would have to remember to call; that does not fix the
+     * underlying race (a test that forgets, or Robolectric's own teardown, is still exposed) - it
+     * only quiets the one test that calls it. It shipped a real regression: `testDebugUnitTest`
+     * went from 3548/3548 green to `VoiceNoteControllerTest` flaking on an UNRELATED method, exactly
+     * the shape that seam's own doc comment predicts. Routing through a caller-supplied [TestScope]
+     * instead makes the push a genuine CHILD of the test's own coroutine hierarchy - `runTest` does
+     * not return until every child of its own scope has completed, on WHATEVER dispatcher that
+     * child actually suspends on. Defaults to null, meaning "use [defaultPushScope] below";
+     * production code never sets this. */
+    @Volatile
+    internal var pushScopeOverride: CoroutineScope? = null
+
+    /**
+     * Own scope for [tick]/[untick]'s push - added when a phone measurement showed a checkbox tap
+     * taking ~1s to register: the local Room write is fast, but [tick]/[untick] used to AWAIT
+     * `sync(...).ticked(...)`/`unticked(...)` inline, which is a suspending HTTP round trip to the
+     * engine (90-136ms unauthenticated, slower authenticated), plus the UI's own reload that
+     * follows. Launching the push here instead of awaiting it means [tick]/[untick] return the
+     * instant Room is written, which is the fast path this whole file's class doc already promises
+     * ("Local write first, then push, and a failed push is never a failed write").
+     *
+     * **Nothing that reads the push's outcome had to change.** [tick]'s own return value
+     * ([TickOutcome]) is decided entirely from the LOCAL write, before this launch ever happens;
+     * [ChecklistsWriteThrough.PushOutcome] (Sent/Queued/Refused) was already discarded by both
+     * [tick] and [untick] with no assignment - a queued tick was already "still a tick" as far as
+     * either function's own caller was concerned (this comment used to say exactly that about the
+     * synchronous call this replaces). A [ChecklistsWriteThrough.PushOutcome.Refused] still has
+     * nowhere to surface - that was already true before this change and remains a known gap, not
+     * something this introduces.
+     *
+     * Same `SupervisorJob() + Dispatchers.IO` shape [ChecklistsSync]'s own `autoPullScope` already
+     * uses for a foreground-triggered background push.
+     */
+    private val defaultPushScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pushScope: CoroutineScope get() = pushScopeOverride ?: defaultPushScope
 
     /** Today as a local epoch day - the zone defaults to the device's own, same as every other
      * "what day is it" read in this codebase (`ui/agenda/MonthCalendar.kt`, `ui/CalendarScreen.kt`). */
@@ -298,15 +349,25 @@ object ChecklistController {
         // function's caller is concerned (the row is in Room and renders ticked), and the calendar
         // day view labels it queued from the outbox itself rather than from a return value a voice
         // tool would have to learn to interpret.
-        sync(context).ticked(itemId, day)
+        //
+        // LAUNCHED, not awaited (see [pushScope]'s own doc comment) - this function returns the
+        // instant Room is written, rather than waiting out a full HTTP round trip to the engine on
+        // top of it. [context.applicationContext] rather than the caller's own [context]: this
+        // outlives the call that started it, so it must never hold an Activity.
+        val app = context.applicationContext
+        pushScope.launch { sync(app).ticked(itemId, day) }
         return TickOutcome.Ticked
     }
 
     /** Unticks `(itemId, day)` - a soft delete, so the row (and its [ChecklistTick.tickedAt])
-     * survives for [tick]'s revival path rather than being lost. */
+     * survives for [tick]'s revival path rather than being lost.
+     *
+     * The push is LAUNCHED, not awaited - identical shape and identical reasoning to [tick]'s own
+     * push; see [pushScope]'s doc comment. */
     suspend fun untick(context: Context, itemId: Long, day: Int = today(), at: Long = System.currentTimeMillis()) {
         db(context).checklistTickDao().untick(itemId, day, at)
-        sync(context).unticked(itemId, day)
+        val app = context.applicationContext
+        pushScope.launch { sync(app).unticked(itemId, day) }
     }
 
     // ---- reads ---------------------------------------------------------------------------------
