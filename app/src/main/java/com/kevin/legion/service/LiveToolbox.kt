@@ -42,6 +42,7 @@ import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.util.Temp
 import com.kevin.legion.util.documentDate
+import com.kevin.legion.util.relativeAge
 import com.kevin.legion.util.shortDate
 import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +78,8 @@ import com.kevin.legion.checklists.ChecklistItemMatch
 import com.kevin.legion.checklists.checklistScheduleLabel
 import com.kevin.legion.checklists.matchChecklistItem
 import com.kevin.legion.checklists.measureValueDisplay
+import com.kevin.legion.checklists.TickHistoryController
+import com.kevin.legion.checklists.TickMatch
 import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.MeasureDirection
 import com.kevin.legion.notes.NotesController
@@ -1406,6 +1409,31 @@ object LiveToolbox {
             required = listOf("action"),
         ))
 
+        // web-calendar-and-lists ticket 04, Kevin 2026-09-16: "i tick off toothpaste today after
+        // my trip > i ask the ai, hey when was the last time i bought toothpaste > it looks back
+        // at when it was ticked." Reads ChecklistTick.tickedAt (TickHistoryController), never
+        // pantry - a tick carries no price and nothing reconciled it (CLAUDE.md §4 rule 5), so
+        // this can only ever answer WHEN a line was tapped, never how much or whether it was
+        // actually bought. The description below is the only automated grip on that rule
+        // (LiveToolboxLastTickedWordingTest pins it, and ai/AriaBrainHonestyClauseTest guards the
+        // clause's presence but not its obedience, so the wording has to be said here in words).
+        fns.put(fn(
+            name = "get_last_ticked",
+            description = "When was a checklist line last TICKED - reads tick history, across " +
+                "every checklist (including one you have since deleted; deleting a checklist " +
+                "never deletes its ticks). A tick is only evidence of a tap, nothing more - it " +
+                "carries no price and nothing reconciled it against a receipt or a statement. " +
+                "Always say \"ticked\" in your reply, and do not claim a purchase happened. If " +
+                "nothing matches, that is an absent RECORD, not proof nothing was acquired - say " +
+                "plainly that you have no record of it being ticked, and leave it there. Matches " +
+                "on the exact line text (case/whitespace only) - 'toothpaste' will not match " +
+                "'Colgate toothpaste'. Use for 'when did I last buy X', 'when did I last get X'.",
+            params = obj(
+                "item" to schema("string", "The line to look for, e.g. 'toothpaste'."),
+            ),
+            required = listOf("item"),
+        ))
+
         fns.put(fn(
             name = "read_list",
             // REWRITTEN one-today ticket 10 slice C, 2026-09-05 - see manage_item's own comment for
@@ -2647,6 +2675,7 @@ object LiveToolbox {
                     "now, managed through manage_checklist.",
             )
             "manage_checklist" -> manageChecklist(context, args)
+            "get_last_ticked" -> getLastTicked(context, args.optString("item"))
             "log_build_entry" -> withResolvedVehicle(context, args) { logBuildEntry(context, args, it.obdMac) }
             "list_build_history" -> withResolvedVehicle(context, args) { listBuildHistory(context, args.optString("type"), it.obdMac) }
             "get_spend" -> getSpend(context, args.optString("category"))
@@ -5771,6 +5800,63 @@ object LiveToolbox {
 
             else -> return result(false, "I don't know how to do that with a checklist.")
         }
+    }
+
+    /**
+     * `get_last_ticked` - ticket 04 of web-calendar-and-lists ("when did I last buy toothpaste").
+     * Reads [TickHistoryController.lastTicked], never [PantryController] - a tick carries no price
+     * and nothing reconciled it (CLAUDE.md §4 rule 5), so this can never answer "how much" or
+     * "what did I spend", only "when was this line last tapped".
+     *
+     * **The wording is the whole point of this tool** (ticket 04's own table). Every string here
+     * says "ticked", never "bought". An empty result says "no record of ticking", never "never
+     * bought" - an absent tick is an absent RECORD, not an absent purchase (§1's
+     * empty-versus-unreadable distinction, applied to a tick). [LiveToolboxLastTickedWordingTest]
+     * pins this by grepping the tool's own description for a purchase claim; nothing greps the
+     * spoken strings this function returns, so their wording is reviewed here by hand instead.
+     */
+    private suspend fun getLastTicked(context: Context, item: String): JSONObject {
+        val query = item.trim()
+        if (query.isBlank()) return result(false, "Which item?")
+
+        val matches = TickHistoryController.lastTicked(context, query)
+        return if (matches.isEmpty()) {
+            result(
+                true,
+                "I have no record of \"$query\" being ticked off any list - that's just an " +
+                    "absent record, not proof of anything about whether you got it.",
+            )
+        } else {
+            lastTickedFound(query, matches)
+        }
+    }
+
+    /** The found half of [getLastTicked] - split out so that function has one guard clause and one
+     * branch, not three returns, per detekt's [ReturnCount]. */
+    private fun lastTickedFound(query: String, matches: List<TickMatch>): JSONObject {
+        val latest = matches.first()
+        val history = JSONArray()
+        for (m in matches.take(10)) {
+            history.put(
+                JSONObject()
+                    .put("checklist", m.checklistName)
+                    .put("tickedAtMs", m.tickedAt)
+                    .put("date", shortDate(m.tickedAt)),
+            )
+        }
+        return JSONObject()
+            .put("success", true)
+            .put("item", query)
+            .put("lastTickedAtMs", latest.tickedAt)
+            .put("lastTickedDate", shortDate(latest.tickedAt))
+            .put("lastTickedChecklist", latest.checklistName)
+            .put("history", history)
+            .put(
+                "message",
+                "You ticked \"$query\" off \"${latest.checklistName}\" on ${shortDate(latest.tickedAt)} " +
+                    "(${relativeAge(latest.tickedAt)}) - that's the last time it was ticked, not a " +
+                    "purchase record.",
+            )
     }
 
     /**

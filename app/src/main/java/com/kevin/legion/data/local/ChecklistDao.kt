@@ -34,6 +34,14 @@ interface ChecklistDao {
     @Query("SELECT * FROM checklists WHERE deleted = 0")
     suspend fun getAllIncludingArchived(): List<Checklist>
 
+    /** Every checklist ever created, soft-deleted ones included - ticket 04 of
+     * web-calendar-and-lists' tick-history read matches across every checklist regardless of
+     * whether it (or its items) has since been tombstoned (ticket 03: "read through tombstones").
+     * Distinct from [getAllIncludingArchived], which still filters `deleted = 0` - archived and
+     * deleted are different facts, and this is the only query here that ignores both. */
+    @Query("SELECT * FROM checklists")
+    suspend fun getAllIncludingDeleted(): List<Checklist>
+
     @Query("UPDATE checklists SET name = :name, updatedAt = :at WHERE id = :id")
     suspend fun rename(id: Long, name: String, at: Long)
 

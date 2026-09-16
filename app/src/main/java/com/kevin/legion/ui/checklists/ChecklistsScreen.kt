@@ -610,6 +610,14 @@ private fun EditItemDialog(currentText: String, title: String = "Edit item", onD
  * **Sparse on purpose** (Kevin's own "not a form" instruction) - three stacked fields plus one
  * two-way picker that only appears once a target is actually typed, nothing shown before it is
  * needed.
+ *
+ * **The "last ticked" line, web-calendar-and-lists ticket 04's hands path (ADR 0035: a voice
+ * capability needs a hands path calling the same controller, not a second implementation).**
+ * [rememberLastTickedLabel] (own file, kept out of this one to stay under detekt's per-file
+ * function ceiling) reads straight through the same `TickHistoryController.lastTicked` the
+ * `get_last_ticked` voice tool calls - tapping an item is exactly ticket 04's brief, "tapping an
+ * item shows when it was last ticked". Same wording rule as the voice tool: says "ticked", never
+ * "bought" - a tick carries no price and nothing reconciled it (CLAUDE.md §4 rule 5).
  */
 @Composable
 private fun ItemEditorDialog(
@@ -625,12 +633,16 @@ private fun ItemEditorDialog(
     var targetText by remember { mutableStateOf(currentTarget?.let { formatMeasureNumber(it) } ?: "") }
     var direction by remember { mutableStateOf(currentDirection ?: MeasureDirection.AT_LEAST.name) }
     val sem = LocalLegionSemantics.current
+    val lastTickedLabel = rememberLastTickedLabel(currentText)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Item") },
         text = {
             Column {
                 OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Text") })
+                lastTickedLabel?.let {
+                    Text(it, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp))
+                }
                 OutlinedTextField(
                     value = unit,
                     onValueChange = { unit = it },

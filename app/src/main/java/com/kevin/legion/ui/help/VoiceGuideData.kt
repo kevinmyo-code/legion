@@ -55,6 +55,7 @@ object VoiceGuideData {
             entries = listOf(
                 Entry(name = "manage_item", say = "Remind me to renew my registration next month", does = "Adds, ticks off, reschedules, or removes a REMINDER - one with a due date/time, a place trigger, or a repeat. A plain to-do with none of those is a checklist line instead.", hands = "Calendar tab, tap a day then tap a reminder row to edit its time, repeat, place, or remove it."),
                 Entry(name = "manage_checklist", say = "Tick off squats on bio", does = "Creates and manages your own reusable checklists - \"bio\", \"morning routine\", plain to-dos too - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Your grocery/shopping list and your plain to-do list are both checklists, named \"Groceries\" and \"Todo\".", hands = "Meters screen's LISTS pane - the checklists screen."),
+                Entry(name = "get_last_ticked", say = "When did I last buy toothpaste?", does = "Looks back through your checklist tick history for a matching line, across every checklist you've ever made - even one you've since deleted. It only knows what you TICKED, never what you bought: no price, nothing verified, and no record just means nothing was ticked, not that you never bought it.", hands = "Checklists screen, tap a line to see when it was last ticked."),
                 Entry(name = "read_list", say = "What have I got coming up?", does = "Reads back your open reminders, soonest due first, each with its date, place or repeat.", hands = "Calendar tab, tap a day to see that day's reminders."),
                 Entry(name = "set_reminder", say = "Remind me to grab my gym bag when I get to the gym", does = "Sets a reminder tied to a saved place, so it comes up when you next arrive there.", hands = "Partial - Calendar's day view shows and edits a place-triggered reminder, but there is no add-a-new-reminder dialog by hand."),
                 Entry(name = "read_calendar", say = "What's on today?", does = "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", hands = "Calendar tab's month grid and day view, and Home's next-event tile."),
@@ -245,6 +246,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 119 as of the last regeneration. */
-    val TOOL_COUNT: Int = 119
+    /** Total entries across every group above - 120 as of the last regeneration. */
+    val TOOL_COUNT: Int = 120
 }
