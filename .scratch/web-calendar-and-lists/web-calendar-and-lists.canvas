@@ -1,0 +1,53 @@
+{
+  "nodes": [
+    {
+      "id": "bbad7547a625cce7",
+      "type": "file",
+      "file": ".scratch/web-calendar-and-lists/issues/01-the-calendar-widget.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6e20f8a70d346640",
+      "type": "file",
+      "file": ".scratch/web-calendar-and-lists/issues/02-delete-a-finished-list.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "de5a25376de9ad95",
+      "type": "file",
+      "file": ".scratch/web-calendar-and-lists/issues/03-what-makes-two-toothpaste-lines-the-same-thing.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "30e9f68f7dac9a4b",
+      "type": "file",
+      "file": ".scratch/web-calendar-and-lists/issues/04-when-did-i-last-buy-x.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "463e5865888173ae",
+      "fromNode": "de5a25376de9ad95",
+      "fromSide": "right",
+      "toNode": "30e9f68f7dac9a4b",
+      "toSide": "left"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import type { Checklist, ChecklistItem, ChecklistTick, Event } from '@/api/types'
-import { appliesOnDay, localDayOf } from '@/lib/day'
+import { appliesOnDay, localDayOfEvent } from '@/lib/day'
 
 /** A checklist item due today, or already ticked/skipped today - the
  * "to do today" zone `docs/design/today.md` recommends leading with, one
@@ -60,11 +60,13 @@ export function itemsDueOn(
 /** Live events/tasks whose `starts_at` falls on the viewer's local `day`.
  * `starts_at` is nullable (an event with no time at all); such rows never
  * land in a day bucket, matching the phone's own `activeByKindInLocalWindow`
- * (a row with no anchor cannot be placed in a window). */
+ * (a row with no anchor cannot be placed in a window). An all-day row is
+ * bucketed by its UTC calendar date, never reread through the viewer's local
+ * clock - see `localDayOfEvent`'s own doc comment for the trap this avoids. */
 export function eventsOnDay(day: number, events: Event[]): Event[] {
   return events
     .filter(isLive)
     .filter((event) => event.starts_at !== null && event.starts_at !== undefined)
-    .filter((event) => localDayOf(event.starts_at as string) === day)
+    .filter((event) => localDayOfEvent(event.starts_at as string, event.all_day) === day)
     .sort((a, b) => (a.starts_at ?? '').localeCompare(b.starts_at ?? ''))
 }

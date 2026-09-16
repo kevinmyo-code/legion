@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
 import type { Checklist, ChecklistItem, ChecklistTick, Event } from '@/api/types'
-import { localDayOf } from '@/lib/day'
+import { epochDay, localDayOf } from '@/lib/day'
 import { eventsOnDay, itemsDueOn } from '@/lib/today'
 
 // `vite.config.ts`'s `test.env.TZ` fixes the suite to America/Chicago.
@@ -54,6 +54,24 @@ test('eventsOnDay buckets by the VIEWER local day, matching the Sunday-homework 
   const sunday = localDayOf('2026-09-14T04:59:00Z')
   expect(eventsOnDay(sunday, [sundayDeadline])).toEqual([sundayDeadline])
   expect(eventsOnDay(sunday + 1, [sundayDeadline])).toEqual([])
+})
+
+test('eventsOnDay buckets an all-day row by its UTC calendar date, not the viewer-local reread of UTC midnight', () => {
+  // Chicago is west of UTC, so rereading UTC midnight through local getters
+  // would land this on the day BEFORE - the trap `CalendarScreen.kt` hit.
+  const allDayFirst = event({
+    kind: 'event',
+    title: 'Move-in day',
+    all_day: true,
+    starts_at: '2026-09-01T00:00:00Z',
+  })
+  // The intended day is UTC Sept 1's own calendar date, never a reread of
+  // that UTC instant through the local clock (`localDayOf` on this same ISO
+  // string would answer Aug 31 in Chicago - that is precisely the bug).
+  const intendedFirst = epochDay(new Date(2026, 8, 1))
+  expect(localDayOf('2026-09-01T00:00:00Z')).not.toBe(intendedFirst)
+  expect(eventsOnDay(intendedFirst, [allDayFirst])).toEqual([allDayFirst])
+  expect(eventsOnDay(intendedFirst - 1, [allDayFirst])).toEqual([])
 })
 
 test('eventsOnDay excludes soft-deleted rows and rows with no anchor at all', () => {

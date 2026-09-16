@@ -1,13 +1,16 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 
-import { api } from '@/api/client'
-import { CHANGES_KEY, useChanges } from '@/api/queries'
-import type { Event } from '@/api/types'
+import { useSetChecklistTick } from '@/api/mutations'
+import { useChanges } from '@/api/queries'
+import type { Checklist, ChecklistItem, ChecklistTick, Event } from '@/api/types'
+import { DeleteChecklistControl } from '@/components/checklist-delete'
+import { EventRow } from '@/components/event-row'
 import { Freshness } from '@/components/freshness'
 import { HorizonStrip } from '@/components/horizon-strip'
+import { MonthCalendar } from '@/components/month-calendar'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
+import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
 import {
   buildHorizon,
@@ -15,76 +18,60 @@ import {
   loadSentence,
   nextUp,
   overdueTasks,
-  splitCourse,
 } from '@/lib/horizon'
 import { eventsOnDay, itemsDueOn, type DueItem } from '@/lib/today'
+
+/** Live (not tombstoned), non-archived rows only, matching every other
+ * reader on this page. */
+function isLive<T extends { deleted_at: string | null }>(row: T): boolean {
+  return row.deleted_at === null
+}
+
+/**
+ * Home's own view of a checklist - read-mostly (no add-item form, no per-
+ * item ticking), because `/lists` already owns editing and this page is a
+ * summary someone can clear from without navigating (web-calendar-and-lists
+ * ticket 02, Kevin verbatim: "also let me delete list from the home
+ * screen"). Restricted to PLAIN (unscheduled) lists - a scheduled checklist
+ * already renders as individual rows in "To do today"; repeating it here
+ * would be the wall-of-rows `horizon.ts` exists to avoid.
+ */
+function HomeListCard({
+  checklist,
+  items,
+  ticks,
+}: {
+  checklist: Checklist
+  items: ChecklistItem[]
+  ticks: ChecklistTick[]
+}) {
+  const today = todayEpochDay()
+  const ownItems = items.filter((item) => item.checklist === checklist.id)
+  const complete = isChecklistComplete(checklist, items, ticks, today)
+  const tickedCount = ownItems.filter(
+    (item) => tickState(checklist, item, ticks, today).ticked,
+  ).length
+
+  return (
+    <li className="flex items-center justify-between gap-3 py-2">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{checklist.name}</p>
+        <p className="text-xs text-muted-foreground">
+          {ownItems.length === 0
+            ? 'Nothing on this list yet.'
+            : complete
+              ? `All ${ownItems.length} ticked.`
+              : `${tickedCount} of ${ownItems.length} ticked.`}
+        </p>
+      </div>
+      <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+    </li>
+  )
+}
 
 export const Route = createFileRoute('/_authed/')({
   component: Today,
 })
-
-function EventRow({ event, showCourse = true }: { event: Event; showCourse?: boolean }) {
-  const queryClient = useQueryClient()
-  const toggleDone = useMutation({
-    mutationFn: async (done: boolean) => {
-      const { error, response } = await api.PATCH('/api/events/{id}', {
-        params: { path: { id: event.id } },
-        body: { done },
-      })
-      if (error) {
-        throw new Error(`PATCH /api/events/${event.id} answered ${response.status}`)
-      }
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: CHANGES_KEY }),
-  })
-
-  const { course, label } = splitCourse(event.title)
-  const time = event.all_day
-    ? 'All day'
-    : event.starts_at
-      ? new Date(event.starts_at).toLocaleTimeString(undefined, {
-          hour: 'numeric',
-          minute: '2-digit',
-        })
-      : ''
-
-  return (
-    <li className="flex items-start gap-3 py-2">
-      {event.kind === 'task' ? (
-        <Checkbox
-          className="mt-0.5"
-          checked={event.done}
-          disabled={toggleDone.isPending}
-          onCheckedChange={(checked) => toggleDone.mutate(checked === true)}
-          aria-label={`Mark "${label}" ${event.done ? 'not done' : 'done'}`}
-        />
-      ) : (
-        // An event passes whether or not you engage with it (one-today ticket
-        // 08). No checkbox, and the gap where one would be is deliberate - it is
-        // what makes the two kinds distinguishable without reading the row.
-        <span className="mt-0.5 w-4 shrink-0" aria-hidden="true" />
-      )}
-      <div className="min-w-0 flex-1">
-        <span
-          className={
-            event.kind === 'task' && event.done
-              ? 'text-sm text-muted-foreground line-through'
-              : 'text-sm'
-          }
-        >
-          {label}
-        </span>
-        {showCourse && course && (
-          <span className="ml-2 text-xs text-muted-foreground">{course}</span>
-        )}
-      </div>
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{time}</span>
-      {toggleDone.isError && (
-        <span className="text-xs text-destructive">Could not save. {toggleDone.error.message}</span>
-      )}
-    </li>
-  )
-}
 
 /** A day's tasks, grouped by course. Nine rows that all read `11:59 PM` are nine
  * rows whose times say nothing; the course is the only thing that separates them
@@ -119,44 +106,27 @@ function GroupedTasks({ tasks }: { tasks: Event[] }) {
 }
 
 function DueItemRow({ due }: { due: DueItem }) {
-  const queryClient = useQueryClient()
   const today = todayEpochDay()
-  const setTick = useMutation({
-    mutationFn: async (ticked: boolean) => {
-      if (ticked) {
-        const { error, response } = await api.POST(
-          '/api/checklists/{checklist_id}/items/{item_id}/tick',
-          {
-            params: { path: { checklist_id: due.checklist.id, item_id: due.item.id } },
-            body: { day: today, source: 'USER_REPORTED' },
-          },
-        )
-        if (error) {
-          throw new Error(`POST tick answered ${response.status}`)
-        }
-      } else {
-        const { error, response } = await api.DELETE(
-          '/api/checklists/{checklist_id}/items/{item_id}/tick/{day}',
-          {
-            params: {
-              path: { checklist_id: due.checklist.id, item_id: due.item.id, day: today },
-            },
-          },
-        )
-        if (error) {
-          throw new Error(`DELETE tick answered ${response.status}`)
-        }
-      }
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: CHANGES_KEY }),
-  })
+  // Every item here comes from `itemsDueOn`, which only ever includes a
+  // checklist with a real schedule - `tickState`'s own rule for a scheduled
+  // list is that `dayToClear` is always today, so this never needs to look
+  // up a different day the way a plain list's item can.
+  const setTick = useSetChecklistTick()
 
   return (
     <li className="flex items-center gap-3 py-2">
       <Checkbox
         checked={due.tickedToday}
         disabled={setTick.isPending}
-        onCheckedChange={(checked) => setTick.mutate(checked === true)}
+        onCheckedChange={(checked) =>
+          setTick.mutate({
+            checklistId: due.checklist.id,
+            itemId: due.item.id,
+            ticked: checked === true,
+            today,
+            dayToClear: today,
+          })
+        }
         aria-label={`Mark "${due.item.text}" ${due.tickedToday ? 'not done' : 'done'} for today`}
       />
       <span
@@ -236,6 +206,16 @@ function Today() {
   const tomorrowsCalendar = tomorrowsEvents.filter((event) => event.kind !== 'task')
   const upcoming = nextUp(horizon)
 
+  const checklists = (changes.data.checklists ?? []).filter(isLive).filter((c) => !c.archived)
+  const checklistItems = (changes.data.checklist_items ?? []).filter(isLive)
+  const checklistTicks = (changes.data.checklist_ticks ?? []).filter(isLive)
+  // Only PLAIN (unscheduled) lists - a scheduled checklist already renders as
+  // individual rows in "To do today" above; repeating it here would be the
+  // wall of rows `horizon.ts` exists to avoid.
+  const plainChecklists = checklists
+    .filter((c) => c.schedule_kind == null)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+
   const dayLabel = (offset: number) =>
     new Date(Date.now() + offset * 86_400_000).toLocaleDateString(undefined, {
       weekday: 'long',
@@ -258,6 +238,10 @@ function Today() {
             error={changes.error}
           />
         </div>
+
+        <Section title="Calendar">
+          <MonthCalendar events={events} />
+        </Section>
 
         {/* Kept, not hidden. A deadline that slid is still work, and dropping it
             quietly is the same class of lie as rendering a failed read as an
@@ -315,6 +299,24 @@ function Today() {
 
       <aside className="flex w-full shrink-0 flex-col gap-7 lg:w-80">
         <HorizonStrip cells={horizon} />
+
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Lists</h2>
+          {plainChecklists.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No lists yet. Start one on Lists.</p>
+          ) : (
+            <ul className="divide-y">
+              {plainChecklists.map((checklist) => (
+                <HomeListCard
+                  key={checklist.id}
+                  checklist={checklist}
+                  items={checklistItems}
+                  ticks={checklistTicks}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
 
         {/* Today and tomorrow are already rendered in full on the left; repeating
             them here would be the wall of rows the strip exists to avoid. */}

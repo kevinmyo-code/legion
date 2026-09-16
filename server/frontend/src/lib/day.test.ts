@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
 
-import { appliesOnDay, epochDay, localDayOf, parseWeekdayCodes, todayEpochDay } from '@/lib/day'
+import {
+  appliesOnDay,
+  epochDay,
+  localDayOf,
+  localDayOfAllDay,
+  localDayOfEvent,
+  parseWeekdayCodes,
+  todayEpochDay,
+} from '@/lib/day'
 
 // `vite.config.ts`'s `test.env.TZ` fixes the whole suite to America/Chicago
 // (a real, non-UTC offset) so these "which local day" assertions exercise an
@@ -38,6 +46,24 @@ test(
     expect(sunday).toBe(epochDay(new Date(2026, 8, 13)))
   },
 )
+
+test(
+  'localDayOfAllDay reads the UTC date part directly - rereading UTC midnight ' +
+    'through Chicago-local getters would answer the day before',
+  () => {
+    const utcMidnightSept1 = '2026-09-01T00:00:00Z'
+    expect(localDayOfAllDay(utcMidnightSept1)).toBe(epochDay(new Date(2026, 8, 1)))
+    expect(localDayOf(utcMidnightSept1)).toBe(epochDay(new Date(2026, 7, 31)))
+  },
+)
+
+test('localDayOfEvent dispatches on the all_day flag', () => {
+  const iso = '2026-09-01T00:00:00Z'
+  expect(localDayOfEvent(iso, true)).toBe(localDayOfAllDay(iso))
+  expect(localDayOfEvent(iso, false)).toBe(localDayOf(iso))
+  expect(localDayOfEvent(iso, undefined)).toBe(localDayOf(iso))
+  expect(localDayOfEvent(iso, null)).toBe(localDayOf(iso))
+})
 
 test('parseWeekdayCodes reads the comma-separated two-letter vocabulary', () => {
   expect(parseWeekdayCodes('MO,WE,FR')).toEqual(new Set([1, 3, 5]))

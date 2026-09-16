@@ -4,13 +4,15 @@ import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { api } from '@/api/client'
+import { useSetChecklistTick } from '@/api/mutations'
 import { CHANGES_KEY, useChanges } from '@/api/queries'
 import { newChecklist, newChecklistItem, type Checklist, type ChecklistItem, type ChecklistTick } from '@/api/types'
+import { DeleteChecklistControl } from '@/components/checklist-delete'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { tickState } from '@/lib/checklist'
+import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
 
 export const Route = createFileRoute('/_authed/lists')({
@@ -34,27 +36,7 @@ function ItemRow({
   const today = todayEpochDay()
   const { ticked, dayToClear } = tickState(checklist, item, ticks, today)
 
-  const setTick = useMutation({
-    mutationFn: async (nextTicked: boolean) => {
-      if (nextTicked) {
-        const { error, response } = await api.POST(
-          '/api/checklists/{checklist_id}/items/{item_id}/tick',
-          {
-            params: { path: { checklist_id: checklist.id, item_id: item.id } },
-            body: { day: today, source: 'USER_REPORTED' },
-          },
-        )
-        if (error) throw new Error(`POST tick answered ${response.status}`)
-      } else {
-        const { error, response } = await api.DELETE(
-          '/api/checklists/{checklist_id}/items/{item_id}/tick/{day}',
-          { params: { path: { checklist_id: checklist.id, item_id: item.id, day: dayToClear } } },
-        )
-        if (error) throw new Error(`DELETE tick answered ${response.status}`)
-      }
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: CHANGES_KEY }),
-  })
+  const setTick = useSetChecklistTick()
 
   const remove = useMutation({
     mutationFn: async () => {
@@ -71,7 +53,15 @@ function ItemRow({
       <Checkbox
         checked={ticked}
         disabled={setTick.isPending}
-        onCheckedChange={(checked) => setTick.mutate(checked === true)}
+        onCheckedChange={(checked) =>
+          setTick.mutate({
+            checklistId: checklist.id,
+            itemId: item.id,
+            ticked: checked === true,
+            today,
+            dayToClear,
+          })
+        }
         aria-label={`Mark "${item.text}" ${ticked ? 'not done' : 'done'}`}
       />
       <span className={`flex-1 text-sm ${ticked ? 'text-muted-foreground line-through' : ''}`}>
@@ -146,10 +136,21 @@ function ChecklistCard({
   ticks: ChecklistTick[]
 }) {
   const ownItems = items.filter((item) => item.checklist === checklist.id)
+  const today = todayEpochDay()
+  const complete = isChecklistComplete(checklist, items, ticks, today)
 
   return (
     <div className="rounded-md border p-4">
-      <h2 className="mb-2 font-semibold">{checklist.name}</h2>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <h2 className="font-semibold">{checklist.name}</h2>
+        <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+      </div>
+      {complete && (
+        <p className="mb-2 rounded-md bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">
+          Everything on this list is ticked off. Delete it with the icon above when you are done
+          with it - what you ticked is kept either way.
+        </p>
+      )}
       {ownItems.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing on this list yet.</p>
       ) : (

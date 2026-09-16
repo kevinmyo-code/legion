@@ -59,6 +59,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
+| [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[01-the-calendar-widget\|01]] | build | The calendar widget on the web home - month grid plus day view |
+| [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[02-delete-a-finished-list\|02]] | build | Delete a list, from Lists and from Home, and offer it when everything is ticked |
+| [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[04-when-did-i-last-buy-x\|04]] | build | When did I last buy X, from tick history, saying only what a tick can say |
 | [[.scratch/web-surface/map\|web-surface]] | [[01-the-horizon\|01]] | decision | The horizon: what Today shows beyond tomorrow, and how a cliff reads as a cliff |
 | [[.scratch/web-surface/map\|web-surface]] | [[02-today-rebuilt\|02]] | build | Today, rebuilt |
 | [[.scratch/web-surface/map\|web-surface]] | [[03-desktop-is-not-the-phone\|03]] | decision | Desktop is not the phone reflowed: what the workbench shows that the PWA never does |
@@ -234,4 +237,5 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 15 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 9 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
+| [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |
 | [[.scratch/web-surface/map\|web-surface]] | 7 | 7 | [[.scratch/web-surface/web-surface.canvas\|open]] |

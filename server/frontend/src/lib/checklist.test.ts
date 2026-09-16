@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
 import type { Checklist, ChecklistItem, ChecklistTick } from '@/api/types'
-import { tickState } from '@/lib/checklist'
+import { isChecklistComplete, tickState } from '@/lib/checklist'
 
 function checklist(overrides: Partial<Checklist>): Checklist {
   return {
@@ -96,4 +96,37 @@ test('a tick belonging to a different item is ignored', () => {
   const othersTick = tick({ item: 'i2', day: 100 })
 
   expect(tickState(scheduled, it, [othersTick], 100).ticked).toBe(false)
+})
+
+test('isChecklistComplete reports true when every live item is ticked for today', () => {
+  const plain = checklist({ schedule_kind: null })
+  const milk = item({ id: 'i1', text: 'Milk' })
+  const eggs = item({ id: 'i2', text: 'Eggs' })
+  const milkTick = tick({ id: 't1', item: 'i1', day: 100 })
+  const eggsTick = tick({ id: 't2', item: 'i2', day: 90, ticked_at: '2026-01-03T00:00:00Z' })
+
+  expect(isChecklistComplete(plain, [milk, eggs], [milkTick, eggsTick], 100)).toBe(true)
+})
+
+test('isChecklistComplete reports false when one live item is not ticked', () => {
+  const plain = checklist({ schedule_kind: null })
+  const milk = item({ id: 'i1', text: 'Milk' })
+  const eggs = item({ id: 'i2', text: 'Eggs' })
+  const milkTick = tick({ id: 't1', item: 'i1', day: 100 })
+
+  expect(isChecklistComplete(plain, [milk, eggs], [milkTick], 100)).toBe(false)
+})
+
+test('isChecklistComplete reports false for a list with no items - empty and finished are different sentences', () => {
+  const plain = checklist({ schedule_kind: null })
+  expect(isChecklistComplete(plain, [], [], 100)).toBe(false)
+})
+
+test('isChecklistComplete ignores a soft-deleted item entirely', () => {
+  const plain = checklist({ schedule_kind: null })
+  const milk = item({ id: 'i1', text: 'Milk' })
+  const removed = item({ id: 'i2', text: 'Removed', deleted_at: '2026-01-05T00:00:00Z' })
+  const milkTick = tick({ id: 't1', item: 'i1', day: 100 })
+
+  expect(isChecklistComplete(plain, [milk, removed], [milkTick], 100)).toBe(true)
 })

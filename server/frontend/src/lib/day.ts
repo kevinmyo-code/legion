@@ -45,6 +45,31 @@ export function localDayOf(iso: string): number {
   return epochDay(new Date(iso))
 }
 
+/**
+ * Which calendar day an ALL-DAY row's `starts_at` names.
+ *
+ * An all-day row's `starts_at` is UTC midnight of the date it was written
+ * for, NOT a device-zone instant - `Event.kt`'s `activeByKindInLocalWindow`
+ * takes the UTC date part and re-anchors that same calendar date in the
+ * viewer's own zone. Running it through `localDayOf` instead would reread
+ * that UTC midnight as a moment on the viewer's OWN clock, which moves it to
+ * the adjacent day for anyone west of UTC - the trap `CalendarScreen.kt` hit
+ * on 2026-09-01 ("the due dates seem to be advanced by 1 day"). So this
+ * reads the UTC calendar-date components directly, never the local ones.
+ */
+export function localDayOfAllDay(iso: string): number {
+  const parsed = new Date(iso)
+  const utcMidnight = Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate())
+  return Math.floor(utcMidnight / 86_400_000)
+}
+
+/** Picks `localDayOf` or `localDayOfAllDay` off the row's own `all_day`
+ * flag, so every caller that buckets a mix of all-day and timed rows makes
+ * this decision in one place rather than remembering the flag itself. */
+export function localDayOfEvent(iso: string, allDay: boolean | null | undefined): number {
+  return allDay ? localDayOfAllDay(iso) : localDayOf(iso)
+}
+
 const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const
 
 /** Parses the server/phone's `schedule_days_of_week` vocabulary - a

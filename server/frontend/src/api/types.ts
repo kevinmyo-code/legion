@@ -8,6 +8,7 @@ export type Event = components['schemas']['Event']
 export type Checklist = components['schemas']['Checklist']
 export type ChecklistItem = components['schemas']['ChecklistItem']
 export type ChecklistTick = components['schemas']['ChecklistTick']
+export type Changes = components['schemas']['Changes']
 
 /**
  * `server/openapi.yaml`'s `required` list names `id`/`created_at`/

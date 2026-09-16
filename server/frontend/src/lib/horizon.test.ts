@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Event } from '@/api/types'
-import { todayEpochDay } from '@/lib/day'
+import { epochDay, todayEpochDay } from '@/lib/day'
 import {
   buildHorizon,
+  buildMonth,
   groupByCourse,
   loadSentence,
   nextUp,
@@ -109,6 +110,65 @@ describe('buildHorizon', () => {
     const floating = { ...task('t2', 'C · B', 1), starts_at: null } as unknown as Event
     const cells = buildHorizon(today, [dead, floating])
     expect(cells[1].tasks).toBe(0)
+  })
+})
+
+describe('buildMonth', () => {
+  it('places an all-day row on the 1st on the 1st, not the Chicago-local reread of UTC midnight', () => {
+    const monthAnchor = new Date(2026, 8, 1) // September 2026
+    const moveIn: Event = {
+      id: 'a',
+      title: 'Move-in day',
+      kind: 'event',
+      done: false,
+      all_day: true,
+      starts_at: '2026-09-01T00:00:00Z',
+      deleted_at: null,
+    } as unknown as Event
+
+    const cells = buildMonth(monthAnchor, [moveIn])
+    const sept1 = epochDay(new Date(2026, 8, 1))
+    const aug31 = sept1 - 1
+
+    const sept1Cell = cells.find((c) => c.day === sept1)
+    const aug31Cell = cells.find((c) => c.day === aug31)
+    expect(sept1Cell).toMatchObject({ events: 1, inMonth: true })
+    // Padding cell from August still renders (full weeks), and still has to
+    // report zero rather than silently absorbing the row that actually
+    // belongs to the 1st.
+    expect(aug31Cell).toMatchObject({ events: 0, inMonth: false })
+  })
+
+  it('a 23:59-local task lands on its own day, not the UTC-next one - the MATH 3391 case', () => {
+    const monthAnchor = new Date(2026, 8, 1)
+    const localMidnightSept16 = new Date(2026, 8, 16)
+    localMidnightSept16.setHours(0, 0, 0, 0)
+    const deadline = new Date(localMidnightSept16.getTime() + 23 * HOUR + 59 * 60_000)
+    const discussion: Event = {
+      id: 't',
+      title: 'MATH 3391 · Module 4 Discussion',
+      kind: 'task',
+      done: false,
+      starts_at: deadline.toISOString(),
+      deleted_at: null,
+    } as unknown as Event
+
+    const cells = buildMonth(monthAnchor, [discussion])
+    const sept16 = epochDay(new Date(2026, 8, 16))
+    const sept17 = sept16 + 1
+
+    expect(cells.find((c) => c.day === sept16)).toMatchObject({ tasks: 1, inMonth: true })
+    expect(cells.find((c) => c.day === sept17)).toMatchObject({ tasks: 0 })
+  })
+
+  it('pads to full Sunday-start weeks and marks days outside the month', () => {
+    const monthAnchor = new Date(2026, 8, 1) // Sept 1, 2026 is a Tuesday
+    const cells = buildMonth(monthAnchor, [])
+    expect(cells.length % 7).toBe(0)
+    expect(cells[0].date.getDay()).toBe(0)
+    expect(cells[cells.length - 1].date.getDay()).toBe(6)
+    const inMonthCount = cells.filter((c) => c.inMonth).length
+    expect(inMonthCount).toBe(30) // September has 30 days
   })
 })
 
