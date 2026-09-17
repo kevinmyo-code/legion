@@ -30,9 +30,13 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 | Goals / Advisors | Budget and habit targets with a structured, schema-constrained LLM advisor pass, and a cross-aspect daily digest |
 | Music | Spotify voice control on the user's own client ID: play by name resolved against their own library before the catalogue, a 20-action control surface, now-playing read from Spotify's own pushed player state |
 
-Nine aspects, one voice loop, two clients. The Android shell opens on HOME, a single surface
+Six life domains, one voice loop, two clients. The Android shell opens on HOME, a single surface
 holding the day, what needs doing, and folded per-aspect rows that tap through to their own
 screens.
+
+(The sync layer keys off nine `ASPECT_*` names, which is a different and wider sense of the word
+than the six domains `CLAUDE.md` section 1 rules on. The two lists have never been reconciled and
+this README does not pretend they have.)
 
 ## What you can actually say to it
 
@@ -209,7 +213,9 @@ Verified 2026-09-16 unless stated. Numbers here are counted from build output, n
 | Server suite | **718 passed, 42 skipped**, run against a real Postgres rather than SQLite (22 minutes) |
 | Room schema | **v70**, additive-only migrations, `exportSchema` on, no destructive fallback anywhere |
 | Voice surface | **120 tools across 15 groups**, every one carrying user-facing copy or the build fails |
-| Django engine | Deployed to Cloud Run and serving the web client. Android reads and writes through it for all nine aspects |
+| Django engine | Deployed to Cloud Run and serving the web client. All nine sync aspects default to it, but **only four were run end to end on a phone** (events, checklists, body, memory); places and voice notes had their pull path exercised and nothing more; **ledger, pantry and fleet have never run against Django on hardware at all**. They were flipped because the Supabase path now fails a `household_id NOT NULL` constraint, not because they were proven |
+| Tenancy | One Python choke point (`SyncedModelViewSet`). **ADR 0045 describes Postgres row-level security as the backstop under it; that does not exist** - no `CREATE POLICY` or `ENABLE ROW LEVEL SECURITY` anywhere in `server/`. A missed filter is currently a leak, not a no-op |
+| Supabase | Not retired, mid-cutover. `supabase-kt` is still in the build, 12 `Supabase*Backend.kt` files remain, and an install with no engine address or token falls back to Supabase for everything |
 | Web client | Live: sign-in, today, month calendar, lists with optimistic ticks and list deletion |
 | Fleet OBD read, maintenance, drive logging | Verified on-device against a real 1998 Jeep XJ over ELM327 |
 | DTC clear-codes write path and REFUSED protocol | Built, installed, hash-verified, `REFUSED` produced for real on-device. **Never exercised on an actual car** - no fault present to clear |

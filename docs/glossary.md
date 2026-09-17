@@ -16,13 +16,17 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 
 | Term | Gloss | Defined in |
 |---|---|---|
-| **aspect** | fleet, ledger, or pantry. Not "module", not "feature" | CLAUDE.md §1 |
+| **aspect** | a life domain LEGION keeps records for. Not "module", not "feature". CLAUDE.md §1 owns the list; the sync layer's `ASPECT_*` keys are a wider, differently-named set and are not it | CLAUDE.md §1, `backend/engine/EngineBackends.kt` |
 | **LEGION** | the app. **Not** the assistant's name | CLAUDE.md §1, [[0020-companion-identity-per-profile]] |
 | **companion** | the thing you talk to. User-named per profile. Never hardcode a name | [[0020-companion-identity-per-profile]] |
 | **register band** | "Alfred/JARVIS" names a *tone*, not a character. `ai/Personas.kt` holds the copy | CLAUDE.md §1 |
 | **clone-and-run** | a stranger clones, sideloads with their own cert and key, and it works | [[0003-clone-and-run]] |
 | **BYO key** | the driver's own Gemini API key, direct to Google, no proxy | [[0002-no-hosted-backend]] |
-| **appDataFolder** | the private per-app area of the driver's own Drive. The only store | [[0010-drive-appdatafolder-only-store]] |
+| **appDataFolder** | the private per-app area of the user's own Drive. Backup and restore only. **Not** the system of record | [[0044-django-is-the-engine]] |
+| **the engine** | the Django server over Postgres. The system of record and the only writer of it | [[0044-django-is-the-engine]] |
+| **limb** | anything that talks to the engine over HTTPS JSON: the phone, the web app, a future device | [[0044-django-is-the-engine]] |
+| **household** | the unit of tenancy, and the only one. Membership is the whole authorization model | CLAUDE.md §1, [[0045-households-are-tenants]] |
+| **outbox** | the phone's durable queue for a write the engine could not take yet. At-least-once, never silent | `data/local/SyncOutbox.kt`, [[0044-django-is-the-engine]] |
 
 ## Ingestion
 
@@ -41,7 +45,7 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 
 | Term | Gloss | Defined in |
 |---|---|---|
-| **aspect engine** | the runtime metadata system (`aspects`/`record_types`/`field_defs`/`records`) that is now the app's spine. Not a per-domain table set - one generic store | [[0037-the-aspect-engine-is-the-spine]] |
+| **aspect engine** | the runtime metadata system (`aspects`/`record_types`/`field_defs`/`records`). One generic store, not a per-domain table set. **Retiring**: typed per-aspect tables are the direction and both shapes are live | [[0039-per-aspect-typed-tables]] supersedes [[0037-the-aspect-engine-is-the-spine]] |
 | **record type** | a user- or plugin-defined schema (e.g. "Transaction", "Workout") made of field defs. Defines a type, not an instance | `engine/FieldConfig.kt`, [[0037-the-aspect-engine-is-the-spine]] |
 | **field def** | one typed field on a record type (13 field types v1: text, number, money-cents, date, etc.) | `memory/library/decisions.md` 2026-08-23 |
 | **`RecordStore`** | `engine/RecordStore.kt`. The single write door for every engine record - reference integrity, delete policy, trash, computed fields | [[0037-the-aspect-engine-is-the-spine]] |

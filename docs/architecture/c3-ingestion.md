@@ -2,7 +2,7 @@
 title: C3 Ingestion
 level: c3
 tags: [architecture]
-verified: 2026-08-29
+verified: 2026-09-16
 ---
 
 # C3: Ingestion and the gate
@@ -21,10 +21,17 @@ one aspect left that runs it on-device.
 the old folder scanner, the five statement parsers plus `StatementDispatcher`,
 the LLM statement fallback, `LedgerFolderPreferences`, `LedgerIngestService`, and
 `ledger/IngestPipeline.kt`'s `stage`/`commit` machinery are all deleted. Bank statements are
-ingested by the web app now, against `public.commit_statement` - a Postgres RPC implementing the
-SAME rules 1-7 below in SQL, run against a CSV the user's own LLM produces (masked, then uploaded).
+ingested off the phone now, against a CSV the user's own LLM produces (masked, then uploaded).
 CLAUDE.md §4's amendment on this is the source of truth for that side; this doc no longer tracks it
 because there is nothing left on the phone to diagram.
+
+**The gate now runs in Python, not in plpgsql.** This paragraph used to say statements were committed
+against `public.commit_statement`, a Postgres RPC implementing the same rules in SQL. Since
+[[0044-django-is-the-engine]] rule 2 ("the gate moves language, not posture") the arithmetic lives in
+`server/ingest/gate.py` - deliberately pure functions with no ORM and no Django imports - behind
+`POST /api/ingest/statement` and `POST /api/ingest/receipt` in `server/ingest/views.py`. The rules
+below are unchanged; only the language they are written in moved. The RPC name still appears in
+Kotlin KDoc as history, so finding it in a comment is not evidence it is still the path.
 
 `ledger/IngestPipeline.kt` still exists as a single shared utility (`sha256`), because pantry's own
 receipt hashing happens to want the exact same primitive - see that file's own doc comment.
@@ -45,6 +52,14 @@ receipt hashing happens to want the exact same primitive - see that file's own d
    [[0009-provisional-unreconciled-tier]]. (Pantry has never needed this rule - a receipt not
    printing a subtotal still prints a total; ledger's mid-cycle card CSV was the only source that
    needed it, and it left with the rest of ledger ingestion.)
+8. **Persist the anchors, not just the verdict.** A gate that discards its own inputs leaves rows
+   nobody can ever re-verify. The numbers the gate checked against are stored in their own columns
+   beside the rows they gated; an anchor the source never stated is stored NULL and recorded as
+   absent, never synthesised from `sum(lines)` - which would make the check an identity, rule 6's
+   shape again. CLAUDE.md §4 rule 8. **This rule was missing from this page** while the two cases
+   that produced it were already on record: three pantry receipts whose legacy table kept only
+   `totalCents`, and the ledger's entire verified history, whose stated total and balances were read
+   inside a parser and never written down.
 
 Rule 6 was learned the hard way, on the ledger side that is now gone: BofA's card statement printed
 interest rows in a different shape, all four silently failed to match, and the section check

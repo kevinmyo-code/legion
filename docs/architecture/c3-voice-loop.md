@@ -2,7 +2,7 @@
 title: C3 Voice loop
 level: c3
 tags: [architecture]
-verified: 2026-08-24
+verified: 2026-09-16
 ---
 
 # C3: The voice loop
@@ -12,7 +12,7 @@ picture of.
 
 ```mermaid
 sequenceDiagram
-    participant U as Driver
+    participant U as User
     participant W as WakeWordEngine
     participant C as LiveSessionController
     participant G as GeminiLiveSession
@@ -71,6 +71,21 @@ it breaks, and the retired pair is the worked example of what guarding it looks 
 live session *and* by every sub-agent tool call. It has to be safe to re-enter. Five dispatcher
 tools exist: fleet, body, goals, pantry, mail. Each hands a domain-specific grounding prompt and a
 filtered tool set to `SubAgent`.
+
+## Where a spoken write lands
+
+The loop above ends at speech, which makes it easy to miss that a tool call is often a **write**, and
+that the phone is not the authority for it. A tool calls the same controller the hands path calls
+(ADR 0035), the controller writes Room so the UI moves at local-write speed, and the server write
+goes on an outbox to be drained. [[c2-containers]] has the steps and the retry cap.
+
+Two consequences for anything added to `service/LiveToolbox.kt`:
+
+- **A tool that reports success must have a result to stand on.** CLAUDE.md §7's outcome-verb rule is
+  conditioned on the tool RESULT, and "queued to the outbox" is not "sent". A tool whose write is
+  still in the queue says so.
+- **Every voice tool needs a hands path to the same capability**, calling the same controller, not a
+  second implementation ([[0035-every-voice-capability-has-a-hands-path]]).
 
 ## Known stale comment
 
