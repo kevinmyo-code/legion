@@ -56,6 +56,7 @@ Format and the test for whether something deserves an ADR:
 | 0045 | [[0045-households-are-tenants\|Households are tenants]] | accepted | 2026-09-08 | - |
 | 0046 | [[0046-fixed-wake-and-sleep-phrases\|A fixed wake and sleep phrase pair, implemented in two different places]] | accepted | 2026-09-10 | - |
 | 0047 | [[0047-switching-companion-is-a-handover\|Switching companion is a socket rebuild and a spoken handover]] | accepted | 2026-09-10 | - |
+| 0049 | [[0049-a-tick-is-a-tap-not-a-purchase\|A tick is a tap, not a purchase]] | accepted | 2026-09-16 | - |
 
 ## Superseded
 

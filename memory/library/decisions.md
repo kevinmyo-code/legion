@@ -5685,3 +5685,129 @@ a rule loosened by an agent exercising taste is invisible afterwards. The conser
 fully functional, so it won on that alone. The substantive argument agrees: he authors a voice note,
 he does not author a headline. **sec 7 is unchanged and no ADR was written.** If offline reading turns
 out to matter, that is a real reason to reopen it, with an argument, by Kevin.
+
+---
+
+## 2026-09-11 - `read_calendar` reads both row kinds, and the gap it left open for three weeks
+
+**Kevin:** *"the AI doesnt see anything thats due on sunday for sch. i asked it and it didnt know."*
+
+Seven assignments were due that Sunday. Every one is `kind = task`; the tool asked for
+`kind = event`; the model was handed an empty window and said so, which reads exactly like "you have
+nothing due" - the worst way for this to fail.
+
+**145 of 314 rows on the real device were tasks and nothing in the toolbox returned a single one of
+them.** `read_list` is reminders, `manage_checklist` is checklists, and
+`NotesController.openAppointments` is TASK-filtered but exists to MATCH a spoken title, not to read a
+day. Assignments were unreachable by voice entirely, which is also an ADR 0035 gap - not a capability
+with a weak hands path, one with no path at all.
+
+**The dates were always right, and that is worth recording**, because the first suspicion was a
+timezone fault. These rows carry `allDay = 0` and a true instant (Canvas writes an 11:59pm local
+deadline as `04:59Z the next day`), so the local-window bucketing already placed them correctly. Only
+the `kind` filter was wrong.
+
+**The method that settled it: query the real database instead of reasoning from source.** Two
+source-reading passes got this wrong in opposite directions - stale comments claimed nothing wrote
+TASK rows yet, while 145 existed. One pull from the device settled it in seconds.
+
+**It then sat unfixed on the phone for five more days**, because the fix was committed and the APK
+was never installed. On 2026-09-16 Kevin asked why the assistant could not see a MATH 3391 discussion
+due the next night; the row was correct, the code was correct, and the build on the device predated
+the fix. A fix that is not installed is not a fix.
+
+## 2026-09-12 - One question for "what needs doing", across the three stores that hold it
+
+**Kevin:** *"alfred will be the executive of my estate, my chief of staff. advise me on my net worth,
+my stuff that needs doing, errands, schoolwork, advise on career everything"*
+
+"My stuff that needs doing" turned out to live in three tables with nothing asking all three at once:
+`checklists` plus ticks (recurring lines, reset nightly), `list_items` (reminders and one-off todos),
+and `events where kind = TASK` (deadlines with a moment).
+
+**Ranked by when a thing stops being possible, never by which table it came from.** A deadline
+tonight outranks an errand with no date, which outranks a line already ticked today. A checklist line
+is never *overdue* - it resets tonight, so it can only be unticked - and conflating that with a
+coursework deadline that has passed is the flattening the whole module exists to avoid.
+
+**A ticked line is listed, not dropped**, so a finished day reads as finished rather than as empty:
+CLAUDE.md sec 1's empty-versus-unreadable distinction pointed at a day's work.
+
+HOME's digest gained one line from it. `logHeadline` reads `list_items` and only `list_items`, so
+coursework deadlines and bio-plan lines had never reached the cross-aspect digest at all - nine
+deadlines due the next night plus one two days past, invisible to the thing meant to be a chief of
+staff. **One line naming exactly one item**, deferring depth to the aspect advisor, and carrying no
+trust tier because every figure is a count of authored rows with nothing estimated or reconciled.
+
+## 2026-09-16 - A checklist tick records a tap, and answers WHEN and nothing else
+
+**Kevin:** *"instead of pantry ingestion, when i tick off an item from grocery, that will be tracked.
+etc i tick off toothpaste today after my trip. > i ask the ai, hey when was the last time i bought
+toothpaste > it looks back at when it was ticked."*
+
+Two facts already in the code made this cost no migration. `ChecklistTick.tickedAt` has always stored
+the instant of the tap as a different column from the day the tick counts for, built for retroactive
+ticks. And a checklist delete is soft and deliberately non-cascading. Verified against the live
+engine rather than argued: created a list, ticked a line, deleted the list, re-read `/api/changes` -
+checklist tombstoned, tick alive.
+
+**Matching is normalised text and nothing cleverer** (lower-case, trim, collapse whitespace).
+`"Colgate toothpaste"` does NOT answer a `"toothpaste"` question, pinned by a test so a later
+"improvement" has to argue with a red test. **A near-match that is wrong is worse than a miss**: a
+miss says "no record", a wrong match asserts a date that never happened.
+
+**Why this is not `ITEM_PREFIX = "Plan: "` again**, which one-home ticket 04 retired five days
+earlier for exactly this shape. That objection was to a machine writer identifying *its own rows* by
+display text, then writing to them. Here nothing writes; the text IS the thing being asked about,
+because Kevin is matching by name since the name is what he knows; and a wrong match is visible in
+the answer rather than buried in a sync decision. A products table is what this upgrades into when a
+real miss is observed, and because nothing is written, that upgrade costs no data.
+
+**A tick is not evidence of a purchase.** It carries no price and nothing reconciled it, so sec 4
+rule 5 binds: every string says "ticked", never "bought", and an absent tick is an absent RECORD,
+never "you have never bought that" - Kevin buys plenty that never touches a list. **This does not
+retire pantry receipt ingestion**; a gated receipt answers what something cost and a tick cannot.
+
+**Deliberately deferred with a named trigger:** storing the item text ON the tick. Edit a grocery
+line and every past tick against it retroactively changes meaning, which is sec 4 rule 8's failure
+shape. It is a migration on both sides in front of a feature nobody has used once. If Kevin edits a
+line and the history goes wrong, that is the trigger.
+
+Standing rule, so it binds the next surface built on ticks: [[0049-a-tick-is-a-tap-not-a-purchase]].
+
+## 2026-09-16 - A tick renders at the speed of a local write
+
+**Kevin:** *"tickking a box on both phone and laptop is slow, takes maybe 1 sec for the tick to
+register."*
+
+The same mistake in two codebases: **both surfaces waited for the server to confirm something they
+already knew.** The web checkbox read its state from the `/api/changes` payload, so a tap waited for
+the POST and then for a full refetch of every event, checklist, item and tick in the household - two
+sequential round trips before it moved. `ChecklistController.tick` wrote to Room in about a
+millisecond and then awaited an HTTP push to Cloud Run before returning.
+
+**The finding that made the Android half safe: `tick()` already discarded the push result.** A bare
+call with no assignment, then an unconditional `return Ticked` - it awaited a network call nothing
+read, `PushOutcome.Refused` included. Its own doc comment already claimed a queued tick was good
+enough for the caller. The comment was right and the code did not do it.
+
+Optimistic on the web, off the critical path on the phone. **Not applied to the list delete**: a card
+that disappears optimistically and returns on the next poll is worse than one that never moved, and a
+tick is one tap from undone where a delete is not.
+
+## 2026-09-16 - The README described an app that no longer exists
+
+Its opening paragraph read *"No backend, no server-side component - it runs entirely on the phone and
+the user's own Google Drive"*, eleven days after ADR 0044 made Django the engine and while a React
+client was live on Cloud Run. Room was quoted at v37 against an actual v70, and the suite at 2,530
+tests against an actual 3,549.
+
+**CLAUDE.md sec 5 warns about exactly this, and the README had joined the list it warns about** - a
+version number written into prose, wrong by 33 releases. The rule earns a second application: a
+number in a document is an observation, and observations rot. Where one is unavoidable it is counted
+from build output at the moment of writing and dated, never carried forward.
+
+`tools/docs_check.py` passed clean throughout. It verifies that paths resolve and links work; **it
+cannot tell whether a sentence is true**, and every false claim above was in prose it had no grip on.
+The same audit found `docs/architecture/` still drawing the pre-Django topology and `docs/glossary.md`
+still calling Drive's appDataFolder "the only store".
