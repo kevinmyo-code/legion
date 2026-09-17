@@ -206,7 +206,7 @@ Verified 2026-09-16 unless stated. Numbers here are counted from build output, n
 |---|---|
 | Android unit suite | **3,549 tests, 0 failures, 0 errors, 0 skipped**, counted from the JUnit XML across 376 result files |
 | Web client suite | **52 tests across 6 files**, green; `tsc --noEmit` and the production build both clean |
-| Server suite | 307 test functions across 23 files, run against a real Postgres rather than SQLite |
+| Server suite | **718 passed, 42 skipped**, run against a real Postgres rather than SQLite (22 minutes) |
 | Room schema | **v70**, additive-only migrations, `exportSchema` on, no destructive fallback anywhere |
 | Voice surface | **120 tools across 15 groups**, every one carrying user-facing copy or the build fails |
 | Django engine | Deployed to Cloud Run and serving the web client. Android reads and writes through it for all nine aspects |
