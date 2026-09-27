@@ -1796,12 +1796,17 @@ object LiveToolbox {
         fns.put(fn(
             name = "get_sitrep",
             description = "Give the user a sitrep: a status report pulling together their " +
-                "calendar, the weather, their car's fleet status, and a newsletter summary - " +
-                "whichever of those they have switched on in settings. Deterministic figures " +
-                "only for calendar/weather/fleet; the newsletter section is the one part that " +
-                "is summarized rather than stated as a raw fact. Say each section plainly, " +
-                "including when one reports nothing or could not be checked - never invent a " +
-                "detail that is not in the result.",
+                "calendar, the weather, their car's fleet status, and the news - whichever of " +
+                "those they have switched on in settings. **Use this for 'what's the news', " +
+                "'what's the news today', 'any news' too**, with modules=\"news\" when they ask " +
+                "for the news alone. The news has two halves: NEWS is a model's SUMMARY of their " +
+                "newsletter mail, and NEWS FEEDS is the verbatim headlines from the RSS feeds " +
+                "they subscribed to. Say which is which - a summary is not a headline, so never " +
+                "present the summary as quoted headlines or paraphrase a headline into a claim " +
+                "it did not make. Deterministic figures only for calendar/weather/fleet. Say " +
+                "each section plainly, including when one reports nothing or could not be " +
+                "checked, and when one half of the news failed while the other worked - never " +
+                "invent a detail that is not in the result.",
             params = obj(
                 "modules" to schema("string", "Optional: a comma-separated subset to narrow the " +
                     "sitrep to, e.g. \"calendar,weather\" when the user asks for just those. " +

@@ -53,7 +53,7 @@ GROUP_BLURBS = {
 
 COPY = {
     # --- Getting started ---
-    "get_sitrep": ("Give me a sitrep", "A status report: calendar, weather, car and a newsletter summary - whichever you have switched on.", "Home screen tiles cover the same ground piece by piece - the day, the area/weather strip, alerts, and a tap-to-fetch newsletter card - but there is no single \"sitrep\" button."),
+    "get_sitrep": ("Give me a sitrep", "A status report: calendar, weather, car and the news - whichever you have switched on. Ask \"what's the news today?\" for just the news: a summary of your newsletters, plus the latest headlines from the feeds you follow, word for word. If one source can't be reached, the other still reports.", "Home screen tiles cover the same ground piece by piece - the day, the area/weather strip, alerts - and the News screen has the newsletter check and your feeds, but there is no single \"sitrep\" button."),
     "get_current_time": ("What time is it?", "The time and date where you are.", "Voice only - your phone's own clock and status bar are the hands equivalent."),
     "get_current_location": ("Where am I?", "Your current location. Says it does not know rather than guessing when there is no GPS fix.", "Fleet > Saved places screen shows current location at the top."),
     "area_info": ("Any severe weather nearby?", "Checks a live source for where you are now: severe weather (National Weather Service), earthquakes (USGS), wildfires (National Interagency Fire Center), or federal disaster declarations (FEMA). Always names its source, and needs a live GPS fix.", "Home screen, area card (weather/quake/wildfire/disaster alerts and air quality)."),

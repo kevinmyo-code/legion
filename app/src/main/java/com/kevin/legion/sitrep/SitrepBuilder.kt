@@ -10,6 +10,9 @@ import com.kevin.legion.engine.dates.DatesAgenda
 import com.kevin.legion.gmail.GmailAuth
 import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
+import com.kevin.legion.news.FeedFetchResult
+import com.kevin.legion.news.FeedFetcher
+import com.kevin.legion.news.FeedSubscriptionController
 import com.kevin.legion.weather.WeatherController
 import java.time.Instant
 import java.time.ZoneId
@@ -43,6 +46,18 @@ import kotlinx.coroutines.withContext
  * consequence ticket 08 accepted stands: "what did yesterday's sitrep say" cannot be answered from
  * storage, because nothing was stored to answer it from.
  *
+ * **NEWS has two halves, widened by one-home ticket 10** ("newsletters > i wanna ask alfred every
+ * morning > whats the news for today... kinda like how the sitrep works"). The mail half above is
+ * unchanged - Gmail, summarized, read-through. The feed half reads every row
+ * [FeedSubscriptionController] holds, fetches each with [FeedFetcher], and reports headlines
+ * **verbatim, never summarized** - ticket 10's own reasoning: a headline already IS the content, and
+ * §4 rule 5 says a model's paraphrase of a headline is not the headline. [newsBlock] composes the
+ * two halves into one [SitrepModule.NEWS] section without letting either blank the other: a lapsed
+ * Gmail grant still lets the feeds report, and a dead feed still lets the newsletter summary
+ * through. The rendered block keeps the two halves under different labels (`NEWS` for the mail
+ * summary's prose, `NEWS FEEDS` for the verbatim headlines) so a reader can always tell which is
+ * which.
+ *
  * **Background Gmail fetch is permitted ONLY here** (ticket 08's narrow amendment to the
  * google-account map's "no background/proactive Gmail fetch" rule) - inside a sitrep the user
  * scheduled or explicitly asked for, nowhere else in the app.
@@ -69,6 +84,13 @@ object SitrepBuilder {
      * survey" reasoning rather than reusing that constant directly, since this cap governs full
      * bodies fetched (real cost, real latency) where `SEARCH_CAP` governs metadata-only hits. */
     private const val NEWS_MESSAGE_CAP = 5
+
+    /** Hard cap on how many headlines one sitrep reads out of a SINGLE feed - ticket 10's own
+     * instruction to cap the feed half the way [NEWS_MESSAGE_CAP] caps the mail half. **Per feed,
+     * not overall**: with several subscriptions, one very active feed should not crowd every other
+     * feed's headlines out of the report the way a combined budget would - a status report reads
+     * one line per feed, not a race for a shared pool. */
+    private const val FEED_HEADLINE_CAP = 5
 
     private val EVENT_TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
@@ -229,6 +251,50 @@ object SitrepBuilder {
     }
 
     /**
+     * One feed's own outcome sentence - ticket 07 built four distinct [FeedFetchResult] sentences
+     * ("a feed that 404s and a feed that is quiet are not the same fact") and this ticket's job is
+     * composing them WITHOUT flattening them back into three. [name] is the feed's title, or its URL
+     * when Kevin never gave it one ([FeedSubscription.title] is nullable) - so a dead feed is named,
+     * not just counted, per ticket 10's own failure rule. Headlines are joined verbatim, never
+     * reworded - §4 rule 5, restated at this file's class doc.
+     */
+    internal fun feedResultSentence(name: String, result: FeedFetchResult): String = when (result) {
+        is FeedFetchResult.Success ->
+            "$name: " + result.items.take(FEED_HEADLINE_CAP).joinToString("; ") { it.title }
+        FeedFetchResult.Empty -> "$name: nothing new"
+        is FeedFetchResult.Unreachable -> "$name: unreachable - ${result.detail}"
+        is FeedFetchResult.Unparseable -> "$name: could not be read - ${result.detail}"
+    }
+
+    /**
+     * The feed half of the NEWS section - every subscribed feed's own sentence, joined, under its
+     * own `NEWS FEEDS` label so a reader can always tell this half's verbatim headlines from the
+     * mail half's summarized prose ([newsSection]'s `NEWS` label). `null` when there are no
+     * subscriptions at all - that is not a failure to report, it is nothing to report, so the feed
+     * half is omitted from the block entirely rather than rendering an empty-looking sentence for a
+     * feature Kevin never set up. `internal` for direct unit testing - the pure half of the feed
+     * module; [newsSectionLive] below is the half that touches the network and Room.
+     */
+    internal fun feedsSection(results: List<Pair<String, FeedFetchResult>>): String? {
+        if (results.isEmpty()) return null
+        return DigestText.line("NEWS FEEDS", results.joinToString(" | ") { (name, result) -> feedResultSentence(name, result) })
+    }
+
+    /**
+     * Composes the mail half and the feed half into the one block [SitrepModule.NEWS] renders -
+     * ticket 10's whole reason for existing: **one half failing must never blank the other.** A
+     * lapsed Gmail grant still lets [feedsSection] report; a dead feed still lets [newsSection]'s
+     * summary through. `internal` for direct unit testing - this is the composition the ticket names
+     * as its own gate (mail failed + feeds fine, mail fine + a feed unreachable, both empty, both
+     * failed).
+     */
+    internal fun newsBlock(mailOutcome: NewsOutcome, feedResults: List<Pair<String, FeedFetchResult>>): String {
+        val mailLine = newsSection(mailOutcome)
+        val feedsLine = feedsSection(feedResults)
+        return if (feedsLine == null) mailLine else "$mailLine\n$feedsLine"
+    }
+
+    /**
      * The Gmail query for a CURATED sender list: `from:(a OR b OR c) newer_than:1d`, ticket 08's
      * own worked example ("`GmailToolLogic` already passes a `q` query through, so `from:(...)
      * newer_than:1d` is nearly free"). Null when [senders] has nothing curated - [resolveNewsletterQuery]
@@ -275,13 +341,14 @@ object SitrepBuilder {
 
     /**
      * The Gmail-touching half of NEWS - fetches, summarizes, and lets everything but the returned
-     * [String] fall out of scope (see this file's class doc on read-through). Runs the network
+     * [NewsOutcome] fall out of scope (see this file's class doc on read-through). Runs the network
      * calls off the main thread the same way [com.kevin.legion.service.LiveToolbox]'s own mail
      * tools do (`withContext(Dispatchers.IO)`), since [build] may be called from a live-tool
      * dispatch or from a plain Compose click handler (ticket 32 - there is no longer a third,
-     * alarm-driven caller).
+     * alarm-driven caller). Split out of what used to be `newsSectionLive` (ticket 10) so the mail
+     * half's outcome can compose with the feed half's without either rendering to text first.
      */
-    private suspend fun newsSectionLive(context: Context): String {
+    private suspend fun resolveMailOutcome(context: Context): NewsOutcome {
         val senders = SitrepSettings.newsletterSenders(context)
         val query = resolveNewsletterQuery(senders)
 
@@ -291,7 +358,7 @@ object SitrepBuilder {
                 when (val page = client.search(query, NEWS_MESSAGE_CAP)) {
                     is GmailClient.FetchResult.Ok -> {
                         val hits = page.value.messages
-                        if (hits.isEmpty()) return@withContext newsSection(NewsOutcome.Empty)
+                        if (hits.isEmpty()) return@withContext NewsOutcome.Empty
 
                         // Read-through: each body is fetched, folded into [prompt], and then only
                         // ever referenced through that local val - nothing here is written to Room,
@@ -300,27 +367,63 @@ object SitrepBuilder {
                             (client.fetchFull(hit.id) as? GmailClient.FetchResult.Ok)?.value
                                 ?.let { "${it.subject}: ${it.body}" }
                         }
-                        if (bodies.isEmpty()) return@withContext newsSection(NewsOutcome.SummaryFailed(hits.size))
+                        if (bodies.isEmpty()) return@withContext NewsOutcome.SummaryFailed(hits.size)
 
                         val prompt = bodies.joinToString("\n\n---\n\n")
                         val summary = SubAgent(systemInstruction = NEWS_SYSTEM_INSTRUCTION, useSearch = false)
                             .ask(context = prompt, question = "Summarize today's newsletters in 2-3 sentences.")
 
-                        newsSection(
-                            if (summary.isNullOrBlank()) NewsOutcome.SummaryFailed(hits.size)
-                            else NewsOutcome.Summarized(summary),
-                        )
+                        if (summary.isNullOrBlank()) NewsOutcome.SummaryFailed(hits.size)
+                        else NewsOutcome.Summarized(summary)
                     }
                     is GmailClient.FetchResult.Failed ->
-                        newsSection(NewsOutcome.CouldNotCheck(GmailToolLogic.message(GmailToolLogic.causeForFailure(page.networkFailure))))
+                        NewsOutcome.CouldNotCheck(GmailToolLogic.message(GmailToolLogic.causeForFailure(page.networkFailure)))
                 }
             }
             is GmailAuth.TokenResult.NeedsConsent ->
-                newsSection(NewsOutcome.CouldNotCheck(
+                NewsOutcome.CouldNotCheck(
                     GmailToolLogic.message(GmailToolLogic.causeForNeedsConsent(CompanionProfile.isGmailEnabled(context))),
-                ))
+                )
             is GmailAuth.TokenResult.Failed ->
-                newsSection(NewsOutcome.CouldNotCheck(GmailToolLogic.message(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error)))))
+                NewsOutcome.CouldNotCheck(GmailToolLogic.message(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error))))
         }
+    }
+
+    /**
+     * The feed-touching half of NEWS (ticket 10) - reads every [FeedSubscriptionController] row
+     * once (not the observing `Flow` `NewsScreen` uses) and fetches each with [FeedFetcher]. Each
+     * feed's name is its [com.kevin.legion.data.local.FeedSubscription.title], falling back to the
+     * URL when Kevin never gave it one, so a dead feed is named in the rendered sentence rather than
+     * just counted.
+     *
+     * **Guarded on purpose, unlike [resolveMailOutcome].** [FeedFetcher.fetch] already turns every
+     * network/parse failure into a [FeedFetchResult] value and never throws, so this guard is only
+     * for the one thing this function adds that [resolveMailOutcome] does not have: a Room read.
+     * Ticket 10's whole point is that one half failing must never blank the other, so a broken local
+     * read here degrades to "no feeds" rather than throwing past [build] and losing the mail summary
+     * that DID work.
+     */
+    private suspend fun resolveFeedResults(context: Context): List<Pair<String, FeedFetchResult>> =
+        withContext(Dispatchers.IO) {
+            val subscriptions = try {
+                FeedSubscriptionController.allOnce(context)
+            } catch (_: Exception) {
+                return@withContext emptyList()
+            }
+            subscriptions.map { subscription ->
+                val name = subscription.title?.trim()?.takeIf { it.isNotBlank() } ?: subscription.url
+                name to FeedFetcher.fetch(subscription.url)
+            }
+        }
+
+    /**
+     * The live half of NEWS - resolves both the mail outcome and the feed results, then hands them
+     * to [newsBlock] to compose. Neither half's failure can affect the other: they are resolved as
+     * independent values before composition ever runs, not threaded through a shared early return.
+     */
+    private suspend fun newsSectionLive(context: Context): String {
+        val mailOutcome = resolveMailOutcome(context)
+        val feedResults = resolveFeedResults(context)
+        return newsBlock(mailOutcome, feedResults)
     }
 }

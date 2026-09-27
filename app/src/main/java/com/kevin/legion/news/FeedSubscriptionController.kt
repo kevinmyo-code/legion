@@ -17,6 +17,12 @@ object FeedSubscriptionController {
     fun observeAll(context: Context): Flow<List<FeedSubscription>> =
         CarDatabase.getDatabase(context).feedSubscriptionDao().observeAll()
 
+    /** One-shot read of every subscription row - `observeAll`'s `Flow` is for `NewsScreen`'s live
+     * list; a sitrep build (one-home ticket 10) wants a single snapshot to fetch against, not a
+     * subscription that would keep the coroutine alive. */
+    suspend fun allOnce(context: Context): List<FeedSubscription> =
+        CarDatabase.getDatabase(context).feedSubscriptionDao().all()
+
     /** [AddResult.Refused] covers both a blank/non-http(s) URL and a duplicate of one already
      * subscribed - the unique index on [FeedSubscription.url] is what a duplicate insert actually
      * trips, caught here rather than left to crash the tap. */

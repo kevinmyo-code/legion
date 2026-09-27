@@ -1,6 +1,8 @@
 package com.kevin.legion.sitrep
 
 import com.kevin.legion.calendar.OpenerCalendarBriefing
+import com.kevin.legion.news.FeedFetchResult
+import com.kevin.legion.news.FeedHeadline
 import com.kevin.legion.weather.WeatherController
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -214,5 +216,123 @@ class SitrepBuilderTest {
     fun `every section carries the NEWS label so a listener can tell which module spoke`() {
         val line = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.Empty)
         assertTrue(line.startsWith("NEWS "))
+    }
+
+    // --------------------------------------------------------------------------- feeds (ticket 10)
+
+    @Test
+    fun `feedResultSentence names the feed and reports headlines verbatim`() {
+        val sentence = SitrepBuilder.feedResultSentence(
+            "HN frontpage",
+            FeedFetchResult.Success(listOf(FeedHeadline("Rust 2.0 released", null), FeedHeadline("A new database", null))),
+        )
+        assertTrue(sentence.startsWith("HN frontpage:"))
+        assertTrue(sentence.contains("Rust 2.0 released"))
+        assertTrue(sentence.contains("A new database"))
+    }
+
+    @Test
+    fun `feedResultSentence caps headlines per feed`() {
+        val items = (1..10).map { FeedHeadline("Headline $it", null) }
+        val sentence = SitrepBuilder.feedResultSentence("Big feed", FeedFetchResult.Success(items))
+        assertTrue(sentence.contains("Headline 5"))
+        assertTrue("a feed's own headline cap must not let a busy feed dump every item", !sentence.contains("Headline 6"))
+    }
+
+    // Ticket 07's four RSS sentences must stay four after composition, not flatten into three -
+    // the ticket's own explicit ask.
+    @Test
+    fun `the four RSS outcome sentences stay four distinct sentences after feedResultSentence`() {
+        val sentences = setOf(
+            SitrepBuilder.feedResultSentence("f", FeedFetchResult.Success(listOf(FeedHeadline("h", null)))),
+            SitrepBuilder.feedResultSentence("f", FeedFetchResult.Empty),
+            SitrepBuilder.feedResultSentence("f", FeedFetchResult.Unreachable("HTTP 404")),
+            SitrepBuilder.feedResultSentence("f", FeedFetchResult.Unparseable("bad xml")),
+        )
+        assertEquals(4, sentences.size)
+    }
+
+    @Test
+    fun `an unreachable feed and a quiet feed read as different sentences, never the same one`() {
+        val unreachable = SitrepBuilder.feedResultSentence("f", FeedFetchResult.Unreachable("HTTP 404"))
+        val empty = SitrepBuilder.feedResultSentence("f", FeedFetchResult.Empty)
+        assertTrue(!unreachable.contains("nothing new"))
+        assertTrue(!empty.contains("unreachable"))
+    }
+
+    @Test
+    fun `feedsSection is null with no subscriptions, not an empty-looking sentence`() {
+        assertEquals(null, SitrepBuilder.feedsSection(emptyList()))
+    }
+
+    @Test
+    fun `feedsSection carries its own NEWS FEEDS label, distinct from the mail NEWS label`() {
+        val line = SitrepBuilder.feedsSection(listOf("f" to FeedFetchResult.Empty))
+        assertTrue(line != null && line.startsWith("NEWS FEEDS "))
+    }
+
+    // ------------------------------------------------------------------ newsBlock composition
+
+    @Test
+    fun `mail summarized and feeds fine renders both halves under their own labels`() {
+        val block = SitrepBuilder.newsBlock(
+            SitrepBuilder.NewsOutcome.Summarized("Two stories on AI chips."),
+            listOf("HN frontpage" to FeedFetchResult.Success(listOf(FeedHeadline("Rust 2.0 released", null)))),
+        )
+        assertTrue(block.contains("Two stories on AI chips."))
+        assertTrue(block.contains("HN frontpage"))
+        assertTrue(block.contains("Rust 2.0 released"))
+        assertTrue(block.startsWith("NEWS "))
+        assertTrue("both halves must be present as two distinguishable labelled lines", block.contains("NEWS FEEDS"))
+    }
+
+    // The ticket's own reason for existing: a lapsed Gmail grant must never blank the feed half.
+    @Test
+    fun `mail could not check but feeds fine - the feed half still renders`() {
+        val block = SitrepBuilder.newsBlock(
+            SitrepBuilder.NewsOutcome.CouldNotCheck("no Gmail grant"),
+            listOf("HN frontpage" to FeedFetchResult.Success(listOf(FeedHeadline("Rust 2.0 released", null)))),
+        )
+        assertTrue(block.contains("could not check - no Gmail grant"))
+        assertTrue("the feed half must still report even though mail failed", block.contains("Rust 2.0 released"))
+    }
+
+    // The ticket's other named case: a dead feed must never blank a working newsletter summary.
+    @Test
+    fun `mail fine but one feed is unreachable - the summary still renders and the dead feed is named`() {
+        val block = SitrepBuilder.newsBlock(
+            SitrepBuilder.NewsOutcome.Summarized("Two stories on AI chips."),
+            listOf("HN frontpage" to FeedFetchResult.Unreachable("HTTP 404")),
+        )
+        assertTrue("the newsletter summary must still arrive despite a dead feed", block.contains("Two stories on AI chips."))
+        assertTrue("the dead feed must be named, not silently dropped", block.contains("HN frontpage"))
+        assertTrue(block.contains("unreachable - HTTP 404"))
+    }
+
+    @Test
+    fun `both halves empty renders two distinct empty sentences, not one collapsed line`() {
+        val block = SitrepBuilder.newsBlock(
+            SitrepBuilder.NewsOutcome.Empty,
+            listOf("HN frontpage" to FeedFetchResult.Empty),
+        )
+        assertTrue(block.contains("no newsletters in the last day"))
+        assertTrue(block.contains("HN frontpage: nothing new"))
+    }
+
+    @Test
+    fun `both halves failed renders two distinct failure sentences, neither swallows the other`() {
+        val block = SitrepBuilder.newsBlock(
+            SitrepBuilder.NewsOutcome.SummaryFailed(3),
+            listOf("HN frontpage" to FeedFetchResult.Unparseable("bad xml")),
+        )
+        assertTrue(block.contains("3 newsletter(s)") && block.contains("summary failed"))
+        assertTrue(block.contains("HN frontpage: could not be read - bad xml"))
+    }
+
+    @Test
+    fun `newsBlock omits the feeds half entirely when there are no subscriptions`() {
+        val block = SitrepBuilder.newsBlock(SitrepBuilder.NewsOutcome.Summarized("Two stories."), emptyList())
+        assertEquals(SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.Summarized("Two stories.")), block)
+        assertTrue(!block.contains("NEWS FEEDS"))
     }
 }
