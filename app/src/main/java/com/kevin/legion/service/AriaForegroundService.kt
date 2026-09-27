@@ -1114,8 +1114,8 @@ class AriaForegroundService : Service() {
         // Start-intent action: Cruise screen's tap-avatar-to-talk.
         const val ACTION_TALK = "com.kevin.legion.TALK"
 
-        /** Sent by [com.kevin.legion.ui.MainActivity] when Android hands it an ACTION_ASSIST (the
-         * side key held down, with LEGION as the digital assistant app). See
+        /** Sent by [com.kevin.legion.ui.AssistActivity] when Android hands it an ACTION_ASSIST (the
+         * side key held down, with LEGION as the digital assistant app), after any unlock. See
          * [LiveSessionController.onAssistRequest]. */
         const val ACTION_ASSIST_ONE_SHOT = "com.kevin.legion.ASSIST_ONE_SHOT"
 

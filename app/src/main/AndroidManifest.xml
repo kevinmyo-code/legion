@@ -165,6 +165,31 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
+        <!-- The phone's assistant (2026-09-27): holding the side key with LEGION as the digital
+             assistant app lands here, NOT on MainActivity. It may show over the lock screen only
+             to ask for the unlock prompt, and draws nothing, so no app data ever appears on a
+             locked phone. See AssistActivity's doc for the parked-request bug this closes.
+             VOICE_COMMAND is the older headset/button equivalent. NOT noHistory: the unlock
+             prompt covers this activity, and noHistory discards it right then, so the "unlocked"
+             callback never arrived and the conversation never started. Every path finish()es
+             itself instead. -->
+        <activity
+            android:name=".ui.AssistActivity"
+            android:exported="true"
+            android:showWhenLocked="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- The app's entry point, and the phone's home app when Kevin picks it (ADR 0050,
              2026-09-27, reversing CLAUDE.md's "Not a launcher"). The CATEGORY_HOME filter below
              only makes it SELECTABLE in Settings > Default apps > Home app; nothing here forces it.
@@ -186,17 +211,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <!-- The phone's assistant (2026-09-27): holding the side key with LEGION as the
-                 digital assistant app arrives here as ACTION_ASSIST and opens a one-shot live
-                 conversation. VOICE_COMMAND is the older headset/button equivalent. -->
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VOICE_COMMAND" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <!-- Spotify App Remote's app-fixed OAuth redirect (SpotifyController.REDIRECT_URI).
