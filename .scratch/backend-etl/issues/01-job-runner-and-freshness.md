@@ -3,7 +3,8 @@ map: backend-etl
 ticket: "01"
 title: "Job runner, ingest_runs, freshness endpoint, deploy/crontab"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-09-27 (c6d0608), server suite 790 tests / 0 failures / 42 skipped (JUnit). Owed: migrate ingest 0001 on live, redeploy Cloud Run, run install_schedule.py for real, then see a heartbeat row land."
 blockers: []
 blocked-by: []
 tags: [ticket]
