@@ -18,6 +18,7 @@ import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 /**
@@ -112,7 +113,50 @@ object ChecklistController {
      * uses for a foreground-triggered background push.
      */
     private val defaultPushScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val pushScope: CoroutineScope get() = pushScopeOverride ?: defaultPushScope
+
+    /**
+     * Every checklist write's push, in the order the writes happened (2026-09-27).
+     *
+     * Kevin: *"when i make a grocery list or add something to a list. it doesnt show up until i
+     * navigate away and back"*. Only [tick]/[untick] had been moved off the critical path; create,
+     * add, rename, edit and delete all still AWAITED an HTTP round trip before returning, and the
+     * screen reloads only once the call returns - so an unreachable engine meant waiting out the
+     * whole network timeout. None of those eleven calls read the push outcome either.
+     *
+     * **A queue with one worker, not a bare launch per write.** Awaiting kept pushes in order by
+     * accident. Independent launches race: make a list and add an item straight away, and the
+     * item's push can reach the engine before the list it belongs to exists there. One consumer
+     * draining a FIFO channel keeps write order while never blocking the caller. A push that throws
+     * is caught so it cannot kill the worker; the outbox's own queue-on-failure is what makes that
+     * push retry, unchanged.
+     */
+    private val pushQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val pushWorker by lazy {
+        defaultPushScope.launch {
+            for (job in pushQueue) {
+                try { job() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e }
+            }
+        }
+    }
+
+    /** Runs [block] on the push worker, after every push enqueued before it. `internal` so the
+     * ordering is testable without a backend. Under [pushScopeOverride] (tests) it launches as a
+     * child of that scope instead, exactly as [tick] always has there. */
+    internal fun enqueuePush(block: suspend () -> Unit) {
+        val override = pushScopeOverride
+        if (override != null) {
+            override.launch { block() }
+            return
+        }
+        pushWorker.start()
+        pushQueue.trySend(block)
+    }
+
+    private fun pushLater(context: Context, push: suspend ChecklistsWriteThrough.() -> Unit) {
+        // applicationContext: this outlives the call that queued it, so it must never hold an Activity.
+        val app = context.applicationContext
+        enqueuePush { sync(app).push() }
+    }
 
     /** Today as a local epoch day - the zone defaults to the device's own, same as every other
      * "what day is it" read in this codebase (`ui/agenda/MonthCalendar.kt`, `ui/CalendarScreen.kt`). */
@@ -160,7 +204,7 @@ object ChecklistController {
             sourceKey = sourceKey,
         )
         val id = db(context).checklistDao().insert(checklist)
-        sync(context).checklistChanged(id)
+        pushLater(context) { checklistChanged(id) }
         return checklist.copy(id = id)
     }
 
@@ -181,12 +225,12 @@ object ChecklistController {
         at: Long = System.currentTimeMillis(),
     ) {
         db(context).checklistDao().setSchedule(checklistId, scheduleKind, scheduleEvery, scheduleDaysOfWeek, at)
-        sync(context).checklistChanged(checklistId)
+        pushLater(context) { checklistChanged(checklistId) }
     }
 
     suspend fun renameChecklist(context: Context, checklistId: Long, name: String, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().rename(checklistId, name, at)
-        sync(context).checklistChanged(checklistId)
+        pushLater(context) { checklistChanged(checklistId) }
     }
 
     /** DEPRECATED (see [Checklist.recursDaily]'s own doc comment) - nothing in this controller
@@ -199,12 +243,12 @@ object ChecklistController {
 
     suspend fun archiveChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().archive(checklistId, at)
-        sync(context).checklistChanged(checklistId)
+        pushLater(context) { checklistChanged(checklistId) }
     }
 
     suspend fun unarchiveChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().unarchive(checklistId, at)
-        sync(context).checklistChanged(checklistId)
+        pushLater(context) { checklistChanged(checklistId) }
     }
 
     /** Soft-deletes the checklist itself. Does NOT touch its items or their ticks - matches
@@ -214,7 +258,7 @@ object ChecklistController {
      * either. */
     suspend fun deleteChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistDao().deleteById(checklistId, at)
-        sync(context).checklistDeleted(checklistId)
+        pushLater(context) { checklistDeleted(checklistId) }
     }
 
     suspend fun getChecklist(context: Context, checklistId: Long): Checklist? =
@@ -254,7 +298,7 @@ object ChecklistController {
             measureDirection = measureDirection,
         )
         val id = db(context).checklistItemDao().insert(item)
-        sync(context).itemChanged(id)
+        pushLater(context) { itemChanged(id) }
         return item.copy(id = id)
     }
 
@@ -269,17 +313,17 @@ object ChecklistController {
         at: Long = System.currentTimeMillis(),
     ) {
         db(context).checklistItemDao().setMeasure(itemId, measureUnit, measureTarget, measureDirection, at)
-        sync(context).itemChanged(itemId)
+        pushLater(context) { itemChanged(itemId) }
     }
 
     suspend fun editItem(context: Context, itemId: Long, text: String, at: Long = System.currentTimeMillis()) {
         db(context).checklistItemDao().updateText(itemId, text, at)
-        sync(context).itemChanged(itemId)
+        pushLater(context) { itemChanged(itemId) }
     }
 
     suspend fun reorderItem(context: Context, itemId: Long, sortOrder: Int, at: Long = System.currentTimeMillis()) {
         db(context).checklistItemDao().updateSortOrder(itemId, sortOrder, at)
-        sync(context).itemChanged(itemId)
+        pushLater(context) { itemChanged(itemId) }
     }
 
     /** Soft-deletes an item only - trap 2, by name. Never cascades to [ChecklistTick]; a history
@@ -287,7 +331,7 @@ object ChecklistController {
      * [com.kevin.legion.data.local.ChecklistItemDao.getByIdIncludingDeleted]. */
     suspend fun deleteItem(context: Context, itemId: Long, at: Long = System.currentTimeMillis()) {
         db(context).checklistItemDao().deleteById(itemId, at)
-        sync(context).itemDeleted(itemId)
+        pushLater(context) { itemDeleted(itemId) }
     }
 
     // ---- tick / untick -------------------------------------------------------------------------
@@ -350,12 +394,11 @@ object ChecklistController {
         // day view labels it queued from the outbox itself rather than from a return value a voice
         // tool would have to learn to interpret.
         //
-        // LAUNCHED, not awaited (see [pushScope]'s own doc comment) - this function returns the
+        // LAUNCHED, not awaited (see [enqueuePush] and [pushQueue]'s doc comment) - this function returns the
         // instant Room is written, rather than waiting out a full HTTP round trip to the engine on
         // top of it. [context.applicationContext] rather than the caller's own [context]: this
         // outlives the call that started it, so it must never hold an Activity.
-        val app = context.applicationContext
-        pushScope.launch { sync(app).ticked(itemId, day) }
+        pushLater(context) { ticked(itemId, day) }
         return TickOutcome.Ticked
     }
 
@@ -363,11 +406,10 @@ object ChecklistController {
      * survives for [tick]'s revival path rather than being lost.
      *
      * The push is LAUNCHED, not awaited - identical shape and identical reasoning to [tick]'s own
-     * push; see [pushScope]'s doc comment. */
+     * push; see [pushQueue]'s doc comment. */
     suspend fun untick(context: Context, itemId: Long, day: Int = today(), at: Long = System.currentTimeMillis()) {
         db(context).checklistTickDao().untick(itemId, day, at)
-        val app = context.applicationContext
-        pushScope.launch { sync(app).unticked(itemId, day) }
+        pushLater(context) { unticked(itemId, day) }
     }
 
     // ---- reads ---------------------------------------------------------------------------------
