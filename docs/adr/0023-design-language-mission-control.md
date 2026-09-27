@@ -1,8 +1,9 @@
 ---
-status: accepted
+status: superseded
 decided: 2026-08-14
 decided-by: Kevin
 supersedes: [0022-design-language-instrument]
+superseded-by: [0050-design-language-soft-material]
 source: "decisions.md 2026-08-14"
 tags: [adr]
 ---
@@ -10,6 +11,10 @@ tags: [adr]
 # 23. Design language: mission control
 
 ## Standing
+
+SUPERSEDED 2026-09-27 by [[0050-design-language-soft-material]], surface by surface: HOME, the
+Lists screens and the shell chrome first. Every screen not yet converted still renders in mission
+control, and this ADR describes that look until the last one moves.
 
 ACCEPTED and BUILT. Verified on the phone, not just in review.
 

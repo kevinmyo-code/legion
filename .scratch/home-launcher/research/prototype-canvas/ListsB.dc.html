@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lists, wide cards</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&amp;display=block">
+<style>
+body{margin:0;background:#0b0c0f}
+a{color:#E6E7EC}a:hover{color:#FFFFFF}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+input::placeholder{color:#8A8F9B}
+</style>
+</helmet>
+<div style="position: relative; width: 412px; height: 820px; box-sizing: border-box; display: flex; flex-direction: column; background: #121317; color: #E6E7EC; font-family: 'Figtree', system-ui, sans-serif; overflow: hidden">
+
+<div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 16px">
+<div style="display: flex; align-items: center; gap: 14px; font-size: 13px; color: #A9ADB8">
+<span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 4px; background: #7EDBA5; display: block"></span>Synced</span>
+<span>OBD off</span>
+</div>
+<div style="display: flex; align-items: center; gap: 2px">
+<span style="font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums">14:02</span>
+<button aria-label="Settings" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: #A9ADB8"><span class="material-symbols-rounded" aria-hidden="true">settings</span></button>
+</div>
+</div>
+
+<sc-if value="{{onPage}}" hint-placeholder-val="{{ true }}">
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column">
+<div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 4px">
+<a href="Main.dc.html" aria-label="Back to home" style="width: 48px; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; color: #E6E7EC; text-decoration: none"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span></a>
+<span style="flex-grow: 1; font-size: 22px; font-weight: 600">Lists</span>
+<button aria-label="More options" style="width: 48px; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; color: #A9ADB8"><span class="material-symbols-rounded" aria-hidden="true">more_vert</span></button>
+</div>
+<div style="flex-grow: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 96px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<sc-for list="{{lists}}" as="l" hint-placeholder-count="4">
+<button onClick="{{l.open}}" style="width: 100%; box-sizing: border-box; background: #1C1E24; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px; text-align: left">
+<span style="display: flex; align-items: center; gap: 12px">
+<span style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 14px; background: {{l.bg}}; color: {{l.fg}}; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true">{{l.icon}}</span></span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 17px; font-weight: 600">{{l.name}}</span>
+<span style="font-size: 13px; color: #A9ADB8">{{l.meta}}</span>
+</span>
+<span class="material-symbols-rounded" aria-hidden="true" style="color: #8A8F9B">chevron_right</span>
+</span>
+<span style="display: block; height: 6px; border-radius: 3px; background: #2A2D34; overflow: hidden"><span style="display: block; height: 6px; border-radius: 3px; background: {{l.fg}}; width: {{l.pct}}"></span></span>
+<span style="font-size: 14px; line-height: 1.4; color: #C9CCD4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{l.previewText}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</div>
+<button onClick="{{newList}}" style="position: absolute; right: 16px; bottom: 92px; z-index: 4; height: 56px; padding: 0 20px 0 16px; border-radius: 16px; background: #733423; color: #FFDBD1; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45)"><span class="material-symbols-rounded" aria-hidden="true">add</span>New list</button>
+</sc-if>
+
+<sc-if value="{{inDetail}}" hint-placeholder-val="{{ false }}">
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column">
+<div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 4px">
+<button aria-label="Back to lists" onClick="{{back}}" style="width: 48px; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span></button>
+<span style="flex-grow: 1; min-width: 0; font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{d.name}}</span>
+<button aria-label="List options" onClick="{{toggleMenu}}" style="width: 48px; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; color: #A9ADB8"><span class="material-symbols-rounded" aria-hidden="true">more_vert</span></button>
+</div>
+<div style="flex-grow: 1; min-height: 0; overflow-y: auto; padding: 0 8px 24px 4px">
+<sc-if value="{{d.hasSched}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; font-size: 13px; color: #A9ADB8"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 18px">repeat</span>{{d.schedLine}}</div>
+</sc-if>
+<sc-if value="{{d.isEmpty}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 12px 12px 4px; font-size: 15px; color: #A9ADB8">Nothing on this list yet. Add the first item below.</div>
+</sc-if>
+<sc-for list="{{d.unticked}}" as="it" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; min-height: 52px">
+<button aria-label="{{it.label}}" onClick="{{it.toggle}}" style="width: 48px; height: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center"><span style="width: 22px; height: 22px; box-sizing: border-box; border-radius: 7px; border: 2px solid #8A8F9B; display: block"></span></button>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 16px; line-height: 1.35">{{it.text}}</span>
+<sc-if value="{{it.isMeasured}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #8A8F9B">{{it.target}}</span></sc-if>
+</span>
+<sc-if value="{{it.isMeasured}}" hint-placeholder-val="{{ false }}">
+<label style="display: flex; align-items: center; gap: 6px; margin-right: 8px; font-size: 14px; color: #A9ADB8">
+<input aria-label="{{it.inputLabel}}" placeholder="0" value="{{it.value}}" onChange="{{it.onValue}}" style="width: 56px; height: 36px; box-sizing: border-box; border-radius: 10px; background: #24272E; border: 1px solid #33373F; color: #E6E7EC; text-align: right; padding: 0 8px; font-size: 15px; font-family: inherit; outline: none">
+{{it.unit}}
+</label>
+</sc-if>
+</div>
+<sc-if value="{{it.hasRefusal}}" hint-placeholder-val="{{ false }}"><div style="font-size: 13px; color: #FFC857; padding: 0 12px 8px 48px">{{it.refusal}}</div></sc-if>
+</div>
+</sc-for>
+<div style="display: flex; align-items: center; min-height: 52px">
+<span style="width: 48px; flex-shrink: 0; display: flex; justify-content: center; color: #A9ADB8"><span class="material-symbols-rounded" aria-hidden="true">add</span></span>
+<input aria-label="Add item" placeholder="Add item" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onDraftKey}}" style="flex-grow: 1; min-width: 0; height: 44px; background: transparent; border: 0; outline: none; color: #E6E7EC; font-size: 16px; font-family: inherit">
+<sc-if value="{{hasDraft}}" hint-placeholder-val="{{ false }}"><button aria-label="Add this item" onClick="{{addItem}}" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: #FFB4A1"><span class="material-symbols-rounded" aria-hidden="true">check</span></button></sc-if>
+</div>
+<sc-if value="{{d.hasTicked}}" hint-placeholder-val="{{ true }}">
+<div style="height: 1px; background: #2A2D34; margin: 8px 12px"></div>
+<button onClick="{{toggleTicked}}" style="width: 100%; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 14px; font-weight: 600; color: #A9ADB8"><span class="material-symbols-rounded" aria-hidden="true" style="transform: rotate({{chev}}deg); transition: transform 150ms">expand_more</span>{{d.tickedLabel}}</button>
+<sc-if value="{{showTicked}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{d.ticked}}" as="it" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; min-height: 48px">
+<button aria-label="{{it.label}}" onClick="{{it.toggle}}" style="width: 48px; height: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center"><span style="width: 22px; height: 22px; border-radius: 7px; background: #5E636E; color: #121317; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 18px">check</span></span></button>
+<span style="flex-grow: 1; min-width: 0; font-size: 16px; color: #8A8F9B; text-decoration: line-through">{{it.text}}</span>
+<sc-if value="{{it.queued}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 4px; margin-right: 12px; font-size: 12px; color: #FFC857; white-space: nowrap"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 16px">cloud_off</span>Not synced yet</span></sc-if>
+</div>
+</sc-for>
+</sc-if>
+</sc-if>
+<sc-if value="{{d.allDone}}" hint-placeholder-val="{{ false }}">
+<div style="margin: 16px 8px 0 12px; background: #1C1E24; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 16px; font-weight: 600">Everything is ticked.</span>
+<span style="font-size: 14px; color: #A9ADB8">Delete the list? What you ticked off it is kept.</span>
+<div style="display: flex; justify-content: flex-end">
+<button onClick="{{deleteList}}" style="height: 40px; padding: 0 16px; border-radius: 20px; background: #4A1F24; color: #FFB4AB; font-size: 14px; font-weight: 600">Delete list</button>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 96px; right: 12px; z-index: 5; width: 188px; background: #2A2D34; border-radius: 12px; padding: 6px 0; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column">
+<button onClick="{{closeMenu}}" style="height: 44px; padding: 0 16px; text-align: left; font-size: 15px">Rename</button>
+<button onClick="{{closeMenu}}" style="height: 44px; padding: 0 16px; text-align: left; font-size: 15px">Schedule</button>
+<button onClick="{{closeMenu}}" style="height: 44px; padding: 0 16px; text-align: left; font-size: 15px">History</button>
+<button onClick="{{closeMenu}}" style="height: 44px; padding: 0 16px; text-align: left; font-size: 15px; color: #FFB4AB">Delete list</button>
+</div>
+</sc-if>
+</sc-if>
+
+<div style="flex-shrink: 0; padding: 10px 16px 14px; background: #16181D; border-top: 1px solid #23262D">
+<button style="width: 100%; height: 52px; border-radius: 26px; background: #733423; color: #FFDBD1; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 16px; font-weight: 600"><span class="material-symbols-rounded" aria-hidden="true">mic</span>Tap to talk</button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":412,"height":820}}'>
+class Component extends DCLogic {
+  seed() {
+    return [
+      { id: 'g', name: 'Groceries', sched: '', icon: 'shopping_cart', fg: '#7EDBA5', bg: '#173D2B', items: [
+        { id: 'g1', text: 'Toothpaste' },
+        { id: 'g2', text: 'Eggs, dozen' },
+        { id: 'g3', text: 'Oat milk' },
+        { id: 'g4', text: 'Bananas' },
+        { id: 'g5', text: 'Chicken thighs' },
+        { id: 'g6', text: 'Jasmine rice' },
+        { id: 'g7', text: 'Bread', ticked: true },
+        { id: 'g8', text: 'Coffee beans', ticked: true, queued: true }
+      ] },
+      { id: 'b', name: 'Bio', sched: 'Daily', icon: 'fitness_center', fg: '#FFB1C3', bg: '#4A1F2C', items: [
+        { id: 'b1', text: 'Vitamin D' },
+        { id: 'b2', text: 'Creatine, 5 g' },
+        { id: 'b3', text: 'Water', unit: 'L', target: '3 L' },
+        { id: 'b4', text: 'Stretch, 10 min' },
+        { id: 'b5', text: 'Protein shake', ticked: true },
+        { id: 'b6', text: 'Walk, 30 min', ticked: true }
+      ] },
+      { id: 't', name: 'Todo', sched: '', icon: 'task_alt', fg: '#A8C8FF', bg: '#1F3450', items: [
+        { id: 't1', text: 'Call the bank about the card' },
+        { id: 't2', text: 'Renew car registration' },
+        { id: 't3', text: 'Return the package' },
+        { id: 't4', text: 'Book dentist cleaning', ticked: true }
+      ] },
+      { id: 'm', name: 'Morning', sched: 'Daily', icon: 'wb_twilight', fg: '#FFD36B', bg: '#43340F', items: [
+        { id: 'm1', text: 'Make the bed' },
+        { id: 'm2', text: 'Meds' },
+        { id: 'm3', text: 'Check the day' }
+      ] },
+      { id: 'p', name: 'Packing', sched: '', icon: 'luggage', fg: '#CDBDFF', bg: '#33265A', items: [
+        { id: 'p1', text: 'Phone charger' },
+        { id: 'p2', text: 'Passport' },
+        { id: 'p3', text: 'Toiletries' },
+        { id: 'p4', text: 'Headphones' },
+        { id: 'p5', text: 'Rain jacket' }
+      ] }
+    ];
+  }
+
+  initial() {
+    return { openId: null, showTicked: true, menuOpen: false, draft: '', values: {}, refusals: {}, n: 0, lists: this.seed() };
+  }
+
+  cur() {
+    var s = this.state;
+    return s && s.lists ? s : this.initial();
+  }
+
+  patch(fn) {
+    var s = this.cur();
+    this.setState(Object.assign({}, s, fn(s)));
+  }
+
+  withItems(s, listId, fn) {
+    return s.lists.map((l) => (l.id === listId ? Object.assign({}, l, { items: fn(l.items) }) : l));
+  }
+
+  tick(listId, itemId) {
+    this.patch((s) => {
+      var list = s.lists.find((l) => l.id === listId);
+      var item = list.items.find((i) => i.id === itemId);
+      var refusals = Object.assign({}, s.refusals);
+      var raw = String(s.values[itemId] || '').trim();
+      if (item.unit && (raw === '' || isNaN(Number(raw)))) {
+        refusals[itemId] = 'Enter an amount first. Left empty, it counts as skipped.';
+        return { refusals: refusals };
+      }
+      delete refusals[itemId];
+      return {
+        refusals: refusals,
+        lists: this.withItems(s, listId, (items) => items.map((i) => (i.id === itemId ? Object.assign({}, i, { ticked: true, value: item.unit ? raw : '' }) : i))),
+      };
+    });
+  }
+
+  untick(listId, itemId) {
+    this.patch((s) => ({
+      lists: this.withItems(s, listId, (items) => items.map((i) => (i.id === itemId ? Object.assign({}, i, { ticked: false, queued: false }) : i))),
+    }));
+  }
+
+  addItem() {
+    this.patch((s) => {
+      var text = String(s.draft || '').trim();
+      if (!text || !s.openId) return {};
+      var id = 'n' + (s.n + 1);
+      return { n: s.n + 1, draft: '', lists: this.withItems(s, s.openId, (items) => items.concat([{ id: id, text: text }])) };
+    });
+  }
+
+  newList() {
+    this.patch((s) => {
+      var id = 'L' + (s.n + 1);
+      return {
+        n: s.n + 1,
+        lists: s.lists.concat([{ id: id, name: 'New list', sched: '', icon: 'checklist', fg: '#FFB77C', bg: '#4A2A12', items: [] }]),
+        openId: id,
+        menuOpen: false,
+        draft: '',
+      };
+    });
+  }
+
+  deleteOpen() {
+    this.patch((s) => ({ lists: s.lists.filter((l) => l.id !== s.openId), openId: null, menuOpen: false, draft: '' }));
+  }
+
+  listVM(l) {
+    var unt = l.items.filter((i) => !i.ticked);
+    var tk = l.items.filter((i) => i.ticked);
+    var total = l.items.length;
+    var sched = !!l.sched;
+    var pct = total ? Math.round((tk.length * 100) / total) : 0;
+    var progress = total === 0 ? 'Empty' : tk.length + ' of ' + total + (sched ? ' today' : ' ticked');
+    var more = unt.length - 4;
+    return {
+      name: l.name,
+      icon: l.icon,
+      fg: l.fg,
+      bg: l.bg,
+      hasSchedule: sched,
+      schedule: l.sched,
+      preview: unt.slice(0, 4).map((i) => ({ text: i.text })),
+      hasMore: more > 0,
+      more: '+ ' + more + ' more',
+      allTicked: total > 0 && unt.length === 0,
+      isEmpty: total === 0,
+      progress: progress,
+      short: total === 0 ? 'Empty' : tk.length + '/' + total + (sched ? ' today' : ''),
+      pct: pct + '%',
+      pctNum: pct,
+      meta: sched ? l.sched + ', ' + progress : progress,
+      previewText: unt.length ? unt.map((i) => i.text).join(', ') : total ? 'Everything is ticked.' : 'Nothing on this list yet.',
+      open: () => this.patch(() => ({ openId: l.id, menuOpen: false, draft: '' })),
+    };
+  }
+
+  detailVM(s, l) {
+    var unt = l.items.filter((i) => !i.ticked);
+    var tk = l.items.filter((i) => i.ticked);
+    var sched = !!l.sched;
+    return {
+      name: l.name,
+      hasSched: sched,
+      schedLine: sched ? l.sched + '. Ticks count for today, Sun 27 Sep.' : '',
+      isEmpty: l.items.length === 0,
+      unticked: unt.map((i) => ({
+        text: i.text,
+        label: 'Tick ' + i.text,
+        toggle: () => this.tick(l.id, i.id),
+        isMeasured: !!i.unit,
+        unit: i.unit || '',
+        target: i.target ? 'Target ' + i.target : '',
+        value: s.values[i.id] || '',
+        inputLabel: i.text + ', amount in ' + (i.unit || ''),
+        onValue: (e) => {
+          var v = e.target.value;
+          this.patch((st) => {
+            var vals = Object.assign({}, st.values);
+            vals[i.id] = v;
+            return { values: vals };
+          });
+        },
+        hasRefusal: !!s.refusals[i.id],
+        refusal: s.refusals[i.id] || '',
+      })),
+      hasTicked: tk.length > 0,
+      tickedLabel: tk.length + (sched ? ' done today' : ' ticked'),
+      ticked: tk.map((i) => ({
+        text: i.value ? i.text + ', ' + i.value + ' ' + i.unit : i.text,
+        label: 'Untick ' + i.text,
+        toggle: () => this.untick(l.id, i.id),
+        queued: !!i.queued,
+      })),
+      allDone: !sched && l.items.length > 0 && unt.length === 0,
+    };
+  }
+
+  shared(s) {
+    var open = s.openId ? s.lists.find((l) => l.id === s.openId) : null;
+    var empty = { name: '', hasSched: false, schedLine: '', isEmpty: false, unticked: [], hasTicked: false, tickedLabel: '', ticked: [], allDone: false };
+    return {
+      onPage: !open,
+      inDetail: !!open,
+      d: open ? this.detailVM(s, open) : empty,
+      menuOpen: !!s.menuOpen,
+      showTicked: !!s.showTicked,
+      chev: s.showTicked ? 0 : -90,
+      draft: s.draft || '',
+      hasDraft: String(s.draft || '').trim().length > 0,
+      back: () => this.patch(() => ({ openId: null, menuOpen: false, draft: '' })),
+      toggleMenu: () => this.patch((st) => ({ menuOpen: !st.menuOpen })),
+      closeMenu: () => this.patch(() => ({ menuOpen: false })),
+      toggleTicked: () => this.patch((st) => ({ showTicked: !st.showTicked })),
+      onDraft: (e) => {
+        var v = e.target.value;
+        this.patch(() => ({ draft: v }));
+      },
+      onDraftKey: (e) => {
+        if (e.key === 'Enter') this.addItem();
+      },
+      addItem: () => this.addItem(),
+      newList: () => this.newList(),
+      deleteList: () => this.deleteOpen(),
+    };
+  }
+
+  renderVals() {
+    var s = this.cur();
+    var vals = this.shared(s);
+    vals.lists = s.lists.map((l) => this.listVM(l));
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

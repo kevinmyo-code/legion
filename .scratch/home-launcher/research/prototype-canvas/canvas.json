@@ -1,0 +1,19 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-09-27T18:32:10Z"},
+  "title": "LEGION Lists prototypes",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 412, "h": 820, "title": "Home (decided)", "is_interactive": true, "radius": 28},
+    "ListsA.dc.html": {"x": 572, "y": 0, "w": 412, "h": 820, "title": "A. Keep grid", "is_interactive": true, "radius": 28},
+    "ListsB.dc.html": {"x": 1064, "y": 0, "w": 412, "h": 820, "title": "B. Wide cards", "is_interactive": true, "radius": 28},
+    "ListsC.dc.html": {"x": 1556, "y": 0, "w": 412, "h": 820, "title": "C. Icon cards", "is_interactive": true, "radius": 28}
+  },
+  "order": ["Main.dc.html", "ListsA.dc.html", "ListsB.dc.html", "ListsC.dc.html"],
+  "notes": {
+    "pick": {"x": 572, "y": -260, "text": "Lists page: pick A, B or C", "kind": "title1", "maxW": 1396},
+    "how": {"x": 572, "y": 900, "w": 440, "size": "m", "text": "Press Play on A, B or C. Tap a list to open it. Tick items, add one, collapse the ticked group. Tick the rest of Todo to see the delete offer. Water on Bio needs an amount before it will tick. Back arrow on a Lists page goes to Home."}
+  },
+  "designSystems": []
+}

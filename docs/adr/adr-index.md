@@ -35,7 +35,6 @@ Format and the test for whether something deserves an ADR:
 | 0019 | [[0019-write-tools-are-visible\|Write tools are visible; only reads hide behind dispatchers]] | accepted | 2026-08-18 | - |
 | 0020 | [[0020-companion-identity-per-profile\|The companion is named per profile; LEGION is the app]] | locked | 2026-07-30 | 2026-08-16 |
 | 0021 | [[0021-city-pop-retired\|The city-pop design language and everything attached to it is retired]] | locked | 2026-07-30 | - |
-| 0023 | [[0023-design-language-mission-control\|Design language: mission control]] | accepted | 2026-08-14 | - |
 | 0025 | [[0025-warmth-allowed-compulsion-banned\|Warmth is allowed; compulsion mechanics are not]] | accepted | 2026-08-02 | - |
 | 0026 | [[0026-crisis-detector-boundary\|Genuine distress stops the character]] | locked | 2026-08-02 | - |
 | 0027 | [[0027-user-initiated-ignition\|The app does not start itself, and works without a key]] | accepted | 2026-08-02 | - |
@@ -57,6 +56,7 @@ Format and the test for whether something deserves an ADR:
 | 0046 | [[0046-fixed-wake-and-sleep-phrases\|A fixed wake and sleep phrase pair, implemented in two different places]] | accepted | 2026-09-10 | - |
 | 0047 | [[0047-switching-companion-is-a-handover\|Switching companion is a socket rebuild and a spoken handover]] | accepted | 2026-09-10 | - |
 | 0049 | [[0049-a-tick-is-a-tap-not-a-purchase\|A tick is a tap, not a purchase]] | accepted | 2026-09-16 | - |
+| 0050 | [[0050-design-language-soft-material\|Design language: soft Material]] | accepted | 2026-09-27 | - |
 
 ## Superseded
 
@@ -68,6 +68,7 @@ Kept with their original text. What was believed before, and why it changed.
 | 0005 | [[0005-no-llm-extraction\|No LLM extraction from financial documents]] | [[0006-reconciliation-gate\|0006-reconciliation-gate]] |
 | 0010 | [[0010-drive-appdatafolder-only-store\|Drive appDataFolder is the only store]] | [[0038-byo-supabase-is-the-system-of-record\|0038-byo-supabase-is-the-system-of-record]] |
 | 0022 | [[0022-design-language-instrument\|Design language: Instrument on Material 3's machinery]] | [[0023-design-language-mission-control\|0023-design-language-mission-control]] |
+| 0023 | [[0023-design-language-mission-control\|Design language: mission control]] | [[0050-design-language-soft-material\|0050-design-language-soft-material]] |
 | 0024 | [[0024-no-sentience-claims\|The assistant must never claim feelings or realness]] | [[0025-warmth-allowed-compulsion-banned\|0025-warmth-allowed-compulsion-banned]] |
 | 0037 | [[0037-the-aspect-engine-is-the-spine\|The aspect engine is the spine]] | [[0039-per-aspect-typed-tables\|0039-per-aspect-typed-tables]] |
 | 0038 | [[0038-byo-supabase-is-the-system-of-record\|A BYO Supabase project is the system of record]] | [[0044-django-is-the-engine\|0044-django-is-the-engine]] |
