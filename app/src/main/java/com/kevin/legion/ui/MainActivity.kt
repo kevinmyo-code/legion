@@ -161,6 +161,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun readDeepLinkExtras(intent: Intent?) {
+        // The side key held down, with LEGION as the phone's digital assistant app: open a
+        // one-shot live conversation - hear one thing, answer it, stop listening (2026-09-27).
+        if (intent?.action == Intent.ACTION_ASSIST || intent?.action == Intent.ACTION_VOICE_COMMAND) {
+            runCatching {
+                startService(
+                    Intent(this, com.kevin.legion.service.AriaForegroundService::class.java)
+                        .setAction(com.kevin.legion.service.AriaForegroundService.ACTION_ASSIST_ONE_SHOT),
+                )
+            }.onFailure { android.util.Log.w("MainActivity", "assist hand-off failed", it) }
+        }
         if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) homePressNonce++
         deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++

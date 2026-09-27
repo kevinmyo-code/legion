@@ -188,6 +188,17 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- The phone's assistant (2026-09-27): holding the side key with LEGION as the
+                 digital assistant app arrives here as ACTION_ASSIST and opens a one-shot live
+                 conversation. VOICE_COMMAND is the older headset/button equivalent. -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
             <!-- Spotify App Remote's app-fixed OAuth redirect (SpotifyController.REDIRECT_URI).
                  Must match this scheme+host verbatim; the driver enters the same URI as the
                  Redirect URI in their own Spotify dev app. -->

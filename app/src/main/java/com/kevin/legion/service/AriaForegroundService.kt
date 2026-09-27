@@ -406,6 +406,11 @@ class AriaForegroundService : Service() {
             sessionController.onTap(fromWakeWord = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false))
         }
 
+        // The side key / system assist gesture: one question, one answer, then stop listening.
+        if (intent?.action == ACTION_ASSIST_ONE_SHOT) {
+            sessionController.onAssistRequest()
+        }
+
         if (intent?.action == ACTION_CAR_SWITCHED) {
             sessionController.refreshIdleVoice()
             WakeWordEngine.refresh(this)
@@ -1108,6 +1113,11 @@ class AriaForegroundService : Service() {
 
         // Start-intent action: Cruise screen's tap-avatar-to-talk.
         const val ACTION_TALK = "com.kevin.legion.TALK"
+
+        /** Sent by [com.kevin.legion.ui.MainActivity] when Android hands it an ACTION_ASSIST (the
+         * side key held down, with LEGION as the digital assistant app). See
+         * [LiveSessionController.onAssistRequest]. */
+        const val ACTION_ASSIST_ONE_SHOT = "com.kevin.legion.ASSIST_ONE_SHOT"
 
         // Ticket 10 (.scratch/wake-word/issues/10-acknowledge-the-wake.md): the SAME action
         // carries every door into a turn - the strip, the Android Auto play button, and the wake
