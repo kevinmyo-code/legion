@@ -612,7 +612,9 @@ banner at the top and `INDEX.md` carries a status column. Read the banner before
   `session-*.md`.
 
 Do not act on a FROZEN shelf's blockers, sprints, or backlog items. They describe a head-unit car
-launcher with a commercial model, and all three of those premises are dead.
+launcher with a commercial model. The head unit and the commercial model are dead. LEGION may be
+the phone's home app (ADR 0050), but that shares nothing with the car launcher those shelves plan.
+Its rules are in the ADR, not in them.
 
 ---
 
