@@ -1,0 +1,44 @@
+---
+map: backend-etl
+ticket: "01"
+title: "Job runner, ingest_runs, freshness endpoint, deploy/crontab"
+type: build
+status: open
+blockers: []
+blocked-by: []
+tags: [ticket]
+---
+
+# Job runner and freshness
+
+Every pipeline in this map is a management command wrapped by one runner, so each run is recorded,
+cannot overlap itself, and runs by hand from a laptop exactly as it runs on schedule.
+
+## Build
+
+- **Model `ingest.IngestRun`** (Django-managed, household-scoped, added to
+  `household.tenancy.TENANT_TABLES`, covered by the tenancy leak test): `household`, `source`
+  (TextChoices: `canvas`, `webassign`, `drive_statements`, `backup`, `obd_rollup`, `heartbeat`),
+  `started_at`, `finished_at`, `outcome` (`ok` / `failed` / `needs_login` / `skipped_locked` /
+  `skipped`), `rows_written`, `rows_unchanged`, `watermark` (text, source-defined), `error` (text,
+  never containing a secret).
+- **`ingest/jobs.py`: `run_job(source, household, fn)`**. Takes `pg_try_advisory_lock` on a key
+  derived from `(source, household_id)`; if held, records `skipped_locked` and returns. Records the
+  row before and after, catches everything, stores the message. A job whose upstream is down
+  records `failed` and the command exits 0 (the next run retries).
+- **Every job command loops households** that have the source configured. None configured is a
+  recorded no-op, never a crash: a stranger's clone without Canvas gets nothing, quietly.
+- **`GET /api/freshness`**: per source, for the caller's household: `last_ok_at`, `last_outcome`,
+  `last_error`, `stale` (bool, per-source threshold in code: canvas 2h, webassign 36h,
+  drive_statements 36h, backup 36h, obd_rollup 36h), and `sentence`, the words a surface shows
+  ("Canvas last synced 3 hours ago", "Canvas needs you to log in again"). Surfaces render the
+  sentence and never compose their own. OpenAPI regenerated.
+- **`deploy/crontab`** created, with one line: `*/30 * * * * manage.py heartbeat`, a command that
+  only records that the scheduler fires. Tickets 03-07 add their own lines.
+
+## Verification
+
+- [ ] pytest: two concurrent `run_job` on one source, the second records `skipped_locked`.
+- [ ] pytest: a job raising records `failed` with the message; the command exits 0.
+- [ ] pytest: freshness for household A never shows household B's runs.
+- [ ] `python deploy/cloudrun/install_schedule.py --dry-run --job legion-worker` lists the line.

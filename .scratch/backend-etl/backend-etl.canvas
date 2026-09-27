@@ -1,0 +1,156 @@
+{
+  "nodes": [
+    {
+      "id": "25f76020e9b4afbf",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/01-job-runner-and-freshness.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3e275646d8c3fd21",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/02-session-vault-and-login-handover.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "983050859a82cbb9",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/08-web-freshness-line.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e67cd8f1e89a021a",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/03-backup-nightly-to-drive.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "606d3e184d532df5",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/04-canvas-poll.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c231099363d6ed0a",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/05-webassign-read.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d2bf4febb60153d6",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/06-drive-statements-watcher.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6bfc16550b391953",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/07-obd-rollup-and-retention.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "6a043e03133aa672",
+      "fromNode": "25f76020e9b4afbf",
+      "fromSide": "right",
+      "toNode": "3e275646d8c3fd21",
+      "toSide": "left"
+    },
+    {
+      "id": "639f171d0eef9766",
+      "fromNode": "25f76020e9b4afbf",
+      "fromSide": "right",
+      "toNode": "e67cd8f1e89a021a",
+      "toSide": "left"
+    },
+    {
+      "id": "bacca76d59d87a6e",
+      "fromNode": "3e275646d8c3fd21",
+      "fromSide": "right",
+      "toNode": "e67cd8f1e89a021a",
+      "toSide": "left"
+    },
+    {
+      "id": "dc27147c0513b12e",
+      "fromNode": "25f76020e9b4afbf",
+      "fromSide": "right",
+      "toNode": "606d3e184d532df5",
+      "toSide": "left"
+    },
+    {
+      "id": "6e988267b472dd69",
+      "fromNode": "3e275646d8c3fd21",
+      "fromSide": "right",
+      "toNode": "606d3e184d532df5",
+      "toSide": "left"
+    },
+    {
+      "id": "d19ebb5581e1518c",
+      "fromNode": "606d3e184d532df5",
+      "fromSide": "right",
+      "toNode": "c231099363d6ed0a",
+      "toSide": "left"
+    },
+    {
+      "id": "909a3dd45405eb14",
+      "fromNode": "3e275646d8c3fd21",
+      "fromSide": "right",
+      "toNode": "d2bf4febb60153d6",
+      "toSide": "left"
+    },
+    {
+      "id": "f585b0aabc7eb69c",
+      "fromNode": "e67cd8f1e89a021a",
+      "fromSide": "right",
+      "toNode": "d2bf4febb60153d6",
+      "toSide": "left"
+    },
+    {
+      "id": "8fd91cd8f0649f52",
+      "fromNode": "e67cd8f1e89a021a",
+      "fromSide": "right",
+      "toNode": "6bfc16550b391953",
+      "toSide": "left"
+    },
+    {
+      "id": "dea501eb93782274",
+      "fromNode": "25f76020e9b4afbf",
+      "fromSide": "right",
+      "toNode": "983050859a82cbb9",
+      "toSide": "left"
+    }
+  ]
+}

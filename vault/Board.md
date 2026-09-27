@@ -27,10 +27,10 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[28-service-history-reads-still-serve-the-legacy-table\|28]] | build | 28-service-history-reads-still-serve-the-legacy-table |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[29-audit-rows-age-out-before-they-are-uploaded\|29]] | decision | 29-audit-rows-age-out-before-they-are-uploaded |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[01-job-runner-and-freshness\|01]] | build | Job runner, ingest_runs, freshness endpoint, deploy/crontab |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
-| [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[06-canvas-sync\|06]] | build | Canvas sync on the server, so schoolwork is current enough to advise on |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
 | [[.scratch/django-engine/map\|django-engine]] | [[12-pytest-leaves-a-connection-behind\|12]] | build | Every pytest run leaves a connection on test_postgres and breaks the next one |
@@ -143,6 +143,13 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/architecture/map\|architecture]] | [[03-bind-the-backend-interfaces\|03]] | build | Bind the backend interfaces  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
 | [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected  waiting on [[03-bind-the-backend-interfaces\|03]] |
 | [[.scratch/architecture/map\|architecture]] | [[06-convert-as-touched-and-the-shim-trigger\|06]] | decision | Convert as touched, and when the shim retires  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[02-session-vault-and-login-handover\|02]] | build | Session vault and the login handover script  waiting on [[01-job-runner-and-freshness\|01]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[03-backup-nightly-to-drive\|03]] | build | backup_nightly and a drilled restore_backup, to Google Drive  waiting on [[01-job-runner-and-freshness\|01]], [[02-session-vault-and-login-handover\|02]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[04-canvas-poll\|04]] | build | canvas_poll on the server, every 30 minutes  waiting on [[01-job-runner-and-freshness\|01]], [[02-session-vault-and-login-handover\|02]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only  waiting on [[04-canvas-poll\|04]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[06-drive-statements-watcher\|06]] | build | drive_statements: raw bank statements from a Drive folder, through the gate  waiting on [[02-session-vault-and-login-handover\|02]], [[03-backup-nightly-to-drive\|03]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw  waiting on [[03-backup-nightly-to-drive\|03]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[08-web-freshness-line\|08]] | build | The web app says how fresh each feed is  waiting on [[01-job-runner-and-freshness\|01]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[04-net-worth-is-never-one-number\|04]] | build | Net worth as a figure plus what is unverified, never one number  waiting on [[02-what-a-net-worth-may-be\|02]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
@@ -150,9 +157,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/django-engine/map\|django-engine]] | [[02-models-column-exact\|02]] | build | The 41 tables as Django models, column-exact, with the integrity SQL shipped by migration  waiting on [[01-server-skeleton\|01]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[04-domain-api-and-changes-feed\|04]] | build | The domain API: one resource shape for 38 tables, a changes feed, idempotent upsert by origin_guid  waiting on [[02-models-column-exact\|02]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[05-media-photos-and-audio\|05]] | build | Media: receipt photos and voice-note audio on a volume, served only to a token  waiting on [[04-domain-api-and-changes-feed\|04]] |
-| [[.scratch/django-engine/map\|django-engine]] | [[06-worker-backups-first\|06]] | build | The worker: a nightly dump with a drilled restore, then Canvas, then WebAssign  waiting on [[02-models-column-exact\|02]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[09-android-http-backends\|09]] | build | Android: HTTP implementations of the twelve backend interfaces, behind the Hilt binding  waiting on [[04-domain-api-and-changes-feed\|04]] |
-| [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[06-worker-backups-first\|06]], [[09-android-http-backends\|09]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[09-android-http-backends\|09]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[11-fresh-clone-end-to-end\|11]] | test | Fresh clone, end to end: the clone-and-run test in its new shape  waiting on [[10-cutover\|10]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
@@ -206,12 +212,13 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | 8 | 8 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
-| [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 6 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
+| [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
-| [[.scratch/django-engine/map\|django-engine]] | 15 | 13 | [[.scratch/django-engine/django-engine.canvas\|open]] |
+| [[.scratch/django-engine/map\|django-engine]] | 15 | 12 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |

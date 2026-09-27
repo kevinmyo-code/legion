@@ -3,12 +3,12 @@ map: chief-of-staff
 ticket: "06"
 title: "Canvas sync on the server, so schoolwork is current enough to advise on"
 type: build
-status: open
-status-detail: ""
+status: resolved
+status-detail: "SUPERSEDED 2026-09-27 by map backend-etl (tickets 03 and 04), which carries its rules forward."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
