@@ -64,6 +64,8 @@ data class DiscoveredDevice(
  */
 object ObdBluetoothManager {
     private const val TAG = "ObdBluetoothManager"
+    internal const val BASE_RECONNECT_DELAY_MS = 5_000L
+    internal const val MAX_RECONNECT_DELAY_MS = 120_000L
 
     enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, ERROR }
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -162,8 +164,27 @@ object ObdBluetoothManager {
                     connect(context, device)
                 }
             }
-            delay(5000)
+            // Backoff while the dongle is absent (2026-09-27). This used to be a flat 5s after
+            // every attempt, and each failed BLE connect is itself ~10s of GATT timeout, so a car
+            // that was simply not there cost a connect attempt every ~15s forever - 21 in five
+            // minutes on the A25, roughly 5,700 a day, while Kevin was asking why the phone felt
+            // slow. Doubles per consecutive failure, capped so getting into the car still
+            // connects within [MAX_RECONNECT_DELAY_MS]; a success resets it.
+            if (isConnected) {
+                consecutiveFailures = 0
+                delay(BASE_RECONNECT_DELAY_MS)
+            } else {
+                consecutiveFailures++
+                delay(reconnectDelayMs(consecutiveFailures))
+            }
         }
+    }
+
+    private var consecutiveFailures = 0
+
+    internal fun reconnectDelayMs(failures: Int): Long {
+        val shift = (failures - 1).coerceIn(0, 10)
+        return (BASE_RECONNECT_DELAY_MS shl shift).coerceAtMost(MAX_RECONNECT_DELAY_MS)
     }
 
     /**
