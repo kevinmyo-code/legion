@@ -3,7 +3,8 @@ map: backend-etl
 ticket: "02"
 title: "Session vault and the login handover script"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-09-27 (1687cd2), server suite 843 / 0 failures / 42 skipped (JUnit). Owed: LEGION_VAULT_KEY in Secret Manager and SECRET_ENV_VARS, live migrate, Kevin runs connect_session.py canvas. Open question: owner-only PUT stretches the owner role past ADR 0045."
 blockers: ["01"]
 blocked-by: ["[[01-job-runner-and-freshness]]"]
 tags: [ticket]
