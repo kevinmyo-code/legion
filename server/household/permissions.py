@@ -32,11 +32,20 @@ class IsHouseholdMember(permissions.BasePermission):
 class IsHouseholdOwner(IsHouseholdMember):
     """The ONE role, and it governs membership only (ADR 0045).
 
-    Guards exactly four verbs, all in `household/households.py`: rename the
+    Guards four membership verbs, all in `household/households.py`: rename the
     household, mint an invite, revoke an invite, remove a member. It must
     never appear on a data route - an owner and a member see exactly the same
     rows, and the day this class guards a read is the day "no roles inside a
     household" stopped being true.
+
+    **One more verb, 2026-09-27** (backend-etl ticket 02, which names "owner
+    role only"): handing the household a login for a feed, `PUT
+    /api/ingest/sessions/<source>`, through the subclass in
+    `ingest/sessions.py`. It is not a data route in the sense above: the
+    secret is never readable by anyone, owner included, and every member
+    sees the same metadata. It decides which outside account the household's
+    feeds run as, which is who speaks for the household, the same shape as
+    who may invite.
 
     Subclasses `IsHouseholdMember` rather than restating it: an owner is a
     member first, and the household-membership check is the one that decides

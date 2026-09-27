@@ -75,8 +75,8 @@ should stay inside every one of these limits without trying.
    ```
    python deploy_job.py --image us-south1-docker.pkg.dev/YOUR-PROJECT/legion/server:latest
    ```
-7. **Wire the schedule**, once `deploy/crontab` exists (ticket 06 - not built as of this
-   writing; this step has nothing to do until then):
+7. **Wire the schedule** from `deploy/crontab` (backend-etl ticket 01 created it with the
+   `heartbeat` line; later tickets add theirs). Re-run after any change to that file:
    ```
    python install_schedule.py
    ```

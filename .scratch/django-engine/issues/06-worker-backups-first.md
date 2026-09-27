@@ -3,7 +3,8 @@ map: django-engine
 ticket: "06"
 title: "The worker: a nightly dump with a drilled restore, then Canvas, then WebAssign"
 type: build
-status: open
+status: resolved
+status-detail: "SUPERSEDED 2026-09-27 by map backend-etl (tickets 03 and 04), which carries its rules forward."
 blockers: ["02"]
 blocked-by: ["[[02-models-column-exact]]"]
 open-blockers: 1

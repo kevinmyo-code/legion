@@ -181,22 +181,20 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    **only** when neither recognizes the layout. Pantry has no deterministic path (receipts are
    photographed, not born-digital), so LLM vision is primary there by necessity, not preference.
 
-   **AMENDED 2026-08-25 (Kevin), DECIDED BUT NOT YET BUILT - the code above is still live.** The
-   backend-ERP pivot retires the statement parsers: a statement will be run through the USER'S OWN
-   LLM, which masks sensitive data and emits a CSV in a format LEGION defines. There is then no
-   deterministic extraction path for ledger statements, **by choice** - so this rule's "where a
-   deterministic path exists" clause simply stops applying there. Three reasons it is not a
-   loosening: PdfBox cannot run server-side (Deno), the parsers only ever covered DBS and BofA so
-   every other bank already fell through to the LLM anyway, and masking before upload matters far
-   more now that the truth lives in a cloud Postgres than it did on-device.
-   **Rules 2 through 7 are untouched and still bind in full.** In particular the gate gets STRONGER
-   here, not weaker: because an LLM-produced CSV has its lines AND its total from one
-   nondeterministic process, a single anchor could be satisfied by a self-consistent hallucination
-   (rule 6's failure shape in a new place), so the format demands **three** independent anchors -
-   printed total, opening balance, closing balance - and a statement that prints fewer cannot use
-   the format and falls to rule 7 provisional. Rows are tagged `LLM_RECONCILED`, never
-   `DETERMINISTIC`. Ticket: `.scratch/backend-erp/issues/03-the-gate-server-side.md` rulings 3-6.
-   Until it is built, treat the parsers as live and this paragraph as the direction of travel.
+   **AMENDED 2026-09-27 (Kevin), DECIDED BUT NOT YET BUILT - the phone's parsers above are still
+   live.** Ledger statements are extracted **on the server, from the raw document**: Kevin drops
+   bank PDFs/CSVs in a Drive folder (BofA's are fetched there by the login script) and the server's
+   `drive_statements` job extracts them. **Deterministic first still binds**: a Python parser where
+   one exists (BofA is ported first), otherwise Gemini on the household's own key emitting LEGION's
+   statement CSV. **Raw documents reach the server and Gemini unmasked, knowingly** - this replaces
+   the 2026-08-25 ruling that the user's own LLM masks before upload (history in
+   `library/decisions.md` 2026-09-27).
+   **Rules 2 through 8 bind in full, and the LLM path keeps the stronger gate:** an LLM-produced
+   CSV has its lines AND its total from one nondeterministic process, so a single anchor could be
+   satisfied by a self-consistent hallucination (rule 6's failure shape in a new place). It demands
+   **three** independent anchors - printed total, opening balance, closing balance - and a statement
+   that prints fewer falls to rule 7 provisional. LLM rows are `LLM_RECONCILED`, parser rows
+   `DETERMINISTIC`. Tickets: `.scratch/backend-etl/issues/06-*.md`, `09-*.md`, `10-*.md`.
 2. **Extracted rows must reconcile against the document's OWN stated total**, exactly. Sum of
    line items equals the printed total, or the whole document **quarantines**. Nothing partial is
    ever written. Never silently accept.

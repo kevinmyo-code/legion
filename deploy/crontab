@@ -1,0 +1,14 @@
+# The ONE schedule (backend-etl map, ruling 1). Two readers, one file:
+#   - the compose `worker` runs supercronic over it (mounted at /etc/crontab
+#     by deploy/docker-compose.yml);
+#   - deploy/cloudrun/install_schedule.py turns each line into a Cloud
+#     Scheduler entry that runs the Cloud Run Job with `manage.py <task>`.
+# Every line must be exactly `<5-field cron> python manage.py <task>`:
+# install_schedule.py refuses any other shape, and supercronic runs the line
+# as written from /app, so a bare `manage.py` (no interpreter) would not run.
+# Times are UTC (the container clock and Cloud Scheduler's default).
+#
+# Tickets 03-07 add their own lines below this one.
+
+# Ticket 01: records that the scheduler fires. Nothing else.
+*/30 * * * * python manage.py heartbeat

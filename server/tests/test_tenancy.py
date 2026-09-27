@@ -381,6 +381,72 @@ def test_the_gate_writes_its_five_tables_into_the_calling_household(token_a, tok
             assert len(rows) == expected, (url, len(rows), rows)
 
 
+def test_freshness_never_shows_another_households_runs(token_a, token_b, household_b):
+    """backend-etl ticket 01. `ingest_runs` has no synced route, so this is
+    its leak test: B's runs - including an error message that names B's own
+    upstream - must never colour what A is told about A's feeds."""
+    from ingest.jobs import run_job
+    from ingest.models import IngestRun, Outcome, Source
+
+    run_job(Source.CANVAS, household_b, lambda run: None)
+
+    def b_fails(run):
+        raise RuntimeError("household B's WebAssign is down")
+
+    run_job(Source.WEBASSIGN, household_b, b_fails)
+    assert IngestRun.objects.filter(household=household_b).count() == 2
+
+    a_body = {row["source"]: row for row in token_a.get("/api/freshness").data["sources"]}
+    assert a_body["canvas"]["last_ok_at"] is None
+    assert a_body["canvas"]["sentence"] == "Canvas has never synced."
+    assert a_body["webassign"]["last_outcome"] is None
+    assert a_body["webassign"]["last_error"] is None
+    assert "household B" not in str(a_body)
+
+    b_body = {row["source"]: row for row in token_b.get("/api/freshness").data["sources"]}
+    assert b_body["canvas"]["last_outcome"] == Outcome.OK
+    assert b_body["canvas"]["last_ok_at"] is not None
+    assert b_body["webassign"]["last_error"] == "RuntimeError: household B's WebAssign is down"
+
+
+def test_sessions_are_scoped_by_household(token_a, token_b, household_a, household_b, monkeypatch):
+    """backend-etl ticket 02. `source_credentials` has no synced route, so
+    this is its leak test: B's saved login, and even the fact that B has one,
+    never reaches A, and A handing over its own login never touches B's."""
+    from cryptography.fernet import Fernet
+
+    from ingest import vault
+    from ingest.models import SourceCredential
+
+    monkeypatch.setenv(vault.VAULT_KEY_ENV, Fernet.generate_key().decode())
+    jar = {"cookies": [{"name": "s", "value": "household-B-cookie", "domain": "b.edu"}]}
+    b_put = token_b.put(
+        "/api/ingest/sessions/canvas",
+        {"secret": jar, "config": {"base_url": "https://household-b.edu"}},
+        format="json",
+    )
+    assert b_put.status_code == 200, b_put.data
+
+    assert token_a.get("/api/ingest/sessions").data == {"sessions": []}
+    assert token_a.get("/api/ingest/sessions/canvas").status_code == 404
+    with pytest.raises(vault.NeedsLogin):
+        vault.session_for(household_a, "canvas")
+
+    a_jar = {"cookies": [{"name": "s", "value": "household-A-cookie", "domain": "a.edu"}]}
+    a_put = token_a.put(
+        "/api/ingest/sessions/canvas",
+        {"secret": a_jar, "config": {"base_url": "https://household-a.edu"}},
+        format="json",
+    )
+    assert a_put.status_code == 200, a_put.data
+    # A's config did not merge into B's, or B's into A's.
+    assert a_put.data["config"] == {"base_url": "https://household-a.edu"}
+    b_body = token_b.get("/api/ingest/sessions/canvas").data
+    assert b_body["config"] == {"base_url": "https://household-b.edu"}
+    assert SourceCredential.objects.filter(source="canvas").count() == 2
+    assert vault.session_for(household_b, "canvas")[1] == jar
+
+
 def test_the_changes_feed_never_carries_another_households_rows(token_a, token_b):
     """`GET /api/changes` is the one route that reads every table at once, so
     an unscoped query here leaks a whole database in a single response."""
