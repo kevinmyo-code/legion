@@ -24,7 +24,7 @@ Ruling 3. Kevin drops raw bank PDFs/CSVs in one Drive folder; the server does th
   mismatch, `LLM_RECONCILED` or `DETERMINISTIC` provenance, anchors persisted (CLAUDE.md §4 rules
   2-8). A quarantined file is recorded with its reason and surfaces through freshness.
 - Masking: raw documents now reach Cloud Run and Gemini unmasked. Recorded in `decisions.md`
-  2026-09-27 as a knowing change to §4's 2026-08-25 amendment; the CLAUDE.md §4 text owes an update.
+  2026-09-27 as a knowing change to §4's 2026-08-25 amendment; CLAUDE.md §4 rule 1 amended to match the same day.
 
 crontab: `0 */6 * * * manage.py drive_statements`.
 

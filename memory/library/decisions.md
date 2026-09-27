@@ -5826,7 +5826,7 @@ interview, all Kevin:
 3. Bank statements: the server watches a Drive folder and Kevin drops RAW PDFs/CSVs. Extraction
    moves server-side with the household's own Gemini key. **This knowingly amends CLAUDE.md §4
    rule 1's 2026-08-25 amendment** (user's own LLM masks before upload): raw documents now reach
-   Cloud Run and Gemini unmasked. The gate itself (three anchors, quarantine, provenance, persisted
+   Cloud Run and Gemini unmasked; CLAUDE.md §4 rule 1 rewritten to match (Kevin: "yes update it"). The gate itself (three anchors, quarantine, provenance, persisted
    anchors) is unchanged.
 4. Nightly backups go to Kevin's Google Drive, sharing the statement watcher's Drive credential.
 5. `obd_samples`: per-drive roll-up, 90 days raw, deletion only after a successful backup.
