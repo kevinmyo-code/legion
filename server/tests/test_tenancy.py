@@ -409,6 +409,44 @@ def test_freshness_never_shows_another_households_runs(token_a, token_b, househo
     assert b_body["webassign"]["last_error"] == "RuntimeError: household B's WebAssign is down"
 
 
+def test_sessions_are_scoped_by_household(token_a, token_b, household_a, household_b, monkeypatch):
+    """backend-etl ticket 02. `source_credentials` has no synced route, so
+    this is its leak test: B's saved login, and even the fact that B has one,
+    never reaches A, and A handing over its own login never touches B's."""
+    from cryptography.fernet import Fernet
+
+    from ingest import vault
+    from ingest.models import SourceCredential
+
+    monkeypatch.setenv(vault.VAULT_KEY_ENV, Fernet.generate_key().decode())
+    jar = {"cookies": [{"name": "s", "value": "household-B-cookie", "domain": "b.edu"}]}
+    b_put = token_b.put(
+        "/api/ingest/sessions/canvas",
+        {"secret": jar, "config": {"base_url": "https://household-b.edu"}},
+        format="json",
+    )
+    assert b_put.status_code == 200, b_put.data
+
+    assert token_a.get("/api/ingest/sessions").data == {"sessions": []}
+    assert token_a.get("/api/ingest/sessions/canvas").status_code == 404
+    with pytest.raises(vault.NeedsLogin):
+        vault.session_for(household_a, "canvas")
+
+    a_jar = {"cookies": [{"name": "s", "value": "household-A-cookie", "domain": "a.edu"}]}
+    a_put = token_a.put(
+        "/api/ingest/sessions/canvas",
+        {"secret": a_jar, "config": {"base_url": "https://household-a.edu"}},
+        format="json",
+    )
+    assert a_put.status_code == 200, a_put.data
+    # A's config did not merge into B's, or B's into A's.
+    assert a_put.data["config"] == {"base_url": "https://household-a.edu"}
+    b_body = token_b.get("/api/ingest/sessions/canvas").data
+    assert b_body["config"] == {"base_url": "https://household-b.edu"}
+    assert SourceCredential.objects.filter(source="canvas").count() == 2
+    assert vault.session_for(household_b, "canvas")[1] == jar
+
+
 def test_the_changes_feed_never_carries_another_households_rows(token_a, token_b):
     """`GET /api/changes` is the one route that reads every table at once, so
     an unscoped query here leaks a whole database in a single response."""

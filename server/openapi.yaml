@@ -4088,6 +4088,86 @@ paths:
             the payload tripped. Nothing was written, and no quarantine row was recorded
             either, because this is not a verdict about a document: it is a payload
             nothing could evaluate. Distinct from a quarantine, which is a 200.'
+  /api/ingest/sessions:
+    get:
+      operationId: api_ingest_sessions_list
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+          description: Metadata for every login this household has handed over. Never
+            the secret. `invalid_since` set means an upstream refused it.
+  /api/ingest/sessions/{source}:
+    get:
+      operationId: api_ingest_sessions_retrieve
+      parameters:
+      - in: path
+        name: source
+        schema:
+          type: string
+        required: true
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionMetadata'
+          description: One stored login's metadata. Never the secret.
+        '404':
+          description: No login stored for this source.
+    put:
+      operationId: api_ingest_sessions_update
+      parameters:
+      - in: path
+        name: source
+        schema:
+          type: string
+        required: true
+      tags:
+      - ingest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionPut'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SessionPut'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SessionPut'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionMetadata'
+          description: Stored, replacing any earlier login for this source and clearing
+            `invalid_since`. The body is metadata only; the secret is not echoed.
+        '400':
+          description: 'Nothing was stored: `bofa` (never leaves the laptop), an unknown
+            source, a secret of the wrong shape, anything naming a password, or a
+            config key that names a secret. `detail` says which.'
+        '403':
+          description: 'Nothing was stored: the caller is not an owner.'
+        '503':
+          description: 'Nothing was stored: LEGION_VAULT_KEY is unset or invalid.'
   /api/ingest/statement:
     post:
       operationId: api_ingest_statement_create
@@ -6576,6 +6656,14 @@ components:
       - text
       - updated_at
       - vehicle_id
+    CredentialKindEnum:
+      enum:
+      - cookie_jar
+      - oauth_refresh
+      type: string
+      description: |-
+        * `cookie_jar` - Cookie jar
+        * `oauth_refresh` - OAuth refresh token
     Detail:
       type: object
       description: |-
@@ -9332,6 +9420,15 @@ components:
       - service_name
       - updated_at
       - vehicle_id
+    SessionList:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionMetadata'
+      required:
+      - sessions
     SessionLoginRequest:
       type: object
       description: |-
@@ -9348,6 +9445,58 @@ components:
       required:
       - email
       - password
+    SessionMetadata:
+      type: object
+      properties:
+        source:
+          $ref: '#/components/schemas/SessionSourceEnum'
+        kind:
+          $ref: '#/components/schemas/CredentialKindEnum'
+        captured_at:
+          type: string
+          format: date-time
+        expires_hint:
+          type: string
+          format: date-time
+          nullable: true
+        invalid_since:
+          type: string
+          format: date-time
+          nullable: true
+        config: {}
+      required:
+      - captured_at
+      - config
+      - expires_hint
+      - invalid_since
+      - kind
+      - source
+    SessionPut:
+      type: object
+      properties:
+        secret:
+          description: 'canvas/webassign: {"cookies": [{"name", "value", "domain",
+            ...}]}. drive: {"refresh_token", "client_id", "client_secret", "token_uri",
+            "scopes"}. Never a password.'
+        config:
+          description: Non-secret settings a job needs (Canvas base_url, a Drive folder
+            id). Merged into what is stored. Shown to every member.
+        expires_hint:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - secret
+    SessionSourceEnum:
+      enum:
+      - canvas
+      - webassign
+      - drive
+      type: string
+      description: |-
+        * `canvas` - Canvas
+        * `webassign` - WebAssign
+        * `drive` - Google Drive
     SignupRequest:
       type: object
       description: |-

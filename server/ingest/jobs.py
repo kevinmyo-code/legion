@@ -46,7 +46,17 @@ class NeedsLogin(Exception):
     cannot fix it: map ruling 2 says a person logs in by hand in a real
     browser and hands the session over. The message is stored (scrubbed) like
     any other error.
+
+    `refused_credential` (ticket 02) is the `SourceCredential` the upstream
+    refused, when there is one; `ingest.vault.refuse_session` sets it. `run_job`
+    stamps its `invalid_since` AFTER the job has unwound, because a stamp the
+    job wrote itself dies with any savepoint or `atomic()` block the raise
+    rolls back, and the next run would replay the dead session.
     """
+
+    def __init__(self, message: str = "", *, refused_credential=None):
+        super().__init__(message)
+        self.refused_credential = refused_credential
 
 
 def lock_key(source: str, household_id) -> int:
@@ -126,6 +136,17 @@ def _call(fn: Callable[[IngestRun], str | None], run: IngestRun):
     return fn(run)
 
 
+def _stamp_refused(credential) -> None:
+    """`invalid_since` on a refused credential, keeping the FIRST refusal."""
+    if credential is None:
+        return
+    from ingest.models import SourceCredential
+
+    SourceCredential.objects.filter(pk=credential.pk, invalid_since__isnull=True).update(
+        invalid_since=timezone.now()
+    )
+
+
 def run_job(source: str, household, fn: Callable[[IngestRun], str | None]) -> IngestRun:
     """Run `fn` once for `household`, recorded, and never overlapping itself.
 
@@ -165,6 +186,7 @@ def run_job(source: str, household, fn: Callable[[IngestRun], str | None]) -> In
                 )
         except NeedsLogin as exc:
             outcome, error = Outcome.NEEDS_LOGIN, _describe(exc)
+            _stamp_refused(exc.refused_credential)
         except Exception as exc:  # noqa: BLE001 - catching everything is the contract
             logger.exception("%s for household %s failed", source, household.pk)
             outcome, error = Outcome.FAILED, _describe(exc)
@@ -244,12 +266,21 @@ class JobCommand(BaseCommand):
     `is_configured(household)` when the source needs something set up first
     (a saved session, a Drive folder). `handle` never raises for a job's
     failure, so the process exits 0 and the next scheduled run is the retry.
+
+    A subclass whose upstream needs a login sets `session_source` (ticket 02)
+    and gets the vault check for free: no stored session records `skipped`,
+    and the job itself calls `ingest.vault.session_for` to get it.
     """
 
     source: str = ""
+    session_source: str | None = None
 
     def is_configured(self, household) -> bool:
-        return True
+        if self.session_source is None:
+            return True
+        from ingest import vault
+
+        return vault.is_configured(household, self.session_source)
 
     def job(self, run: IngestRun) -> str | None:
         raise NotImplementedError

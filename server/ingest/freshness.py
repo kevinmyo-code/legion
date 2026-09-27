@@ -30,7 +30,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from household.tenancy import scoped
-from ingest.models import IngestRun, Outcome, Source
+from ingest.models import LOGIN_SCRIPT, SESSION_FOR_SOURCE, IngestRun, Outcome, Source
 
 # Ticket 01's thresholds, in code as the ticket says. `heartbeat` is not in the
 # ticket's list: it runs every 30 minutes, so two missed beats is the line.
@@ -87,7 +87,11 @@ def sentence(
     if last_outcome == Outcome.SKIPPED:
         return f"{words.subject} is not set up."
     if last_outcome == Outcome.NEEDS_LOGIN:
-        return f"{words.subject} needs you to log in again."
+        # Ticket 02: say what to run, since the fix is a person at a laptop.
+        session = SESSION_FOR_SOURCE.get(source)
+        if session is None:
+            return f"{words.subject} needs you to log in again."
+        return f"{words.subject} needs you to log in again: run {LOGIN_SCRIPT} {session}"
     if last_ok_at is None:
         base = f"{words.subject} {words.never}."
     else:

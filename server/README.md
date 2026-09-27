@@ -61,6 +61,29 @@ CommandError: No user with email 'nobody@example.com'. Create one first
 with 'manage.py createsuperuser' or the admin.
 ```
 
+## Handing the server a login (Canvas, WebAssign, Drive)
+
+Scheduled feeds read upstreams with a session a person handed over, never a
+password (backend-etl ticket 02). Set `LEGION_VAULT_KEY` in `deploy/.env`
+first (`deploy/.env.example` has the one-liner); without it the vault refuses
+to store anything. Then, on your laptop, as an owner of the household:
+
+```
+pip install playwright google-auth-oauthlib requests
+playwright install chromium
+python tools/connect_session.py canvas --server https://<your server> --token <device token> --base-url https://<your canvas>
+python tools/connect_session.py drive --server ... --token ... --client-id ... --client-secret ...
+```
+
+**Google OAuth caveat:** the household's own OAuth client must have its consent
+screen set to **In production** (unverified is fine for your own accounts). A
+client left in **Testing** issues refresh tokens that die after 7 days, and the
+Drive feeds stop a week later. The script prints this too.
+
+When an upstream refuses a saved login, `/api/freshness` says so and names the
+command to run, e.g. "Canvas needs you to log in again: run
+tools/connect_session.py canvas".
+
 ## Running the tests
 
 ```

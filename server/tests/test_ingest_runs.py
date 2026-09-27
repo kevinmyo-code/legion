@@ -266,13 +266,17 @@ def test_the_ticket_sentences():
         "Canvas last synced 3 hours ago."
     )
     assert sentence(Source.CANVAS, three_hours, Outcome.NEEDS_LOGIN, NOW) == (
-        "Canvas needs you to log in again."
+        "Canvas needs you to log in again: run tools/connect_session.py canvas"
     )
     assert sentence(Source.CANVAS, three_hours, Outcome.FAILED, NOW) == (
         "Canvas last synced 3 hours ago. The latest attempt failed."
     )
     assert sentence(Source.CANVAS, None, None, NOW) == "Canvas has never synced."
     assert sentence(Source.CANVAS, None, Outcome.SKIPPED, NOW) == "Canvas is not set up."
+    # Ticket 02: a pipeline with no login behind it never points at the script.
+    assert sentence(Source.OBD_ROLLUP, None, Outcome.NEEDS_LOGIN, NOW) == (
+        "The drive roll-up needs you to log in again."
+    )
 
 
 def _run(household, source, outcome, finished_ago, error=None):
@@ -351,7 +355,9 @@ def test_freshness_says_needs_login_and_not_set_up(token_a, household_a):
 
     body = _by_source(token_a)
 
-    assert body["canvas"]["sentence"] == "Canvas needs you to log in again."
+    assert body["canvas"]["sentence"] == (
+        "Canvas needs you to log in again: run tools/connect_session.py canvas"
+    )
     assert body["canvas"]["stale"] is True
     assert body["webassign"]["sentence"] == "WebAssign is not set up."
     assert body["webassign"]["stale"] is False

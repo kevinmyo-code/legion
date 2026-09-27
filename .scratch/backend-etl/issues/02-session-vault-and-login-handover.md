@@ -39,6 +39,28 @@ script prints this and the README says so.
 
 ## Verification
 
-- [ ] pytest: ciphertext round-trip; stored bytes never contain the plaintext.
-- [ ] pytest: non-owner PUT refused; GET never returns the secret.
+- [x] pytest: ciphertext round-trip; stored bytes never contain the plaintext.
+- [x] pytest: non-owner PUT refused; GET never returns the secret.
 - [ ] By hand, owed on Kevin's login: the script stores a canvas session and ticket 04 uses it.
+
+## Built (2026-09-27, `feat/backend-etl`)
+
+- `ingest.SourceCredential` (`source_credentials`, `public`, in `TENANT_TABLES` and
+  `DJANGO_MANAGED_TENANT_TABLES`), `ingest/vault.py`, `ingest/sessions.py`,
+  `tools/connect_session.py`. Tests: `tests/test_session_vault.py`,
+  `tests/test_connect_session.py` (the script, no browser, plus its PUT body against the real
+  route), `tests/test_tenancy.py::test_sessions_are_scoped_by_household`.
+- Routes: `GET /api/ingest/sessions`, `GET|PUT /api/ingest/sessions/<source>`. PUT is owner only;
+  `bofa` is a 400 by name, and the table's check constraint refuses it again in SQL.
+- Freshness: `needs_login` on canvas/webassign/drive_statements/backup now reads "... needs you to
+  log in again: run tools/connect_session.py <canvas|webassign|drive>" (no trailing full stop, so
+  the command copies clean).
+- Decided in the build, not by this ticket: PUT MERGES `config` (a re-login never wipes a folder id
+  a later ticket stored); `config` keys naming a secret and any key naming a password are refused;
+  `kind` is derived from the source, never sent; the script keeps only the site's own cookies
+  (the SSO provider's stay on the laptop); browser profiles persist under
+  `~/.legion/browser-profiles/<source>`; `invalid_since` is stamped by `run_job` after the job
+  unwinds (a stamp inside the job's savepoint was rolled back, found by the test).
+- Owed, not code: `LEGION_VAULT_KEY` must reach Cloud Run (a Secret Manager secret, and
+  `deploy/cloudrun/_common.py`'s `SECRET_ENV_VARS` does not list it yet); the WebAssign post-login
+  signal is reasoned, with Enter as the fallback.
