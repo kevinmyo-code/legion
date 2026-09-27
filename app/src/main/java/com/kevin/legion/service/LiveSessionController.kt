@@ -913,6 +913,15 @@ class LiveSessionController(context: Context) {
                 // driver starts should be a new one, not a silent continuation of the one
                 // they just chose to end.
                 if (event.reason == "stopped") sessionResumeHandle = null
+                // A resume that never connected is a dead handle, and must not be sent again
+                // (2026-09-27). The server expires a session and answers the stale handle with
+                // "BidiGenerateContent session not found", closing before setup completes. This
+                // handle lives only in memory and was never cleared on that close, so every retry
+                // resent it and failed identically - voice was unusable until the process died,
+                // which for a foreground service is days. Kevin: "the voice agent says no
+                // connection retry? i cant talk at all". Dropping it costs one conversation's
+                // continuity; keeping it cost the whole voice path.
+                if (!everConnected && sessionResumeHandle != null) sessionResumeHandle = null
                 // Only surface errors the driver kicked off (a tap), not a failed
                 // background proactive opener. "stopped"/"idle"/"destroyed"/"warm
                 // expired"/"goAway" are normal closes; anything else is a fault worth
