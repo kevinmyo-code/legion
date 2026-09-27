@@ -5834,3 +5834,13 @@ interview, all Kevin:
 
 Supersedes django-engine 06, two-clients 03/05, chief-of-staff 06 as build tickets; their binding
 rules carry forward by reference.
+
+## 2026-09-27 - BofA statements are pulled at login, never by a stored session
+
+Kevin asked whether BofA could work like Canvas: browser login, then statements pulled. Ruled
+(Kevin: "yes that works instead of me manually navigating the page and putting it on the drive
+folder"): the login script itself pulls new statement PDFs while he is logged in, on his own
+machine, and drops them in the Drive folder for the `drive_statements` watcher. No BofA session is
+stored or replayed server-side: idle timeout and device fingerprinting would kill it or flag it
+(reasoned, not tested), and a server replaying a bank session is the pattern that locks accounts.
+Card CSV exports excluded (no anchor, rule 7). backend-etl tickets 09 and 10.

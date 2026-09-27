@@ -45,6 +45,8 @@ for that reason. Every table is filled by the phone pushing, and the phone pushe
 5. **`obd_samples`: roll up per drive, keep 90 days raw**, deletion only after a successful backup.
 6. **A stale or failing feed is said in words** on the web and phone surfaces that use it. No
    notification, no email.
+7. **BofA statements are pulled by the login script, in the login sitting, on Kevin's machine.**
+   No BofA session ever reaches the server. Statement PDFs only; card CSVs stay rule 7 provisional.
 
 ## Tickets
 
@@ -58,6 +60,8 @@ for that reason. Every table is filled by the phone pushing, and the phone pushe
 | 06 | `drive_statements` watcher: raw statement to gate | 02, 03 |
 | 07 | OBD roll-up and 90-day retention | 03 |
 | 08 | Freshness line on the web app | 01 |
+| 09 | `connect_session.py bofa`: log in monthly, script pulls new statements to Drive | 02, 06 |
+| 10 | Port `BofaStatementParser` to Python | 06 |
 
 Out of this map, owned by the Android terminal: django-engine 17 (conversation audit), and the
 phone's freshness line (Android reads ticket 01's endpoint).
