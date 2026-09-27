@@ -14,10 +14,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Tracks the driver's current GPS location. Two modes:
- * - Normal (30s / 100m): background default. Battery-friendly.
+ * Tracks the user's current location. Two modes:
+ * - Normal (30s / 100m): background default, **network and passive providers only, never GPS**.
  * - Fast (1s / 1m): activated via [startFastMode] while a screen needs live speed/position
- *   tracking. Reverted via [stopFastMode] on exit so we don't drain battery in the background.
+ *   tracking. Adds GPS. Reverted via [stopFastMode] on exit.
+ *
+ * **Normal mode used to request GPS and called itself "battery-friendly". It was not
+ * (2026-09-27).** A 100 m distance filter does not let the GPS chip sleep, because the chip has to
+ * compute a fix to find out whether you moved 100 m. On the A25 `dumpsys location` showed LEGION
+ * as the sole reason the GPS radio was on around the clock (`mFixInterval=30000`, HIGH_ACCURACY),
+ * while every other app asked passively. That was a head-unit habit, from when the car paid for
+ * the power.
+ *
+ * Background now uses [BACKGROUND_PROVIDERS]: network location (Wi-Fi and cell, nearly free) plus
+ * passive, which takes any fix another app already paid for at no cost to us. Kevin accepted the
+ * trade-off in writing: place-arrival triggers run on network accuracy (~20-100 m in town)
+ * against 150 m arrival zones, and may lag or miss somewhere with no Wi-Fi nearby.
  *
  * Phone-only app, so this is just the device's own GPS - no beacon/relay logic (that existed
  * only for Midnight AI's head-unit hardware, which had no working GPS of its own).
@@ -73,12 +85,31 @@ object LocationController {
         val lm = appContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         locationManager = lm
 
+        // Seeding from a cached fix is free on every provider, GPS included - it reads what is
+        // already there and does not power the chip.
         for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            if (_state.value == null && lm.isProviderEnabled(provider)) {
+                lm.getLastKnownLocation(provider)?.let { _state.value = it }
+            }
+        }
+        for (provider in BACKGROUND_PROVIDERS) {
             if (!lm.isProviderEnabled(provider)) continue
-            if (_state.value == null) lm.getLastKnownLocation(provider)?.let { _state.value = it }
             lm.requestLocationUpdates(provider, NORMAL_INTERVAL_MS, 100f, normalListener, Looper.getMainLooper())
         }
         initialized = true
+    }
+
+    /** Never GPS - see this object's class doc. Pinned by `LocationControllerBackgroundTest`. */
+    internal val BACKGROUND_PROVIDERS = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+
+    /** Test seam: forget the one-time [init] so a test can run it against a fresh shadow. */
+    internal fun resetForTest() {
+        locationManager?.removeUpdates(normalListener)
+        locationManager?.removeUpdates(fastListener)
+        locationManager = null
+        initialized = false
+        fastModeHolders = 0
+        _state.value = null
     }
 
     /**
