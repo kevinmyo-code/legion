@@ -882,6 +882,8 @@ fun StatusLine(
     alarmCount: Int = 0,
     onOpenAlarm: (() -> Unit)? = null,
     cursorSolid: Boolean = false,
+    /** The app drawer (ADR 0050, LEGION as the home app). Null hides the link. */
+    onOpenApps: (() -> Unit)? = null,
 ) {
     val sem = LocalLegionSemantics.current
     val motionEnabled = deckMotionEnabled()
@@ -937,6 +939,16 @@ fun StatusLine(
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onOpenApps != null) {
+                Text(
+                    "APPS",
+                    style = LegionType.stamp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable(onClick = onOpenApps)
+                        .padding(horizontal = 10.dp, vertical = 14.dp),
+                )
+            }
             if (onOpenSettings != null) {
                 // Padding, not a .size() - the stamp is small text and the tap
                 // target has to clear 48dp without the label growing to match.

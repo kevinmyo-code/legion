@@ -5811,3 +5811,31 @@ from build output at the moment of writing and dated, never carried forward.
 cannot tell whether a sentence is true**, and every false claim above was in prose it had no grip on.
 The same audit found `docs/architecture/` still drawing the pre-Django topology and `docs/glossary.md`
 still calling Drive's appDataFolder "the only store".
+
+
+---
+
+## 2026-09-27 - LEGION may be the phone's home app
+
+**Kevin:** *"can this app replace my android home screen and become like the native launcher and home
+for the phone?"* Told the idea reversed a pivot ruling and offered a week-long prototype first:
+*"no need for prototype. lets do it and put it on the phone and see. the phone is a throwaway so no
+worries."*
+
+CLAUDE.md section 1 said "Not a launcher". That clause was written against a product, Midnight AI's
+car head-unit launcher with a commercial model, and none of that returns. HOME already is the one
+surface LEGION opens to, and being the home app only makes it the first thing on every unlock.
+Standing rule: [[0050-legion-may-be-the-home-app]].
+
+Built on `feat/launcher`, in a worktree because two other agents were in the main tree: a
+CATEGORY_HOME filter (selectable, never forced), Home always landing on HOME, Back on HOME a no-op
+only while LEGION is the default home app, and an app drawer covering both profiles with search.
+
+**What fell out of it:** a default home app may call `UserManager.requestQuietModeEnabled`. That's
+the work-profile pause Kevin asked for that morning, which Intune refused to a shell (`am stop-user`
+denied). The drawer carries the toggle, and it says in words when LEGION isn't the home app and so
+can't use it.
+
+**Accepted, not solved:** a LEGION crash now strands the phone until Android restarts the home app.
+Fine for a throwaway phone. Isolating the home view from the voice service and database start-up is
+the price of making this anyone else's default.
