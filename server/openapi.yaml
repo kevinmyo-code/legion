@@ -3682,6 +3682,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/freshness:
+    get:
+      operationId: api_freshness_retrieve
+      tags:
+      - freshness
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Freshness'
+          description: One entry per scheduled source, always all of them, for the
+            caller's household only. Render `sentence` as it is; do not compose a
+            phrase from `last_ok_at`. `stale` is true when no run succeeded inside
+            the source's threshold (canvas 2h, webassign/drive_statements/backup/obd_rollup
+            36h, heartbeat 1h), and false for a source the household has not set up.
   /api/households/me:
     get:
       operationId: api_households_me_retrieve
@@ -6853,6 +6872,43 @@ components:
       - provenance
       - title
       - updated_at
+    Freshness:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/FreshnessSource'
+      required:
+      - sources
+    FreshnessSource:
+      type: object
+      properties:
+        source:
+          $ref: '#/components/schemas/SourceEnum'
+        last_ok_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_outcome:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/LastOutcomeEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        last_error:
+          type: string
+          nullable: true
+        stale:
+          type: boolean
+        sentence:
+          type: string
+      required:
+      - last_error
+      - last_ok_at
+      - last_outcome
+      - sentence
+      - source
+      - stale
     GroceryStaple:
       type: object
       description: |-
@@ -7220,6 +7276,20 @@ components:
       - live
       - reason
       - uses_left
+    LastOutcomeEnum:
+      enum:
+      - ok
+      - failed
+      - needs_login
+      - skipped_locked
+      - skipped
+      type: string
+      description: |-
+        * `ok` - OK
+        * `failed` - Failed
+        * `needs_login` - Needs login
+        * `skipped_locked` - Skipped, already running
+        * `skipped` - Skipped, not set up
     LedgerTransaction:
       type: object
       description: |-
@@ -7735,6 +7805,9 @@ components:
       - provenance
       - store
       - updated_at
+    NullEnum:
+      enum:
+      - null
     ObdBatchResult:
       type: object
       description: |-
@@ -9454,6 +9527,22 @@ components:
       - provenance
       - target_minutes
       - updated_at
+    SourceEnum:
+      enum:
+      - canvas
+      - webassign
+      - drive_statements
+      - backup
+      - obd_rollup
+      - heartbeat
+      type: string
+      description: |-
+        * `canvas` - Canvas
+        * `webassign` - WebAssign
+        * `drive_statements` - Drive statements
+        * `backup` - Backup
+        * `obd_rollup` - OBD roll-up
+        * `heartbeat` - Heartbeat
     Statement:
       type: object
       description: |-

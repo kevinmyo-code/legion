@@ -381,6 +381,34 @@ def test_the_gate_writes_its_five_tables_into_the_calling_household(token_a, tok
             assert len(rows) == expected, (url, len(rows), rows)
 
 
+def test_freshness_never_shows_another_households_runs(token_a, token_b, household_b):
+    """backend-etl ticket 01. `ingest_runs` has no synced route, so this is
+    its leak test: B's runs - including an error message that names B's own
+    upstream - must never colour what A is told about A's feeds."""
+    from ingest.jobs import run_job
+    from ingest.models import IngestRun, Outcome, Source
+
+    run_job(Source.CANVAS, household_b, lambda run: None)
+
+    def b_fails(run):
+        raise RuntimeError("household B's WebAssign is down")
+
+    run_job(Source.WEBASSIGN, household_b, b_fails)
+    assert IngestRun.objects.filter(household=household_b).count() == 2
+
+    a_body = {row["source"]: row for row in token_a.get("/api/freshness").data["sources"]}
+    assert a_body["canvas"]["last_ok_at"] is None
+    assert a_body["canvas"]["sentence"] == "Canvas has never synced."
+    assert a_body["webassign"]["last_outcome"] is None
+    assert a_body["webassign"]["last_error"] is None
+    assert "household B" not in str(a_body)
+
+    b_body = {row["source"]: row for row in token_b.get("/api/freshness").data["sources"]}
+    assert b_body["canvas"]["last_outcome"] == Outcome.OK
+    assert b_body["canvas"]["last_ok_at"] is not None
+    assert b_body["webassign"]["last_error"] == "RuntimeError: household B's WebAssign is down"
+
+
 def test_the_changes_feed_never_carries_another_households_rows(token_a, token_b):
     """`GET /api/changes` is the one route that reads every table at once, so
     an unscoped query here leaks a whole database in a single response."""

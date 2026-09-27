@@ -38,7 +38,18 @@ cannot overlap itself, and runs by hand from a laptop exactly as it runs on sche
 
 ## Verification
 
-- [ ] pytest: two concurrent `run_job` on one source, the second records `skipped_locked`.
-- [ ] pytest: a job raising records `failed` with the message; the command exits 0.
-- [ ] pytest: freshness for household A never shows household B's runs.
-- [ ] `python deploy/cloudrun/install_schedule.py --dry-run --job legion-worker` lists the line.
+- [x] pytest: two concurrent `run_job` on one source, the second records `skipped_locked`.
+- [x] pytest: a job raising records `failed` with the message; the command exits 0.
+- [x] pytest: freshness for household A never shows household B's runs.
+- [x] `python deploy/cloudrun/install_schedule.py --dry-run --job legion-worker` lists the line.
+
+## Built (2026-09-27, `feat/backend-etl`)
+
+- Tests: `tests/test_ingest_runs.py` (runner, command, freshness words) and
+  `tests/test_tenancy.py::test_freshness_never_shows_another_households_runs`.
+- The dry run needs a project to name: `--project <any-id>` or `GOOGLE_CLOUD_PROJECT`
+  (`require_project` refuses without one, dry run included).
+- Decided in the build, not by this ticket: the crontab line is `python manage.py heartbeat`
+  (supercronic cannot run a bare `manage.py`); `heartbeat` appears in freshness with a 1h
+  threshold; `skipped` means "not set up for this household" and is never stale;
+  `skipped_locked` and in-progress runs never become `last_outcome`.

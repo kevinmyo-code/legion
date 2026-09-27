@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Forty-three names. The forty-fourth `public` table, `household_members`, is
+# Forty-four names. The forty-fifth `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -83,6 +83,9 @@ TENANT_TABLES: tuple[str, ...] = (
     "receipt_line_items",
     # ingest
     "ingested_files",
+    # Django-managed, `public` schema, like checklists (see ingest/models.py).
+    # backend-etl ticket 01: one row per run of one scheduled pipeline.
+    "ingest_runs",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -98,15 +101,21 @@ TENANT_TABLES: tuple[str, ...] = (
     "build_entries",
 )
 
-# The three tables Django itself owns the DDL for (`checklists/models.py`,
-# `managed = True`). They are in `public` alongside the legacy forty and the
-# migration's SQL loop treats them exactly like the rest - one code path, so
-# one set of behaviours to reason about. What they need EXTRA is a
-# state-only migration (`checklists/migrations/0002_household.py`) telling
-# Django's model state about a column the SQL already created; without it
-# `makemigrations` would propose adding it a second time.
+# The tables Django itself owns the DDL for (`managed = True`). They are in
+# `public` alongside the legacy forty.
+#
+# The three `checklists` tables predate tenancy, so the migration's SQL loop
+# added their column exactly like the rest - one code path, one set of
+# behaviours to reason about - and they need EXTRA a state-only migration
+# (`checklists/migrations/0002_household.py`) telling Django's model state
+# about a column the SQL already created; without it `makemigrations` would
+# propose adding it a second time.
+#
+# `ingest_runs` (backend-etl ticket 01, `ingest/models.py`) is born tenanted:
+# its `household` is an ordinary ForeignKey in its own first migration, so the
+# SQL loop finds the column already there and has nothing to do.
 DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
-    {"checklists", "checklist_items", "checklist_ticks"}
+    {"checklists", "checklist_items", "checklist_ticks", "ingest_runs"}
 )
 
 BOOTSTRAP_ID_ENV = "LEGION_BOOTSTRAP_HOUSEHOLD_ID"
