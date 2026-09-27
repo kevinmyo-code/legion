@@ -31,6 +31,7 @@ import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.ai.OnboardingState
 import com.kevin.legion.calendar.OpenerCalendarBriefing
+import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.engine.dates.DatesAgenda
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.RecallCheckResult
@@ -542,7 +543,19 @@ class AriaForegroundService : Service() {
                 dueIsInferred = it.dueIsInferred,
             )
         }
-        sb.append(OpenerCalendarBriefing.forOpener(events, nowMs, zone, hasCalendar))
+        // Undone TASK rows due between now and local end of day - coursework, mostly. DatesAgenda
+        // reads EventKind.EVENT only, and a 12-hour window from a morning opener ends before an
+        // 11:59 PM deadline, so without this the opener told Kevin his schedule was "entirely
+        // free" with an assignment due that night (2026-09-27). See
+        // OpenerCalendarBriefing.deadlinesSentence.
+        val deadlines = withContext(Dispatchers.IO) {
+            val endOfDay = java.time.LocalDate.now(zone).plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+            com.kevin.legion.data.local.CarDatabase.getDatabase(this@AriaForegroundService).eventDao()
+                .activeByKindInLocalWindow(com.kevin.legion.backend.EventKind.TASK, nowMs, endOfDay, zone)
+                .filter { !it.done && it.startsAt != null }
+                .map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.startsAt!!, endMs = it.startsAt!!) }
+        }
+        sb.append(OpenerCalendarBriefing.forOpener(events, nowMs, zone, hasCalendar, deadlines))
 
         // Everything below this line is car context, and it is gated on the dongle actually being
         // connected - the one signal that says he is IN the car rather than merely owning one.

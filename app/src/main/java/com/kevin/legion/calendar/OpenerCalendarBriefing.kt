@@ -85,10 +85,15 @@ object OpenerCalendarBriefing {
             "granted). Say NOTHING about their schedule, appointments, meetings or plans - not " +
             "that they have something, and not that they are clear. You do not know. "
 
+    /** Worded against the 2026-09-27 failure. This used to say "there is nothing at all on it",
+     * and the model spoke that as "your schedule is entirely free" - to a student with an
+     * assignment due that night, which this sentence never saw (see [forOpener]'s `deadlines`).
+     * It now states exactly what was checked and forbids generalising past it. */
     const val NOTHING_SCHEDULED =
-        "Their calendar HAS been checked just now and there is nothing at all on it for the next " +
-            "$WINDOW_HOURS hours. Do not mention any appointment, meeting or plan - there are " +
-            "none, and naming one would be inventing it. "
+        "Their calendar HAS been checked just now: no appointments in the next $WINDOW_HOURS " +
+            "hours and nothing due today. Do not mention any appointment, meeting or plan - there " +
+            "are none, and naming one would be inventing it. Say no more than that: do not call " +
+            "their day, week or schedule free or clear. "
 
     private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
@@ -104,14 +109,48 @@ object OpenerCalendarBriefing {
         nowMs: Long,
         zone: ZoneId,
         hasPermission: Boolean,
+        deadlines: List<BriefingEvent> = emptyList(),
     ): String {
         if (!hasPermission) return NO_PERMISSION
         val upcoming = events
             .filter { it.allDay || it.endMs > nowMs }
             .sortedBy { it.startMs }
             .take(MAX_EVENTS)
-        if (upcoming.isEmpty()) return NOTHING_SCHEDULED
+        val due = deadlinesSentence(deadlines, zone)
+        if (upcoming.isEmpty()) {
+            return if (due == null) NOTHING_SCHEDULED
+            else "Their calendar, read just now, has no appointments in the next $WINDOW_HOURS " +
+                "hours. Do not mention any appointment or plan. $due"
+        }
+        return appointmentsSentence(upcoming, zone) + (due ?: "")
+    }
 
+    /**
+     * Undone coursework and other TASK rows due today (2026-09-27). The opener told Kevin *"your
+     * schedule is entirely free"* at 10 AM while COSC 4320 Assignment 3 was due at 11:59 PM that
+     * night. Two reasons it never saw it: [com.kevin.legion.engine.dates.DatesAgenda] reads
+     * `EventKind.EVENT` only (the same filter that hid every assignment from `read_calendar` on
+     * 2026-09-11), and a 12-hour window from 10 AM ends before an 11:59 PM deadline anyway. The
+     * caller now reads tasks through local end of day separately - DatesAgenda is left alone
+     * because alarm scheduling also reads it, and a task there would start firing alarms.
+     *
+     * Null when nothing is due. When something is, it forbids the exact phrasing that failed: a
+     * person with work due tonight is not free, and saying so is the invented-fact failure this
+     * class exists to prevent, arrived at by omission instead of invention.
+     */
+    internal fun deadlinesSentence(deadlines: List<BriefingEvent>, zone: ZoneId): String? {
+        val due = deadlines.sortedBy { it.startMs }.take(MAX_EVENTS)
+        if (due.isEmpty()) return null
+        val listed = due.joinToString("; ") { d ->
+            val title = d.title.trim().ifEmpty { "(untitled)" }
+            "\"$title\" due at ${Instant.ofEpochMilli(d.startMs).atZone(zone).format(TIME_FMT)}"
+        }
+        val more = if (deadlines.size > due.size) " (and ${deadlines.size - due.size} more)" else ""
+        return "Due today and not yet done: $listed$more. Never say they are free, clear or have " +
+            "nothing on while any of these is outstanding. You may mention the nearest one. "
+    }
+
+    private fun appointmentsSentence(upcoming: List<BriefingEvent>, zone: ZoneId): String {
         val listed = upcoming.joinToString("; ") { event ->
             val title = event.title.trim().ifEmpty { "(untitled)" }
             when {

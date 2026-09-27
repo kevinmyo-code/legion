@@ -44,7 +44,47 @@ class OpenerCalendarBriefingTest {
         val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(9), zone, hasPermission = true)
 
         assertEquals(OpenerCalendarBriefing.NOTHING_SCHEDULED, briefing)
-        assertTrue(briefing.contains("nothing at all"))
+        // Changed deliberately 2026-09-27. This used to assert "nothing at all", the phrasing the
+        // model spoke as "your schedule is entirely free" to a student with an assignment due that
+        // night. It now states only what was checked, and forbids the generalisation.
+        assertTrue(briefing.contains("nothing due today"))
+        assertTrue(briefing.contains("do not call their day, week or schedule free"))
+    }
+
+    @Test
+    fun `a deadline tonight is stated, and the opener may not call the day free`() {
+        // The 2026-09-27 case exactly: 10 AM, no appointments, COSC 4320 due 11:59 PM.
+        val due = listOf(event(1, "COSC 4320 · Assignment 3", at(23, 59), at(23, 59)))
+        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = true, deadlines = due)
+
+        assertFalse(briefing == OpenerCalendarBriefing.NOTHING_SCHEDULED)
+        assertTrue(briefing.contains("COSC 4320 · Assignment 3"))
+        assertTrue(briefing.contains("11:59 PM"))
+        assertTrue(briefing.contains("Never say they are free"))
+    }
+
+    @Test
+    fun `appointments and a deadline are both stated`() {
+        val appts = listOf(event(2, "Dentist", at(14), at(15)))
+        val due = listOf(event(3, "MATH 3391 · Quiz", at(23, 59), at(23, 59)))
+        val briefing = OpenerCalendarBriefing.forOpener(appts, at(10), zone, hasPermission = true, deadlines = due)
+
+        assertTrue(briefing.contains("\"Dentist\" at 2:00 PM"))
+        assertTrue(briefing.contains("MATH 3391 · Quiz"))
+    }
+
+    @Test
+    fun `no permission still forbids the subject even with deadlines passed`() {
+        val due = listOf(event(4, "X", at(23, 59), at(23, 59)))
+        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = false, deadlines = due)
+        assertEquals(OpenerCalendarBriefing.NO_PERMISSION, briefing)
+    }
+
+    @Test
+    fun `more deadlines than the cap are counted, not silently dropped`() {
+        val due = (1..6).map { event(it.toLong(), "Task $it", at(20, it), at(20, it)) }
+        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = true, deadlines = due)
+        assertTrue(briefing.contains("(and 2 more)"))
     }
 
     @Test
