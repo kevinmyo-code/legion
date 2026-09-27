@@ -35,7 +35,7 @@ object VoiceNoteAgent {
      * and the model every current Google audio example is written against. Not
      * [SubAgent.DEFAULT_MODEL] - that constant is tuned for cheap, fast domain workers, and a
      * meeting-length transcription is neither of those things. */
-    const val MODEL = "gemini-3.7-flash"
+    const val MODEL = "gemini-3.8-flash"
 
     /**
      * The honesty posture this whole ticket exists to enforce (CLAUDE.md §4 rule 5, ADR 0041's

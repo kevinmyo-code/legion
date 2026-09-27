@@ -930,7 +930,7 @@ class GeminiLiveSession(
     private fun buildSetup(systemInstruction: String, functionDeclarations: JSONArray): JSONObject {
         val tools = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
         if (functionDeclarations.length() > 0) {
-            tools.put(JSONObject().put("functionDeclarations", functionDeclarations))
+            tools.put(JSONObject().put("functionDeclarations", withBlockingBehavior(functionDeclarations)))
         }
 
         val setup = JSONObject().apply {
@@ -2736,8 +2736,35 @@ class GeminiLiveSession(
             "wss://generativelanguage.googleapis.com/ws/" +
                 "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
-        // Live-capable model. Swap here if Google promotes a newer Live model.
-        private const val MODEL = "models/gemini-3.1-flash-live-preview"
+        // Live-capable model. Swap here if Google promotes a newer Live model - but read
+        // [withBlockingBehavior] first. 3.1-flash-live-preview -> 3.8-live (2026-09-27, stable)
+        // was NOT a drop-in: 3.8 made non-blocking function calls the default.
+        private const val MODEL = "models/gemini-3.8-live"
+
+        /**
+         * Stamps `behavior: BLOCKING` on every function declaration (2026-09-27).
+         *
+         * `gemini-3.8-live` made NON_BLOCKING the default: the model keeps talking while a tool
+         * runs, and the result arrives after it has already spoken. **That breaks CLAUDE.md sec 7's
+         * outcome-verb rule outright** - an outcome verb may follow only a tool call that came back
+         * successful IN THAT TURN, and under non-blocking the model can say "done" before the
+         * result exists. `ai/AriaBrain.kt`'s `CANNOT_CLAUSE` is conditioned on the tool RESULT; a
+         * mode where the model speaks before seeing one makes the clause unobeyable, not merely
+         * disobeyed. Google's own Gemini did exactly this to Kevin's hotspot on 2026-09-17.
+         *
+         * Applied here at the single choke point rather than per declaration, so a tool added
+         * anywhere - `LiveToolbox`, `EngineToolbox`, a future file - cannot forget it. Copies,
+         * never mutates the caller's array. An explicit `behavior` already set is left alone.
+         */
+        internal fun withBlockingBehavior(declarations: JSONArray): JSONArray {
+            val out = JSONArray()
+            for (i in 0 until declarations.length()) {
+                val decl = JSONObject(declarations.getJSONObject(i).toString())
+                if (!decl.has("behavior")) decl.put("behavior", "BLOCKING")
+                out.put(decl)
+            }
+            return out
+        }
 
         // Prebuilt Gemini voice. Deeper/informative reads suit the Zero persona;
         // other options include Puck, Kore, Fenrir, Aoede. Swap freely.
