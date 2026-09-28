@@ -613,7 +613,7 @@ class TodayGapResolversTest {
         assertEquals("72F, partly cloudy", weatherLine(calm))
 
         val rough = com.kevin.legion.weather.WeatherController.WeatherInfo(tempF = 40, description = "rainy", caution = true)
-        assertEquals("40F, rainy - drive safe", weatherLine(rough))
+        assertEquals("40F, rainy - rough conditions", weatherLine(rough))
     }
 
     private fun raiseRow(category: String, reason: String = "fact", declined: Boolean = false) = com.kevin.legion.data.local.ProactiveRaiseRow(

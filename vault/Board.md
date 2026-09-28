@@ -118,6 +118,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[30-balance-arithmetic-in-three-places\|30]] | bug | The balance formula is written out in three places again |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[31-silent-success\|31]] | bug | It did the thing and did not say so |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[32-sitrep-on-demand-only\|32]] | build | Sitreps happen when asked, never on a schedule |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[02-soft-theme-and-chrome\|02]] | build | Soft theme, bundled font and icons, and the shell chrome restyled |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
@@ -168,6 +169,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/goal-plans/map\|goal-plans]] | [[04-checklist-and-surfaces\|04]] | build | The daily checklist, on Body and Home  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[05-wellbeing-digest\|05]] | build | The Wellbeing switch finally gets content  waiting on [[04-checklist-and-surfaces\|04]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[06-daily-items-not-repeats\|06]] | build | A day's items you can actually tick  waiting on [[04-checklist-and-surfaces\|04]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[03-home-is-a-launcher\|03]] | build | HOME is a launcher; CALENDAR is its own route again; the meter bands retire  waiting on [[02-soft-theme-and-chrome\|02]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[04-lists-as-icon-cards\|04]] | build | Lists as icon cards; a list opens to a real checklist  waiting on [[02-soft-theme-and-chrome\|02]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[05-ship-pass\|05]] | task | Ship pass: the launcher and the lists on the A25  waiting on [[03-home-is-a-launcher\|03]], [[04-lists-as-icon-cards\|04]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[06-pinned-app-dock\|06]] | build | A dock of five pinned apps above the talk bar  waiting on [[03-home-is-a-launcher\|03]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
@@ -230,6 +235,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/hardening/map\|hardening]] | 8 | 4 | [[.scratch/hardening/hardening.canvas\|open]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | 6 | 5 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

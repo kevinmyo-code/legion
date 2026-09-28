@@ -5913,3 +5913,29 @@ and the web and the phone show it in words as a double check (backend-etl 11 and
 Postgres (`ingest/migrations/0005_canvas_never_ticks.py`, replacing `public.upsert_canvas_task`
 again; 0003 and 0004 untouched), so no caller of the function can tick. Consequence: WebAssign
 completion (backend-etl 05) is not needed for now and is parked KIV.
+
+## 2026-09-27 - HOME becomes a launcher, and the phone's look goes soft
+
+**Kevin:** *"i want a complete redesign of the home page. right now it needs scrolling. a calendar,
+then lists then whatever scrolls down. i want a single non scrolling landing page with buttons i can
+click to open up and navigate to different pages and reports. every list should be like a card icon
+that i can open. the lists now also doesnt look very appealing. it should look like an actual
+list."*
+
+Settled in one interview and a clickable prototype canvas, every call his:
+
+- **The Android HOME**, not the web one.
+- **A today card over a 2 x 4 grid of tiles**, nothing scrolling: Calendar, Lists, Money, Body,
+  Fleet, Recordings, News, Reports. The calendar moves to its own route. The meter bands retire;
+  a breach becomes that tile's status, in words.
+- **Groceries is a list, not a tile** - *"grocery is just a list no?"* The receipts page is reached
+  from Money.
+- **Recordings keeps one-tap record on its tile.**
+- **A list opens Keep-style**: tick in place, ticked items sink into a collapsible group, add
+  inline. The old list screen had no checkbox at all; ticking happened only on the calendar.
+- **The Lists page is a grid of icon cards** - *"I like C, icon cards. looks clean that way."*
+- **Soft modern Material** over mission control upgraded or light-and-warm, on HOME, Lists and the
+  shell chrome now, every other screen as it is next touched. Standing record: ADR 0051, which
+  supersedes ADR 0023 surface by surface.
+
+Map: `.scratch/home-launcher/`. The prototype source is kept in its `research/prototype-canvas/`.

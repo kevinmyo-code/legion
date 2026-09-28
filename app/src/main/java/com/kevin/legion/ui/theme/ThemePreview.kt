@@ -16,7 +16,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
-import com.kevin.legion.ui.common.DeckBezel
 import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckCheckbox
 import com.kevin.legion.ui.common.DeckDialog
@@ -37,7 +36,6 @@ import com.kevin.legion.ui.common.DeckTag
 import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.DeckTextField
 import com.kevin.legion.ui.common.QuarantineTag
-import com.kevin.legion.ui.common.StatusLine
 
 /**
  * Renderable proof of the VACUUM/SENTRY theme (mission-control ticket 13, rebuilding cyberdeck-ui
@@ -55,13 +53,22 @@ import com.kevin.legion.ui.common.StatusLine
  * Everything is hardcoded, same posture as the MILSPEC-era file this replaces: nothing here
  * touches a singleton, a database, Bluetooth, or a file, so these render in the preview JVM
  * without a `LocalInspectionMode` guard (Midnight AI's L1 lesson, carried over).
+ *
+ * **`StatusLine` and `DeckBezel` are RETIRED from this file (home-launcher ticket 02, ADR 0051).**
+ * Both moved (`StatusLine`) or were deleted outright (`DeckBezel`) when the shell chrome went soft -
+ * neither is a VACUUM/SENTRY component to prove any more, so [BiometricUplinkDemo] no longer opens
+ * with a `StatusLine` and [BezelAndFeedDemo] no longer wraps its feed in a bezel (see that function's
+ * own doc for what it still demonstrates). The new soft `StatusLine`'s own visual proof is
+ * `screenshot.StatusLineScreenshotTest`, not this file - this file's whole premise is the mission-
+ * control theme, and `StatusLine` no longer belongs to it.
  */
 
 @Composable
 private fun BiometricUplinkDemo() {
     Surface(color = MaterialTheme.colorScheme.background) {
         Column {
-            StatusLine(left = "SYSTEM STATUS", clock = "14:02:37")
+            // The StatusLine() call that used to open this demo is gone (home-launcher ticket 02) -
+            // see this file's own top doc comment for why.
             DeckPane(header = "Burn", headerAccent = "on pace") {
                 DeckRow(label = "Intake today", value = "1,230 / 2,400 KCAL")
                 DeckRow(
@@ -105,26 +112,28 @@ private fun HeroReadoutDemo() {
 }
 
 /**
- * Ticket 13's new shell/chrome primitives, exercised together: the bezel wrapping a status line, a
- * section rule grouping a dense feed, and a run of [DeckFeedRow]s underneath it - the 22dp
- * display-only sibling [DeckRow] can no longer be (ticket 03's "a 22dp feed row cannot be
- * tappable" finding).
+ * Ticket 13's new shell/chrome primitives, exercised together - ORIGINALLY the bezel wrapping a
+ * status line, a section rule grouping a dense feed, and a run of [DeckFeedRow]s underneath it.
+ *
+ * **Narrowed by home-launcher ticket 02, ADR 0051**: `DeckBezel` is deleted outright and `StatusLine`
+ * moved to the soft-Material shell - neither is a VACUUM/SENTRY primitive to demonstrate any more
+ * (see this file's own top doc comment). What survives and is still worth proving together here is
+ * [DeckSectionRule] grouping a dense feed and a run of [DeckFeedRow]s under it - the 22dp
+ * display-only sibling [DeckRow] can no longer be (ticket 03's "a 22dp feed row cannot be tappable"
+ * finding) - now rendered in a plain [Column], not a bezel.
  */
 @Composable
 private fun BezelAndFeedDemo() {
     Surface(color = MaterialTheme.colorScheme.background) {
-        DeckBezel {
-            Column {
-                StatusLine(left = "SYSTEM STATUS", clock = "14:02:37")
-                DeckSectionRule(label = "Live PIDs")
-                DeckFeedRow(code = "010C", name = "Engine RPM", value = "2,150")
-                DeckFeedRow(code = "010D", name = "Vehicle speed", value = "58 MPH")
-                DeckFeedRow(code = "0105", name = "Coolant temperature", value = "192 F")
-                DeckFeedRow(code = "012F", name = "Fuel level input", value = "61%")
-                DeckSectionRule(label = "Reconciled statements")
-                DeckFeedRow(code = "DBS", name = "November multiplier statement", value = "8,900.00 SGD")
-                DeckFeedRow(code = "BOFA", name = "November checking statement", value = "3,412.09 USD")
-            }
+        Column {
+            DeckSectionRule(label = "Live PIDs")
+            DeckFeedRow(code = "010C", name = "Engine RPM", value = "2,150")
+            DeckFeedRow(code = "010D", name = "Vehicle speed", value = "58 MPH")
+            DeckFeedRow(code = "0105", name = "Coolant temperature", value = "192 F")
+            DeckFeedRow(code = "012F", name = "Fuel level input", value = "61%")
+            DeckSectionRule(label = "Reconciled statements")
+            DeckFeedRow(code = "DBS", name = "November multiplier statement", value = "8,900.00 SGD")
+            DeckFeedRow(code = "BOFA", name = "November checking statement", value = "3,412.09 USD")
         }
     }
 }
@@ -283,7 +292,9 @@ private fun PreviewHeroReadout() {
     LegionTheme { HeroReadoutDemo() }
 }
 
-@Preview(name = "VACUUM/SENTRY · Bezel + section rule + feed rows", showBackground = true)
+// Renamed from "Bezel + section rule + feed rows" (home-launcher ticket 02) - the bezel is gone,
+// see BezelAndFeedDemo's own doc comment.
+@Preview(name = "VACUUM/SENTRY · Section rule + feed rows", showBackground = true)
 @Composable
 private fun PreviewBezelAndFeed() {
     LegionTheme { BezelAndFeedDemo() }

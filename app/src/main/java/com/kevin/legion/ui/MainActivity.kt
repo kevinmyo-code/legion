@@ -52,7 +52,6 @@ import com.kevin.legion.sync.SyncCapability
 import com.kevin.legion.sync.SyncEngine
 import com.kevin.legion.ui.assistant.AssistantStrip
 import com.kevin.legion.ui.checklists.ChecklistsScreen
-import com.kevin.legion.ui.common.DeckBezel
 import com.kevin.legion.ui.common.StatusLine
 import com.kevin.legion.ui.companions.MemoryScreen
 import com.kevin.legion.ui.companions.PlaybookScreen
@@ -63,6 +62,7 @@ import com.kevin.legion.ui.widgets.WidgetPagerRoot
 import com.kevin.legion.ui.theme.LegionMotion
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import androidx.lifecycle.lifecycleScope
@@ -532,8 +532,16 @@ private fun LegionShell(
         // route string THAT build had, and it is tapped by whichever build is installed when the
         // user gets to it - `navigate` throws IllegalArgumentException on a destination that is not
         // in the graph, so an un-resolved stale route is a crash on a notification tap.
-        // [LegionRoute.LEGACY_DEEP_LINK_ROUTES] has the three that are known dangling.
-        LegionRoute.resolveDeepLink(deepLinkRoute)?.let { navController.navigate(it) }
+        // [LegionRoute.LEGACY_DEEP_LINK_ROUTES] has the ones that are known dangling.
+        //
+        // **home-launcher ticket 03: [LegionRoute.deepLinkTargetFor], not [LegionRoute.resolveDeepLink]
+        // alone.** A present [openItemId] always wins - it is the one signal that says "this intent
+        // is a reminder tap", independent of which route string the intent happens to carry (an
+        // older build's notification can still name HOME, or even the pre-2026-09-10 "calendar").
+        // [deepLinkNonce] and [openItemNonce] tick together (both bump in [readDeepLinkExtras] on
+        // every intent), so keying this single effect on [deepLinkNonce] alone still re-navigates
+        // on a repeat reminder tap.
+        LegionRoute.deepLinkTargetFor(deepLinkRoute, openItemId)?.let { navController.navigate(it) }
     }
 
     // The Spotify OAuth token exchange (2026-08-12). Runs HERE, above the NavHost, not inside
@@ -615,34 +623,29 @@ private fun LegionShell(
         GeneratedViewController.dismiss()
     }
 
-    // Mission-control ticket 07's uplink sweep ("the cursor yields"): [FleetScreen]'s own
-    // `UplinkPane` reports whether ITS sweep is genuinely animating right now - see that pane's
-    // doc for the two-effect mechanism (a value-changed report while mounted, plus a guaranteed
-    // `false` the instant it leaves composition, which covers both "any FLEET drilldown opened"
-    // and "navigated off FLEET entirely"). Held HERE, above the NavHost, for the same reason
-    // [statusLeft]/[clock] are: [StatusLine] is mounted once above the NavHost, not inside any one
-    // destination, so the one composable that could ever own `UplinkPane`'s live state is
-    // [FleetScreen] itself, reporting up through a plain callback - there is no shared ViewModel
-    // or singleton flow this shell already reads that carries "is a specific pane's own ambient
-    // element on screen right now", and inventing one would be more machinery than a single
-    // boolean threaded down one nav entry needs.
-    var fleetSweepActive by remember { mutableStateOf(false) }
+    // fleetSweepActive REMOVED (home-launcher ticket 02, ADR 0051). Mission-control ticket 07's
+    // uplink sweep ("the cursor yields") reported up through this boolean so [StatusLine]'s shell
+    // cursor could go solid while FLEET's own ambient sweep was running - see FleetScreen.kt's own
+    // `onSweepActiveChanged` doc for the full mechanism. The soft-Material [StatusLine] this ticket
+    // ships has no blinking cursor left to yield (see that composable's own doc), so nothing reads
+    // this boolean any more; [FleetScreen]'s `onSweepActiveChanged` parameter still exists and still
+    // defaults to a no-op, unaffected by this - see the `FleetScreen(...)` call site below.
 
     // Outer Box, not the Scaffold directly, so [GlanceCardOverlay] can be drawn
     // LAST - on top of the Scaffold's bottom bar and whatever destination is
     // showing - rather than occupying a slot inside the layout flow. Boot is
     // a full-screen takeover (ticket 04 answer #1), not a panel.
     Box(Modifier.fillMaxSize()) {
-        // Mission-control ticket 14: the whole Scaffold - content AND the
-        // pinned status line / Alfred strip / hard-key row inside it - sits
-        // inside ONE [DeckBezel], drawn once at shell level (ticket 03's
-        // charting decision: "one global bezel drawn once in the shell").
-        // Deliberately NOT gated on [isDrivingMode] - ticket 08 answer #1
-        // ruled driving mode gets the full deck language too, bezel included,
-        // unlike the StatusLine/bottomBar carve-outs below which ARE gated
-        // (those are ticket 20's earlier, narrower ruling: no status line, no
-        // Alfred strip, no hard keys while driving - the bezel was not yet
-        // built when that call was made).
+        // DeckBezel REMOVED (home-launcher ticket 02, ADR 0051). It was the one global
+        // mission-control frame, wired here by mission-control ticket 14 ("the whole Scaffold -
+        // content AND the pinned status line / Alfred strip / hard-key row inside it - sits
+        // inside ONE DeckBezel, drawn once at shell level"). Ticket 01's resolution retires it
+        // along with the rest of the mission-control chrome ("the mission-control bezel goes, so
+        // home is not framed in the old look") - see `ui/common/DeckPanels.kt`'s own comment at
+        // the deleted composable's old location for the rest of the history. `Scaffold` now sits
+        // directly in this outer [Box]; [isDrivingMode] still gates nothing here (it never gated
+        // the bezel either - only the StatusLine/bottomBar carve-outs below do, ticket 20's own,
+        // earlier ruling).
         //
         // Insets: this app is NOT edge-to-edge (`themes.xml` sets opaque
         // `android:statusBarColor`/`android:navigationBarColor`, and there is
@@ -651,22 +654,18 @@ private fun LegionShell(
         // Android starts enforcing edge-to-edge regardless. So the system
         // status bar (with the notch) and the 3-button nav bar are drawn by
         // Android OUTSIDE this Compose tree entirely, in their own opaque
-        // bars - `DeckBezel` never has the option of drawing under either one
-        // and needs no `windowInsetsPadding` of its own to stay clear of them.
-        DeckBezel(Modifier.fillMaxSize()) {
+        // bars - nothing here needs its own `windowInsetsPadding` to stay clear of them.
         Scaffold(
-            // Explicit fillMaxSize (2026-08-14 fix, coordinator-reported defect): without this,
-            // Scaffold - given only BOUNDED/loose constraints by DeckBezel's Box, since Box does
-            // not force a child to fill unless the child asks to - sized itself by its own content
-            // (bottomBar height + NavHost's wrapped height) rather than by the space DeckBezel
-            // actually gave it, so the bottomBar (AssistantStrip + LegionHardKeyRow) rendered at
-            // its own natural height flush against the OUTER Box's bottom edge, past DeckBezel's
-            // 12dp bottom content padding entirely. Confirmed on-device: the hard-key row's own
-            // opaque background was painting directly over the bezel's bottom line (drawn earlier
-            // in DeckBezel's modifier chain, so it sits BEHIND anything Scaffold draws), reading as
-            // the frame passing behind the keys. Forcing Scaffold to fillMaxSize makes it occupy
-            // EXACTLY the constraints DeckBezel's padding already computed, so its bottomBar is
-            // placed relative to that padded box, not the unpadded one.
+            // Explicit fillMaxSize (2026-08-14 fix, coordinator-reported defect against the OLD
+            // DeckBezel-wrapped shell - kept because the same reasoning still applies to the outer
+            // [Box] above, DeckBezel or not): without this, Scaffold - given only BOUNDED/loose
+            // constraints by a Box, since Box does not force a child to fill unless the child asks
+            // to - sizes itself by its own content (bottomBar height + NavHost's wrapped height)
+            // rather than by the space actually available, so the bottomBar (AssistantStrip) would
+            // render at its own natural height instead of where Scaffold's own layout expects it.
+            // Confirmed on-device against the DeckBezel-wrapped shell in 2026-08-14: the hard-key
+            // row's own opaque background painted directly over the bezel's bottom line, reading as
+            // the frame passing behind the keys.
             modifier = Modifier.fillMaxSize(),
             // Push-to-talk lives ALONE in the bottom bar as of the 2026-09-01 calendar-home cutover
             // - [LegionHardKeyRow] (five tab keys underneath it) is DELETED, not just moved: Kevin's
@@ -682,9 +681,14 @@ private fun LegionShell(
             // slot already had.
             bottomBar = {
                 if (!isDrivingMode) {
-                    AssistantStrip(onOpenSettings = {
-                        navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
-                    })
+                    // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051) - the
+                    // talk bar is shell chrome, converted along with StatusLine below; the NavHost
+                    // content beside it stays on [LegionTheme] until its own ticket.
+                    SoftTheme {
+                        AssistantStrip(onOpenSettings = {
+                            navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
+                        })
+                    }
                 }
             },
         ) { innerPadding ->
@@ -708,50 +712,44 @@ private fun LegionShell(
                 // the status line, which is correct: nothing about driving mode should invite
                 // you into a settings tree.
                 if (!isDrivingMode) {
-                    StatusLine(
-                        left = shellStatus.parts.left,
-                        clock = clock,
-                        onOpenSettings = {
-                            navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
-                        },
-                        onOpenApps = {
-                            navController.navigate(LegionRoute.APPS) { launchSingleTop = true }
-                        },
-                        quietOn = quietOn,
-                        onToggleQuiet = {
-                            val result = com.kevin.legion.quiet.QuietMode.toggle(context)
-                            if (result is com.kevin.legion.quiet.QuietMode.Result.Refused) {
-                                // Said in words, never a dead tap. Missing access: take him there.
-                                android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
-                                if (result.message == com.kevin.legion.quiet.QuietMode.NEEDS_ACCESS) {
-                                    context.startActivity(
-                                        android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                                    )
+                    // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051).
+                    SoftTheme {
+                        StatusLine(
+                            synced = shellStatus.parts.synced,
+                            obdConnected = shellStatus.parts.obdConnected,
+                            clock = clock,
+                            onOpenSettings = {
+                                navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
+                            },
+                            // ADR 0050: the app drawer is reachable from the header on every screen.
+                            onOpenApps = {
+                                navController.navigate(LegionRoute.APPS) { launchSingleTop = true }
+                            },
+                            quietOn = quietOn,
+                            onToggleQuiet = {
+                                val result = com.kevin.legion.quiet.QuietMode.toggle(context)
+                                if (result is com.kevin.legion.quiet.QuietMode.Result.Refused) {
+                                    // Said in words, never a dead tap. Missing access: take him there.
+                                    android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                    if (result.message == com.kevin.legion.quiet.QuietMode.NEEDS_ACCESS) {
+                                        context.startActivity(
+                                            android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }
                                 }
-                            }
-                            quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
-                        },
-                        // Ticket 04 build section 3: KEY survives an alarm, riding alongside the
-                        // alarm pill instead of folding into [left].
-                        keySegment = shellStatus.parts.keySegment,
-                        alarmCount = shellStatus.alarmCount,
-                        // Ticket 04 answer §6 originally sent this to TODAY ("tapping the segment
-                        // navigates to TODAY" - the ALERTS pane there listed every alarm). That pane
-                        // was retired by Kevin on 2026-08-22 ("alerts tab in home is useless. retire
-                        // it. delete") and TodayScreen itself was deleted 2026-09-01 (one-today
-                        // ticket 07) - retargeted to CALENDAR, which lands a tapped alarm on the day
-                        // its reminder actually belongs to (that screen's own day view); see
-                        // [ShellStatus]'s own doc for why Money is not the target.
-                        onOpenAlarm = { navController.navigate(LegionRoute.HOME) { launchSingleTop = true } },
-                        // Ticket 07 answer §1, "the cursor yields": solid, not blinking, for
-                        // exactly as long as FLEET's own uplink sweep is genuinely running -
-                        // see [fleetSweepActive]'s own doc above for how that boolean gets here -
-                        // OR (ticket 04 answer §8's precedence stack: "while an alarm pane is on
-                        // screen the shell's cursor stops") while an alarm is live anywhere in the
-                        // app, not just on the surface currently in view.
-                        cursorSolid = fleetSweepActive || shellStatus.alarmCount > 0,
-                    )
+                                quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
+                            },
+                            // The key clause is never hidden by an alarm - see [StatusLine]'s doc.
+                            keyLabel = shellStatus.parts.keyLabel,
+                            alarmCount = shellStatus.alarmCount,
+                            // Lands a tapped alarm on the day its reminder belongs to - CALENDAR,
+                            // not HOME, since home-launcher ticket 03 gave HOME its own tile grid
+                            // and moved the day view (and its alarm-tag rendering) onto its own
+                            // route again.
+                            onOpenAlarm = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                        )
+                    }
                     // [LegionTabRow] DELETED 2026-09-10 (one-home ticket 03b, on ticket 01's
                     // resolution). It switched between two tabs; METERS is gone, and a row
                     // containing one always-selected label is not a navigation control - it is a
@@ -761,13 +759,17 @@ private fun LegionShell(
                 }
                 NavHost(
                     navController = navController,
-                    // CALENDAR is the start destination as of the 2026-09-01 calendar-home cutover
-                    // (Kevin, verbatim, [LegionRoute.HOME]'s own doc comment: "month grid
-                    // primary"). Was TODAY from the 2026-08-07 brief (itself a supersession of
-                    // FLEET under ticket 07's original four-tab shape); cutover 5
-                    // (`docs/architecture/cutover5-2026-08-24.md`) briefly made the widget pager
-                    // (DASHBOARD) the start destination instead, REVERTED 2026-08-25 - see that
-                    // doc's postscript. See LegionRoute's doc comment for the full route map/history.
+                    // HOME is the start destination - **CORRECTED home-launcher ticket 03**: this
+                    // used to say CALENDAR (the 2026-09-01 calendar-home cutover folded that screen
+                    // into the `home` route). Ticket 03 split [LegionRoute.CALENDAR] back off HOME
+                    // once HOME got its own tile-grid content (ADR 0050/0051) - [LegionRoute.HOME]
+                    // is still the constant this NavHost opens to, but the composable behind it is
+                    // `ui/home/HomeScreen.kt` now, not `ui/CalendarScreen.kt`. Was TODAY from the
+                    // 2026-08-07 brief (itself a supersession of FLEET under ticket 07's original
+                    // four-tab shape); cutover 5 (`docs/architecture/cutover5-2026-08-24.md`)
+                    // briefly made the widget pager (DASHBOARD) the start destination instead,
+                    // REVERTED 2026-08-25 - see that doc's postscript. See LegionRoute's doc
+                    // comment for the full route map/history.
                     startDestination = LegionRoute.HOME,
                     modifier = Modifier.weight(1f),
                     // Command-center ticket 14: one fade-through, defined once here, no per-route
@@ -793,57 +795,41 @@ private fun LegionShell(
             composable(LegionRoute.DASHBOARD) {
                 WidgetPagerRoot(onOpenRoute = { route -> navController.navigate(route) { launchSingleTop = true } })
             }
-            // The new start destination (2026-09-01 calendar-home cutover) - month grid + day view,
-            // no nav arguments (LegionRoute's own "nothing here takes a navigation argument"
-            // convention): [highlightItemId]/[highlightItemNonce] are plain params, not nav-graph
-            // arguments, same shape the deleted `ui/NotesScreen.kt` used for its own
-            // `openItemId`/`openItemNonce`. [CalendarScreen] owns its own month/day state internally
-            // and reads/writes through [com.kevin.legion.notes.NotesController] directly rather than
-            // through anything this shell needs to wire. **REPOINTED one-today ticket 10 slice C,
-            // 2026-09-05: this composable used to take no arguments** - the notification-tap deep
-            // link (`openItemId`/`openItemNonce`, this file's own state above) fed
-            // `ui/NotesScreen.kt` exclusively before that screen was deleted; `CalendarScreen`'s own
-            // file doc comment has the full account of how it opens the same [ItemEditDialog] now.
-            // HOME now renders the meter bands below the day view (one-home ticket 02,
-            // `.scratch/one-home/issues/02-rehome-the-orphans.md`) - the exact callback set
-            // `ui/MetersScreen.kt`'s own "C" tab used to take (that screen's history is kept
-            // below on [LegionRoute.METERS]'s own registration until ticket 03b deletes it).
+            // HOME (home-launcher ticket 03, ADR 0050/0051): the today card + 2x4 tile grid, under
+            // `SoftTheme` - the one screen this ticket converts besides the shell chrome ticket 02
+            // already did. `ui/CalendarScreen.kt` no longer renders here; see [LegionRoute.CALENDAR]
+            // just below for where it moved.
             composable(LegionRoute.HOME) {
                 // As the home app, Back on HOME does nothing: there is nowhere behind the home
                 // screen to go. As an ordinary app it still exits (ADR 0050).
                 androidx.activity.compose.BackHandler(enabled = isDefaultHome) {}
-                CalendarScreen(
-                    highlightItemId = openItemId,
-                    highlightItemNonce = openItemNonce,
-                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
+                com.kevin.legion.ui.home.HomeScreen(
+                    onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                    onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
                     onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
+                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
                     onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
-                    onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
-                    // The Ask pane's new destination (ticket 01's resolution: its own route, not
-                    // a pane welded onto HOME) - see `ui/ask/AskScreen.kt`'s own registration below.
-                    onOpenAsk = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
-                    // The news feed's own route (one-home ticket 07) - see
-                    // `ui/news/NewsScreen.kt`'s own registration below.
+                    onOpenRecordings = {
+                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
+                    },
                     onOpenNews = { navController.navigate(LegionRoute.NEWS) { launchSingleTop = true } },
-                    // The media mini-bar's own tap-through (rehomed from the deleted
-                    // `ui/TodayScreen.kt`, one-today ticket 07, then `ui/MetersScreen.kt`, one-home
-                    // ticket 02) - the media control panel command-center ticket 04 built, nested
-                    // under Spotify's own settings route (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's
-                    // own doc comment).
+                    // "Reports" is the ASK screen (ticket 01's resolution: "Reports is the ASK
+                    // screen, the closed-enum builder over ledger and pantry").
+                    onOpenReports = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
                     onOpenMedia = {
                         navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
                     },
-                    // The recordings-UI ticket's own relocation (2026-09-04): the RECORDINGS
-                    // pane's count row taps through to the same LegionRoute.SETTINGS_VOICE_NOTES
-                    // screen the old Data & privacy row used to open - only the entry point moved.
-                    onOpenVoiceNotes = {
-                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
-                    },
-                    // One-today ticket 09's LISTS row - the recurring checklists management
-                    // screen.
-                    onOpenChecklists = {
-                        navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true }
-                    },
+                )
+            }
+            // CALENDAR (home-launcher ticket 03): the month grid + day view, split back off HOME
+            // now that HOME has its own content again - see [LegionRoute.CALENDAR]'s own doc
+            // comment. A drill-down like every other screen under [LegionTheme], `DeckScreenHeader`
+            // and all - not the start destination any more.
+            composable(LegionRoute.CALENDAR) {
+                CalendarScreen(
+                    highlightItemId = openItemId,
+                    highlightItemNonce = openItemNonce,
+                    onBack = { navController.popBackStack() },
                 )
             }
             // The Ask hands path's own route (one-home ticket 02, ADR 0035) - see
@@ -899,9 +885,11 @@ private fun LegionShell(
                     // Ticket 20: the UPLINK panel's DRIVE MODE row, inert since ticket 18,
                     // gets its click wired here - ticket 11 answer §1's OFFER, never auto.
                     onOpenDrivingMode = { navController.navigate(LegionRoute.DRIVING) { launchSingleTop = true } },
-                    // Ticket 07: feeds [fleetSweepActive] above, which [StatusLine]'s
-                    // `cursorSolid` reads.
-                    onSweepActiveChanged = { fleetSweepActive = it },
+                    // onSweepActiveChanged no longer wired here (home-launcher ticket 02) - it used
+                    // to feed `fleetSweepActive` above, which only ever fed [StatusLine]'s retired
+                    // `cursorSolid`. FleetScreen's own parameter still defaults to a no-op, so this
+                    // is unaffected on FleetScreen's side - see that parameter's own doc comment,
+                    // still accurate about what it reports, just unread now.
                 )
             }
             // Ticket 20: full-bleed, no shell chrome (see isDrivingMode above) - a plain
@@ -1086,9 +1074,9 @@ private fun LegionShell(
                 }
             }
         }
-        } // closes DeckBezel's content lambda opened above the Scaffold call - the intervening
-          // ~200 lines are the unchanged Scaffold/NavHost tree, left at their original indent
-          // rather than re-flowed a level deeper for this diff.
+        // The brace that used to close DeckBezel's content lambda here is gone with it (home-
+        // launcher ticket 02) - Scaffold's own closing brace, just above, is now the last one at
+        // this nesting level.
 
         // Drawn LAST inside the outer Box (see its own comment above) so it
         // paints over the Scaffold - bottom bar, status line, and whatever
@@ -1142,26 +1130,33 @@ private fun shellStatusLine(context: Context): ShellStatusLineParts {
 }
 
 /**
- * The two segments [StatusLine] needs (mission-control ticket 04 build, section 3 of the brief):
- * `left` carries `SYNC ... OBD ...`, `keySegment` carries `KEY ...` on its own - the split ticket
- * 04 answer §6 requires so an ALARM segment can replace [left] while [keySegment] survives next to
- * it ("while an alarm is present the segment replaces SYNC and OBD, and KEY survives").
+ * What [StatusLine] needs (RESTRUCTURED home-launcher ticket 02, ADR 0051, from mission-control
+ * ticket 04 build's `left`/`keySegment` string pair). The old shape carried two pre-FORMATTED
+ * strings ("SYNC ON   OBD LINK", "KEY ARMED") because the mission-control row rendered fixed
+ * monospace stamps; the soft row renders each state as its own worded [androidx.compose.material3.Text],
+ * so this now carries the resolved BOOLEANS/labels instead and lets [StatusLine] decide the words -
+ * see that composable's own doc for exactly what it says for each.
+ *
+ * [keyLabel] null means the key is armed - nothing to disclose, the same "healthy states are quiet"
+ * posture [SoftColors]-styled surfaces use elsewhere. Non-null means there is something to say, and
+ * [StatusLine] renders it unconditionally, alarm or not - preserving ticket 04 answer §6's "the key
+ * segment survives an alarm" without needing the OLD replace-on-alarm mechanism to do it.
  */
-data class ShellStatusLineParts(val left: String, val keySegment: String)
+data class ShellStatusLineParts(val synced: Boolean, val obdConnected: Boolean, val keyLabel: String?)
 
 /**
- * The pure half of [shellStatusLine] - three already-resolved booleans in, two formatted strings
+ * The pure half of [shellStatusLine] - three already-resolved booleans in, [ShellStatusLineParts]
  * out, no [Context] read, so this is the piece that is actually unit-testable without an Android
  * runtime (see `ShellStatusLineTest.kt`). [shellStatusLine] itself stays impure on purpose: it is
  * the one place that reads [SyncCapability]/[ObdBluetoothManager]/[GeminiKeyProvider], and this
  * function's whole job is to not need to know how those three booleans were produced.
  */
-internal fun formatShellStatusLine(syncOn: Boolean, obdConnected: Boolean, keyArmed: Boolean): ShellStatusLineParts {
-    val sync = if (syncOn) "ON" else "OFF"
-    val obd = if (obdConnected) "LINK" else "NO LINK"
-    val key = if (keyArmed) "ARMED" else "NOT SET"
-    return ShellStatusLineParts(left = "SYNC $sync   OBD $obd", keySegment = "KEY $key")
-}
+internal fun formatShellStatusLine(syncOn: Boolean, obdConnected: Boolean, keyArmed: Boolean): ShellStatusLineParts =
+    ShellStatusLineParts(
+        synced = syncOn,
+        obdConnected = obdConnected,
+        keyLabel = if (keyArmed) null else "Key not set",
+    )
 
 /**
  * [LegionShell]'s combined status-line/alarm poll state (mission-control ticket 04 build, section

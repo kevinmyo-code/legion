@@ -12,14 +12,15 @@ import com.kevin.legion.ui.fleet.DueRowView
  * panes used - **rehomed here, one-home ticket 02, once `MetersScreen.kt` folded into HOME**
  * (`.scratch/one-home/issues/02-rehome-the-orphans.md`). Nothing here is new logic; this is the
  * move ticket 02's own text asked for verbatim ("they should move, not die... put them in a file
- * that is not a screen"). See `ui/HomeMeterBands.kt` for the composable that now renders them and
+ * that is not a screen"). See `ui/home/HomeTileReadings.kt`/`ui/home/HomeScreen.kt` for the tiles
+ * that now render them and
  * `ui/MeterReadingsTest.kt` (moved alongside, same package, same assertions) for the 14 tests that
  * pinned this behaviour on `MetersScreen.kt` before the move.
  */
 
 // ------------------------------------------------------------- Needs-you breach detection
 
-/** Which callback a [MeterBreach] taps through to - see `ui/HomeMeterBands.kt`'s own `when` for the
+/** Which callback a [MeterBreach] taps through to - see `ui/home/HomeScreen.kt`'s own `when` for the
  * real navigation lambda each one resolves to. No BODY/NOTES member: neither Intake nor the Lists
  * pane currently has a breach condition this file defines (see [buildMeterBreaches]'s own doc for
  * exactly which three do), and inventing a target nothing ever returns would be dead code a later

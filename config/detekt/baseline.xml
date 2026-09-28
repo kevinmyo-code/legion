@@ -4821,5 +4821,180 @@
     <ID>MaxLineLength:VoiceGuideData.kt:VoiceGuideData$Entry(name = "switch_companion", say = "Can I talk to Dorothy?", does = "Hands the conversation to a different companion. They answer from the next turn on, in their own voice, and they will not know what was said before the handover.", hands = "Companions screen - tap whichever one you want.")</ID>
     <ID>MayBeConstant:VoiceGuideData.kt:VoiceGuideData$/** Total entries across every group above - 119 as of the last regeneration. */ val TOOL_COUNT: Int = 119</ID>
     <ID>MaxLineLength:VoiceGuideData.kt:VoiceGuideData$val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"Excelsior\" if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."</ID>
+    === DeckPanels.kt ===
+    <ID>FunctionNaming:DeckPanels.kt:@Composable fun StatusLine( synced: Boolean, obdConnected: Boolean, clock: String, modifier: Modifier = Modifier, /** Null (the default, meaning the key is armed) discloses nothing - see the class doc. */ keyLabel: String? = null, onOpenSettings: (() -&gt; Unit)? = null, /** * The app-drawer link. Added 2026-09-27 alongside this restyle, on word from the orchestrator * that `dev` had, in the same window, landed `1434459` ("LEGION can be the phone's home app", * `docs/adr/0050-legion-may-be-the-home-app.md` on THAT branch - a different ADR 0050 than this * branch's own `docs/adr/0050-design-language-soft-material.md`; the two branches minted the * same number independently and whoever merges them owes one a renumber). Verified against * `origin/dev` directly rather than taken on trust - see this ticket's own report. Null (the * default) hides the button entirely, so this ticket's own `MainActivity.kt` caller (which does * not pass it) is byte-for-byte unaffected; wiring a real callback is that ADR's own build, not * this ticket's. */ onOpenApps: (() -&gt; Unit)? = null, /** * The quiet-mode toggle. Added 2026-09-27, same session as [onOpenApps]. Unlike that one, no * commit existed to check against at the time this parameter pair was first added (checked * `origin/dev`, `memory/library/decisions.md` and every `.scratch` ticket title naming "quiet" * - none described this exact toggle) - it was built on the orchestrator's instruction alone. * The exact parameter names and the "Quiet"/"Quiet on" wording were subsequently confirmed by * the session that owns the `QuietMode` controller (legion-10). Null (the default) hides the * button entirely, matching [onOpenApps]'s own posture - this ticket's `MainActivity.kt` * caller passes neither; wiring a real callback is `QuietMode`'s own build, not this ticket's. */ onToggleQuiet: (() -&gt; Unit)? = null, /** Whether quiet mode is currently on - see [onToggleQuiet]. Ignored while that is null. */ quietOn: Boolean = false, alarmCount: Int = 0, onOpenAlarm: (() -&gt; Unit)? = null, )</ID>
+    <ID>FunctionNaming:DeckPanels.kt:@Composable private fun AlarmPill(count: Int, onClick: (() -&gt; Unit)?, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:DeckPanels.kt:@Composable private fun QuietPill(on: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:DeckPanels.kt:@Composable fun StatusLine( synced: Boolean, obdConnected: Boolean, clock: String, modifier: Modifier = Modifier, /** Null (the default, meaning the key is armed) discloses nothing - see the class doc. */ keyLabel: String? = null, onOpenSettings: (() -&gt; Unit)? = null, /** * The app-drawer link. Added 2026-09-27 alongside this restyle, on word from the orchestrator * that `dev` had, in the same window, landed `1434459` ("LEGION can be the phone's home app", * `docs/adr/0050-legion-may-be-the-home-app.md` on THAT branch - a different ADR 0050 than this * branch's own `docs/adr/0050-design-language-soft-material.md`; the two branches minted the * same number independently and whoever merges them owes one a renumber). Verified against * `origin/dev` directly rather than taken on trust - see this ticket's own report. Null (the * default) hides the button entirely, so this ticket's own `MainActivity.kt` caller (which does * not pass it) is byte-for-byte unaffected; wiring a real callback is that ADR's own build, not * this ticket's. */ onOpenApps: (() -&gt; Unit)? = null, /** * The quiet-mode toggle. Added 2026-09-27, same session as [onOpenApps]. Unlike that one, no * commit existed to check against at the time this parameter pair was first added (checked * `origin/dev`, `memory/library/decisions.md` and every `.scratch` ticket title naming "quiet" * - none described this exact toggle) - it was built on the orchestrator's instruction alone. * The exact parameter names and the "Quiet"/"Quiet on" wording were subsequently confirmed by * the session that owns the `QuietMode` controller (legion-10). Null (the default) hides the * button entirely, matching [onOpenApps]'s own posture - this ticket's `MainActivity.kt` * caller passes neither; wiring a real callback is `QuietMode`'s own build, not this ticket's. */ onToggleQuiet: (() -&gt; Unit)? = null, /** Whether quiet mode is currently on - see [onToggleQuiet]. Ignored while that is null. */ quietOn: Boolean = false, alarmCount: Int = 0, onOpenAlarm: (() -&gt; Unit)? = null, )</ID>
+    === MainActivity.kt ===
+    === AssistantStrip.kt ===
+    <ID>FunctionNaming:AssistantStrip.kt:@Composable internal fun AssistantOffRow(onTap: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Composable internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Composable private fun AssistantStripBar(content: @Composable () -&gt; Unit)</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: idle", widthDp = 384) @Composable private fun PreviewAssistantStripIdle()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: listening", widthDp = 384) @Composable private fun PreviewAssistantStripListening()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: mic permission needed", widthDp = 384) @Composable private fun PreviewAssistantStripMicBlocked()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: notice", widthDp = 384) @Composable private fun PreviewAssistantStripNotice()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: off (2026-09-01 - was zero-space)", widthDp = 384) @Composable private fun PreviewAssistantOffRow()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: speaking", widthDp = 384) @Composable private fun PreviewAssistantStripSpeaking()</ID>
+    <ID>MagicNumber:AssistantStrip.kt:0xFF3A2E12</ID>
+    <ID>MaxLineLength:AssistantStrip.kt:.</ID>
+    <ID>MaxLineLength:AssistantStrip.kt:animationSpec = infiniteRepeatable(tween(com.kevin.legion.ui.theme.LegionMotion.PULSE_MS), RepeatMode.Reverse)</ID>
+    === ThemePreview.kt ===
+    <ID>FunctionNaming:ThemePreview.kt:@Preview(name = "VACUUM/SENTRY · Section rule + feed rows", showBackground = true) @Composable private fun PreviewBezelAndFeed()</ID>
+    === SoftColors.kt ===
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF121317</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF16181D</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF1C1E24</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF23262D</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF24272E</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF2A2D34</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF3A3E47</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF4A1F24</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF5E636E</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF733423</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF7EDBA5</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF8A8F9B</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF8C1D18</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFA9ADB8</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFE6E7EC</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFF6B5E</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFB4A1</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFB4AB</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFC857</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFDBD1</ID>
+    === AreaAccent.kt ===
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.BODY$0xFF4A1F2C</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.BODY$0xFFFFB1C3</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.CALENDAR$0xFF1F3450</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.CALENDAR$0xFFA8C8FF</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.FLEET$0xFF0F3B40</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.FLEET$0xFF77DCE5</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.LISTS$0xFF43340F</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.LISTS$0xFFFFD36B</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.MONEY$0xFF173D2B</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.MONEY$0xFF7EDBA5</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.NEWS$0xFF4A2A12</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.NEWS$0xFFFFB77C</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.RECORDINGS$0xFF33265A</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.RECORDINGS$0xFFCDBDFF</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.REPORTS$0xFF262E57</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.REPORTS$0xFFB9C3FF</ID>
+    === SoftType.kt ===
+    === SoftTheme.kt ===
+    <ID>FunctionNaming:SoftTheme.kt:@Composable fun SoftTheme(content: @Composable () -&gt; Unit)</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF121318</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF16181E</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF1C1E25</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF23262E</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF24272F</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF242730</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF2A2D35</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF2A2D37</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF3A3E48</ID>
+    === SoftIcon.kt ===
+    <ID>FunctionNaming:SoftIcon.kt:@Composable fun MsIcon( @DrawableRes res: Int, contentDescription: String?, tint: Color, modifier: Modifier = Modifier, size: Dp = 24.dp, )</ID>
+    === SoftThemeTest.kt ===
+    === StatusLineScreenshotTest.kt ===
+    === AssistantStripScreenshotTest.kt ===
+    === ShellStatusLineTest.kt ===
+    === ChecklistController.kt ===
+    <ID>TooGenericExceptionCaught:ChecklistController.kt:ChecklistController$e: Exception</ID>
+    === ChecklistControllerTest.kt ===
+    <ID>MaxLineLength:ChecklistControllerTest.kt:ChecklistControllerTest$assertEquals("tickDay must point at the day the tick actually lives on, not the day being viewed", yesterday, viewedToday.tickDay)</ID>
+    <ID>MaxLineLength:ChecklistControllerTest.kt:ChecklistControllerTest$fun</ID>
+    === ListVisual.kt ===
+    === ListVisualsTest.kt ===
+    === ListProgress.kt ===
+    === ListProgressTest.kt ===
+    <ID>MaxLineLength:ListProgressTest.kt:ListProgressTest$ChecklistController.ItemState(item = ChecklistItem(checklistId = 1, text = "x"), ticked = ticked, tickedAt = null)</ID>
+    === ListsUiState.kt ===
+    === ListDetailCallbacks.kt ===
+    === ListsPageCallbacks.kt ===
+    === ListContentPreviewCallbacks.kt ===
+    === ListsViewModel.kt ===
+    <ID>MaxLineLength:ListsViewModel.kt:ListsViewModel$ChecklistController.setSchedule(app, id, scheduleKind, if (scheduleKind != null) 1 else null, scheduleDaysOfWeek)</ID>
+    <ID>MaxLineLength:ListsViewModel.kt:ListsViewModel$_state.update { it.copy(detail = it.detail?.copy(refusals = it.detail.refusals + (itemId to outcome.message))) }</ID>
+    <ID>MaxLineLength:ListsViewModel.kt:ListsViewModel$_state.update { it.copy(detail = it.detail?.copy(refusals = it.detail.refusals - itemId, inputValues = it.detail.inputValues - itemId)) }</ID>
+    <ID>MaxLineLength:ListsViewModel.kt:ListsViewModel$if (checklist.archived) ChecklistController.unarchiveChecklist(app, checklist.id) else ChecklistController.archiveChecklist(app, checklist.id)</ID>
+    <ID>MaxLineLength:ListsViewModel.kt:ListsViewModel$is ChecklistItemsResult.Failed -&gt; listProgress(isRoutine, appliesToday = true, emptyList(), loadFailed = true)</ID>
+    <ID>MaxLineLength:ListsViewModel.kt:ListsViewModel$is ChecklistItemsResult.Loaded -&gt; listProgress(isRoutine, appliesToday = true, result.items, loadFailed = false)</ID>
+    <ID>MaxLineLength:ListsViewModel.kt:ListsViewModel$it.copy(mode = ListsMode.History(id), history = ListHistoryState(checklistName = d.checklist.name, loading = true))</ID>
+    <ID>TooManyFunctions:ListsViewModel.kt:ListsViewModel : AndroidViewModel</ID>
+    === ChecklistsScreen.kt ===
+    <ID>LongMethod:ChecklistsScreen.kt:@Composable fun ChecklistsScreen(onBack: () -&gt; Unit)</ID>
+    === ListsPageContent.kt ===
+    <ID>FunctionNaming:ListsPageContent.kt:@Composable fun ListsContent(state: ListsPageState, callbacks: ListsPageCallbacks)</ID>
+    <ID>FunctionNaming:ListsPageContent.kt:@Composable private fun ListIconCard(card: ListCardUi, dimmed: Boolean = false, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListsPageContent.kt:@Composable private fun ListsPageTopBar(showArchived: Boolean, onBack: () -&gt; Unit, onToggleArchived: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListsPageContent.kt:@Composable private fun NewListCard(onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListsPageContent.kt:@Composable private fun SectionLabel(text: String)</ID>
+    <ID>MaxLineLength:ListsPageContent.kt:ListsPageTopBar(showArchived = state.showArchived, onBack = callbacks.onBack, onToggleArchived = callbacks.onToggleArchived)</ID>
+    <ID>MaxLineLength:ListsPageContent.kt:MsIcon(res = card.visual.icon, contentDescription = null, tint = card.visual.accent.onContainer, size = 28.dp)</ID>
+    <ID>MaxLineLength:ListsPageContent.kt:private val FULL_ROW_SPAN: (androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope.() -&gt; GridItemSpan) = { GridItemSpan(GRID_COLUMNS) }</ID>
+    <ID>MaxLineLength:ListsPageContent.kt:private val SINGLE_SPAN: (androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope.() -&gt; GridItemSpan) = { GridItemSpan(1) }</ID>
+    === ListDetailContent.kt ===
+    <ID>FunctionNaming:ListDetailContent.kt:@Composable fun ListDetailContent(state: ListDetailState, callbacks: ListDetailCallbacks)</ID>
+    <ID>FunctionNaming:ListDetailContent.kt:@Composable private fun DetailDialogs(checklist: com.kevin.legion.data.local.Checklist?, state: ListDetailState, callbacks: ListDetailCallbacks)</ID>
+    <ID>FunctionNaming:ListDetailContent.kt:@Composable private fun DetailItemsList( checklist: com.kevin.legion.data.local.Checklist, state: ListDetailState, callbacks: ListDetailCallbacks, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:ListDetailContent.kt:@Composable private fun DetailTopBar(name: String, callbacks: ListDetailCallbacks)</ID>
+    <ID>FunctionNaming:ListDetailContent.kt:@Composable private fun ScheduleLine(checklist: com.kevin.legion.data.local.Checklist, state: ListDetailState)</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:DropdownMenu</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:DropdownMenuItem(text = { Text("Archive/Unarchive") }, onClick = { menuOpen = false; callbacks.onArchiveToggle() })</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; callbacks.onShowRenameDialog(true) })</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:DropdownMenuItem(text = { Text("Schedule") }, onClick = { menuOpen = false; callbacks.onShowSchedulePicker(true) })</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:Row</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:TickedHeader(count = state.ticked.size, isRoutine = checklist.scheduleKind != null, expanded = state.showTicked, onToggle = callbacks.onToggleShowTicked)</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:UntickedRow(row = row, refusal = state.refusals[row.item.id], inputValue = state.inputValues[row.item.id].orEmpty(), callbacks = callbacks)</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:if (state.appliesToday) "${state.scheduleLabel}. Ticks count for today, $todayDayLabel." else "Not scheduled today."</ID>
+    <ID>MaxLineLength:ListDetailContent.kt:private</ID>
+    === ListDetailRows.kt ===
+    <ID>FunctionNaming:ListDetailRows.kt:@Composable fun AddItemRow(draft: String, callbacks: ListDetailCallbacks)</ID>
+    <ID>FunctionNaming:ListDetailRows.kt:@Composable fun AllDoneCard(onDelete: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDetailRows.kt:@Composable fun TickedHeader(count: Int, isRoutine: Boolean, expanded: Boolean, onToggle: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDetailRows.kt:@Composable fun TickedRow(row: ListItemUi, callbacks: ListDetailCallbacks)</ID>
+    <ID>FunctionNaming:ListDetailRows.kt:@Composable fun UntickedRow(row: ListItemUi, refusal: String?, inputValue: String, callbacks: ListDetailCallbacks)</ID>
+    <ID>FunctionNaming:ListDetailRows.kt:@Composable private fun SheetRow(label: String, color: Color = SoftColors.text, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDetailRows.kt:@Composable private fun UntickedCheckbox(onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDetailRows.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LongPressSheet(item: ChecklistItem, callbacks: ListDetailCallbacks)</ID>
+    <ID>MaxLineLength:ListDetailRows.kt:MsIcon(res = R.drawable.ms_add, contentDescription = null, tint = SoftColors.text2, modifier = Modifier.size(48.dp).padding(12.dp))</ID>
+    <ID>MaxLineLength:ListDetailRows.kt:MsIcon(res = R.drawable.ms_cloud_off, contentDescription = null, tint = SoftColors.caution, size = 16.dp)</ID>
+    <ID>MaxLineLength:ListDetailRows.kt:Text("Not synced yet", style = MaterialTheme.typography.labelSmall, color = SoftColors.caution, modifier = Modifier.padding(start = 4.dp))</ID>
+    <ID>MaxLineLength:ListDetailRows.kt:Text(item.measureUnit.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = SoftColors.text2, modifier = Modifier.padding(start = 6.dp))</ID>
+    <ID>MaxLineLength:ListDetailRows.kt:UntickedCheckbox(onClick = { if (isMeasured) callbacks.onTickMeasured(item.id) else callbacks.onTick(item.id) })</ID>
+    === ListDialogs.kt ===
+    <ID>FunctionNaming:ListDialogs.kt:@Composable fun CreateChecklistDialog(onDismiss: () -&gt; Unit, onCreate: (String, String?, String?) -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDialogs.kt:@Composable fun DeleteChecklistConfirmDialog(name: String, onDismiss: () -&gt; Unit, onConfirm: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDialogs.kt:@Composable fun RenameDialog(currentText: String, title: String, onDismiss: () -&gt; Unit, onSave: (String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDialogs.kt:@Composable fun ScheduleDialog(initialKind: String?, initialDaysOfWeek: String?, onDismiss: () -&gt; Unit, onSave: (String?, String?) -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListDialogs.kt:@Composable fun SchedulePicker(scheduleKind: String?, scheduleDaysOfWeek: String?, onChange: (kind: String?, daysOfWeek: String?) -&gt; Unit)</ID>
+    <ID>MaxLineLength:ListDialogs.kt:TextButton(enabled = name.isNotBlank(), onClick = { onCreate(name.trim(), scheduleKind, scheduleDaysOfWeek) }) { Text("Create") }</ID>
+    <ID>MaxLineLength:ListDialogs.kt:fun</ID>
+    <ID>MaxLineLength:ListDialogs.kt:text = { SchedulePicker(scheduleKind = kind, scheduleDaysOfWeek = days, onChange = { k, d -&gt; kind = k; days = d }) }</ID>
+    === ItemEditorDialog.kt ===
+    <ID>FunctionNaming:ItemEditorDialog.kt:@Composable fun ItemEditorDialog( currentText: String, currentUnit: String?, currentTarget: Double?, currentDirection: String?, onDismiss: () -&gt; Unit, onSave: (text: String, unit: String?, target: Double?, direction: String?) -&gt; Unit, )</ID>
+    <ID>MaxLineLength:ItemEditorDialog.kt:Text(it, style = MaterialTheme.typography.labelMedium, color = SoftColors.text3, modifier = Modifier.padding(top = 4.dp))</ID>
+    <ID>MaxLineLength:ItemEditorDialog.kt:listOf(MeasureDirection.AT_LEAST to "At least", MeasureDirection.AT_MOST to "At most")</ID>
+    === ListHistoryContent.kt ===
+    <ID>FunctionNaming:ListHistoryContent.kt:@Composable fun ListHistoryContent(state: ListHistoryState, onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ListHistoryContent.kt:@Composable private fun HistoryLineRow(line: ChecklistController.ChecklistHistoryLine)</ID>
+    <ID>MaxLineLength:ListHistoryContent.kt:Row</ID>
+    <ID>MaxLineLength:ListHistoryContent.kt:Text(measureValueDisplay(line.item, value) + resultLabel, style = MaterialTheme.typography.labelSmall, color = SoftColors.text2)</ID>
+    <ID>MaxLineLength:ListHistoryContent.kt:val resultLabel = measureTargetResult(line.item, value)?.let { " - ${measureTargetResultLabel(it)}" } ?: ""</ID>
+    === ProgressRing.kt ===
+    <ID>FunctionNaming:ProgressRing.kt:@Composable fun ProgressRing( fraction: Float?, ringColor: Color, size: Dp = 68.dp, strokeWidth: Dp = 4.dp, content: @Composable () -&gt; Unit, )</ID>
+    === DashedBorder.kt ===
+    <ID>MaxLineLength:DashedBorder.kt:style = Stroke(width = strokePx, pathEffect = PathEffect.dashPathEffect(floatArrayOf(DASH_LENGTH_PX, DASH_GAP_PX), 0f))</ID>
+    === ListsScreenshotTest.kt ===
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$Checklist(id = id, name = name, scheduleKind = scheduleKind, scheduleEvery = if (scheduleKind != null) 1 else null)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListDetailState(checklist = checklist, loading = false, unticked = emptyList(), ticked = ticked, showTicked = true)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListDetailState(checklist = checklist, loading = false, unticked = unticked, ticked = ticked, showTicked = true)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListItemUi(ChecklistItem(id = 1, checklistId = 10, text = "Toothpaste", sortOrder = 0), ticked = false, value = null, tickDay = null, queued = false)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListItemUi(ChecklistItem(id = 2, checklistId = 10, text = "Eggs, dozen", sortOrder = 1), ticked = false, value = null, tickDay = null, queued = false)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListItemUi(ChecklistItem(id = 3, checklistId = 10, text = "Bread", sortOrder = 2), ticked = true, value = null, tickDay = 19_900, queued = false)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListItemUi(ChecklistItem(id = 4, checklistId = 10, text = "Coffee beans", sortOrder = 3), ticked = true, value = null, tickDay = 19_900, queued = true)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListItemUi(ChecklistItem(id = 6, checklistId = 12, text = "Book dentist cleaning", sortOrder = 0), ticked = true, value = null, tickDay = 19_900, queued = false)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListsPageState(loading = false, routines = routines, plainLists = plain, archivedLists = archived, showArchived = true)</ID>
+    <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$private</ID>
   </CurrentIssues>
 </SmellBaseline>

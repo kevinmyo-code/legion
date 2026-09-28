@@ -11,44 +11,48 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kevin.legion.R
 import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.service.Phase
-import com.kevin.legion.ui.theme.LegionMotion
-import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.legionPressScale
-import com.kevin.legion.ui.theme.LegionType
-import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.MsIcon
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import kotlinx.coroutines.delay
 
 /**
@@ -76,6 +80,14 @@ import kotlinx.coroutines.delay
  * disappear is a primary surface disappearing, not a neutral default. The off state now renders
  * [AssistantOffRow] - a quiet, tappable row that opens Settings - instead of nothing. The ENABLED
  * behaviour below this point is byte-for-byte unchanged.
+ *
+ * **RESTYLED for the soft-Material shell (home-launcher ticket 02, ADR 0051).** `MainActivity.kt`
+ * wraps this whole composable's call site in [SoftTheme] - see that call site's own comment - so
+ * every [MaterialTheme.colorScheme]/[MaterialTheme.typography] read below resolves against
+ * [com.kevin.legion.ui.theme.soft.SoftTypography]/the soft colour scheme, not
+ * [com.kevin.legion.ui.theme.LegionTheme]'s. Only [AssistantStripContent] and [AssistantOffRow]
+ * change - this state holder, [AssistantStripResolver], and the tap/permission/notice plumbing
+ * below are untouched.
  *
  * State-holder/UI split (`.claude/skills/compose-state-holder-ui-split`):
  * this function is the state holder - it owns [AssistantIgnition]'s live
@@ -178,32 +190,186 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
 }
 
 /**
- * The assistant-off state of [AssistantStrip] (2026-09-01 calendar-home cutover) - a quiet,
- * tappable row reading "ASSISTANT OFF - tap to turn on in Settings" that opens Settings on tap,
- * replacing the old zero-space return. Deliberately faint/muted, matching [AssistantStripContent]'s
- * own IDLE-phase tone rather than an ADVISORY/estimated colour - the assistant being off is a
- * setting, not a fault, so it does not borrow [LocalLegionSemantics.estimated] the way a mic-blocked
- * ENABLED state does just below.
+ * The shared outer chrome both [AssistantStripContent] and [AssistantOffRow] sit in (home-launcher
+ * ticket 02): [SoftColors.barLow] surface with a 1dp [SoftColors.barRule] hairline drawn along the
+ * TOP edge (matching the prototype canvas's `border-top`, not a full border), inner padding 16dp
+ * horizontal / 9dp vertical - ticket 02 gives "8-10 vertical" as a range rather than two named
+ * values, and 9dp is the midpoint. Factored out once rather than duplicated in both call sites,
+ * which render mutually exclusively (enabled vs off) but each own the WHOLE bottom bar's content
+ * when they render, so each needs the identical outer wrapper.
  */
 @Composable
-private fun AssistantOffRow(onTap: () -> Unit) {
-    val sem = LocalLegionSemantics.current
-    val interactionSource = remember { MutableInteractionSource() }
-    Surface(
-        modifier = Modifier
+private fun AssistantStripBar(content: @Composable () -> Unit) {
+    Column(
+        Modifier
             .fillMaxWidth()
-            .legionPressScale(interactionSource)
-            .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+            .background(SoftColors.barLow)
+            .drawBehind {
+                drawLine(
+                    color = SoftColors.barRule,
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, 0f),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            .padding(horizontal = 16.dp, vertical = 9.dp),
     ) {
+        content()
+    }
+}
+
+/**
+ * The assistant-off state of [AssistantStrip] (2026-09-01 calendar-home cutover) - a quiet,
+ * tappable pill that opens Settings on tap, replacing the old zero-space return.
+ *
+ * **RESTYLED (home-launcher ticket 02)**: the same 52dp, fully-rounded pill shape
+ * [AssistantStripContent] uses, but OUTLINED (1dp [SoftColors.outline], transparent fill) rather
+ * than filled - deliberately faint/muted, matching the ENABLED state's own IDLE-phase tone rather
+ * than an estimate/caution colour, since the assistant being off is a setting, not a fault. Copy is
+ * ticket 02's own words, and never names a persona (CLAUDE.md §1: "never hardcode an assistant name
+ * into copy").
+ *
+ * `internal`, not `private` - `screenshot.AssistantStripScreenshotTest` (a different package)
+ * renders it directly, the same cross-package `internal` visibility `SoftTheme.kt`'s
+ * `SoftColorScheme` and `MainActivity.kt`'s `formatShellStatusLine` already rely on for their own
+ * tests.
+ */
+@Composable
+internal fun AssistantOffRow(onTap: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    AssistantStripBar {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .height(52.dp)
+                .legionPressScale(interactionSource)
+                .clip(RoundedCornerShape(percent = 50))
+                .border(1.dp, SoftColors.outline, RoundedCornerShape(percent = 50))
+                .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap),
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Assistant off - tap to turn on in Settings", style = LegionType.stamp, color = sem.faint)
+            Text(
+                "Assistant off. Tap to turn it on in Settings.",
+                style = MaterialTheme.typography.labelLarge,
+                color = SoftColors.text2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
+    }
+}
+
+/** The blocked/silenced pill tone (home-launcher ticket 02) - a literal the ticket names inline,
+ * separate from the shared [SoftColors] table, since nothing else in this ticket's scope reads it. */
+private val MicBlockedContainer = Color(0xFF3A2E12)
+
+/**
+ * Plain UI half of [AssistantStrip] - immutable [AssistantStripResolver.State]
+ * plus a single callback, previewable without a `Context` or any of the
+ * service flows.
+ *
+ * **RESTYLED (home-launcher ticket 02)**: a full-width, 52dp, fully-rounded pill
+ * ([SoftColors.primaryContainer] fill, `ms_mic`/[SoftColors.onPrimaryContainer] icon+label,
+ * centred) with [state.subtitle] beneath it, outside the pill, in [MaterialTheme.typography.bodySmall]
+ * / [SoftColors.text2], max 2 lines. `micBlocked`/`silenced` swap the pill to a caution tone
+ * ([MicBlockedContainer] fill, [SoftColors.caution] content, `ms_mic_off`) - colour is reinforcement
+ * only, per CLAUDE.md §7: [state.label] itself already says "Microphone permission needed" or
+ * "Can't hear you...", so nothing here depends on the driver seeing the colour to know something is
+ * wrong.
+ *
+ * Motion is unchanged in kind, only in WHERE it lives: the old dot's pulse becomes the mic icon's
+ * own alpha pulse for LISTENING/SPEAKING, still the same [rememberInfiniteTransition] this file has
+ * always used, still built CONDITIONALLY rather than merely read conditionally - constructing it
+ * unconditionally and picking between two alpha values afterwards would drive the frame clock for
+ * as long as this pill is composed, in every phase, on every tab, which is exactly the mistake an
+ * earlier version of the retired dot made and a review caught before it shipped. That is why
+ * [state.active] gates the WHOLE `rememberInfiniteTransition` call below, not just its output.
+ *
+ * `internal`, not `private` - see [AssistantOffRow]'s own doc for why (the same screenshot test
+ * renders this one too).
+ */
+@Composable
+internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -> Unit) {
+    val blocked = state.micBlocked || state.silenced
+    val pillContainer = if (blocked) MicBlockedContainer else SoftColors.primaryContainer
+    val pillContent = if (blocked) SoftColors.caution else SoftColors.onPrimaryContainer
+    val iconRes = if (blocked) R.drawable.ms_mic_off else R.drawable.ms_mic
+    // Called here, at the composable level, because graphicsLayer's own lambda below is a
+    // DRAW-phase closure and cannot call a @Composable function itself. [pulseAlpha] hands back
+    // the raw State<Float>, NOT destructured with `by` - only its `.value`, read inside the
+    // graphicsLayer lambda further down, is what stays draw-phase-only. Destructuring it here
+    // instead (`val iconAlpha by pulseAlpha(...)`) would subscribe THIS composable's own
+    // recomposition scope to every animation tick, recomposing the whole pill on each frame - the
+    // exact deferred-read discipline [com.kevin.legion.ui.common.StatusLine]'s own cursor already
+    // follows (`cursorAlpha.value` inside its `graphicsLayer` lambda, never destructured earlier).
+    val iconAlpha = pulseAlpha(active = state.active)
+
+    val interactionSource = remember { MutableInteractionSource() }
+    AssistantStripBar {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .legionPressScale(interactionSource)
+                .clip(RoundedCornerShape(percent = 50))
+                .background(pillContainer)
+                .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MsIcon(
+                res = iconRes,
+                // Decorative - state.label (below) already carries the meaning in words, and the
+                // whole pill is one clickable region TalkBack reads as a unit.
+                contentDescription = null,
+                tint = pillContent,
+                modifier = Modifier.graphicsLayer { alpha = iconAlpha.value },
+            )
+            Text(
+                state.label,
+                style = MaterialTheme.typography.labelLarge,
+                color = pillContent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (state.subtitle != null) {
+            Text(
+                state.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftColors.text2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The mic icon's alpha while [active] (LISTENING/SPEAKING) - a cheap `infiniteRepeatable`, not a
+ * frame-clock-gated one (that restriction was head-unit only; see CLAUDE.md §6/§7). Returns the raw
+ * [State] rather than a destructured `Float` so the caller can defer the actual read to draw phase
+ * (see the call site's own comment) - and, when not [active], a constant `1f` [State] with no
+ * [rememberInfiniteTransition] created at all, same conditional-construction discipline this strip's
+ * retired dot used: constructing the transition unconditionally and merely choosing between two
+ * alpha values afterwards would drive the frame clock for as long as this pill is composed, in every
+ * phase, on every tab. An earlier version made exactly that mistake while its own comment claimed
+ * the opposite; a review caught it before it shipped.
+ */
+@Composable
+private fun pulseAlpha(active: Boolean): State<Float> {
+    return if (active) {
+        val transition = rememberInfiniteTransition(label = "assistant-strip-pulse")
+        transition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(com.kevin.legion.ui.theme.LegionMotion.PULSE_MS), RepeatMode.Reverse),
+            label = "assistant-strip-pulse-alpha",
+        )
+    } else {
+        remember { mutableStateOf(1f) }
     }
 }
 
@@ -214,116 +380,20 @@ private fun hasRecordAudio(context: android.content.Context): Boolean =
 /** How long a flashed [CompanionPhase] notice stays on the strip before clearing. */
 private const val NOTICE_DISPLAY_MS = 4_000L
 
-/**
- * Plain UI half of [AssistantStrip] - immutable [AssistantStripResolver.State]
- * plus a single callback, previewable without a `Context` or any of the
- * service flows.
- *
- * Phase is legible from the text alone (CLAUDE.md §7: colour is never
- * sufficient) - the dot is a secondary, motion-carrying cue, not the only
- * signal. Motion is allowed on the phone pivot (the frame-clock-only ban was
- * head-unit only), so LISTENING/SPEAKING get a cheap pulse; every other state
- * is a static dot.
- */
-@Composable
-private fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -> Unit) {
-    val sem = LocalLegionSemantics.current
-    // ADVISORY (mission-control ticket 13 re-home): a blocked capability, not a failed gate or
-    // an active fault - amber, not chrome. See ticket 04's answer, section 1.
-    // A silenced capture is the same class of thing - blocked, not faulted - so it
-    // borrows the same advisory treatment. The WORDS carry it either way.
-    val labelColor =
-        if (state.micBlocked || state.silenced) sem.estimated else MaterialTheme.colorScheme.onSurface
-
-    // Ticket 14 point 3: the strip is a tappable row like any Deck row, so it gets the same
-    // uniform press response - built here rather than skipped, since this strip lives above the
-    // NavHost (Scaffold's own bottomBar slot) and is the one tap target on screen for the whole
-    // time the assistant is switched on.
-    val interactionSource = remember { MutableInteractionSource() }
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .legionPressScale(interactionSource)
-            .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            PhaseDot(active = state.active, blocked = state.micBlocked || state.silenced)
-            Column(Modifier.weight(1f)) {
-                Text(state.label, style = MaterialTheme.typography.titleMedium, color = labelColor)
-                if (state.subtitle != null) {
-                    Text(state.subtitle, style = LegionType.stamp, color = sem.faint)
-                }
-            }
-        }
-    }
-}
-
-/**
- * The dot beside the label. A static colour swatch for every phase except
- * LISTENING/SPEAKING, which pulse - a cheap `infiniteRepeatable` alpha
- * animation, not a frame-clock-gated one (that restriction was head-unit
- * only; see CLAUDE.md §6/§7).
- */
-@Composable
-private fun PhaseDot(active: Boolean, blocked: Boolean) {
-    val sem = LocalLegionSemantics.current
-    // ADVISORY, same re-home as [labelColor] above - mic-blocked is a blocked capability.
-    val color = when {
-        blocked -> sem.estimated
-        else -> MaterialTheme.colorScheme.primary
-    }
-    // The transition is CONSTRUCTED conditionally, not merely read
-    // conditionally. `rememberInfiniteTransition` + `animateFloat` tick for as
-    // long as they are composed, whatever any `active` flag downstream says, so
-    // registering them unconditionally and then picking between two values
-    // would drive the frame clock and recompose this dot forever - on every
-    // tab, in IDLE, for the entire time the assistant is switched on, because
-    // this strip lives in Scaffold's bottomBar slot outside the NavHost.
-    //
-    // An earlier version did exactly that while its comment claimed the
-    // opposite. Caught in review before it shipped.
-    val alpha = if (active) {
-        val transition = rememberInfiniteTransition(label = "assistant-strip-pulse")
-        val pulsingAlpha by transition.animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1f,
-            // LegionMotion.PULSE_MS (ticket 14) - the SAME breathing tempo this file's own doc
-            // above calls "the one earned pulse" is now the single tempo any future ambient pulse
-            // in the app reads, rather than a value that happened to be typed here first.
-            animationSpec = infiniteRepeatable(tween(LegionMotion.PULSE_MS), RepeatMode.Reverse),
-            label = "assistant-strip-pulse-alpha",
-        )
-        pulsingAlpha
-    } else {
-        1f
-    }
-
-    Box(
-        Modifier
-            .size(10.dp)
-            .graphicsLayer { this.alpha = alpha }
-            .background(color, CircleShape)
-    )
-}
-
 // --- previews ---------------------------------------------------------
+// Wrapped in SoftTheme, not LegionTheme, since that is what MainActivity.kt's real call site wraps
+// this composable in (home-launcher ticket 02) - a preview under the wrong theme would render the
+// wrong font/colours and silently stop matching what actually ships.
 
-@Preview(name = "Assistant strip: off (2026-09-01 - was zero-space)", widthDp = 360)
+@Preview(name = "Assistant strip: off (2026-09-01 - was zero-space)", widthDp = 384)
 @Composable
-private fun PreviewAssistantOffRow() = LegionTheme {
+private fun PreviewAssistantOffRow() = SoftTheme {
     AssistantOffRow(onTap = {})
 }
 
-@Preview(name = "Assistant strip: idle", widthDp = 360)
+@Preview(name = "Assistant strip: idle", widthDp = 384)
 @Composable
-private fun PreviewAssistantStripIdle() = LegionTheme {
+private fun PreviewAssistantStripIdle() = SoftTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.IDLE, "", null, micGranted = true, silenced = false,
@@ -332,9 +402,9 @@ private fun PreviewAssistantStripIdle() = LegionTheme {
     )
 }
 
-@Preview(name = "Assistant strip: listening", widthDp = 360)
+@Preview(name = "Assistant strip: listening", widthDp = 384)
 @Composable
-private fun PreviewAssistantStripListening() = LegionTheme {
+private fun PreviewAssistantStripListening() = SoftTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.LISTENING, "how's the oil holding up?", null, micGranted = true,
@@ -344,9 +414,9 @@ private fun PreviewAssistantStripListening() = LegionTheme {
     )
 }
 
-@Preview(name = "Assistant strip: speaking", widthDp = 360)
+@Preview(name = "Assistant strip: speaking", widthDp = 384)
 @Composable
-private fun PreviewAssistantStripSpeaking() = LegionTheme {
+private fun PreviewAssistantStripSpeaking() = SoftTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.SPEAKING, "your oil change is about two weeks overdue", null, micGranted = true,
@@ -356,9 +426,9 @@ private fun PreviewAssistantStripSpeaking() = LegionTheme {
     )
 }
 
-@Preview(name = "Assistant strip: notice", widthDp = 360)
+@Preview(name = "Assistant strip: notice", widthDp = 384)
 @Composable
-private fun PreviewAssistantStripNotice() = LegionTheme {
+private fun PreviewAssistantStripNotice() = SoftTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.IDLE, "", "NO SIGNAL OUT HERE", micGranted = true, silenced = false,
@@ -367,9 +437,9 @@ private fun PreviewAssistantStripNotice() = LegionTheme {
     )
 }
 
-@Preview(name = "Assistant strip: mic permission needed", widthDp = 360)
+@Preview(name = "Assistant strip: mic permission needed", widthDp = 384)
 @Composable
-private fun PreviewAssistantStripMicBlocked() = LegionTheme {
+private fun PreviewAssistantStripMicBlocked() = SoftTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.IDLE, "", null, micGranted = false, silenced = false,
@@ -380,7 +450,7 @@ private fun PreviewAssistantStripMicBlocked() = LegionTheme {
 
 @Preview(name = "Assistant strip: silenced by another app", widthDp = 384)
 @Composable
-private fun PreviewAssistantStripSilenced() = LegionTheme {
+private fun PreviewAssistantStripSilenced() = SoftTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.LISTENING, "go ahead", null, micGranted = true, silenced = true,

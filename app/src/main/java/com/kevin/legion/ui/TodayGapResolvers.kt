@@ -223,10 +223,17 @@ fun nextAgendaEntry(entries: List<AgendaEntry>, nowMs: Long): AgendaEntry? =
  * fix yet, or Open-Meteo has never been reached since install - reads its own honest sentence,
  * never a blank line and never a fabricated "clear" (the same "unreadable, not clean air" posture
  * `ui/world/AreaCard.kt`'s `aqiLine` states for the AQI half of this same strip).
+ *
+ * **CORRECTED home-launcher ticket 03: this used to append " - drive safe" to [info.caution].**
+ * The assistant is a concierge, not a car companion, and the user is not assumed to be in a car
+ * (CLAUDE.md sec 1) - this is the one line that assumption had survived in. `caution` still means
+ * the same thing ([WeatherController.WeatherInfo]'s own doc: rough/hazardous conditions), only the
+ * words changed. This function is now also HOME's own weather line (`ui/home/HomeTileReadings.kt`),
+ * not only `MetersScreen`'s retired one.
  */
 fun weatherLine(info: WeatherController.WeatherInfo?): String {
     if (info == null) return "Weather not available yet - no location fix"
-    val caution = if (info.caution) " - drive safe" else ""
+    val caution = if (info.caution) " - rough conditions" else ""
     return "${info.tempF}F, ${info.description}$caution"
 }
 
