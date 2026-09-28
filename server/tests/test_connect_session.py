@@ -280,3 +280,16 @@ def test_the_scripts_body_is_accepted_by_the_server(source, token_a, monkeypatch
     assert response.status_code == 200, response.data
     assert response.data["source"] == source
     assert response.data["config"] == config
+
+
+def test_drive_backup_switch_is_sent_only_when_given():
+    """backend-etl ticket 03: the server merges config, so leaving the flag
+    out keeps the last setting rather than switching backups off."""
+    scopes = list(cs.DRIVE_SCOPES)
+    assert cs.drive_config(scopes, None) == {"scopes": scopes}
+    assert cs.drive_config(scopes, True) == {"scopes": scopes, "backup": True}
+    assert cs.drive_config(scopes, False) == {"scopes": scopes, "backup": False}
+    args = cs.parse_args(["drive", *SERVER, "--client-id", "i", "--client-secret", "s", "--backup"])
+    assert args.backup is True
+    args = cs.parse_args(["drive", *SERVER, "--client-id", "i", "--client-secret", "s"])
+    assert args.backup is None
