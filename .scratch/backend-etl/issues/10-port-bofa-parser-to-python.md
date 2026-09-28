@@ -3,7 +3,8 @@ map: backend-etl
 ticket: "10"
 title: "Port BofaStatementParser to Python so BofA statements skip the LLM"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-09-28 (7b0c3f3), server suite 1065 / 0 failures / 43 skipped (JUnit). Not deployed. Owed: one real BofA checking and one card statement through the live watcher; pypdf on real BofA PDFs is unmeasured."
 blockers: ["06"]
 blocked-by: ["[[06-drive-statements-watcher]]"]
 tags: [ticket]
