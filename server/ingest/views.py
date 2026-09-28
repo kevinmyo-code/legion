@@ -27,12 +27,18 @@ already decodes with `ignoreUnknownKeys = true` (`DjangoEventsBackend`,
 
 ## Extraction is NOT here
 
-The caller supplies the lines. Server-side extraction - accept the photo, run the
-model, build the candidate rows - is the eventual shape and is deliberately not
-this ticket: it waits on ticket 05 (media, still open and repointed at R2) and on
-a ruling nobody has made about where a user-owned server-side LLM key lives.
-Opening that fork inside the gate's own port would have made two decisions at
-once. Ticket 03's status-detail says the same thing in the same words.
+The caller supplies the lines. For statements the server now has a second
+caller of the same commit: the `drive_statements` job (backend-etl ticket 06,
+`ingest/statements.py`) extracts a bank's own PDF and calls `commit_statement`
+below in-process. What follows is the original note, still true of receipts.
+
+Server-side extraction of a receipt - accept the photo, run the model, build
+the candidate rows - is the eventual shape and is deliberately not this ticket:
+it waits on ticket 05 (media, still open and repointed at R2) and on a ruling
+nobody has made about where a user-owned server-side LLM key lives (for
+statements that ruling is made: `LEGION_GEMINI_KEY`). Opening that fork inside
+the gate's own port would have made two decisions at once. Ticket 03's
+status-detail says the same thing in the same words.
 
 ## Why a quarantine is a 200 and not a 4xx
 

@@ -293,3 +293,27 @@ def test_drive_backup_switch_is_sent_only_when_given():
     assert args.backup is True
     args = cs.parse_args(["drive", *SERVER, "--client-id", "i", "--client-secret", "s"])
     assert args.backup is None
+
+
+def test_drive_statements_folder_is_sent_only_when_given_and_accepts_a_url():
+    """backend-etl ticket 06: an id or the folder's URL, normalised to the id
+    by the same rule the server's `set_statements_folder` uses."""
+    scopes = list(cs.DRIVE_SCOPES)
+    folder = "19tqQKzPKZVm0zCVG-lt7zaERqstIPkNd"
+    assert cs.drive_config(scopes, None, folder) == {
+        "scopes": scopes,
+        "statements_folder_id": folder,
+    }
+    base = ["drive", *SERVER, "--client-id", "i", "--client-secret", "s"]
+    args = cs.parse_args(
+        [*base, "--statements-folder", f"https://drive.google.com/drive/folders/{folder}"]
+    )
+    assert args.statements_folder == folder
+    assert cs.parse_args(base).statements_folder is None
+
+
+def test_a_bad_statements_folder_is_refused_before_anything_runs(capsys):
+    base = ["drive", *SERVER, "--client-id", "i", "--client-secret", "s"]
+    with pytest.raises(SystemExit):
+        cs.parse_args([*base, "--statements-folder", "not a folder!"])
+    assert "Nothing was changed" in capsys.readouterr().err

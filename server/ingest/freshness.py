@@ -83,7 +83,7 @@ def ago(then: datetime.datetime, now: datetime.datetime) -> str:
     return f"{days} days ago"
 
 
-# Ticket 06: how long a statement the gate refused keeps being said on the
+# Ticket 06: how long a quarantined statement file keeps being said on the
 # freshness line. It is never re-read (its content hash is on record), so the
 # line is the prompt to act on it; the permanent record is `ingested_files`.
 QUARANTINE_WINDOW = datetime.timedelta(days=30)
@@ -91,8 +91,9 @@ QUARANTINE_NAMES_SHOWN = 3
 
 
 def quarantine_sentence(files) -> str:
-    """One sentence naming the statements the gate refused, with the first
-    one's reason. Empty when there are none."""
+    """One sentence naming the statement files quarantined (by the gate, or
+    before it: an unrecognised CSV, a missing anchor), with the newest one's
+    reason. Empty when there are none."""
     files = list(files)
     if not files:
         return ""
@@ -101,12 +102,13 @@ def quarantine_sentence(files) -> str:
     if len(files) > QUARANTINE_NAMES_SHOWN:
         names += f" and {len(files) - QUARANTINE_NAMES_SHOWN} more"
     count = len(files)
-    noun = "statement was" if count == 1 else "statements were"
+    noun = "file was" if count == 1 else "files were"
+    reason = (files[0].quarantine_reason or "").strip()
     return (
-        f"{count} {noun} refused by the reconciliation gate and nothing from "
-        f"{'it' if count == 1 else 'them'} was written: {names}. "
-        f"{files[0].quarantine_reason or ''}"
-    ).strip()
+        f"{count} statement {noun} quarantined and nothing from "
+        f"{'it' if count == 1 else 'them'} was written: {names}."
+        + (f" {'Reason' if count == 1 else 'Latest reason'}: {reason}" if reason else "")
+    )
 
 
 def sentence(

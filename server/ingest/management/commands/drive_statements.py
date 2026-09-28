@@ -17,8 +17,9 @@ from ingest.models import IngestRun, SessionSource, Source
 class Command(JobCommand):
     help = (
         "Read new bank PDFs/CSVs from the Drive statements folder, extract them (a parser "
-        "where one exists, else Gemini on LEGION_GEMINI_KEY) and commit them through the "
-        "reconciliation gate. A file that does not reconcile is quarantined with its reason."
+        "where one exists, else, for a PDF only, Gemini on LEGION_GEMINI_KEY; a CSV is never "
+        "sent to Gemini) and commit them through the reconciliation gate. A file that does "
+        "not reconcile is quarantined with its reason."
     )
 
     source = Source.DRIVE_STATEMENTS
