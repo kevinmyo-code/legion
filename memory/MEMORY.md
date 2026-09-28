@@ -37,6 +37,9 @@ believed.
   `.claude/worktrees/home-redesign`: the tip is an **UNVERIFIED WIP commit of audit fixes - do not
   merge until its suite is green**. Tickets 01-04 were green before it (3677 / 0). Resume steps:
   `.scratch/home-launcher/map.md` under "RESUME HERE". `feat/home-lists` is fully inside it.
+- `feat/backend-etl` is pushed at `e2e7a9f` (worktree `.claude/worktrees/backend-etl`). Its `004ac07`
+  is an **untested WIP in server/ingest - do not merge or deploy**. Resume: `.scratch/backend-etl/map.md`
+  "Where we stopped". backend-etl ticket 12 (Canvas submitted, on the phone) is Android work for app/'s session.
 - **Open:** hardening 13 (Room invalidation leak, flaky screenshot test), place-arrivals 01
   (Google refuses geofences). Stale worktree folders (launcher, oneshot, assistlock) can be removed now
   that no Gradle daemon holds them; `quiet` is done too.
