@@ -3,7 +3,8 @@ map: backend-etl
 ticket: "11"
 title: "The web app shows what Canvas says beside each coursework task"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-09-28 (6c1a185, feat/web-canvas-submitted): vitest 69/69, tsc clean, rendered at 384px against a mock. Not deployed. Owed: Kevin sees it on the live Today view after the next deploy."
 blockers: ["04"]
 blocked-by: ["[[04-canvas-poll]]"]
 tags: [ticket]
