@@ -183,6 +183,33 @@ def _fields(line: str, where: str) -> list[str]:
     return rows[0] if rows else []
 
 
+# A checking row as BofA writes it: date, quoted description, quoted amount,
+# quoted running balance. Anchored at both ends on shapes a description cannot
+# take (a date first, two exact amounts last), so the description is exactly
+# what lies between, quotes included.
+_CHECKING_ROW_RE = re.compile(
+    r'^(\d{2}/\d{2}/\d{4}),"(.*)","(-?[\d,]+\.\d{2})","(-?[\d,]+\.\d{2})"$',
+    re.ASCII | re.DOTALL,
+)
+
+
+def _checking_row_fields(line: str, where: str) -> list[str]:
+    """One checking transaction row. BofA writes a Zelle memo's own quotation
+    marks into the description unescaped (`...for "rent"; Conf# ...`), which is
+    not valid CSV, and five of Kevin's 13 closed periods (2026-09-28) carried
+    one. A row that is valid CSV reads as CSV. One that is not is read by its
+    fixed shape, and only if that shape matches exactly; anything else is still
+    a refusal. The running balance is checked on every row either way, so a
+    misread row fails the gate rather than slipping through (section 4 rule 6)."""
+    try:
+        return _fields(line, where)
+    except statements.ParserRefused:
+        match = _CHECKING_ROW_RE.match(line)
+        if match is None:
+            raise
+        return list(match.groups())
+
+
 def _money(token: str, where: str) -> int:
     try:
         return parse_money_cents(token)
@@ -407,7 +434,7 @@ def parse_checking(lines: list[str], file_name: str) -> statements.Parsed | None
                 f"This checking export has a blank line inside its transaction table, before "
                 f"row {number}. {NOTHING_WRITTEN}"
             )
-        fields = _fields(row, where.capitalize())
+        fields = _checking_row_fields(row, where.capitalize())
         if len(fields) != 4:
             raise statements.ParserRefused(
                 f"Transaction row {number} of this checking export has {len(fields)} columns, "

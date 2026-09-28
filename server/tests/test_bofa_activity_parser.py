@@ -240,6 +240,40 @@ def test_a_well_formed_checking_export_passes():
     assert [line["amount_cents"] for line in parsed.payload["lines"]] == [243000, -20308]
 
 
+def test_a_zelle_memo_with_its_own_unescaped_quotes_reads_by_the_rows_shape():
+    # BofA writes the memo's quotation marks into the field unescaped: not valid
+    # CSV. Five of Kevin's 13 closed checking periods carried one (2026-09-28).
+    rows = [
+        '07/01/2026,Beginning balance as of 07/01/2026,,"-6.31"',
+        '07/02/2026,"Zelle payment from A B for "rent, july"; Conf# abc123","2,430.00","2,423.69"',
+        '07/21/2026,"CHECKCARD 0721 GROCER","-203.08","2,220.61"',
+    ]
+    parsed = CHECKING.parse(checking(rows=rows), file_name=CHECKING_NAME)
+    lines = parsed.payload["lines"]
+    assert [line["amount_cents"] for line in lines] == [243000, -20308]
+    assert lines[0]["description"] == 'Zelle payment from A B for "rent, july"; Conf# abc123'
+
+
+def test_a_broken_row_that_is_not_the_rows_shape_is_still_refused():
+    rows = [
+        '07/01/2026,Beginning balance as of 07/01/2026,,"-6.31"',
+        '07/02/2026,"Zelle for "rent"; Conf# abc","2,430.00"',
+        '07/21/2026,"CHECKCARD 0721 GROCER","-203.08","2,220.61"',
+    ]
+    reason = refused(CHECKING, checking(rows=rows), CHECKING_NAME)
+    assert "not a well-formed CSV row" in reason
+
+
+def test_a_misread_memo_row_still_fails_the_running_balance():
+    rows = [
+        '07/01/2026,Beginning balance as of 07/01/2026,,"-6.31"',
+        '07/02/2026,"Zelle for "rent"; Conf# abc","2,430.00","9,999.99"',
+        '07/21/2026,"CHECKCARD 0721 GROCER","-203.08","2,220.61"',
+    ]
+    reason = refused(CHECKING, checking(rows=rows), CHECKING_NAME)
+    assert "running balance" in reason
+
+
 def test_a_running_balance_that_breaks_is_refused():
     rows = [
         '07/01/2026,Beginning balance as of 07/01/2026,,"-6.31"',
