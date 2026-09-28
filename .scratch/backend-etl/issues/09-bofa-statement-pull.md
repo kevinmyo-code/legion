@@ -4,13 +4,70 @@ ticket: "09"
 title: "connect_session.py bofa: log in daily, the script pulls new statements and mid-month activity"
 type: build
 status: open
-status-detail: "Laptop script BUILT 2026-09-28 on feat/bofa-pull (tools/connect_session.py bofa, tools/bofa_pull.py, tools/legion-daily.cmd), 58 unit tests green against a scripted fake; never run against the real site. OWED: the live --dry-run with Kevin, whether drive.file may create in a folder the app did not make, the card's Statements & Documents page (unseen). Still unbuilt: freshness source bofa (server)."
+status-detail: "Reworked 2026-09-28 on feat/bofa-csv-only: transaction CSVs only, no statement PDFs (Kevin). Laptop script pulls Current transactions daily plus closed periods Drive lacks; server gates a checking closed period and holds every current file provisional. Unit and DB tests green; never run against the real site. OWED: the live --dry-run with Kevin, then one real run. Still unbuilt: freshness source bofa (server)."
 blockers: ["02", "06"]
 blocked-by: ["[[02-session-vault-and-login-handover]]", "[[06-drive-statements-watcher]]"]
 tags: [ticket]
 ---
 
 # BofA pull: statements and mid-month activity
+
+## Decision 2026-09-28: transaction history only, no statement PDFs
+
+**Kevin, 2026-09-28:** *"lets not use statements. only the transaction history. i just need to know
+what im spending on."* This supersedes ruling 3's statement-PDF half and every statement step
+below. The script never visits Statements & Documents, and no PDF is downloaded, ever.
+
+**Two file kinds per account, told apart by NAME** (the content cannot tell them apart):
+
+| File | What | Checking | Card |
+|---|---|---|---|
+| `bofa_<last4>_activity_<YYYY-MM-DD>.csv` | "Current transactions", pulled daily, dated today. Window still open. | provisional (rule 7) | provisional |
+| `bofa_<last4>_period_<YYYY-MM-DD>.csv` | One closed period, dated by its END as BofA lists it. | **gated** (ruling 4), verified | provisional |
+
+- Checking dropdown `#select_txnPeriod`: `Period ending 09/04/2026`. Card dropdown
+  `#select_transaction`: `September 05, 2026`. Both mapped to ISO dates.
+- The script pulls Current transactions every run, plus every closed period ending within the last
+  13 months whose `_period_` name Drive does not already hold (the folder listing is the dedupe).
+- **Why a checking current file is provisional although it prints balances:** its window is still
+  open. Gated, every daily file became its own overlapping verified "statement", and the days
+  between the last pull and the period's close were listed by none of them. The closed period is
+  what gets verified: when it commits, `commit_statement` deletes the provisional rows in its
+  window (rule 7 condition 4). The current file's arithmetic is still checked (a failure still
+  quarantines); none of its balances is stored as an anchor. The period file's "Ending balance as
+  of" must equal the date in its name, or it is refused.
+- A checking CSV under any other name, BofA's own `currentTransaction_<last4>.csv` included,
+  quarantines in words. The card keeps accepting `currentTransaction_<last4>.csv` as a current file.
+- **Correction to the brief (tested 2026-09-28):** the brief reasoned that overlapping daily
+  checking files would store every row twice. A test against the old code showed they did not:
+  `resolve_dedup`'s strict pass absorbs exact repeats, so rows were stored once. What the old code
+  did do was file one verified `statements` row per daily pull, overlapping each other, and leave
+  the pre-close days unlisted. The rework fixes both; the double-store was never the failure.
+
+**Built (branch `feat/bofa-csv-only`):** `server/ingest/parsers/bofa_activity.py` (routing by
+name), `tools/bofa_pull.py` (statements step removed; period downloads added),
+`tools/tests/test_bofa_pull.py`, and overlap tests in `server/tests/test_bofa_activity_ingest.py`:
+`test_checking_current_day_1_then_day_2_then_the_closed_period_holds_each_row_once`,
+`test_checking_current_file_after_a_closed_period_leaves_the_verified_rows_untouched`,
+`test_card_current_then_closed_period_then_next_current_holds_each_row_once`,
+`test_identical_bytes_twice_are_a_no_op` (three kinds).
+
+**Owed, live:**
+
+1. **A dry run with Kevin:** `python tools/connect_session.py bofa --dry-run`. Check: the checking
+   dropdown really reads `Period ending MM/DD/YYYY` and the card's `Month DD, YYYY`; the card panel
+   stays open between downloads (the script clicks its link only when the select is hidden); each
+   period file's "Ending balance as of" date equals the date in its name (reasoned, not seen; a
+   mismatch quarantines every period file in words); the downloaded CSVs are the layouts the
+   server reads.
+2. **Then one real run:** every closed period lands; each checking period commits with anchors or
+   quarantines with a reason; card periods and current files land unverified; a second run the same
+   day downloads no period and duplicates nothing.
+3. Whether `drive.file` may create in a folder the app did not make (unchanged, below).
+
+> Everything below this line predates the decision above. Where it talks about statement PDFs or
+> Statements & Documents, it is history, not the plan.
+
 
 > **Split 2026-09-28.** The server side (the `bofa_activity.py` readers, the rule 7 provisional
 > writer, watcher routing, "unverified" on the API) is BUILT as [[13-bofa-activity-csv-server-side]]
@@ -78,7 +135,7 @@ of `tools/bofa_pull.py`, commented "last seen working 2026-09-28".
 4. **Year switch**: after choosing a year the script waits for network idle and expands
    "Statements". Whether the list refreshes in place is unseen; check on the dry run that the two
    years' PDFs differ.
-5. `server/tests/test_connect_session.py::test_bofa_is_not_a_subcommand_yet` still passes (bofa
+5. **Done 2026-09-28** (renamed `test_bofa_takes_no_server_and_no_token`). `server/tests/test_connect_session.py::test_bofa_is_not_a_subcommand_yet` still passed (bofa
    rejects `--server`, so argparse exits), but its docstring is now false. Server terminal: rename it
    to assert bofa takes no `--server`/`--token`.
 
