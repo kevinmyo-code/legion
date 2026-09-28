@@ -420,6 +420,61 @@ class ChecklistControllerTest {
     }
 
     @Test
+    fun `the untick trap - a plain item ticked yesterday unticks via its own tickDay, not the day being viewed`() = runBlocking {
+        // home-launcher ticket 04: itemsWithTickState says ticked if ANY live tick exists on ANY
+        // day for a plain (scheduleKind null) list, but untick(itemId, day) only clears ONE day's
+        // row. A screen that always unticks against today() (the day it is viewing) would hit no
+        // row at all for a tick that actually lives on an earlier day - ItemState.tickDay is the
+        // fix, and this proves a caller that unticks via tickDay actually clears it.
+        val checklist = backdatedChecklist("groceries", createdAt = epochMs(2026, 1, 1)) // scheduleKind null
+        val item = ChecklistController.addItem(context, checklist.id, "toothpaste")
+        val yesterday = day(2026, 9, 8)
+        val today = day(2026, 9, 9)
+
+        ChecklistController.tick(context, item.id, yesterday)
+
+        val viewedToday = ChecklistController.itemsWithTickState(context, checklist.id, today).loaded().single()
+        assertTrue("a plain list is done once, ever - ticked yesterday still reads ticked today", viewedToday.ticked)
+        assertEquals("tickDay must point at the day the tick actually lives on, not the day being viewed", yesterday, viewedToday.tickDay)
+
+        // The bug this fixes: unticking against `today` (the day being viewed) does nothing -
+        // there is no (item, today) row to clear.
+        ChecklistController.untick(context, item.id, today)
+        assertTrue(
+            "unticking the wrong day must not have cleared it - this is the bug tickDay exists to route around",
+            ChecklistController.itemsWithTickState(context, checklist.id, today).loaded().single().ticked,
+        )
+
+        // The fix: unticking against tickDay actually clears it.
+        ChecklistController.untick(context, item.id, viewedToday.tickDay!!)
+        assertFalse(
+            "unticking the tick's own tickDay must clear it",
+            ChecklistController.itemsWithTickState(context, checklist.id, today).loaded().single().ticked,
+        )
+    }
+
+    @Test
+    fun `a routine's tickDay is the day being viewed, not some other day`() = runBlocking {
+        val checklist = backdatedChecklist("bio", createdAt = epochMs(2026, 1, 1), scheduleKind = "DAILY", scheduleEvery = 1)
+        val item = ChecklistController.addItem(context, checklist.id, "goblet squats")
+        val monday = day(2026, 9, 7)
+
+        ChecklistController.tick(context, item.id, monday)
+
+        val state = ChecklistController.itemsWithTickState(context, checklist.id, monday).loaded().single()
+        assertEquals(monday, state.tickDay)
+    }
+
+    @Test
+    fun `tickDay is null when the item is not ticked`() = runBlocking {
+        val checklist = backdatedChecklist("groceries", createdAt = epochMs(2026, 1, 1))
+        val item = ChecklistController.addItem(context, checklist.id, "toothpaste")
+
+        val state = ChecklistController.itemsWithTickState(context, checklist.id, day(2026, 9, 9)).loaded().single()
+        assertNull(state.tickDay)
+    }
+
+    @Test
     fun `history for a no-schedule list still shows the day it was actually ticked`() = runBlocking {
         val checklist = backdatedChecklist("groceries", createdAt = epochMs(2026, 1, 1)) // scheduleKind null
         val item = ChecklistController.addItem(context, checklist.id, "milk")
