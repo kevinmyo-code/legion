@@ -48,7 +48,7 @@ $do$;
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("ingest", "0004_discussions_are_ticked_by_hand"),
+        ("ingest", "0005_canvas_never_ticks"),
     ]
 
     operations = [

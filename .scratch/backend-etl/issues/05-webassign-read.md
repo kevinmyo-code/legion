@@ -3,7 +3,8 @@ map: backend-etl
 ticket: "05"
 title: "webassign_read, daily, completion only"
 type: build
-status: open
+status: kiv
+status-detail: "Parked 2026-09-28 (Kevin): ticks are manual, WebAssign completion not needed for now."
 blockers: ["04"]
 blocked-by: ["[[04-canvas-poll]]"]
 tags: [ticket]

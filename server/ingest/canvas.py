@@ -4,9 +4,11 @@ Every run reads every active course's assignments with the student's own
 submission, turns each into one `kind = task` row (plus one sub-deadline row
 for a discussion whose description names an earlier initial-post deadline),
 and writes them through `public.upsert_canvas_task`, the Postgres function
-that holds the rules two writers must agree on (migration 0003). What this
-module decides is only what Canvas SAID; what may be written is the
-function's call.
+that holds the rules two writers must agree on (migrations 0003-0005). What
+this module decides is only what Canvas SAID; what may be written is the
+function's call. **Canvas never ticks a row** (Kevin, 2026-09-28, migration
+0005): the submission state is written as `structured_meta.canvas_submitted`
+beside the task, and `done` is only ever set by a person.
 
 **Auth is the vault's cookie jar** (map ruling 2): Canvas's REST API accepts
 the web session for GETs. A 401, or a redirect to a login page, marks the
@@ -251,9 +253,10 @@ def is_submitted(submission: dict) -> bool:
 
     `submitted_at` present, or a submitted/pending-review state, or `graded`
     when Canvas does NOT also call it missing: an instructor grading a missing
-    assignment zero is `graded` with no submission, and ticking that would say
-    "you submitted this" about work that was never handed in. `excused` is not
-    a submission and does not tick.
+    assignment zero is `graded` with no submission, and calling that submitted
+    would say "you submitted this" about work that was never handed in.
+    `excused` is not a submission. Written as `canvas_submitted`; never
+    applied to `done`.
     """
     if submission.get("submitted_at"):
         return True
@@ -396,7 +399,7 @@ def tidy_name(value: object) -> str:
     """An assignment name as a title wants it: trimmed, and every run of
     whitespace one space. Canvas hands names back with stray leading and
     trailing spaces (the 2026-09-28 live run titled two rows
-    "COSC 3318 Python Programming ·  Module 2: Assignment "). Migration 0005
+    "COSC 3318 Python Programming ·  Module 2: Assignment "). Migration 0006
     tidied the rows that run already wrote."""
     return _WHITESPACE_RUN.sub(" ", str(value or "")).strip()
 
@@ -484,6 +487,7 @@ def assignment_tasks(
     submission = assignment.get("submission") or {}
     due = parse_instant(assignment.get("due_at"))
     submitted_at = parse_instant(submission.get("submitted_at"))
+    submitted = is_submitted(submission)
     not_graded = assignment.get("grading_type") == "not_graded"
     types = _submission_types(assignment) or ""
     name = name or derived_course_name(course)
@@ -510,9 +514,10 @@ def assignment_tasks(
         "origin_guid": f"canvas:{aid}",
         "title": title,
         "starts_at": due.isoformat() if due else None,
-        # What Canvas said, sent even for a discussion: the function (0004)
-        # refuses to tick one, since Canvas calls it submitted at the first post.
-        "submitted": is_submitted(submission),
+        # What Canvas said. The function (0005) writes it as
+        # `structured_meta.canvas_submitted` and never applies it to `done`:
+        # the tick is Kevin's (2026-09-28), Canvas is the double check.
+        "submitted": submitted,
         "submitted_at": submitted_at.isoformat() if submitted_at else None,
         "manual_completion": not_graded,
         # A not_graded placeholder is never inserted: decisions.md 2026-09-04
@@ -539,6 +544,9 @@ def assignment_tasks(
                     "origin_guid": f"canvas:{aid}:first_post",
                     "title": f"{title} - initial post due",
                     "starts_at": when.isoformat(),
+                    # Canvas marks a discussion submitted at the first post,
+                    # so the parent's state is what Canvas says of this row.
+                    "submitted": submitted,
                     "evidence": {
                         "parent_canvas_assignment_id": aid,
                         "sub_deadline": "first_post",

@@ -224,9 +224,11 @@ def test_inserted_rows_carry_the_evidence(fake, connected, household_a):
     assert quiz.origin_guid == "canvas:5001"
     # Canvas says "2026FA MATH3391 20937 - Probability and Statistics I".
     assert quiz.title == "MATH 3391 Probability and Statistics I · Module 2: Quiz"
-    assert quiz.done is True
-    assert quiz.done_at == utc(2026, 9, 12, 18, 0, 0)
+    # Canvas says it is in; the row is still open (Kevin, 2026-09-28).
+    assert quiz.done is False
+    assert quiz.done_at is None
     meta = quiz.structured_meta
+    assert meta["canvas_submitted"] is True
     assert meta["canvas_assignment_id"] == 5001
     assert meta["canvas_course_id"] == 101
     assert meta["canvas_course"] == "MATH 3391"
@@ -241,6 +243,7 @@ def test_inserted_rows_carry_the_evidence(fake, connected, household_a):
     assert homework.done is False
     assert homework.done_at is None
     assert homework.structured_meta["submission_state"] == "unsubmitted"
+    assert homework.structured_meta["canvas_submitted"] is False
 
 
 @pytest.mark.django_db
@@ -310,10 +313,12 @@ def test_a_discussion_canvas_calls_submitted_stays_open_with_the_evidence_kept(
     assert parent.structured_meta["submission_state"] == "graded"
     assert parent.structured_meta["score"] == 10
     assert parent.structured_meta["grade"] == "10"
+    assert parent.structured_meta["canvas_submitted"] is True
     first_post = sub(household_a, 5003)
     assert first_post.done is False
     assert first_post.done_at is None
     assert first_post.structured_meta["manual_completion"] is True
+    assert first_post.structured_meta["canvas_submitted"] is True
 
 
 @pytest.mark.django_db
@@ -373,10 +378,12 @@ def test_a_discussion_ticked_by_hand_stays_done(fake, connected, household_a, au
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("types", ["discussion_topic", "online_text_entry,discussion_topic"])
-def test_the_function_itself_refuses_a_discussion_tick(household_a, types):
+@pytest.mark.parametrize(
+    "types", ["discussion_topic", "online_text_entry,discussion_topic", "online_upload", None]
+)
+def test_a_direct_rpc_call_cannot_tick(household_a, types):
     """The rule lives in Postgres: a caller that sends `submitted` with no
-    manual flag still cannot tick a discussion, on insert or on update."""
+    manual flag cannot tick any row, discussion or not, on insert or update."""
     payload = {
         "canvas_assignment_id": 7001,
         "origin_guid": "canvas:7001",
@@ -388,12 +395,16 @@ def test_the_function_itself_refuses_a_discussion_tick(household_a, types):
     }
     read_at = utc(2026, 9, 20)
     assert canvas.upsert(household_a, payload, read_at)["done"] is False
-    # The evidence alone is enough on a row that already says what it is.
     bare = {**payload, "evidence": {"canvas_assignment_id": 7001}}
     assert canvas.upsert(household_a, bare, read_at)["action"] in {"unchanged", "updated"}
     row = Event.objects.get(household=household_a, origin_guid="canvas:7001")
     assert row.done is False
-    assert row.structured_meta["manual_completion"] is True
+    assert row.done_at is None
+    assert row.structured_meta["canvas_submitted"] is True
+    if types and "discussion_topic" in types:
+        assert row.structured_meta["manual_completion"] is True
+    else:
+        assert "manual_completion" not in row.structured_meta
 
 
 @pytest.mark.django_db
@@ -410,15 +421,23 @@ def test_the_live_dry_runs_submitted_discussion_is_inserted_open(fake, connected
 
 
 @pytest.mark.django_db
-def test_a_non_discussion_still_ticks_and_is_not_marked_manual(fake, connected, household_a):
+def test_an_open_row_canvas_calls_submitted_stays_open(fake, connected, household_a):
+    """Kevin, 2026-09-28: "i'll manually mark things as done". Canvas's word
+    is shown beside the task (`canvas_submitted`), never applied to it."""
     poll()
+    before = task(household_a, 5002)
+    assert before.structured_meta["canvas_submitted"] is False
     fake.assignment(5002)["submission"].update(
         workflow_state="submitted", submitted_at="2026-09-18T12:00:00Z"
     )
     poll()
     row = task(household_a, 5002)
-    assert row.done is True
-    assert row.done_at == utc(2026, 9, 18, 12, 0, 0)
+    assert row.done is False
+    assert row.done_at is None
+    assert row.provenance == before.provenance
+    assert row.structured_meta["canvas_submitted"] is True
+    assert row.structured_meta["submitted_at"] == "2026-09-18T12:00:00Z"
+    assert row.structured_meta["submission_state"] == "submitted"
     assert "manual_completion" not in row.structured_meta
     assert "manual_completion" not in task(household_a, 5001).structured_meta
 
@@ -544,7 +563,8 @@ def test_a_hand_seeded_row_matches_on_assignment_id_and_keeps_title_and_guid(
     row = Event.objects.get(pk=seeded.pk)
     assert row.title == "MATH 3391 · Quiz 2 (my title)"
     assert row.origin_guid == "semester:canvas:math-3391-quiz-2"
-    assert row.done is True
+    assert row.done is False  # Canvas says graded; the tick is still Kevin's
+    assert row.structured_meta["canvas_submitted"] is True
     assert row.structured_meta["match"] == "exact"
     assert row.structured_meta["submission_state"] == "graded"
     assert row.structured_meta["canvas_course_id"] == 101
@@ -598,12 +618,22 @@ def test_a_not_graded_placeholder_is_not_inserted_but_an_existing_one_is_marked_
 
 
 @pytest.mark.django_db
-def test_the_poller_never_unticks_a_row(fake, connected, household_a):
+def test_a_hand_ticked_row_stays_done_when_canvas_says_unsubmitted(fake, connected, household_a):
+    ticked_at = utc(2026, 9, 10, 12, 0, 0)
     seeded = seed(
-        household_a, title="done by hand", done=True, structured_meta={"canvas_assignment_id": 5002}
+        household_a,
+        title="done by hand",
+        done=True,
+        done_at=ticked_at,
+        provenance="USER",
+        structured_meta={"canvas_assignment_id": 5002},
     )
     poll()
-    assert Event.objects.get(pk=seeded.pk).done is True
+    row = Event.objects.get(pk=seeded.pk)
+    assert row.done is True
+    assert row.done_at == ticked_at
+    assert row.provenance == "USER"
+    assert row.structured_meta["canvas_submitted"] is False  # the mismatch ticket 11 shows
 
 
 # =============================================================================
@@ -919,8 +949,8 @@ def test_only_the_household_with_a_canvas_login_runs(fake, connected, household_
 def test_matching_never_crosses_households(fake, connected, household_a, household_b):
     theirs = seed(household_b, title="B's copy", structured_meta={"canvas_assignment_id": 5001})
     poll()
-    assert Event.objects.get(pk=theirs.pk).done is False
-    assert task(household_a, 5001).done is True
+    assert Event.objects.get(pk=theirs.pk).structured_meta == {"canvas_assignment_id": 5001}
+    assert task(household_a, 5001).structured_meta["canvas_submitted"] is True
 
 
 # =============================================================================
@@ -977,11 +1007,12 @@ def test_writes_bump_updated_at_for_the_changes_feed_and_no_ops_do_not(
         )
         poll()
         changed = task(household_a, 5002)
-        assert changed.done is True
+        assert changed.done is False
+        assert changed.structured_meta["canvas_submitted"] is True
         assert changed.updated_at > stamp
         feed = auth_client.get(f"/api/changes?aspects=events&since={since}").json()
         delivered = [e for e in feed["events"] if e["id"] == str(homework.pk)]
-        assert len(delivered) == 1 and delivered[0]["done"] is True
+        assert len(delivered) == 1 and delivered[0]["done"] is False
     finally:
         Event.objects.all().delete()
 
@@ -1021,12 +1052,12 @@ def test_a_blank_name_falls_back_to_the_assignment_id(fake, connected, household
 
 
 @pytest.mark.django_db(transaction=True)
-def test_migration_0005_tidies_only_poller_titles_and_bumps_updated_at(household_a):
+def test_migration_0006_tidies_only_poller_titles_and_bumps_updated_at(household_a):
     """`transaction=True` so the migration's `now()` is later than the seed's."""
     import importlib
 
     tidy_sql = importlib.import_module(
-        "ingest.migrations.0005_tidy_canvas_title_whitespace"
+        "ingest.migrations.0006_tidy_canvas_title_whitespace"
     ).TIDY_SQL
     try:
         messy = seed(

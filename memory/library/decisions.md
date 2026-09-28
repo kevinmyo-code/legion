@@ -5897,3 +5897,19 @@ tokens), `UNRECONCILED`, "unverified" in words on every surface, deleted when th
 statement commits. This resolves django-engine 13 to option 2. A checking CSV that prints its own
 beginning and ending balance may be gated rather than provisional, once a real file confirms the
 shape (reasoned, not seen). backend-etl ticket 09.
+
+## 2026-09-28 - Canvas never ticks; submission is shown, not applied
+
+Kevin: *"i'll manually mark things as done. i just need to know what needs doing. so we dont really
+need to pull canvas submission state. but perhaps we can be a double check, like i can manually
+tick, but the thing also says submitted in canvas"*. **Supersedes the 2026-09-27 entry "A discussion
+is never ticked by Canvas"**, and with it backend-etl 04's build decision that the poller "only ever
+ticks": no row is exempt from Canvas ticking now, because Canvas ticks no row. `canvas_poll` inserts
+every new row `done = false` whatever Canvas says, and never changes `done`, `done_at` or
+`provenance` on an existing row, so it neither ticks nor unticks. It writes
+`structured_meta.canvas_submitted` (bool: `submitted_at` present, or state `submitted` /
+`pending_review`, or `graded` and not missing; `excused` is not submitted) beside the raw evidence,
+and the web and the phone show it in words as a double check (backend-etl 11 and 12). Enforced in
+Postgres (`ingest/migrations/0005_canvas_never_ticks.py`, replacing `public.upsert_canvas_task`
+again; 0003 and 0004 untouched), so no caller of the function can tick. Consequence: WebAssign
+completion (backend-etl 05) is not needed for now and is parked KIV.

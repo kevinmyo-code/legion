@@ -20,6 +20,9 @@ sub-deadlines and a parent's submission never ticks them; a `manual_completion: 
 touched; match on `structured_meta->>'canvas_assignment_id'`, then `origin_guid`; upstream deletion
 is a tombstone; re-running an identical payload writes nothing.
 
+**Superseded 2026-09-28 (Kevin): `done` never comes from Canvas.** The poller writes
+`structured_meta.canvas_submitted` and the evidence; the tick is by hand. See Built.
+
 Change from those tickets: auth is the vault's cookie jar (ruling 2), not a token. Canvas's REST API
 accepts the web session for GETs. `/api/v1/courses?enrollment_state=active`, then
 `/api/v1/courses/{id}/assignments?include[]=submission&per_page=100`, following `Link` pagination.
@@ -66,23 +69,25 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
   - **"Submitted"** = `submitted_at` present, or state `submitted`/`pending_review`, or
     `graded` unless Canvas also says `missing` / `late_policy_status = missing` (a zero for
     missing work is `graded` with nothing handed in). `excused` does not tick.
-  - **The poller only ever ticks; it never unticks.** A hand-ticked row Canvas calls
-    unsubmitted stays done (evidence still updated). Two-clients 03's "zero unexpected flips
-    from done to open".
+  - **Canvas never ticks anything; submission is shown, not applied** (Kevin, 2026-09-28:
+    *"i'll manually mark things as done. i just need to know what needs doing. so we dont
+    really need to pull canvas submission state. but perhaps we can be a double check, like i
+    can manually tick, but the thing also says submitted in canvas"*). Supersedes both the
+    2026-09-27 "only ever ticks" rule and the discussions-only rule of migration 0004.
+    Enforced in the RPC, migration `0005_canvas_never_ticks.py` (0003 and 0004 are live, so the
+    function is replaced, never edited): a new row is inserted `done = false` whatever Canvas
+    says; an existing row's `done`, `done_at` and `provenance` are absent from every UPDATE, so
+    the poller neither ticks nor unticks. Every upsert writes `structured_meta.canvas_submitted`
+    (bool, the "Submitted" definition above) beside the raw evidence (`submission_state`,
+    `submitted_at`, `score`, `grade`, `late`, `missing`, `excused`); a first-post sub-deadline
+    row carries its parent's value, since Canvas marks a discussion submitted at the first post.
+    The web and the phone render it (tickets 11, 12). `manual_completion` is still stamped on
+    discussions and `not_graded` placeholders, and `canvas_is_discussion` stays, though neither
+    changes `done` any more. The first live run after 0005 updates every Canvas row once to add
+    the key, so `/api/changes` re-delivers them once.
   - **`not_graded` placeholders are never inserted** (decisions.md 2026-09-04 held all 15
     back as duplicates of the seeded WebAssign rows); an existing matched one gets
     `manual_completion: true`.
-  - **A discussion is never ticked by Canvas** (Kevin, 2026-09-27: "discussions leave em to
-    me"). Canvas marks a discussion submitted on the FIRST post while its `due_at` is the
-    replies deadline, so a Canvas tick would claim work still owed. The parent and every
-    sub-deadline row are ticked by hand only. Enforced in the RPC, migration
-    `0004_discussions_are_ticked_by_hand.py` (0003 is already live, so it is replaced, never
-    edited): a row whose stored or incoming `submission_types` names `discussion_topic`
-    (helper `public.canvas_is_discussion(jsonb)`), and every poller-owned sub-deadline row,
-    gets `manual_completion: true`, which 0003 already refused to tick; a discussion is
-    inserted `done = false` whatever Canvas says. Evidence (`submitted_at`,
-    `submission_state`, `score`, `grade`) is still written, due dates still move, a hand tick
-    stays. First live run after 0004 updates each discussion row once to add the flag.
   - **Initial-post parsing:** the description must name exactly one weekday in an
     "initial/first post|response" clause (the clause is cut at "repl"/"peers"/
     "classmates"); resolved to the latest such weekday strictly before `due_at`, at the stated
