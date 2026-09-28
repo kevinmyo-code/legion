@@ -22,6 +22,28 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Where we stopped - 2026-09-27 night (session 0151LEjT, "legion-0e")
+
+- **`dev` = `main`, pushed (Quiet fix `6f708d8`, plus backend-etl).** Android 3599 tests / 0 failures. PC shut down for a restart.
+- **Landed today, on the A25:** home-app (ADR 0050), one-shot side-key assistant, Quiet toggle
+  (header QUIET + tile) with volume restore verified on the phone, drawer cache, GPS network/passive,
+  ordered checklist push queue, opener deadlines, news both sources, Gemini 3.8 Live.
+- **Owed on the phone:** one-shot hang-up after an answer (needs speech); a real call vibrating
+  through Quiet; `get_last_ticked` asked by voice; Quiet restore from a stream already at 0 (unit-tested only).
+- **Phone sounds:** notification = Power Rangers communicator (`/sdcard/Notifications`, picked by
+  Kevin in Settings; `settings put` alone gets reverted by Samsung). Nokia ringtone tried, rejected, deleted.
+- **Other sessions at shutdown:** backend-etl 03/04 were merged into dev by their own session
+  (4ee90d4, 502ffba). `feat/home-redesign` is pushed at `0fcb198`, worktree
+  `.claude/worktrees/home-redesign`: the tip is an **UNVERIFIED WIP commit of audit fixes - do not
+  merge until its suite is green**. Tickets 01-04 were green before it (3677 / 0). Resume steps:
+  `.scratch/home-launcher/map.md` under "RESUME HERE". `feat/home-lists` is fully inside it.
+- `feat/backend-etl` is pushed at `e2e7a9f` (worktree `.claude/worktrees/backend-etl`). Its `004ac07`
+  is an **untested WIP in server/ingest - do not merge or deploy**. Resume: `.scratch/backend-etl/map.md`
+  "Where we stopped". backend-etl ticket 12 (Canvas submitted, on the phone) is Android work for app/'s session.
+- **Open:** hardening 13 (Room invalidation leak, flaky screenshot test), place-arrivals 01
+  (Google refuses geofences). Stale worktree folders (launcher, oneshot, assistlock) can be removed now
+  that no Gradle daemon holds them; `quiet` is done too.
+
 ## Where we stopped - 2026-09-11 night (session 0151LEjT)
 
 - **`dev` is `f52b355`, pushed, tree clean.** Android 3508 tests / 0 failures; server 717 passed /
