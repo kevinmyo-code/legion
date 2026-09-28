@@ -1,0 +1,170 @@
+"""`GET /api/freshness` - how current each scheduled feed is, for the caller's
+household, in words (backend-etl ticket 01; map ruling 6: "a stale or failing
+feed is said in words on the web and phone surfaces that use it").
+
+**Surfaces render `sentence` and never compose their own.** Two surfaces
+composing "last synced" from `last_ok_at` would be two phrasings of one fact,
+free to drift, and one of them would eventually say "synced 0 minutes ago" for
+a feed that failed. The words live here, once, next to the rule that decides
+them.
+
+What each field means:
+
+- `last_ok_at`: when the newest `ok` run FINISHED. Null if there never was one.
+- `last_outcome` / `last_error`: the newest finished run, ignoring
+  `skipped_locked` (that only says another run was already going, which is not
+  news about the feed). A run still in progress is ignored too.
+- `stale`: no `ok` inside the source's threshold. False for a source this
+  household has not set up (newest outcome `skipped`): a feed nobody asked for
+  is not late.
+"""
+from __future__ import annotations
+
+import datetime
+from dataclasses import dataclass
+
+from django.utils import timezone
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import serializers
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from household.tenancy import scoped
+from ingest.models import LOGIN_SCRIPT, SESSION_FOR_SOURCE, IngestRun, Outcome, Source
+
+# Ticket 01's thresholds, in code as the ticket says. `heartbeat` is not in the
+# ticket's list: it runs every 30 minutes, so two missed beats is the line.
+STALE_AFTER: dict[str, datetime.timedelta] = {
+    Source.CANVAS: datetime.timedelta(hours=2),
+    Source.WEBASSIGN: datetime.timedelta(hours=36),
+    Source.DRIVE_STATEMENTS: datetime.timedelta(hours=36),
+    Source.BACKUP: datetime.timedelta(hours=36),
+    Source.OBD_ROLLUP: datetime.timedelta(hours=36),
+    Source.HEARTBEAT: datetime.timedelta(hours=1),
+}
+
+
+@dataclass(frozen=True)
+class _Words:
+    subject: str
+    done: str  # "last synced", completed with "3 hours ago"
+    never: str  # the whole predicate for "no ok run, ever"
+
+
+WORDS: dict[str, _Words] = {
+    Source.CANVAS: _Words("Canvas", "last synced", "has never synced"),
+    Source.WEBASSIGN: _Words("WebAssign", "last synced", "has never synced"),
+    Source.DRIVE_STATEMENTS: _Words(
+        "The statements folder", "was last checked", "has never been checked"
+    ),
+    Source.BACKUP: _Words("The backup", "last ran", "has never run"),
+    Source.OBD_ROLLUP: _Words("The drive roll-up", "last ran", "has never run"),
+    Source.HEARTBEAT: _Words("The scheduler", "last ran", "has never run"),
+}
+
+
+def ago(then: datetime.datetime, now: datetime.datetime) -> str:
+    seconds = max(0, int((now - then).total_seconds()))
+    if seconds < 60:
+        return "just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = hours // 24
+    return f"{days} days ago"
+
+
+def sentence(
+    source: str,
+    last_ok_at: datetime.datetime | None,
+    last_outcome: str | None,
+    now: datetime.datetime,
+) -> str:
+    words = WORDS[source]
+    if last_outcome == Outcome.SKIPPED:
+        return f"{words.subject} is not set up."
+    if last_outcome == Outcome.NEEDS_LOGIN:
+        # Ticket 02: say what to run, since the fix is a person at a laptop.
+        session = SESSION_FOR_SOURCE.get(source)
+        if session is None:
+            return f"{words.subject} needs you to log in again."
+        return f"{words.subject} needs you to log in again: run {LOGIN_SCRIPT} {session}"
+    if last_ok_at is None:
+        base = f"{words.subject} {words.never}."
+    else:
+        base = f"{words.subject} {words.done} {ago(last_ok_at, now)}."
+    if last_outcome == Outcome.FAILED:
+        return f"{base} The latest attempt failed."
+    return base
+
+
+def freshness_for(runs, source: str, now: datetime.datetime) -> dict:
+    """One source's entry. `runs` is ALREADY scoped to one household - this
+    function never widens it."""
+    of_source = runs.filter(source=source)
+    last_ok = (
+        of_source.filter(outcome=Outcome.OK, finished_at__isnull=False)
+        .order_by("-finished_at")
+        .first()
+    )
+    latest = (
+        of_source.filter(outcome__isnull=False)
+        .exclude(outcome=Outcome.SKIPPED_LOCKED)
+        .order_by("-started_at")
+        .first()
+    )
+    last_ok_at = last_ok.finished_at if last_ok else None
+    last_outcome = latest.outcome if latest else None
+    if last_outcome == Outcome.SKIPPED:
+        stale = False
+    else:
+        stale = last_ok_at is None or now - last_ok_at > STALE_AFTER[source]
+    return {
+        "source": source,
+        "last_ok_at": last_ok_at,
+        "last_outcome": last_outcome,
+        "last_error": latest.error if latest else None,
+        "stale": stale,
+        "sentence": sentence(source, last_ok_at, last_outcome, now),
+    }
+
+
+class FreshnessSourceSerializer(serializers.Serializer):
+    source = serializers.ChoiceField(choices=Source.choices)
+    last_ok_at = serializers.DateTimeField(allow_null=True)
+    last_outcome = serializers.ChoiceField(choices=Outcome.choices, allow_null=True)
+    last_error = serializers.CharField(allow_null=True)
+    stale = serializers.BooleanField()
+    sentence = serializers.CharField()
+
+
+class FreshnessSerializer(serializers.Serializer):
+    sources = FreshnessSourceSerializer(many=True)
+
+
+class FreshnessView(APIView):
+    @extend_schema(
+        operation_id="api_freshness_retrieve",
+        tags=["freshness"],
+        responses={
+            200: OpenApiResponse(
+                response=FreshnessSerializer,
+                description=(
+                    "One entry per scheduled source, always all of them, for the caller's "
+                    "household only. Render `sentence` as it is; do not compose a phrase "
+                    "from `last_ok_at`. `stale` is true when no run succeeded inside the "
+                    "source's threshold (canvas 2h, webassign/drive_statements/backup/"
+                    "obd_rollup 36h, heartbeat 1h), and false for a source the household "
+                    "has not set up."
+                ),
+            ),
+        },
+    )
+    def get(self, request):
+        now = timezone.now()
+        runs = scoped(IngestRun, request)
+        body = {"sources": [freshness_for(runs, source, now) for source in Source.values]}
+        return Response(FreshnessSerializer(body).data)

@@ -5,6 +5,7 @@ from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from api.views import healthz
+from ingest.freshness import FreshnessView
 from web.views import spa_index
 
 urlpatterns = [
@@ -46,6 +47,10 @@ urlpatterns = [
     # these are commit endpoints that return a verdict, not CRUD over a
     # collection, and grouping them under one prefix keeps that visible.
     path("api/ingest/", include("ingest.urls")),
+    # backend-etl ticket 01: how current each scheduled feed is, in words.
+    # Top level rather than under `api/ingest/`, because it is read by every
+    # surface that shows a feed, not by the ingest commit path.
+    path("api/freshness", FreshnessView.as_view(), name="freshness"),
     # LAST, and it has to be: this pattern matches almost everything, so any
     # route added below it would be unreachable. Django tries patterns in
     # order, so putting the catch-all at the end is what lets every real route

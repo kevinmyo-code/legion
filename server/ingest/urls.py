@@ -14,9 +14,14 @@ receipts are ticket 04's, under their own plural paths.
 """
 from django.urls import path
 
+from ingest.sessions import SessionDetailView, SessionListView
 from ingest.views import ReceiptIngestView, StatementIngestView
 
 urlpatterns = [
     path("statement", StatementIngestView.as_view(), name="ingest-statement"),
     path("receipt", ReceiptIngestView.as_view(), name="ingest-receipt"),
+    # backend-etl ticket 02: the session vault (`ingest/sessions.py`). Plural,
+    # unlike the two above: these ARE resources, one per source.
+    path("sessions", SessionListView.as_view(), name="ingest-sessions"),
+    path("sessions/<str:source>", SessionDetailView.as_view(), name="ingest-session"),
 ]

@@ -7,7 +7,7 @@ status: open
 status-detail: "Narrowed 2026-09-05: no data migration. The rows stay in the Supabase Postgres; cutover is Django becoming the only writer and the phone switching transports. Ticket 07."
 blockers: ["03", "04", "05", "06", "07", "09"]
 blocked-by: ["[[03-the-gate-in-python]]", "[[04-domain-api-and-changes-feed]]", "[[05-media-photos-and-audio]]", "[[06-worker-backups-first]]", "[[07-where-it-runs]]", "[[09-android-http-backends]]"]
-open-blockers: 5
+open-blockers: 4
 ready: false
 tags: [ticket]
 ---
