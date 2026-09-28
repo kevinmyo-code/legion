@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { CHANGES_KEY } from '@/api/queries'
 import type { Event } from '@/api/types'
 import { Checkbox } from '@/components/ui/checkbox'
+import { canvasLine, canvasMetaOf } from '@/lib/canvas'
 import { splitCourse } from '@/lib/horizon'
 
 /**
@@ -28,6 +29,8 @@ export function EventRow({ event, showCourse = true }: { event: Event; showCours
   })
 
   const { course, label } = splitCourse(event.title)
+  const canvasMeta = canvasMetaOf(event.structured_meta)
+  const canvas = canvasMeta ? canvasLine(event.done ?? false, canvasMeta) : ''
   const time = event.all_day
     ? 'All day'
     : event.starts_at
@@ -54,18 +57,21 @@ export function EventRow({ event, showCourse = true }: { event: Event; showCours
         <span className="mt-0.5 w-4 shrink-0" aria-hidden="true" />
       )}
       <div className="min-w-0 flex-1">
-        <span
-          className={
-            event.kind === 'task' && event.done
-              ? 'text-sm text-muted-foreground line-through'
-              : 'text-sm'
-          }
-        >
-          {label}
-        </span>
-        {showCourse && course && (
-          <span className="ml-2 text-xs text-muted-foreground">{course}</span>
-        )}
+        <div>
+          <span
+            className={
+              event.kind === 'task' && event.done
+                ? 'text-sm text-muted-foreground line-through'
+                : 'text-sm'
+            }
+          >
+            {label}
+          </span>
+          {showCourse && course && (
+            <span className="ml-2 text-xs text-muted-foreground">{course}</span>
+          )}
+        </div>
+        {canvas && <p className="text-xs text-muted-foreground">{canvas}</p>}
       </div>
       <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{time}</span>
       {toggleDone.isError && (
