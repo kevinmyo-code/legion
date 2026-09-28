@@ -1,5 +1,5 @@
 @echo off
-rem LEGION daily: log in to Bank of America, the script pulls activity and new statements to Drive.
+rem LEGION daily: log in to Bank of America, the script pulls transaction CSVs (current and closed periods) to Drive.
 rem Shortcut: right-click this file > Show more options > Send to > Desktop (create shortcut).
 rem
 rem Settings live on this laptop only, never in the repo: create

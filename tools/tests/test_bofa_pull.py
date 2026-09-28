@@ -77,21 +77,24 @@ def test_account_link_text_gives_name_and_last4(text, expected):
 
 
 @pytest.mark.parametrize(
-    "text, expected",
+    "text, kind, expected",
     [
-        ("Download PDF for August Statement for Adv SafeBalance Banking - 3119", (8, "3119")),
-        (
-            "Download PDF for January Statement for Customized Cash Rewards Visa Signature - 4146",
-            (1, "4146"),
-        ),
-        ("Download PDF for december  Statement for X - 0001", (12, "0001")),
-        ("Download PDF for Smarch Statement for X - 0001", None),
-        ("Download PDF for Annual Summary for X - 0001", None),
-        ("Download PDF for August Statement for X", None),
+        ("Period ending 09/04/2026", "checking", datetime.date(2026, 9, 4)),
+        ("  Period  ending 12/31/2025 ", "checking", datetime.date(2025, 12, 31)),
+        ("Current transactions", "checking", None),
+        ("Period ending 13/40/2026", "checking", None),
+        ("September 05, 2026", "card", datetime.date(2026, 9, 5)),
+        ("january 5, 2026", "card", datetime.date(2026, 1, 5)),
+        ("Current transactions", "card", None),
+        ("Smarch 05, 2026", "card", None),
+        ("February 30, 2026", "card", None),
+        # Each kind reads only its own label shape.
+        ("September 05, 2026", "checking", None),
+        ("Period ending 09/04/2026", "card", None),
     ],
 )
-def test_statement_link_text_gives_month_and_last4(text, expected):
-    assert bp.parse_statement_link(text) == expected
+def test_a_period_option_gives_its_end_date(text, kind, expected):
+    assert bp.parse_period_option(text, kind) == expected
 
 
 def test_account_kind_comes_from_the_path():
@@ -101,8 +104,39 @@ def test_account_kind_comes_from_the_path():
 
 def test_file_names():
     assert bp.activity_name("3119", TODAY) == "bofa_3119_activity_2026-09-28.csv"
-    assert bp.statement_name("4146", 2025, 1) == "bofa_4146_2025-01.pdf"
-    assert bp.statement_years(TODAY) == (2026, 2025)
+    assert bp.period_name("4146", datetime.date(2026, 9, 5)) == "bofa_4146_period_2026-09-05.csv"
+
+
+def test_file_names_match_what_the_server_reads_when_server_is_present():
+    """The server takes the account and the window from the NAME; the two
+    must agree or every file quarantines."""
+    parser = TOOLS.parent / "server" / "ingest" / "parsers" / "bofa_activity.py"
+    if not parser.exists():
+        pytest.skip("server/ not checked out")
+    source = parser.read_text(encoding="utf-8")
+    pattern = re.search(r'_FILE_NAME_RE = re\.compile\(\n(.*?)\n    re\.ASCII', source, re.S)
+    regex = re.compile(
+        "".join(ast.literal_eval(part.strip().rstrip(",")) for part in pattern.group(1).splitlines()),
+        re.ASCII | re.IGNORECASE,
+    )
+    current = regex.search(bp.activity_name("3119", TODAY))
+    period = regex.search(bp.period_name("3119", datetime.date(2026, 9, 4)))
+    assert (current.group("last4"), current.group("kind")) == ("3119", "activity")
+    assert (period.group("last4"), period.group("kind"), period.group("date")) == (
+        "3119", "period", "2026-09-04"
+    )
+
+
+@pytest.mark.parametrize(
+    "today, cutoff",
+    [
+        (datetime.date(2026, 9, 28), datetime.date(2025, 8, 28)),
+        (datetime.date(2026, 1, 15), datetime.date(2024, 12, 15)),
+        (datetime.date(2026, 3, 31), datetime.date(2025, 2, 28)),
+    ],
+)
+def test_the_cutoff_is_thirteen_months_back(today, cutoff):
+    assert bp.period_cutoff(today) == cutoff
 
 
 def test_logged_in_signal():
@@ -117,6 +151,18 @@ def test_logged_in_signal():
     assert bp.bofa_logged_in(None, P("", "https://secure.bankofamerica.com/myaccounts/brain/x"))
     assert not bp.bofa_logged_in(None, P("", "https://secure.bankofamerica.com/myaccounts/signin/x"))
     assert not bp.bofa_logged_in(None, P("Bank of America", "https://www.bankofamerica.com/"))
+
+
+def test_no_statement_pdf_code_is_left():
+    """Kevin, 2026-09-28: transaction history only. Nothing in the script may
+    reach for Statements & Documents or a PDF again."""
+    source = (TOOLS / "bofa_pull.py").read_text(encoding="utf-8")
+    names = _called_names(TOOLS / "bofa_pull.py")
+    for gone in ("pull_statements", "_open_statements", "statement_name", "STATEMENTS_LINK",
+                 "STATEMENT_LINK_NAME", "statement_years", "parse_statement_link"):
+        assert gone not in names
+    assert "mycomm-acc-stmts-docs" not in source
+    assert ".pdf" not in source and "application/pdf" not in source
 
 
 # =============================================================================
@@ -160,18 +206,21 @@ def test_folder_id_copy_matches_the_server_rule_when_server_is_present():
 # =============================================================================
 
 
-def test_plan_skips_statements_in_drive_and_replaces_same_day_csv(tmp_path):
+def test_plan_skips_periods_in_drive_and_replaces_same_day_csv(tmp_path):
     files = [
-        tmp_path / "bofa_3119_2026-08.pdf",
-        tmp_path / "bofa_3119_2026-07.pdf",
+        tmp_path / "bofa_3119_period_2026-09-04.csv",
+        tmp_path / "bofa_3119_period_2026-08-04.csv",
         tmp_path / "bofa_3119_activity_2026-09-28.csv",
         tmp_path / "bofa_4146_activity_2026-09-28.csv",
     ]
-    existing = {"bofa_3119_2026-07.pdf": "id-pdf", "bofa_3119_activity_2026-09-28.csv": "id-csv"}
+    existing = {
+        "bofa_3119_period_2026-08-04.csv": "id-period",
+        "bofa_3119_activity_2026-09-28.csv": "id-csv",
+    }
     uploads, skipped = bp.plan_uploads(files, existing)
-    assert skipped == ["bofa_3119_2026-07.pdf"]
+    assert skipped == ["bofa_3119_period_2026-08-04.csv"]
     assert [(u.name, u.action, u.file_id) for u in uploads] == [
-        ("bofa_3119_2026-08.pdf", "create", None),
+        ("bofa_3119_period_2026-09-04.csv", "create", None),
         ("bofa_4146_activity_2026-09-28.csv", "create", None),
         ("bofa_3119_activity_2026-09-28.csv", "update", "id-csv"),
     ]
@@ -187,12 +236,12 @@ def test_yesterdays_csv_does_not_stop_todays(tmp_path):
 
 
 def test_multipart_body_carries_metadata_and_content():
-    body, content_type = bp.multipart_body({"name": "a.pdf", "parents": ["p"]}, b"%PDF-1", "application/pdf")
+    body, content_type = bp.multipart_body({"name": "a.csv", "parents": ["p"]}, b"x,y", "text/csv")
     boundary = content_type.split("boundary=")[1]
     assert content_type.startswith("multipart/related; ")
     assert body.startswith(f"--{boundary}\r\n".encode())
-    assert b'{"name": "a.pdf", "parents": ["p"]}' in body
-    assert b"Content-Type: application/pdf\r\n\r\n%PDF-1\r\n" in body
+    assert b'{"name": "a.csv", "parents": ["p"]}' in body
+    assert b"Content-Type: text/csv\r\n\r\nx,y\r\n" in body
     assert body.endswith(f"--{boundary}--\r\n".encode())
 
 
@@ -206,9 +255,8 @@ class FakeTimeout(Exception):
 
 
 class El:
-    def __init__(self, text="", click=None, options=(), name=None, href=None, visible=True):
+    def __init__(self, text="", click=None, options=(), name=None, visible=True):
         self.text = text
-        self.href = href
         self.visible = visible
         self._click = click
         self.options = list(options)          # [(label, value)]
@@ -276,10 +324,6 @@ class FakeLocator:
     def wait_for(self, state=None):
         self._need()
 
-    def get_attribute(self, name):
-        assert name == "href"
-        return self._need().href
-
     def is_visible(self):
         els = self._els()
         return bool(els) and els[0].visible
@@ -300,9 +344,6 @@ class FakeLocator:
                 return
         raise FakeTimeout(f"no option {label or value}")
 
-    def aria_snapshot(self):
-        return f'- link "{self._need().name}"'
-
 
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June", "July",
@@ -311,6 +352,12 @@ MONTH_NAMES = [
 
 CHECKING = {"label": "Adv SafeBalance Banking", "last4": "3119", "kind": "checking"}
 CARD = {"label": "Customized Cash Rewards Visa Signature", "last4": "4146", "kind": "card"}
+
+
+def period_label(kind: str, end: datetime.date) -> str:
+    if kind == "checking":
+        return f"Period ending {end:%m/%d/%Y}"
+    return f"{MONTH_NAMES[end.month - 1]} {end.day:02d}, {end.year}"
 
 
 class FakeKeyboard:
@@ -325,22 +372,25 @@ class FakeKeyboard:
 
 
 class FakeBofa:
-    """Pages as seen 2026-09-28. `missing` drops a locator key; the card's
-    statements page lands on `card_statements_path`."""
+    """Pages as seen 2026-09-28. `periods` is {last4: [period end dates]},
+    listed newest first after "Current transactions". `missing` drops a
+    locator key. The checking dialog's period select exists only while the
+    dialog is open, and the card's only while its panel is open; the card's
+    download link TOGGLES the panel, so clicking it twice folds it away."""
 
-    def __init__(self, accounts, statements, *, missing=(), card_statements_path="/mycomm-acc-stmts-docs/"):
+    def __init__(self, accounts, periods, *, missing=(), close_button=True):
         self.accounts = accounts
-        self.statements = statements            # {last4: {year: [months]}}
+        self.periods = periods
         self.missing = set(missing)
-        self.card_statements_path = card_statements_path
+        self.close_button = close_button
         self.url = "https://www.bankofamerica.com/"
         self.at = ("home", None)
         self.dialog_open = False
-        self.year = None
-        self.expanded = False
-        self.pending = None
+        self.panel_open = False
+        self.period = None
         self.last_download = None
-        self.clicked_downloads = []
+        self.downloads = []                    # (last4, period label)
+        self.closed_by_button = 0
         self.keyboard = FakeKeyboard(self)
 
     # --- Playwright surface ---------------------------------------------------
@@ -348,7 +398,7 @@ class FakeBofa:
         self.timeout = ms
 
     def goto(self, url):
-        assert url == bp.OVERVIEW_URL
+        assert url == bp.OVERVIEW_URL, "the script visits no page but the overview"
         self.url = url
         self.at = ("overview", None)
 
@@ -379,27 +429,24 @@ class FakeBofa:
         yield Info()
 
     # --- the site -------------------------------------------------------------
-    def _download(self, suggested, content=b"data"):
-        self.last_download = Download(suggested, content)
-        self.clicked_downloads.append(suggested)
+    def _download(self, suggested, account):
+        if self.period is None:
+            raise FakeTimeout("no period chosen")
+        self.last_download = Download(suggested, f"{account['last4']}|{self.period}".encode())
+        self.downloads.append((account["last4"], self.period))
 
     def _open_account(self, account):
         self.at = ("account", account)
-        self.dialog_open = False
+        self.dialog_open = self.panel_open = False
+        self.period = None
         if account["kind"] == "checking":
             self.url = "https://secure.bankofamerica.com/deposit-details/activity/?adx=1"
         else:
             self.url = "https://secure.bankofamerica.com/myaccounts/details/card/account-details.go?adx=2"
 
-    def _open_statements(self, account):
-        self.at = ("statements", account)
-        self.year, self.expanded = None, False
-        path = "/mycomm-acc-stmts-docs/" if account["kind"] == "checking" else self.card_statements_path
-        self.url = f"https://secure.bankofamerica.com{path}?adx=3"
-
     def on_select(self, el, label):
-        if el.name == "year":
-            self.year, self.expanded = int(label), False
+        if el.name == "period":
+            self.period = label
 
     def find(self, key):
         if key is None:
@@ -418,15 +465,19 @@ class FakeBofa:
             if not isinstance(el_key, tuple) or el_key[0] != role:
                 continue
             for el in items:
-                if isinstance(name, re.Pattern):
-                    ok = bool(name.search(el.name))
-                elif exact:
+                if exact:
                     ok = el.name == name
                 else:
                     ok = name.lower() in el.name.lower()
                 if ok:
                     found.append(el)
         return found
+
+    def _period_options(self, account):
+        options = [("Current transactions", "c")]
+        for index, end in enumerate(self.periods.get(account["last4"], [])):
+            options.append((period_label(account["kind"], end), f"p{index}"))
+        return options
 
     def _elements(self, where, account):
         if where == "overview":
@@ -436,53 +487,69 @@ class FakeBofa:
                 links.append(El("View details", click=lambda a=acc: self._open_account(a)))
             return {bp.ACCOUNT_LINK_CSS: links}
         if where == "account" and account["kind"] == "checking":
-            return {
-                ("button",): [El("Download", click=self._open_dialog)],
+            buttons = [El("Download", click=self._open_dialog)]
+            if self.dialog_open and self.close_button:
+                buttons.append(El("close Dialog", click=self._close_dialog))
+            els = {
+                ("button",): buttons,
                 ("dialog",): [El("Download your data")] if self.dialog_open else [],
-                "#select_txnPeriod": [El(options=[("Since last statement", "s"), ("Current transactions", "c")])],
-                "#select_fileType": [El(options=[("Microsoft Excel Format", "csv"), ("Quicken", "qfx")])],
-                "#btn-download-txn": [El(click=lambda: self._download("stmt.csv"))],
-                ("link",): [El("Statements & Documents", click=lambda: self._open_statements(account))],
             }
+            if self.dialog_open:
+                els.update({
+                    "#select_txnPeriod": [El(name="period", options=self._period_options(account))],
+                    "#select_fileType": [El(options=[("Microsoft Excel Format", "csv"), ("Quicken", "qfx")])],
+                    "#btn-download-txn": [El(click=lambda: self._download("stmt.csv", account))],
+                })
+            return els
         if where == "account":
             last4 = account["last4"]
-            return {
-                bp.CARD_DOWNLOAD_LINK: [El("Download")],
-                "#select_transaction": [El(options=[("Current transactions", "c")])],
-                "#select_filetype": [El(options=[("Microsoft Excel (.csv)", "x"), ("Quicken", "q")])],
-                "a.submit-download": [El(click=lambda: self._download(f"currentTransaction_{last4}.csv"))],
-                ("link",): [El("Statements & Documents", click=lambda: self._open_statements(account))],
-            }
-        if where == "statements":
-            last4 = account["last4"]
-            years = sorted(self.statements.get(last4, {}), reverse=True)
-            links = []
-            if self.year is not None and self.expanded:
-                for month in self.statements[last4].get(self.year, []):
-                    name = f"Download PDF for {MONTH_NAMES[month - 1]} Statement for {account['label']} - {last4}"
-                    links.append(
-                        El(name, click=lambda m=month: self._download(f"eStmt_{self.year}-{m:02d}.pdf", b"%PDF"))
-                    )
-            return {
-                ("combobox",): [El(name="year", options=[(str(y), str(y)) for y in years])],
-                ("button",): [El("Statements", click=self._expand)],
-                ("link",): links,
-            }
+            els = {bp.CARD_DOWNLOAD_LINK: [El("Download", click=self._toggle_panel)]}
+            if self.panel_open:
+                els.update({
+                    "#select_transaction": [El(name="period", options=self._period_options(account))],
+                    "#select_filetype": [El(options=[("Microsoft Excel (.csv)", "x"), ("Quicken", "q")])],
+                    "a.submit-download": [
+                        El(click=lambda: self._download(f"currentTransaction_{last4}.csv", account))
+                    ],
+                })
+            return els
         return {}
 
     def _open_dialog(self):
         self.dialog_open = True
 
-    def _expand(self):
-        self.expanded = True
+    def _close_dialog(self):
+        self.dialog_open = False
+        self.closed_by_button += 1
+
+    def _toggle_panel(self):
+        self.panel_open = not self.panel_open
+
+
+def _ends(*pairs):
+    return [datetime.date(y, m, d) for y, m, d in pairs]
+
+
+# Checking closes on the 4th, the card on the 5th. Newest first, as listed.
+CHECKING_PERIODS = _ends(
+    (2026, 9, 4), (2026, 8, 4), (2026, 7, 4), (2026, 6, 4), (2026, 5, 4), (2026, 4, 4),
+    (2026, 3, 4), (2026, 2, 4), (2026, 1, 4), (2025, 12, 4), (2025, 11, 4), (2025, 10, 4),
+    (2025, 9, 4), (2025, 8, 4),
+    # Older than 13 months before TODAY (cutoff 2025-08-28): never pulled.
+    (2025, 7, 4), (2024, 12, 4),
+)
+CARD_PERIODS = _ends((2026, 9, 5), (2026, 8, 5), (2025, 9, 5), (2025, 8, 5))
 
 
 def _site(**kwargs):
-    statements = {
-        "3119": {2026: [1, 2, 3, 4, 5, 6, 7, 8], 2025: list(range(1, 13)), 2024: [12]},
-        "4146": {2026: [7, 8], 2025: [11, 12]},
-    }
-    return FakeBofa([CHECKING, CARD], statements, **kwargs)
+    return FakeBofa(
+        [CHECKING, CARD], {"3119": CHECKING_PERIODS, "4146": CARD_PERIODS}, **kwargs
+    )
+
+
+def _in_window(periods):
+    cutoff = bp.period_cutoff(TODAY)
+    return [end for end in periods if end >= cutoff]
 
 
 # =============================================================================
@@ -492,7 +559,8 @@ def _site(**kwargs):
 
 def test_a_full_pull_names_every_file_and_skips_what_drive_holds(tmp_path):
     page = _site()
-    in_drive = {bp.statement_name("3119", 2025, m) for m in range(1, 13)}
+    held = _in_window(CHECKING_PERIODS)[1:]          # all but the newest checking period
+    in_drive = {bp.period_name("3119", end) for end in held}
     accounts = bp.pull_all(page, tmp_path, TODAY, in_drive)
 
     by_last4 = {a.last4: a for a in accounts}
@@ -501,29 +569,63 @@ def test_a_full_pull_names_every_file_and_skips_what_drive_holds(tmp_path):
     assert (checking.kind, card.kind) == ("checking", "card")
     assert checking.activity.name == "bofa_3119_activity_2026-09-28.csv"
     assert card.activity.name == "bofa_4146_activity_2026-09-28.csv"
-    assert checking.statements_found == 20 and checking.statements_in_drive == 12
-    assert [p.name for p in checking.statements] == [
-        f"bofa_3119_2026-{m:02d}.pdf" for m in range(1, 9)
+
+    assert checking.periods_listed == 13 and checking.periods_in_drive == 12
+    assert [p.name for p in checking.periods] == ["bofa_3119_period_2026-09-04.csv"]
+    assert [p.name for p in card.periods] == [
+        "bofa_4146_period_2026-09-05.csv",
+        "bofa_4146_period_2026-08-05.csv",
+        "bofa_4146_period_2025-09-05.csv",
     ]
-    assert [p.name for p in card.statements] == [
-        "bofa_4146_2026-07.pdf", "bofa_4146_2026-08.pdf",
-        "bofa_4146_2025-11.pdf", "bofa_4146_2025-12.pdf",
+    # A period already in Drive, or older than the cutoff, is never clicked.
+    assert page.downloads == [
+        ("3119", "Current transactions"),
+        ("3119", "Period ending 09/04/2026"),
+        ("4146", "Current transactions"),
+        ("4146", "September 05, 2026"),
+        ("4146", "August 05, 2026"),
+        ("4146", "September 05, 2025"),
     ]
-    # A statement already in Drive is never clicked, not merely not uploaded.
-    assert sum(1 for n in page.clicked_downloads if n.endswith(".pdf")) == 12
+    # Each file holds what was chosen for it (the fake writes last4|option).
+    assert (tmp_path / "bofa_4146_period_2026-08-05.csv").read_bytes() == b"4146|August 05, 2026"
+    assert (tmp_path / "bofa_3119_activity_2026-09-28.csv").read_bytes() == b"3119|Current transactions"
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
         [checking.activity.name, card.activity.name]
-        + [p.name for p in checking.statements + card.statements]
+        + [p.name for p in checking.periods + card.periods]
     )
+
+
+def test_the_checking_dialog_is_closed_after_every_download(tmp_path):
+    page = FakeBofa([CHECKING], {"3119": _ends((2026, 9, 4), (2026, 8, 4))})
+    bp.pull_all(page, tmp_path, TODAY, set())
+    assert page.closed_by_button == 3
+    assert not page.dialog_open
+
+
+def test_escape_closes_the_dialog_when_it_has_no_close_button(tmp_path):
+    page = FakeBofa([CHECKING], {"3119": _ends((2026, 9, 4))}, close_button=False)
+    bp.pull_all(page, tmp_path, TODAY, set())
+    assert page.keyboard.pressed == ["Escape", "Escape"]
+
+
+def test_the_card_panel_is_not_folded_away_between_downloads(tmp_path):
+    """The card's link toggles its panel. It is clicked only when the panel
+    is not showing, so the second download does not fold it shut."""
+    page = FakeBofa([CARD], {"4146": _ends((2026, 9, 5), (2026, 8, 5))})
+    [account] = bp.pull_all(page, tmp_path, TODAY, set())
+    assert len(account.periods) == 2
+    assert page.panel_open
 
 
 @pytest.mark.parametrize(
     "missing, step",
     [
-        ({"#btn-download-txn"}, "checking 3119: the Download dialog"),
-        ({"Download your data"}, "checking 3119: the Download dialog"),
-        ({"a.submit-download"}, "card 4146: the download panel"),
-        ({"Statements & Documents"}, "checking 3119: Statements & Documents"),
+        ({"#btn-download-txn"}, "checking 3119: the Download dialog, Current transactions"),
+        ({"Download your data"}, "checking 3119: the Download dialog, the period list"),
+        ({"#select_txnPeriod"}, "checking 3119: the Download dialog, the period list"),
+        ({"a.submit-download"}, "card 4146: the download panel, Current transactions"),
+        ({"#select_transaction"}, "card 4146: the download panel, the period list"),
+        ({bp.CARD_DOWNLOAD_LINK}, "opening account 4146"),
         ({bp.ACCOUNT_LINK_CSS}, "the Accounts Overview"),
     ],
 )
@@ -548,12 +650,36 @@ def test_an_option_that_is_gone_is_a_page_change(tmp_path):
         bp.pull_all(page, tmp_path, TODAY, set())
 
 
-def test_the_unseen_card_statements_page_fails_loudly_when_it_differs(tmp_path):
-    with pytest.raises(bp.PageChanged) as raised:
-        bp.pull_all(_site(card_statements_path="/cards/statements/"), tmp_path, TODAY, set())
-    message = str(raised.value)
-    assert "card 4146: Statements & Documents" in message
-    assert "never seen live" in message
+def test_a_dropdown_without_current_transactions_is_a_page_change(tmp_path):
+    page = FakeBofa([CARD], {"4146": CARD_PERIODS})
+    page._period_options = lambda account: [("September 05, 2026", "p0")]
+    with pytest.raises(bp.PageChanged, match="no 'Current transactions' option"):
+        bp.pull_all(page, tmp_path, TODAY, set())
+
+
+def test_a_dropdown_with_no_closed_period_is_a_page_change(tmp_path):
+    """If BofA renames its period labels, the script would otherwise pull
+    only the current window forever and nothing would ever be verified."""
+    page = FakeBofa([CHECKING], {"3119": []})
+    with pytest.raises(bp.PageChanged, match="no closed period is listed"):
+        bp.pull_all(page, tmp_path, TODAY, set())
+
+
+def test_a_period_label_that_is_not_a_date_is_a_page_change(tmp_path):
+    page = FakeBofa([CHECKING], {"3119": []})
+    page._period_options = lambda account: [
+        ("Current transactions", "c"), ("Period ending 31/31/2026", "p0"),
+    ]
+    with pytest.raises(bp.PageChanged, match="did not read as a date"):
+        bp.pull_all(page, tmp_path, TODAY, set())
+
+
+def test_an_option_that_is_neither_is_passed_over(tmp_path):
+    page = FakeBofa([CHECKING], {"3119": _ends((2026, 9, 4))})
+    original = page._period_options
+    page._period_options = lambda account: original(account) + [("Since last statement", "s")]
+    [account] = bp.pull_all(page, tmp_path, TODAY, set())
+    assert [p.name for p in account.periods] == ["bofa_3119_period_2026-09-04.csv"]
 
 
 def test_no_account_link_that_parses_is_a_page_change(tmp_path):
@@ -562,40 +688,14 @@ def test_no_account_link_that_parses_is_a_page_change(tmp_path):
         bp.pull_all(page, tmp_path, TODAY, set())
 
 
-def test_a_statement_link_for_another_account_stops_the_run(tmp_path):
-    page = _site()
-    original = page._elements
-
-    def wrong(where, account):
-        els = original(where, account)
-        if where == "statements":
-            for el in els[("link",)]:
-                el.name = el.name[:-4] + "9999"
-        return els
-
-    page._elements = wrong
-    with pytest.raises(bp.PageChanged, match="names account 9999"):
-        bp.pull_all(page, tmp_path, TODAY, set())
-
-
-def test_a_listed_year_with_no_statements_is_a_page_change(tmp_path):
-    page = FakeBofa([CHECKING], {"3119": {2026: [1], 2025: []}})
-    with pytest.raises(bp.PageChanged, match="statements for 2025"):
-        bp.pull_all(page, tmp_path, TODAY, set())
-
-
-def test_a_year_not_offered_is_a_note_not_a_failure(tmp_path):
-    page = FakeBofa([CHECKING], {"3119": {2026: [8]}})
-    [account] = bp.pull_all(page, tmp_path, TODAY, set())
-    assert "2025 is not offered" in account.notes
-    assert [p.name for p in account.statements] == ["bofa_3119_2026-08.pdf"]
-
-
 def test_the_summary_names_files_and_counts_only(tmp_path):
     accounts = bp.pull_all(_site(), tmp_path, TODAY, set())
     lines = bp.summary_lines(accounts, set(), dry_run=True)
-    assert lines[0].startswith("Checking 3119 (Adv SafeBalance Banking): activity CSV bofa_3119_activity_2026-09-28.csv")
-    assert "statements found 20, already in Drive 0, would upload 20." in lines[0]
+    assert lines[0].startswith(
+        "Checking 3119 (Adv SafeBalance Banking): current transactions "
+        "bofa_3119_activity_2026-09-28.csv (would upload)"
+    )
+    assert "closed periods listed 13, already in Drive 0, would upload 13." in lines[0]
     assert all("$" not in line for line in lines)
 
 
@@ -652,70 +752,9 @@ def test_dry_run_touches_no_drive_and_says_what_it_would_upload(tmp_path):
     assert record == [("bofa", bp.BOFA_HOME_URL, "Nothing was downloaded and nothing was uploaded.")]
     assert "Dry run: nothing was uploaded. Would upload:" in lines
     assert "    bofa_3119_activity_2026-09-28.csv" in lines
-    assert "    bofa_4146_2025-12.pdf" in lines
-    assert any((tmp_path / "out").iterdir())  # a dry run keeps its files to be looked at
-
-
-def test_the_statements_link_goes_by_its_address_when_it_has_one():
-    class Page:
-        url = "https://secure.bankofamerica.com/deposit-details/activity/?adx=1"
-        went = None
-
-        def goto(self, url):
-            Page.went = url
-
-    page = Page()
-    hidden = El("Statements & Documents", href="#", visible=False)
-    real = El("Statements & Documents", href="/mycomm-acc-stmts-docs/?adx=1")
-    page.get_by_role = lambda role, name=None, exact=False: ListLocator([hidden, real])
-    bp._open_statements(page)
-    assert Page.went == "https://secure.bankofamerica.com/mycomm-acc-stmts-docs/?adx=1"
-
-
-def test_the_statements_link_is_clicked_where_visible_when_it_has_no_address():
-    clicked = []
-    hidden = El("Statements & Documents", click=lambda: clicked.append("hidden"), visible=False)
-    shown = El("Statements & Documents", click=lambda: clicked.append("shown"))
-
-    class Page:
-        url = "https://x/"
-
-    page = Page()
-    page.get_by_role = lambda role, name=None, exact=False: ListLocator([hidden, shown])
-    bp._open_statements(page)
-    assert clicked == ["shown"]
-
-
-class ListLocator:
-    """A locator over a fixed list of elements, for the statements-link tests."""
-
-    def __init__(self, els, index=None):
-        self.els, self.index = els, index
-
-    def _pick(self):
-        return self.els if self.index is None else self.els[self.index:self.index + 1]
-
-    @property
-    def first(self):
-        return ListLocator(self.els, 0)
-
-    def nth(self, i):
-        return ListLocator(self.els, i)
-
-    def count(self):
-        return len(self._pick())
-
-    def wait_for(self, state=None):
-        assert self._pick()
-
-    def get_attribute(self, name):
-        return self._pick()[0].href
-
-    def is_visible(self):
-        return self._pick()[0].visible
-
-    def click(self):
-        self._pick()[0].click()
+    assert "    bofa_4146_period_2025-09-05.csv" in lines
+    # A dry run keeps its files to be looked at.
+    assert len(list((tmp_path / "out").iterdir())) == 2 + 13 + 3
 
 
 def test_default_out_dir_is_under_home_not_the_repo(monkeypatch, tmp_path):
@@ -725,9 +764,10 @@ def test_default_out_dir_is_under_home_not_the_repo(monkeypatch, tmp_path):
 
 
 def test_a_real_run_creates_new_files_and_replaces_todays_csv(tmp_path):
+    held = _in_window(CHECKING_PERIODS)[1:]
     drive = FakeDrive(existing={
         "bofa_3119_activity_2026-09-28.csv": "csv-id",
-        **{bp.statement_name("3119", 2025, m): f"p{m}" for m in range(1, 13)},
+        **{bp.period_name("3119", end): f"p{i}" for i, end in enumerate(held)},
     })
     lines = []
     code = bp.run(_args(tmp_path), browser=_browser(_site()), drive_factory=lambda a: drive,
@@ -735,12 +775,13 @@ def test_a_real_run_creates_new_files_and_replaces_todays_csv(tmp_path):
     assert code == 0
     assert ("bofa_3119_activity_2026-09-28.csv", "update") in drive.uploaded
     assert ("bofa_4146_activity_2026-09-28.csv", "create") in drive.uploaded
-    assert not any(name.startswith("bofa_3119_2025") for name, _ in drive.uploaded)
-    assert len(drive.uploaded) == 2 + 8 + 4
-    assert any("already in Drive 12, uploaded 8." in line for line in lines)
+    assert ("bofa_3119_period_2026-09-04.csv", "create") in drive.uploaded
+    assert not any(name in {bp.period_name("3119", e) for e in held} for name, _ in drive.uploaded)
+    assert len(drive.uploaded) == 2 + 1 + 3
+    assert any("already in Drive 12, uploaded 1." in line for line in lines)
     # Kevin, 2026-09-28: Drive is the one copy, so the laptop keeps none.
     assert not (tmp_path / "out").exists()
-    assert any(line.startswith("Removed ") for line in lines)
+    assert any(line.startswith("Removed 6 ") for line in lines)
 
 
 def test_a_page_change_uploads_nothing(tmp_path):
@@ -799,19 +840,19 @@ class Session:
 
 def test_existing_follows_pages_and_scopes_to_the_folder():
     session = Session(gets=[
-        Resp(200, {"files": [{"id": "1", "name": "a.pdf"}], "nextPageToken": "t"}),
-        Resp(200, {"files": [{"id": "2", "name": "b.csv"}, {"id": "3", "name": "a.pdf"}]}),
+        Resp(200, {"files": [{"id": "1", "name": "a.csv"}], "nextPageToken": "t"}),
+        Resp(200, {"files": [{"id": "2", "name": "b.csv"}, {"id": "3", "name": "a.csv"}]}),
     ])
     folder = bp.DriveFolder(session, FOLDER)
-    assert folder.existing() == {"a.pdf": "1", "b.csv": "2"}
+    assert folder.existing() == {"a.csv": "1", "b.csv": "2"}
     assert session.calls[0][2]["q"] == f"'{FOLDER}' in parents and trashed = false"
     assert session.calls[1][2]["pageToken"] == "t"
 
 
 @pytest.mark.parametrize("status", [403, 404])
 def test_a_refused_create_names_the_scope_problem(tmp_path, status):
-    path = tmp_path / "bofa_3119_2026-08.pdf"
-    path.write_bytes(b"%PDF")
+    path = tmp_path / "bofa_3119_period_2026-09-04.csv"
+    path.write_bytes(b"x")
     folder = bp.DriveFolder(Session(post_status=status), FOLDER)
     with pytest.raises(bp.DriveRefused, match="drive.file"):
         folder.upload(bp.Upload(path.name, path, "create"))
@@ -879,7 +920,7 @@ def test_the_bofa_path_never_calls_put_session(monkeypatch, tmp_path, capsys):
 def test_a_page_change_through_main_exits_1_in_words(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cs, "logged_in_browser", _browser(_site(missing={"a.submit-download"})))
     assert cs.main(["bofa", "--dry-run", "--out", str(tmp_path)]) == 1
-    assert "BofA's page changed at card 4146: the download panel; nothing was uploaded." in capsys.readouterr().err
+    assert "BofA's page changed at card 4146: the download panel, Current transactions; nothing was uploaded." in capsys.readouterr().err
 
 
 def _called_names(path: Path) -> set[str]:

@@ -13,18 +13,28 @@ The rulings this file exists to keep:
   every browser step succeeded. A page that no longer looks the way it did on
   the day the locators were captured stops the run in words.
 
-Per account, per run:
-- the current-activity CSV, saved as `bofa_<last4>_activity_<YYYY-MM-DD>.csv`
-  (a same-day re-run replaces that day's file in Drive);
-- the statement PDFs of this year and last that Drive does not already hold,
-  saved as `bofa_<last4>_<YYYY-MM>.pdf`.
+**Transaction downloads only, never statement PDFs.** Kevin, 2026-09-28: *"lets
+not use statements. only the transaction history. i just need to know what im
+spending on."* This file does not visit Statements & Documents at all.
 
-The server's statements watcher (ticket 06, ticket 13) takes it from there.
-Nothing in this file reads a balance or a transaction, and nothing prints one.
+Per account, per run, from the account's own transaction-download control:
+- "Current transactions", saved as `bofa_<last4>_activity_<YYYY-MM-DD>.csv`
+  (today's date; a same-day re-run replaces that day's file in Drive);
+- every CLOSED period the dropdown lists, ending within the last 13 months,
+  that Drive does not already hold, saved as
+  `bofa_<last4>_period_<YYYY-MM-DD>.csv`, dated by the period's END as BofA
+  lists it.
+
+The two names are how the server tells an open window from a closed one (the
+content cannot): a checking `_period_` file is gated and verified, and it
+supersedes the provisional rows the daily `_activity_` files left in its
+window (`server/ingest/parsers/bofa_activity.py`). Nothing in this file reads
+a balance or a transaction, and nothing prints one.
 """
 from __future__ import annotations
 
 import argparse
+import calendar
 import datetime
 import json
 import re
@@ -32,13 +42,11 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urlparse
 
 # =============================================================================
 # BofA's pages. Every locator lives here and nowhere else.
 # Last seen working 2026-09-28 (checking 3119 and card 4146, captured live).
-# The card's Statements & Documents page was NOT seen; it is assumed to share
-# the checking layout, and the run stops loudly if it does not.
 # =============================================================================
 
 BOFA_HOME_URL = "https://www.bankofamerica.com/"
@@ -58,6 +66,9 @@ CHECKING_PERIOD_SELECT = "#select_txnPeriod"
 CHECKING_FILETYPE_SELECT = "#select_fileType"
 CHECKING_FILETYPE_VALUE = "csv"                            # "Microsoft Excel Format"
 CHECKING_SUBMIT = "#btn-download-txn"
+CHECKING_DIALOG_CLOSE = ("button", "close Dialog")
+# A closed period in `#select_txnPeriod` reads "Period ending 09/04/2026".
+CHECKING_PERIOD_OPTION = re.compile(r"^Period ending (?P<date>\d{2}/\d{2}/\d{4})$")
 
 # Card
 CARD_DOWNLOAD_LINK = "a[name=download_transactions_top]"   # class export-trans-view
@@ -65,20 +76,10 @@ CARD_PERIOD_SELECT = "#select_transaction"
 CARD_FILETYPE_SELECT = "#select_filetype"
 CARD_FILETYPE_TEXT = "Excel"
 CARD_SUBMIT = "a.submit-download"
+# A closed period in `#select_transaction` reads "September 05, 2026".
+CARD_PERIOD_OPTION = re.compile(r"^(?P<month>[A-Za-z]+) (?P<day>\d{1,2}), (?P<year>\d{4})$")
 
 CURRENT_PERIOD_TEXT = "Current transactions"
-
-# Statements & Documents
-STATEMENTS_LINK = ("link", "Statements & Documents")
-CHECKING_DIALOG_CLOSE = ("button", "close Dialog")
-STATEMENTS_PATH_MARK = "/mycomm-acc-stmts-docs/"
-STATEMENTS_YEAR_SELECT = ("combobox", "year")
-STATEMENTS_EXPAND_BUTTON = ("button", "Statements")
-# `#downloadPDFLink` repeats on every row, so a statement is found by its
-# accessible name, never by that id alone.
-STATEMENT_LINK_NAME = re.compile(
-    r"^Download PDF for (?P<month>[A-Za-z]+) Statement for (?P<account>.+) - (?P<last4>\d{4})$"
-)
 
 LOCATOR_TIMEOUT_MS = 30_000     # BofA's pages take 3-5 s; this is the ceiling, not a sleep
 
@@ -137,17 +138,39 @@ def parse_account_link(text: str) -> tuple[str, str] | None:
     return match.group("name"), match.group("last4")
 
 
-def parse_statement_link(text: str) -> tuple[int, str] | None:
-    """`Download PDF for August Statement for Adv SafeBalance Banking - 3119`
-    to (8, `3119`). None when it is not a monthly statement link."""
+def parse_period_option(text: str, kind: str) -> datetime.date | None:
+    """A closed period's END date from its dropdown label, None when the label
+    is not a closed period (e.g. "Current transactions").
+
+    Checking: `Period ending 09/04/2026`. Card: `September 05, 2026` (month
+    names read here, not by `strptime`, so the laptop's locale cannot change
+    the answer). A label that matches the shape but is not a real date is
+    None too, and the caller treats that as a page change."""
     cleaned = " ".join((text or "").split())
-    match = STATEMENT_LINK_NAME.match(cleaned)
-    if not match:
+    try:
+        if kind == "checking":
+            match = CHECKING_PERIOD_OPTION.match(cleaned)
+            if not match:
+                return None
+            return datetime.datetime.strptime(match.group("date"), "%m/%d/%Y").date()
+        match = CARD_PERIOD_OPTION.match(cleaned)
+        if not match:
+            return None
+        month = MONTHS.get(match.group("month").lower())
+        if month is None:
+            return None
+        return datetime.date(int(match.group("year")), month, int(match.group("day")))
+    except ValueError:
         return None
-    month = MONTHS.get(match.group("month").lower())
-    if month is None:
-        return None
-    return month, match.group("last4")
+
+
+def looks_like_period(text: str, kind: str) -> bool:
+    """The label has a closed period's SHAPE (whether or not it parses). Used
+    to tell "not a period" (skipped) from "a period we cannot read" (stop)."""
+    cleaned = " ".join((text or "").split())
+    if kind == "checking":
+        return cleaned.lower().startswith("period ending")
+    return bool(re.match(r"^[A-Za-z]+ \d{1,2}, \d{4}$", cleaned))
 
 
 def account_kind(url: str) -> str:
@@ -156,15 +179,25 @@ def account_kind(url: str) -> str:
 
 
 def activity_name(last4: str, day: datetime.date) -> str:
+    """"Current transactions", pulled on `day`: the still-open window."""
     return f"bofa_{last4}_activity_{day.isoformat()}.csv"
 
 
-def statement_name(last4: str, year: int, month: int) -> str:
-    return f"bofa_{last4}_{year:04d}-{month:02d}.pdf"
+def period_name(last4: str, period_end: datetime.date) -> str:
+    """One closed period, dated by its end as BofA lists it."""
+    return f"bofa_{last4}_period_{period_end.isoformat()}.csv"
 
 
-def statement_years(today: datetime.date) -> tuple[int, int]:
-    return today.year, today.year - 1
+PERIOD_MONTHS_BACK = 13
+
+
+def period_cutoff(today: datetime.date) -> datetime.date:
+    """The oldest period END this pulls: the same day `PERIOD_MONTHS_BACK`
+    months ago (clamped to that month's last day)."""
+    index = today.year * 12 + (today.month - 1) - PERIOD_MONTHS_BACK
+    year, month = divmod(index, 12)
+    month += 1
+    return datetime.date(year, month, min(today.day, calendar.monthrange(year, month)[1]))
 
 
 def bofa_logged_in(context, page) -> bool:
@@ -224,17 +257,22 @@ class Upload:
     file_id: str | None = None
 
 
+def is_activity(name: str) -> bool:
+    return "_activity_" in name
+
+
 def plan_uploads(files: Iterable[Path], existing: dict[str, str]) -> tuple[list[Upload], list[str]]:
     """(uploads, skipped names). `existing` maps a name already in the folder
-    to its file id. A statement already there is skipped; an activity CSV
-    already there (a same-day re-run) replaces that file rather than adding a
-    second one with the same name."""
+    to its file id. A closed period already there is skipped (it never
+    changes); today's current-transactions CSV already there (a same-day
+    re-run) replaces that file rather than adding a second one with the same
+    name."""
     uploads: list[Upload] = []
     skipped: list[str] = []
     for path in files:
         name = path.name
         if name in existing:
-            if name.endswith(".csv"):
+            if is_activity(name):
                 uploads.append(Upload(name, path, "update", existing[name]))
             else:
                 skipped.append(name)
@@ -261,7 +299,8 @@ def multipart_body(metadata: dict, content: bytes, mime: str) -> tuple[bytes, st
 
 
 def mime_for(name: str) -> str:
-    return "application/pdf" if name.endswith(".pdf") else "text/csv"
+    # Transaction CSVs only (no statement PDFs, Kevin 2026-09-28).
+    return "text/csv"
 
 
 def foreign_folder_sentence(status: int) -> str:
@@ -407,9 +446,9 @@ class Account:
     last4: str
     kind: str = "unknown"
     activity: Path | None = None
-    statements_found: int = 0
-    statements_in_drive: int = 0
-    statements: list[Path] = field(default_factory=list)
+    periods_listed: int = 0
+    periods_in_drive: int = 0
+    periods: list[Path] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -431,33 +470,18 @@ class _Step:
         raise PageChanged(self.name, f"{exc_type.__name__}") from exc
 
 
-def _open_statements(page) -> None:
-    """Go to the account's Statements & Documents page: by the link's own
-    address when it has one, else by clicking the one that is visible. The page
-    can carry two such links, one hidden, and `.first` picked the hidden one."""
-    links = _role(page, STATEMENTS_LINK)
-    links.first.wait_for(state="attached")
-    visible = None
-    for i in range(links.count()):
-        link = links.nth(i)
-        href = link.get_attribute("href") or ""
-        if href and not href.startswith(("#", "javascript:")):
-            page.goto(urljoin(page.url, href))
-            return
-        if visible is None and link.is_visible():
-            visible = link
-    (visible or links.first).click()
-
-
 def _role(page, pair: tuple[str, str], exact: bool = True):
     role, name = pair
     return page.get_by_role(role, name=name, exact=exact)
 
 
+def _option_labels(select) -> list[str]:
+    return [" ".join(t.split()) for t in select.locator("option").all_inner_texts()]
+
+
 def _select_containing(select, text: str) -> None:
     """Choose the option whose visible text contains `text`; raise if none."""
-    labels = [" ".join(t.split()) for t in select.locator("option").all_inner_texts()]
-    for label in labels:
+    for label in _option_labels(select):
         if text.lower() in label.lower():
             select.select_option(label=label)
             return
@@ -504,106 +528,118 @@ def open_account(page, account: Account) -> None:
     account.kind = account_kind(page.url)
 
 
-def pull_activity(page, account: Account, out_dir: Path, today: datetime.date) -> None:
-    dest = out_dir / activity_name(account.last4, today)
-    if account.kind == "checking":
-        with _Step(f"checking {account.last4}: the Download dialog"):
-            _role(page, CHECKING_DOWNLOAD_BUTTON).first.click()
-            _role(page, CHECKING_DIALOG).first.wait_for(state="visible")
-            _select_containing(page.locator(CHECKING_PERIOD_SELECT), CURRENT_PERIOD_TEXT)
-            page.locator(CHECKING_FILETYPE_SELECT).select_option(value=CHECKING_FILETYPE_VALUE)
-            account.activity = _save_download(
-                page, lambda: page.locator(CHECKING_SUBMIT).click(), dest, ".csv"
-            )
-        # The dialog stays open after the download and covers the page; the
-        # statements step's click never landed behind it (dry run 2026-09-28).
-        close = _role(page, CHECKING_DIALOG_CLOSE)
-        if close.count() and close.first.is_visible():
-            close.first.click()
-        else:
-            page.keyboard.press("Escape")
+# --- one download, per kind ------------------------------------------------------
+
+
+def _checking_download(page, option_label: str, dest: Path) -> Path:
+    """Open the "Download your data" dialog, choose `option_label` and CSV,
+    download, then close the dialog: it stays open after a download and
+    covers the page (dry run 2026-09-28), so the next click would miss."""
+    dialog = _role(page, CHECKING_DIALOG)
+    if not (dialog.count() and dialog.first.is_visible()):
+        _role(page, CHECKING_DOWNLOAD_BUTTON).first.click()
+        dialog.first.wait_for(state="visible")
+    page.locator(CHECKING_PERIOD_SELECT).select_option(label=option_label)
+    page.locator(CHECKING_FILETYPE_SELECT).select_option(value=CHECKING_FILETYPE_VALUE)
+    saved = _save_download(page, lambda: page.locator(CHECKING_SUBMIT).click(), dest, ".csv")
+    close = _role(page, CHECKING_DIALOG_CLOSE)
+    if close.count() and close.first.is_visible():
+        close.first.click()
     else:
-        with _Step(f"card {account.last4}: the download panel"):
-            page.locator(CARD_DOWNLOAD_LINK).first.click()
-            _select_containing(page.locator(CARD_PERIOD_SELECT), CURRENT_PERIOD_TEXT)
-            _select_containing(page.locator(CARD_FILETYPE_SELECT), CARD_FILETYPE_TEXT)
-            account.activity = _save_download(
-                page, lambda: page.locator(CARD_SUBMIT).first.click(), dest, ".csv"
-            )
+        page.keyboard.press("Escape")
+    return saved
 
 
-def _statement_links(page, account: Account, step: str) -> list[tuple[int, object]]:
-    """(month, locator) for every monthly statement link now listed. A link
-    that looks like a statement but does not parse, or names another account,
-    stops the run rather than being skipped."""
-    generic = page.get_by_role("link", name=re.compile(r"^Download PDF for .+ Statement for "))
-    found: list[tuple[int, object]] = []
-    for index in range(generic.count()):
-        link = generic.nth(index)
-        snapshot = link.aria_snapshot()
-        match = re.search(r'link "(?P<name>[^"]+)"', snapshot)
-        parsed = parse_statement_link(match.group("name")) if match else None
-        if parsed is None:
-            raise PageChanged(step, "a statement link did not read 'Download PDF for <Month> Statement for <account> - <last4>'")
-        month, last4 = parsed
-        if last4 != account.last4:
-            raise PageChanged(step, f"a statement link names account {last4}, not {account.last4}")
-        found.append((month, link))
-    return found
+def _card_download(page, option_label: str, dest: Path) -> Path:
+    """The card's download panel: opened by its link only when its period
+    select is not already showing (a second click could fold it away)."""
+    select = page.locator(CARD_PERIOD_SELECT)
+    if not (select.count() and select.first.is_visible()):
+        page.locator(CARD_DOWNLOAD_LINK).first.click()
+        select.first.wait_for(state="visible")
+    select.select_option(label=option_label)
+    _select_containing(page.locator(CARD_FILETYPE_SELECT), CARD_FILETYPE_TEXT)
+    return _save_download(page, lambda: page.locator(CARD_SUBMIT).first.click(), dest, ".csv")
 
 
-def pull_statements(
-    page,
-    account: Account,
-    out_dir: Path,
-    today: datetime.date,
-    in_drive: set[str],
-) -> None:
-    open_step = f"{account.kind} {account.last4}: Statements & Documents"
-    with _Step(open_step):
-        _open_statements(page)
-        year_select = _role(page, STATEMENTS_YEAR_SELECT)
-        year_select.first.wait_for(state="visible")
-    if STATEMENTS_PATH_MARK not in urlparse(page.url).path:
-        detail = f"expected {STATEMENTS_PATH_MARK} in the address"
-        if account.kind == "card":
-            detail += "; the card's statements page was never seen live, so this is the first look"
-        raise PageChanged(open_step, detail)
+def _period_select(page, kind: str):
+    return page.locator(CHECKING_PERIOD_SELECT if kind == "checking" else CARD_PERIOD_SELECT)
 
-    with _Step(open_step):
-        years_listed = {t.strip() for t in year_select.first.locator("option").all_inner_texts()}
-    if not years_listed:
-        raise PageChanged(open_step, "the year list is empty")
 
-    for year in statement_years(today):
-        if str(year) not in years_listed:
-            account.notes.append(f"{year} is not offered")
+def _download(page, kind: str, option_label: str, dest: Path) -> Path:
+    if kind == "checking":
+        return _checking_download(page, option_label, dest)
+    return _card_download(page, option_label, dest)
+
+
+def _step_name(account: Account, what: str) -> str:
+    where = "the Download dialog" if account.kind == "checking" else "the download panel"
+    return f"{account.kind} {account.last4}: {where}, {what}"
+
+
+def _listed_periods(page, account: Account) -> list[tuple[str, datetime.date]]:
+    """(option label, period end) for every closed period the dropdown lists,
+    newest first as BofA orders them. A label shaped like a period that does
+    not read as a date stops the run; so does a dropdown with no period and
+    no "Current transactions" at all."""
+    step = _step_name(account, "the period list")
+    with _Step(step):
+        if account.kind == "checking":
+            dialog = _role(page, CHECKING_DIALOG)
+            if not (dialog.count() and dialog.first.is_visible()):
+                _role(page, CHECKING_DOWNLOAD_BUTTON).first.click()
+                dialog.first.wait_for(state="visible")
+        else:
+            select = page.locator(CARD_PERIOD_SELECT)
+            if not (select.count() and select.first.is_visible()):
+                page.locator(CARD_DOWNLOAD_LINK).first.click()
+                select.first.wait_for(state="visible")
+        labels = _option_labels(_period_select(page, account.kind))
+    if not any(CURRENT_PERIOD_TEXT.lower() in label.lower() for label in labels):
+        raise PageChanged(step, f"no '{CURRENT_PERIOD_TEXT}' option")
+    periods = []
+    for label in labels:
+        end = parse_period_option(label, account.kind)
+        if end is None:
+            if looks_like_period(label, account.kind):
+                raise PageChanged(step, "a closed period's label did not read as a date")
             continue
-        step = f"{account.kind} {account.last4}: statements for {year}"
-        with _Step(step):
-            year_select.first.select_option(label=str(year))
-            page.wait_for_load_state("networkidle")
-            expand = _role(page, STATEMENTS_EXPAND_BUTTON)
-            if expand.count():
-                expand.first.click()
-            links = _statement_links(page, account, step)
-        if not links:
-            if year == today.year and today.month <= 2:
-                account.notes.append(f"no {year} statement yet")
-                continue
-            raise PageChanged(step, "no statement links listed")
-        for month, link in links:
-            name = statement_name(account.last4, year, month)
-            account.statements_found += 1
-            if name in in_drive:
-                account.statements_in_drive += 1
-                continue
-            if any(p.name == name for p in account.statements):
-                continue
-            with _Step(f"{step}: downloading {name}"):
-                account.statements.append(
-                    _save_download(page, link.click, out_dir / name, ".pdf")
-                )
+        periods.append((label, end))
+    if not periods:
+        raise PageChanged(step, "no closed period is listed")
+    return periods
+
+
+def pull_account(
+    page, account: Account, out_dir: Path, today: datetime.date, in_drive: set[str]
+) -> None:
+    """Current transactions, then every closed period since the cutoff that
+    Drive does not hold. A period already in Drive is never clicked."""
+    periods = _listed_periods(page, account)
+
+    with _Step(_step_name(account, "Current transactions")):
+        current = next(
+            label
+            for label in _option_labels(_period_select(page, account.kind))
+            if CURRENT_PERIOD_TEXT.lower() in label.lower()
+        )
+        account.activity = _download(
+            page, account.kind, current, out_dir / activity_name(account.last4, today)
+        )
+
+    cutoff = period_cutoff(today)
+    for label, end in periods:
+        if end < cutoff or end > today:
+            continue
+        name = period_name(account.last4, end)
+        account.periods_listed += 1
+        if name in in_drive:
+            account.periods_in_drive += 1
+            continue
+        if any(p.name == name for p in account.periods):
+            continue
+        with _Step(_step_name(account, f"downloading {name}")):
+            account.periods.append(_download(page, account.kind, label, out_dir / name))
 
 
 def pull_all(page, out_dir: Path, today: datetime.date, in_drive: set[str]) -> list[Account]:
@@ -613,8 +649,7 @@ def pull_all(page, out_dir: Path, today: datetime.date, in_drive: set[str]) -> l
     accounts = find_accounts(page)
     for account in accounts:
         open_account(page, account)
-        pull_activity(page, account, out_dir, today)
-        pull_statements(page, account, out_dir, today, in_drive)
+        pull_account(page, account, out_dir, today, in_drive)
     return accounts
 
 
@@ -628,14 +663,14 @@ def summary_lines(accounts: list[Account], uploaded: set[str], dry_run: bool) ->
     lines = []
     for account in accounts:
         csv = account.activity.name if account.activity else "none"
-        pdf_names = {p.name for p in account.statements}
-        sent = len(pdf_names & uploaded) if not dry_run else len(pdf_names)
+        period_names = {p.name for p in account.periods}
+        sent = len(period_names & uploaded) if not dry_run else len(period_names)
         lines.append(
             f"{account.kind.capitalize()} {account.last4} ({account.label}): "
-            f"activity CSV {csv}"
+            f"current transactions {csv}"
             + (f" ({verb})" if account.activity and (dry_run or csv in uploaded) else "")
-            + f"; statements found {account.statements_found}, "
-            f"already in Drive {account.statements_in_drive}, {verb} {sent}."
+            + f"; closed periods listed {account.periods_listed}, "
+            f"already in Drive {account.periods_in_drive}, {verb} {sent}."
         )
         for note in account.notes:
             lines.append(f"    note: {note}")
@@ -671,7 +706,7 @@ def add_arguments(parser: argparse.ArgumentParser, env: Callable[[str], str | No
         "--dry-run",
         action="store_true",
         help="Download everything, upload nothing, and print what would be uploaded. "
-        "Drive is not consulted, so every statement counts as new.",
+        "Drive is not consulted, so every closed period counts as new.",
     )
     parser.add_argument(
         "--out",
@@ -728,7 +763,7 @@ def run(
         accounts = pull_all(page, out_dir, today, set(existing))
 
     files = [a.activity for a in accounts if a.activity] + [
-        p for a in accounts for p in a.statements
+        p for a in accounts for p in a.periods
     ]
     uploads, _skipped = plan_uploads(files, existing)
 

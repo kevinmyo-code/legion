@@ -13,8 +13,9 @@ for, reads, stores or sends a password.
                refresh token goes to the server (Drive scopes: drive.readonly
                and drive.file)
     bofa       headed Chromium at Bank of America; once you are in, this
-               downloads each account's current-activity CSV and new statement
-               PDFs and uploads them to the statements Drive folder. NOTHING
+               downloads each account's transaction CSVs (current, and every
+               closed period Drive lacks; never a statement PDF) and uploads
+               them to the statements Drive folder. NOTHING
                goes to the LEGION server: no cookie, no session, no password
                (backend-etl ticket 09, tools/bofa_pull.py)
 
@@ -189,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     # server, so this subcommand is given no way to address it.
     bofa = sub.add_parser(
         "bofa",
-        help="Log in to Bank of America; download statements and activity to Drive.",
+        help="Log in to Bank of America; download transaction CSVs to Drive.",
     )
     bofa.add_argument(
         "--timeout",
