@@ -11,6 +11,14 @@ import com.kevin.legion.ui.fleet.DueRowView
  * one state before the first [HomeViewModel.refresh] completes - [HomeContent] renders the grid
  * with every tile's honest empty/loading wording either way, never a blank screen, since ADR 0050
  * makes HOME the phone's only home screen and a blank frame there is a stranded user.
+ *
+ * **Every tile that can THROW carries its own `*Failed` flag (audit finding 1).** Before this, a
+ * thrown read for the checklist count, budget, meal gap/target, maintenance schedule or
+ * voice-notes count was caught and silently replaced with the same value a genuinely empty state
+ * produces (0, `null`, [DailyMealGap.NotLogged], an empty list) - "Couldn't read lists" and "No
+ * lists yet" collapsed into one sentence, exactly the "unreadable and empty are different
+ * sentences" mistake CLAUDE.md sec 1 already names for the calendar chip. [HomeTileReadingsTest]'s
+ * `*TileStatus` functions read these flags first, ahead of every count-based wording.
  */
 data class HomeUiState(
     val loading: Boolean = true,
@@ -26,10 +34,15 @@ data class HomeUiState(
 
     // ---- tiles
     val checklistCount: Int = 0,
+    val listsFailed: Boolean = false,
     val budget: BudgetVsActual? = null,
+    val moneyFailed: Boolean = false,
     val mealGap: DailyMealGap = DailyMealGap.NotLogged,
     val hasMealTarget: Boolean = false,
+    val bodyFailed: Boolean = false,
     val maintenanceRows: List<DueRowView> = emptyList(),
     val maintenanceUnknownCount: Int = 0,
+    val fleetFailed: Boolean = false,
     val voiceNotesCount: Int = 0,
+    val recordingsFailed: Boolean = false,
 )

@@ -88,6 +88,13 @@ class HomeTileReadingsTest {
         assertEquals("4 lists", listsTileStatus(4).text)
     }
 
+    @Test
+    fun `a failed lists read wins over a zero count, in alert - audit finding 1`() {
+        val status = listsTileStatus(checklistCount = 0, failed = true)
+        assertTrue(status.alert)
+        assertEquals("Couldn't read lists", status.text)
+    }
+
     // ---------------------------------------------------------------- Money
 
     @Test
@@ -153,13 +160,22 @@ class HomeTileReadingsTest {
     }
 
     @Test
+    fun `a failed budget read wins over No spending yet, in alert - audit finding 1`() {
+        val status = moneyTileStatus(budget = null, failed = true)
+        assertTrue(status.alert)
+        assertEquals("Couldn't read spending", status.text)
+    }
+
+    @Test
     fun `uncategorized present discloses the excluded figure, not counted`() {
         val budget = budgetFixture(
             lines = emptyList(),
             uncategorized = UncategorizedSpend(spentCents = 4_250L, hasProvisionalRows = false),
         )
         val line = moneyDisclosureLine(budget)
-        assertTrue(line != null && line.contains("USD 42.50") && line.contains("uncategorized"))
+        // Audit finding 2: the wording must SAY the exclusion ("Excludes ..."), not just carry the
+        // figure and the word "uncategorized" with no verb tying the two into "not counted".
+        assertEquals("Excludes USD 42.50 uncategorized", line)
     }
 
     @Test
@@ -196,6 +212,13 @@ class HomeTileReadingsTest {
     @Test
     fun `body with no target at all`() {
         assertEquals("No calorie target", bodyTileStatus(DailyMealGap.NotLogged, hasMealTarget = false).text)
+    }
+
+    @Test
+    fun `a failed meal-gap read wins over No calorie target, in alert - audit finding 1`() {
+        val status = bodyTileStatus(DailyMealGap.NotLogged, hasMealTarget = false, failed = true)
+        assertTrue(status.alert)
+        assertEquals("Couldn't read meals", status.text)
     }
 
     @Test
@@ -256,6 +279,13 @@ class HomeTileReadingsTest {
     }
 
     @Test
+    fun `a failed maintenance read wins over No maintenance schedule, in alert - audit finding 1`() {
+        val status = fleetTileStatus(emptyList(), unknownCount = 0, failed = true)
+        assertTrue(status.alert)
+        assertEquals("Couldn't read maintenance", status.text)
+    }
+
+    @Test
     fun `every item unknown, none overdue, reads Mileage unknown`() {
         assertEquals("Mileage unknown", fleetTileStatus(emptyList(), unknownCount = 3).text)
     }
@@ -277,6 +307,20 @@ class HomeTileReadingsTest {
         val recording = recordingsTileStatus(5, recording = true)
         assertTrue(recording.alert)
         assertEquals("Recording", recording.text)
+    }
+
+    @Test
+    fun `a failed voice-notes read wins over N saved, in alert - audit finding 1`() {
+        val status = recordingsTileStatus(0, recording = false, failed = true)
+        assertTrue(status.alert)
+        assertEquals("Couldn't read recordings", status.text)
+    }
+
+    @Test
+    fun `an active recording still wins over a failed count read`() {
+        val status = recordingsTileStatus(0, recording = true, failed = true)
+        assertTrue(status.alert)
+        assertEquals("Recording", status.text)
     }
 
     // ---------------------------------------------------------------- weather / area / location

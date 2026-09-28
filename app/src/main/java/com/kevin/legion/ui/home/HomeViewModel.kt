@@ -12,11 +12,13 @@ import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.location.AirNow
+import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.ui.AgendaSource
+import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.buildDueRows
 import com.kevin.legion.ui.notes.InboxRowView
 import com.kevin.legion.ui.notes.buildInboxRows
@@ -49,10 +51,12 @@ private const val OVERDUE_LOOKBACK_DAYS = 30L
  * **HOME must never crash (ADR 0050).** Each domain's reads below sit inside its own `try`/`catch` -
  * a throwing weather call must not also blank the money tile, and a throwing ledger read must not
  * strand the whole home screen (a crash here now leaves the phone with no home screen at all until
- * Android restarts it). `CarDatabase.getDatabase` itself is the one call this function does not
- * guard individually - every other caller in the app (`MainActivity.onResume`, `CalendarScreen`)
- * already treats it as infallible, and guarding it here alone would not change what happens if it
- * really did throw: every reader below needs it.
+ * Android restarts it). **[refresh] itself is wrapped too (audit finding 4)**: [CarDatabase.getDatabase]
+ * sat outside every one of [loadState]'s own guards, in a `launch` block with no handler, so a
+ * throw there (or anywhere else this function does not individually catch) would have crashed the
+ * coroutine and left [HomeUiState] stuck at `loading = true` forever - a blank grid, exactly what
+ * ADR 0050 forbids. A throw escaping [loadState] now lands on [crashedHomeUiState] instead: every
+ * tile's own failed wording, not a stranded loading spinner.
  */
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(HomeUiState())
@@ -60,9 +64,44 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh() {
         viewModelScope.launch {
-            _state.value = loadState(getApplication())
+            val today = LocalDate.now(ZoneId.systemDefault())
+            _state.value = try {
+                loadState(getApplication())
+            } catch (e: Exception) {
+                crashedHomeUiState(today)
+            }
         }
     }
+}
+
+/** Every tile's own failed wording, today's date still shown (a `LocalDate.now()` call, no
+ * database involved) - what [HomeViewModel.refresh] falls back to when [loadState] itself throws
+ * (audit finding 4), rather than leaving [HomeUiState.loading] stuck at `true`. */
+private fun crashedHomeUiState(today: LocalDate): HomeUiState {
+    val fullStyle = java.time.format.TextStyle.FULL
+    val locale = java.util.Locale.ENGLISH
+    return HomeUiState(
+        loading = false,
+        weekdayLabel = today.dayOfWeek.getDisplayName(fullStyle, locale),
+        dateLabel = today.month.getDisplayName(fullStyle, locale) + " " + today.dayOfMonth,
+        weatherText = weatherLine(null),
+        weatherIconRes = weatherIconRes(null),
+        areaAqiLine = "Couldn't check the area.",
+        nextLine = "Couldn't read the calendar",
+        chips = buildTodayChips(0, 0, calendarReadFailed = true),
+        checklistCount = 0,
+        listsFailed = true,
+        budget = null,
+        moneyFailed = true,
+        mealGap = DailyMealGap.NotLogged,
+        hasMealTarget = false,
+        bodyFailed = true,
+        maintenanceRows = emptyList(),
+        maintenanceUnknownCount = 0,
+        fleetFailed = true,
+        voiceNotesCount = 0,
+        recordingsFailed = true,
+    )
 }
 
 private suspend fun loadState(context: Context): HomeUiState {
@@ -75,35 +114,6 @@ private suspend fun loadState(context: Context): HomeUiState {
     val db = CarDatabase.getDatabase(context)
 
     val calendar = loadCalendar(context, db, zone, now, dayStart, dayEndExclusive, lookbackStart)
-    val checklistCount = try {
-        ChecklistController.allChecklists(context).size
-    } catch (e: Exception) {
-        0
-    }
-    val budget = try {
-        LedgerController.budgetVsActual(context, LedgerEntity.US, YearMonth.now())
-    } catch (e: Exception) {
-        null
-    }
-    val (mealGap, hasMealTarget) = try {
-        MealController.dayGap(context, now) to (db.mealTargetDao().currentTarget(dayStartEpoch(now)) != null)
-    } catch (e: Exception) {
-        com.kevin.legion.meals.DailyMealGap.NotLogged to false
-    }
-    val (maintenanceRows, maintenanceUnknownCount) = try {
-        val vehicle = VehicleController.currentVehicle(context)
-        val currentMileage = VehicleController.currentMileage(vehicle)
-        val items = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
-        buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now) to
-            items.count { VehicleController.isUnknown(it) }
-    } catch (e: Exception) {
-        emptyList<com.kevin.legion.ui.fleet.DueRowView>() to 0
-    }
-    val voiceNotesCount = try {
-        VoiceNoteController.listNotes(context).size
-    } catch (e: Exception) {
-        0
-    }
     val (weatherText, weatherIconResId) = try {
         val info = WeatherController.refresh()
         weatherLine(info) to weatherIconRes(info?.description)
@@ -119,6 +129,76 @@ private suspend fun loadState(context: Context): HomeUiState {
         "Couldn't check the area."
     }
 
+    return assembleHomeState(
+        today = today,
+        calendar = calendar,
+        weatherText = weatherText,
+        weatherIconResId = weatherIconResId,
+        areaAqi = areaAqi,
+        readChecklistCount = { ChecklistController.allChecklists(context).size },
+        readBudget = { LedgerController.budgetVsActual(context, LedgerEntity.US, YearMonth.now()) },
+        readMealGap = {
+            MealController.dayGap(context, now) to (db.mealTargetDao().currentTarget(dayStartEpoch(now)) != null)
+        },
+        readMaintenance = {
+            val vehicle = VehicleController.currentVehicle(context)
+            val currentMileage = VehicleController.currentMileage(vehicle)
+            val items = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
+            buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now) to
+                items.count { VehicleController.isUnknown(it) }
+        },
+        readVoiceNotesCount = { VoiceNoteController.listNotes(context).size },
+    )
+}
+
+/**
+ * The assembly step audit finding 1 asked for: every domain read that can throw arrives as an
+ * injected suspend lambda, so [HomeViewModelTest] can feed a throwing fake straight in and assert
+ * on [HomeUiState] without a `Context`/Robolectric/Room round trip. [loadState] wires the real
+ * controllers above; this function owns nothing but the try/catch-and-word step for each one -
+ * a thrown read gets its own `*Failed` flag and worded tile status, never the same value a
+ * genuinely empty read produces (CLAUDE.md sec 1's "unreadable and empty are different sentences").
+ */
+internal suspend fun assembleHomeState(
+    today: LocalDate,
+    calendar: CalendarReading,
+    weatherText: String,
+    weatherIconResId: Int,
+    areaAqi: String,
+    readChecklistCount: suspend () -> Int,
+    readBudget: suspend () -> com.kevin.legion.ledger.BudgetVsActual?,
+    readMealGap: suspend () -> Pair<DailyMealGap, Boolean>,
+    readMaintenance: suspend () -> Pair<List<DueRowView>, Int>,
+    readVoiceNotesCount: suspend () -> Int,
+): HomeUiState {
+    val (checklistCount, listsFailed) = try {
+        readChecklistCount() to false
+    } catch (e: Exception) {
+        0 to true
+    }
+    val (budget, moneyFailed) = try {
+        readBudget() to false
+    } catch (e: Exception) {
+        null to true
+    }
+    val (mealPair, bodyFailed) = try {
+        readMealGap() to false
+    } catch (e: Exception) {
+        (DailyMealGap.NotLogged to false) to true
+    }
+    val (mealGap, hasMealTarget) = mealPair
+    val (maintenancePair, fleetFailed) = try {
+        readMaintenance() to false
+    } catch (e: Exception) {
+        (emptyList<DueRowView>() to 0) to true
+    }
+    val (maintenanceRows, maintenanceUnknownCount) = maintenancePair
+    val (voiceNotesCount, recordingsFailed) = try {
+        readVoiceNotesCount() to false
+    } catch (e: Exception) {
+        0 to true
+    }
+
     val fullStyle = java.time.format.TextStyle.FULL
     val locale = java.util.Locale.ENGLISH
     return HomeUiState(
@@ -131,16 +211,21 @@ private suspend fun loadState(context: Context): HomeUiState {
         nextLine = calendar.nextLine,
         chips = calendar.chips,
         checklistCount = checklistCount,
+        listsFailed = listsFailed,
         budget = budget,
+        moneyFailed = moneyFailed,
         mealGap = mealGap,
         hasMealTarget = hasMealTarget,
+        bodyFailed = bodyFailed,
         maintenanceRows = maintenanceRows,
         maintenanceUnknownCount = maintenanceUnknownCount,
+        fleetFailed = fleetFailed,
         voiceNotesCount = voiceNotesCount,
+        recordingsFailed = recordingsFailed,
     )
 }
 
-private data class CalendarReading(val nextLine: String, val chips: TodayChips)
+internal data class CalendarReading(val nextLine: String, val chips: TodayChips)
 
 /**
  * The today card's calendar half - the SAME reads `CalendarScreen`'s own day view makes

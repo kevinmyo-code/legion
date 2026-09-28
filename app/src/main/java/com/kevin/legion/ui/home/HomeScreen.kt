@@ -266,7 +266,7 @@ private fun TileGrid(
                 accent = AreaAccent.LISTS,
                 iconRes = R.drawable.ms_checklist,
                 title = "Lists",
-                status = listsTileStatus(state.checklistCount),
+                status = listsTileStatus(state.checklistCount, failed = state.listsFailed),
                 onClick = callbacks.onOpenLists,
             )
         }
@@ -276,7 +276,7 @@ private fun TileGrid(
                 accent = AreaAccent.MONEY,
                 iconRes = R.drawable.ms_account_balance_wallet,
                 title = "Money",
-                status = moneyTileStatus(state.budget),
+                status = moneyTileStatus(state.budget, failed = state.moneyFailed),
                 disclosure = moneyTileDisclosure(state.budget),
                 onClick = callbacks.onOpenMoney,
             )
@@ -285,7 +285,7 @@ private fun TileGrid(
                 accent = AreaAccent.BODY,
                 iconRes = R.drawable.ms_monitor_heart,
                 title = "Body",
-                status = bodyTileStatus(state.mealGap, state.hasMealTarget),
+                status = bodyTileStatus(state.mealGap, state.hasMealTarget, failed = state.bodyFailed),
                 disclosure = bodyDisclosureLine(state.mealGap),
                 onClick = callbacks.onOpenBody,
             )
@@ -296,7 +296,7 @@ private fun TileGrid(
                 accent = AreaAccent.FLEET,
                 iconRes = R.drawable.ms_directions_car,
                 title = "Fleet",
-                status = fleetTileStatus(state.maintenanceRows, state.maintenanceUnknownCount),
+                status = fleetTileStatus(state.maintenanceRows, state.maintenanceUnknownCount, failed = state.fleetFailed),
                 onClick = callbacks.onOpenFleet,
             )
             TileCard(
@@ -304,7 +304,7 @@ private fun TileGrid(
                 accent = AreaAccent.RECORDINGS,
                 iconRes = R.drawable.ms_graphic_eq,
                 title = "Recordings",
-                status = recordingsTileStatus(state.voiceNotesCount, recording),
+                status = recordingsTileStatus(state.voiceNotesCount, recording, failed = state.recordingsFailed),
                 disclosure = recordRefusal,
                 onClick = callbacks.onOpenRecordings,
                 trailing = {

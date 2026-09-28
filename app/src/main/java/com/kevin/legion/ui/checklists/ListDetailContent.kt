@@ -53,6 +53,7 @@ fun ListDetailContent(state: ListDetailState, callbacks: ListDetailCallbacks) {
         }
 
         ScheduleLine(checklist = checklist, state = state)
+        WriteErrorBanner(message = state.writeError)
 
         if (state.unticked.isEmpty() && state.ticked.isEmpty()) {
             Text(
@@ -76,6 +77,19 @@ private fun ScheduleLine(checklist: com.kevin.legion.data.local.Checklist, state
         if (state.appliesToday) "${state.scheduleLabel}. Ticks count for today, $todayDayLabel." else "Not scheduled today.",
         style = MaterialTheme.typography.bodySmall,
         color = SoftColors.text2,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+}
+
+/** A thrown controller write (audit finding 6) - a one-line banner on the screen itself, never a
+ * toast, matching [UntickedRow]'s own existing `refusal` styling. `null` renders nothing. */
+@Composable
+private fun WriteErrorBanner(message: String?) {
+    message ?: return
+    Text(
+        message,
+        style = MaterialTheme.typography.bodySmall,
+        color = SoftColors.onAlert,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
     )
 }

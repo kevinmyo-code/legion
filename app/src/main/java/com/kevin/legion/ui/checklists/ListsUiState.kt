@@ -63,6 +63,11 @@ data class ListDetailState(
     val showSchedulePicker: Boolean = false,
     val showOverflowMenu: Boolean = false,
     val showDeleteConfirm: Boolean = false,
+    /** A thrown [ChecklistController] write - audit finding 6 - says in words what did not
+     * happen, rendered as a one-line banner on this screen, never a toast. Cleared on the next
+     * successful write and left in place across an unrelated `refresh()` (loadDetail's own
+     * `.copy(...)` never mentions this field). */
+    val writeError: String? = null,
 )
 
 /** History mode's own slice - "shown, never scored" (unchanged from before this ticket; only its

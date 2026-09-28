@@ -60,3 +60,25 @@ touched ([[../../docs/adr/0051-design-language-soft-material|ADR 0051]]).
   in the mission-control look. Restyling it is a later touch.
 - **Voice.** No tool added or removed. Every capability HOME reached is still reached (ADR 0035).
 - **ADR 0049.** A tick is a tap, not a purchase. Every new string says "ticked".
+
+## RESUME HERE (saved 2026-09-27 ~22:50, PC shutdown)
+
+Branch `feat/home-redesign`, worktree `.claude/worktrees/home-redesign`. Tickets 01-04 built and
+merged together with origin/dev (3677 tests, 0 failures before the WIP below).
+
+1. **Audit fixes: WIP commit at the tip, UNVERIFIED.** A builder was fixing six audit findings when it
+   was stopped: (1) five HOME tiles render a failed read as empty - each needs a "Couldn't read ..."
+   state plus a HomeViewModel test with throwing readers; (2) the Money disclosure lost "not counted" -
+   reword to e.g. "Excludes USD 42.50 uncategorized", fix its test, look at home-alerts.png;
+   (3) ListsViewModel "Not synced yet" only checks today's outbox - check each row's tickDay;
+   (4) guard `CarDatabase.getDatabase` in HomeViewModel.loadState; (5) stale comments in
+   ui/MeterReadings.kt; (6) guard ListsViewModel writes and say what failed. Edits exist for most;
+   compile, full suite and a look at the screenshots are all owed. Finish, then amend nothing -
+   make a normal follow-up commit.
+2. **Ticket 06**, the pinned-app dock: spec in `issues/06-pinned-app-dock.md`, not started.
+3. Merge origin/dev again, full suite, then message the merge coordinator session (it merges into
+   dev/main; do not push dev/main yourself) with the branch and XML totals.
+4. **Ticket 05** ship pass on the A25: ask the coordinator first (its build is on the phone), and
+   re-grant HOME and ASSISTANT roles to com.kevin.legion after installing.
+
+`feat/home-lists` (worktree `.claude/worktrees/home-lists`) is fully merged in; nothing left there.

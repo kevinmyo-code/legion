@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.checklists
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kevin.legion.backend.ChecklistsOutboxDrain
@@ -135,9 +136,14 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
         val today = ChecklistController.today()
         val appliesToday = checklist.scheduleKind == null ||
             ChecklistController.checklistsForDay(app, today, includeArchived = true).any { it.id == checklistId }
-        val queued = ChecklistsOutboxDrain.queuedItemIdsForDay(app, today)
         when (val result = ChecklistController.itemsWithTickState(app, checklistId, today)) {
             is ChecklistItemsResult.Loaded -> {
+                // Audit finding 3: a lookup scoped to ONLY [today] missed a plain-list item whose
+                // live tick sits on an earlier [ChecklistController.ItemState.tickDay] - the badge
+                // silently vanished for exactly that row. One lookup per DISTINCT day this list's
+                // own rows actually carry, [today] always included (a fresh tick/untick this
+                // session lands on today, whatever day the item's PRIOR tick was on).
+                val queued = queuedIdsForRows(app, result.items.map { it.tickDay }, today)
                 val rows = result.items
                     .sortedBy { it.item.sortOrder }
                     .map { st -> ListItemUi(st.item, st.ticked, st.value, st.tickDay, queued = st.item.id in queued) }
@@ -180,9 +186,11 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
             val checklistId = d.checklist?.id ?: return@launch
             val text = d.draft.trim()
             if (text.isBlank()) return@launch
-            ChecklistController.addItem(app, checklistId, text, sortOrder = d.unticked.size + d.ticked.size)
-            _state.update { it.copy(detail = it.detail?.copy(draft = "")) }
-            refresh()
+            guardedWrite("add that item") {
+                ChecklistController.addItem(app, checklistId, text, sortOrder = d.unticked.size + d.ticked.size)
+                _state.update { it.copy(detail = it.detail?.copy(draft = "")) }
+                refresh()
+            }
         }
     }
 
@@ -205,14 +213,23 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun applyTickOutcome(itemId: Long, value: Double?) {
         viewModelScope.launch {
-            val day = ChecklistController.today()
-            when (val outcome = ChecklistController.tick(app, itemId, day, value = value)) {
-                is TickOutcome.Ticked ->
-                    _state.update { it.copy(detail = it.detail?.copy(refusals = it.detail.refusals - itemId, inputValues = it.detail.inputValues - itemId)) }
-                is TickOutcome.Refused ->
-                    _state.update { it.copy(detail = it.detail?.copy(refusals = it.detail.refusals + (itemId to outcome.message))) }
+            guardedWrite("record that tick") {
+                val day = ChecklistController.today()
+                when (val outcome = ChecklistController.tick(app, itemId, day, value = value)) {
+                    is TickOutcome.Ticked ->
+                        _state.update {
+                            it.copy(
+                                detail = it.detail?.copy(
+                                    refusals = it.detail.refusals - itemId,
+                                    inputValues = it.detail.inputValues - itemId,
+                                ),
+                            )
+                        }
+                    is TickOutcome.Refused ->
+                        _state.update { it.copy(detail = it.detail?.copy(refusals = it.detail.refusals + (itemId to outcome.message))) }
+                }
+                refresh()
             }
-            refresh()
         }
     }
 
@@ -222,8 +239,10 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
      * item ticked yesterday has no `(item, today)` row to clear, only a `(item, tickDay)` one. */
     fun untick(itemId: Long, tickDay: Int) {
         viewModelScope.launch {
-            ChecklistController.untick(app, itemId, tickDay)
-            refresh()
+            guardedWrite("untick that item") {
+                ChecklistController.untick(app, itemId, tickDay)
+                refresh()
+            }
         }
     }
 
@@ -273,10 +292,12 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
             if (index < 0 || neighborIndex < 0 || neighborIndex >= ordered.size) return@launch
             val current = ordered[index]
             val neighbor = ordered[neighborIndex]
-            ChecklistController.reorderItem(app, current.id, neighbor.sortOrder)
-            ChecklistController.reorderItem(app, neighbor.id, current.sortOrder)
-            _state.update { it.copy(detail = it.detail?.copy(longPressItem = null)) }
-            refresh()
+            guardedWrite("reorder that item") {
+                ChecklistController.reorderItem(app, current.id, neighbor.sortOrder)
+                ChecklistController.reorderItem(app, neighbor.id, current.sortOrder)
+                _state.update { it.copy(detail = it.detail?.copy(longPressItem = null)) }
+                refresh()
+            }
         }
     }
 
@@ -295,9 +316,11 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     fun rename(text: String) {
         viewModelScope.launch {
             val id = _state.value.detail?.checklist?.id ?: return@launch
-            ChecklistController.renameChecklist(app, id, text)
-            _state.update { it.copy(detail = it.detail?.copy(showRenameDialog = false)) }
-            refresh()
+            guardedWrite("rename the list") {
+                ChecklistController.renameChecklist(app, id, text)
+                _state.update { it.copy(detail = it.detail?.copy(showRenameDialog = false)) }
+                refresh()
+            }
         }
     }
 
@@ -321,9 +344,15 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     fun archiveToggle() {
         viewModelScope.launch {
             val checklist = _state.value.detail?.checklist ?: return@launch
-            if (checklist.archived) ChecklistController.unarchiveChecklist(app, checklist.id) else ChecklistController.archiveChecklist(app, checklist.id)
-            _state.update { it.copy(detail = it.detail?.copy(showOverflowMenu = false)) }
-            refresh()
+            guardedWrite("archive that list") {
+                if (checklist.archived) {
+                    ChecklistController.unarchiveChecklist(app, checklist.id)
+                } else {
+                    ChecklistController.archiveChecklist(app, checklist.id)
+                }
+                _state.update { it.copy(detail = it.detail?.copy(showOverflowMenu = false)) }
+                refresh()
+            }
         }
     }
 
@@ -337,8 +366,10 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     fun confirmDelete() {
         viewModelScope.launch {
             val id = _state.value.detail?.checklist?.id ?: return@launch
-            ChecklistController.deleteChecklist(app, id)
-            backToPage()
+            guardedWrite("delete that list") {
+                ChecklistController.deleteChecklist(app, id)
+                backToPage()
+            }
         }
     }
 
@@ -374,4 +405,46 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
     }
+
+    // ------------------------------------------------------------------------ write guard (finding 6)
+
+    /**
+     * Runs a [ChecklistController] write [block] wrapped so a thrown call leaves this screen alive
+     * (audit finding 6) - before this, tick/untick/addItem/rename/archiveToggle/confirmDelete/
+     * reorder had no guard at all, so a thrown controller call would crash whatever screen was
+     * open (ADR 0050's "HOME must never crash" extends to every screen it can launch from). A
+     * thrown [block] sets [ListDetailState.writeError] to a one-line sentence naming what did NOT
+     * happen, rendered on the screen itself, never a toast. [actionName] is a short verb phrase
+     * ("add that item"), not a full sentence - the sentence is built here so every caller reads the
+     * same shape.
+     */
+    private suspend fun guardedWrite(actionName: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(detail = it.detail?.copy(writeError = "Couldn't $actionName - ${e.message ?: "unknown error"}."))
+            }
+        }
+    }
+}
+
+/**
+ * Which of [items]' own [ChecklistController.ItemState.tickDay] values (plus [today], always) have
+ * a tick/untick still queued - audit finding 3. [ChecklistsOutboxDrain.queuedItemIdsForDay] is
+ * scoped to ONE day, so a lookup that only ever asked about [today] was invisible to a plain
+ * list's tick made on an EARLIER day: [ChecklistController.itemsWithTickState] says such an item
+ * is ticked (any live tick, any day), but its "Not synced yet" badge lives on the outbox entry for
+ * its OWN [ChecklistController.ItemState.tickDay], not for today. One lookup per distinct day
+ * actually present among [items], unioned - an item's tick is queued for its own tick day
+ * regardless of what day happens to be "today" when this list is opened.
+ */
+internal suspend fun queuedIdsForRows(
+    context: Context,
+    tickDays: Iterable<Int?>,
+    today: Int,
+): Set<Long> {
+    val days = tickDays.filterNotNull().toMutableSet()
+    days += today
+    return days.flatMap { day -> ChecklistsOutboxDrain.queuedItemIdsForDay(context, day) }.toSet()
 }
