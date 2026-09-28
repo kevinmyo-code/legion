@@ -495,6 +495,13 @@ private fun LegionShell(
     }
     val context = LocalContext.current
 
+    // The header's QUIET toggle. Re-read on every resume, because the Quick Settings tile can flip
+    // Quiet while LEGION is in the background, and a header that disagrees with the phone is a lie.
+    var quietOn by remember { mutableStateOf(com.kevin.legion.quiet.QuietMode.isOn(context)) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
+    }
+
     // Today's category drill-down link (Kevin, 2026-08-07: "let me press it and drill down
     // transactions there"). Lives HERE, above the NavHost, not inside either destination's own
     // composable - the same reason [deepLinkRoute]/[openItemId] do: the Today->Money hop crosses a
@@ -707,6 +714,21 @@ private fun LegionShell(
                         },
                         onOpenApps = {
                             navController.navigate(LegionRoute.APPS) { launchSingleTop = true }
+                        },
+                        quietOn = quietOn,
+                        onToggleQuiet = {
+                            val result = com.kevin.legion.quiet.QuietMode.toggle(context)
+                            if (result is com.kevin.legion.quiet.QuietMode.Result.Refused) {
+                                // Said in words, never a dead tap. Missing access: take him there.
+                                android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                if (result.message == com.kevin.legion.quiet.QuietMode.NEEDS_ACCESS) {
+                                    context.startActivity(
+                                        android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }
+                            }
+                            quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
                         },
                         // Ticket 04 build section 3: KEY survives an alarm, riding alongside the
                         // alarm pill instead of folding into [left].

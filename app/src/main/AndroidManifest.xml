@@ -35,6 +35,9 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- The Quiet tile (2026-09-27): LEGION's own Do Not Disturb mode needs DND access, which the
+         user grants on a system screen. Without it the tile says so and changes nothing. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
@@ -406,6 +409,21 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
+        <!-- The Quiet tile: vibrate, calls and alarms only, every other notification silent.
+             See quiet/QuietMode.kt. -->
+        <service
+            android:name=".quiet.QuietTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_quiet_tile"
+            android:label="Quiet"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
     </application>
 
 </manifest>

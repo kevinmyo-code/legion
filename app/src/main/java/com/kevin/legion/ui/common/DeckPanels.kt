@@ -884,6 +884,10 @@ fun StatusLine(
     cursorSolid: Boolean = false,
     /** The app drawer (ADR 0050, LEGION as the home app). Null hides the link. */
     onOpenApps: (() -> Unit)? = null,
+    /** The Quiet toggle (vibrate, calls and alarms only; see quiet/QuietMode.kt). Null hides it.
+     * [quietOn] is shown in words ("QUIET ON"), not by colour alone. */
+    onToggleQuiet: (() -> Unit)? = null,
+    quietOn: Boolean = false,
 ) {
     val sem = LocalLegionSemantics.current
     val motionEnabled = deckMotionEnabled()
@@ -939,6 +943,17 @@ fun StatusLine(
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onToggleQuiet != null) {
+                Text(
+                    if (quietOn) "QUIET ON" else "QUIET",
+                    style = LegionType.stamp,
+                    color = if (quietOn) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .then(if (quietOn) Modifier.background(MaterialTheme.colorScheme.primary) else Modifier)
+                        .clickable(onClick = onToggleQuiet)
+                        .padding(horizontal = 10.dp, vertical = 14.dp),
+                )
+            }
             if (onOpenApps != null) {
                 Text(
                     "APPS",
