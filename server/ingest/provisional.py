@@ -29,6 +29,14 @@ Ticket 09 pulls each account's activity every day, and each day's file repeats
 everything since the last statement. A file with new bytes is a new file to
 `ingested_files`, so without this every row would be written again daily.
 
+The same holds across the two file kinds (Kevin, 2026-09-28: transaction
+downloads only, no statement PDFs). A card's closed-period file
+(`bofa_<last4>_period_<date>.csv`) is provisional too, since the card export
+prints no anchor, and it overlaps the current files pulled before and after it;
+matching within its own date window is what keeps each row once. A checking
+current file is provisional here and its closed period is GATED, so that one
+supersedes these rows through `commit_statement` instead.
+
 So within the new file's date window, for this account, the existing
 provisional rows and the file's lines are matched as MULTISETS on
 `(txn_date, amount_cents, description)`: the k-th identical line in the file

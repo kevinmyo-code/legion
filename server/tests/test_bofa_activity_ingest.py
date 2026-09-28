@@ -24,7 +24,7 @@ from tests.test_drive_statements import DRIVE_SECRET, FOLDER, FakeDrive, NoGemin
 
 FIXTURES = Path(__file__).parent / "bofa_fixtures"
 CARD_NAME = "bofa_7823_activity_2026-09-27.csv"
-CHECKING_NAME = "bofa_1000_activity_2026-08-03.csv"
+CHECKING_NAME = "bofa_1000_period_2026-08-03.csv"
 CARD_HEADER = "Posted Date,Reference Number,Payee,Address,Amount"
 
 
@@ -238,7 +238,7 @@ def test_a_provisional_line_a_verified_statement_already_lists_is_never_written(
 
 
 @pytest.mark.django_db
-def test_a_checking_activity_csv_is_gated_with_its_anchors_persisted(
+def test_a_checking_closed_period_is_gated_with_its_anchors_persisted(
     connected, household_a, drive
 ):
     content = (FIXTURES / "bofa_csv_happy_path.csv").read_bytes()
@@ -274,6 +274,233 @@ def test_a_checking_csv_that_does_not_tie_out_is_quarantined_with_a_sentence(
     assert "do not tie out" in stored.quarantine_reason
     assert not LedgerTransaction.objects.exists()
     assert not Statement.objects.exists()
+
+
+# =============================================================================
+# Overlapping downloads (Kevin, 2026-09-28: transaction history only, no
+# statement PDFs). Every test here runs the real watcher, parsers, gate and
+# rule 7 writer against the database; nothing is mocked but Drive's HTTP.
+# =============================================================================
+
+
+def _money(cents: int) -> str:
+    return f'"{cents / 100:,.2f}"'
+
+
+def checking_csv(
+    begin: int, rows: list[tuple[str, str, int]], *, start: str, end: str
+) -> bytes:
+    """A BofA checking export that ties out: summary block, then the table
+    with the running balance. `rows` are (MM/DD/YYYY, description, cents)."""
+    credits = sum(a for _, _, a in rows if a > 0)
+    debits = sum(a for _, _, a in rows if a < 0)
+    ending = begin + credits + debits
+    lines = [
+        "Description,,Summary Amt.",
+        f"Beginning balance as of {start},,{_money(begin)}",
+        f"Total credits,,{_money(credits)}",
+        f"Total debits,,{_money(debits)}",
+        f"Ending balance as of {end},,{_money(ending)}",
+        "",
+        "Date,Description,Amount,Running Bal.",
+        f"{start},Beginning balance as of {start},,{_money(begin)}",
+    ]
+    balance = begin
+    for day, description, amount in rows:
+        balance += amount
+        lines.append(f'{day},"{description}",{_money(amount)},{_money(balance)}')
+    return ("\r\n".join(lines) + "\r\n").encode()
+
+
+def ledger(household, last4: str):
+    """Every row the ledger holds for one account, as (date, description,
+    cents, provenance), in a stable order."""
+    return sorted(
+        (r.txn_date.isoformat(), r.description, r.amount_cents, r.provenance)
+        for r in LedgerTransaction.objects.filter(household=household, account_last4=last4)
+    )
+
+
+def as_ledger(rows, provenance):
+    return sorted(
+        (f"{day[6:10]}-{day[0:2]}-{day[3:5]}", description, amount, provenance)
+        for day, description, amount in rows
+    )
+
+
+# Checking 1000. The last statement closed 09/04, so "current" runs from 09/05.
+DAY_1 = [
+    ("09/05/2026", "COFFEE", -450),
+    ("09/05/2026", "COFFEE", -450),  # two genuine coffees: two rows, always
+    ("09/08/2026", "EMPLOYER PAYROLL", 240000),
+]
+DAY_2 = DAY_1 + [("09/10/2026", "GROCER", -6000)]
+DAY_2_CLOSING = 10000 + 240000 - 900 - 6000
+
+
+@pytest.mark.django_db
+def test_checking_current_day_1_then_day_2_then_the_closed_period_holds_each_row_once(
+    connected, household_a, drive
+):
+    """The bug this branch closes. Before it, each daily current file was gated
+    as its own verified statement: overlapping "statements" piled up one per
+    day, and the days between the last pull and the close were listed by none.
+    Now current files are provisional and the closed period verifies them."""
+    day_1 = checking_csv(10000, DAY_1, start="09/05/2026", end="09/09/2026")
+    pull(household_a, drive, day_1, "bofa_1000_activity_2026-09-09.csv",
+         stamp="2026-09-09T12:00:00.000Z")
+    day_2 = checking_csv(10000, DAY_2, start="09/05/2026", end="09/10/2026")
+    result = pull(household_a, drive, day_2, "bofa_1000_activity_2026-09-10.csv",
+                  stamp="2026-09-10T12:00:00.000Z")
+
+    # Before the period closes: each row once, none of them verified, no
+    # statement on record, and the log says "unverified".
+    assert ledger(household_a, "1000") == as_ledger(DAY_2, Provenance.UNRECONCILED)
+    assert not Statement.objects.exists()
+    assert "unverified: 1 new, 3 already held, 0 no longer listed" in result.output
+
+    # The closed period (09/05 to 09/10) arrives with the same rows. A trailing
+    # blank line makes its bytes differ from day 2's file; the content is equal.
+    period = checking_csv(10000, DAY_2, start="09/05/2026", end="09/10/2026") + b"\r\n"
+    result = pull(household_a, drive, period, "bofa_1000_period_2026-09-10.csv",
+                  stamp="2026-09-11T12:00:00.000Z")
+
+    assert ledger(household_a, "1000") == as_ledger(DAY_2, Provenance.DETERMINISTIC)
+    statement = Statement.objects.get(household=household_a)
+    assert (statement.opening_balance_cents, statement.closing_balance_cents) == (
+        10000, DAY_2_CLOSING
+    )
+    assert statement.stated_total_cents is None
+    assert LedgerTransaction.objects.filter(statement=statement).count() == 4
+    assert "committed" in result.output
+
+
+@pytest.mark.django_db
+def test_checking_current_file_after_a_closed_period_leaves_the_verified_rows_untouched(
+    connected, household_a, drive
+):
+    period = checking_csv(10000, DAY_2, start="09/05/2026", end="09/10/2026")
+    pull(household_a, drive, period, "bofa_1000_period_2026-09-10.csv",
+         stamp="2026-09-11T12:00:00.000Z")
+    verified = set(
+        LedgerTransaction.objects.filter(provenance=Provenance.DETERMINISTIC)
+        .values_list("id", flat=True)
+    )
+    assert len(verified) == 4
+
+    # The next period's window, as the daily current file shows it.
+    next_rows = [("09/11/2026", "FUEL", -4000), ("09/12/2026", "RENT", -150000)]
+    current = checking_csv(DAY_2_CLOSING, next_rows, start="09/11/2026", end="09/12/2026")
+    result = pull(household_a, drive, current, "bofa_1000_activity_2026-09-12.csv",
+                  stamp="2026-09-12T12:00:00.000Z")
+
+    expected = sorted(
+        as_ledger(DAY_2, Provenance.DETERMINISTIC)
+        + as_ledger(next_rows, Provenance.UNRECONCILED)
+    )
+    assert set(
+        LedgerTransaction.objects.filter(provenance=Provenance.DETERMINISTIC)
+        .values_list("id", flat=True)
+    ) == verified
+    assert ledger(household_a, "1000") == expected
+    assert Statement.objects.count() == 1
+    assert "unverified: 2 new, 0 already held" in result.output
+
+    # A current file BofA produced before it moved the window on still lists
+    # the closed days: those are already on a verified statement and are not
+    # written again.
+    late = checking_csv(10000, DAY_2 + next_rows, start="09/05/2026", end="09/12/2026")
+    result = pull(household_a, drive, late, "bofa_1000_activity_2026-09-12 (1).csv",
+                  stamp="2026-09-12T18:00:00.000Z")
+    assert ledger(household_a, "1000") == expected
+    assert set(
+        LedgerTransaction.objects.filter(provenance=Provenance.DETERMINISTIC)
+        .values_list("id", flat=True)
+    ) == verified
+    assert "4 already on a verified statement" in result.output
+
+
+@pytest.mark.django_db
+def test_card_current_then_closed_period_then_next_current_holds_each_row_once(
+    connected, household_a, drive
+):
+    """Card 7823, statement closing 09/05 (P). The current file on 09/10 (X)
+    covers 09/01 to 09/10, the period file covers 09/01 to 09/05, the next
+    day's current file covers 09/06 to 09/11. The card prints no anchor, so all
+    of it stays UNRECONCILED, and none of it may be counted twice."""
+    current_x = card(
+        "09/02/2026,1,COFFEE,,-4.50",
+        "09/04/2026,2,BAGEL,,-3.00",
+        "09/04/2026,3,BAGEL,,-3.00",
+        "09/05/2026,4,REFUND,,12.00",
+        "09/09/2026,5,FUEL,,-40.00",
+    )
+    pull(household_a, drive, current_x, "bofa_7823_activity_2026-09-10.csv",
+         stamp="2026-09-10T12:00:00.000Z")
+
+    period = card(
+        "09/02/2026,1,COFFEE,,-4.50",
+        "09/04/2026,2,BAGEL,,-3.00",
+        "09/04/2026,3,BAGEL,,-3.00",
+        "09/05/2026,4,REFUND,,12.00",
+    )
+    result = pull(household_a, drive, period, "bofa_7823_period_2026-09-05.csv",
+                  stamp="2026-09-10T18:00:00.000Z")
+    assert "unverified: 0 new, 4 already held, 0 no longer listed" in result.output
+
+    next_day = card("09/09/2026,5,FUEL,,-40.00", "09/11/2026,6,GROCER,,-60.00")
+    pull(household_a, drive, next_day, "bofa_7823_activity_2026-09-11.csv",
+         stamp="2026-09-11T12:00:00.000Z")
+
+    u = Provenance.UNRECONCILED
+    assert ledger(household_a, "7823") == sorted([
+        ("2026-09-02", "COFFEE", -450, u),
+        ("2026-09-04", "BAGEL", -300, u),
+        ("2026-09-04", "BAGEL", -300, u),
+        ("2026-09-05", "REFUND", 1200, u),
+        ("2026-09-09", "FUEL", -4000, u),
+        ("2026-09-11", "GROCER", -6000, u),
+    ])
+    assert not Statement.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "name, content",
+    [
+        ("bofa_1000_activity_2026-09-10.csv",
+         checking_csv(10000, DAY_2, start="09/05/2026", end="09/10/2026")),
+        ("bofa_1000_period_2026-09-10.csv",
+         checking_csv(10000, DAY_2, start="09/05/2026", end="09/10/2026")),
+        ("bofa_7823_period_2026-09-05.csv", card("09/02/2026,1,COFFEE,,-4.50")),
+    ],
+)
+def test_identical_bytes_twice_are_a_no_op(connected, household_a, drive, name, content):
+    pull(household_a, drive, content, name, stamp="2026-09-10T12:00:00.000Z")
+    before = sorted(LedgerTransaction.objects.values_list("id", flat=True))
+    assert before
+    statements_before = Statement.objects.count()
+
+    stem = name[: -len(".csv")]
+    result = pull(household_a, drive, content, f"{stem} (1).csv",
+                  stamp="2026-09-10T13:00:00.000Z")
+
+    assert sorted(LedgerTransaction.objects.values_list("id", flat=True)) == before
+    assert Statement.objects.count() == statements_before
+    assert result.rows_written == 0
+    assert "known" in result.output
+
+
+@pytest.mark.django_db
+def test_a_checking_file_under_bofa_s_own_name_is_quarantined_in_words(
+    connected, household_a, drive
+):
+    content = checking_csv(10000, DAY_1, start="09/05/2026", end="09/09/2026")
+    pull(household_a, drive, content, "currentTransaction_1000.csv")
+    stored = IngestedFile.objects.get(display_name="currentTransaction_1000.csv")
+    assert stored.state == IngestState.QUARANTINED
+    assert "which window it covers" in stored.quarantine_reason
+    assert not LedgerTransaction.objects.exists()
 
 
 # =============================================================================

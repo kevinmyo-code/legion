@@ -20,7 +20,8 @@ from ingest.parsers.bofa_activity import CARD, CHECKING
 
 FIXTURES = Path(__file__).parent / "bofa_fixtures"
 CARD_NAME = "currentTransaction_7823.csv"
-CHECKING_NAME = "bofa_1000_activity_2026-08-03.csv"
+CHECKING_NAME = "bofa_1000_period_2026-08-03.csv"
+CHECKING_CURRENT_NAME = "bofa_1000_activity_2026-08-03.csv"
 CARD_HEADER = bofa_activity.CARD_HEADER
 
 
@@ -107,14 +108,27 @@ def test_lf_crlf_and_a_byte_order_mark_read_the_same():
         "CURRENTTRANSACTION_7823.CSV",
         "currentTransaction_7823 (1).csv",
         "bofa_7823_activity_2026-09-27.csv",
+        "bofa_7823_period_2026-09-05.csv",
+        "bofa_7823_period_2026-09-05 (2).csv",
     ],
 )
 def test_the_account_comes_from_the_file_name(name):
     parsed = CARD.parse(card("09/01/2026,1,COFFEE,,-4.50"), file_name=name)
     assert parsed.payload["account_last4"] == "7823"
+    # Current or closed period, the card prints no anchor: provisional always.
+    assert parsed.provisional is True
 
 
-@pytest.mark.parametrize("name", ["activity.csv", "currentTransaction.csv", "bofa_78_activity.csv"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "activity.csv",
+        "currentTransaction.csv",
+        "bofa_78_activity.csv",
+        "bofa_7823_statement_2026-09-05.csv",
+        "bofa_7823_period_2026-13-45.csv",
+    ],
+)
 def test_a_name_that_states_no_account_is_refused_never_guessed(name):
     reason = refused(CARD, card("09/01/2026,1,COFFEE,,-4.50"), name)
     assert "prints no account number" in reason
@@ -269,6 +283,66 @@ def test_a_checking_name_that_states_no_account_is_refused_after_the_numbers():
     # Numbers first: a broken file says so even under a bad name.
     assert "tie out" not in refused(CHECKING, checking(), "stmt.csv")
     assert "credits" in refused(CHECKING, checking(credits='"1.00"'), "stmt.csv")
+
+
+# =============================================================================
+# Checking: the NAME decides between the gate and the provisional path
+# =============================================================================
+
+
+def test_a_checking_current_file_is_provisional_and_keeps_no_anchor():
+    """Kevin, 2026-09-28: transaction downloads only. The daily current file
+    prints balances, but its window is still open, so its rows are rule 7
+    provisional and nothing of its balances is kept as a statement anchor."""
+    parsed = CHECKING.parse(fixture("bofa_csv_happy_path.csv"), file_name=CHECKING_CURRENT_NAME)
+    assert parsed is not None and parsed.provisional is True
+    payload = parsed.payload
+    assert payload["account_last4"] == "1000"
+    assert payload["account_nickname"] == "BofA checking"
+    for anchor in (
+        "stated_total_cents",
+        "opening_balance_cents",
+        "closing_balance_cents",
+        "period_start",
+        "period_end",
+    ):
+        assert anchor not in payload
+    assert all("balance_cents" not in line for line in payload["lines"])
+    assert [line["amount_cents"] for line in payload["lines"]] == [
+        3000, 240000, -899, -495, -4574, -12840, -1500
+    ]
+
+
+def test_a_checking_current_file_is_still_checked_before_it_is_stored():
+    """Provisional is not unchecked: a current file that does not tie out is
+    refused exactly as a closed period would be (rule 6 does not relax)."""
+    reason = refused(
+        CHECKING, fixture("bofa_csv_balance_mismatch.csv"), CHECKING_CURRENT_NAME
+    )
+    assert "do not tie out" in reason
+
+
+def test_a_closed_period_is_gated():
+    parsed = CHECKING.parse(checking(), file_name="bofa_1000_period_2026-08-03 (1).csv")
+    assert parsed.provisional is False
+    assert parsed.payload["period_end"] == "2026-08-03"
+
+
+def test_a_period_name_that_disagrees_with_the_summary_is_refused():
+    reason = refused(CHECKING, checking(), "bofa_1000_period_2026-08-04.csv")
+    assert "period ending 2026-08-04" in reason and "ends on 2026-08-03" in reason
+
+
+@pytest.mark.parametrize(
+    "name", ["currentTransaction_1000.csv", "export.csv", "bofa_1000_2026-08.csv"]
+)
+def test_a_checking_file_whose_name_states_no_window_is_refused(name):
+    """BofA's own `currentTransaction_` name is card-only: it does not say
+    whether a checking window is closed, and that decides the path."""
+    reason = refused(CHECKING, checking(), name)
+    assert "which window it covers" in reason
+    assert "bofa_<last 4>_period_<YYYY-MM-DD>.csv" in reason
+    assert "currentTransaction" not in reason
 
 
 def test_a_summary_row_out_of_place_is_refused():

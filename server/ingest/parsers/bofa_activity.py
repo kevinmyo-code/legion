@@ -10,12 +10,28 @@ ledger-drive-ingestion) and `ledger/parsers/BofaCsvStatementParser.kt`
 sent to Gemini (`ingest/statements.py`); a CSV no reader here recognises is
 quarantined by the watcher with `CSV_NOT_RECOGNISED`.
 
-## Two layouts, and what each one lets the ledger claim
+## Two layouts, two windows, and what each lets the ledger claim
 
-| Layout | First line | Anchors printed | Path |
+Kevin, 2026-09-28: *"lets not use statements. only the transaction history. i
+just need to know what im spending on."* The laptop script (`tools/bofa_pull.py`)
+downloads only transaction CSVs, two kinds per account, and says which in the
+file NAME:
+
+- `bofa_<last4>_activity_<YYYY-MM-DD>.csv`: "Current transactions", pulled
+  daily. Its window is still OPEN (since the last statement, to today), so
+  day N+1's file repeats day N's rows and adds more.
+- `bofa_<last4>_period_<YYYY-MM-DD>.csv`: one CLOSED statement period, dated by
+  the period's end as BofA lists it. It never changes again.
+
+The content cannot tell the two apart (a checking current file prints the same
+summary block a closed one does), so the name decides:
+
+| Layout | Name | Anchors printed | Path |
 |---|---|---|---|
-| Card | `Posted Date,Reference Number,...` | none | provisional (rule 7) |
-| Checking | `Description,,Summary Amt.` | balances, totals, running | gate (ruling 4) |
+| Card | any of the three below | none | provisional (rule 7) |
+| Checking | `_period_` | balances, totals, running | gate (ruling 4) |
+| Checking | `_activity_` | balances, totals, running | provisional (rule 7) |
+| Checking | `currentTransaction_` or anything else | - | refused, in words |
 
 "balances, totals, running" is the beginning and ending balance, total credits,
 total debits, and a running balance on every row.
@@ -23,19 +39,39 @@ total debits, and a running balance on every row.
 **Card: provisional, always.** The export prints no balance, no total, nothing
 to reconcile against (ticket 12's facts, read from the real file 2026-08-06).
 Every row is `UNRECONCILED` with no statement header, and goes to the rule 7
-writer (`ingest/provisional.py`), never to the gate.
+writer (`ingest/provisional.py`), never to the gate. BofA's own
+`currentTransaction_<last4>.csv` name is still accepted, as a current file.
 
-**Checking: gated.** Ticket 09 ruling 4: a checking CSV that PRINTS its own
-beginning and ending balance is a real anchor pair. It was confirmed on Kevin's
-real export when the phone parser was written (commit 2d188e7, 2026-08-03: "all
-three anchors hold to the cent"). Every check the Kotlin ran runs here first
-(per-row running balance, the printed credit and debit totals, beginning + net
-= ending), then the payload goes to `commit_statement` as `DETERMINISTIC` with
-the two balances as its anchors and `stated_total_cents` NULL: the export prints
-separate credit and debit totals, never one figure, so there is no single
-stated total to store (section 4 rule 8: absent, never synthesised from the
-lines). A checking export WITHOUT the summary block is not recognised at all,
-so it is quarantined, never gated on a balance this module made up.
+**Checking, closed period: gated.** Ticket 09 ruling 4: a checking CSV that
+PRINTS its own beginning and ending balance is a real anchor pair. It was
+confirmed on Kevin's real export when the phone parser was written (commit
+2d188e7, 2026-08-03: "all three anchors hold to the cent"). Every check the
+Kotlin ran runs here first (per-row running balance, the printed credit and
+debit totals, beginning + net = ending), then the payload goes to
+`commit_statement` as `DETERMINISTIC` with the two balances as its anchors and
+`stated_total_cents` NULL: the export prints separate credit and debit totals,
+never one figure, so there is no single stated total to store (section 4 rule
+8: absent, never synthesised from the lines). The summary's "Ending balance as
+of" date must be the date the name states, or the file is refused: a name that
+claims a closed period the content does not end on is not believed. A checking
+export WITHOUT the summary block is not recognised at all, so it is
+quarantined, never gated on a balance this module made up.
+
+**Checking, current window: provisional, although it prints balances.** This
+is not a loosening of the gate, and the reason is the window, not the
+arithmetic. Every check above still runs on a current file and a failure still
+refuses it (rule 6 does not relax). What changes is what a pass is allowed to
+become. A current file describes a window that is still open and will be
+restated by the closed period that contains it; committing it as a verified
+statement would put a new, overlapping "statement" on record every day, each
+claiming to have listed its dates completely, and the days between the last
+pull and the period's close would never be listed by any of them. So its rows
+are stored as rule 7 provisional rows, `UNRECONCILED` and said in words, its
+balances are NOT stored as statement anchors (there is no statement), and the
+closed `_period_` file is what gets verified: when it commits,
+`commit_statement` deletes the provisional rows in its window (rule 7 condition
+4) and writes the verified ones. Nothing a current file says is ever read as
+fact.
 
 ## Signs
 
@@ -50,11 +86,11 @@ about the real export, which ticket 12's reading is.
 ## Which account
 
 Neither export prints an account number anywhere in its body (both verified on
-the real files). The file NAME is the only identity: BofA's own
-`currentTransaction_<last4>.csv`, or the name ticket 09's login script writes,
-`bofa_<last4>_activity_<YYYY-MM-DD>.csv`. Drive's " (1)" duplicate suffix is
-tolerated. A recognised layout under any other name is refused with a sentence,
-never filed under a guessed account.
+the real files). The file NAME is the only identity: one of the two names ticket
+09's login script writes, or (card only) BofA's own
+`currentTransaction_<last4>.csv`. Drive's " (1)" duplicate suffix is tolerated.
+A recognised layout under any other name is refused with a sentence, never filed
+under a guessed account or a guessed window.
 
 ## Rule 6
 
@@ -86,14 +122,33 @@ CHECKING_TABLE_HEADER = "Date,Description,Amount,Running Bal."
 
 NOTHING_WRITTEN = "Nothing was written."
 
-# `currentTransaction_7823.csv`, `bofa_7823_activity_2026-09-27.csv`, and
-# either with Drive's " (1)" suffix. Anchored at the end; case-insensitive
-# because SAF and Drive listings disagree on the extension's case.
-_FILE_LAST4_RE = re.compile(
-    r"(?:^|[\\/])(?:currentTransaction_(\d{4})|bofa_(\d{4})_activity_\d{4}-\d{2}-\d{2})"
-    r"(?: \(\d+\))?\.csv$",
+# `currentTransaction_7823.csv`, `bofa_7823_activity_2026-09-27.csv`,
+# `bofa_7823_period_2026-09-04.csv`, and any of them with Drive's " (1)" suffix.
+# Anchored at the end; case-insensitive because SAF and Drive listings disagree
+# on the extension's case.
+_FILE_NAME_RE = re.compile(
+    r"(?:^|[\\/])(?:"
+    r"(?P<legacy>currentTransaction)_(?P<legacy4>\d{4})"
+    r"|bofa_(?P<last4>\d{4})_(?P<kind>activity|period)_(?P<date>\d{4}-\d{2}-\d{2})"
+    r")(?: \(\d+\))?\.csv$",
     re.ASCII | re.IGNORECASE,
 )
+
+# The two windows a name can state.
+CURRENT = "current"
+PERIOD = "period"
+
+
+@dataclass(frozen=True)
+class FileName:
+    """What a BofA CSV's NAME states: the account, and whether the window is
+    still open (`CURRENT`) or one closed period (`PERIOD`, ending `period_end`).
+    `legacy` is BofA's own `currentTransaction_<last4>.csv`."""
+
+    last4: str
+    window: str
+    period_end: datetime.date | None = None
+    legacy: bool = False
 _AS_OF_RE = re.compile(r"as of (\d{2}/\d{2}/\d{4})$", re.ASCII)
 
 
@@ -146,17 +201,40 @@ def _date(token: str, where: str) -> datetime.date:
         ) from None
 
 
+def read_file_name(file_name: str, layout: str) -> FileName:
+    """What the file NAME states (account and window), or a refusal in words.
+
+    The checking layout does not accept BofA's own `currentTransaction_` name:
+    only the laptop script's two names say whether the window is closed, and
+    for checking that decides between the gate and the provisional path."""
+    match = _FILE_NAME_RE.search(file_name)
+    if match is not None and match.group("legacy") and layout == "card":
+        return FileName(match.group("legacy4"), CURRENT, legacy=True)
+    if match is not None and match.group("last4"):
+        if match.group("kind").lower() == "activity":
+            return FileName(match.group("last4"), CURRENT)
+        try:
+            end = datetime.date.fromisoformat(match.group("date"))
+        except ValueError:
+            end = None
+        if end is not None:
+            return FileName(match.group("last4"), PERIOD, period_end=end)
+    expected = (
+        "bofa_<last 4>_activity_<YYYY-MM-DD>.csv for current transactions or "
+        "bofa_<last 4>_period_<YYYY-MM-DD>.csv for one closed period"
+    )
+    if layout == "card":
+        expected = f"currentTransaction_<last 4>.csv, {expected}"
+    raise statements.ParserRefused(
+        f"This is Bank of America's {layout} activity export, which prints no account "
+        f"number of its own, and its file name does not say which account it is for or "
+        f"which window it covers (expected {expected}). {NOTHING_WRITTEN}"
+    )
+
+
 def account_last4_from_name(file_name: str, layout: str) -> str:
     """The last four digits the file NAME states, or a refusal in words."""
-    match = _FILE_LAST4_RE.search(file_name)
-    if match is None:
-        raise statements.ParserRefused(
-            f"This is Bank of America's {layout} activity export, which prints no account "
-            f"number of its own, and its file name does not say which account it is for "
-            f"(expected currentTransaction_<last 4>.csv or "
-            f"bofa_<last 4>_activity_<YYYY-MM-DD>.csv). {NOTHING_WRITTEN}"
-        )
-    return match.group(1) or match.group(2)
+    return read_file_name(file_name, layout).last4
 
 
 # =============================================================================
@@ -164,9 +242,10 @@ def account_last4_from_name(file_name: str, layout: str) -> str:
 # =============================================================================
 
 
-def parse_card(lines: list[str], file_name: str) -> dict | None:
-    """The card export's payload, None when the first line is not its header.
-    Raises `ParserRefused` once the layout is recognised."""
+def parse_card(lines: list[str], file_name: str) -> statements.Parsed | None:
+    """The card export, always provisional (current or closed period alike:
+    it prints no anchor either way). None when the first line is not its
+    header. Raises `ParserRefused` once the layout is recognised."""
     if not lines or lines[0].strip() != CARD_HEADER:
         return None
     last4 = account_last4_from_name(file_name, "card")
@@ -223,13 +302,14 @@ def parse_card(lines: list[str], file_name: str) -> dict | None:
             f"This card export lists only {pending} pending temporary credit(s), which are "
             f"not stored until they post. {NOTHING_WRITTEN}"
         )
-    return {
+    payload = {
         "account_last4": last4,
         "account_nickname": CARD_NICKNAME,
         "currency": CURRENCY,
         "lines": out,
         "pending_left_out": pending,
     }
+    return statements.Parsed(payload, provisional=True)
 
 
 # =============================================================================
@@ -259,9 +339,11 @@ def _as_of(label: str, number: int) -> datetime.date:
     return _date(match.group(1), f"summary row {number} of this checking export")
 
 
-def parse_checking(lines: list[str], file_name: str) -> dict | None:
-    """The checking export's payload, None when the first line is not its
-    summary header. Raises `ParserRefused` once the layout is recognised."""
+def parse_checking(lines: list[str], file_name: str) -> statements.Parsed | None:
+    """The checking export: gated when its name says it is one closed period,
+    provisional when it says it is the current window (module doc). None when
+    the first line is not its summary header. Raises `ParserRefused` once the
+    layout is recognised."""
     if not lines or lines[0].strip() != CHECKING_SUMMARY_HEADER:
         return None
     lines = _strip_trailing_blanks(lines)
@@ -394,9 +476,36 @@ def parse_checking(lines: list[str], file_name: str) -> dict | None:
 
     # Account last: a numbers problem is the likelier real error and is
     # reported first (the Kotlin's ordering, UnmappedAccountException).
-    last4 = account_last4_from_name(file_name, "checking")
-    return {
-        "account_last4": last4,
+    name = read_file_name(file_name, "checking")
+
+    if name.window == CURRENT:
+        # Still-open window: provisional (module doc). The arithmetic above has
+        # passed, but nothing of it is kept as an anchor: no balances, no
+        # period, and no per-row running balance (the rule 7 writer stores
+        # none). The closed period is what gets verified.
+        payload = {
+            "account_last4": name.last4,
+            "account_nickname": CHECKING_NICKNAME,
+            "currency": CURRENCY,
+            "lines": [
+                {
+                    "txn_date": line["txn_date"],
+                    "description": line["description"],
+                    "amount_cents": line["amount_cents"],
+                }
+                for line in out
+            ],
+        }
+        return statements.Parsed(payload, provisional=True)
+
+    if period_end != name.period_end:
+        raise statements.ParserRefused(
+            f"This file is named as the checking period ending {name.period_end.isoformat()}, "
+            f"but its own summary ends on {period_end.isoformat()}. A closed period is only "
+            f"verified when the name and the content agree. {NOTHING_WRITTEN}"
+        )
+    payload = {
+        "account_last4": name.last4,
         "account_nickname": CHECKING_NICKNAME,
         "currency": CURRENCY,
         # Section 4 rule 8: separate credit and debit totals, never one printed
@@ -408,6 +517,7 @@ def parse_checking(lines: list[str], file_name: str) -> dict | None:
         "period_end": period_end.isoformat(),
         "lines": out,
     }
+    return statements.Parsed(payload, provisional=False)
 
 
 # =============================================================================
@@ -417,25 +527,23 @@ def parse_checking(lines: list[str], file_name: str) -> dict | None:
 
 @dataclass(frozen=True)
 class BofaActivityParser:
-    """`ingest.statements.StatementParser` for one BofA activity-CSV layout."""
+    """`ingest.statements.StatementParser` for one BofA activity-CSV layout.
+    Whether a result is provisional is the layout's and the file name's call
+    (module doc), so `parse_lines` returns the `Parsed` itself."""
 
     name: str
-    parse_lines: Callable[[list[str], str], dict | None]
-    provisional: bool
+    parse_lines: Callable[[list[str], str], statements.Parsed | None]
     kinds: frozenset[str] = frozenset({statements.CSV})
 
     def parse(self, content: bytes, *, file_name: str) -> statements.Parsed | None:
         lines = _text_lines(content)
         if lines is None:
             return None
-        payload = self.parse_lines(lines, file_name)
-        if payload is None:
-            return None
-        return statements.Parsed(payload, provisional=self.provisional)
+        return self.parse_lines(lines, file_name)
 
 
-CARD = BofaActivityParser("bofa-card-activity-csv", parse_card, provisional=True)
-CHECKING = BofaActivityParser("bofa-checking-activity-csv", parse_checking, provisional=False)
+CARD = BofaActivityParser("bofa-card-activity-csv", parse_card)
+CHECKING = BofaActivityParser("bofa-checking-activity-csv", parse_checking)
 
 
 def register() -> None:
