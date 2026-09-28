@@ -88,10 +88,16 @@ def test_a_missing_required_option_is_named(argv, named, capsys):
     assert named in capsys.readouterr().err
 
 
-def test_bofa_is_not_a_subcommand_yet(capsys):
-    """Ticket 09 adds it. Until then the script refuses the name outright."""
+@pytest.mark.parametrize("flag", [["--server", "https://legion.example"], ["--token", "t"]])
+def test_bofa_takes_no_server_and_no_token(flag):
+    """Ticket 09: `bofa` is a subcommand, and it has no way to address the
+    LEGION server at all (no BofA cookie or session ever leaves the laptop).
+    argparse refuses either flag, and the parsed arguments carry neither."""
     with pytest.raises(SystemExit):
-        cs.parse_args(["bofa", *SERVER])
+        cs.parse_args(["bofa", "--dry-run", *flag])
+    args = cs.parse_args(["bofa", "--dry-run"])
+    assert args.source == "bofa"
+    assert not hasattr(args, "server") and not hasattr(args, "token")
 
 
 # =============================================================================
