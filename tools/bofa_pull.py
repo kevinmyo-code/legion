@@ -32,7 +32,7 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 # =============================================================================
 # BofA's pages. Every locator lives here and nowhere else.
@@ -70,6 +70,7 @@ CURRENT_PERIOD_TEXT = "Current transactions"
 
 # Statements & Documents
 STATEMENTS_LINK = ("link", "Statements & Documents")
+CHECKING_DIALOG_CLOSE = ("button", "close Dialog")
 STATEMENTS_PATH_MARK = "/mycomm-acc-stmts-docs/"
 STATEMENTS_YEAR_SELECT = ("combobox", "year")
 STATEMENTS_EXPAND_BUTTON = ("button", "Statements")
@@ -430,6 +431,24 @@ class _Step:
         raise PageChanged(self.name, f"{exc_type.__name__}") from exc
 
 
+def _open_statements(page) -> None:
+    """Go to the account's Statements & Documents page: by the link's own
+    address when it has one, else by clicking the one that is visible. The page
+    can carry two such links, one hidden, and `.first` picked the hidden one."""
+    links = _role(page, STATEMENTS_LINK)
+    links.first.wait_for(state="attached")
+    visible = None
+    for i in range(links.count()):
+        link = links.nth(i)
+        href = link.get_attribute("href") or ""
+        if href and not href.startswith(("#", "javascript:")):
+            page.goto(urljoin(page.url, href))
+            return
+        if visible is None and link.is_visible():
+            visible = link
+    (visible or links.first).click()
+
+
 def _role(page, pair: tuple[str, str], exact: bool = True):
     role, name = pair
     return page.get_by_role(role, name=name, exact=exact)
@@ -496,6 +515,13 @@ def pull_activity(page, account: Account, out_dir: Path, today: datetime.date) -
             account.activity = _save_download(
                 page, lambda: page.locator(CHECKING_SUBMIT).click(), dest, ".csv"
             )
+        # The dialog stays open after the download and covers the page; the
+        # statements step's click never landed behind it (dry run 2026-09-28).
+        close = _role(page, CHECKING_DIALOG_CLOSE)
+        if close.count() and close.first.is_visible():
+            close.first.click()
+        else:
+            page.keyboard.press("Escape")
     else:
         with _Step(f"card {account.last4}: the download panel"):
             page.locator(CARD_DOWNLOAD_LINK).first.click()
@@ -535,7 +561,7 @@ def pull_statements(
 ) -> None:
     open_step = f"{account.kind} {account.last4}: Statements & Documents"
     with _Step(open_step):
-        _role(page, STATEMENTS_LINK).first.click()
+        _open_statements(page)
         year_select = _role(page, STATEMENTS_YEAR_SELECT)
         year_select.first.wait_for(state="visible")
     if STATEMENTS_PATH_MARK not in urlparse(page.url).path:
@@ -730,4 +756,23 @@ def run(
         raise BofaError(f"{exc} {tail} The downloads are still in {out_dir}.") from exc
     for line in summary_lines(accounts, uploaded, dry_run=False):
         out(line)
+    # Kevin, 2026-09-28: Drive is the one copy. After every upload succeeded, the
+    # laptop's copies go, so no bank file is left lying on this machine. A failed
+    # run above keeps them (its message says where) so nothing is lost.
+    removed = remove_downloads(files, out_dir)
+    out(f"Removed {removed} downloaded file(s) from this laptop; Drive holds them now.")
     return 0
+
+
+def remove_downloads(files: Iterable[Path], out_dir: Path) -> int:
+    """Delete this run's downloads, then the dated folder if it is now empty."""
+    removed = 0
+    for path in files:
+        if path.exists():
+            path.unlink()
+            removed += 1
+    try:
+        out_dir.rmdir()
+    except OSError:
+        pass  # not empty (something else lives there) or already gone
+    return removed

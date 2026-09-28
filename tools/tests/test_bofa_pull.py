@@ -206,8 +206,10 @@ class FakeTimeout(Exception):
 
 
 class El:
-    def __init__(self, text="", click=None, options=(), name=None):
+    def __init__(self, text="", click=None, options=(), name=None, href=None, visible=True):
         self.text = text
+        self.href = href
+        self.visible = visible
         self._click = click
         self.options = list(options)          # [(label, value)]
         self.name = name or text
@@ -274,6 +276,14 @@ class FakeLocator:
     def wait_for(self, state=None):
         self._need()
 
+    def get_attribute(self, name):
+        assert name == "href"
+        return self._need().href
+
+    def is_visible(self):
+        els = self._els()
+        return bool(els) and els[0].visible
+
     def click(self):
         self._need().click()
 
@@ -303,6 +313,17 @@ CHECKING = {"label": "Adv SafeBalance Banking", "last4": "3119", "kind": "checki
 CARD = {"label": "Customized Cash Rewards Visa Signature", "last4": "4146", "kind": "card"}
 
 
+class FakeKeyboard:
+    def __init__(self, page):
+        self.page = page
+        self.pressed = []
+
+    def press(self, key):
+        self.pressed.append(key)
+        if key == "Escape":
+            self.page.dialog_open = False
+
+
 class FakeBofa:
     """Pages as seen 2026-09-28. `missing` drops a locator key; the card's
     statements page lands on `card_statements_path`."""
@@ -320,6 +341,7 @@ class FakeBofa:
         self.pending = None
         self.last_download = None
         self.clicked_downloads = []
+        self.keyboard = FakeKeyboard(self)
 
     # --- Playwright surface ---------------------------------------------------
     def set_default_timeout(self, ms):
@@ -631,6 +653,69 @@ def test_dry_run_touches_no_drive_and_says_what_it_would_upload(tmp_path):
     assert "Dry run: nothing was uploaded. Would upload:" in lines
     assert "    bofa_3119_activity_2026-09-28.csv" in lines
     assert "    bofa_4146_2025-12.pdf" in lines
+    assert any((tmp_path / "out").iterdir())  # a dry run keeps its files to be looked at
+
+
+def test_the_statements_link_goes_by_its_address_when_it_has_one():
+    class Page:
+        url = "https://secure.bankofamerica.com/deposit-details/activity/?adx=1"
+        went = None
+
+        def goto(self, url):
+            Page.went = url
+
+    page = Page()
+    hidden = El("Statements & Documents", href="#", visible=False)
+    real = El("Statements & Documents", href="/mycomm-acc-stmts-docs/?adx=1")
+    page.get_by_role = lambda role, name=None, exact=False: ListLocator([hidden, real])
+    bp._open_statements(page)
+    assert Page.went == "https://secure.bankofamerica.com/mycomm-acc-stmts-docs/?adx=1"
+
+
+def test_the_statements_link_is_clicked_where_visible_when_it_has_no_address():
+    clicked = []
+    hidden = El("Statements & Documents", click=lambda: clicked.append("hidden"), visible=False)
+    shown = El("Statements & Documents", click=lambda: clicked.append("shown"))
+
+    class Page:
+        url = "https://x/"
+
+    page = Page()
+    page.get_by_role = lambda role, name=None, exact=False: ListLocator([hidden, shown])
+    bp._open_statements(page)
+    assert clicked == ["shown"]
+
+
+class ListLocator:
+    """A locator over a fixed list of elements, for the statements-link tests."""
+
+    def __init__(self, els, index=None):
+        self.els, self.index = els, index
+
+    def _pick(self):
+        return self.els if self.index is None else self.els[self.index:self.index + 1]
+
+    @property
+    def first(self):
+        return ListLocator(self.els, 0)
+
+    def nth(self, i):
+        return ListLocator(self.els, i)
+
+    def count(self):
+        return len(self._pick())
+
+    def wait_for(self, state=None):
+        assert self._pick()
+
+    def get_attribute(self, name):
+        return self._pick()[0].href
+
+    def is_visible(self):
+        return self._pick()[0].visible
+
+    def click(self):
+        self._pick()[0].click()
 
 
 def test_default_out_dir_is_under_home_not_the_repo(monkeypatch, tmp_path):
@@ -653,6 +738,9 @@ def test_a_real_run_creates_new_files_and_replaces_todays_csv(tmp_path):
     assert not any(name.startswith("bofa_3119_2025") for name, _ in drive.uploaded)
     assert len(drive.uploaded) == 2 + 8 + 4
     assert any("already in Drive 12, uploaded 8." in line for line in lines)
+    # Kevin, 2026-09-28: Drive is the one copy, so the laptop keeps none.
+    assert not (tmp_path / "out").exists()
+    assert any(line.startswith("Removed ") for line in lines)
 
 
 def test_a_page_change_uploads_nothing(tmp_path):
@@ -672,6 +760,9 @@ def test_drive_refusing_the_foreign_folder_says_so_and_uploads_nothing(tmp_path)
     assert "HTTP 404" in message and "drive.file" in message
     assert "Nothing was uploaded." in message
     assert drive.uploaded == []
+    # A failed run keeps the downloads, and says where.
+    assert any((tmp_path / "out").iterdir())
+    assert str(tmp_path / "out") in message
 
 
 # =============================================================================
