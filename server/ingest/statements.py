@@ -9,9 +9,10 @@ lists the files directly in that folder, and for each one it has not seen:
    type, and anything over `MAX_STATEMENT_BYTES` is skipped with a note.
 2. **Deterministic first.** Every registered parser (`PARSERS`, see
    `register_parser`) that takes the file's kind is offered the bytes, before
-   anything else. The first that recognises the layout returns a `Parsed`. None
-   is registered yet: the BofA PDF port is ticket 10, the BofA activity CSV
-   reader ticket 09, and both plug in by registering, without reshaping this.
+   anything else. The first that recognises the layout returns a `Parsed`. The
+   BofA checking and card PDF parsers (`ingest/parsers/bofa.py`, ticket 10)
+   register from `IngestConfig.ready`; the BofA activity CSV reader is ticket
+   09 and plugs in the same way.
 3. **A CSV is NEVER sent to Gemini** (Kevin, 2026-09-28). BofA's mid-month
    activity CSVs print no anchor, so they belong to section 4 rule 7's
    provisional path, whose first condition is deterministic extraction. A CSV no

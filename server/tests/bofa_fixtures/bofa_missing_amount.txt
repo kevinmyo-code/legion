@@ -1,0 +1,20 @@
+BANK OF AMERICA
+Personal Checking Account Statement
+Account number: 987654321000
+Statement Period 06/01/26 to 06/30/26
+Beginning balance on 6/1/26 $500.00
+Ending balance on 6/30/26 $500.00
+Deposits and other additions
+Date        Description                                          Amount
+06/09/26 Zelle payment from JANE DOE Conf# ab12cd34e
+06/17/26 Wire transfer, amount never printed for this row
+Total deposits and other additions $0.00
+ATM and debit card subtractions
+Date        Description                                          Amount
+Total ATM and debit card subtractions $0.00
+Other subtractions
+Date        Description                                          Amount
+Total other subtractions $0.00
+Service fees
+Date        Description                                          Amount
+Total service fees $0.00

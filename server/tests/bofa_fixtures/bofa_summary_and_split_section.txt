@@ -1,0 +1,38 @@
+BANK OF AMERICA
+Personal Checking Account Statement
+Account number: 987654321000
+Statement Period 06/01/26 to 06/30/26
+Your checking account summary
+Deposits and other additions 4,200.00
+ATM and debit card subtractions -80.00
+Other subtractions -75.00
+Service fees -15.00
+Beginning balance on 6/1/26 $7,500.00
+Ending balance on 6/30/26 $11,530.00
+Deposits and other additions
+Date        Description                                          Amount
+06/03/26 PAYROLL DEPOSIT 3,000.00
+06/17/26 WIRE TYPE:WIRE IN DATE: 260617 TIME:0802 ET TRN:2026061700277191
+SEQ:1002233445JS/100200 ORIG:ACME WIDGETS LLC ID:0099887766 SND BK:FIRST
+Page 2 of 6
+NATIONAL BANK, N.A. ID:0002 PMT DET:MB60617135571826
+1,200.00
+Total deposits and other additions $4,200.00
+ATM and debit card subtractions
+Date        Description                                          Amount
+06/05/26 Debit Card Purchase GROCERY MART -80.00
+Total ATM and debit card subtractions -$80.00
+Other subtractions
+Date        Description                                          Amount
+06/10/26 Overdraft Protection Transfer -30.00
+TAYLOR J RIVERA   !   Account # 4881 3004 5042   !   June 5, 2026 to July 8, 2026
+Page 4 of 6
+Other subtractions
+Date        Description                                          Amount
+06/22/26 Online Bill Pay UTILITY CO -45.00
+Total other subtractions -$75.00
+Service fees
+Date        Description                                          Amount
+06/20/26 Monthly Maintenance Fee -15.00
+Total service fees -$15.00
+This statement is issued for the period shown above.
