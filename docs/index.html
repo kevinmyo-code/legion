@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>170 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 29 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 44 are waiting on another ticket first. <b>72 are already built</b> and owe nothing but a run on the phone. 9 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 29 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 43 are waiting on another ticket first. <b>73 are already built</b> and owe nothing but a run on the phone. 9 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">170</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">45</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">72</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">44</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">73</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">43</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">79</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">78</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">9</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -204,14 +204,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>backend-etl</h2>
-<span class="counts"><span class="k">10</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">3</span> built<span class="sep">&middot;</span><span class="k amber">7</span> blocked<span class="sep">&middot;</span><span class="dim">of 10 tickets</span></span>
-<span class="bar"><i style="flex:3"></i><b style="flex:7"></b></span>
+<span class="counts"><span class="k">10</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">of 10 tickets</span></span>
+<span class="bar"><i style="flex:4"></i><b style="flex:6"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Job runner, ingest_runs, freshness endpoint, deploy/crontab</span><span class="det">Built 2026-09-27 (c6d0608), server suite 790 tests / 0 failures / 42 skipped (JUnit). Owed: migrate ingest 0001 on live, redeploy Cloud Run, run install_schedule.py for real, then see a heartbeat row land.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Session vault and the login handover script</span><span class="det">Built 2026-09-27 (1687cd2), server suite 843 / 0 failures / 42 skipped (JUnit). Owed: LEGION_VAULT_KEY in Secret Manager and SECRET_ENV_VARS, live migrate, Kevin runs connect_session.py canvas. Open question: owner-only PUT stretches the owner role past ADR 0045.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">backup_nightly and a drilled restore_backup, to Google Drive</span><span class="det">Built 2026-09-27, server suite 880 / 0 failures / 43 skipped (JUnit; the new skip is the opt-in real-dump drill). Owed: LEGION_VAULT_KEY on Cloud Run, Kevin runs connect_session.py drive --backup, a real run lands on Drive, restore drill against live, and Cloud Build proving postgresql-client-17 resolves.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">canvas_poll on the server, every 30 minutes</span></span><span class="chip c-build">build</span><span class="state">waiting on #01, #02</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">canvas_poll on the server, every 30 minutes</span><span class="det">Built 2026-09-27 (f19cd77), server suite 916 / 0 failures / 43 skipped (JUnit). Owed: Kevin runs connect_session.py canvas, then canvas_poll --dry-run diffed against the 102 live rows. Open ruling: a split discussion parent is ticked by the first post.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">webassign_read, daily, completion only</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">drive_statements: raw bank statements from a Drive folder, through the gate</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #03</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">obd_samples: roll up per drive, keep 90 days raw</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>

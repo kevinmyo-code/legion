@@ -3,7 +3,8 @@ map: backend-etl
 ticket: "04"
 title: "canvas_poll on the server, every 30 minutes"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-09-27 (f19cd77), server suite 916 / 0 failures / 43 skipped (JUnit). Owed: Kevin runs connect_session.py canvas, then canvas_poll --dry-run diffed against the 102 live rows. Open ruling: a split discussion parent is ticked by the first post."
 blockers: ["01", "02"]
 blocked-by: ["[[01-job-runner-and-freshness]]", "[[02-session-vault-and-login-handover]]"]
 tags: [ticket]
