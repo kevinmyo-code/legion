@@ -22,6 +22,18 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Overnight merges - 2026-09-28 ~01:30 (merge session, while Kevin slept)
+
+- **`dev` = `main` = this commit.** Merged, each only after a green run on the exact tree merged:
+  backend-etl 06 + Canvas fixes (`34ae75c`, server 998/0, already live on Cloud Run);
+  home-redesign (`cc7949c`, Android 3718/0); web "Canvas says submitted" (`02141e1`, vitest 69/69);
+  backend-etl 10 BofA parsers on the server (`aa94b1d`, server 1065/0).
+- **Owed by Kevin:** redeploy Cloud Run for the web view and ticket 10 (both NOT deployed).
+  Home redesign is installed on the A25 (hash-verified, HOME + ASSISTANT re-granted) but **never
+  looked at** - the phone locked. Walk `.scratch/home-launcher/issues/05-ship-pass.md` plus ticket
+  06's dock steps. Known, left for Kevin: calendar day view can't untick an item ticked on an earlier day.
+- A stray `test_postgres` may be left from a server-suite teardown warning.
+
 ## Where we stopped - 2026-09-27 night (session 0151LEjT, "legion-0e")
 
 - **`dev` = `main`, pushed (Quiet fix `6f708d8`, plus backend-etl).** Android 3599 tests / 0 failures. PC shut down for a restart.
