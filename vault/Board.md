@@ -27,6 +27,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[28-service-history-reads-still-serve-the-legacy-table\|28]] | build | 28-service-history-reads-still-serve-the-legacy-table |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[29-audit-rows-age-out-before-they-are-uploaded\|29]] | decision | 29-audit-rows-age-out-before-they-are-uploaded |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
@@ -145,11 +147,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected  waiting on [[03-bind-the-backend-interfaces\|03]] |
 | [[.scratch/architecture/map\|architecture]] | [[06-convert-as-touched-and-the-shim-trigger\|06]] | decision | Convert as touched, and when the shim retires  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[02-session-vault-and-login-handover\|02]] | build | Session vault and the login handover script  waiting on [[01-job-runner-and-freshness\|01]] |
-| [[.scratch/backend-etl/map\|backend-etl]] | [[03-backup-nightly-to-drive\|03]] | build | backup_nightly and a drilled restore_backup, to Google Drive  waiting on [[01-job-runner-and-freshness\|01]], [[02-session-vault-and-login-handover\|02]] |
-| [[.scratch/backend-etl/map\|backend-etl]] | [[04-canvas-poll\|04]] | build | canvas_poll on the server, every 30 minutes  waiting on [[01-job-runner-and-freshness\|01]], [[02-session-vault-and-login-handover\|02]] |
-| [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only  waiting on [[04-canvas-poll\|04]] |
-| [[.scratch/backend-etl/map\|backend-etl]] | [[06-drive-statements-watcher\|06]] | build | drive_statements: raw bank statements from a Drive folder, through the gate  waiting on [[02-session-vault-and-login-handover\|02]], [[03-backup-nightly-to-drive\|03]] |
-| [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw  waiting on [[03-backup-nightly-to-drive\|03]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[06-drive-statements-watcher\|06]] | build | drive_statements: raw bank statements from a Drive folder, through the gate  waiting on [[02-session-vault-and-login-handover\|02]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[08-web-freshness-line\|08]] | build | The web app says how fresh each feed is  waiting on [[01-job-runner-and-freshness\|01]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[09-bofa-statement-pull\|09]] | build | connect_session.py bofa: log in once a month, the script pulls new statements  waiting on [[02-session-vault-and-login-handover\|02]], [[06-drive-statements-watcher\|06]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[10-port-bofa-parser-to-python\|10]] | build | Port BofaStatementParser to Python so BofA statements skip the LLM  waiting on [[06-drive-statements-watcher\|06]] |
@@ -219,7 +217,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
-| [[.scratch/backend-etl/map\|backend-etl]] | 10 | 10 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | 10 | 8 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |

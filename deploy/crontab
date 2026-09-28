@@ -12,3 +12,11 @@
 
 # Ticket 01: records that the scheduler fires. Nothing else.
 */30 * * * * python manage.py heartbeat
+
+# Ticket 03: pg_dump of the database to the operator household's Drive
+# (LEGION backups/<date>/), 90 daily kept. 03:00 UTC.
+0 3 * * * python manage.py backup_nightly
+
+# Ticket 04: Canvas coursework into events (kind=task), for every household
+# that has handed over a Canvas session. Every half hour.
+*/30 * * * * python manage.py canvas_poll

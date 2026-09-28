@@ -161,6 +161,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=_env("LEGION_GOOGLE_CLIENT_SECRET"),
         help="Its client secret (env LEGION_GOOGLE_CLIENT_SECRET).",
     )
+    drive.add_argument(
+        "--backup",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Switch the nightly whole-database backup to this Drive on (--backup) or "
+        "off (--no-backup). Only the household that runs the engine can hold it "
+        "(backend-etl ticket 03). Left out, the current setting is kept.",
+    )
     return parser
 
 
@@ -507,8 +515,18 @@ def run_drive(args: argparse.Namespace) -> dict:
         args.token,
         "drive",
         secret,
-        config={"scopes": secret["scopes"]},
+        config=drive_config(secret["scopes"], args.backup),
     )
+
+
+def drive_config(scopes: list[str], backup: bool | None) -> dict:
+    """The non-secret config sent with a Drive login. `backup` is sent only
+    when given: the server MERGES config, so leaving it out keeps whatever the
+    last login set."""
+    config: dict = {"scopes": scopes}
+    if backup is not None:
+        config["backup"] = backup
+    return config
 
 
 RUNNERS: dict[str, Callable[[argparse.Namespace], dict]] = {
