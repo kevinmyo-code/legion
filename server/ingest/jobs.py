@@ -151,7 +151,8 @@ def run_job(source: str, household, fn: Callable[[IngestRun], str | None]) -> In
     """Run `fn` once for `household`, recorded, and never overlapping itself.
 
     `fn` receives the in-progress `IngestRun` and may set `rows_written`,
-    `rows_unchanged` and `watermark` on it; this wrapper saves them. It returns
+    `rows_unchanged`, `watermark` and (to say why it returned `skipped`)
+    `error` on it; this wrapper saves them. It returns
     None for `ok`, or `needs_login` / `skipped`; it RAISES to fail, and
     `NeedsLogin` to say the saved session was refused.
 
@@ -179,6 +180,9 @@ def run_job(source: str, household, fn: Callable[[IngestRun], str | None]) -> In
         try:
             returned = _call(fn, run)
             outcome = Outcome(returned) if returned is not None else Outcome.OK
+            # A job that returns `skipped` may say why (ticket 06: no Gemini
+            # key). Kept, scrubbed like any other message.
+            error = scrub(run.error) if run.error else None
             if outcome not in RETURNABLE_OUTCOMES:
                 raise ValueError(
                     f"A job returned {outcome.value!r}, which a job cannot report by "

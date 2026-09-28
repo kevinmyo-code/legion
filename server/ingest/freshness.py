@@ -29,8 +29,9 @@ from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from household.tenancy import scoped
+from household.tenancy import household_of, scoped
 from ingest.models import LOGIN_SCRIPT, SESSION_FOR_SOURCE, IngestRun, Outcome, Source
+from ingest.statements import quarantined_files
 
 # Ticket 01's thresholds, in code as the ticket says. `heartbeat` is not in the
 # ticket's list: it runs every 30 minutes, so two missed beats is the line.
@@ -82,14 +83,48 @@ def ago(then: datetime.datetime, now: datetime.datetime) -> str:
     return f"{days} days ago"
 
 
+# Ticket 06: how long a statement the gate refused keeps being said on the
+# freshness line. It is never re-read (its content hash is on record), so the
+# line is the prompt to act on it; the permanent record is `ingested_files`.
+QUARANTINE_WINDOW = datetime.timedelta(days=30)
+QUARANTINE_NAMES_SHOWN = 3
+
+
+def quarantine_sentence(files) -> str:
+    """One sentence naming the statements the gate refused, with the first
+    one's reason. Empty when there are none."""
+    files = list(files)
+    if not files:
+        return ""
+    shown = files[:QUARANTINE_NAMES_SHOWN]
+    names = ", ".join(f.display_name or f.content_sha256[:12] for f in shown)
+    if len(files) > QUARANTINE_NAMES_SHOWN:
+        names += f" and {len(files) - QUARANTINE_NAMES_SHOWN} more"
+    count = len(files)
+    noun = "statement was" if count == 1 else "statements were"
+    return (
+        f"{count} {noun} refused by the reconciliation gate and nothing from "
+        f"{'it' if count == 1 else 'them'} was written: {names}. "
+        f"{files[0].quarantine_reason or ''}"
+    ).strip()
+
+
 def sentence(
     source: str,
     last_ok_at: datetime.datetime | None,
     last_outcome: str | None,
     now: datetime.datetime,
+    *,
+    detail: str | None = None,
+    quarantined=(),
 ) -> str:
     words = WORDS[source]
+    refused = quarantine_sentence(quarantined)
+    tail = f" {refused}" if refused else ""
     if last_outcome == Outcome.SKIPPED:
+        if detail:
+            # A job that returned `skipped` and said why (ticket 06: no key).
+            return f"{words.subject} is not being read. {detail}{tail}"
         return f"{words.subject} is not set up."
     if last_outcome == Outcome.NEEDS_LOGIN:
         # Ticket 02: say what to run, since the fix is a person at a laptop.
@@ -106,13 +141,13 @@ def sentence(
             # where every surface reads it, until media has a durable store.
             base += f" {BACKUP_MEDIA_GAP}"
     if last_outcome == Outcome.FAILED:
-        return f"{base} The latest attempt failed."
-    return base
+        return f"{base} The latest attempt failed.{tail}"
+    return f"{base}{tail}"
 
 
-def freshness_for(runs, source: str, now: datetime.datetime) -> dict:
+def freshness_for(runs, source: str, now: datetime.datetime, *, quarantined=()) -> dict:
     """One source's entry. `runs` is ALREADY scoped to one household - this
-    function never widens it."""
+    function never widens it, and neither may the caller's `quarantined`."""
     of_source = runs.filter(source=source)
     last_ok = (
         of_source.filter(outcome=Outcome.OK, finished_at__isnull=False)
@@ -137,7 +172,14 @@ def freshness_for(runs, source: str, now: datetime.datetime) -> dict:
         "last_outcome": last_outcome,
         "last_error": latest.error if latest else None,
         "stale": stale,
-        "sentence": sentence(source, last_ok_at, last_outcome, now),
+        "sentence": sentence(
+            source,
+            last_ok_at,
+            last_outcome,
+            now,
+            detail=latest.error if latest and last_outcome == Outcome.SKIPPED else None,
+            quarantined=quarantined,
+        ),
     }
 
 
@@ -175,5 +217,18 @@ class FreshnessView(APIView):
     def get(self, request):
         now = timezone.now()
         runs = scoped(IngestRun, request)
-        body = {"sources": [freshness_for(runs, source, now) for source in Source.values]}
+        refused = list(
+            quarantined_files(household_of(request), since=now - QUARANTINE_WINDOW)
+        )
+        body = {
+            "sources": [
+                freshness_for(
+                    runs,
+                    source,
+                    now,
+                    quarantined=refused if source == Source.DRIVE_STATEMENTS else (),
+                )
+                for source in Source.values
+            ]
+        }
         return Response(FreshnessSerializer(body).data)

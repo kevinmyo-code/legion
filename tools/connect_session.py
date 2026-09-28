@@ -25,7 +25,8 @@ Examples:
         --token <device token> --base-url https://canvas.school.edu
     python tools/connect_session.py webassign --server ... --token ...
     python tools/connect_session.py drive --server ... --token ... \\
-        --client-id <id> --client-secret <secret>
+        --client-id <id> --client-secret <secret> \\
+        [--statements-folder <folder id or URL>]
 
 Every option can come from the environment instead: LEGION_SERVER,
 LEGION_TOKEN, LEGION_CANVAS_URL, LEGION_GOOGLE_CLIENT_ID,
@@ -169,6 +170,12 @@ def build_parser() -> argparse.ArgumentParser:
         "off (--no-backup). Only the household that runs the engine can hold it "
         "(backend-etl ticket 03). Left out, the current setting is kept.",
     )
+    drive.add_argument(
+        "--statements-folder",
+        default=None,
+        help="The Drive folder the statements job watches, as its id or its URL "
+        "(backend-etl ticket 06). Left out, the current folder is kept.",
+    )
     return parser
 
 
@@ -191,6 +198,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             missing.append("--client-secret (or LEGION_GOOGLE_CLIENT_SECRET)")
     if missing:
         parser.error("missing " + ", ".join(missing))
+    if args.source == "drive" and args.statements_folder is not None:
+        try:
+            args.statements_folder = _folder_ids().folder_id_from(args.statements_folder)
+        except ValueError as exc:
+            parser.error(str(exc))
     args.server = args.server.rstrip("/")
     if args.source == "canvas":
         try:
@@ -515,18 +527,37 @@ def run_drive(args: argparse.Namespace) -> dict:
         args.token,
         "drive",
         secret,
-        config=drive_config(secret["scopes"], args.backup),
+        config=drive_config(
+            secret["scopes"], args.backup, getattr(args, "statements_folder", None)
+        ),
     )
 
 
-def drive_config(scopes: list[str], backup: bool | None) -> dict:
-    """The non-secret config sent with a Drive login. `backup` is sent only
-    when given: the server MERGES config, so leaving it out keeps whatever the
-    last login set."""
+def drive_config(
+    scopes: list[str], backup: bool | None, statements_folder: str | None = None
+) -> dict:
+    """The non-secret config sent with a Drive login. `backup` and the
+    statements folder are sent only when given: the server MERGES config, so
+    leaving one out keeps whatever the last login set."""
     config: dict = {"scopes": scopes}
     if backup is not None:
         config["backup"] = backup
+    if statements_folder is not None:
+        config["statements_folder_id"] = statements_folder
     return config
+
+
+def _folder_ids():
+    """`server/ingest/folder_ids.py`, loaded by path: one rule for turning a
+    pasted folder URL into an id, shared with the server's
+    `set_statements_folder` command, without needing Django here."""
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "server" / "ingest" / "folder_ids.py"
+    spec = importlib.util.spec_from_file_location("legion_folder_ids", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 RUNNERS: dict[str, Callable[[argparse.Namespace], dict]] = {

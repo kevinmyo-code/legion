@@ -178,7 +178,8 @@ class DriveClient:
 
     def list_files(self, query: str, *, order_by: str | None = None) -> list[dict]:
         """Every file matching `query`, following pages. Each dict has id,
-        name, mimeType, parents, appProperties, createdTime and size."""
+        name, mimeType, parents, appProperties, createdTime, modifiedTime and
+        size (absent for a Google-native doc, which has no bytes of its own)."""
         files: list[dict] = []
         page_token = None
         while True:
@@ -186,7 +187,7 @@ class DriveClient:
                 "q": query,
                 "fields": (
                     "nextPageToken,files(id,name,mimeType,parents,appProperties,"
-                    "createdTime,size)"
+                    "createdTime,modifiedTime,size)"
                 ),
                 "pageSize": "1000",
                 "spaces": "drive",
@@ -299,3 +300,15 @@ class DriveClient:
         response = self._call("GET", f"{API}/files/{urllib.parse.quote(file_id)}?alt=media")
         destination.write_bytes(response.body)
         return len(response.body)
+
+    def download_bytes(self, file_id: str, *, max_bytes: int) -> bytes:
+        """The file's bytes, refused above `max_bytes` (ticket 06: a Cloud Run
+        job has 512Mi). The caller checks the listed size first so an
+        oversized file is never fetched; this is the backstop for a listing
+        that did not state one."""
+        response = self._call("GET", f"{API}/files/{urllib.parse.quote(file_id)}?alt=media")
+        if len(response.body) > max_bytes:
+            raise DriveError(
+                f"Drive returned {len(response.body)} bytes, over the {max_bytes}-byte limit."
+            )
+        return response.body

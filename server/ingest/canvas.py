@@ -389,6 +389,16 @@ _CANVAS_COURSE_NAME = re.compile(
     r"\s+(?:MAIN\s+)?-\s+(?P<title>\S.*?)\s*$"
 )
 _TITLE_SEPARATOR = " · "
+_WHITESPACE_RUN = re.compile(r"\s+")
+
+
+def tidy_name(value: object) -> str:
+    """An assignment name as a title wants it: trimmed, and every run of
+    whitespace one space. Canvas hands names back with stray leading and
+    trailing spaces (the 2026-09-28 live run titled two rows
+    "COSC 3318 Python Programming ·  Module 2: Assignment "). Migration 0005
+    tidied the rows that run already wrote."""
+    return _WHITESPACE_RUN.sub(" ", str(value or "")).strip()
 
 
 @dataclass(frozen=True)
@@ -477,7 +487,8 @@ def assignment_tasks(
     not_graded = assignment.get("grading_type") == "not_graded"
     types = _submission_types(assignment) or ""
     name = name or derived_course_name(course)
-    title = f"{name.label}{_TITLE_SEPARATOR}{assignment.get('name') or f'Assignment {aid}'}"
+    assignment_name = tidy_name(assignment.get("name")) or f"Assignment {aid}"
+    title = f"{name.label}{_TITLE_SEPARATOR}{assignment_name}"
 
     evidence = {
         "canvas_assignment_id": aid,

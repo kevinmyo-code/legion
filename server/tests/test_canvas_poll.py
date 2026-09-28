@@ -987,6 +987,93 @@ def test_writes_bump_updated_at_for_the_changes_feed_and_no_ops_do_not(
 
 
 # =============================================================================
+# Whitespace in titles (2026-09-28 live run)
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    ("raw", "tidy"),
+    [
+        (" Module 2: Assignment ", "Module 2: Assignment"),
+        ("Module 3:  Assignment  ", "Module 3: Assignment"),
+        ("Tab\tand\nnewline", "Tab and newline"),
+        ("", ""),
+        (None, ""),
+    ],
+)
+def test_tidy_name_trims_and_collapses(raw, tidy):
+    assert canvas.tidy_name(raw) == tidy
+
+
+@pytest.mark.django_db
+def test_a_new_row_s_title_carries_no_stray_whitespace(fake, connected, household_a):
+    fake.assignment(6001)["name"] = "  Sprint 1   Report  "
+    poll()
+    assert task(household_a, 6001).title.endswith(" · Sprint 1 Report")
+    assert "  " not in task(household_a, 6001).title
+
+
+@pytest.mark.django_db
+def test_a_blank_name_falls_back_to_the_assignment_id(fake, connected, household_a):
+    fake.assignment(6001)["name"] = "   "
+    poll()
+    assert task(household_a, 6001).title.endswith(" · Assignment 6001")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_migration_0005_tidies_only_poller_titles_and_bumps_updated_at(household_a):
+    """`transaction=True` so the migration's `now()` is later than the seed's."""
+    import importlib
+
+    tidy_sql = importlib.import_module(
+        "ingest.migrations.0005_tidy_canvas_title_whitespace"
+    ).TIDY_SQL
+    try:
+        messy = seed(
+            household_a,
+            title="COSC 3318 Python Programming ·  Module 2: Assignment ",
+            origin_guid="canvas:179692",
+            structured_meta={"canvas_assignment_id": 179692},
+        )
+        clean = seed(
+            household_a,
+            title="COSC 3318 Python Programming · Module 1: Assignment",
+            origin_guid="canvas:179000",
+            structured_meta={"canvas_assignment_id": 179000},
+        )
+        by_hand = seed(
+            household_a,
+            title="  my own   title ",
+            origin_guid=None,
+            structured_meta={"canvas_assignment_id": 179999},
+        )
+        no_aid = seed(
+            household_a,
+            title="  not a canvas   task ",
+            origin_guid="canvas:elsewhere",
+            structured_meta={"note": "x"},
+        )
+        before = {row.pk: row.updated_at for row in Event.objects.all()}
+
+        with connection.cursor() as cursor:
+            cursor.execute(tidy_sql)
+
+        messy.refresh_from_db()
+        assert messy.title == "COSC 3318 Python Programming · Module 2: Assignment"
+        assert messy.updated_at > before[messy.pk]
+        for row, title in (
+            (clean, "COSC 3318 Python Programming · Module 1: Assignment"),
+            (by_hand, "  my own   title "),
+            (no_aid, "  not a canvas   task "),
+        ):
+            row.refresh_from_db()
+            assert row.title == title
+            assert row.updated_at == before[row.pk]
+    finally:
+        Event.objects.all().delete()
+
+
+# =============================================================================
 # Wiring
 # =============================================================================
 
