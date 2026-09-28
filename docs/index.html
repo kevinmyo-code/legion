@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>168 tickets open</h1>
+<h1>169 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 29 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 43 are waiting on another ticket first. <b>71 are already built</b> and owe nothing but a run on the phone. 9 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 29 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 45 are waiting on another ticket first. <b>71 are already built</b> and owe nothing but a run on the phone. 9 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">168</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">45</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n">169</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">44</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">71</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">43</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n amber">45</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">78</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">79</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">9</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -161,12 +161,11 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>django-engine</h2>
-<span class="counts"><span class="k">12</span> open<span class="sep">&middot;</span><span class="k mint">4</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
-<span class="bar"><i style="flex:8"></i><b style="flex:4"></b></span>
+<span class="counts"><span class="k">11</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
+<span class="bar"><i style="flex:7"></i><b style="flex:4"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">12</span><span class="body"><span class="tt">Every pytest run leaves a connection on test_postgres and breaks the next one</span><span class="det">Found 2026-09-06; cost one agent four runs. Pre-existing, not caused by any change that night.</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">13</span><span class="body"><span class="tt">Rule 7 provisional ingestion has no endpoint, and the commit paths structurally cannot be one</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">14</span><span class="body"><span class="tt">Three rules live only on the phone, and a second app would not have them</span><span class="det">Found 2026-09-07 by the rule audit in ticket 09&#x27;s four-aspect pass. Owed BEFORE a head unit exists, not after.</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">17</span><span class="body"><span class="tt">Conversation-audit uploads have been failing since the tenancy migration</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Server skeleton: Django, Postgres, compose, two users, one token per device</span><span class="det">Verified 2026-09-05 against the live Supabase Postgres via legion_engine: 48 server tests green in a test database; migrate applied 11 Django tables in schema django, public untouched; superuser created. Owed: Docker compose up (optional now), gcloud install and first deploy (Phase 4).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
@@ -203,6 +202,26 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
+<h2>backend-etl</h2>
+<span class="counts"><span class="k">10</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="k amber">8</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
+<span class="bar"><i style="flex:2"></i><b style="flex:8"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Job runner, ingest_runs, freshness endpoint, deploy/crontab</span><span class="det">Built 2026-09-27 (c6d0608), server suite 790 tests / 0 failures / 42 skipped (JUnit). Owed: migrate ingest 0001 on live, redeploy Cloud Run, run install_schedule.py for real, then see a heartbeat row land.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Session vault and the login handover script</span><span class="det">Built 2026-09-27 (1687cd2), server suite 843 / 0 failures / 42 skipped (JUnit). Owed: LEGION_VAULT_KEY in Secret Manager and SECRET_ENV_VARS, live migrate, Kevin runs connect_session.py canvas. Open question: owner-only PUT stretches the owner role past ADR 0045.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">webassign_read, daily, completion only</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">drive_statements: raw bank statements from a Drive folder, through the gate</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">obd_samples: roll up per drive, keep 90 days raw</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">The web app says how fresh each feed is</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">connect_session.py bofa: log in daily, the script pulls new statements and mid-month activity</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #06</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Port BofaStatementParser to Python so BofA statements skip the LLM</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">The web app shows what Canvas says beside each coursework task</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">The phone shows what Canvas says beside each coursework task (Android terminal)</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
 <h2>web-and-households</h2>
 <span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 14 tickets</span></span>
 <span class="bar"><i style="flex:5"></i><b style="flex:4"></b></span>
@@ -217,24 +236,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Web screens, phase 1: sign in, sign up, household, Today, Lists, Settings; installed on an iPhone</span></span><span class="chip c-build">build</span><span class="state">waiting on #03, #04</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Web screens, phase 2: Ledger, Pantry, Body, Fleet, Places, Voice notes, and a glanceable home</span></span><span class="chip c-build">build</span><span class="state">waiting on #05, #11</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Report endpoints: aggregates computed once, described in the contract, unverified carried through</span></span><span class="chip c-build">build</span><span class="state">waiting on #02</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
-<h2>backend-etl</h2>
-<span class="counts"><span class="k">8</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">of 10 tickets</span></span>
-<span class="bar"><i style="flex:2"></i><b style="flex:6"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Job runner, ingest_runs, freshness endpoint, deploy/crontab</span><span class="det">Built 2026-09-27 (c6d0608), server suite 790 tests / 0 failures / 42 skipped (JUnit). Owed: migrate ingest 0001 on live, redeploy Cloud Run, run install_schedule.py for real, then see a heartbeat row land.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Session vault and the login handover script</span><span class="det">Built 2026-09-27 (1687cd2), server suite 843 / 0 failures / 42 skipped (JUnit). Owed: LEGION_VAULT_KEY in Secret Manager and SECRET_ENV_VARS, live migrate, Kevin runs connect_session.py canvas. Open question: owner-only PUT stretches the owner role past ADR 0045.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">webassign_read, daily, completion only</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">drive_statements: raw bank statements from a Drive folder, through the gate</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">obd_samples: roll up per drive, keep 90 days raw</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">The web app says how fresh each feed is</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">connect_session.py bofa: log in once a month, the script pulls new statements</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Port BofaStatementParser to Python so BofA statements skip the LLM</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
 </ul>
 </section>
 <section class="map">

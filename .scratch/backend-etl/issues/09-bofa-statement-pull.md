@@ -1,7 +1,7 @@
 ---
 map: backend-etl
 ticket: "09"
-title: "connect_session.py bofa: log in once a month, the script pulls new statements"
+title: "connect_session.py bofa: log in daily, the script pulls new statements and mid-month activity"
 type: build
 status: open
 blockers: ["02", "06"]
@@ -9,47 +9,89 @@ blocked-by: ["[[02-session-vault-and-login-handover]]", "[[06-drive-statements-w
 tags: [ticket]
 ---
 
-# BofA statement pull
+# BofA pull: statements and mid-month activity
 
 **Kevin, 2026-09-27:** *"yes that works instead of me manually navigating the page and putting it on
-the drive folder."*
+the drive folder."* **2026-09-28:** *"it might also be mid month transaction history pulls no?
+statements only come end of month"*, *"i want the ledger daily"*, and, offered a bank feed
+(SimpleFIN) for zero-effort daily freshness, *"nvm i'll login daily."*
 
-## Ruling (Kevin, 2026-09-27)
+## Rulings
 
-The pull happens **inside the login sitting, on Kevin's own machine**, never on the server:
-
-- A BofA session is not stored anywhere. Idle timeout is minutes and BofA fingerprints the device,
-  so a session replayed from Cloud Run would be dead or read as a hijack (reasoned, not tested).
-  Nothing in this ticket may send a BofA cookie to the server.
-- Statement PDFs only. BofA card CSV exports print no anchor and stay a rule 7 provisional path,
-  never pulled by this script.
+1. **The pull happens inside the login sitting, on Kevin's own machine**, never on the server. A
+   BofA session is not stored anywhere: idle timeout is minutes and BofA fingerprints the device,
+   so a replayed session would be dead or read as a hijack (reasoned, not tested). Nothing in this
+   ticket may send a BofA cookie to the server.
+2. **Daily cadence, by Kevin logging in.** No bank feed, no stored password, no unattended login.
+3. **Two kinds of file per account, per run:**
+   - **Statement PDFs** (monthly): through ticket 06's gate, three anchors, verified.
+   - **Current-activity CSV** (mid-month, since the last statement): through §4 rule 7's
+     provisional path (django-engine 13, resolved 2026-09-28 to option 2). All four conditions
+     bind: **deterministic extraction only** (a Python CSV reader, never Gemini, 0 tokens); every row
+     `UNRECONCILED`; every surface says "unverified" in words; rows deleted when a gated statement
+     commits over the same account and window (supersession already built and tested:
+     `test_a_gated_statement_supersedes_provisional_rows_in_its_window`).
+4. **A checking-account CSV that prints its own beginning and ending balance may be gated**, not
+   provisional: beginning + sum(lines) = ending is a real anchor pair stated by the document. This is
+   reasoned from memory of BofA's export shape, NOT confirmed. Confirm on Kevin's first real file;
+   until confirmed, every CSV is provisional. Never synthesise a balance the file does not print
+   (§4 rule 8).
 
 ## Build
 
-- `tools/connect_session.py bofa` (extends ticket 02's script): headed Chromium at BofA sign-in,
-  Kevin logs in and clears 2FA; the script waits for the post-login signal, then for each account
-  opens Statements & Documents and lists available statement PDFs.
-- **Already have it?** The script asks the server (`GET /api/ingest/files?source=bofa`, returning
-  known `(account_hint, period)` pairs and SHA-256s) and downloads only what is new. Server-side
-  `ingested_files` sha256 idempotency is the backstop, so a re-download is harmless.
-- Each new PDF is uploaded into the household's statement Drive folder (the `drive` credential,
-  via the server or the same OAuth token on the laptop, whichever ticket 02 made simpler), named
-  `bofa_<account-last4>_<YYYY-MM>.pdf`. Ticket 06's watcher takes it from there, gate and all.
+- `tools/connect_session.py bofa` (extends ticket 02's script): headed Chromium at BofA sign-in on
+  the persisted profile (`~/.legion/browser-profiles/bofa`, laptop only, so 2FA stays light). Kevin
+  logs in; the script waits for the post-login signal, then for each account:
+  - **Statements & Documents**: list statement PDFs, download only what the server does not already
+    hold (`GET /api/ingest/files?source=bofa` returns known `(account_hint, period)` pairs and
+    SHA-256s; server-side `ingested_files` sha256 idempotency is the backstop).
+  - **Activity download**: the CSV of transactions since the last statement.
+- Files go into the household's statement Drive folder, named `bofa_<last4>_<YYYY-MM>.pdf` and
+  `bofa_<last4>_activity_<YYYY-MM-DD>.csv`. Ticket 06's watcher routes by type: PDF to the gate,
+  a recognised BofA activity CSV to the provisional path. An unrecognised CSV quarantines with a
+  sentence; it is never sent to Gemini.
+- **Server side** (with this ticket): `server/ingest/parsers/bofa_activity.py`, one deterministic
+  reader per BofA CSV layout (card, checking), every line must parse or the file quarantines
+  (§4 rule 6). The provisional write path the watcher calls in-process; the DB constraints in
+  django-engine 13's evidence table already require `statement_id IS NULL` on these rows.
+  Re-pulling the same day's CSV replaces that account's provisional rows in the window rather than
+  duplicating them (match on date, amount, description, and position within same-day duplicates).
 - Selectors live in one small module with a comment naming the date they were last seen working.
-  A page change fails loudly with "BofA's page changed; statements not pulled", never a partial
-  silent pull.
-- Browser profile directory persisted on the laptop only (so BofA recognises the device and 2FA
-  stays light). Gitignored path under the user's home, never the repo.
+  A page change fails loudly ("BofA's page changed; nothing pulled"), never a partial silent pull.
+
+## One button (Kevin, 2026-09-28: *"give me like a 1 button press script that i can run every day
+## myself to keep ledger updated"*)
+
+- **`tools/legion-daily.cmd`** plus a one-time `tools/install_daily_shortcut.py` that puts a
+  "LEGION daily" shortcut on the Windows desktop pointing at it. Double-click is the whole routine:
+  the browser opens on BofA, Kevin logs in (and clears 2FA if asked), everything else is automatic,
+  and the window ends on a plain summary, e.g. "Pulled 1 activity file (Card 4821: 6 new
+  transactions, unverified until the September statement). No new statements. Ledger current to
+  today." It waits for a keypress before closing, so the result is read, not flashed.
+- Settings come from **`~/.legion/config.env`** on the laptop (server URL, device token, Google
+  client id/secret for the Drive upload), written once by
+  `connect_session.py setup` (prompts, token input hidden). Never in the repo, never on the server.
+  No BofA password is stored anywhere: typing it is Kevin's step.
+- Every run also checks the server's freshness for the ledger and prints it, so a failed job or
+  a quarantined statement is seen on the same screen rather than discovered later.
+- Failure modes say what did NOT happen, in words (§7): "Nothing was uploaded: BofA login timed
+  out after 5 minutes" / "BofA's page changed: nothing pulled, tell Claude".
 
 ## Freshness
 
-`/api/freshness` gains source `bofa`: stale when the latest committed BofA statement period is more
-than 40 days old. Sentence: "BofA statement for September not pulled yet: run
-tools/connect_session.py bofa". Words only (ruling 6).
+`/api/freshness` gains source `bofa`:
+- **Activity:** stale after 36 hours. "BofA last pulled 2 days ago: run tools/connect_session.py
+  bofa".
+- **Statement:** stale when the latest committed statement period is more than 40 days old.
+Words only (ruling 6). No notification (compulsion test: anchored to a fact, silenceable).
 
 ## Verification
 
-- [ ] Kevin runs it once: every statement from the last 12 months appears in the Drive folder, and
-      ticket 06 commits each with anchors persisted or quarantines it with a reason.
-- [ ] Second run downloads nothing.
+- [ ] Kevin runs it once: every statement from the last 12 months lands and ticket 06 commits each
+      with anchors persisted or quarantines it with a reason.
+- [ ] The same run lands each account's activity CSV; its rows appear `UNRECONCILED`, and the web
+      and phone ledger say "unverified" in words.
+- [ ] Second run the same day downloads no statements and duplicates no activity rows.
+- [ ] When a statement commits over an activity window, the provisional rows in it are gone.
+- [ ] Rule 4 settled on a real checking CSV: gated or provisional, recorded here.
 - [ ] grep the server's stored rows and logs: no BofA cookie anywhere.

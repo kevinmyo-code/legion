@@ -81,6 +81,26 @@
       "color": "1"
     },
     {
+      "id": "91e2f6fa52aa3f78",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/11-canvas-submitted-on-the-web.md",
+      "x": 1560,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "62fada63a9ab0a1d",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/12-canvas-submitted-on-the-phone.md",
+      "x": 1560,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "06f54b68a92fef58",
       "type": "file",
       "file": ".scratch/backend-etl/issues/09-bofa-statement-pull.md",
@@ -191,6 +211,20 @@
       "fromNode": "d2bf4febb60153d6",
       "fromSide": "right",
       "toNode": "e5481968651458d5",
+      "toSide": "left"
+    },
+    {
+      "id": "e9bed679b8e7a9fb",
+      "fromNode": "606d3e184d532df5",
+      "fromSide": "right",
+      "toNode": "91e2f6fa52aa3f78",
+      "toSide": "left"
+    },
+    {
+      "id": "a0a53c392f809267",
+      "fromNode": "606d3e184d532df5",
+      "fromSide": "right",
+      "toNode": "62fada63a9ab0a1d",
       "toSide": "left"
     }
   ]

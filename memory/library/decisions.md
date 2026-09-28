@@ -5884,3 +5884,16 @@ are unchanged. Enforced in Postgres (`ingest/migrations/0004_discussions_are_tic
 replacing `public.upsert_canvas_task`), not in the poller's Python, so no caller of the function can
 bypass it; discussion rows carry `manual_completion: true`, the flag that already meant "Canvas
 cannot see this done".
+
+## 2026-09-28 - The ledger is pulled daily by hand, and mid-month rows are provisional
+
+Kevin wants the ledger current daily (*"i want the ledger daily"*). Statements are monthly, so the
+daily part is BofA's current-activity CSV, pulled by `connect_session.py bofa` in a login Kevin
+performs each day (*"nvm i'll login daily"*), launched from a one-click desktop shortcut (*"give me
+like a 1 button press script"*). Offered a bank feed (SimpleFIN, about $15/year) for zero-effort
+daily freshness at the same trust level, and declined. Mid-month rows go through §4 rule 7's
+provisional path with all four conditions: a deterministic Python CSV reader (never Gemini, zero
+tokens), `UNRECONCILED`, "unverified" in words on every surface, deleted when the month's gated
+statement commits. This resolves django-engine 13 to option 2. A checking CSV that prints its own
+beginning and ending balance may be gated rather than provisional, once a real file confirms the
+shape (reasoned, not seen). backend-etl ticket 09.
