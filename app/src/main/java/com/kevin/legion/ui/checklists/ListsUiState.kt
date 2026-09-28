@@ -27,6 +27,11 @@ data class ListsPageState(
     val archivedLists: List<ListCardUi> = emptyList(),
     val showArchived: Boolean = false,
     val showCreateDialog: Boolean = false,
+    /** A thrown [ChecklistController.createChecklist] call (audit finding 6) - the dialog stays
+     * open (unlike a successful create, which closes it and navigates to the new list) and states
+     * what did not happen, rendered inside [CreateChecklistDialog] itself. Cleared the next time
+     * the dialog is opened, so a stale error never survives to a fresh attempt. */
+    val createError: String? = null,
 )
 
 /** One item row inside an open list - the item plus the day's own tick state

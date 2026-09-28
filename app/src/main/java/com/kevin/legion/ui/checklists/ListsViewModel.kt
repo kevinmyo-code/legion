@@ -96,20 +96,29 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun showCreateDialog(show: Boolean) {
-        _state.update { it.copy(page = it.page.copy(showCreateDialog = show)) }
+        _state.update { it.copy(page = it.page.copy(showCreateDialog = show, createError = null)) }
     }
 
     fun createList(name: String, scheduleKind: String?, scheduleDaysOfWeek: String?) {
         viewModelScope.launch {
-            val created = ChecklistController.createChecklist(
-                app,
-                name,
-                scheduleKind = scheduleKind,
-                scheduleEvery = if (scheduleKind != null) 1 else null,
-                scheduleDaysOfWeek = scheduleDaysOfWeek,
-            )
-            _state.update { it.copy(page = it.page.copy(showCreateDialog = false)) }
-            openList(created.id)
+            try {
+                val created = ChecklistController.createChecklist(
+                    app,
+                    name,
+                    scheduleKind = scheduleKind,
+                    scheduleEvery = if (scheduleKind != null) 1 else null,
+                    scheduleDaysOfWeek = scheduleDaysOfWeek,
+                )
+                _state.update { it.copy(page = it.page.copy(showCreateDialog = false)) }
+                openList(created.id)
+            } catch (e: Exception) {
+                // No detail screen exists yet to carry a writeError banner (openList never ran) -
+                // audit finding 6 still applies: the dialog stays open and states what failed,
+                // rather than the create silently vanishing with no created list to show for it.
+                _state.update {
+                    it.copy(page = it.page.copy(createError = writeErrorMessage("create that list", e)))
+                }
+            }
         }
     }
 
@@ -261,10 +270,12 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     fun saveEdit(text: String, unit: String?, target: Double?, direction: String?) {
         viewModelScope.launch {
             val item = _state.value.detail?.editingItem ?: return@launch
-            ChecklistController.editItem(app, item.id, text)
-            ChecklistController.setMeasure(app, item.id, unit, target, direction)
-            _state.update { it.copy(detail = it.detail?.copy(editingItem = null)) }
-            refresh()
+            guardedWrite("edit that item") {
+                ChecklistController.editItem(app, item.id, text)
+                ChecklistController.setMeasure(app, item.id, unit, target, direction)
+                _state.update { it.copy(detail = it.detail?.copy(editingItem = null)) }
+                refresh()
+            }
         }
     }
 
@@ -303,9 +314,11 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteItem(itemId: Long) {
         viewModelScope.launch {
-            ChecklistController.deleteItem(app, itemId)
-            _state.update { it.copy(detail = it.detail?.copy(longPressItem = null)) }
-            refresh()
+            guardedWrite("delete that item") {
+                ChecklistController.deleteItem(app, itemId)
+                _state.update { it.copy(detail = it.detail?.copy(longPressItem = null)) }
+                refresh()
+            }
         }
     }
 
@@ -331,9 +344,11 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     fun setSchedule(scheduleKind: String?, scheduleDaysOfWeek: String?) {
         viewModelScope.launch {
             val id = _state.value.detail?.checklist?.id ?: return@launch
-            ChecklistController.setSchedule(app, id, scheduleKind, if (scheduleKind != null) 1 else null, scheduleDaysOfWeek)
-            _state.update { it.copy(detail = it.detail?.copy(showSchedulePicker = false)) }
-            refresh()
+            guardedWrite("set that schedule") {
+                ChecklistController.setSchedule(app, id, scheduleKind, if (scheduleKind != null) 1 else null, scheduleDaysOfWeek)
+                _state.update { it.copy(detail = it.detail?.copy(showSchedulePicker = false)) }
+                refresh()
+            }
         }
     }
 
@@ -410,24 +425,37 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Runs a [ChecklistController] write [block] wrapped so a thrown call leaves this screen alive
-     * (audit finding 6) - before this, tick/untick/addItem/rename/archiveToggle/confirmDelete/
-     * reorder had no guard at all, so a thrown controller call would crash whatever screen was
+     * (audit finding 6) - before this, every write on the open-list detail screen
+     * (tick/untick/addItem/rename/archiveToggle/confirmDelete/reorder/saveEdit/setSchedule/
+     * deleteItem) had no guard at all, so a thrown controller call would crash whatever screen was
      * open (ADR 0050's "HOME must never crash" extends to every screen it can launch from). A
      * thrown [block] sets [ListDetailState.writeError] to a one-line sentence naming what did NOT
      * happen, rendered on the screen itself, never a toast. [actionName] is a short verb phrase
      * ("add that item"), not a full sentence - the sentence is built here so every caller reads the
-     * same shape.
+     * same shape. [createList] is the one write this does not cover - it runs on the PAGE, before
+     * any detail screen exists to carry [ListDetailState.writeError], so it carries its own
+     * [ListsPageState.createError] instead, same shape, different home.
      */
     private suspend fun guardedWrite(actionName: String, block: suspend () -> Unit) {
         try {
             block()
         } catch (e: Exception) {
-            _state.update {
-                it.copy(detail = it.detail?.copy(writeError = "Couldn't $actionName - ${e.message ?: "unknown error"}."))
-            }
+            _state.update { it.copy(detail = it.detail?.copy(writeError = writeErrorMessage(actionName, e))) }
         }
     }
 }
+
+/**
+ * The one-line sentence a thrown write becomes (audit finding 6) - "Couldn't <verb phrase> -
+ * <reason>.", pulled out as a plain function so [ListsViewModelTest] can pin its exact wording
+ * without driving a coroutine through [ListsViewModel.guardedWrite]'s `viewModelScope.launch`.
+ * [ListsViewModel.createList]'s own catch (the one write with no detail screen yet to carry
+ * [ListDetailState.writeError]) builds its [ListsPageState.createError] the same way, through this
+ * same function, so the two surfaces never drift into two different sentence shapes for the same
+ * kind of failure.
+ */
+internal fun writeErrorMessage(actionName: String, e: Exception): String =
+    "Couldn't $actionName - ${e.message ?: "unknown error"}."
 
 /**
  * Which of [items]' own [ChecklistController.ItemState.tickDay] values (plus [today], always) have

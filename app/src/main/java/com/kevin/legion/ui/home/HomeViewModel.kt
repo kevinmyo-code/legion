@@ -62,6 +62,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
+    // ADR 0050: HOME must never crash - loadState spans CarDatabase.getDatabase plus every
+    // controller it wires (audit finding 4), and any of them throwing must still land on
+    // crashedHomeUiState below, whatever exception type it happened to be.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun refresh() {
         viewModelScope.launch {
             val today = LocalDate.now(ZoneId.systemDefault())
@@ -104,6 +108,9 @@ private fun crashedHomeUiState(today: LocalDate): HomeUiState {
     )
 }
 
+// ADR 0050: HOME must never crash - the weather and area/AQI reads below are caught broadly on
+// purpose, so a location or network failure never takes the whole today card down with it.
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
 private suspend fun loadState(context: Context): HomeUiState {
     val zone = ZoneId.systemDefault()
     val now = System.currentTimeMillis()
@@ -159,6 +166,9 @@ private suspend fun loadState(context: Context): HomeUiState {
  * a thrown read gets its own `*Failed` flag and worded tile status, never the same value a
  * genuinely empty read produces (CLAUDE.md sec 1's "unreadable and empty are different sentences").
  */
+// ADR 0050: HOME must never crash - each read is caught broadly and worded, on purpose, never
+// left to whatever specific exception type a given controller happens to throw.
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
 internal suspend fun assembleHomeState(
     today: LocalDate,
     calendar: CalendarReading,
@@ -234,6 +244,9 @@ internal data class CalendarReading(val nextLine: String, val chips: TodayChips)
  * one worded chip ("Couldn't read the calendar", `caution`) - never a silent "Nothing due", which
  * would tell Kevin he is free when the app simply could not see.
  */
+// ADR 0050: HOME must never crash - this block spans three DAO/controller reads and any of them
+// throwing must still land on the worded fallback below, whatever exception type it threw.
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
 private suspend fun loadCalendar(
     context: Context,
     db: CarDatabase,

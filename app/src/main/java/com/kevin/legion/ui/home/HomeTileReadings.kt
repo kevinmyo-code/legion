@@ -1,3 +1,10 @@
+// This file's own doc comment explains why it holds every tile's status builder in one place
+// (one-JUnit-testable-mapping-per-tile); that is also why it sits at 15 top-level functions
+// against detekt's file-level ceiling of 11. Pre-existing (unrelated to the audit fixes that
+// last touched this file - each `failed` parameter is an added default arg, not a new function),
+// and splitting it would separate tiles that this file's own doc comment says belong together.
+@file:Suppress("TooManyFunctions")
+
 package com.kevin.legion.ui.home
 
 import com.kevin.legion.R
@@ -78,6 +85,10 @@ fun calendarTileStatus(chips: TodayChips): TileStatus =
  * has to BE somewhere for, not the next checkbox. `null` `instantMs` never wins a comparison here -
  * every row this function is handed is already day-windowed and dated by construction.
  */
+// Pre-existing (unchanged by the audit fixes that last touched this file): three ranked early
+// returns - next event, next due task, else the plain "nothing" sentence - read more plainly as
+// a fallback chain than folded into one nested expression.
+@Suppress("ReturnCount")
 fun nextThingLine(nowMs: Long, scheduleToday: List<InboxRowView>, dueToday: List<InboxRowView>): String {
     val nextEvent = scheduleToday
         .filter { (it.instantMs ?: Long.MAX_VALUE) >= nowMs }

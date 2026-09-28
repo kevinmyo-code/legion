@@ -130,4 +130,25 @@ class ListsViewModelTest {
         val queued = queuedIdsForRows(context, listOf(null), today)
         assertTrue(item.id !in queued)
     }
+
+    /**
+     * Audit finding 6: every [ListsViewModel] write - tick/untick/addItem/rename/archiveToggle/
+     * confirmDelete/reorder/saveEdit/setSchedule/deleteItem via [ListsViewModel.guardedWrite],
+     * createList via its own catch - builds its on-screen sentence through [writeErrorMessage],
+     * never a bare `e.message` or a silent swallow. Pinned here as a plain function so the wording
+     * is tested without driving [ListsViewModel]'s `viewModelScope.launch` through a coroutine test
+     * harness this codebase does not yet have (see [ListsViewModel.guardedWrite]'s own doc comment
+     * for why [writeErrorMessage] was pulled out rather than asserted only through the ViewModel).
+     */
+    @Test
+    fun `a thrown write becomes a Couldn't sentence naming the action and the reason`() {
+        val message = writeErrorMessage("delete that item", RuntimeException("disk full"))
+        assertEquals("Couldn't delete that item - disk full.", message)
+    }
+
+    @Test
+    fun `a thrown write with no message still states the action, not a blank reason`() {
+        val message = writeErrorMessage("archive that list", RuntimeException())
+        assertEquals("Couldn't archive that list - unknown error.", message)
+    }
 }

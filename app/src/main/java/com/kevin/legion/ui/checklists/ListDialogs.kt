@@ -30,7 +30,7 @@ import java.util.Locale
  * pre-04 screen's own `CreateChecklistDialog`/`SchedulePicker` had.
  */
 @Composable
-fun CreateChecklistDialog(onDismiss: () -> Unit, onCreate: (String, String?, String?) -> Unit) {
+fun CreateChecklistDialog(onDismiss: () -> Unit, onCreate: (String, String?, String?) -> Unit, error: String? = null) {
     var name by remember { mutableStateOf("") }
     var scheduleKind by remember { mutableStateOf<String?>(null) }
     var scheduleDaysOfWeek by remember { mutableStateOf<String?>(null) }
@@ -47,6 +47,12 @@ fun CreateChecklistDialog(onDismiss: () -> Unit, onCreate: (String, String?, Str
                         scheduleDaysOfWeek = scheduleDaysOfWeek,
                         onChange = { kind, days -> scheduleKind = kind; scheduleDaysOfWeek = days },
                     )
+                }
+                // A thrown createChecklist call (audit finding 6) - stated here rather than the
+                // dialog closing on a failed create, so what did not happen is legible right where
+                // the attempt was made.
+                if (error != null) {
+                    Text(error, style = MaterialTheme.typography.bodySmall, color = SoftColors.onAlert, modifier = Modifier.padding(top = 8.dp))
                 }
             }
         },

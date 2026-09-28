@@ -96,6 +96,7 @@ fun ListsContent(state: ListsPageState, callbacks: ListsPageCallbacks) {
         CreateChecklistDialog(
             onDismiss = { callbacks.onShowCreateDialog(false) },
             onCreate = callbacks.onCreate,
+            error = state.createError,
         )
     }
 }
