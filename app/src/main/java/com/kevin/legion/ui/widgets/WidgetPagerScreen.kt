@@ -194,8 +194,10 @@ internal fun legacyRouteForAspect(aspectName: String): String? = when (aspectNam
     // "Notes" used to point at LegionRoute.NOTES / `ui/NotesScreen.kt` - REPOINTED one-today
     // ticket 10 slice C, 2026-09-05 (that screen is deleted): `ui/CalendarScreen.kt` is the
     // Notes-aspect hands surface now, same repoint `service/ReminderAlarmReceiver.kt`'s own
-    // notification deep link made.
-    "Notes" -> com.kevin.legion.ui.LegionRoute.HOME
+    // notification deep link made. **REPOINTED AGAIN home-launcher ticket 03: `ui/CalendarScreen.kt`
+    // moved off the HOME route onto its own [LegionRoute.CALENDAR] once HOME got a real tile grid
+    // of its own** - the Notes aspect's legacy route follows it there, not to HOME.
+    "Notes" -> com.kevin.legion.ui.LegionRoute.CALENDAR
     "Places" -> com.kevin.legion.ui.LegionRoute.FLEET_PLACES
     else -> null
 }

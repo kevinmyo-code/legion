@@ -130,8 +130,14 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             // now-deleted `ui/NotesScreen.kt`** - `ui/CalendarScreen.kt` is the reminder-editing
             // hands surface now (see that screen's own file doc comment), and its own
             // `highlightItemId`/`highlightItemNonce` params read EXTRA_OPEN_ITEM_ID the same way
-            // NotesScreen's `openItemId`/`openItemNonce` used to.
-            putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.HOME)
+            // NotesScreen's `openItemId`/`openItemNonce` used to. **REPOINTED AGAIN home-launcher
+            // ticket 03: EXTRA_ROUTE is LegionRoute.CALENDAR now** - that screen moved off the HOME
+            // route once HOME got its own tile grid (ADR 0050/0051), and `MainActivity`'s own
+            // `LegionRoute.deepLinkTargetFor` makes this resilient anyway: any older build's
+            // notification naming HOME (or the pre-2026-09-10 "calendar") still lands on the
+            // reminder, because a present openItemId wins over whatever route string the intent
+            // carries.
+            putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.CALENDAR)
             putExtra(EXTRA_OPEN_ITEM_ID, item.id)
         }
         val openPi = PendingIntent.getActivity(

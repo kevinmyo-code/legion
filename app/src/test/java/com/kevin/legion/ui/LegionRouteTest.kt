@@ -99,14 +99,14 @@ class LegionRouteTest {
 
     @Test
     fun `every seeded aspect's legacy route, when present, is a real LegionRoute constant`() {
-        // LegionRoute.NOTES dropped out of `known` one-today ticket 10 slice C, 2026-09-05 (the
-        // constant is deleted); LegionRoute.HOME is added in its place - the Notes aspect's own
-        // legacy route (`ui/widgets/WidgetPagerScreen.kt`'s `legacyRouteForAspect`) is repointed
-        // there now. It was `LegionRoute.CALENDAR` when repointed; same constant, renamed
-        // 2026-09-10.
+        // **REPOINTED home-launcher ticket 03: the Notes aspect's legacy route is
+        // [LegionRoute.CALENDAR] again**, not [LegionRoute.HOME] - a reminder's edit affordance
+        // lives on the calendar's day view, and HOME's own tile grid has no reminder editor of its
+        // own for this to land on. Same repoint `service/ReminderAlarmReceiver.kt`'s notification
+        // deep link makes.
         val known = setOf(
             LegionRoute.FLEET, LegionRoute.MONEY, LegionRoute.MONEY_PANTRY,
-            LegionRoute.HOME, LegionRoute.FLEET_PLACES,
+            LegionRoute.CALENDAR, LegionRoute.FLEET_PLACES,
         )
         val names = listOf(
             FleetAspectSeeder.ASPECT_NAME, LedgerAspectSeeder.ASPECT_NAME, PantryAspectSeeder.ASPECT_NAME,
@@ -129,21 +129,23 @@ class LegionRouteTest {
     // ------------------------------------------------------- the route string changed, not just the name
 
     @Test
-    fun `a deep link carrying the old calendar route lands on HOME rather than crashing`() {
-        // The 2026-09-10 rename moved the route STRING from "calendar" to "home". A reminder
-        // notification carries whatever string the build that POSTED it had, and is tapped by
-        // whichever build is installed by then - `navController.navigate` throws
-        // IllegalArgumentException for a destination the graph does not contain, so an unresolved
-        // "calendar" is a crash on a notification tap, not a mis-navigation.
-        assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("calendar"))
+    fun `a deep link carrying the old calendar route now passes through, since CALENDAR is live again`() {
+        // **CORRECTED home-launcher ticket 03.** The 2026-09-10 rename moved the route STRING from
+        // "calendar" to "home", and this test used to pin that "calendar" resolved to HOME. Ticket
+        // 03 splits [LegionRoute.CALENDAR] back off HOME with the SAME route string ("calendar"),
+        // so a "calendar" deep link needs no resolving any more - it already names a real,
+        // currently-registered destination, and `resolveDeepLink` correctly leaves it untouched.
+        assertEquals(LegionRoute.CALENDAR, LegionRoute.resolveDeepLink("calendar"))
     }
 
     @Test
-    fun `notes, today and meters all resolve, and meters is there for a different reason`() {
-        // NOTES deleted 2026-09-05 (one-today 10 slice C), TODAY deleted 2026-09-01 (ticket 07).
-        // Both had their live callers repointed; neither had anything covering a notification
-        // ALREADY in the shade. Found while adding the map, so fixed with it.
-        assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("notes"))
+    fun `notes, today and meters all resolve, and each for a different reason`() {
+        // **CORRECTED home-launcher ticket 03: "notes" now resolves to CALENDAR, not HOME** - a
+        // reminder's edit affordance lives on the calendar's day view again, not on HOME's own tile
+        // grid. NOTES deleted 2026-09-05 (one-today 10 slice C), TODAY deleted 2026-09-01
+        // (ticket 07). Both had their live callers repointed; neither had anything covering a
+        // notification ALREADY in the shade. Found while adding the map, so fixed with it.
+        assertEquals(LegionRoute.CALENDAR, LegionRoute.resolveDeepLink("notes"))
         assertEquals(LegionRoute.HOME, LegionRoute.resolveDeepLink("today"))
         // METERS (deleted 2026-09-10) is here on a different argument and it is worth keeping
         // straight: no notification ever named it, because it was a TAB rather than an alarm
@@ -155,9 +157,32 @@ class LegionRouteTest {
 
     @Test
     fun `a live route passes through resolveDeepLink untouched`() {
-        for (route in listOf(LegionRoute.HOME, LegionRoute.ASK, LegionRoute.FLEET_PLACES, LegionRoute.MONEY_PANTRY_IMPORT)) {
+        val routes = listOf(
+            LegionRoute.HOME, LegionRoute.CALENDAR, LegionRoute.ASK,
+            LegionRoute.FLEET_PLACES, LegionRoute.MONEY_PANTRY_IMPORT,
+        )
+        for (route in routes) {
             assertEquals(route, LegionRoute.resolveDeepLink(route))
         }
+    }
+
+    // --------------------------------------------- home-launcher ticket 03: the reminder deep link
+
+    @Test
+    fun `a present openItemId lands on CALENDAR whatever route the intent names`() {
+        // The load-bearing case: an intent posted by a build BEFORE this ticket names "home" (or
+        // even the pre-2026-09-10 "calendar"), but carries a real reminder id. openItemId, not the
+        // route string, is what says "this is a reminder tap" - so it must win regardless.
+        assertEquals(LegionRoute.CALENDAR, LegionRoute.deepLinkTargetFor(route = LegionRoute.HOME, openItemId = 42L))
+        assertEquals(LegionRoute.CALENDAR, LegionRoute.deepLinkTargetFor(route = "calendar", openItemId = 42L))
+        assertEquals(LegionRoute.CALENDAR, LegionRoute.deepLinkTargetFor(route = null, openItemId = 42L))
+    }
+
+    @Test
+    fun `no openItemId falls through to the ordinary resolveDeepLink answer`() {
+        assertEquals(LegionRoute.HOME, LegionRoute.deepLinkTargetFor(route = "today", openItemId = null))
+        assertNull(LegionRoute.deepLinkTargetFor(route = null, openItemId = null))
+        assertEquals(LegionRoute.ASK, LegionRoute.deepLinkTargetFor(route = LegionRoute.ASK, openItemId = null))
     }
 
     @Test
@@ -178,8 +203,8 @@ class LegionRouteTest {
         // The map's whole purpose is defeated if it points at a destination that was itself later
         // deleted - that would trade one crash for another. Pinned against the declared constants.
         val live = setOf(
-            LegionRoute.HOME, LegionRoute.ASK, LegionRoute.DASHBOARD, LegionRoute.BODY,
-            LegionRoute.MONEY, LegionRoute.FLEET, LegionRoute.SETTINGS,
+            LegionRoute.HOME, LegionRoute.CALENDAR, LegionRoute.ASK, LegionRoute.DASHBOARD,
+            LegionRoute.BODY, LegionRoute.MONEY, LegionRoute.FLEET, LegionRoute.SETTINGS,
         )
         for ((legacy, target) in LegionRoute.LEGACY_DEEP_LINK_ROUTES) {
             assertTrue("'$legacy' maps to '$target', which is not a live route", target in live)

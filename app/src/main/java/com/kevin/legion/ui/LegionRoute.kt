@@ -83,23 +83,38 @@ package com.kevin.legion.ui
 object LegionRoute {
     /**
      * **RENAMED from `CALENDAR` ("calendar") on 2026-09-10** (Kevin: *"just everything on home page
-     * (rename it from calendar)"*, `.scratch/one-home/issues/03-calendar-becomes-home.md`). The
-     * screen is unchanged and is still a month grid with a day view; what changed is that it stopped
-     * being one tab among several and became the place the app opens to. The old route string lives
-     * on in [LEGACY_DEEP_LINK_ROUTES] because notifications posted by an older build outlive the
-     * build that posted them.
+     * (rename it from calendar)"*, `.scratch/one-home/issues/03-calendar-becomes-home.md`), and
+     * **[CALENDAR] SPLIT BACK OFF THIS ROUTE 2026-09-27 (home-launcher ticket 03, ADR 0050/0051)**
+     * once HOME got its own content again (ticket 01's own decision - a today card and a 2x4 tile
+     * grid, `ui/home/HomeScreen.kt`). The paragraph below describing HOME as "a month grid with a
+     * day view" is now stale in the way this file's own class doc warns about: that description
+     * moved with the screen to [CALENDAR], and this route is a genuinely different composable now.
+     * The old route string lives on in [LEGACY_DEEP_LINK_ROUTES] because notifications posted by an
+     * older build outlive the build that posted them.
      *
      * The start destination as of the 2026-09-01 calendar-home cutover (Kevin, verbatim: "month
-     * grid primary. tapping a day on the month opens up view B") - see [com.kevin.legion.ui.CalendarScreen].
-     * No sub-routes: the selected day's agenda ("view B") is internal Compose state inside that
-     * screen, same convention `ui/NotesScreen.kt`'s own (now-deleted, one-today ticket 10 slice C)
-     * LISTS | CALENDAR toggle used to establish - [HOME] itself is now where a reminder's edit
-     * affordance lives (see [com.kevin.legion.ui.CalendarScreen]'s own file doc comment).
+     * grid primary. tapping a day on the month opens up view B") - was
+     * [com.kevin.legion.ui.CalendarScreen], now [com.kevin.legion.ui.home.HomeScreen]. No
+     * sub-routes: HOME's own state (which tile is highlighted, its live flows) is internal Compose
+     * state inside that screen, same convention every leaf route in this file already follows.
      * Replaced `TODAY` as `startDestination` and as the shell's HOME target; `TODAY` and the
      * screen it named were deleted outright 2026-09-01 (one-today ticket 07), once its survivors
      * were all rehomed - see this file's class doc.
      */
     const val HOME = "home"
+
+    /**
+     * **RETURNS as a live route (home-launcher ticket 03, ADR 0050/0051), splitting off [HOME]
+     * again.** The 2026-09-10 rename above folded the month-grid-and-day-view screen INTO the
+     * `home` route because HOME had no other content of its own at the time; ticket 01's decision
+     * ("Home, is a launcher... a today card on top, then big tiles") gives HOME its own real
+     * content, so the calendar screen (still [com.kevin.legion.ui.CalendarScreen], still unrenamed
+     * for the same reason the 2026-09-10 doc gives - "it still renders a calendar") moves back to
+     * its own route, reached from HOME's own Calendar tile and its today card, both landing here.
+     * It is a drill-down now, `DeckScreenHeader`/`onBack` and all, same shape as every other
+     * screen under [com.kevin.legion.ui.theme.LegionTheme] - never the start destination again.
+     */
+    const val CALENDAR = "calendar"
 
     // METERS ("meters") DELETED 2026-09-10, one-home ticket 03b. It was the "C" tab of the
     // 2026-09-01 calendar-home cutover (Kevin: "C as another tab... those we tap through from
@@ -333,11 +348,13 @@ object LegionRoute {
      * The media control panel (command-center ticket 04,
      * `.scratch/command-center/issues/04-media-panel.md`) - the hands path for the five music
      * voice tools (ADR 0035): now-playing, transport, volume, queue, search-and-play, and library
-     * browse. Nested under Spotify's own settings route rather than promoted to a tab of its own -
-     * `ui/media/MediaMiniBar.kt` (this ticket's other export) is what Home is meant to consume for
-     * at-a-glance transport (command-center ticket 01), and the full panel is a drill-down from
-     * wherever a driver already goes to manage Spotify - see [SETTINGS_SPOTIFY]'s own screen for
-     * the entry-point row.
+     * browse. Nested under Spotify's own settings route rather than promoted to a tab of its own.
+     * `ui/media/MediaMiniBar.kt` used to be Home's at-a-glance transport export (command-center
+     * ticket 01) - **deleted, home-launcher ticket 03**, once HOME's own now-playing row
+     * (`ui/home/HomeScreen.kt`'s `NowPlayingRow`, reading the identical
+     * [com.kevin.legion.media.NowPlayingController]) was its only caller left. The full panel is
+     * still a drill-down from wherever a driver already goes to manage Spotify - see
+     * [SETTINGS_SPOTIFY]'s own screen for the entry-point row.
      */
     const val SETTINGS_SPOTIFY_MEDIA = "settings/spotify/media"
 
@@ -385,19 +402,21 @@ object LegionRoute {
      * notification sits in the shade until it is tapped, which can be days - and across a sideload
      * it can easily be tapped by a build that no longer has the route the notification names.
      *
-     * `"calendar"` is here because of the 2026-09-10 rename above. **`"notes"` and `"today"` were
-     * already dangling before it** - `NOTES` was deleted 2026-09-05 (one-today ticket 10 slice C)
-     * and `TODAY` on 2026-09-01 (ticket 07), each with its callers repointed but with nothing
-     * covering a notification already posted. Both are repointed at [HOME], which is where their
-     * content went.
+     * **CORRECTED home-launcher ticket 03: `"calendar"` is REMOVED from this map.** It was here
+     * because of the 2026-09-10 rename that folded [CALENDAR] into [HOME]; now that [CALENDAR] is a
+     * live route again (this file's own class doc), a `"calendar"` deep link needs no resolving at
+     * all - it already names a real destination. **`"notes"` is repointed at [CALENDAR] instead of
+     * [HOME]** for the same reason: `NOTES` was deleted 2026-09-05 (one-today ticket 10 slice C),
+     * and what it named - a reminder's edit affordance - lives on [CALENDAR] now, not on HOME's own
+     * tile grid. `"today"` and `"meters"` still land on [HOME], which is where their own content
+     * (the agenda hero, the meter rows) actually went.
      *
      * A route NOT in this map is passed through untouched rather than defaulted to [HOME]: an
      * unknown route is a bug, and quietly landing on the home screen would hide it. This map is for
      * routes that are known to have existed and known where they went.
      */
     val LEGACY_DEEP_LINK_ROUTES = mapOf(
-        "calendar" to HOME,
-        "notes" to HOME,
+        "notes" to CALENDAR,
         "today" to HOME,
         // **`"meters"` joined them 2026-09-10 (ticket 03b), and for a reason the other three did not
         // have.** No notification ever named METERS - it was a tab, not an alarm target. But a tab
@@ -417,4 +436,17 @@ object LegionRoute {
      */
     fun resolveDeepLink(route: String?): String? =
         route?.let { LEGACY_DEEP_LINK_ROUTES[it] ?: it }
+
+    /**
+     * **The reminder deep link must still open the reminder, whatever route the intent names**
+     * (home-launcher ticket 03). `ReminderAlarmReceiver` posts `EXTRA_ROUTE = CALENDAR` today, but
+     * an older build's notification can still be sitting in the shade naming `HOME` (before this
+     * ticket) or `"home"`'s own legacy `"calendar"` (before the 2026-09-10 rename) - `openItemId`
+     * is the one signal that says "this intent is a reminder tap", independent of which route
+     * string it happens to carry, so a present [openItemId] always wins over [resolveDeepLink]'s
+     * own answer. Pure over its two inputs (`MainActivity`'s own doc comment on why this is
+     * testable without an Activity).
+     */
+    fun deepLinkTargetFor(route: String?, openItemId: Long?): String? =
+        if (openItemId != null) CALENDAR else resolveDeepLink(route)
 }

@@ -3,13 +3,40 @@ map: home-launcher
 ticket: "03"
 title: "HOME is a launcher; CALENDAR is its own route again; the meter bands retire"
 type: build
-status: open
+status: built
 status-detail: >
-  Opened 2026-09-27 from ticket 01's resolution. Needs 02's theme, font and
-  icons. Runs in parallel with 04 (disjoint files).
+  Built 2026-09-27. HOME is `ui/home/HomeScreen.kt` (today card + 2x4 tile
+  grid, `HomeViewModel`, soft Material); CALENDAR split back off HOME as its
+  own route (`ui/CalendarScreen.kt`, `DeckScreenHeader`/`onBack`, mission
+  control unchanged); `ui/HomeMeterBands.kt` and `MetersUiState` deleted,
+  `ui/media/MediaMiniBar.kt` deleted (HOME's own `NowPlayingRow` is its only
+  caller now). Reminder deep link repointed to CALENDAR
+  (`LegionRoute.deepLinkTargetFor`, reminder-tap-wins-over-route-string).
+  Pantry's ADR 0035 reachability claim in this ticket was stale - `LedgerScreen`
+  already had a GROCERIES row wired to `MONEY_PANTRY`; no new row added, see
+  report. compileDebugKotlin green; testDebugUnitTest 3645/3645 by XML (0
+  failures, 0 errors, 0 skipped) on a clean run, up from the 3611 baseline
+  the brief named (net +34, mostly new: `HomeTileReadingsTest` 25 cases,
+  `HomeContentScreenshotTest` 4, two new `LegionRouteTest` cases for
+  `deepLinkTargetFor`). One flaky run hit `ChecklistsWriteThroughTest` (unrelated file,
+  ArrayIndexOutOfBoundsException, passed clean in isolation and on a second
+  full run - same order-dependent-leak shape ticket 02's own
+  AssistantStripScreenshotTest flake was). detekt clean for every file this
+  ticket touches (131 pre-existing findings elsewhere, unrelated - confirmed
+  by `git diff` that none of this ticket's added/changed lines appear among
+  them, and a small number of MainActivity.kt findings pre-date this ticket,
+  from the same-day ADR 0050/quiet-mode work whose baseline entries went
+  stale before this ticket started); docs_check.py: no problem named a path
+  this ticket touched, added or deleted (731 pre-existing wikilink problems
+  elsewhere, untouched by this ticket - confirmed by grep rather than a
+  clean-HEAD diff, since git stash is forbidden in this tree); voice_guide.py
+  clean, README.md block byte-identical (no voice tool changed). Roborazzi:
+  4 screenshots recorded for the new `HomeContentScreenshotTest`
+  (normal/alerts/failures at 384x636dp, the 360x520dp fallback) - see report
+  for paths. Needs a run on the phone.
 blockers: ["02"]
 blocked-by: ["[[02-soft-theme-and-chrome]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

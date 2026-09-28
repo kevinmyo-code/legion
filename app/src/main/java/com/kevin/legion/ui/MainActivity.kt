@@ -532,8 +532,16 @@ private fun LegionShell(
         // route string THAT build had, and it is tapped by whichever build is installed when the
         // user gets to it - `navigate` throws IllegalArgumentException on a destination that is not
         // in the graph, so an un-resolved stale route is a crash on a notification tap.
-        // [LegionRoute.LEGACY_DEEP_LINK_ROUTES] has the three that are known dangling.
-        LegionRoute.resolveDeepLink(deepLinkRoute)?.let { navController.navigate(it) }
+        // [LegionRoute.LEGACY_DEEP_LINK_ROUTES] has the ones that are known dangling.
+        //
+        // **home-launcher ticket 03: [LegionRoute.deepLinkTargetFor], not [LegionRoute.resolveDeepLink]
+        // alone.** A present [openItemId] always wins - it is the one signal that says "this intent
+        // is a reminder tap", independent of which route string the intent happens to carry (an
+        // older build's notification can still name HOME, or even the pre-2026-09-10 "calendar").
+        // [deepLinkNonce] and [openItemNonce] tick together (both bump in [readDeepLinkExtras] on
+        // every intent), so keying this single effect on [deepLinkNonce] alone still re-navigates
+        // on a repeat reminder tap.
+        LegionRoute.deepLinkTargetFor(deepLinkRoute, openItemId)?.let { navController.navigate(it) }
     }
 
     // The Spotify OAuth token exchange (2026-08-12). Runs HERE, above the NavHost, not inside
@@ -735,8 +743,11 @@ private fun LegionShell(
                             // The key clause is never hidden by an alarm - see [StatusLine]'s doc.
                             keyLabel = shellStatus.parts.keyLabel,
                             alarmCount = shellStatus.alarmCount,
-                            // Lands a tapped alarm on the day its reminder belongs to.
-                            onOpenAlarm = { navController.navigate(LegionRoute.HOME) { launchSingleTop = true } },
+                            // Lands a tapped alarm on the day its reminder belongs to - CALENDAR,
+                            // not HOME, since home-launcher ticket 03 gave HOME its own tile grid
+                            // and moved the day view (and its alarm-tag rendering) onto its own
+                            // route again.
+                            onOpenAlarm = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
                         )
                     }
                     // [LegionTabRow] DELETED 2026-09-10 (one-home ticket 03b, on ticket 01's
@@ -748,13 +759,17 @@ private fun LegionShell(
                 }
                 NavHost(
                     navController = navController,
-                    // CALENDAR is the start destination as of the 2026-09-01 calendar-home cutover
-                    // (Kevin, verbatim, [LegionRoute.HOME]'s own doc comment: "month grid
-                    // primary"). Was TODAY from the 2026-08-07 brief (itself a supersession of
-                    // FLEET under ticket 07's original four-tab shape); cutover 5
-                    // (`docs/architecture/cutover5-2026-08-24.md`) briefly made the widget pager
-                    // (DASHBOARD) the start destination instead, REVERTED 2026-08-25 - see that
-                    // doc's postscript. See LegionRoute's doc comment for the full route map/history.
+                    // HOME is the start destination - **CORRECTED home-launcher ticket 03**: this
+                    // used to say CALENDAR (the 2026-09-01 calendar-home cutover folded that screen
+                    // into the `home` route). Ticket 03 split [LegionRoute.CALENDAR] back off HOME
+                    // once HOME got its own tile-grid content (ADR 0050/0051) - [LegionRoute.HOME]
+                    // is still the constant this NavHost opens to, but the composable behind it is
+                    // `ui/home/HomeScreen.kt` now, not `ui/CalendarScreen.kt`. Was TODAY from the
+                    // 2026-08-07 brief (itself a supersession of FLEET under ticket 07's original
+                    // four-tab shape); cutover 5 (`docs/architecture/cutover5-2026-08-24.md`)
+                    // briefly made the widget pager (DASHBOARD) the start destination instead,
+                    // REVERTED 2026-08-25 - see that doc's postscript. See LegionRoute's doc
+                    // comment for the full route map/history.
                     startDestination = LegionRoute.HOME,
                     modifier = Modifier.weight(1f),
                     // Command-center ticket 14: one fade-through, defined once here, no per-route
@@ -780,57 +795,41 @@ private fun LegionShell(
             composable(LegionRoute.DASHBOARD) {
                 WidgetPagerRoot(onOpenRoute = { route -> navController.navigate(route) { launchSingleTop = true } })
             }
-            // The new start destination (2026-09-01 calendar-home cutover) - month grid + day view,
-            // no nav arguments (LegionRoute's own "nothing here takes a navigation argument"
-            // convention): [highlightItemId]/[highlightItemNonce] are plain params, not nav-graph
-            // arguments, same shape the deleted `ui/NotesScreen.kt` used for its own
-            // `openItemId`/`openItemNonce`. [CalendarScreen] owns its own month/day state internally
-            // and reads/writes through [com.kevin.legion.notes.NotesController] directly rather than
-            // through anything this shell needs to wire. **REPOINTED one-today ticket 10 slice C,
-            // 2026-09-05: this composable used to take no arguments** - the notification-tap deep
-            // link (`openItemId`/`openItemNonce`, this file's own state above) fed
-            // `ui/NotesScreen.kt` exclusively before that screen was deleted; `CalendarScreen`'s own
-            // file doc comment has the full account of how it opens the same [ItemEditDialog] now.
-            // HOME now renders the meter bands below the day view (one-home ticket 02,
-            // `.scratch/one-home/issues/02-rehome-the-orphans.md`) - the exact callback set
-            // `ui/MetersScreen.kt`'s own "C" tab used to take (that screen's history is kept
-            // below on [LegionRoute.METERS]'s own registration until ticket 03b deletes it).
+            // HOME (home-launcher ticket 03, ADR 0050/0051): the today card + 2x4 tile grid, under
+            // `SoftTheme` - the one screen this ticket converts besides the shell chrome ticket 02
+            // already did. `ui/CalendarScreen.kt` no longer renders here; see [LegionRoute.CALENDAR]
+            // just below for where it moved.
             composable(LegionRoute.HOME) {
                 // As the home app, Back on HOME does nothing: there is nowhere behind the home
                 // screen to go. As an ordinary app it still exits (ADR 0050).
                 androidx.activity.compose.BackHandler(enabled = isDefaultHome) {}
-                CalendarScreen(
-                    highlightItemId = openItemId,
-                    highlightItemNonce = openItemNonce,
-                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
+                com.kevin.legion.ui.home.HomeScreen(
+                    onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                    onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
                     onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
+                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
                     onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
-                    onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
-                    // The Ask pane's new destination (ticket 01's resolution: its own route, not
-                    // a pane welded onto HOME) - see `ui/ask/AskScreen.kt`'s own registration below.
-                    onOpenAsk = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
-                    // The news feed's own route (one-home ticket 07) - see
-                    // `ui/news/NewsScreen.kt`'s own registration below.
+                    onOpenRecordings = {
+                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
+                    },
                     onOpenNews = { navController.navigate(LegionRoute.NEWS) { launchSingleTop = true } },
-                    // The media mini-bar's own tap-through (rehomed from the deleted
-                    // `ui/TodayScreen.kt`, one-today ticket 07, then `ui/MetersScreen.kt`, one-home
-                    // ticket 02) - the media control panel command-center ticket 04 built, nested
-                    // under Spotify's own settings route (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's
-                    // own doc comment).
+                    // "Reports" is the ASK screen (ticket 01's resolution: "Reports is the ASK
+                    // screen, the closed-enum builder over ledger and pantry").
+                    onOpenReports = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
                     onOpenMedia = {
                         navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
                     },
-                    // The recordings-UI ticket's own relocation (2026-09-04): the RECORDINGS
-                    // pane's count row taps through to the same LegionRoute.SETTINGS_VOICE_NOTES
-                    // screen the old Data & privacy row used to open - only the entry point moved.
-                    onOpenVoiceNotes = {
-                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
-                    },
-                    // One-today ticket 09's LISTS row - the recurring checklists management
-                    // screen.
-                    onOpenChecklists = {
-                        navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true }
-                    },
+                )
+            }
+            // CALENDAR (home-launcher ticket 03): the month grid + day view, split back off HOME
+            // now that HOME has its own content again - see [LegionRoute.CALENDAR]'s own doc
+            // comment. A drill-down like every other screen under [LegionTheme], `DeckScreenHeader`
+            // and all - not the start destination any more.
+            composable(LegionRoute.CALENDAR) {
+                CalendarScreen(
+                    highlightItemId = openItemId,
+                    highlightItemNonce = openItemNonce,
+                    onBack = { navController.popBackStack() },
                 )
             }
             // The Ask hands path's own route (one-home ticket 02, ADR 0035) - see

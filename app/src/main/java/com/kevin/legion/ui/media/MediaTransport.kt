@@ -6,8 +6,9 @@ import com.kevin.legion.service.LiveToolbox
 /**
  * The hands path onto the SAME two-backend transport dispatch `control_music` uses
  * ([LiveToolbox.controlMusicTransport]). Kept as its own object rather than inlined in
- * [MediaScreen] so [MediaMiniBar] (Home's compact export) shares the identical dispatch rather
- * than a second copy of it.
+ * [MediaScreen] so `ui/home/HomeScreen.kt`'s `NowPlayingRow` (home-launcher ticket 03 - deleted
+ * `ui/media/MediaMiniBar.kt`'s own successor, same play/pause control) shares the identical
+ * dispatch rather than a second copy of it.
  *
  * **No longer a second implementation (command-center ticket 08, drift-debt half).** This object
  * used to re-state [LiveToolbox]'s MusicController-then-SpotifyController ordering here, because
