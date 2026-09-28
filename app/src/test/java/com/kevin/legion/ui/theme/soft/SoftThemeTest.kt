@@ -7,7 +7,7 @@ import org.junit.Test
 import kotlin.math.pow
 
 /**
- * The L11 gate for the soft scheme (home-launcher ticket 02, ADR 0050). `ColorScheme.contentColorFor`
+ * The L11 gate for the soft scheme (home-launcher ticket 02, ADR 0051). `ColorScheme.contentColorFor`
  * resolves by VALUE (`ui/theme/Theme.kt`'s own `DarkScheme` audit has the full mechanism and its
  * 2026-08-02 failure: `surface` and `errorContainer` shared a raw value and every screen drew its
  * body text in quarantine red). That audit measured exactly twelve roles as the real input chain on

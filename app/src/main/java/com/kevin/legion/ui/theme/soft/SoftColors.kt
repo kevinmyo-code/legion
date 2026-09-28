@@ -3,7 +3,7 @@ package com.kevin.legion.ui.theme.soft
 import androidx.compose.ui.graphics.Color
 
 /**
- * The soft-Material palette (home-launcher ticket 02, ADR 0050, superseding VACUUM/SENTRY -
+ * The soft-Material palette (home-launcher ticket 02, ADR 0051, superseding VACUUM/SENTRY -
  * `ui/theme/Color.kt` - surface by surface, starting here: HOME, Lists and the shell chrome per
  * ticket 01's "how far the look reaches now"). Exact hex values are ticket 02's own token table,
  * lifted from the clickable prototype canvas (`research/prototype-canvas/Main.dc.html`) that ticket

@@ -37,7 +37,7 @@ The interview, a clickable prototype canvas and Kevin's picks are all in [[01-th
 a today card over a 2 x 4 tile grid, Groceries is a list and not a tile, lists open to a Keep-style
 checklist, the Lists page is a grid of icon cards, and the look moves from mission control to a
 softer Material dark - Home, Lists and the shell chrome first, the rest as each screen is next
-touched ([[../../docs/adr/0050-design-language-soft-material|ADR 0050]]).
+touched ([[../../docs/adr/0051-design-language-soft-material|ADR 0051]]).
 
 ## Tickets
 

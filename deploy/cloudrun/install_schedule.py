@@ -15,9 +15,9 @@ line - one Cloud Run Job (from deploy_job.py) serves every scheduled task,
 rather than needing a separate Job per task the way midconerpdash's single
 pipeline does not need to.
 
-deploy/crontab does not exist yet as of this ticket (ticket 06, blocked on
-02, has not landed) - this refuses loudly with that explanation rather than
-scheduling nothing and saying "done".
+backend-etl ticket 01 created deploy/crontab (its first line is
+`heartbeat`). If the file is ever missing or empty this still refuses loudly
+rather than scheduling nothing and saying "done".
 
 Usage:
     python install_schedule.py --job legion-worker

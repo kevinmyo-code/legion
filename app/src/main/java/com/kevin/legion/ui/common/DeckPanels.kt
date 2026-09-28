@@ -101,13 +101,13 @@ import com.kevin.legion.ui.theme.soft.SoftColors
  * **boot was dropped 2026-08-14 by Kevin** and they went with it.
  *
  * **`DeckBezel` itself, and [StatusLine]'s cursor/ALARM shape from ticket 14, are RETIRED by
- * home-launcher ticket 02 (2026-09-27, ADR 0050)** - the mission-control look this file's own name
+ * home-launcher ticket 02 (2026-09-27, ADR 0051)** - the mission-control look this file's own name
  * still carries is superseded surface by surface, starting with the shell chrome. `DeckBezel` is
  * deleted outright (see the comment at its old location, just above [DeckSectionRule]); [StatusLine]
  * keeps its alarm handling but drops the blinking cursor entirely - see that composable's own,
  * rewritten doc for the soft-Material shape it has now. Every OTHER primitive in this file
  * ([DeckPane], [DeckTag], [QuarantineTag], [DeckMeter], [DeckRow], [DeckFeedRow], [DeckSectionRule])
- * is untouched - they still serve the mission-control screens ADR 0050 has not reached yet.
+ * is untouched - they still serve the mission-control screens ADR 0051 has not reached yet.
  */
 
 // ------------------------------------------------------------------- DeckPane
@@ -577,7 +577,7 @@ fun DeckFeedRow(code: String, name: String, value: String, modifier: Modifier = 
     }
 }
 
-// [DeckBezel] REMOVED (home-launcher ticket 02, ADR 0050). It was the one global mission-control
+// [DeckBezel] REMOVED (home-launcher ticket 02, ADR 0051). It was the one global mission-control
 // frame ("a rounded rect with two straight-line BREAKS... four L-shaped registration ticks"),
 // wired into the shell by mission-control ticket 14 and wrapping MainActivity's whole Scaffold.
 // Ticket 01's resolution ("How far the look reaches now") retires it along with the rest of the
@@ -678,15 +678,8 @@ fun StatusLine(
     keyLabel: String? = null,
     onOpenSettings: (() -> Unit)? = null,
     /**
-     * The app-drawer link. Added 2026-09-27 alongside this restyle, on word from the orchestrator
-     * that `dev` had, in the same window, landed `1434459` ("LEGION can be the phone's home app",
-     * `docs/adr/0050-legion-may-be-the-home-app.md` on THAT branch - a different ADR 0050 than this
-     * branch's own `docs/adr/0050-design-language-soft-material.md`; the two branches minted the
-     * same number independently and whoever merges them owes one a renumber). Verified against
-     * `origin/dev` directly rather than taken on trust - see this ticket's own report. Null (the
-     * default) hides the button entirely, so this ticket's own `MainActivity.kt` caller (which does
-     * not pass it) is byte-for-byte unaffected; wiring a real callback is that ADR's own build, not
-     * this ticket's.
+     * The app drawer (ADR 0050, LEGION as the phone's home app): reachable from the header on
+     * every screen. Null hides the button.
      */
     onOpenApps: (() -> Unit)? = null,
     /**

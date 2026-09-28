@@ -7,7 +7,7 @@ source: "[[decisions#2026-09-27 - HOME becomes a launcher, and the phone's look 
 tags: [adr]
 ---
 
-# 50. Design language: soft Material
+# 51. Design language: soft Material
 
 ## Standing
 

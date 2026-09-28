@@ -142,6 +142,13 @@ class LiveSessionController(context: Context) {
     // LISTENING (wait for the driver) or IDLE.
     private var conversationMode = false
 
+    /**
+     * One-shot conversation (2026-09-27): see [OneShotGate]. When the gate says the reply is done,
+     * it arms [dismissAfterTurn], the same after-the-reply hang-up "that will be all" uses, so the
+     * answer is always finished before the socket goes.
+     */
+    private val oneShotGate = OneShotGate()
+
     // Ticket 02 (drive-test-2026-08-18): the latest session-resumption handle Gemini has
     // confirmed we can reconnect with, threaded into the NEXT [GeminiLiveSession.start] call
     // (prewarm/startConversation). Lives on the controller, not the session, because a
@@ -258,7 +265,22 @@ class LiveSessionController(context: Context) {
      * conversation stops it; a tap on a warm socket resumes instantly (mic opens,
      * no greeting); otherwise it connects a fresh conversation.
      */
-    fun onTap(fromWakeWord: Boolean = false) {
+    /**
+     * The side key / system assist gesture (ADR 0050's sibling: LEGION as the phone's assistant).
+     * Starts a one-shot conversation - see [oneShot]. If a conversation is already listening, it
+     * is NOT stopped (which is what a plain [onTap] would do); it just becomes one-shot, so it ends
+     * after answering whatever is said next.
+     */
+    fun onAssistRequest() {
+        val s = session
+        if (s != null && s.inConversation) {
+            oneShotGate.armMidConversation()
+            return
+        }
+        onTap(oneShot = true)
+    }
+
+    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false) {
         // Ticket 24: a tap (or a wake-word trigger, which calls this with fromWakeWord=true) IS
         // the genuine signal [shouldAutoReconnectAfterClose] waits for. Recorded unconditionally,
         // before any of the early returns below, so even a tap that bounces off "ON A CALL" or
@@ -271,6 +293,8 @@ class LiveSessionController(context: Context) {
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
+        // Set before anything async can emit MicOpened; a plain tap always clears it.
+        oneShotGate.start(oneShot)
         val s = session
         // DIAGNOSTIC (B9/B12, remove once root-caused): entry state on every tap,
         // to catch a tap racing an in-flight proactive speakOnWarm() (session
@@ -816,6 +840,9 @@ class LiveSessionController(context: Context) {
                 if (conversationMode) dismissAfterTurn = true
             }
             is LiveEvent.TurnComplete -> {
+                // One-shot: the reply to what the user said has just been spoken. Arm the same
+                // hang-up "that will be all" uses; the branch below fires it before the mic reopens.
+                if (oneShotGate.onTurnComplete(conversationMode)) dismissAfterTurn = true
                 // Conversation: the session is ABOUT to reopen the mic, so this is
                 // still active talk time and the segment stays open - but it does
                 // NOT claim Listening here anymore (2026-08-17, same defect class as
@@ -861,7 +888,10 @@ class LiveSessionController(context: Context) {
             // gated on conversationMode: a bare tap-to-listen (beginConversation with no
             // opener) also lands here directly from the Connected branch's THINKING state,
             // and this is the only event that would otherwise ever move it off THINKING.
-            is LiveEvent.MicOpened -> set(Phase.LISTENING, "Listening...")
+            is LiveEvent.MicOpened -> {
+                oneShotGate.onMicOpened()
+                set(Phase.LISTENING, "Listening...")
+            }
             // No phase change: SpeakingStarted already covers the ordinary half-duplex-mute
             // close (fires effectively simultaneously, off the same server message), and a
             // session-teardown close is about to be followed by its own Idle/Closed event

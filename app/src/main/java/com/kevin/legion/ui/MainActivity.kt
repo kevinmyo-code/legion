@@ -126,6 +126,17 @@ class MainActivity : ComponentActivity() {
     private var spotifyRedirect by mutableStateOf<Uri?>(null)
     private var spotifyRedirectNonce by mutableStateOf(0)
 
+    // LEGION as the phone's home app (ADR 0050, 2026-09-27). A Home press arrives here as a MAIN +
+    // CATEGORY_HOME intent (singleTask routes it to onNewIntent), and it must land on HOME from
+    // anywhere in the app - the same as every launcher. Nonce-keyed for the reason deepLinkNonce
+    // is: pressing Home twice delivers an identical intent.
+    private var homePressNonce by mutableStateOf(0)
+
+    // True only while LEGION is the DEFAULT home app. Back on HOME is swallowed only then - a
+    // launcher that Back "exits" just redraws itself, while a normal app should still exit.
+    // Re-read in onResume, since Kevin can switch the Home app in Settings at any time.
+    private var isDefaultHome by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         readDeepLinkExtras(intent)
@@ -136,6 +147,8 @@ class MainActivity : ComponentActivity() {
                     openItemId = openItemId, openItemNonce = openItemNonce,
                     spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
                     onSpotifyRedirectConsumed = { spotifyRedirect = null },
+                    homePressNonce = homePressNonce,
+                    isDefaultHome = isDefaultHome,
                 )
             }
         }
@@ -148,6 +161,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun readDeepLinkExtras(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) homePressNonce++
         deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++
         val itemId = intent?.getLongExtra(ReminderAlarmReceiver.EXTRA_OPEN_ITEM_ID, -1L) ?: -1L
@@ -193,6 +207,10 @@ class MainActivity : ComponentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        isDefaultHome = packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+        )?.activityInfo?.packageName == packageName
         // Promote AriaForegroundService's foreground-service type set back up to include
         // `microphone` now that the app is visibly foreground (2026-08-17). If the service was
         // started by BootReceiver it came up WITHOUT the microphone type - see
@@ -463,9 +481,26 @@ private fun LegionShell(
     spotifyRedirect: Uri? = null,
     spotifyRedirectNonce: Int = 0,
     onSpotifyRedirectConsumed: () -> Unit = {},
+    homePressNonce: Int = 0,
+    isDefaultHome: Boolean = false,
 ) {
     val navController = rememberNavController()
+
+    // Home press: back to HOME from wherever you are, dropping whatever was stacked on top of it.
+    // Skipped on the initial 0 so a cold start doesn't navigate for no reason.
+    LaunchedEffect(homePressNonce) {
+        if (homePressNonce > 0 && !navController.popBackStack(LegionRoute.HOME, inclusive = false)) {
+            navController.navigate(LegionRoute.HOME) { launchSingleTop = true }
+        }
+    }
     val context = LocalContext.current
+
+    // The header's QUIET toggle. Re-read on every resume, because the Quick Settings tile can flip
+    // Quiet while LEGION is in the background, and a header that disagrees with the phone is a lie.
+    var quietOn by remember { mutableStateOf(com.kevin.legion.quiet.QuietMode.isOn(context)) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
+    }
 
     // Today's category drill-down link (Kevin, 2026-08-07: "let me press it and drill down
     // transactions there"). Lives HERE, above the NavHost, not inside either destination's own
@@ -578,7 +613,7 @@ private fun LegionShell(
         GeneratedViewController.dismiss()
     }
 
-    // fleetSweepActive REMOVED (home-launcher ticket 02, ADR 0050). Mission-control ticket 07's
+    // fleetSweepActive REMOVED (home-launcher ticket 02, ADR 0051). Mission-control ticket 07's
     // uplink sweep ("the cursor yields") reported up through this boolean so [StatusLine]'s shell
     // cursor could go solid while FLEET's own ambient sweep was running - see FleetScreen.kt's own
     // `onSweepActiveChanged` doc for the full mechanism. The soft-Material [StatusLine] this ticket
@@ -591,7 +626,7 @@ private fun LegionShell(
     // showing - rather than occupying a slot inside the layout flow. Boot is
     // a full-screen takeover (ticket 04 answer #1), not a panel.
     Box(Modifier.fillMaxSize()) {
-        // DeckBezel REMOVED (home-launcher ticket 02, ADR 0050). It was the one global
+        // DeckBezel REMOVED (home-launcher ticket 02, ADR 0051). It was the one global
         // mission-control frame, wired here by mission-control ticket 14 ("the whole Scaffold -
         // content AND the pinned status line / Alfred strip / hard-key row inside it - sits
         // inside ONE DeckBezel, drawn once at shell level"). Ticket 01's resolution retires it
@@ -636,7 +671,7 @@ private fun LegionShell(
             // slot already had.
             bottomBar = {
                 if (!isDrivingMode) {
-                    // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0050) - the
+                    // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051) - the
                     // talk bar is shell chrome, converted along with StatusLine below; the NavHost
                     // content beside it stays on [LegionTheme] until its own ticket.
                     SoftTheme {
@@ -667,8 +702,7 @@ private fun LegionShell(
                 // the status line, which is correct: nothing about driving mode should invite
                 // you into a settings tree.
                 if (!isDrivingMode) {
-                    // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0050) - see the
-                    // matching comment on the AssistantStrip call site above.
+                    // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051).
                     SoftTheme {
                         StatusLine(
                             synced = shellStatus.parts.synced,
@@ -677,22 +711,30 @@ private fun LegionShell(
                             onOpenSettings = {
                                 navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
                             },
-                            // Ticket 04 build section 3's rule survives ticket 02's restyle: the key
-                            // clause is never hidden by an alarm - see [StatusLine]'s own doc for how
-                            // that now works (it simply always renders when non-null).
+                            // ADR 0050: the app drawer is reachable from the header on every screen.
+                            onOpenApps = {
+                                navController.navigate(LegionRoute.APPS) { launchSingleTop = true }
+                            },
+                            quietOn = quietOn,
+                            onToggleQuiet = {
+                                val result = com.kevin.legion.quiet.QuietMode.toggle(context)
+                                if (result is com.kevin.legion.quiet.QuietMode.Result.Refused) {
+                                    // Said in words, never a dead tap. Missing access: take him there.
+                                    android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                    if (result.message == com.kevin.legion.quiet.QuietMode.NEEDS_ACCESS) {
+                                        context.startActivity(
+                                            android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }
+                                }
+                                quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
+                            },
+                            // The key clause is never hidden by an alarm - see [StatusLine]'s doc.
                             keyLabel = shellStatus.parts.keyLabel,
                             alarmCount = shellStatus.alarmCount,
-                            // Ticket 04 answer §6 originally sent this to TODAY ("tapping the segment
-                            // navigates to TODAY" - the ALERTS pane there listed every alarm). That pane
-                            // was retired by Kevin on 2026-08-22 ("alerts tab in home is useless. retire
-                            // it. delete") and TodayScreen itself was deleted 2026-09-01 (one-today
-                            // ticket 07) - retargeted to CALENDAR, which lands a tapped alarm on the day
-                            // its reminder actually belongs to (that screen's own day view); see
-                            // [ShellStatus]'s own doc for why Money is not the target.
+                            // Lands a tapped alarm on the day its reminder belongs to.
                             onOpenAlarm = { navController.navigate(LegionRoute.HOME) { launchSingleTop = true } },
-                            // onOpenApps intentionally not passed here (home-launcher ticket 02) -
-                            // see [StatusLine]'s own `onOpenApps` doc: the app-drawer link is that
-                            // ADR's own build, not this ticket's, and null hides the button entirely.
                         )
                     }
                     // [LegionTabRow] DELETED 2026-09-10 (one-home ticket 03b, on ticket 01's
@@ -752,6 +794,9 @@ private fun LegionShell(
             // `ui/MetersScreen.kt`'s own "C" tab used to take (that screen's history is kept
             // below on [LegionRoute.METERS]'s own registration until ticket 03b deletes it).
             composable(LegionRoute.HOME) {
+                // As the home app, Back on HOME does nothing: there is nowhere behind the home
+                // screen to go. As an ordinary app it still exits (ADR 0050).
+                androidx.activity.compose.BackHandler(enabled = isDefaultHome) {}
                 CalendarScreen(
                     highlightItemId = openItemId,
                     highlightItemNonce = openItemNonce,
@@ -790,6 +835,9 @@ private fun LegionShell(
             // `ui/ask/AskScreen.kt`. Reached from the "Ask" row `ui/HomeMeterBands.kt` renders on
             // HOME, never from Settings and never as a pane welded onto HOME's own scroll (ticket
             // 01's resolution).
+            composable(LegionRoute.APPS) {
+                com.kevin.legion.ui.apps.AppsScreen()
+            }
             composable(LegionRoute.ASK) {
                 com.kevin.legion.ui.ask.AskScreen()
             }
@@ -1081,7 +1129,7 @@ private fun shellStatusLine(context: Context): ShellStatusLineParts {
 }
 
 /**
- * What [StatusLine] needs (RESTRUCTURED home-launcher ticket 02, ADR 0050, from mission-control
+ * What [StatusLine] needs (RESTRUCTURED home-launcher ticket 02, ADR 0051, from mission-control
  * ticket 04 build's `left`/`keySegment` string pair). The old shape carried two pre-FORMATTED
  * strings ("SYNC ON   OBD LINK", "KEY ARMED") because the mission-control row rendered fixed
  * monospace stamps; the soft row renders each state as its own worded [androidx.compose.material3.Text],

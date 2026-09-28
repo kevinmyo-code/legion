@@ -3,7 +3,7 @@ package com.kevin.legion.ui.theme.soft
 import androidx.compose.ui.graphics.Color
 
 /**
- * One colour per area (home-launcher ticket 02, ADR 0050): the tonal icon-chip pair HOME's eight
+ * One colour per area (home-launcher ticket 02, ADR 0051): the tonal icon-chip pair HOME's eight
  * tiles use, in the fixed order ticket 01 resolved ("2 columns x 4 rows... Calendar, Lists, Money,
  * Body, Fleet, Recordings, News, Reports"). Ticket 04 (the Lists screens) reuses the same eight
  * pairs as its own list palette rather than inventing a second area-colour system - see ticket 02's

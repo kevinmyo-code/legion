@@ -5812,6 +5812,66 @@ cannot tell whether a sentence is true**, and every false claim above was in pro
 The same audit found `docs/architecture/` still drawing the pre-Django topology and `docs/glossary.md`
 still calling Drive's appDataFolder "the only store".
 
+
+---
+
+## 2026-09-27 - LEGION may be the phone's home app
+
+**Kevin:** *"can this app replace my android home screen and become like the native launcher and home
+for the phone?"* Told the idea reversed a pivot ruling and offered a week-long prototype first:
+*"no need for prototype. lets do it and put it on the phone and see. the phone is a throwaway so no
+worries."*
+
+CLAUDE.md section 1 said "Not a launcher". That clause was written against a product, Midnight AI's
+car head-unit launcher with a commercial model, and none of that returns. HOME already is the one
+surface LEGION opens to, and being the home app only makes it the first thing on every unlock.
+Standing rule: [[0050-legion-may-be-the-home-app]].
+
+Built on `feat/launcher`, in a worktree because two other agents were in the main tree: a
+CATEGORY_HOME filter (selectable, never forced), Home always landing on HOME, Back on HOME a no-op
+only while LEGION is the default home app, and an app drawer covering both profiles with search.
+
+**What fell out of it:** a default home app may call `UserManager.requestQuietModeEnabled`. That's
+the work-profile pause Kevin asked for that morning, which Intune refused to a shell (`am stop-user`
+denied). The drawer carries the toggle, and it says in words when LEGION isn't the home app and so
+can't use it.
+
+**Accepted, not solved:** a LEGION crash now strands the phone until Android restarts the home app.
+Fine for a throwaway phone. Isolating the home view from the voice service and database start-up is
+the price of making this anyone else's default.
+## 2026-09-27 - The backend keeps itself current (map `backend-etl`)
+
+Kevin asked for ETL pipelines because backend data looked stale. Measured against the live
+database: the server pulls from nothing (empty crontab, no job commands), every table is phone-push
+from `onResume` only, Canvas last wrote 2026-09-05, ledger 2026-09-02, OBD 2026-08-30. Ruled by
+interview, all Kevin:
+
+1. Jobs run as Cloud Run Jobs fired by Cloud Scheduler, from the one `deploy/crontab`.
+2. Canvas and WebAssign auth: Kevin logs in by hand, a script hands the saved session to the server.
+   No password stored. Supersedes the token plan in two-clients 03 and settles two-clients 05's
+   open auth question.
+3. Bank statements: the server watches a Drive folder and Kevin drops RAW PDFs/CSVs. Extraction
+   moves server-side with the household's own Gemini key. **This knowingly amends CLAUDE.md §4
+   rule 1's 2026-08-25 amendment** (user's own LLM masks before upload): raw documents now reach
+   Cloud Run and Gemini unmasked; CLAUDE.md §4 rule 1 rewritten to match (Kevin: "yes update it"). The gate itself (three anchors, quarantine, provenance, persisted
+   anchors) is unchanged.
+4. Nightly backups go to Kevin's Google Drive, sharing the statement watcher's Drive credential.
+5. `obd_samples`: per-drive roll-up, 90 days raw, deletion only after a successful backup.
+6. A stale or failing feed is said in words on web and phone. No notification, no email.
+
+Supersedes django-engine 06, two-clients 03/05, chief-of-staff 06 as build tickets; their binding
+rules carry forward by reference.
+
+## 2026-09-27 - BofA statements are pulled at login, never by a stored session
+
+Kevin asked whether BofA could work like Canvas: browser login, then statements pulled. Ruled
+(Kevin: "yes that works instead of me manually navigating the page and putting it on the drive
+folder"): the login script itself pulls new statement PDFs while he is logged in, on his own
+machine, and drops them in the Drive folder for the `drive_statements` watcher. No BofA session is
+stored or replayed server-side: idle timeout and device fingerprinting would kill it or flag it
+(reasoned, not tested), and a server replaying a bank session is the pattern that locks accounts.
+Card CSV exports excluded (no anchor, rule 7). backend-etl tickets 09 and 10.
+
 ## 2026-09-27 - HOME becomes a launcher, and the phone's look goes soft
 
 **Kevin:** *"i want a complete redesign of the home page. right now it needs scrolling. a calendar,
@@ -5833,7 +5893,7 @@ Settled in one interview and a clickable prototype canvas, every call his:
   inline. The old list screen had no checkbox at all; ticking happened only on the calendar.
 - **The Lists page is a grid of icon cards** - *"I like C, icon cards. looks clean that way."*
 - **Soft modern Material** over mission control upgraded or light-and-warm, on HOME, Lists and the
-  shell chrome now, every other screen as it is next touched. Standing record: ADR 0050, which
+  shell chrome now, every other screen as it is next touched. Standing record: ADR 0051, which
   supersedes ADR 0023 surface by surface.
 
 Map: `.scratch/home-launcher/`. The prototype source is kept in its `research/prototype-canvas/`.

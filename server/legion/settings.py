@@ -420,5 +420,11 @@ SPECTACULAR_SETTINGS = {
         # state OF, and would collide the first time any other table grows a
         # `state` column.
         "IngestStateEnum": "legacy.enums.IngestState",
+        # backend-etl ticket 02 put a second `source` field in the schema (the
+        # session vault's), and the collision renamed ticket 01's freshness
+        # enum under a client that already codes against `SourceEnum`. Pinned.
+        "SourceEnum": "ingest.models.Source",
+        "SessionSourceEnum": "ingest.models.SessionSource",
+        "CredentialKindEnum": "ingest.models.CredentialKind",
     },
 }

@@ -11,7 +11,7 @@ import org.junit.Test
  * answer §6) is testable without an Android runtime. Plain JUnit, same posture as
  * [TodayGapResolversTest].
  *
- * **RESTRUCTURED home-launcher ticket 02, ADR 0050**: the old assertions checked two pre-formatted,
+ * **RESTRUCTURED home-launcher ticket 02, ADR 0051**: the old assertions checked two pre-formatted,
  * upper-case stamp strings ("SYNC ON   OBD LINK", "KEY ARMED") built for the retired mission-control
  * row. [ShellStatusLineParts] now carries plain booleans plus one nullable label, and [StatusLine]
  * itself decides the words - see that composable's own doc. The four cases below are UNCHANGED in

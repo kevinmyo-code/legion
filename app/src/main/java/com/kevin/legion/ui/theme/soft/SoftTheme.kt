@@ -141,7 +141,7 @@ internal val SoftColorScheme = darkColorScheme(
 /**
  * Wraps only the chrome ticket 02 converts (`StatusLine`, `AssistantStrip`) - and, from ticket 03
  * onward, HOME and Lists. Every other screen keeps
- * [com.kevin.legion.ui.theme.LegionTheme] until its own ticket (ADR 0050: "surface by surface").
+ * [com.kevin.legion.ui.theme.LegionTheme] until its own ticket (ADR 0051: "surface by surface").
  * Nested INSIDE that outer theme at each converted call site, not a replacement for it at the root -
  * `MaterialTheme` is a CompositionLocal provider, so a nested one overrides colours/type/shapes for
  * its own subtree only.

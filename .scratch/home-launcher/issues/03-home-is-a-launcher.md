@@ -37,6 +37,20 @@ picture. This ticket makes it real on a 384dp phone.
   repoint the ones that meant "the day view" (the widget pager's `legacyRouteForAspect` for notes,
   for one). List each call site and your call in the report.
 
+## LEGION is the phone's home app now (ADR 0050, landed on dev the same day)
+
+Merged into this branch before this ticket starts. What it binds here:
+
+- **HOME must never crash.** A crash now leaves the phone with no home screen until Android
+  restarts LEGION. Every reader behind a tile or the today card is wrapped so a failure becomes that
+  tile's sentence ("Couldn't read ..."), never an exception. A test feeds each reader a throwing
+  fake and asserts the state still builds.
+- A Home press already pops to `LegionRoute.HOME` (`homePressNonce` in `MainActivity`), and
+  `BackHandler(enabled = isDefaultHome)` sits in the HOME destination. Keep both when the HOME
+  composable changes to `HomeScreen`.
+- The app drawer (`APPS`) and Quiet are in the status line on every screen; HOME does not repeat
+  them.
+
 ## `CalendarScreen` loses the meter bands
 
 Delete the `metersState` `LaunchedEffect`, the `HomeMeterBands(...)` call and the `onOpen*`

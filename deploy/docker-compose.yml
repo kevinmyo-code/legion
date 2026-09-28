@@ -89,11 +89,16 @@ services:
     profiles: ["full", "local"]
     volumes:
       - media:/app/media
-    # Ticket 06 fills /etc/crontab with the nightly pg_dump and whatever
-    # else the worker owns. Empty today, on purpose - there is no scheduled
-    # job yet. On Cloud Run this container is replaced by a Cloud Run Job
-    # fired by Cloud Scheduler (deploy/cloudrun/); supercronic here is for
-    # local dev and for a household's own compose-only install only.
+      # backend-etl ticket 01: `deploy/crontab` is the one schedule, read here
+      # and by `deploy/cloudrun/install_schedule.py`. Mounted rather than
+      # copied into the image because the build context is `../server` and the
+      # file lives beside this one; read-only because nothing in the container
+      # has any business editing the schedule. It shadows the empty
+      # /etc/crontab the Dockerfile leaves as a placeholder.
+      - ./crontab:/etc/crontab:ro
+    # On Cloud Run this container is replaced by a Cloud Run Job fired by
+    # Cloud Scheduler (deploy/cloudrun/); supercronic here is for local dev
+    # and for a household's own compose-only install only.
     #
     # This override REPLACES the image's `/app/entrypoint.sh` ENTRYPOINT, which
     # is what keeps the worker out of the migrate-on-start path - only `web`

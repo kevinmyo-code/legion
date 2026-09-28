@@ -1,6 +1,6 @@
 ---
 type: build
-status: built
+status: open
 blocked_by: []
 map: hardening
 ---
@@ -113,3 +113,35 @@ two different ways and neither is silent - a grown pool under-drains (the leak r
 the original bug), a shrunk pool could never trip the barrier at all. Unbounded waits would have
 turned that second case into a suite that HANGS, producing no report and no failing test name. It
 now fails with an error naming the constant.
+
+
+---
+
+## Reopened 2026-09-27: it's back, and the fix only covered six classes
+
+`DeckGridEditModeScreenshotTest` failed with `UncaughtExceptionsBeforeTest` in two separate full runs
+today (launcher branch, then quiet-toggle branch). Both times it passed on a clean re-run, which is
+the "green by luck" shape this ticket was written against. The suppressed exception is the same one:
+
+```
+IllegalStateException: Illegal connection pointer ... thread arch_disk_io_0
+  @Room Invalidation Tracker Refresh
+  at androidx.room.TriggerBasedInvalidationTracker.notifyInvalidation
+```
+
+**What's established.** The classes that ran just before (`PantryControllerBackendTest`,
+`PantryControllerTest`) both call `RoomTestReset.drainArchDiskIoPool()`. The ones between them and the
+failure (`PantryReceiptAgentTest`, `PlanTest`, `ProjectsReachabilityTest`, `QuietModeTest`) touch no
+database. So the refresh started earlier, in a class that doesn't drain, and fired late.
+
+**24 test classes touch Room without the drain**: every `*SyncTest` / `*BackfillTest` in `backend/`
+(Body, Checklists, Events, Fleet, LastAspects, LedgerConfig, LedgerTransactions, Memory,
+PantryReceipts), `ChecklistsWriteThroughTest`, the `*ReconcileTest`s, `EventsRealtimeFetchTest`,
+`ConversationAuditRetentionTest`, `CarDatabaseSchemaVersionTest`, and three `Migration*Test`s.
+
+**The fix:** drain in every Room-touching class, ideally once in a shared rule or base class so the
+27th test can't forget it. Then prove it the way the original did: repeat the suite until the flake
+would have shown, rather than trusting one green run.
+
+**Ruled out:** the 2026-09-27 checklist push queue. With no engine configured, a push returns
+`NotConfigured` before touching the database.

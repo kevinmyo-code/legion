@@ -81,7 +81,7 @@ import kotlinx.coroutines.delay
  * [AssistantOffRow] - a quiet, tappable row that opens Settings - instead of nothing. The ENABLED
  * behaviour below this point is byte-for-byte unchanged.
  *
- * **RESTYLED for the soft-Material shell (home-launcher ticket 02, ADR 0050).** `MainActivity.kt`
+ * **RESTYLED for the soft-Material shell (home-launcher ticket 02, ADR 0051).** `MainActivity.kt`
  * wraps this whole composable's call site in [SoftTheme] - see that call site's own comment - so
  * every [MaterialTheme.colorScheme]/[MaterialTheme.typography] read below resolves against
  * [com.kevin.legion.ui.theme.soft.SoftTypography]/the soft colour scheme, not

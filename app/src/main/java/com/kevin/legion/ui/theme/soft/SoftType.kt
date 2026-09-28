@@ -19,7 +19,7 @@ import com.kevin.legion.R
  * A SEPARATE [FontFamily] from [com.kevin.legion.ui.theme.LegionTypography]'s Martian Mono - the two
  * type systems coexist deliberately, same as the two colour systems ([SoftColors] beside
  * `ui/theme/Color.kt`), because [com.kevin.legion.ui.theme.LegionTheme] keeps running on every
- * screen this ticket does not convert (ADR 0050: "surface by surface").
+ * screen this ticket does not convert (ADR 0051: "surface by surface").
  */
 private val Figtree = FontFamily(
     Font(R.font.figtree_regular, FontWeight.Normal),

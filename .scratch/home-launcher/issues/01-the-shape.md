@@ -66,7 +66,7 @@ against.
 
 **Softer modern Material**, chosen over "mission control, upgraded" and "light, warm": dark grey
 surfaces, rounded cards, a colour per area. Standing record:
-[[../../../docs/adr/0050-design-language-soft-material|ADR 0050]].
+[[../../../docs/adr/0051-design-language-soft-material|ADR 0051]].
 
 ## 6. How far the look reaches now
 

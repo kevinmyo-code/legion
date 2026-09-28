@@ -54,7 +54,7 @@ import com.kevin.legion.ui.common.QuarantineTag
  * touches a singleton, a database, Bluetooth, or a file, so these render in the preview JVM
  * without a `LocalInspectionMode` guard (Midnight AI's L1 lesson, carried over).
  *
- * **`StatusLine` and `DeckBezel` are RETIRED from this file (home-launcher ticket 02, ADR 0050).**
+ * **`StatusLine` and `DeckBezel` are RETIRED from this file (home-launcher ticket 02, ADR 0051).**
  * Both moved (`StatusLine`) or were deleted outright (`DeckBezel`) when the shell chrome went soft -
  * neither is a VACUUM/SENTRY component to prove any more, so [BiometricUplinkDemo] no longer opens
  * with a `StatusLine` and [BezelAndFeedDemo] no longer wraps its feed in a bezel (see that function's
@@ -115,7 +115,7 @@ private fun HeroReadoutDemo() {
  * Ticket 13's new shell/chrome primitives, exercised together - ORIGINALLY the bezel wrapping a
  * status line, a section rule grouping a dense feed, and a run of [DeckFeedRow]s underneath it.
  *
- * **Narrowed by home-launcher ticket 02, ADR 0050**: `DeckBezel` is deleted outright and `StatusLine`
+ * **Narrowed by home-launcher ticket 02, ADR 0051**: `DeckBezel` is deleted outright and `StatusLine`
  * moved to the soft-Material shell - neither is a VACUUM/SENTRY primitive to demonstrate any more
  * (see this file's own top doc comment). What survives and is still worth proving together here is
  * [DeckSectionRule] grouping a dense feed and a run of [DeckFeedRow]s under it - the 22dp
