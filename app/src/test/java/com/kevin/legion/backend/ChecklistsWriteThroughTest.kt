@@ -69,7 +69,9 @@ class ChecklistsWriteThroughTest {
     /** Every call fails the way [failure] says. Records what was attempted so a test can prove a
      * refused write was tried exactly once and never re-queued. */
     private class FailingBackend(private val failure: Throwable) : ChecklistsBackend {
-        val calls = mutableListOf<String>()
+        // Thread-safe: since the push queue, create/addItem's pushes are launched too, and two of
+        // them can record a call at once. A plain ArrayList threw ArrayIndexOutOfBounds here.
+        val calls: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
 
         private fun <T> fail(name: String): Result<T> {
             calls += name
