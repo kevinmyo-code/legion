@@ -7462,6 +7462,14 @@ components:
             * `LLM_RECONCILED` - Llm Reconciled
             * `UNRECONCILED` - Unreconciled
             * `USER` - User
+        verification_note:
+          type: string
+          nullable: true
+          readOnly: true
+          description: 'A sentence beginning ''Unverified'' on every UNRECONCILED
+            row (section 4 rule 7: the source stated no anchor, so the row is provisional).
+            Null on a row that passed the gate. A surface showing the row, or a total
+            containing it, shows this.'
         created_at:
           type: string
           format: date-time
@@ -7488,6 +7496,7 @@ components:
       - reversal_of
       - statement_id
       - txn_date
+      - verification_note
     LoginRequest:
       type: object
       properties:

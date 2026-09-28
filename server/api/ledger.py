@@ -63,6 +63,7 @@ deterministically parsed one.
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from api.synced import (
@@ -73,6 +74,8 @@ from api.synced import (
     blank_error,
     choice_error,
 )
+from ingest.provisional import ROW_NOTE
+from legacy.enums import Provenance
 from legacy.models.ledger import (
     BudgetTarget,
     Category,
@@ -296,6 +299,23 @@ class LedgerTransactionSerializer(GatedReadSerializer):
         source="statement", read_only=True, allow_null=True
     )
 
+    # Section 4 rule 7's third condition on the wire: "every surface that
+    # renders one says so in words". `provenance` is an enum a client has to
+    # know to translate; this is the sentence itself, starting with the word
+    # "Unverified", on every UNRECONCILED row and null on every other, so a
+    # client that renders it verbatim cannot get it wrong.
+    verification_note = serializers.SerializerMethodField(
+        help_text=(
+            "A sentence beginning 'Unverified' on every UNRECONCILED row (section 4 rule 7: "
+            "the source stated no anchor, so the row is provisional). Null on a row that "
+            "passed the gate. A surface showing the row, or a total containing it, shows this."
+        )
+    )
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_verification_note(self, row) -> str | None:
+        return ROW_NOTE if row.provenance == Provenance.UNRECONCILED else None
+
     class Meta:
         model = LedgerTransaction
         fields = [
@@ -314,6 +334,7 @@ class LedgerTransactionSerializer(GatedReadSerializer):
             "pending_logged_at",
             "reversal_of",
             "provenance",
+            "verification_note",
             "created_at",
             "origin_guid",
         ]

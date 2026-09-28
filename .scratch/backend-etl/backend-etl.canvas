@@ -119,6 +119,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "232bcc8dc95979a6",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/13-bofa-activity-csv-server-side.md",
+      "x": 2080,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -225,6 +235,13 @@
       "fromNode": "606d3e184d532df5",
       "fromSide": "right",
       "toNode": "62fada63a9ab0a1d",
+      "toSide": "left"
+    },
+    {
+      "id": "a279082419b92814",
+      "fromNode": "d2bf4febb60153d6",
+      "fromSide": "right",
+      "toNode": "232bcc8dc95979a6",
       "toSide": "left"
     }
   ]

@@ -8,6 +8,9 @@ class IngestConfig(AppConfig):
     def ready(self):
         # backend-etl ticket 10: the BofA PDF parsers join the registry, so a
         # BofA statement is read deterministically and never reaches Gemini.
-        from ingest.parsers import bofa
+        from ingest.parsers import bofa, bofa_activity
 
         bofa.register()
+        # Ticket 09: BofA's activity CSVs (card provisional, checking gated),
+        # and the section 4 rule 7 writer the card rows go to.
+        bofa_activity.register()

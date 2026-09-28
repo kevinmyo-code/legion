@@ -118,8 +118,9 @@ PROVISIONAL_REFUSAL = (
     "This endpoint cannot store a provisional (UNRECONCILED) document, and never could: "
     "a provisional import has no header row at all, which is what "
     "statements_not_provisional and receipts_not_provisional enforce. Nothing was written. "
-    "A document that states no anchor is quarantined here with a reason; rule 7 provisional "
-    "ingestion is .scratch/django-engine/issues/13-provisional-ingestion-has-no-endpoint.md."
+    "A document that states no anchor is quarantined here with a reason. Rule 7 provisional "
+    "rows come only from a deterministic reader of a bank's activity export, through the "
+    "statements folder (ingest/provisional.py), and are stored as unverified."
 )
 
 

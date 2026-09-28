@@ -11,14 +11,14 @@ lists the files directly in that folder, and for each one it has not seen:
    `register_parser`) that takes the file's kind is offered the bytes, before
    anything else. The first that recognises the layout returns a `Parsed`. The
    BofA checking and card PDF parsers (`ingest/parsers/bofa.py`, ticket 10)
-   register from `IngestConfig.ready`; the BofA activity CSV reader is ticket
-   09 and plugs in the same way.
+   register from `IngestConfig.ready`, and so do the BofA activity CSV readers
+   (`ingest/parsers/bofa_activity.py`, ticket 09).
 3. **A CSV is NEVER sent to Gemini** (Kevin, 2026-09-28). BofA's mid-month
    activity CSVs print no anchor, so they belong to section 4 rule 7's
    provisional path, whose first condition is deterministic extraction. A CSV no
    parser recognises is quarantined with `CSV_NOT_RECOGNISED`. A parser may
    return a PROVISIONAL result; it goes to the registered provisional writer
-   (`register_provisional_writer`, ticket 09), never to the gate.
+   (`ingest/provisional.py`, ticket 09), never to the gate.
 4. **Otherwise, a PDF goes to Gemini on the household's own key**
    (`LEGION_GEMINI_KEY`). The model fills LEGION's statement format
    (`docs/ledger-csv-import-format.md`: account last four and nickname,
@@ -737,8 +737,18 @@ def process(
         inserted = int(result.body.get("inserted", 0) or 0)
         if result.outcome == gate.COMMITTED:
             run.rows_written += inserted
-            action = "provisional" if routed.provisional else "committed"
-            done(FileResult(file_id, name, action, inserted=inserted), stamp)
+            if routed.provisional:
+                # Section 4 rule 7: the job log is a surface too, so it says
+                # "unverified" in words.
+                body = result.body
+                detail = (
+                    f"unverified: {inserted} new, {body.get('kept', 0)} already held, "
+                    f"{body.get('removed', 0)} no longer listed and removed, "
+                    f"{body.get('covered_by_statement', 0)} already on a verified statement"
+                )
+                done(FileResult(file_id, name, "provisional", detail, inserted=inserted), stamp)
+            else:
+                done(FileResult(file_id, name, "committed", inserted=inserted), stamp)
         elif result.outcome == gate.QUARANTINED:
             done(FileResult(file_id, name, "quarantined", result.body.get("reason", "")), stamp)
         else:

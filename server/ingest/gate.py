@@ -46,8 +46,9 @@ requires by name.
   when `unaccounted_cents is not null`, which `commit_receipt` never writes. The
   honest behaviour of these two paths for a document that states no anchor is a
   QUARANTINE with wording, which is what the no-stated-total branch below does.
-  A provisional ingestion path is its own ticket,
-  `.scratch/django-engine/issues/13-provisional-ingestion-has-no-endpoint.md`.
+  The provisional path is `ingest/provisional.py` (backend-etl ticket 09,
+  resolving `.scratch/django-engine/issues/13-provisional-ingestion-has-no-endpoint.md`),
+  and it runs no gate because there is no anchor to run one on.
 - **Extraction.** The caller supplies the lines. Server-side extraction is the
   eventual shape and waits on ticket 05 (media) and a ruling on where a
   user-owned server-side LLM key lives; ticket 03's status-detail says so.
