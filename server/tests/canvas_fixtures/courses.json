@@ -1,0 +1,21 @@
+[
+  {
+    "id": 101,
+    "name": "2026FA MATH3391 20937 - Probability and Statistics I",
+    "course_code": "2026FA-MATH3391-20937",
+    "workflow_state": "available",
+    "time_zone": "America/Chicago",
+    "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
+  },
+  {
+    "id": 202,
+    "name": "2026FA COSC3318 21007 MAIN - Python Programming",
+    "course_code": "2026FA-COSC3318-21007",
+    "workflow_state": "available",
+    "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
+  },
+  {
+    "id": 303,
+    "access_restricted_by_date": true
+  }
+]

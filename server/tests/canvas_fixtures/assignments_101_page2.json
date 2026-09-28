@@ -1,0 +1,50 @@
+[
+  {
+    "id": 5004,
+    "course_id": 101,
+    "name": "Assignment (on Webassign)",
+    "description": null,
+    "due_at": "2026-09-16T04:59:59Z",
+    "points_possible": 0.0,
+    "grading_type": "not_graded",
+    "submission_types": ["none"],
+    "published": true,
+    "updated_at": "2026-08-20T10:00:00Z",
+    "submission": {
+      "id": 90004,
+      "assignment_id": 5004,
+      "workflow_state": "unsubmitted",
+      "submitted_at": null,
+      "score": null,
+      "grade": null,
+      "late": false,
+      "missing": false,
+      "excused": null,
+      "late_policy_status": null
+    }
+  },
+  {
+    "id": 5005,
+    "course_id": 101,
+    "name": "Module 4: Discussion - Confidence",
+    "description": "<p>Make your first post on Wednesday or Thursday, and reply to two peers.</p>",
+    "due_at": "2026-09-26T04:59:59Z",
+    "points_possible": 10.0,
+    "grading_type": "points",
+    "submission_types": ["discussion_topic"],
+    "published": true,
+    "updated_at": "2026-09-13T12:00:00Z",
+    "submission": {
+      "id": 90005,
+      "assignment_id": 5005,
+      "workflow_state": "unsubmitted",
+      "submitted_at": null,
+      "score": null,
+      "grade": null,
+      "late": false,
+      "missing": false,
+      "excused": null,
+      "late_policy_status": null
+    }
+  }
+]
