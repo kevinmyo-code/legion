@@ -104,3 +104,16 @@ tidy) applied; the two messy titles are clean; all 87 Canvas rows carry `canvas_
 count unchanged at 40 across the first run (nothing ticked). `drive_statements` scheduled every 6h,
 folder set, first run ok on the empty folder. `LEGION_GEMINI_KEY` is wired. Next: ticket 11 (web
 line), ticket 09 (BofA daily + launcher), ticket 10; ticket 12 is the Android terminal's.
+
+## For Kevin, morning of 2026-09-28
+
+- **Live:** tickets 01-04 and 06 (deployed from `ca94af2`). Canvas polls every 30 min and never
+  ticks; statements folder watched every 6h; nightly backup to Drive.
+- **Merged but NOT deployed:** ticket 11 (web "Canvas says submitted", `02141e1`) and ticket 10
+  (BofA parser, `6f6c391`, pending legion-2c's merge). One `deploy.py` + `deploy_job.py` puts both
+  live. Deploying is Kevin's call.
+- **Owed by Kevin:** drop one real BofA checking and one card statement PDF in the folder (proves
+  06 and 10 on real files; pypdf on real BofA text is unmeasured); tick the COSC 3334 Module 2
+  discussion (Canvas shows it submitted 09-19); hand ticket 12 to the Android session.
+- **Next build:** ticket 09 (BofA daily pull + one-click launcher). Needs Kevin logged in to BofA
+  once so the script's page selectors can be written against the real site.
