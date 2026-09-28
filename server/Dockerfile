@@ -67,9 +67,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # version stops resolving the first time Debian ships a security update and the
 # image then fails to build for a reason that has nothing to do with this repo.
 # The base image tag (`python:3.13-slim`) is the pin that matters here.
+#
+# `postgresql-client-${PG_MAJOR}` is `pg_dump` / `pg_restore` for
+# `manage.py backup_nightly` and `restore_backup` (backend-etl ticket 03). The
+# major version MUST equal the database server's: read from the live database
+# with `SHOW server_version` on 2026-09-27, it is 17.6, so PG_MAJOR is 17. The
+# package is named by major on purpose rather than the unversioned
+# `postgresql-client` meta-package, which follows whatever Debian's default is
+# and would silently move to 18 under a base-image bump. If the base image's
+# Debian stops shipping 17 the build fails here, loudly. The job re-checks at
+# runtime and records `failed` with both versions on any mismatch, so a server
+# upgrade is caught even when this line is not updated.
+ARG PG_MAJOR=17
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl "postgresql-client-${PG_MAJOR}" \
     && rm -rf /var/lib/apt/lists/*
 
 # supercronic runs the worker's crontab (ticket 06 fills it in) without

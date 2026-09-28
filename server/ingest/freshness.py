@@ -44,6 +44,11 @@ STALE_AFTER: dict[str, datetime.timedelta] = {
 }
 
 
+# ADR 0041 gap: photos and recordings have no durable store, so the nightly
+# backup cannot include them (backend-etl ticket 03).
+BACKUP_MEDIA_GAP = "Photos and recordings are not in it yet."
+
+
 @dataclass(frozen=True)
 class _Words:
     subject: str
@@ -96,6 +101,10 @@ def sentence(
         base = f"{words.subject} {words.never}."
     else:
         base = f"{words.subject} {words.done} {ago(last_ok_at, now)}."
+        if source == Source.BACKUP:
+            # Ticket 03: a backup that ran is not everything saved. Said here,
+            # where every surface reads it, until media has a durable store.
+            base += f" {BACKUP_MEDIA_GAP}"
     if last_outcome == Outcome.FAILED:
         return f"{base} The latest attempt failed."
     return base

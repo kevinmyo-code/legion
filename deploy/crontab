@@ -12,3 +12,7 @@
 
 # Ticket 01: records that the scheduler fires. Nothing else.
 */30 * * * * python manage.py heartbeat
+
+# Ticket 03: pg_dump of the database to the operator household's Drive
+# (LEGION backups/<date>/), 90 daily kept. 03:00 UTC.
+0 3 * * * python manage.py backup_nightly
