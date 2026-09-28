@@ -147,6 +147,42 @@ def test_one_row_that_does_not_parse_refuses_the_whole_file(row, says):
     assert "COFFEE" not in reason  # a reason never quotes the file
 
 
+def test_a_pending_temporary_credit_is_left_out_by_name_and_counted():
+    # Kevin's real export, 2026-09-28: an undated row with TEMPRET where the
+    # reference goes. Option (a): left out until it posts, and counted so the
+    # writer and the job log can say so in words.
+    parsed = CARD.parse(
+        card(
+            "09/01/2026,1,GOOD,,-1.00",
+            ',TEMPRET,"SHOP* REFUND","+18005550100 WA",9.99',
+            "09/03/2026,3,GOOD,,-2.00",
+        ),
+        file_name=CARD_NAME,
+    )
+    assert [line["amount_cents"] for line in parsed.payload["lines"]] == [-100, -200]
+    assert parsed.payload["pending_left_out"] == 1
+
+
+def test_an_undated_row_that_is_not_tempret_still_refuses_the_file():
+    reason = refused(
+        CARD,
+        card("09/01/2026,1,GOOD,,-1.00", ",PENDING,SHOP,,-9.99"),
+        CARD_NAME,
+    )
+    assert "not a date" in reason
+
+
+def test_a_dated_row_that_says_tempret_is_an_ordinary_row():
+    parsed = CARD.parse(card("09/01/2026,TEMPRET,SHOP,,9.99"), file_name=CARD_NAME)
+    assert [line["amount_cents"] for line in parsed.payload["lines"]] == [999]
+    assert parsed.payload["pending_left_out"] == 0
+
+
+def test_an_export_of_only_pending_credits_is_refused_in_words():
+    reason = refused(CARD, card(",TEMPRET,SHOP,,9.99"), CARD_NAME)
+    assert "only 1 pending temporary credit" in reason
+
+
 def test_a_malformed_quote_is_refused():
     reason = refused(CARD, card('09/01/2026,1,"COFFEE,,-4.50'), CARD_NAME)
     assert "Row 1" in reason

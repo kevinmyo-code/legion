@@ -242,6 +242,7 @@ def _commit(payload: dict[str, Any], household):
             "kept": kept,
             "removed": removed,
             "covered_by_statement": covered,
+            "pending_left_out": int(payload.get("pending_left_out", 0) or 0),
             "note": PROVISIONAL_NOTE,
         },
         status.HTTP_201_CREATED,
