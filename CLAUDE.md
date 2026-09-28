@@ -61,7 +61,9 @@ device model in a prompt had three separate agents reporting work on a phone tha
 ## 1. Identity
 
 - **Product:** LEGION, one **Android phone app**. A single voice assistant orchestrating
-  **aspects** of life. Not a launcher, not a head-unit product, not a commercial product.
+  **aspects** of life. Not a head-unit product, not a commercial product. **It MAY be the phone's
+  home app** (Kevin, 2026-09-27, ADR 0050), opt-in through Android's own Settings. A home app owes
+  the user every other app and never a dead tap.
 - **The one-line identity (Kevin, 2026-08-24): a personal-life ERP, queryable and CRUD-able by a
   voice agent.** Aspects/record types/field defs are the master-data layer (fixed metadata tables,
   never runtime DDL), records are the transactions, capability plugins are the modules, widgets
@@ -608,7 +610,9 @@ banner at the top and `INDEX.md` carries a status column. Read the banner before
   `session-*.md`.
 
 Do not act on a FROZEN shelf's blockers, sprints, or backlog items. They describe a head-unit car
-launcher with a commercial model, and all three of those premises are dead.
+launcher with a commercial model. The head unit and the commercial model are dead. LEGION may be
+the phone's home app (ADR 0050), but that shares nothing with the car launcher those shelves plan.
+Its rules are in the ADR, not in them.
 
 ---
 

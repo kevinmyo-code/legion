@@ -126,9 +126,22 @@ class MainActivity : ComponentActivity() {
     private var spotifyRedirect by mutableStateOf<Uri?>(null)
     private var spotifyRedirectNonce by mutableStateOf(0)
 
+    // LEGION as the phone's home app (ADR 0050, 2026-09-27). A Home press arrives here as a MAIN +
+    // CATEGORY_HOME intent (singleTask routes it to onNewIntent), and it must land on HOME from
+    // anywhere in the app - the same as every launcher. Nonce-keyed for the reason deepLinkNonce
+    // is: pressing Home twice delivers an identical intent.
+    private var homePressNonce by mutableStateOf(0)
+
+    // True only while LEGION is the DEFAULT home app. Back on HOME is swallowed only then - a
+    // launcher that Back "exits" just redraws itself, while a normal app should still exit.
+    // Re-read in onResume, since Kevin can switch the Home app in Settings at any time.
+    private var isDefaultHome by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         readDeepLinkExtras(intent)
+        // Fill the app drawer's cache in the background, so even the first APPS tap is instant.
+        com.kevin.legion.ui.apps.AppDrawerCache.warm(this)
         setContent {
             LegionTheme {
                 LegionShell(
@@ -136,6 +149,8 @@ class MainActivity : ComponentActivity() {
                     openItemId = openItemId, openItemNonce = openItemNonce,
                     spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
                     onSpotifyRedirectConsumed = { spotifyRedirect = null },
+                    homePressNonce = homePressNonce,
+                    isDefaultHome = isDefaultHome,
                 )
             }
         }
@@ -148,6 +163,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun readDeepLinkExtras(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) homePressNonce++
         deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++
         val itemId = intent?.getLongExtra(ReminderAlarmReceiver.EXTRA_OPEN_ITEM_ID, -1L) ?: -1L
@@ -193,6 +209,10 @@ class MainActivity : ComponentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        isDefaultHome = packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+        )?.activityInfo?.packageName == packageName
         // Promote AriaForegroundService's foreground-service type set back up to include
         // `microphone` now that the app is visibly foreground (2026-08-17). If the service was
         // started by BootReceiver it came up WITHOUT the microphone type - see
@@ -463,9 +483,26 @@ private fun LegionShell(
     spotifyRedirect: Uri? = null,
     spotifyRedirectNonce: Int = 0,
     onSpotifyRedirectConsumed: () -> Unit = {},
+    homePressNonce: Int = 0,
+    isDefaultHome: Boolean = false,
 ) {
     val navController = rememberNavController()
+
+    // Home press: back to HOME from wherever you are, dropping whatever was stacked on top of it.
+    // Skipped on the initial 0 so a cold start doesn't navigate for no reason.
+    LaunchedEffect(homePressNonce) {
+        if (homePressNonce > 0 && !navController.popBackStack(LegionRoute.HOME, inclusive = false)) {
+            navController.navigate(LegionRoute.HOME) { launchSingleTop = true }
+        }
+    }
     val context = LocalContext.current
+
+    // The header's QUIET toggle. Re-read on every resume, because the Quick Settings tile can flip
+    // Quiet while LEGION is in the background, and a header that disagrees with the phone is a lie.
+    var quietOn by remember { mutableStateOf(com.kevin.legion.quiet.QuietMode.isOn(context)) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
+    }
 
     // Today's category drill-down link (Kevin, 2026-08-07: "let me press it and drill down
     // transactions there"). Lives HERE, above the NavHost, not inside either destination's own
@@ -677,6 +714,24 @@ private fun LegionShell(
                         onOpenSettings = {
                             navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
                         },
+                        onOpenApps = {
+                            navController.navigate(LegionRoute.APPS) { launchSingleTop = true }
+                        },
+                        quietOn = quietOn,
+                        onToggleQuiet = {
+                            val result = com.kevin.legion.quiet.QuietMode.toggle(context)
+                            if (result is com.kevin.legion.quiet.QuietMode.Result.Refused) {
+                                // Said in words, never a dead tap. Missing access: take him there.
+                                android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                if (result.message == com.kevin.legion.quiet.QuietMode.NEEDS_ACCESS) {
+                                    context.startActivity(
+                                        android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }
+                            }
+                            quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
+                        },
                         // Ticket 04 build section 3: KEY survives an alarm, riding alongside the
                         // alarm pill instead of folding into [left].
                         keySegment = shellStatus.parts.keySegment,
@@ -754,6 +809,9 @@ private fun LegionShell(
             // `ui/MetersScreen.kt`'s own "C" tab used to take (that screen's history is kept
             // below on [LegionRoute.METERS]'s own registration until ticket 03b deletes it).
             composable(LegionRoute.HOME) {
+                // As the home app, Back on HOME does nothing: there is nowhere behind the home
+                // screen to go. As an ordinary app it still exits (ADR 0050).
+                androidx.activity.compose.BackHandler(enabled = isDefaultHome) {}
                 CalendarScreen(
                     highlightItemId = openItemId,
                     highlightItemNonce = openItemNonce,
@@ -792,6 +850,9 @@ private fun LegionShell(
             // `ui/ask/AskScreen.kt`. Reached from the "Ask" row `ui/HomeMeterBands.kt` renders on
             // HOME, never from Settings and never as a pane welded onto HOME's own scroll (ticket
             // 01's resolution).
+            composable(LegionRoute.APPS) {
+                com.kevin.legion.ui.apps.AppsScreen()
+            }
             composable(LegionRoute.ASK) {
                 com.kevin.legion.ui.ask.AskScreen()
             }

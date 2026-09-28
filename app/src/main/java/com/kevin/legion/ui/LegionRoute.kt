@@ -172,6 +172,14 @@ object LegionRoute {
     const val ASK = "ask"
 
     /**
+     * The app drawer (ADR 0050, 2026-09-27): every launchable app on the phone, work profile
+     * included, with search. Exists because LEGION may now be the phone's home app, and a home app
+     * that cannot open other apps strands the user. Reached from the APPS link in the shell header,
+     * so it is one tap from every screen.
+     */
+    const val APPS = "apps"
+
+    /**
      * "A news feed page" (Kevin, 2026-09-10, one-home ticket 07) - see
      * [com.kevin.legion.ui.news.NewsScreen]. Given its own route on the same reasoning [ASK] got
      * (ticket 06 resolution point 4: "the feed is a row on HOME opening its own route... NOT a
