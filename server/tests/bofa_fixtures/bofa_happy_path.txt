@@ -1,0 +1,19 @@
+Account number: 1234 5678 9012
+Beginning balance on June 1, 2026 $1,000.00
+Ending balance on June 30, 2026 $2,838.00
+Deposits and other additions
+Date Description Amount
+06/03/26 PAYROLL DEPOSIT 2,000.00
+Total deposits and other additions $2,000.00
+ATM and debit card subtractions
+Date Description Amount
+06/05/26 ATM WITHDRAWAL -100.00
+Total ATM and debit card subtractions -$100.00
+Other subtractions
+Date Description Amount
+06/10/26 ONLINE TRANSFER -50.00
+Total other subtractions -$50.00
+Service fees
+Date Transaction description Amount
+06/15/26 MONTHLY MAINTENANCE FEE -12.00
+Total service fees -$12.00

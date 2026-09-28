@@ -642,6 +642,101 @@ def test_a_provisional_result_with_no_writer_fails_loudly(
 
 
 # =============================================================================
+# Ticket 10: the real BofA parsers, end to end, with no Gemini call
+# =============================================================================
+
+BOFA_FIXTURES = Path(__file__).parent / "bofa_fixtures"
+
+
+class NoGemini(FakeGemini):
+    def __call__(self, content, *, key):
+        pytest.fail("Gemini was asked about a statement a parser reads")
+
+
+@pytest.fixture
+def bofa_registry(monkeypatch):
+    """Only the real BofA parsers, as `IngestConfig.ready` registers them."""
+    from ingest.parsers import bofa
+
+    monkeypatch.setattr(statements, "PARSERS", [])
+    monkeypatch.setattr(statements, "_PROVISIONAL_WRITER", [])
+    bofa.register()
+    return statements.PARSERS
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("fixture", "last4", "nickname", "opening", "closing", "amounts"),
+    [
+        (
+            "bofa_multiline_wire.pdf",
+            "1000",
+            "BofA checking",
+            500000,
+            661733,
+            [-4567, -2500, -1200, 50000, 120000],
+        ),
+        (
+            "bofa_card_happy_path.pdf",
+            "7823",
+            "BofA card",
+            -842150,
+            -762125,
+            [-90000, -60000, -45025, -500, 125550, 150000],
+        ),
+    ],
+)
+def test_a_bofa_statement_commits_deterministically_with_no_gemini_call(
+    connected, household_a, drive, gemini_key, bofa_registry,
+    fixture, last4, nickname, opening, closing, amounts,
+):
+    drive.add(fixture, content=(BOFA_FIXTURES / fixture).read_bytes())
+    result = run(household_a, drive, NoGemini())
+    assert result.outcome == Outcome.OK, result.error
+    assert result.rows_written == len(amounts)
+
+    statement = Statement.objects.get(household=household_a)
+    assert statement.provenance == Provenance.DETERMINISTIC
+    # Section 4 rule 8: the two printed anchors persisted, the absent one NULL.
+    assert statement.stated_total_cents is None
+    assert statement.opening_balance_cents == opening
+    assert statement.closing_balance_cents == closing
+    assert (statement.account_last4, statement.account_nickname) == (last4, nickname)
+    rows = LedgerTransaction.objects.filter(statement=statement)
+    assert sorted(rows.values_list("amount_cents", flat=True)) == amounts
+    assert set(rows.values_list("provenance", flat=True)) == {Provenance.DETERMINISTIC}
+    assert all(ref.startswith(f"{fixture}:'") for ref in rows.values_list("line_ref", flat=True))
+    assert file_row(fixture).state == IngestState.INGESTED
+
+
+@pytest.mark.django_db
+def test_a_bofa_statement_the_parser_refuses_is_quarantined_with_no_gemini_call(
+    connected, household_a, drive, gemini_key, bofa_registry
+):
+    name = "bofa_card_unparseable_row.pdf"
+    drive.add(name, content=(BOFA_FIXTURES / name).read_bytes())
+    result = run(household_a, drive, NoGemini())
+    assert result.outcome == Outcome.OK, result.error
+    assert not Statement.objects.exists()
+    assert not LedgerTransaction.objects.exists()
+    stored = file_row(name)
+    assert stored.state == IngestState.QUARANTINED
+    assert stored.quarantine_reason.startswith("bofa-card-pdf: ")
+
+
+@pytest.mark.django_db
+def test_a_non_bofa_pdf_still_goes_to_gemini_past_the_real_parsers(
+    connected, household_a, drive, gemini, gemini_key, bofa_registry
+):
+    name = "unrecognized_reconciling.pdf"
+    content = (BOFA_FIXTURES / name).read_bytes()
+    drive.add(name, content=content)
+    run(household_a, drive, gemini)
+    assert gemini.calls == [(content, KEY)]
+    assert Statement.objects.get().provenance == Provenance.LLM_RECONCILED
+
+
+# =============================================================================
 # One gate, two callers
 # =============================================================================
 

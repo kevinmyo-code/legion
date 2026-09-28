@@ -1,0 +1,30 @@
+Account# 5555 5555 5555 7823
+June 6 - July 5, 2026
+New Balance Total 7,621.25
+Account Summary/Payment Information
+Previous Balance 8,421.50
+Payments and Other Credits -2,755.50
+Purchases and Adjustments 1,950.25
+Fees Charged 0.00
+Interest Charged 5.00
+New Balance Total 7,621.25
+Transactions
+Transaction / Date / Posting / Date Description / Reference / Number / Account / Number Amount  Total
+Payments and Other Credits
+06/08 06/09 PAYMENT FROM CHK 5521 CONF#4mv2plq8h 3312 7823 -1,500.00
+06/26 06/27 PAYMENT FROM SAV 5521 CONF#8pk0zrt5n 3399 7823 -1,255.50
+TOTAL PAYMENTS AND OTHER CREDITS FOR THIS PERIOD -2,756.50
+Purchases and Adjustments
+06/14 06/15 NORTHWIND OUTFITTERS      Northwind.com/billWA 5510 7823 600.00
+06/19 06/21 CASCADE GROCERY 118 6042 7823 450.25
+07/02 07/03 RIVERBEND HARDWARE #4 7788 7823 900.00
+TOTAL PURCHASES AND ADJUSTMENTS FOR THIS PERIOD 1,950.25
+Interest Charged
+06/30 07/01 INTEREST CHARGED ON PURCHASES 9001 7823 5.00
+TOTAL INTEREST CHARGED FOR THIS PERIOD 5.00
+Transactions Continued
+Transaction / Date / Posting / Date Description / Reference / Number / Account / Number Amount  Total
+2026 Totals Year-to-Date
+Total fees charged in 2026 $0.00
+Total interest charged in 2026 5.00
+06/08 06/09 SAMPLE YTD ROW THAT MUST NOT COUNT 9999 7823 -999.99

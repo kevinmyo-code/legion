@@ -18,6 +18,12 @@ whitenoise==6.12.0
 # (`ingest/vault.py`): the saved Canvas cookies and the Drive refresh token are
 # stored encrypted under LEGION_VAULT_KEY, never in the clear.
 cryptography==50.0.1
+# backend-etl ticket 10, 2026-09-28. Text out of a BofA statement PDF for the
+# deterministic parser (`ingest/parsers/pdf_text.py`). Pure Python, no
+# dependencies (a py3-none-any wheel), so the slim image needs no compiler.
+# Chosen over pdfplumber, which pulls Pillow and a native PDFium build and
+# collapses the runs of spaces the Kotlin parser's tests pin.
+pypdf==6.19.0
 
 # Transitive, pinned by `uv pip freeze` against the above.
 asgiref==3.12.1

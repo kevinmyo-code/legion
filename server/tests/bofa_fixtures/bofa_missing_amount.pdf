@@ -1,0 +1,86 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1065 >>
+stream
+BT
+/F1 9 Tf
+12 TL
+1 0 0 1 40 760 Tm
+(BANK OF AMERICA) Tj
+T*
+(Personal Checking Account Statement) Tj
+T*
+(Account number: 987654321000) Tj
+T*
+(Statement Period 06/01/26 to 06/30/26) Tj
+T*
+() Tj
+T*
+(Beginning balance on 6/1/26 $500.00) Tj
+T*
+(Ending balance on 6/30/26 $500.00) Tj
+T*
+() Tj
+T*
+(Deposits and other additions) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(06/09/26 Zelle payment from JANE DOE Conf# ab12cd34e) Tj
+T*
+(06/17/26 Wire transfer, amount never printed for this row) Tj
+T*
+(Total deposits and other additions $0.00) Tj
+T*
+() Tj
+T*
+(ATM and debit card subtractions) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(Total ATM and debit card subtractions $0.00) Tj
+T*
+() Tj
+T*
+(Other subtractions) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(Total other subtractions $0.00) Tj
+T*
+() Tj
+T*
+(Service fees) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(Total service fees $0.00) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001358 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1455
+%%EOF

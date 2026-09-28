@@ -1,0 +1,28 @@
+BANK OF AMERICA
+Personal Checking Account Statement
+Account number: 987654321000
+Statement Period 06/01/26 to 06/30/26
+Beginning balance on 6/1/26 $5,000.00
+Ending balance on 6/30/26 $6,617.33
+Deposits and other additions
+Date        Description                                          Amount
+06/09/26 Zelle payment from JANE DOE Conf# ab12cd34e 500.00
+06/17/26 WIRE TYPE:WIRE IN DATE: 260617 TIME:0802 ET TRN:2026061700277191
+SEQ:1002233445JS/100200 ORIG:ACME WIDGETS LLC ID:0099887766 SND BK:FIRST
+Page 2 of 6
+NATIONAL BANK, N.A. ID:0002 PMT DET:MB60617135571826
+1,200.00
+Total deposits and other additions $1,700.00
+ATM and debit card subtractions
+Date        Description                                          Amount
+06/05/26 Debit Card Purchase GROCERY MART -45.67
+Total ATM and debit card subtractions -$45.67
+Other subtractions
+Date        Description                                          Amount
+06/12/26 Overdraft Protection Transfer -25.00
+Total other subtractions -$25.00
+Service fees
+Date        Description                                          Amount
+06/20/26 Monthly Maintenance Fee -12.00
+Total service fees -$12.00
+This statement is issued for the period shown above.
