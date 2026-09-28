@@ -67,4 +67,34 @@ class QuietModeTest {
             QuietState.ringerToRemember(isOn = true, current = AudioManager.RINGER_MODE_VIBRATE, alreadySaved = AudioManager.RINGER_MODE_NORMAL))
         assertEquals(AudioManager.RINGER_MODE_NORMAL, QuietState.ringerToRestore(-1))
     }
+
+    @Test
+    fun `off puts every volume back, and none stays at zero`() {
+        // Kevin, 2026-09-27: "when i toggle it off, the phone stays quiet, like everything is at 0".
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        audio.ringerMode = AudioManager.RINGER_MODE_NORMAL
+        audio.setStreamVolume(AudioManager.STREAM_RING, 5, 0)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 10, 0)
+        audio.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) // already silent before Quiet
+        QuietMode.enable(app)
+        // What vibrate does to the phone: ring and notification zeroed.
+        audio.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
+        audio.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
+        QuietMode.disable(app)
+        assertEquals("ring back to what it was", 5, audio.getStreamVolume(AudioManager.STREAM_RING))
+        assertEquals("media back to what it was", 10, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+        val notifMax = audio.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION)
+        assertEquals("a stream at 0 comes back at half", QuietState.volumeToRestore(0, notifMax),
+            audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION))
+        assertTrue(audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION) > 0)
+    }
+
+    @Test
+    fun `volume rule - what it was, or half, never zero`() {
+        assertEquals(6, QuietState.volumeToRestore(saved = 6, max = 15))
+        assertEquals(8, QuietState.volumeToRestore(saved = 0, max = 15))
+        assertEquals(8, QuietState.volumeToRestore(saved = -1, max = 15)) // never recorded
+        assertEquals(15, QuietState.volumeToRestore(saved = 40, max = 15)) // clamped
+        assertEquals(1, QuietState.volumeToRestore(saved = 0, max = 1))
+    }
 }
