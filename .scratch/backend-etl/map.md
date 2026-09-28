@@ -68,3 +68,30 @@ phone's freshness line (Android reads ticket 01's endpoint).
 
 Supersedes: django-engine 06 (worker), two-clients 03 and 05, chief-of-staff 06. Their binding
 rules are carried into tickets 03-05 by reference and bind unchanged.
+
+## Where we stopped - 2026-09-28 (session 38e6b7d5, before a shutdown)
+
+**Live on Cloud Run (deployed from `897fcb2`):** tickets 01-04. Scheduler: `heartbeat` and
+`canvas_poll` every 30 min, `backup_nightly` 03:00 UTC. Vault key and Gemini key are in Secret
+Manager (`LEGION_VAULT_KEY`, `LEGION_GEMINI_KEY`; the second is NOT yet in `SECRET_ENV_VARS`).
+Drive connected with `--backup`; Canvas connected (uhv.instructure.com). First backup and restore
+drill passed; Canvas wrote 7 new tasks. Google OAuth app published (privacy page on Pages).
+
+**Merged to dev:** everything through `502ffba` (tickets 01-04, vault key). Not on `main`.
+
+**On `feat/backend-etl`, not deployed:**
+- `63a5425`, `6a5baa7`: tickets 11/12 charted; ticket 09 rewritten (daily BofA pull, one-click
+  `LEGION daily` launcher, mid-month CSV via rule 7); django-engine 13 resolved to option 2.
+- `004ac07` **WIP, untested, do not deploy.** A builder was stopped mid Part 2:
+  1. Canvas title whitespace + data migration `ingest/0005` (drafted).
+  2. Ticket 06 `drive_statements` (in progress: `statements.py`, `drive_statements` and
+     `set_statements_folder` commands, `folder_ids.py`, edits to `drive.py`, `views.py`,
+     `jobs.py`, `freshness.py`, `connect_session.py`). Folder id `19tqQKzPKZVm0zCVG-lt7zaERqstIPkNd`.
+     Add `LEGION_GEMINI_KEY` to `SECRET_ENV_VARS`. CSVs never go to Gemini.
+  3. **Not started:** Canvas never ticks (Kevin 2026-09-28: ticks are manual, Canvas is a double
+     check). New migration replacing `upsert_canvas_task`: never set `done`, write
+     `structured_meta.canvas_submitted`. Mark ticket 05 `kiv`. decisions.md entry.
+
+**Next, in order:** finish and test 004ac07's three parts (full server suite, JUnit), deploy, run
+`set_statements_folder`, ticket 11 (web "Canvas says submitted", frontend agent), ticket 09 (BofA
+daily + launcher), ticket 10. Ticket 12 belongs to the Android terminal.
