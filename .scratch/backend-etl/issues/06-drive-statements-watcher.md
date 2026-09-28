@@ -3,7 +3,8 @@ map: backend-etl
 ticket: "06"
 title: "drive_statements: raw bank statements from a Drive folder, through the gate"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-09-28 (67b349b), server suite 998 / 0 failures / 43 skipped (JUnit). Deployed; folder 19tqQKzPKZVm0zCVG-lt7zaERqstIPkNd set on live; first run on the empty folder ok. Owed: one real statement committing with anchors persisted."
 blockers: ["02", "03"]
 blocked-by: ["[[02-session-vault-and-login-handover]]", "[[03-backup-nightly-to-drive]]"]
 tags: [ticket]

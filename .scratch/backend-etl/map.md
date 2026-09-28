@@ -95,3 +95,12 @@ drill passed; Canvas wrote 7 new tasks. Google OAuth app published (privacy page
 **Next, in order:** finish and test 004ac07's three parts (full server suite, JUnit), deploy, run
 `set_statements_folder`, ticket 11 (web "Canvas says submitted", frontend agent), ticket 09 (BofA
 daily + launcher), ticket 10. Ticket 12 belongs to the Android terminal.
+
+## Update - 2026-09-28, after the restart
+
+`004ac07`'s three parts finished and tested (`b96e556`, `cd51828`, `67b349b`; suite 998 / 0 / 43).
+Deployed from `ca94af2`. On live: migrations `ingest` 0005 (Canvas never ticks) and 0006 (title
+tidy) applied; the two messy titles are clean; all 87 Canvas rows carry `canvas_submitted`; done
+count unchanged at 40 across the first run (nothing ticked). `drive_statements` scheduled every 6h,
+folder set, first run ok on the empty folder. `LEGION_GEMINI_KEY` is wired. Next: ticket 11 (web
+line), ticket 09 (BofA daily + launcher), ticket 10; ticket 12 is the Android terminal's.
