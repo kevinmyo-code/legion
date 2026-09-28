@@ -27,7 +27,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[28-service-history-reads-still-serve-the-legacy-table\|28]] | build | 28-service-history-reads-still-serve-the-legacy-table |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[29-audit-rows-age-out-before-they-are-uploaded\|29]] | decision | 29-audit-rows-age-out-before-they-are-uploaded |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
-| [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[11-canvas-submitted-on-the-web\|11]] | build | The web app shows what Canvas says beside each coursework task |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[12-canvas-submitted-on-the-phone\|12]] | build | The phone shows what Canvas says beside each coursework task (Android terminal) |
@@ -192,6 +191,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
