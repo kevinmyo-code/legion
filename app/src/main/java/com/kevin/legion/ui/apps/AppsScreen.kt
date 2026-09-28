@@ -32,13 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import com.kevin.legion.ui.theme.LegionType
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * The app drawer (ADR 0050, 2026-09-27). LEGION may now be the phone's home app, and a home app
@@ -57,12 +53,13 @@ import kotlinx.coroutines.withContext
 fun AppsScreen() {
     val context = LocalContext.current
     var reload by remember { mutableIntStateOf(0) }
-    var loaded by remember { mutableStateOf<Loaded?>(null) }
+    // Cached: the last list shows instantly, then a cheap refresh brings it up to date.
+    var loaded by remember { mutableStateOf(AppDrawerCache.peek()) }
     var query by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reload) {
-        loaded = withContext(Dispatchers.IO) { load(context) }
+        loaded = AppDrawerCache.refresh(context)
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -113,7 +110,7 @@ fun AppsScreen() {
                     items(rows, key = { "${it.profileKey}/${it.packageName}/${it.className}" }) { app ->
                         AppRow(
                             app = app,
-                            icon = state.icons["${app.profileKey}/${app.packageName}/${app.className}"],
+                            icon = state.icons[iconKey(app.profileKey, app.packageName, app.className)],
                             paused = app.isWork && state.workPaused,
                             onOpen = { message = launch(context, app, state) },
                         )
@@ -145,43 +142,6 @@ private fun AppRow(app: DrawerApp, icon: ImageBitmap?, paused: Boolean, onOpen: 
             }
         }
     }
-}
-
-private class Loaded(
-    val apps: List<DrawerApp>,
-    val icons: Map<String, ImageBitmap>,
-    val handles: Map<Int, UserHandle>,
-    val workProfile: UserHandle?,
-    val workPaused: Boolean,
-)
-
-private fun load(context: Context): Loaded {
-    val launcherApps = context.getSystemService(LauncherApps::class.java)
-    val userManager = context.getSystemService(UserManager::class.java)
-    val me = android.os.Process.myUserHandle()
-    val apps = mutableListOf<DrawerApp>()
-    val icons = mutableMapOf<String, ImageBitmap>()
-    val handles = mutableMapOf<Int, UserHandle>()
-    var work: UserHandle? = null
-    val profiles = runCatching { launcherApps.profiles }.getOrDefault(listOf(me))
-    for (profile in profiles) {
-        val key = userManager.getSerialNumberForUser(profile).toInt()
-        handles[key] = profile
-        val isWork = profile != me
-        if (isWork) work = profile
-        val activities = runCatching { launcherApps.getActivityList(null, profile) }.getOrDefault(emptyList())
-        for (info in activities) {
-            val component = info.componentName
-            if (!isWork && component.packageName == context.packageName) continue // already here
-            val row = DrawerApp(info.label.toString(), component.packageName, component.className, isWork, key)
-            apps += row
-            runCatching { info.getBadgedIcon(0).toBitmap(96, 96).asImageBitmap() }.getOrNull()?.let {
-                icons["$key/${component.packageName}/${component.className}"] = it
-            }
-        }
-    }
-    val paused = work?.let { runCatching { userManager.isQuietModeEnabled(it) }.getOrDefault(false) } ?: false
-    return Loaded(apps, icons, handles, work, paused)
 }
 
 /** Opens [app], or returns a sentence saying why it didn't. Never silent: a tap that does nothing

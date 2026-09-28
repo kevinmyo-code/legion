@@ -140,6 +140,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         readDeepLinkExtras(intent)
+        // Fill the app drawer's cache in the background, so even the first APPS tap is instant.
+        com.kevin.legion.ui.apps.AppDrawerCache.warm(this)
         setContent {
             LegionTheme {
                 LegionShell(
