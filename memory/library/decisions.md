@@ -5871,3 +5871,16 @@ machine, and drops them in the Drive folder for the `drive_statements` watcher. 
 stored or replayed server-side: idle timeout and device fingerprinting would kill it or flag it
 (reasoned, not tested), and a server replaying a bank session is the pattern that locks accounts.
 Card CSV exports excluded (no anchor, rule 7). backend-etl tickets 09 and 10.
+
+## 2026-09-27 - A discussion is never ticked by Canvas
+
+Kevin, ruling on the question backend-etl 04's build left open: "discussions leave em to me".
+Canvas marks a discussion submitted on the first post, while its `due_at` is the replies deadline,
+so ticking from Canvas's submission state claimed work still owed. Supersedes that build's
+decision 5 (parent ticked by `submitted_at`). `canvas_poll` never sets `done` on a discussion
+parent or any sub-deadline row; they are ticked by hand. The evidence (`submitted_at`,
+`workflow_state`, `score`, `grade`) is still stored, and inserts, due-date updates and tombstones
+are unchanged. Enforced in Postgres (`ingest/migrations/0004_discussions_are_ticked_by_hand.py`,
+replacing `public.upsert_canvas_task`), not in the poller's Python, so no caller of the function can
+bypass it; discussion rows carry `manual_completion: true`, the flag that already meant "Canvas
+cannot see this done".

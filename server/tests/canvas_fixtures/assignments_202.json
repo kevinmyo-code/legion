@@ -7,7 +7,9 @@
     "due_at": "2026-09-28T04:59:59Z",
     "points_possible": 100.0,
     "grading_type": "points",
-    "submission_types": ["online_upload"],
+    "submission_types": [
+      "online_upload"
+    ],
     "published": true,
     "updated_at": "2026-09-14T17:45:00Z",
     "submission": {
@@ -15,6 +17,32 @@
       "assignment_id": 6001,
       "workflow_state": "unsubmitted",
       "submitted_at": null,
+      "score": null,
+      "grade": null,
+      "late": false,
+      "missing": false,
+      "excused": null,
+      "late_policy_status": null
+    }
+  },
+  {
+    "id": 6002,
+    "course_id": 202,
+    "name": "Module 2: Discussion - User Authentication",
+    "description": "<p>Describe one way a web app authenticates its users. Reply to two classmates.</p>",
+    "due_at": "2026-09-21T04:59:59Z",
+    "points_possible": 20.0,
+    "grading_type": "points",
+    "submission_types": [
+      "discussion_topic"
+    ],
+    "published": true,
+    "updated_at": "2026-09-13T15:00:00Z",
+    "submission": {
+      "id": 90102,
+      "assignment_id": 6002,
+      "workflow_state": "submitted",
+      "submitted_at": "2026-09-14T02:10:00Z",
       "score": null,
       "grade": null,
       "late": false,

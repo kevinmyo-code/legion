@@ -192,10 +192,10 @@ def test_first_run_inserts_and_an_identical_second_run_writes_nothing(fake, conn
     poll()
     first = last_run(household_a)
     assert first.outcome == Outcome.OK
-    # 5001, 5002, 5003 + its initial post, 5005 (ambiguous: no sub), 6001.
+    # 5001, 5002, 5003 + its initial post, 5005 (ambiguous: no sub), 6001, 6002.
     # 5004 is a not_graded placeholder and is not inserted.
-    assert first.rows_written == 6
-    assert Event.objects.filter(household=household_a).count() == 6
+    assert first.rows_written == 7
+    assert Event.objects.filter(household=household_a).count() == 7
     assert first.watermark == "2026-09-14T17:45:00Z"
 
     snapshot = {
@@ -206,7 +206,7 @@ def test_first_run_inserts_and_an_identical_second_run_writes_nothing(fake, conn
     second = last_run(household_a)
     assert second.outcome == Outcome.OK
     assert second.rows_written == 0
-    assert second.rows_unchanged == 7  # six rows plus the not_inserted placeholder
+    assert second.rows_unchanged == 8  # seven rows plus the not_inserted placeholder
     after = {
         row.pk: (row.updated_at, row.structured_meta, row.done, row.starts_at)
         for row in Event.objects.filter(household=household_a)
@@ -222,7 +222,8 @@ def test_inserted_rows_carry_the_evidence(fake, connected, household_a):
     assert quiz.provenance == "DETERMINISTIC"
     assert quiz.source == "legion"
     assert quiz.origin_guid == "canvas:5001"
-    assert quiz.title == "MATH 3391 Probability & Statistics · Module 2: Quiz"
+    # Canvas says "2026FA MATH3391 20937 - Probability and Statistics I".
+    assert quiz.title == "MATH 3391 Probability and Statistics I · Module 2: Quiz"
     assert quiz.done is True
     assert quiz.done_at == utc(2026, 9, 12, 18, 0, 0)
     meta = quiz.structured_meta
@@ -290,16 +291,136 @@ def test_a_discussion_yields_parent_and_initial_post_rows(fake, connected, house
 
 
 @pytest.mark.django_db
-def test_parent_submitted_leaves_the_sub_deadline_row_open(fake, connected, household_a):
+def test_a_discussion_canvas_calls_submitted_stays_open_with_the_evidence_kept(
+    fake, connected, household_a
+):
+    """Kevin, 2026-09-27: "discussions leave em to me". Canvas marks a
+    discussion submitted on the FIRST post while its due date is the replies
+    deadline, so neither the parent nor its sub-deadline is ticked from it."""
+    poll()
+    fake.assignment(5003)["submission"].update(
+        workflow_state="graded", submitted_at="2026-09-16T20:00:00Z", score=10, grade="10"
+    )
+    poll()
+    parent = task(household_a, 5003)
+    assert parent.done is False
+    assert parent.done_at is None
+    assert parent.structured_meta["manual_completion"] is True
+    assert parent.structured_meta["submitted_at"] == "2026-09-16T20:00:00Z"
+    assert parent.structured_meta["submission_state"] == "graded"
+    assert parent.structured_meta["score"] == 10
+    assert parent.structured_meta["grade"] == "10"
+    first_post = sub(household_a, 5003)
+    assert first_post.done is False
+    assert first_post.done_at is None
+    assert first_post.structured_meta["manual_completion"] is True
+
+
+@pytest.mark.django_db
+def test_a_discussion_first_seen_submitted_is_inserted_open(fake, connected, household_a):
+    fake.assignment(5003)["submission"].update(
+        workflow_state="submitted", submitted_at="2026-09-16T20:00:00Z"
+    )
+    fake.assignment(5005)["submission"].update(workflow_state="graded", score=5)
+    poll()
+    for aid in (5003, 5005):
+        row = task(household_a, aid)
+        assert row.done is False
+        assert row.done_at is None
+        assert row.structured_meta["manual_completion"] is True
+    assert sub(household_a, 5003).done is False
+
+
+@pytest.mark.django_db
+def test_a_hand_seeded_discussion_is_marked_manual_and_not_ticked(fake, connected, household_a):
+    """The live rows carry `submission_types` as a string and no manual flag."""
+    seeded = seed(
+        household_a,
+        title="Module 3 discussion",
+        structured_meta={"canvas_assignment_id": 5003, "submission_types": "discussion_topic"},
+    )
+    fake.assignment(5003)["submission"].update(
+        workflow_state="submitted", submitted_at="2026-09-16T20:00:00Z"
+    )
+    poll()
+    row = Event.objects.get(pk=seeded.pk)
+    assert row.done is False
+    assert row.structured_meta["manual_completion"] is True
+    assert row.structured_meta["submitted_at"] == "2026-09-16T20:00:00Z"
+
+
+@pytest.mark.django_db
+def test_a_discussion_ticked_by_hand_stays_done(fake, connected, household_a, auth_client):
+    poll()
+    parent = task(household_a, 5003)
+    first_post = sub(household_a, 5003)
+    for row in (parent, first_post):
+        response = auth_client.patch(f"/api/events/{row.pk}", {"done": True}, format="json")
+        assert response.status_code == 200
+    ticked = Event.objects.get(pk=parent.pk)
+
+    fake.assignment(5003)["submission"].update(workflow_state="unsubmitted", submitted_at=None)
     poll()
     fake.assignment(5003)["submission"].update(
         workflow_state="submitted", submitted_at="2026-09-16T20:00:00Z"
     )
     poll()
-    assert task(household_a, 5003).done is True
-    first_post = sub(household_a, 5003)
-    assert first_post.done is False
-    assert first_post.done_at is None
+    again = Event.objects.get(pk=parent.pk)
+    assert again.done is True
+    assert again.done_at == ticked.done_at
+    assert again.structured_meta["submitted_at"] == "2026-09-16T20:00:00Z"
+    assert Event.objects.get(pk=first_post.pk).done is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("types", ["discussion_topic", "online_text_entry,discussion_topic"])
+def test_the_function_itself_refuses_a_discussion_tick(household_a, types):
+    """The rule lives in Postgres: a caller that sends `submitted` with no
+    manual flag still cannot tick a discussion, on insert or on update."""
+    payload = {
+        "canvas_assignment_id": 7001,
+        "origin_guid": "canvas:7001",
+        "title": "A discussion",
+        "starts_at": "2026-09-19T04:59:59+00:00",
+        "submitted": True,
+        "submitted_at": "2026-09-16T20:00:00+00:00",
+        "evidence": {"canvas_assignment_id": 7001, "submission_types": types},
+    }
+    read_at = utc(2026, 9, 20)
+    assert canvas.upsert(household_a, payload, read_at)["done"] is False
+    # The evidence alone is enough on a row that already says what it is.
+    bare = {**payload, "evidence": {"canvas_assignment_id": 7001}}
+    assert canvas.upsert(household_a, bare, read_at)["action"] in {"unchanged", "updated"}
+    row = Event.objects.get(household=household_a, origin_guid="canvas:7001")
+    assert row.done is False
+    assert row.structured_meta["manual_completion"] is True
+
+
+@pytest.mark.django_db
+def test_the_live_dry_runs_submitted_discussion_is_inserted_open(fake, connected, household_a):
+    """The 2026-09-27 live dry run planned this one `done=True`."""
+    poll()
+    row = task(household_a, 6002)
+    assert row.title == "COSC 3318 Python Programming · Module 2: Discussion - User Authentication"
+    assert row.done is False
+    assert row.done_at is None
+    assert row.structured_meta["manual_completion"] is True
+    assert row.structured_meta["submitted_at"] == "2026-09-14T02:10:00Z"
+    assert row.structured_meta["submission_state"] == "submitted"
+
+
+@pytest.mark.django_db
+def test_a_non_discussion_still_ticks_and_is_not_marked_manual(fake, connected, household_a):
+    poll()
+    fake.assignment(5002)["submission"].update(
+        workflow_state="submitted", submitted_at="2026-09-18T12:00:00Z"
+    )
+    poll()
+    row = task(household_a, 5002)
+    assert row.done is True
+    assert row.done_at == utc(2026, 9, 18, 12, 0, 0)
+    assert "manual_completion" not in row.structured_meta
+    assert "manual_completion" not in task(household_a, 5001).structured_meta
 
 
 @pytest.mark.django_db
@@ -316,7 +437,7 @@ def test_a_first_post_ticked_on_the_phone_stays_as_the_phone_left_it(
         workflow_state="submitted", submitted_at="2026-09-16T20:00:00Z"
     )
     poll()
-    assert task(household_a, 5003).done is True
+    assert task(household_a, 5003).done is False  # a discussion is ticked by hand only
     again = Event.objects.get(pk=first_post.pk)
     assert again.done is True
     assert again.done_at == ticked.done_at
@@ -548,6 +669,106 @@ def test_sub_deadline_and_user_rows_are_never_tombstoned(fake, connected, househ
     assert task_or_none(household_a, 5003) is None
     assert sub(household_a, 5003).deleted_at is None
     assert Event.objects.get(pk=mine.pk).deleted_at is None
+
+
+# =============================================================================
+# Course labels on new rows
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    ("name", "label", "code"),
+    [
+        (
+            "2026FA COSC3318 21007 MAIN - Python Programming",
+            "COSC 3318 Python Programming",
+            "COSC 3318",
+        ),
+        (
+            "2026FA COSC3334 20997 MAIN - Introduction to Cybersecurity",
+            "COSC 3334 Introduction to Cybersecurity",
+            "COSC 3334",
+        ),
+        (
+            "2026FA MATH3391 20937 - Probability and Statistics I",
+            "MATH 3391 Probability and Statistics I",
+            "MATH 3391",
+        ),
+        (
+            "2026FA MKTG3303 20608 - Principles of Marketing",
+            "MKTG 3303 Principles of Marketing",
+            "MKTG 3303",
+        ),
+        ("Fall Orientation 2026", "Fall Orientation 2026", "ORIENT-26"),
+        ("COSC 4320 Software Engineering", "COSC 4320 Software Engineering", "ORIENT-26"),
+    ],
+)
+def test_the_course_label_is_derived_from_canvas_s_name(name, label, code):
+    derived = canvas.derived_course_name({"id": 1, "name": name, "course_code": "ORIENT-26"})
+    assert (derived.label, derived.code) == (label, code)
+
+
+@pytest.mark.django_db
+def test_new_rows_take_the_label_a_sibling_row_of_the_same_course_id_uses(
+    fake, connected, household_a
+):
+    seed(
+        household_a,
+        title="COSC 3318 Python Programming (Dr. Lee) · Module 1: Assignment",
+        structured_meta={
+            "canvas_assignment_id": 9101,
+            "canvas_course_id": 202,
+            "canvas_course": "COSC 3318",
+        },
+    )
+    poll()
+    row = task(household_a, 6001)
+    assert row.title == "COSC 3318 Python Programming (Dr. Lee) · Sprint 1 Report"
+    assert row.structured_meta["canvas_course"] == "COSC 3318"
+
+
+@pytest.mark.django_db
+def test_new_rows_fall_back_to_a_sibling_matched_by_canvas_course(fake, connected, household_a):
+    """The live hand-seeded rows carry `canvas_course` and no course id."""
+    seed(
+        household_a,
+        title="COSC 3318 Python · Module 1: Assignment",
+        structured_meta={"canvas_assignment_id": 9102, "canvas_course": "COSC 3318"},
+    )
+    poll()
+    row = task(household_a, 6001)
+    assert row.title == "COSC 3318 Python · Sprint 1 Report"
+    assert row.structured_meta["canvas_course"] == "COSC 3318"
+
+
+@pytest.mark.django_db
+def test_with_no_sibling_the_label_is_derived(fake, connected, household_a):
+    poll()
+    row = task(household_a, 6001)
+    assert row.title == "COSC 3318 Python Programming · Sprint 1 Report"
+    assert row.structured_meta["canvas_course"] == "COSC 3318"
+
+
+@pytest.mark.django_db
+def test_an_unrecognised_course_name_is_kept_unchanged(fake, connected, household_a):
+    fake.courses[1].update(name="Capstone: Team Rocket", course_code="CAP-TR")
+    poll()
+    row = task(household_a, 6001)
+    assert row.title == "Capstone: Team Rocket · Sprint 1 Report"
+    assert row.structured_meta["canvas_course"] == "CAP-TR"
+
+
+@pytest.mark.django_db
+def test_an_existing_row_is_never_retitled(fake, connected, household_a):
+    seeded = seed(
+        household_a,
+        title="Sprint report (mine)",
+        structured_meta={"canvas_assignment_id": 6001, "canvas_course": "old"},
+    )
+    poll()
+    row = Event.objects.get(pk=seeded.pk)
+    assert row.title == "Sprint report (mine)"
+    assert row.structured_meta["canvas_course"] == "old"
 
 
 def task_or_none(household, aid):

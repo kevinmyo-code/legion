@@ -381,8 +381,91 @@ def course_label(course: dict) -> str:
     return str(course.get("name") or course.get("course_code") or f"Course {course.get('id')}")
 
 
+# Canvas's full course name, e.g. "2026FA COSC3318 21007 MAIN - Python Programming":
+# a term code, the subject and number run together, a section number, an
+# optional "MAIN", then " - " and the course's own name.
+_CANVAS_COURSE_NAME = re.compile(
+    r"^\s*\d{4}[A-Z]{1,3}\s+(?P<subject>[A-Z]{2,5})\s?(?P<number>\d{4}[A-Z]?)\s+\d{3,6}"
+    r"\s+(?:MAIN\s+)?-\s+(?P<title>\S.*?)\s*$"
+)
+_TITLE_SEPARATOR = " · "
+
+
+@dataclass(frozen=True)
+class CourseName:
+    """What a new row is titled with (`label`) and stores as `canvas_course`
+    (`code`). Existing rows are never retitled."""
+
+    label: str
+    code: str
+
+
+def derived_course_name(course: dict) -> CourseName:
+    """The short form of Canvas's course name, "COSC 3318 Python Programming"
+    with code "COSC 3318". A name that does not fit the pattern is kept exactly
+    as Canvas gave it: an unrecognised name is left alone, never mangled."""
+    name = course_label(course)
+    match = _CANVAS_COURSE_NAME.match(name)
+    if match is None:
+        return CourseName(name, str(course.get("course_code") or name))
+    code = f"{match.group('subject')} {match.group('number')}"
+    return CourseName(f"{code} {match.group('title')}", code)
+
+
+def sibling_course_names(
+    household,
+) -> tuple[dict[int, tuple[str, str | None]], dict[str, CourseName]]:
+    """The labels existing rows already use, keyed by `canvas_course_id` and by
+    `canvas_course`: the text before " · " in the oldest titled row of each."""
+    from legacy.models.dates import Event
+
+    by_id: dict[int, tuple[str, str | None]] = {}
+    by_code: dict[str, CourseName] = {}
+    rows = (
+        Event.objects.filter(household=household, deleted_at__isnull=True)
+        .filter(structured_meta__has_key="canvas_assignment_id")
+        .exclude(structured_meta__has_key="parent_canvas_assignment_id")
+        .order_by("created_at", "id")
+    )
+    for row in rows:
+        title = row.title or ""
+        if _TITLE_SEPARATOR not in title:
+            continue
+        prefix = title.split(_TITLE_SEPARATOR, 1)[0].strip()
+        if not prefix:
+            continue
+        meta = row.structured_meta or {}
+        code = meta.get("canvas_course")
+        code = str(code) if code else None
+        course_id = _course_id_of(row)
+        if course_id is not None and course_id not in by_id:
+            by_id[course_id] = (prefix, code)
+        if code and code not in by_code:
+            by_code[code] = CourseName(prefix, code)
+    return by_id, by_code
+
+
+def course_name_for(
+    course: dict, by_id: dict[int, tuple[str, str | None]], by_code: dict[str, CourseName]
+) -> CourseName:
+    """A sibling row's label by course id, then by `canvas_course`, then the
+    label derived from Canvas's name."""
+    derived = derived_course_name(course)
+    try:
+        course_id = int(course["id"])
+    except (KeyError, TypeError, ValueError):
+        course_id = None
+    if course_id is not None and course_id in by_id:
+        label, code = by_id[course_id]
+        return CourseName(label, code or derived.code)
+    return by_code.get(derived.code, derived)
+
+
 def assignment_tasks(
-    course: dict, assignment: dict, zone: ZoneInfo | None
+    course: dict,
+    assignment: dict,
+    zone: ZoneInfo | None,
+    name: CourseName | None = None,
 ) -> tuple[list[dict], str | None]:
     """The payloads for one assignment, and why no sub-deadline was emitted
     when it is a discussion without one (None otherwise)."""
@@ -393,7 +476,8 @@ def assignment_tasks(
     submitted_at = parse_instant(submission.get("submitted_at"))
     not_graded = assignment.get("grading_type") == "not_graded"
     types = _submission_types(assignment) or ""
-    title = f"{course_label(course)} · {assignment.get('name') or f'Assignment {aid}'}"
+    name = name or derived_course_name(course)
+    title = f"{name.label}{_TITLE_SEPARATOR}{assignment.get('name') or f'Assignment {aid}'}"
 
     evidence = {
         "canvas_assignment_id": aid,
@@ -415,6 +499,8 @@ def assignment_tasks(
         "origin_guid": f"canvas:{aid}",
         "title": title,
         "starts_at": due.isoformat() if due else None,
+        # What Canvas said, sent even for a discussion: the function (0004)
+        # refuses to tick one, since Canvas calls it submitted at the first post.
         "submitted": is_submitted(submission),
         "submitted_at": submitted_at.isoformat() if submitted_at else None,
         "manual_completion": not_graded,
@@ -425,7 +511,8 @@ def assignment_tasks(
         "insert": not not_graded,
         "insert_reason": "a not_graded placeholder Canvas cannot see done",
         "evidence": evidence,
-        "insert_meta": {"canvas_course": course.get("course_code") or course_label(course)},
+        # Only a NEW row takes these; the function never retitles a matched one.
+        "insert_meta": {"canvas_course": name.code},
     }
     tasks = [parent]
     skipped = None
@@ -500,6 +587,7 @@ def read_canvas(client: CanvasClient, household, *, fallback_zone: str | None) -
         if course_id is not None:
             owned_by_course[course_id] = owned_by_course.get(course_id, 0) + 1
 
+    by_id, by_code = sibling_course_names(household)
     plan = Plan()
     for course in readable:
         course_id = int(course["id"])
@@ -518,6 +606,7 @@ def read_canvas(client: CanvasClient, household, *, fallback_zone: str | None) -
             )
         plan.course_ids.add(course_id)
         zone = course_zone(course, fallback_zone)
+        name = course_name_for(course, by_id, by_code)
         for assignment in assignments:
             if assignment.get("id") is None:
                 continue
@@ -527,7 +616,7 @@ def read_canvas(client: CanvasClient, household, *, fallback_zone: str | None) -
             updated = assignment.get("updated_at")
             if updated and (plan.watermark is None or str(updated) > plan.watermark):
                 plan.watermark = str(updated)
-            tasks, skipped = assignment_tasks(course, assignment, zone)
+            tasks, skipped = assignment_tasks(course, assignment, zone, name)
             plan.tasks.extend(tasks)
             if skipped:
                 plan.notes.append(f"{tasks[0]['title']}: no sub-deadline written ({skipped}).")

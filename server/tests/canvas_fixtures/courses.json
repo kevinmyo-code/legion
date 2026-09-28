@@ -1,16 +1,16 @@
 [
   {
     "id": 101,
-    "name": "MATH 3391 Probability & Statistics",
-    "course_code": "MATH 3391",
+    "name": "2026FA MATH3391 20937 - Probability and Statistics I",
+    "course_code": "2026FA-MATH3391-20937",
     "workflow_state": "available",
     "time_zone": "America/Chicago",
     "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
   },
   {
     "id": 202,
-    "name": "COSC 4320 Software Engineering",
-    "course_code": "COSC 4320",
+    "name": "2026FA COSC3318 21007 MAIN - Python Programming",
+    "course_code": "2026FA-COSC3318-21007",
     "workflow_state": "available",
     "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
   },

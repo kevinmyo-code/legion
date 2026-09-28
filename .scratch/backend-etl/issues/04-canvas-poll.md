@@ -72,10 +72,17 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
   - **`not_graded` placeholders are never inserted** (decisions.md 2026-09-04 held all 15
     back as duplicates of the seeded WebAssign rows); an existing matched one gets
     `manual_completion: true`.
-  - **A split discussion's parent is ticked by `submitted_at`** as the RPC rule says, even
-    though Canvas sets it on the FIRST post while the parent's `due_at` is the replies
-    deadline. Ticket 08's "the replies row must key on a later signal" has no Canvas signal
-    here; the first-post row is never ticked by the poller. **Worth Kevin's ruling.**
+  - **A discussion is never ticked by Canvas** (Kevin, 2026-09-27: "discussions leave em to
+    me"). Canvas marks a discussion submitted on the FIRST post while its `due_at` is the
+    replies deadline, so a Canvas tick would claim work still owed. The parent and every
+    sub-deadline row are ticked by hand only. Enforced in the RPC, migration
+    `0004_discussions_are_ticked_by_hand.py` (0003 is already live, so it is replaced, never
+    edited): a row whose stored or incoming `submission_types` names `discussion_topic`
+    (helper `public.canvas_is_discussion(jsonb)`), and every poller-owned sub-deadline row,
+    gets `manual_completion: true`, which 0003 already refused to tick; a discussion is
+    inserted `done = false` whatever Canvas says. Evidence (`submitted_at`,
+    `submission_state`, `score`, `grade`) is still written, due dates still move, a hand tick
+    stays. First live run after 0004 updates each discussion row once to add the flag.
   - **Initial-post parsing:** the description must name exactly one weekday in an
     "initial/first post|response" clause (the clause is cut at "repl"/"peers"/
     "classmates"); resolved to the latest such weekday strictly before `due_at`, at the stated
@@ -100,7 +107,15 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
     nothing written.
   - Matched rows keep `title`, `origin_guid`, `kind`, `canvas_course`; `starts_at` follows
     Canvas only when Canvas gives a due date. New rows: `origin_guid canvas:<id>`, title
-    `<course name> · <assignment name>`. `read_at` is rewritten only when something else
+    `<course label> · <assignment name>`.
+  - **New rows use the short course label** (Kevin, 2026-09-27, after the live dry run titled
+    one `2026FA COSC3318 21007 MAIN - Python Programming · Module 2: Assignment`). The label is
+    the title prefix (text before " · ") of the oldest live row of the same household with the
+    same `canvas_course_id`, else one whose `canvas_course` equals the derived code; with no
+    sibling it is derived from Canvas's name: term code, section number and `MAIN -` dropped,
+    `COSC3318` spaced, giving `COSC 3318 Python Programming`. A name that does not fit that
+    pattern is kept exactly as Canvas gave it. New rows' `canvas_course` is the short code
+    (`COSC 3318`). An existing row is never retitled (the RPC's UPDATE has no `title`). `read_at` is rewritten only when something else
     changed. `watermark` = max assignment `updated_at`, recorded only.
   - Course notices are not read: the assignments endpoint returns only assignments.
 - Owed: the live run (box 4). Once `connect_session.py canvas` has run,
