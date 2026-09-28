@@ -123,6 +123,16 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
     (`COSC 3318`). An existing row is never retitled (the RPC's UPDATE has no `title`). `read_at` is rewritten only when something else
     changed. `watermark` = max assignment `updated_at`, recorded only.
   - Course notices are not read: the assignments endpoint returns only assignments.
+  - **New titles carry no stray whitespace** (the follow-up in status-detail). The live run
+    wrote `COSC 3318 Python Programming ·  Module 2: Assignment ` and a Module 3 twin: Canvas's
+    names had leading and trailing spaces. `canvas.tidy_name` trims the assignment name and
+    collapses every whitespace run to one space before the title is built. Data migration
+    `0006_tidy_canvas_title_whitespace.py` tidies rows already written, and ONLY rows the
+    poller created (`structured_meta ? 'canvas_assignment_id'` AND `origin_guid LIKE
+    'canvas:%'`) whose title actually changes; it sets `updated_at = now()` (the
+    `touch_updated_at` trigger does the same on live) so `/api/changes` delivers the fix. Read
+    live 2026-09-28 (read-only): exactly the two rows above match. Tested both as the bare
+    UPDATE and as the migration's guarded DO block.
 - Owed: the live run (box 4). Once `connect_session.py canvas` has run,
   `python manage.py canvas_poll --dry-run` prints every planned insert, update and tombstone
   and rolls back. Expect the first run to update most of the 80 matched rows once (new keys

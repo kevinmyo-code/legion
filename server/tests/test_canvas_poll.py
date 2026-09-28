@@ -1052,13 +1052,18 @@ def test_a_blank_name_falls_back_to_the_assignment_id(fake, connected, household
 
 
 @pytest.mark.django_db(transaction=True)
-def test_migration_0006_tidies_only_poller_titles_and_bumps_updated_at(household_a):
-    """`transaction=True` so the migration's `now()` is later than the seed's."""
+@pytest.mark.parametrize("as_migrated", [False, True], ids=["tidy_sql", "migration_operation"])
+def test_migration_0006_tidies_only_poller_titles_and_bumps_updated_at(household_a, as_migrated):
+    """`transaction=True` so the migration's `now()` is later than the seed's.
+
+    Run twice: the bare UPDATE, and the migration's own operation (the DO block
+    guarded on `public.events`), which is what live runs. In the pytest
+    database `migrate` ran before conftest built `public.events`, so the guard
+    made it a no-op there; here the table exists and the block must work."""
     import importlib
 
-    tidy_sql = importlib.import_module(
-        "ingest.migrations.0006_tidy_canvas_title_whitespace"
-    ).TIDY_SQL
+    module = importlib.import_module("ingest.migrations.0006_tidy_canvas_title_whitespace")
+    tidy_sql = module.Migration.operations[0].sql if as_migrated else module.TIDY_SQL
     try:
         messy = seed(
             household_a,
