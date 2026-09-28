@@ -393,8 +393,8 @@ private fun TileCard(
                         it,
                         style = MaterialTheme.typography.labelSmall,
                         color = SoftColors.caution,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        // Never truncated: a trust disclosure is not furniture (CLAUDE.md sec 4
+                        // rules 5 and 7). It wraps as far as it needs to.
                     )
                 }
             }

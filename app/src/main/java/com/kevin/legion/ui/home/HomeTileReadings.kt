@@ -178,7 +178,7 @@ fun moneyDisclosureLine(budget: BudgetVsActual?): String? {
     val currency = budget.entity.currency
     val parts = mutableListOf<String>()
     if (budget.uncategorized.spentCents > 0L) {
-        parts += "+ ${formatMoney(budget.uncategorized.spentCents, currency)} uncategorized, not counted"
+        parts += "+ ${formatMoney(budget.uncategorized.spentCents, currency)} uncategorized"
     }
     val unverified = budget.lines.any { it.hasProvisionalRows } || budget.uncategorized.hasProvisionalRows
     if (unverified) parts += "unverified"

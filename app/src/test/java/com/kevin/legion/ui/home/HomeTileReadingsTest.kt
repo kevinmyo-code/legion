@@ -159,7 +159,7 @@ class HomeTileReadingsTest {
             uncategorized = UncategorizedSpend(spentCents = 4_250L, hasProvisionalRows = false),
         )
         val line = moneyDisclosureLine(budget)
-        assertTrue(line != null && line.contains("USD 42.50") && line.contains("not counted"))
+        assertTrue(line != null && line.contains("USD 42.50") && line.contains("uncategorized"))
     }
 
     @Test
