@@ -41,6 +41,11 @@ import com.kevin.legion.R
 import com.kevin.legion.data.local.VoiceNoteKind
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.NowPlayingInfo
+import com.kevin.legion.ui.apps.AppDrawerCache
+import com.kevin.legion.ui.apps.DockPin
+import com.kevin.legion.ui.apps.DockPins
+import com.kevin.legion.ui.apps.DockPinsStore
+import com.kevin.legion.ui.apps.launchDrawerApp
 import com.kevin.legion.ui.media.MediaTransport
 import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.MsIcon
@@ -95,7 +100,21 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     val viewModel: HomeViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
+
+    // Home-launcher ticket 06's own dock - pins are read fresh on every resume (a pin/unpin made
+    // from Apps must show up here without a process restart), and against AppDrawerCache's own
+    // PEEK, never a fresh LauncherApps query of its own (ticket's own "Boundaries": the dock must
+    // not add a second slow query to HOME's first frame - AppDrawerCache.warm already primed this
+    // at app start, in MainActivity).
+    var pins by remember { mutableStateOf(DockPinsStore.read(context)) }
+    var drawerSnapshot by remember { mutableStateOf(AppDrawerCache.peek()) }
+    var dockMessage by remember { mutableStateOf<String?>(null) }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refresh()
+        pins = DockPinsStore.read(context)
+        drawerSnapshot = AppDrawerCache.peek()
+    }
 
     val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
     val recording = recordingState is VoiceNoteRecordingState.Recording
@@ -109,6 +128,31 @@ fun HomeScreen(
         recording = recording,
         recordRefusal = recordRefusal,
         nowPlaying = nowPlaying,
+        dockSlots = buildDockSlots(pins, drawerSnapshot),
+        dock = DockCallbacks(
+            onLaunch = { slot ->
+                val app = slot.app
+                val snapshot = drawerSnapshot
+                dockMessage = when {
+                    app == null -> "${slot.label} is not installed."
+                    snapshot == null -> "Couldn't open ${slot.label}: apps aren't loaded yet."
+                    else -> launchDrawerApp(context, app, snapshot)
+                }
+            },
+            onUnpin = { pin ->
+                pins = DockPins.unpin(pins, pin)
+                DockPinsStore.write(context, pins)
+            },
+            onMoveLeft = { pin ->
+                pins = DockPins.move(pins, pin, delta = -1)
+                DockPinsStore.write(context, pins)
+            },
+            onMoveRight = { pin ->
+                pins = DockPins.move(pins, pin, delta = 1)
+                DockPinsStore.write(context, pins)
+            },
+        ),
+        dockMessage = dockMessage,
         callbacks = HomeCallbacks(
             onOpenCalendar = onOpenCalendar,
             onOpenLists = onOpenLists,
@@ -148,6 +192,9 @@ fun HomeContent(
     recordRefusal: String?,
     nowPlaying: NowPlayingInfo?,
     callbacks: HomeCallbacks,
+    dockSlots: List<DockSlotUi> = emptyList(),
+    dock: DockCallbacks = DockCallbacks(onLaunch = {}, onUnpin = {}, onMoveLeft = {}, onMoveRight = {}),
+    dockMessage: String? = null,
 ) {
     SoftTheme {
         BoxWithConstraints(Modifier.fillMaxSize().background(SoftColors.ground)) {
@@ -159,7 +206,10 @@ fun HomeContent(
             }
             Column(outer.padding(12.dp)) {
                 TodayCard(state = state, onClick = callbacks.onOpenCalendar)
-                Spacer(Modifier.height(10.dp))
+                // 6dp, not the original 10dp - ticket 06's own dock takes real height back from
+                // this Column's fixed budget ("the tile grid gives it up"), and this 4dp is part of
+                // what is given back, alongside TileCard's own tightened padding below.
+                Spacer(Modifier.height(6.dp))
                 TileGrid(
                     state = state,
                     recording = recording,
@@ -168,6 +218,19 @@ fun HomeContent(
                     fillRemaining = fitsGrid,
                     modifier = if (fitsGrid) Modifier.weight(1f) else Modifier,
                 )
+                // Home-launcher ticket 06: between the tile grid and the talk bar - the talk bar
+                // itself (AssistantStrip) is mounted outside this composable as MainActivity's
+                // Scaffold bottomBar, so this row being the last thing drawn here already puts it
+                // directly above it.
+                AppDock(slots = dockSlots, callbacks = dock)
+                dockMessage?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SoftColors.caution,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
                 NowPlayingRow(nowPlaying = nowPlaying, onOpenMedia = callbacks.onOpenMedia)
             }
         }
@@ -242,7 +305,9 @@ private fun TileGrid(
     fillRemaining: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // 6dp between rows, not 8dp - the same height-back-to-the-grid reasoning as HomeContent's own
+    // tightened Spacer (ticket 06's dock).
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Declared INSIDE this Column's own body so `.weight(1f)` resolves against ITS
         // ColumnScope receiver, not the caller's - a per-row weight only means something relative
         // to the rows sharing this Column.
@@ -359,14 +424,18 @@ private fun TileCard(
         modifier
             .background(SoftColors.card, MaterialTheme.shapes.large)
             .clickable(onClick = onClick)
-            .padding(12.dp),
+            // 8dp, not the original 12dp - ticket 06's dock takes real height from the row this
+            // card sits in; this gives that back to the STATUS/DISCLOSURE text below rather than
+            // to padding, so a two-line disclosure (home-alerts.png) still renders in full instead
+            // of overflowing the card's own background into the tile beneath it.
+            .padding(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(32.dp).background(accent.container, CircleShape),
+                Modifier.size(28.dp).background(accent.container, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                MsIcon(iconRes, contentDescription = null, tint = accent.onContainer, size = 18.dp)
+                MsIcon(iconRes, contentDescription = null, tint = accent.onContainer, size = 16.dp)
             }
             Spacer(Modifier.width(8.dp))
             Text(
@@ -378,15 +447,27 @@ private fun TileCard(
                 modifier = Modifier.weight(1f),
             )
         }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        Spacer(Modifier.height(4.dp))
+        // [trailing] (Recordings' own record button, 48dp - taller than any one text line) used to
+        // sit in-line beside the status text, forcing this WHOLE area 48dp tall before a single
+        // word of the disclosure below it was drawn. Found looking at home-failures.png during
+        // ticket 06's own screenshot check: "Microphone permission not granted." was bleeding into
+        // the Fleet card below. [trailing] now floats as a `Box` overlay at this area's own top-end
+        // corner instead, so it costs no LAYOUT height here - Recordings' own short status text
+        // ("0 saved"/"Recording") leaves that corner clear, and the disclosure below gets the
+        // card's full remaining height to wrap into, same as every other tile's own disclosure.
+        Box(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth()) {
                 Text(
                     status.text,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (status.alert) SoftColors.onAlert else SoftColors.text2,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    // Narrower ONLY for the status line, and only when there is a trailing control
+                    // to clear (Recordings alone) - the DISCLOSURE below keeps the card's full
+                    // width regardless, since [trailing] never draws that low.
+                    modifier = Modifier.fillMaxWidth(if (trailing != null) 0.75f else 1f),
                 )
                 disclosure?.let {
                     Text(
@@ -394,11 +475,18 @@ private fun TileCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = SoftColors.caution,
                         // Never truncated: a trust disclosure is not furniture (CLAUDE.md sec 4
-                        // rules 5 and 7). It wraps as far as it needs to.
+                        // rules 5 and 7). It wraps as far as it needs to - full width, even under
+                        // [trailing]: narrowing it to clear the button (tried, reverted) pushed it
+                        // to a THIRD line the row still could not fit, the exact bleed this whole
+                        // rework exists to stop. Full width needs only two lines, and the button's
+                        // small 14dp dot (inside its own 48dp touch target) crosses one word on the
+                        // first line at most - a minor visual overlap, never a missing line.
                     )
                 }
             }
-            trailing?.invoke()
+            trailing?.let {
+                Box(Modifier.align(Alignment.TopEnd)) { it() }
+            }
         }
     }
 }

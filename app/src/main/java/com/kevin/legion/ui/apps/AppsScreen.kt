@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.kevin.legion.ui.apps
 
 import android.content.ComponentName
@@ -8,20 +10,24 @@ import android.os.UserHandle
 import android.os.UserManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +63,10 @@ fun AppsScreen() {
     var loaded by remember { mutableStateOf(AppDrawerCache.peek()) }
     var query by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
+    // Home-launcher ticket 06: pin/unpin from here, re-read after every change so the "Pin to
+    // home"/"Unpin from home" menu label always matches the dock's own current state.
+    var pins by remember { mutableStateOf(DockPinsStore.read(context)) }
+    var pinMenuApp by remember { mutableStateOf<DrawerApp?>(null) }
 
     LaunchedEffect(reload) {
         loaded = AppDrawerCache.refresh(context)
@@ -112,19 +122,46 @@ fun AppsScreen() {
                             app = app,
                             icon = state.icons[iconKey(app.profileKey, app.packageName, app.className)],
                             paused = app.isWork && state.workPaused,
-                            onOpen = { message = launch(context, app, state) },
+                            onOpen = { message = launchDrawerApp(context, app, state) },
+                            onLongPress = { pinMenuApp = app },
                         )
                     }
                 }
             }
         }
     }
+
+    pinMenuApp?.let { app ->
+        PinMenuSheet(
+            app = app,
+            pinned = DockPin(app.packageName, app.profileKey) in pins,
+            onDismiss = { pinMenuApp = null },
+            onTogglePin = {
+                val slot = DockPin(app.packageName, app.profileKey)
+                message = if (slot in pins) {
+                    pins = DockPins.unpin(pins, slot)
+                    DockPinsStore.write(context, pins)
+                    null
+                } else {
+                    when (val outcome = DockPins.pin(pins, slot)) {
+                        is DockPins.PinOutcome.Ok -> {
+                            pins = outcome.pins
+                            DockPinsStore.write(context, pins)
+                            null
+                        }
+                        is DockPins.PinOutcome.Full -> "Dock is full. Unpin one first."
+                    }
+                }
+                pinMenuApp = null
+            },
+        )
+    }
 }
 
 @Composable
-private fun AppRow(app: DrawerApp, icon: ImageBitmap?, paused: Boolean, onOpen: () -> Unit) {
+private fun AppRow(app: DrawerApp, icon: ImageBitmap?, paused: Boolean, onOpen: () -> Unit, onLongPress: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 8.dp),
+        Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onLongPress).padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
     ) {
@@ -144,9 +181,37 @@ private fun AppRow(app: DrawerApp, icon: ImageBitmap?, paused: Boolean, onOpen: 
     }
 }
 
+/** Long-press on a drawer row (ticket 06's own "Pin from the drawer") - one row, its label reading
+ * "Pin to home" or "Unpin from home" depending on [pinned], so the sheet never shows both at once. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun PinMenuSheet(app: DrawerApp, pinned: Boolean, onDismiss: () -> Unit, onTogglePin: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Text(
+            app.label,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        Row(
+            Modifier.fillMaxWidth().height(52.dp).clickable(onClick = onTogglePin).padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                if (pinned) "Unpin from home" else "Pin to home",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
 /** Opens [app], or returns a sentence saying why it didn't. Never silent: a tap that does nothing
- * reads as a broken screen. */
-private fun launch(context: Context, app: DrawerApp, state: Loaded): String? {
+ * reads as a broken screen. `internal` (not `private`) so [com.kevin.legion.ui.home.AppDock]'s own
+ * launch callback is the SAME `LauncherApps` call and the same failure sentence, per ticket 06's
+ * own "Tap launches it exactly the way the drawer does". */
+internal fun launchDrawerApp(context: Context, app: DrawerApp, state: Loaded): String? {
     val handle = state.handles[app.profileKey] ?: return "Couldn't find the profile ${app.label} belongs to."
     if (app.isWork && state.workPaused) {
         return "Work apps are paused. Tap \"WORK APPS ARE PAUSED\" above to turn them on first."

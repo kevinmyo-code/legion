@@ -3,14 +3,20 @@ map: home-launcher
 ticket: "06"
 title: "A dock of five pinned apps above the talk bar"
 type: build
-status: open
+status: built
 status-detail: >
-  Opened 2026-09-27 from Kevin's follow-up once HOME became the phone's home
-  app. Manual pins, not usage-ranked; five slots, a dock above the talk bar.
+  Built 2026-09-27: DockPins/DockPinsStore (ui/apps/DockPins.kt, pure logic
+  plus SharedPreferences), AppDrawerCache's own icons reused (no second
+  LauncherApps query), AppDock (ui/home/AppDock.kt) between the tile grid and
+  the talk bar, pin/unpin from AppsScreen's own long-press menu. Suite green
+  (3718 tests), detekt clean for every touched file, screenshots recorded and
+  looked at (full dock, empty dock, one not-installed slot, the 360x520
+  fallback). Owed on the phone (ticket 05): pin from the drawer, launch from
+  the dock, unpin, a work app, an uninstalled app.
 blockers: ["03"]
-blocked-by: []
-open-blockers: 0
-ready: true
+blocked-by: ["[[03-home-is-a-launcher]]"]
+open-blockers: 1
+ready: false
 tags: [ticket]
 ---
 

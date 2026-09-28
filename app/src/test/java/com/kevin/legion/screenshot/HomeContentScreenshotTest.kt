@@ -14,10 +14,16 @@ import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MacroTotals
 import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
+import com.kevin.legion.ui.apps.DockPin
+import com.kevin.legion.ui.apps.DrawerApp
+import com.kevin.legion.ui.apps.Loaded
 import com.kevin.legion.ui.fleet.DueRowView
+import com.kevin.legion.ui.home.DockCallbacks
+import com.kevin.legion.ui.home.DockSlotUi
 import com.kevin.legion.ui.home.HomeCallbacks
 import com.kevin.legion.ui.home.HomeContent
 import com.kevin.legion.ui.home.HomeUiState
+import com.kevin.legion.ui.home.buildDockSlots
 import com.kevin.legion.ui.home.buildTodayChips
 import java.time.YearMonth
 import org.junit.Rule
@@ -169,7 +175,10 @@ class HomeContentScreenshotTest {
 
     @Config(qualifiers = "w360dp-h520dp")
     @Test
-    fun `fallback - too small for the fixed grid, scrolls instead of clipping`() {
+    fun `fallback - too small for the fixed grid, scrolls instead of clipping, dock included`() {
+        val app = installedApp("com.whatsapp", "WhatsApp")
+        val loaded = Loaded(apps = listOf(app), icons = emptyMap(), handles = emptyMap(), workProfile = null, workPaused = false)
+        val dockSlots = buildDockSlots(listOf(DockPin(app.packageName, app.profileKey)), loaded)
         val state = HomeUiState(
             loading = false,
             weekdayLabel = "Sunday",
@@ -186,10 +195,72 @@ class HomeContentScreenshotTest {
             maintenanceUnknownCount = 0,
             voiceNotesCount = 1,
         )
-        capture("home-fallback-360x520.png", state, recording = false, recordRefusal = null)
+        capture("home-fallback-360x520.png", state, recording = false, recordRefusal = null, dockSlots = dockSlots)
     }
 
-    private fun capture(fileName: String, state: HomeUiState, recording: Boolean, recordRefusal: String?) {
+    // ---------------------------------------------------------------------------- ticket 06's dock
+
+    private val noopDock = DockCallbacks(onLaunch = {}, onUnpin = {}, onMoveLeft = {}, onMoveRight = {})
+
+    private fun installedApp(pkg: String, label: String) = DrawerApp(label, pkg, "$pkg.Main", isWork = false, profileKey = 0)
+
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `dock - five pinned apps, all installed`() {
+        val apps = listOf(
+            installedApp("com.whatsapp", "WhatsApp"),
+            installedApp("com.spotify.music", "Spotify"),
+            installedApp("com.google.android.gm", "Gmail"),
+            installedApp("com.android.chrome", "Chrome"),
+            installedApp("com.google.android.apps.maps", "Maps"),
+        )
+        val pins = apps.map { DockPin(it.packageName, it.profileKey) }
+        val loaded = Loaded(apps = apps, icons = emptyMap(), handles = emptyMap(), workProfile = null, workPaused = false)
+        val state = fallbackState()
+        capture("home-dock-full.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins, loaded))
+    }
+
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `dock - empty, states how to pin an app rather than a blank strip`() {
+        val state = fallbackState()
+        capture("home-dock-empty.png", state, recording = false, recordRefusal = null, dockSlots = emptyList())
+    }
+
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `dock - one pin no longer installed, dimmed and worded, never dropped`() {
+        val installed = installedApp("com.whatsapp", "WhatsApp")
+        val pins = listOf(DockPin(installed.packageName, installed.profileKey), DockPin("com.gone.app", 0))
+        val loaded = Loaded(apps = listOf(installed), icons = emptyMap(), handles = emptyMap(), workProfile = null, workPaused = false)
+        val state = fallbackState()
+        capture("home-dock-not-installed.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins, loaded))
+    }
+
+    private fun fallbackState() = HomeUiState(
+        loading = false,
+        weekdayLabel = "Sunday",
+        dateLabel = "September 27",
+        weatherText = "72F, partly cloudy",
+        areaAqiLine = "Houston, TX - AQI 42 (Good) - PM2.5, Downtown",
+        nextLine = "Next: Team standup - 9:00 AM",
+        chips = buildTodayChips(dueTodayCount = 2, overdueCount = 0, calendarReadFailed = false),
+        checklistCount = 3,
+        budget = null,
+        mealGap = DailyMealGap.NotLogged,
+        hasMealTarget = true,
+        maintenanceRows = emptyList(),
+        maintenanceUnknownCount = 0,
+        voiceNotesCount = 1,
+    )
+
+    private fun capture(
+        fileName: String,
+        state: HomeUiState,
+        recording: Boolean,
+        recordRefusal: String?,
+        dockSlots: List<DockSlotUi> = emptyList(),
+    ) {
         composeTestRule.setContent {
             HomeContent(
                 state = state,
@@ -197,6 +268,8 @@ class HomeContentScreenshotTest {
                 recordRefusal = recordRefusal,
                 nowPlaying = null,
                 callbacks = callbacks,
+                dockSlots = dockSlots,
+                dock = noopDock,
             )
         }
         composeTestRule.onRoot().captureRoboImage(fileName)

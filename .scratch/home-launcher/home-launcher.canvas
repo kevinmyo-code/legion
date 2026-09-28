@@ -49,6 +49,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "4109e005c112cd31",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/06-pinned-app-dock.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -85,6 +95,13 @@
       "fromNode": "9d4921ed5433850e",
       "fromSide": "right",
       "toNode": "d117de96493be39b",
+      "toSide": "left"
+    },
+    {
+      "id": "39a3e3b2d6b3289e",
+      "fromNode": "412baec7d53facb3",
+      "fromSide": "right",
+      "toNode": "4109e005c112cd31",
       "toSide": "left"
     }
   ]

@@ -25,7 +25,7 @@ status-detail: >
   own instruction).
 blockers: ["02"]
 blocked-by: ["[[02-soft-theme-and-chrome]]"]
-open-blockers: 0
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
