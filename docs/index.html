@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>174 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 30 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 44 are waiting on another ticket first. <b>76 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 30 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 43 are waiting on another ticket first. <b>77 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">174</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">44</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">76</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">44</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">77</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">43</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">78</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">77</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">10</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -203,18 +203,18 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>backend-etl</h2>
-<span class="counts"><span class="k">10</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">3</span> built<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
-<span class="bar"><i style="flex:3"></i><b style="flex:7"></b></span>
+<span class="counts"><span class="k">10</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">5</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
+<span class="bar"><i style="flex:4"></i><b style="flex:6"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Job runner, ingest_runs, freshness endpoint, deploy/crontab</span><span class="det">Built 2026-09-27 (c6d0608), server suite 790 tests / 0 failures / 42 skipped (JUnit). Owed: migrate ingest 0001 on live, redeploy Cloud Run, run install_schedule.py for real, then see a heartbeat row land.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Session vault and the login handover script</span><span class="det">Built 2026-09-27 (1687cd2), server suite 843 / 0 failures / 42 skipped (JUnit). Owed: LEGION_VAULT_KEY in Secret Manager and SECRET_ENV_VARS, live migrate, Kevin runs connect_session.py canvas. Open question: owner-only PUT stretches the owner role past ADR 0045.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">drive_statements: raw bank statements from a Drive folder, through the gate</span><span class="det">Built 2026-09-28 (67b349b), server suite 998 / 0 failures / 43 skipped (JUnit). Deployed; folder 19tqQKzPKZVm0zCVG-lt7zaERqstIPkNd set on live; first run on the empty folder ok. Owed: one real statement committing with anchors persisted.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">11</span><span class="body"><span class="tt">The web app shows what Canvas says beside each coursework task</span><span class="det">Built 2026-09-28 (6c1a185, feat/web-canvas-submitted): vitest 69/69, tsc clean, rendered at 384px against a mock. Not deployed. Owed: Kevin sees it on the live Today view after the next deploy.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">obd_samples: roll up per drive, keep 90 days raw</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">The web app says how fresh each feed is</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">connect_session.py bofa: log in daily, the script pulls new statements and mid-month activity</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #06</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Port BofaStatementParser to Python so BofA statements skip the LLM</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">The web app shows what Canvas says beside each coursework task</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">The phone shows what Canvas says beside each coursework task (Android terminal)</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
 <li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">05</span><span class="body"><span class="tt">webassign_read, daily, completion only</span><span class="det">Parked 2026-09-28 (Kevin): ticks are manual, WebAssign completion not needed for now.</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
 </ul>
