@@ -162,6 +162,54 @@ def test_checking_skips_the_summary_block_and_stitches_a_page_split_section():
         assert "Page 4 of 6" not in line["description"]
 
 
+PAGE_BREAK = "06/10/26 Overdraft Protection Transfer -30.00\nTAYLOR J RIVERA"
+
+
+def split_section_text() -> str:
+    # Line endings follow the checkout (autocrlf), so normalise before splicing.
+    return text_of("bofa_summary_and_split_section.pdf").replace("\r\n", "\n")
+
+
+def test_checking_skips_a_promo_paragraph_between_continued_and_the_reprinted_header():
+    # Kevin's 2026-09 checking statement: after "continued on the next page" BofA
+    # printed a promotional paragraph and ANOTHER section's "- continued" heading
+    # before this section's own reprinted header. The same shape, synthetic.
+    text = split_section_text()
+    assert PAGE_BREAK in text
+    text = text.replace(
+        PAGE_BREAK,
+        "06/10/26 Overdraft Protection Transfer -30.00\n"
+        "continued on the next page\n"
+        "Pay with your phone at checkout. It is fast and easy!\n"
+        "Learn more at bankofamerica.com/mobile, where 2 offers wait.\n"
+        "TAYLOR J RIVERA",
+    ).replace(
+        "Page 4 of 6\nOther subtractions\n",
+        "Page 4 of 6\nWithdrawals and other subtractions - continued\n"
+        "Other subtractions - continued\n",
+    )
+    payload = bofa.parse_checking_text(text, "statement.pdf")
+    assert amounts(payload) == [300000, 120000, -8000, -3000, -4500, -1500]
+    for line in payload["lines"]:
+        assert "phone" not in line["description"]
+        assert "continued" not in line["description"]
+
+
+def test_checking_continued_with_no_reprinted_header_is_refused():
+    # The skip is bounded by two printed markers. With the second missing, nothing
+    # says where the table resumes, so the file refuses rather than guessing.
+    text = split_section_text().replace(
+        PAGE_BREAK,
+        "06/10/26 Overdraft Protection Transfer -30.00\n"
+        "continued on the next page\n"
+        "TAYLOR J RIVERA",
+    )
+    assert "Page 4 of 6\nOther subtractions\nDate" in text
+    text = text.replace("Page 4 of 6\nOther subtractions\nDate", "Page 4 of 6\nDate")
+    reason = refusal(bofa.parse_checking_text, text, text=True)
+    assert "never reprints it" in reason
+
+
 def test_checking_row_with_no_amount_is_refused():
     reason = refusal(bofa.parse_checking_text, "bofa_missing_amount.pdf")
     assert "missing an amount" in reason

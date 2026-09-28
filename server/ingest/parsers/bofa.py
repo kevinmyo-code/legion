@@ -208,14 +208,54 @@ def _checking_section(lines: list[str], section: _ChkSection) -> tuple[list[str]
             f'The "{section.start}" section never states its own total. {NOTHING_WRITTEN}'
         )
     body = []
-    for idx in range(start + 1, end):
+    idx = start + 1
+    while idx < end:
         line = lines[idx]
-        if not line or line.startswith("Date"):
+        if line == _CONTINUED_MARKER:
+            # The bank's own "continued on the next page" ends this page's part of
+            # the table, and the reprinted "<section> - continued" header starts the
+            # next. What lies between is page furniture the bank chose to print
+            # there: footers, and on Kevin's 2026-09 checking statement a whole
+            # promotional paragraph plus another section's "- continued" heading.
+            # Skipping is bounded by those two printed markers, never by guessing
+            # what a line means, and the section total below still has to match,
+            # so a transaction lost in here fails the gate rather than vanishing.
+            resume = _reprinted_header(lines, idx + 1, end, section)
+            if resume is None:
+                raise statements.ParserRefused(
+                    f'The "{section.start}" section says it continues on the next page, '
+                    f"but the next page never reprints it. {NOTHING_WRITTEN}"
+                )
+            idx = resume + 1
             continue
-        if line.startswith(section.start) and idx + 1 < end and lines[idx + 1].startswith("Date"):
+        if not line or line.startswith("Date"):
+            idx += 1
+            continue
+        if _is_reprinted_header(lines, idx, end, section):
+            idx += 1
             continue  # a reprinted header; its "Date" line goes on its own turn
         body.append(line)
+        idx += 1
     return body, lines[end]
+
+
+_CONTINUED_MARKER = "continued on the next page"
+
+
+def _is_reprinted_header(lines: list[str], idx: int, end: int, section: _ChkSection) -> bool:
+    return (
+        lines[idx].startswith(section.start)
+        and idx + 1 < end
+        and lines[idx + 1].startswith("Date")
+    )
+
+
+def _reprinted_header(lines: list[str], begin: int, end: int, section: _ChkSection) -> int | None:
+    """Index of this section's next reprinted header in [begin, end), if any."""
+    return next(
+        (idx for idx in range(begin, end) if _is_reprinted_header(lines, idx, end, section)),
+        None,
+    )
 
 
 def _checking_rows(body: list[str], section: _ChkSection, file_name: str) -> list[dict]:
