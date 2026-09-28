@@ -22,6 +22,23 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Where we stopped - 2026-09-27 night (session 0151LEjT, "legion-0e")
+
+- **`dev` = `main` = `6f708d8`, pushed.** Android 3599 tests / 0 failures. PC shut down for a restart.
+- **Landed today, on the A25:** home-app (ADR 0050), one-shot side-key assistant, Quiet toggle
+  (header QUIET + tile) with volume restore verified on the phone, drawer cache, GPS network/passive,
+  ordered checklist push queue, opener deadlines, news both sources, Gemini 3.8 Live.
+- **Owed on the phone:** one-shot hang-up after an answer (needs speech); a real call vibrating
+  through Quiet; `get_last_ticked` asked by voice; Quiet restore from a stream already at 0 (unit-tested only).
+- **Phone sounds:** notification = Power Rangers communicator (`/sdcard/Notifications`, picked by
+  Kevin in Settings; `settings put` alone gets reverted by Samsung). Nokia ringtone tried, rejected, deleted.
+- **Two other sessions were mid-work at shutdown:** `legion-b6` (feat/home-redesign, tickets 03/04)
+  and `legion-30` (backend-etl, server suites). Both asked to WIP-commit and push their own branch.
+  **This session does all merges to dev/main**; neither merges itself.
+- **Open:** hardening 13 (Room invalidation leak, flaky screenshot test), place-arrivals 01
+  (Google refuses geofences). Stale worktree folders (launcher, oneshot, assistlock) can be removed now
+  that no Gradle daemon holds them; `quiet` is done too.
+
 ## Where we stopped - 2026-09-11 night (session 0151LEjT)
 
 - **`dev` is `f52b355`, pushed, tree clean.** Android 3508 tests / 0 failures; server 717 passed /
