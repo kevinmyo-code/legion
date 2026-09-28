@@ -1,0 +1,21 @@
+[
+  {
+    "id": 101,
+    "name": "MATH 3391 Probability & Statistics",
+    "course_code": "MATH 3391",
+    "workflow_state": "available",
+    "time_zone": "America/Chicago",
+    "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
+  },
+  {
+    "id": 202,
+    "name": "COSC 4320 Software Engineering",
+    "course_code": "COSC 4320",
+    "workflow_state": "available",
+    "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
+  },
+  {
+    "id": 303,
+    "access_restricted_by_date": true
+  }
+]
