@@ -3,8 +3,8 @@ map: backend-etl
 ticket: "03"
 title: "backup_nightly and a drilled restore_backup, to Google Drive"
 type: build
-status: built
-status-detail: "Built 2026-09-27, server suite 880 / 0 failures / 43 skipped (JUnit; the new skip is the opt-in real-dump drill). Owed: LEGION_VAULT_KEY on Cloud Run, Kevin runs connect_session.py drive --backup, a real run lands on Drive, restore drill against live, and Cloud Build proving postgresql-client-17 resolves."
+status: resolved
+status-detail: "Verified live 2026-09-28: first backup on Drive (LEGION backups/2026-09-28, 1.2 MB); restore_backup drilled on Cloud Run, 59/60 tables equal, the one difference is django_migrations 26 vs 27 because a deploy recorded migration 0003 after the dump. Media not backed up (ADR 0041 gap)."
 blockers: ["01", "02"]
 blocked-by: ["[[01-job-runner-and-freshness]]", "[[02-session-vault-and-login-handover]]"]
 tags: [ticket]
@@ -27,8 +27,8 @@ Carries django-engine 06 job 1 whole, adjusted for Cloud Run (no persistent disk
 
 ## Verification
 
-- [ ] A real run lands a dated folder on Kevin's Drive.
-- [ ] `restore_backup` on a throwaway database reports every count equal to live.
+- [x] A real run lands a dated folder on Kevin's Drive.
+- [x] `restore_backup` on a throwaway database reports every count equal to live.
 
 ## Built (2026-09-27, `feat/backend-etl`)
 

@@ -3,8 +3,8 @@ map: backend-etl
 ticket: "04"
 title: "canvas_poll on the server, every 30 minutes"
 type: build
-status: built
-status-detail: "Built 2026-09-27 (f19cd77), server suite 916 / 0 failures / 43 skipped (JUnit). Owed: Kevin runs connect_session.py canvas, then canvas_poll --dry-run diffed against the 102 live rows. Open ruling: a split discussion parent is ticked by the first post."
+status: resolved
+status-detail: "Verified live 2026-09-28: dry run diffed against live (80 matched, 7 new, 8 hand sub-deadlines left alone, 15 WebAssign placeholders not inserted, 0 tombstones, no open row ticked); real run wrote 7 rows, schedule unpaused every 30 min. Follow-up: two new titles carry Canvas whitespace."
 blockers: ["01", "02"]
 blocked-by: ["[[01-job-runner-and-freshness]]", "[[02-session-vault-and-login-handover]]"]
 tags: [ticket]
@@ -35,7 +35,7 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
 - [x] pytest against recorded Canvas fixtures: first run inserts, second writes zero rows.
 - [x] pytest: a discussion yields parent + sub-deadline rows; parent submitted leaves reply row open.
 - [x] pytest: a 401 records `needs_login`.
-- [ ] Live run against Kevin's Canvas, diffed against the 102 existing `DETERMINISTIC` tasks; every
+- [x] Live run against Kevin's Canvas, diffed against the 102 existing `DETERMINISTIC` tasks; every
       difference explained.
 
 ## Built (2026-09-27, `feat/backend-etl`)
