@@ -4,7 +4,7 @@ ticket: "09"
 title: "connect_session.py bofa: log in daily, the script pulls new statements and mid-month activity"
 type: build
 status: open
-status-detail: "Server half split out and built 2026-09-28 as ticket 13. Still OPEN: the laptop login script (tools/connect_session.py bofa), the one-button shortcut, and freshness source bofa. The script needs a live sitting with Kevin to capture BofA's page selectors."
+status-detail: "Laptop script BUILT 2026-09-28 on feat/bofa-pull (tools/connect_session.py bofa, tools/bofa_pull.py, tools/legion-daily.cmd), 58 unit tests green against a scripted fake; never run against the real site. OWED: the live --dry-run with Kevin, whether drive.file may create in a folder the app did not make, the card's Statements & Documents page (unseen). Still unbuilt: freshness source bofa (server)."
 blockers: ["02", "06"]
 blocked-by: ["[[02-session-vault-and-login-handover]]", "[[06-drive-statements-watcher]]"]
 tags: [ticket]
@@ -26,6 +26,61 @@ tags: [ticket]
 > `currentTransaction_<last4>.csv`): the server takes the account from the name, because neither
 > export prints one. Ruling 4 is confirmed from the record (commit 2d188e7 read the real checking
 > export's anchors), so checking CSVs are gated; box 5 is ticked on the first real pull.
+
+## Built 2026-09-28 (laptop half, branch `feat/bofa-pull`)
+
+Locators captured live the same day (checking 3119, card 4146) and written into ONE block at the top
+of `tools/bofa_pull.py`, commented "last seen working 2026-09-28".
+
+- **`python tools/connect_session.py bofa`**: headed Chromium on `~/.legion/browser-profiles/bofa`
+  at bankofamerica.com. Kevin logs in; the script never touches the sign-in form. Logged-in signal:
+  title contains "Accounts Overview" or the path is under `/myaccounts/` (not signin); Enter is the
+  fallback. Timeout: "No login seen within N seconds. Nothing was downloaded and nothing was
+  uploaded."
+- **The subcommand has no `--server` and no `--token`**, so it has no way to address the LEGION
+  server. `put_session` still refuses `bofa`; a test patches it to explode and runs the whole path,
+  and an AST test checks neither `bofa_pull.py` nor `run_bofa` names the vault route.
+- Per account (anchors with `target=acctDetails`, text `<name> - <last4>`): the current-activity CSV
+  as `bofa_<last4>_activity_<YYYY-MM-DD>.csv` (checking via the "Download your data" dialog, card via
+  the `download_transactions_top` panel), then Statements & Documents for this year and last,
+  downloading only statements not already in Drive, as `bofa_<last4>_<YYYY-MM>.pdf`. Statement links
+  are found by accessible name (the `#downloadPDFLink` id repeats); one that does not parse or names
+  another account stops the run.
+- **Drive**: laptop-only installed-app OAuth, scope `drive.file` only, same client id/secret as
+  `drive`, token cached at `~/.legion/bofa-drive-token.json`. Folder from `--statements-folder` or
+  `LEGION_STATEMENTS_FOLDER` (id or URL; `folder_id_from` copied from `server/ingest/folder_ids.py`,
+  a test pins the copy to the original). Dedupe lists what this app created in the folder: a statement
+  already there is never downloaded; a same-day CSV re-run PATCHes that file instead of adding a twin.
+- **Nothing partial**: every download first, Drive only after every browser step succeeded. Any
+  locator that finds nothing: "BofA's page changed at <step>; nothing was uploaded."
+- **`--dry-run`**: everything in the browser, downloads to `--out` (default
+  `~/.legion/bofa-pull/<date>/`), Drive not consulted at all, prints what would be uploaded.
+- Summary per account: CSV name, statements found / already in Drive / uploaded. No balances, no
+  transaction content.
+- **`tools/legion-daily.cmd`**: reads `%USERPROFILE%\.legion\legion-daily.env.cmd` (the three env
+  vars, laptop only), runs `connect_session.py bofa %*`, pauses on the result. Shortcut: right-click >
+  Send to > Desktop. **`install_daily_shortcut.py` deliberately not built** (the right-click is one
+  step; an installer is risk for nothing). The `~/.legion/config.env` + `setup` subcommand idea above
+  is replaced by that env file.
+- Tests: `tools/tests/test_bofa_pull.py`, 58, no network, no server DB. Run
+  `python -m pytest tools/tests -p no:cacheprovider --junitxml=<file>`.
+
+**Owed, all live, none of it done:**
+
+1. **The dry run with Kevin**: `python tools/connect_session.py bofa --dry-run`. Nothing in this
+   file has ever run against the real site; the fake only proves the flow.
+2. **Does `drive.file` let the app create a file inside a folder it did not create?** Reasoned
+   unknown. If Google answers 403/404 on the parent, the script stops with one sentence naming the
+   two fixes (the app owns its own statements folder and the watcher points there, or widen the
+   laptop scope to `drive`). Kevin's call; the scope was not widened.
+3. **The card's Statements & Documents page was never seen.** It is assumed to share checking's
+   `/mycomm-acc-stmts-docs/` layout; if the address differs the run stops saying so.
+4. **Year switch**: after choosing a year the script waits for network idle and expands
+   "Statements". Whether the list refreshes in place is unseen; check on the dry run that the two
+   years' PDFs differ.
+5. `server/tests/test_connect_session.py::test_bofa_is_not_a_subcommand_yet` still passes (bofa
+   rejects `--server`, so argparse exits), but its docstring is now false. Server terminal: rename it
+   to assert bofa takes no `--server`/`--token`.
 
 **Kevin, 2026-09-27:** *"yes that works instead of me manually navigating the page and putting it on
 the drive folder."* **2026-09-28:** *"it might also be mid month transaction history pulls no?

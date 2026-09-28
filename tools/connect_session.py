@@ -12,6 +12,11 @@ for, reads, stores or sends a password.
     drive      Google's installed-app OAuth flow in your browser; the
                refresh token goes to the server (Drive scopes: drive.readonly
                and drive.file)
+    bofa       headed Chromium at Bank of America; once you are in, this
+               downloads each account's current-activity CSV and new statement
+               PDFs and uploads them to the statements Drive folder. NOTHING
+               goes to the LEGION server: no cookie, no session, no password
+               (backend-etl ticket 09, tools/bofa_pull.py)
 
 Runs on the LAPTOP, not the server, so its dependencies are deliberately not in
 server/requirements.txt. Install once:
@@ -27,10 +32,13 @@ Examples:
     python tools/connect_session.py drive --server ... --token ... \\
         --client-id <id> --client-secret <secret> \\
         [--statements-folder <folder id or URL>]
+    python tools/connect_session.py bofa --dry-run
+    python tools/connect_session.py bofa --client-id <id> --client-secret <secret> \\
+        --statements-folder <folder id or URL>
 
 Every option can come from the environment instead: LEGION_SERVER,
 LEGION_TOKEN, LEGION_CANVAS_URL, LEGION_GOOGLE_CLIENT_ID,
-LEGION_GOOGLE_CLIENT_SECRET. The token is a LEGION device token for an OWNER of
+LEGION_GOOGLE_CLIENT_SECRET, LEGION_STATEMENTS_FOLDER (bofa). The token is a LEGION device token for an OWNER of
 the household (`POST /api/auth/login` issues one); only an owner may hand over
 a login.
 
@@ -43,14 +51,14 @@ The browser profile lives under ~/.legion/browser-profiles/<source>, on this
 machine only and never in the repo, so a site that remembers devices keeps
 remembering this one.
 
-**Shaped for ticket 09's `bofa` subcommand, which is NOT here yet.** Each
-subcommand is one entry in `build_parser` plus one `run_<source>` function. A
-BofA session must never reach the server: `put_session` refuses `bofa` by name,
-and so does the server.
+Each subcommand is one entry in `build_parser` plus one `run_<source>`
+function. A BofA session must never reach the server: `bofa` takes no server
+or token at all, `put_session` refuses `bofa` by name, and so does the server.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import os
 import sys
@@ -176,6 +184,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="The Drive folder the statements job watches, as its id or its URL "
         "(backend-etl ticket 06). Left out, the current folder is kept.",
     )
+
+    # No --server and no --token: nothing about a BofA login may reach the
+    # server, so this subcommand is given no way to address it.
+    bofa = sub.add_parser(
+        "bofa",
+        help="Log in to Bank of America; download statements and activity to Drive.",
+    )
+    bofa.add_argument(
+        "--timeout",
+        type=int,
+        default=LOGIN_TIMEOUT_SECONDS,
+        help="Seconds to wait for you to finish logging in (default 600).",
+    )
+    _bofa_pull().add_arguments(bofa, _env)
     return parser
 
 
@@ -184,6 +206,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     (argparse cannot mark an option required when it may come from env)."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.source == "bofa":
+        bofa = _bofa_pull()
+        missing = bofa.missing_arguments(args)
+        if missing:
+            parser.error("missing " + ", ".join(missing))
+        if args.statements_folder:
+            try:
+                args.statements_folder = bofa.folder_id_from(args.statements_folder)
+            except ValueError as exc:
+                parser.error(str(exc))
+        return args
     missing = []
     if not args.server:
         missing.append("--server (or LEGION_SERVER)")
@@ -367,17 +400,19 @@ def _enter_pressed() -> threading.Event:
     return event
 
 
-def browser_login(
+@contextlib.contextmanager
+def logged_in_browser(
     source: str,
     login_url: str,
     logged_in: Callable,
     timeout: int,
-) -> list[dict]:
-    """Open a headed Chromium at `login_url`, wait until `logged_in(context,
-    page)` is true (or the person presses Enter), return the context's cookies.
+    nothing_done: str = "Nothing was sent.",
+):
+    """Open a headed Chromium on `profile_dir(source)` at `login_url`, wait
+    until `logged_in(context, page)` is true (or the person presses Enter),
+    and yield `(context, page)` with the browser still open. Closes it after.
 
-    Raises `ConnectError` on timeout: nothing is sent for a login that never
-    finished.
+    Raises `ConnectError` on timeout, ending with `nothing_done`.
     """
     try:
         from playwright.sync_api import sync_playwright
@@ -395,7 +430,7 @@ def browser_login(
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
-            str(profile_dir(source)), headless=False
+            str(profile_dir(source)), headless=False, accept_downloads=True
         )
         try:
             page = context.pages[0] if context.pages else context.new_page()
@@ -410,12 +445,24 @@ def browser_login(
                     pass
                 if datetime.datetime.now() > deadline:
                     raise ConnectError(
-                        f"No login seen within {timeout} seconds. Nothing was sent."
+                        f"No login seen within {timeout} seconds. {nothing_done}"
                     )
                 page.wait_for_timeout(1000)
-            return context.cookies()
+            yield context, page
         finally:
             context.close()
+
+
+def browser_login(
+    source: str,
+    login_url: str,
+    logged_in: Callable,
+    timeout: int,
+) -> list[dict]:
+    """`logged_in_browser`, returning the context's cookies once logged in.
+    Nothing is sent for a login that never finished."""
+    with logged_in_browser(source, login_url, logged_in, timeout) as (context, _page):
+        return context.cookies()
 
 
 def canvas_logged_in(base_url: str) -> Callable:
@@ -560,6 +607,31 @@ def _folder_ids():
     return module
 
 
+def _bofa_pull():
+    """`tools/bofa_pull.py`, loaded by path so this script works from any
+    working directory and under test."""
+    import importlib.util
+
+    if "legion_bofa_pull" in sys.modules:
+        return sys.modules["legion_bofa_pull"]
+    path = Path(__file__).resolve().parent / "bofa_pull.py"
+    spec = importlib.util.spec_from_file_location("legion_bofa_pull", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["legion_bofa_pull"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_bofa(args: argparse.Namespace) -> int:
+    """Ticket 09. Talks to BofA (in the browser Kevin drives) and to Drive;
+    never to the LEGION server, so there is no metadata to describe."""
+    bofa = _bofa_pull()
+    try:
+        return bofa.run(args, browser=logged_in_browser)
+    except bofa.BofaError as exc:
+        raise ConnectError(str(exc)) from exc
+
+
 RUNNERS: dict[str, Callable[[argparse.Namespace], dict]] = {
     "canvas": run_canvas,
     "webassign": run_webassign,
@@ -569,6 +641,12 @@ RUNNERS: dict[str, Callable[[argparse.Namespace], dict]] = {
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.source == "bofa":
+        try:
+            return run_bofa(args)
+        except ConnectError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            return 1
     try:
         metadata = RUNNERS[args.source](args)
     except ConnectError as exc:
