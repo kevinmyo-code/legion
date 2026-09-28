@@ -3,15 +3,24 @@ map: home-launcher
 ticket: "02"
 title: "Soft theme, bundled font and icons, and the shell chrome restyled"
 type: build
-status: open
+status: built
 status-detail: >
-  Opened 2026-09-27 from ticket 01's resolution. Foundation for 03 and 04:
-  the soft Material tokens, Figtree, Material Symbols Rounded, and the
-  status line and talk bar restyled; the mission-control bezel goes.
+  Built 2026-09-27. SoftColors/AreaAccent/SoftType/SoftTheme/MsIcon under
+  ui/theme/soft/, Figtree + 45 Material Symbols Rounded icons vendored,
+  DeckBezel deleted, StatusLine and AssistantStrip restyled soft. Also
+  carries onOpenApps (verified against dev commit 1434459) and
+  onToggleQuiet/quietOn (contract confirmed by legion-10) - both null-
+  hidden, unwired here. compileDebugKotlin green; testDebugUnitTest
+  3594/3594 by XML except one confirmed pre-existing order-dependent JVM
+  leak (AssistantStripScreenshotTest, passes clean in isolation); detekt
+  clean for every file this ticket touches (78 pre-existing findings
+  elsewhere, unrelated, confirmed by diffing against a clean-HEAD stash);
+  docs_check.py byte-identical to clean HEAD (700 pre-existing, 0 new).
+  Needs a run on the phone.
 blockers: ["01"]
 blocked-by: ["[[01-the-shape]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

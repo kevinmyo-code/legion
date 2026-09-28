@@ -22,15 +22,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,18 +52,23 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.R
 import com.kevin.legion.ui.theme.DRAW_IN_MS
 import com.kevin.legion.ui.theme.LegionMotion
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckEntranceEnabled
 import com.kevin.legion.ui.theme.deckMotionEnabled
+import com.kevin.legion.ui.theme.soft.MsIcon
+import com.kevin.legion.ui.theme.soft.SoftColors
 
 /**
  * The shared VACUUM/SENTRY components (mission-control ticket 03's bezel-and-chrome geometry,
@@ -75,8 +84,8 @@ import com.kevin.legion.ui.theme.deckMotionEnabled
  * **Mission-control ticket 13 (2026-08-14) reshapes this file to ticket 03's resolved bezel/chrome
  * spec**: [DeckPane] trades its header row for a label pill and its two-corner brackets for a full
  * frame; [DeckRow] moves to 48dp and gains a 22dp display-only sibling, [DeckFeedRow]; [DeckMeter]
- * swaps which of its two colours is the fill and which is the pace tick; and the shell gains two
- * entirely new primitives, [DeckBezel] and [DeckSectionRule]. [DeckTag]/[QuarantineTag]/
+ * swaps which of its two colours is the fill and which is the pace tick; and the shell gained an
+ * entirely new primitive, `DeckBezel` (see below), plus [DeckSectionRule]. [DeckTag]/[QuarantineTag]/
  * [StatusLine] are UNCHANGED by this ticket - ticket 03 answer #5 ruled both survive untouched,
  * and the only edits below are the recolours forced by [DeckRow]'s renamed value token.
  *
@@ -84,12 +93,21 @@ import com.kevin.legion.ui.theme.deckMotionEnabled
  * these primitives (that is the next mission-control ticket). [ThemePreview.kt] is the L11 gate
  * every later ticket reads before wiring a real screen to these.
  *
- * **Mission-control ticket 14 (2026-08-14) wires [DeckBezel] into the real shell** (it shipped in
+ * **Mission-control ticket 14 (2026-08-14) wires `DeckBezel` into the real shell** (it shipped in
  * ticket 13 unused by anything) and touches one more thing ticket 13 called UNCHANGED: [StatusLine]
  * gains the ALARM segment (ticket 04) and the yielding cursor (`cursorSolid`, ticket 07) - both
- * additive, both dead by default, see that composable's own doc for exactly what is and is not
- * wired to real data. It also briefly gave [DeckBezel] boot-trace parameters; **boot was dropped
- * 2026-08-14 by Kevin** and they are gone with it.
+ * additive, both dead by default at the time, see that composable's own doc for what is and is not
+ * wired to real data as of THIS ticket. It also briefly gave `DeckBezel` boot-trace parameters;
+ * **boot was dropped 2026-08-14 by Kevin** and they went with it.
+ *
+ * **`DeckBezel` itself, and [StatusLine]'s cursor/ALARM shape from ticket 14, are RETIRED by
+ * home-launcher ticket 02 (2026-09-27, ADR 0050)** - the mission-control look this file's own name
+ * still carries is superseded surface by surface, starting with the shell chrome. `DeckBezel` is
+ * deleted outright (see the comment at its old location, just above [DeckSectionRule]); [StatusLine]
+ * keeps its alarm handling but drops the blinking cursor entirely - see that composable's own,
+ * rewritten doc for the soft-Material shape it has now. Every OTHER primitive in this file
+ * ([DeckPane], [DeckTag], [QuarantineTag], [DeckMeter], [DeckRow], [DeckFeedRow], [DeckSectionRule])
+ * is untouched - they still serve the mission-control screens ADR 0050 has not reached yet.
  */
 
 // ------------------------------------------------------------------- DeckPane
@@ -559,195 +577,15 @@ fun DeckFeedRow(code: String, name: String, value: String, modifier: Modifier = 
     }
 }
 
-// ------------------------------------------------------------------ DeckBezel
-
-/**
- * **NEW (mission-control ticket 13, from ticket 03's bezel-and-chrome answer).** The one bezel
- * drawn once at shell level, wrapping the whole content area rather than each panel carrying its
- * own frame - the charting decision ticket 03 turned into geometry.
- *
- * Drawn with a single [drawBehind] pass rather than nested [border] modifiers, because the frame
- * is not a rectangle: a rounded rect with two straight-line BREAKS (top and bottom centre, 64dp
- * each, where the line is simply not drawn) is not expressible as a stack of borders. The four
- * corners are drawn as quarter-circle arcs (14dp radius), the left/right edges as unbroken
- * vertical lines, and the top/bottom edges as two line segments each, split around the centred
- * break. All ten pieces read [LegionSemantics.chromeDim] - the STRUCTURAL chrome tier, per ticket
- * 01's finding that full-strength chrome on every structural line would turn the screen into a
- * grid of alarms.
- *
- * The four L-shaped registration ticks are the one place full-strength [LegionSemantics.chrome]
- * appears when nothing is wrong (ticket 03 answer). Each is an elbow inset 5dp inside its corner
- * with two 6dp arms extending inward, following the same "elbow at the near point, arms extend
- * into the content" convention [DeckPane]'s old corner brackets used - not specified further by
- * ticket 03's geometry table, so this is the most literal reading of "6dp arms... inset 5dp inside
- * each corner" available without a rendered mock to check against.
- *
- * Does **not** apply system-bar insets itself - ticket 03's "6dp inset from the edge, inside
- * system insets, not under them" describes the intended on-screen result once a caller sizes/pads
- * this to sit inside the window insets (e.g. `Modifier.fillMaxSize().windowInsetsPadding(...)`
- * passed in as [modifier]); wiring that into a real shell is scoped to a later ticket, not this
- * one, which builds the primitive only.
- *
- * Wraps [content] in a plain [Box] with **no clip** - the content padding (9 left / 10 top / 9
- * right / 12 bottom, matching ticket 03's "content padding inside the line" row) keeps ordinary
- * content off the frame, but nothing here stops a caller's own content from drawing past it on
- * purpose.
- *
- * **Wired into the shell by mission-control ticket 14** ([com.kevin.legion.ui.MainActivity]'s
- * `LegionShell` wraps the whole `Scaffold` - content AND the pinned status line / Alfred strip /
- * hard-key row - in one [DeckBezel], per ticket 08 answer #1: driving mode gets the full deck
- * language too, so there is deliberately no `isDrivingMode` carve-out at this call site; the
- * bezel is unconditional and it is [NavHost]'s own destinations, not the shell, that decide what
- * shows inside it.
- *
- * **The frame is drawn in one static pass.** It briefly carried `traceProgress`/`ticksVisible`
- * parameters so the boot sequence could trace it on from the corners (ticket 14, spending ticket
- * 07 answer #8). **Boot was dropped 2026-08-14 by Kevin** - cold process start on the target device
- * exceeds 1.2s to first draw against an 800ms sequence, so the animation was largely invisible in
- * practice and did not earn its complexity. Both parameters and the interpolation they drove are
- * gone rather than left defaulted, since a dead parameter pointing at a deleted file is exactly the
- * rot this file's own conventions warn about. The side edges stay pre-split into halves: that is
- * now purely a drawing convenience, not the remnant of an animation.
- */
-@Composable
-fun DeckBezel(
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit,
-) {
-    val sem = LocalLegionSemantics.current
-    val lineColor = sem.chromeDim
-    val tickColor = sem.chrome
-    Box(
-        modifier
-            .fillMaxSize()
-            .drawBehind {
-                val inset = 6.dp.toPx()
-                val radius = 14.dp.toPx()
-                val breakLen = 64.dp.toPx()
-                val tickArm = 6.dp.toPx()
-                val tickInset = 5.dp.toPx()
-                val strokeWidth = 1.dp.toPx()
-                val stroke = Stroke(width = strokeWidth)
-
-                val left = inset
-                val top = inset
-                val right = size.width - inset
-                val bottom = size.height - inset
-                val diameter = radius * 2f
-
-                // Four corner arcs (quarter circles). drawArc's own convention: 0deg = 3
-                // o'clock, sweeping clockwise as the angle grows (Canvas y grows downward).
-                val sweep = 90f
-                drawArc(
-                    lineColor,
-                    startAngle = 180f,
-                    sweepAngle = sweep,
-                    useCenter = false,
-                    topLeft = Offset(left, top),
-                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
-                    style = stroke,
-                )
-                drawArc(
-                    lineColor,
-                    startAngle = 270f,
-                    sweepAngle = sweep,
-                    useCenter = false,
-                    topLeft = Offset(right - diameter, top),
-                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
-                    style = stroke,
-                )
-                drawArc(
-                    lineColor,
-                    startAngle = 0f,
-                    sweepAngle = sweep,
-                    useCenter = false,
-                    topLeft = Offset(right - diameter, bottom - diameter),
-                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
-                    style = stroke,
-                )
-                drawArc(
-                    lineColor,
-                    startAngle = 90f,
-                    sweepAngle = sweep,
-                    useCenter = false,
-                    topLeft = Offset(left, bottom - diameter),
-                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
-                    style = stroke,
-                )
-
-                // Left and right edges, each drawn as a top half and a bottom half that meet at
-                // the midpoint. Two calls per side rather than one is a leftover shape from the
-                // dropped boot trace; it draws identically to a single line and is kept because
-                // splitting at the midpoint costs nothing and reads symmetrically with the
-                // top/bottom edges, which genuinely are split around their break.
-                val vHalf = ((bottom - radius) - (top + radius)) / 2f
-                drawLine(lineColor, Offset(left, top + radius), Offset(left, top + radius + vHalf), strokeWidth)
-                drawLine(lineColor, Offset(left, bottom - radius), Offset(left, bottom - radius - vHalf), strokeWidth)
-                drawLine(lineColor, Offset(right, top + radius), Offset(right, top + radius + vHalf), strokeWidth)
-                drawLine(lineColor, Offset(right, bottom - radius), Offset(right, bottom - radius - vHalf), strokeWidth)
-
-                // Top and bottom edges: each split into two segments around a 64dp break centred
-                // on the edge. The break is what makes this read as a machined bezel rather than
-                // a rounded rectangle (ticket 03 section 1). The coerce guards keep a very narrow
-                // screen from drawing a segment backwards.
-                val breakHalf = breakLen / 2f
-                val centerX = left + (right - left) / 2f
-                val breakLeftX = (centerX - breakHalf).coerceAtLeast(left + radius)
-                val breakRightX = (centerX + breakHalf).coerceAtMost(right - radius)
-                if (breakLeftX > left + radius) drawLine(lineColor, Offset(left + radius, top), Offset(breakLeftX, top), strokeWidth)
-                if (breakRightX < right - radius) drawLine(lineColor, Offset(right - radius, top), Offset(breakRightX, top), strokeWidth)
-                if (breakLeftX > left + radius) drawLine(lineColor, Offset(left + radius, bottom), Offset(breakLeftX, bottom), strokeWidth)
-                if (breakRightX < right - radius) drawLine(lineColor, Offset(right - radius, bottom), Offset(breakRightX, bottom), strokeWidth)
-
-                // Four L-shaped registration ticks, full-strength chrome. Elbow inset 5dp
-                // inside each corner, arms extending 6dp further inward. These are the only
-                // full-strength chrome on screen when nothing is wrong (ticket 03 section 1).
-                // Top-left.
-                run {
-                    val ex = left + tickInset
-                    val ey = top + tickInset
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex + tickArm, ey), strokeWidth)
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex, ey + tickArm), strokeWidth)
-                }
-                // Top-right.
-                run {
-                    val ex = right - tickInset
-                    val ey = top + tickInset
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex - tickArm, ey), strokeWidth)
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex, ey + tickArm), strokeWidth)
-                }
-                // Bottom-left.
-                run {
-                    val ex = left + tickInset
-                    val ey = bottom - tickInset
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex + tickArm, ey), strokeWidth)
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex, ey - tickArm), strokeWidth)
-                }
-                // Bottom-right.
-                run {
-                    val ex = right - tickInset
-                    val ey = bottom - tickInset
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex - tickArm, ey), strokeWidth)
-                    drawLine(tickColor, Offset(ex, ey), Offset(ex, ey - tickArm), strokeWidth)
-                }
-            }
-            // Ticket 03's content padding is 9/10/9/12 measured FROM THE DRAWN LINE, and the line
-            // itself sits 6dp inset with a 1dp stroke. This padding applies from the Box's own
-            // edge, so each value carries the 7dp the frame occupies before it: 6dp inset + 1dp
-            // line + the spec. That is what makes ticket 03's stated total width cost - "32dp,
-            // 6 + 1 + 9, doubled" - come out right, and it puts the grid's interior at the 328dp
-            // ticket 05's tile arithmetic assumes.
-            //
-            // Shipped briefly as a bare 9/10/9/12 (mission-control ticket 14), which left content
-            // clearing the line by 2dp horizontally and 5dp vertically. That was caught twice
-            // before it was understood: ticket 14 measured the bottom gap at ~5.5dp against 12dp
-            // and filed it as a deviation, and ticket 16's HOME build measured the interior at
-            // 341dp against 328dp and filed it as horizontal drift in the planning doc. One bug,
-            // two symptoms, both by pixel sampling rather than by eye.
-            .padding(start = 16.dp, top = 17.dp, end = 16.dp, bottom = 19.dp),
-        content = content,
-    )
-}
+// [DeckBezel] REMOVED (home-launcher ticket 02, ADR 0050). It was the one global mission-control
+// frame ("a rounded rect with two straight-line BREAKS... four L-shaped registration ticks"),
+// wired into the shell by mission-control ticket 14 and wrapping MainActivity's whole Scaffold.
+// Ticket 01's resolution ("How far the look reaches now") retires it along with the rest of the
+// mission-control chrome - a soft-Material HOME is not framed in the old bezel, and the ticket's
+// own words are explicit: "the mission-control bezel goes, so home is not framed in the old look."
+// `MainActivity.kt`'s `LegionShell` no longer wraps its `Scaffold` in this - see that file's own
+// comment at the removal site. Grep-confirmed no other caller in `app/src` before deleting the
+// composable itself; `python tools/docs_check.py` confirmed nothing under `docs/` names it either.
 
 // ------------------------------------------------------------- DeckSectionRule
 
@@ -793,193 +631,228 @@ fun DeckSectionRule(label: String, modifier: Modifier = Modifier) {
 // ----------------------------------------------------------------- StatusLine
 
 /**
- * The global top status line: [left] on the leading edge with a trailing
- * blinking block cursor, [clock] trailing. **The app's ONE ambient
- * animation** (ticket 04 answer #3) - nothing else in the deck animates
- * continuously, on purpose, for battery and to keep continuous animation out
- * of recomposition-heavy trees.
+ * The global top status line, restyled for the soft-Material shell (home-launcher ticket 02, ADR
+ * 0050) - one of the two pieces of shell chrome this ticket converts (the other is
+ * [com.kevin.legion.ui.assistant.AssistantStrip]). Every other screen keeps
+ * [com.kevin.legion.ui.theme.LegionTheme] until its own ticket, so `MainActivity.kt`'s `LegionShell`
+ * wraps just this call in [com.kevin.legion.ui.theme.soft.SoftTheme] rather than this composable
+ * moving out of the shared file it has always lived in.
  *
- * The blink is read in the DRAW phase, not the composition phase: the cursor
- * [Box] uses `Modifier.graphicsLayer { alpha = cursorAlpha.value }`, whose
- * lambda overload defers the [androidx.compose.runtime.State] read to
- * layout/draw, so the 500ms toggle invalidates only this small leaf's draw
- * pass rather than recomposing [StatusLine] or anything above it - the
- * "drive draw-phase reads, not composition" guidance this ticket's brief
- * points at (`compose-state-deferred-reads`).
+ * **What is RETIRED from the mission-control version, and why.** The blinking block cursor
+ * (cyberdeck-ui ticket 04's "the app's ONE ambient animation") is gone with the design language it
+ * was part of - a soft chrome has no bezel/registration-tick vocabulary for a cursor to read
+ * alongside, and nothing in ticket 02's spec asks for a replacement ambient element. [cursorSolid]
+ * and the `fleetSweepActive` plumbing that fed it and ONLY it (mission-control ticket 07's "the
+ * cursor yields") are retired with it - see `MainActivity.kt`'s own comment at the removal site. The
+ * SETUP text stamp becomes a real `IconButton` (`ms_settings`) - the same 48dp touch target the
+ * stamp already padded to, just drawn as an icon instead of tracked caps.
  *
- * When [com.kevin.legion.ui.theme.deckMotionEnabled] is false, no
- * [androidx.compose.animation.core.InfiniteTransition] is created at all -
- * the cursor renders solid (`alpha = 1f`) and never toggles again, matching
- * ticket 04 answer #5's "the cursor stops blinking" for reduced motion.
+ * **What SURVIVES, reshaped.** Alarm handling (cyberdeck-ui ticket 04) still hides nothing: the pill
+ * renders BESIDE the ordinary sync/OBD/key content rather than replacing it, a deliberate widening
+ * from the mission-control version's "the segment replaces SYNC and OBD" (that version was
+ * space-constrained by a fixed-width monospace stamp; a wrapped, proportional-type row is not).
+ * Ticket 02's own "the key segment still survives beside [the alarm pill]" instruction is honoured
+ * trivially under this reading - [keyLabel], when non-null, always renders, alarm or not, so there
+ * is nothing for the pill to displace.
  *
- * **[onOpenSettings] (2026-08-12): the SETUP stamp, and the only way into
- * `settings/` that exists.** Traced that day: the sole
- * `navigate(LegionRoute.SETTINGS)` call site in the app was
- * [com.kevin.legion.ui.assistant.AssistantStrip]'s mic-blocked branch, which
- * fires only when the assistant is ON *and* RECORD_AUDIO has been revoked -
- * and the assistant can only be switched on from Settings. That is a closed
- * loop: on any ordinary device Settings, and therefore the Gemini key, Drive
- * sync, companions, and Spotify screens under it, could not be reached at all.
+ * Left to right: an 8dp sync dot ([SoftColors.good] / [SoftColors.text3]) plus "Synced"/"Sync off",
+ * the OBD state in words, [keyLabel] if there is one to show (null means the key is armed - nothing
+ * to disclose, matching CLAUDE.md §7's "estimates/failures are labelled, a healthy state need not
+ * shout"), then the alarm pill once [alarmCount] is positive. Right: the clock, then an APPS icon
+ * button if [onOpenApps] is given, then the settings icon button - the only way into `settings/`,
+ * unchanged in that respect from the mission-control version (2026-08-12: the sole
+ * `navigate(LegionRoute.SETTINGS)` call site elsewhere in the app is
+ * [com.kevin.legion.ui.assistant.AssistantStrip]'s mic-blocked branch, which itself requires the
+ * assistant to already be on - a closed loop broken only by this button).
  *
- * It lands HERE rather than as a sixth hard key because cyberdeck-ui ticket
- * 05's Answer is explicit - "utility screens stay reachable through the
- * existing settings route, no bespoke key" - and because this line already
- * reports SYNC/OBD/KEY, every one of which is fixed in Settings. Making the
- * line that reports a problem also the way to act on it is the coherent
- * placement, not merely the convenient one.
- *
- * Null (the default) renders no stamp, which keeps [StatusLine] previewable
- * and leaves ThemePreview's call untouched.
- *
- * **Mission-control ticket 14 reshapes this, in two ways**, both additive - every existing caller
- * (there was exactly one, [com.kevin.legion.ui.MainActivity]'s `LegionShell`) is byte-for-byte
- * unaffected until it opts in:
- *
- * 1. **[alarmCount] / [onOpenAlarm] / [keySegment]** (ticket 04 answer, section 6: "while an ALARM
- *    is present, the segment replaces SYNC and OBD; they return when it clears. The clock and date
- *    stay."). [left] keeps carrying whatever the caller normally shows in that slot (today: the
- *    `SYNC ... OBD ...` half of `MainActivity.kt`'s `shellStatusLine` split); [keySegment] is the
- *    part that must survive an alarm (the ticket's "KEY" clause) and is rendered AFTER the alarm
- *    pill instead of [left] once [alarmCount] is greater than zero.
- *
- *    **WIRED, ticket 04's build (2026-08-18)**: `LegionShell` now folds
- *    [com.kevin.legion.ledger.LedgerController.quarantinedCount] into the same `STATUS_POLL_MS`
- *    poll that already refreshed `shellStatusLine`, splits that function's old single string into
- *    `left` / `keySegment` via the pure `formatShellStatusLine`, and passes both plus the live
- *    count through to this composable, with `onOpenAlarm` originally navigating to `LegionRoute.TODAY`
- *    (ticket 04 answer §6: "tapping the segment navigates to TODAY", where the ALERTS pane listed
- *    every alarm - not to Money, since several ALARM rows can be live at once and ALERTS was the
- *    surface that owned the list, not any one aspect). That ALERTS pane was retired by Kevin on
- *    2026-08-22 ("alerts tab in home is useless. retire it. delete") and `ui/TodayScreen.kt` itself
- *    was deleted 2026-09-01 (one-today ticket 07) - `onOpenAlarm` now navigates to
- *    `LegionRoute.HOME`, landing a tapped alarm on the day its reminder actually belongs to.
- *    An active vehicle fault (DTC) is ticket 04's
- *    OTHER named ALARM example and is deliberately NOT a second source feeding [alarmCount] here -
- *    see `IngestedFileDao.countQuarantined`'s own doc for why (a DTC read is a live OBD scan, not
- *    persisted state this poll can cheaply add).
- *    Rendered as the ticket's "inverted pill treatment: solid `chrome` fill, `ground`-coloured
- *    text" - see the private `AlarmSegment` helper below. Tapping it calls [onOpenAlarm].
- * 2. **[cursorSolid]** (ticket 07 answer, "the cursor yields": "on a surface that defines its own
- *    ambient element, the cursor renders solid"). Defaults `false`, preserving the shipped blink.
- *    **Nothing sets this yet** - FLEET's own build ticket is the first surface with a genuinely
- *    live ambient element (the uplink sweep, gated on OBD being connected), and it is that
- *    ticket's job to thread `true` down to this line while its own sweep is running, per ticket
- *    07's precedence stack (alarm pulse > surface ambient > shell cursor - a surface that sets
- *    [cursorSolid] because of its own ambient element should also set it, or set [alarmCount],
- *    while ITS OWN alarm pulse is running, so at most one element in view ever moves).
- *
- * **UNCHANGED from mission-control ticket 13** (ticket 03 answer #5): still lives inside
- * [DeckBezel] in the real shell (ticket 14 is what actually wires that), and the deferred-read
- * cursor mechanism itself is untouched - [cursorSolid] only changes which VALUE feeds it.
+ * **States are worded, never colour alone** (CLAUDE.md §4/§7): "Sync off" / "OBD off" / [keyLabel]'s
+ * own "Key not set" text carry the meaning; colour (`good`/`text3`, `caution`) reinforces it.
  */
 @Composable
 fun StatusLine(
-    left: String,
+    synced: Boolean,
+    obdConnected: Boolean,
     clock: String,
     modifier: Modifier = Modifier,
+    /** Null (the default, meaning the key is armed) discloses nothing - see the class doc. */
+    keyLabel: String? = null,
     onOpenSettings: (() -> Unit)? = null,
-    keySegment: String? = null,
+    /**
+     * The app-drawer link. Added 2026-09-27 alongside this restyle, on word from the orchestrator
+     * that `dev` had, in the same window, landed `1434459` ("LEGION can be the phone's home app",
+     * `docs/adr/0050-legion-may-be-the-home-app.md` on THAT branch - a different ADR 0050 than this
+     * branch's own `docs/adr/0050-design-language-soft-material.md`; the two branches minted the
+     * same number independently and whoever merges them owes one a renumber). Verified against
+     * `origin/dev` directly rather than taken on trust - see this ticket's own report. Null (the
+     * default) hides the button entirely, so this ticket's own `MainActivity.kt` caller (which does
+     * not pass it) is byte-for-byte unaffected; wiring a real callback is that ADR's own build, not
+     * this ticket's.
+     */
+    onOpenApps: (() -> Unit)? = null,
+    /**
+     * The quiet-mode toggle. Added 2026-09-27, same session as [onOpenApps]. Unlike that one, no
+     * commit existed to check against at the time this parameter pair was first added (checked
+     * `origin/dev`, `memory/library/decisions.md` and every `.scratch` ticket title naming "quiet"
+     * - none described this exact toggle) - it was built on the orchestrator's instruction alone.
+     * The exact parameter names and the "Quiet"/"Quiet on" wording were subsequently confirmed by
+     * the session that owns the `QuietMode` controller (legion-10). Null (the default) hides the
+     * button entirely, matching [onOpenApps]'s own posture - this ticket's `MainActivity.kt`
+     * caller passes neither; wiring a real callback is `QuietMode`'s own build, not this ticket's.
+     */
+    onToggleQuiet: (() -> Unit)? = null,
+    /** Whether quiet mode is currently on - see [onToggleQuiet]. Ignored while that is null. */
+    quietOn: Boolean = false,
     alarmCount: Int = 0,
     onOpenAlarm: (() -> Unit)? = null,
-    cursorSolid: Boolean = false,
 ) {
-    val sem = LocalLegionSemantics.current
-    val motionEnabled = deckMotionEnabled()
-    // The cursor yields (ticket 07): a surface with its own ambient element, or an active alarm
-    // elsewhere in the precedence stack, sets [cursorSolid] so this is never the second thing
-    // moving on screen. Reduced motion already forces the same solid state via [motionEnabled];
-    // [cursorSolid] is just a second, independent reason to skip the InfiniteTransition entirely.
-    val cursorAlpha = if (motionEnabled && !cursorSolid) {
-        val transition = rememberInfiniteTransition(label = "status-cursor")
-        transition.animateFloat(
-            initialValue = 1f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = keyframes {
-                    durationMillis = 1000
-                    1f at 0
-                    1f at 450
-                    0f at 500
-                    0f at 950
-                },
-                repeatMode = RepeatMode.Restart,
-            ),
-            label = "status-cursor-alpha",
-        )
-    } else {
-        remember { mutableStateOf(1f) }
-    }
     Row(
-        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier
+            .fillMaxWidth()
+            .background(SoftColors.ground)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (alarmCount > 0) {
-                AlarmSegment(count = alarmCount, onClick = onOpenAlarm)
-                if (keySegment != null) {
-                    Text(
-                        keySegment.uppercase(),
-                        style = LegionType.stamp,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-            } else {
-                Text(left.uppercase(), style = LegionType.stamp, color = MaterialTheme.colorScheme.onBackground)
-            }
-            Box(
-                Modifier
-                    .padding(start = 4.dp)
-                    .size(width = 6.dp, height = 12.dp)
-                    .graphicsLayer { alpha = cursorAlpha.value }
-                    .background(MaterialTheme.colorScheme.onBackground),
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (onOpenSettings != null) {
-                // Padding, not a .size() - the stamp is small text and the tap
-                // target has to clear 48dp without the label growing to match.
+        // weight(1f) on a FlowRow, not Arrangement.SpaceBetween with a plain Row - the left content
+        // is the side that can genuinely grow long (sync + OBD + an optional key clause + an
+        // optional alarm pill), and it must never come at the cost of the clock/apps/settings
+        // cluster on the right, or of silently hiding one of its own clauses. Two shapes were tried
+        // and rejected first, both caught in the recorded PNGs before this fix: a plain
+        // Arrangement.SpaceBetween Row let a long left combination (synced, OBD linked, "Key not
+        // set", "2 alarms") squeeze the clock down to a width where IT wrapped onto two lines
+        // (`status-line-2-alarms-and-key.png`, first cut); giving that same plain Row a weight(1f)
+        // protected the clock but then CLIPPED the alarm pill's own text down to an unreadable
+        // sliver instead - exactly the "silently hiding a warning" CLAUDE.md §4/§7 forbids, just
+        // moved to a different element. A [FlowRow] wraps whichever clauses do not fit onto a
+        // second line instead of clipping or squeezing any of them - the row's "about 40dp" height
+        // (this composable's own doc) is the ordinary case; a rare worst-case combination of every
+        // disclosure at once costs height instead of costing legibility.
+        FlowRow(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .background(if (synced) SoftColors.good else SoftColors.text3, CircleShape),
+                )
                 Text(
-                    "SETUP",
-                    style = LegionType.stamp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clickable(onClick = onOpenSettings)
-                        .padding(horizontal = 10.dp, vertical = 14.dp),
+                    if (synced) "Synced" else "Sync off",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SoftColors.text2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(clock, style = LegionType.stamp, color = sem.faint)
+            Text(
+                if (obdConnected) "OBD linked" else "OBD off",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SoftColors.text2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (keyLabel != null) {
+                Text(
+                    keyLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SoftColors.caution,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (alarmCount > 0) {
+                AlarmPill(count = alarmCount, onClick = onOpenAlarm)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                clock,
+                // `tnum` (tabular figures): Figtree is proportional, not mono like the retired
+                // Martian Mono stamp - this is the OpenType feature that keeps a minute-to-minute
+                // clock tick from shifting width. A no-op if Figtree's own font tables happen not to
+                // carry that feature, never a crash risk (Skia ignores an unsupported tag).
+                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                color = SoftColors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+            )
+            if (onToggleQuiet != null) {
+                QuietPill(on = quietOn, onClick = onToggleQuiet)
+            }
+            if (onOpenApps != null) {
+                IconButton(onClick = onOpenApps) {
+                    MsIcon(res = R.drawable.ms_apps, contentDescription = "Apps", tint = SoftColors.text2)
+                }
+            }
+            if (onOpenSettings != null) {
+                IconButton(onClick = onOpenSettings) {
+                    MsIcon(res = R.drawable.ms_settings, contentDescription = "Settings", tint = SoftColors.text2)
+                }
+            }
         }
     }
 }
 
 /**
- * The ALARM segment's inverted-pill rendering (ticket 04 answer, section 2: "structurally free per
- * ticket 03 - a pill already paints whatever is behind it, so this needs no new component" -
- * applied here to plain text since [StatusLine] sits directly on the shell ground rather than on a
- * pane, so there is no "paint what's behind it" trick to inherit from [DeckPane]; this is the same
- * solid-fill-plus-ground-text READING, built as its own small [Box] rather than a literal pill
- * shape). Solid [LegionSemantics.chrome] fill, [MaterialTheme.colorScheme.background] (ground)
- * text - full-strength chrome, matching [DeckBezel]'s registration ticks as the other place this
- * tier appears when something is actually live. Static, not pulsing: ticket 04 section 2 reserves
- * the ~0.5Hz pulse for the ALARM PANE's own pill on the alarming surface itself, not for this
- * summary segment, and the scope that added this segment asked for the inverted treatment only.
- * Not exported - [StatusLine] is the only caller, same posture as [DeckLabelPill].
+ * The quiet-mode toggle (added 2026-09-27, see [StatusLine.onToggleQuiet]'s own doc for how this
+ * parameter pair was commissioned). A compact pill, 48dp touch target, worded rather than
+ * colour-only per CLAUDE.md §4/§7: "Quiet" (outlined, [SoftColors.outline]/[SoftColors.text2]) when
+ * [on] is false, "Quiet on" (filled [SoftColors.primaryContainer]/[SoftColors.onPrimaryContainer])
+ * when true - the same outlined-vs-filled two-tone convention
+ * [com.kevin.legion.ui.assistant.AssistantStrip]'s off-vs-enabled pill already uses, for visual
+ * consistency across this ticket's two restyled chrome elements. `contentDescription` on the
+ * clickable surface repeats the same words the label already shows, so TalkBack announces "Quiet"
+ * / "Quiet on" - never a bare icon-only state.
  */
 @Composable
-private fun AlarmSegment(count: Int, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
-    val sem = LocalLegionSemantics.current
+private fun QuietPill(on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val label = if (on) "Quiet on" else "Quiet"
+    val shape = RoundedCornerShape(percent = 50)
     Box(
         modifier
-            .background(sem.chrome)
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .heightIn(min = 48.dp)
+            .clip(shape)
+            .let {
+                if (on) it.background(SoftColors.primaryContainer) else it.border(1.dp, SoftColors.outline, shape)
+            }
+            .clickable(onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = label }
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
-            "ALARM $count".uppercase(),
-            style = LegionType.stamp,
-            color = MaterialTheme.colorScheme.background,
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (on) SoftColors.onPrimaryContainer else SoftColors.text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * The alarm pill (cyberdeck-ui ticket 04, restyled soft per home-launcher ticket 02):
+ * [SoftColors.alertContainer] fill, [SoftColors.onAlert] text, fully rounded, reading "1 alarm" /
+ * "N alarms". Tappable via [onClick], same as the mission-control version's inverted segment - only
+ * the paint job and the label's wording changed (sentence case, not "ALARM $count" caps, per ADR
+ * 0050: "Sentence-case words, not uppercase stamps").
+ */
+@Composable
+private fun AlarmPill(count: Int, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(percent = 50))
+            .background(SoftColors.alertContainer)
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            if (count == 1) "1 alarm" else "$count alarms",
+            style = MaterialTheme.typography.labelMedium,
+            color = SoftColors.onAlert,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

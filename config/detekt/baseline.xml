@@ -4821,5 +4821,82 @@
     <ID>MaxLineLength:VoiceGuideData.kt:VoiceGuideData$Entry(name = "switch_companion", say = "Can I talk to Dorothy?", does = "Hands the conversation to a different companion. They answer from the next turn on, in their own voice, and they will not know what was said before the handover.", hands = "Companions screen - tap whichever one you want.")</ID>
     <ID>MayBeConstant:VoiceGuideData.kt:VoiceGuideData$/** Total entries across every group above - 119 as of the last regeneration. */ val TOOL_COUNT: Int = 119</ID>
     <ID>MaxLineLength:VoiceGuideData.kt:VoiceGuideData$val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"Excelsior\" if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."</ID>
+    === DeckPanels.kt ===
+    <ID>FunctionNaming:DeckPanels.kt:@Composable fun StatusLine( synced: Boolean, obdConnected: Boolean, clock: String, modifier: Modifier = Modifier, /** Null (the default, meaning the key is armed) discloses nothing - see the class doc. */ keyLabel: String? = null, onOpenSettings: (() -&gt; Unit)? = null, /** * The app-drawer link. Added 2026-09-27 alongside this restyle, on word from the orchestrator * that `dev` had, in the same window, landed `1434459` ("LEGION can be the phone's home app", * `docs/adr/0050-legion-may-be-the-home-app.md` on THAT branch - a different ADR 0050 than this * branch's own `docs/adr/0050-design-language-soft-material.md`; the two branches minted the * same number independently and whoever merges them owes one a renumber). Verified against * `origin/dev` directly rather than taken on trust - see this ticket's own report. Null (the * default) hides the button entirely, so this ticket's own `MainActivity.kt` caller (which does * not pass it) is byte-for-byte unaffected; wiring a real callback is that ADR's own build, not * this ticket's. */ onOpenApps: (() -&gt; Unit)? = null, /** * The quiet-mode toggle. Added 2026-09-27, same session as [onOpenApps]. Unlike that one, no * commit existed to check against at the time this parameter pair was first added (checked * `origin/dev`, `memory/library/decisions.md` and every `.scratch` ticket title naming "quiet" * - none described this exact toggle) - it was built on the orchestrator's instruction alone. * The exact parameter names and the "Quiet"/"Quiet on" wording were subsequently confirmed by * the session that owns the `QuietMode` controller (legion-10). Null (the default) hides the * button entirely, matching [onOpenApps]'s own posture - this ticket's `MainActivity.kt` * caller passes neither; wiring a real callback is `QuietMode`'s own build, not this ticket's. */ onToggleQuiet: (() -&gt; Unit)? = null, /** Whether quiet mode is currently on - see [onToggleQuiet]. Ignored while that is null. */ quietOn: Boolean = false, alarmCount: Int = 0, onOpenAlarm: (() -&gt; Unit)? = null, )</ID>
+    <ID>FunctionNaming:DeckPanels.kt:@Composable private fun AlarmPill(count: Int, onClick: (() -&gt; Unit)?, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:DeckPanels.kt:@Composable private fun QuietPill(on: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:DeckPanels.kt:@Composable fun StatusLine( synced: Boolean, obdConnected: Boolean, clock: String, modifier: Modifier = Modifier, /** Null (the default, meaning the key is armed) discloses nothing - see the class doc. */ keyLabel: String? = null, onOpenSettings: (() -&gt; Unit)? = null, /** * The app-drawer link. Added 2026-09-27 alongside this restyle, on word from the orchestrator * that `dev` had, in the same window, landed `1434459` ("LEGION can be the phone's home app", * `docs/adr/0050-legion-may-be-the-home-app.md` on THAT branch - a different ADR 0050 than this * branch's own `docs/adr/0050-design-language-soft-material.md`; the two branches minted the * same number independently and whoever merges them owes one a renumber). Verified against * `origin/dev` directly rather than taken on trust - see this ticket's own report. Null (the * default) hides the button entirely, so this ticket's own `MainActivity.kt` caller (which does * not pass it) is byte-for-byte unaffected; wiring a real callback is that ADR's own build, not * this ticket's. */ onOpenApps: (() -&gt; Unit)? = null, /** * The quiet-mode toggle. Added 2026-09-27, same session as [onOpenApps]. Unlike that one, no * commit existed to check against at the time this parameter pair was first added (checked * `origin/dev`, `memory/library/decisions.md` and every `.scratch` ticket title naming "quiet" * - none described this exact toggle) - it was built on the orchestrator's instruction alone. * The exact parameter names and the "Quiet"/"Quiet on" wording were subsequently confirmed by * the session that owns the `QuietMode` controller (legion-10). Null (the default) hides the * button entirely, matching [onOpenApps]'s own posture - this ticket's `MainActivity.kt` * caller passes neither; wiring a real callback is `QuietMode`'s own build, not this ticket's. */ onToggleQuiet: (() -&gt; Unit)? = null, /** Whether quiet mode is currently on - see [onToggleQuiet]. Ignored while that is null. */ quietOn: Boolean = false, alarmCount: Int = 0, onOpenAlarm: (() -&gt; Unit)? = null, )</ID>
+    === MainActivity.kt ===
+    === AssistantStrip.kt ===
+    <ID>FunctionNaming:AssistantStrip.kt:@Composable internal fun AssistantOffRow(onTap: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Composable internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Composable private fun AssistantStripBar(content: @Composable () -&gt; Unit)</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: idle", widthDp = 384) @Composable private fun PreviewAssistantStripIdle()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: listening", widthDp = 384) @Composable private fun PreviewAssistantStripListening()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: mic permission needed", widthDp = 384) @Composable private fun PreviewAssistantStripMicBlocked()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: notice", widthDp = 384) @Composable private fun PreviewAssistantStripNotice()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: off (2026-09-01 - was zero-space)", widthDp = 384) @Composable private fun PreviewAssistantOffRow()</ID>
+    <ID>FunctionNaming:AssistantStrip.kt:@Preview(name = "Assistant strip: speaking", widthDp = 384) @Composable private fun PreviewAssistantStripSpeaking()</ID>
+    <ID>MagicNumber:AssistantStrip.kt:0xFF3A2E12</ID>
+    <ID>MaxLineLength:AssistantStrip.kt:.</ID>
+    <ID>MaxLineLength:AssistantStrip.kt:animationSpec = infiniteRepeatable(tween(com.kevin.legion.ui.theme.LegionMotion.PULSE_MS), RepeatMode.Reverse)</ID>
+    === ThemePreview.kt ===
+    <ID>FunctionNaming:ThemePreview.kt:@Preview(name = "VACUUM/SENTRY · Section rule + feed rows", showBackground = true) @Composable private fun PreviewBezelAndFeed()</ID>
+    === SoftColors.kt ===
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF121317</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF16181D</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF1C1E24</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF23262D</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF24272E</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF2A2D34</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF3A3E47</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF4A1F24</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF5E636E</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF733423</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF7EDBA5</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF8A8F9B</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFF8C1D18</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFA9ADB8</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFE6E7EC</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFF6B5E</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFB4A1</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFB4AB</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFC857</ID>
+    <ID>MagicNumber:SoftColors.kt:SoftColors$0xFFFFDBD1</ID>
+    === AreaAccent.kt ===
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.BODY$0xFF4A1F2C</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.BODY$0xFFFFB1C3</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.CALENDAR$0xFF1F3450</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.CALENDAR$0xFFA8C8FF</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.FLEET$0xFF0F3B40</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.FLEET$0xFF77DCE5</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.LISTS$0xFF43340F</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.LISTS$0xFFFFD36B</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.MONEY$0xFF173D2B</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.MONEY$0xFF7EDBA5</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.NEWS$0xFF4A2A12</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.NEWS$0xFFFFB77C</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.RECORDINGS$0xFF33265A</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.RECORDINGS$0xFFCDBDFF</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.REPORTS$0xFF262E57</ID>
+    <ID>MagicNumber:AreaAccent.kt:AreaAccent.REPORTS$0xFFB9C3FF</ID>
+    === SoftType.kt ===
+    === SoftTheme.kt ===
+    <ID>FunctionNaming:SoftTheme.kt:@Composable fun SoftTheme(content: @Composable () -&gt; Unit)</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF121318</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF16181E</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF1C1E25</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF23262E</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF24272F</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF242730</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF2A2D35</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF2A2D37</ID>
+    <ID>MagicNumber:SoftTheme.kt:0xFF3A3E48</ID>
+    === SoftIcon.kt ===
+    <ID>FunctionNaming:SoftIcon.kt:@Composable fun MsIcon( @DrawableRes res: Int, contentDescription: String?, tint: Color, modifier: Modifier = Modifier, size: Dp = 24.dp, )</ID>
+    === SoftThemeTest.kt ===
+    === StatusLineScreenshotTest.kt ===
+    === AssistantStripScreenshotTest.kt ===
+    === ShellStatusLineTest.kt ===
   </CurrentIssues>
 </SmellBaseline>
