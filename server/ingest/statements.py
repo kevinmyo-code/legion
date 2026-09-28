@@ -746,6 +746,11 @@ def process(
                     f"{body.get('removed', 0)} no longer listed and removed, "
                     f"{body.get('covered_by_statement', 0)} already on a verified statement"
                 )
+                pending = int(body.get("pending_left_out", 0) or 0)
+                if pending:
+                    detail += (
+                        f", {pending} pending temporary credit(s) not stored until they post"
+                    )
                 done(FileResult(file_id, name, "provisional", detail, inserted=inserted), stamp)
             else:
                 done(FileResult(file_id, name, "committed", inserted=inserted), stamp)

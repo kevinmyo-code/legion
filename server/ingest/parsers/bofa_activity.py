@@ -78,6 +78,9 @@ from ingest.parsers.bofa import CARD_NICKNAME, CHECKING_NICKNAME, CURRENCY
 from ingest.parsers.money import MoneyError, format_cents, parse_money_cents
 
 CARD_HEADER = "Posted Date,Reference Number,Payee,Address,Amount"
+# What BofA prints in the reference column of an undated, not-yet-posted
+# temporary credit (seen on a real export 2026-09-28).
+PENDING_TEMPORARY_CREDIT = "TEMPRET"
 CHECKING_SUMMARY_HEADER = "Description,,Summary Amt."
 CHECKING_TABLE_HEADER = "Date,Description,Amount,Running Bal."
 
@@ -176,6 +179,7 @@ def parse_card(lines: list[str], file_name: str) -> dict | None:
         )
 
     out = []
+    pending = 0
     for number, row in enumerate(rows, start=1):
         where = f"row {number} of this card export"
         fields = _fields(row, where.capitalize())
@@ -185,6 +189,16 @@ def parse_card(lines: list[str], file_name: str) -> dict | None:
                 f"(Posted Date, Reference Number, Payee, Address, Amount) LEGION reads. "
                 f"{NOTHING_WRITTEN}"
             )
+        posted, reference, payee, _address, amount = fields
+        if not posted.strip() and reference.strip() == PENDING_TEMPORARY_CREDIT:
+            # A temporary credit (a refund or dispute credit) that has not posted:
+            # BofA prints it with no date and TEMPRET where the reference goes.
+            # Kevin, 2026-09-28, option (a): left out BY NAME until it posts,
+            # counted, and said in words by the writer and the job log. It comes
+            # back as an ordinary dated row once it posts. Any OTHER undated row
+            # still refuses the file below (rule 6).
+            pending += 1
+            continue
         posted, _reference, payee, _address, amount = fields
         description = payee.strip()
         if not description:
@@ -204,11 +218,17 @@ def parse_card(lines: list[str], file_name: str) -> dict | None:
             }
         )
 
+    if not out:
+        raise statements.ParserRefused(
+            f"This card export lists only {pending} pending temporary credit(s), which are "
+            f"not stored until they post. {NOTHING_WRITTEN}"
+        )
     return {
         "account_last4": last4,
         "account_nickname": CARD_NICKNAME,
         "currency": CURRENCY,
         "lines": out,
+        "pending_left_out": pending,
     }
 
 
