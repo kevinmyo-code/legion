@@ -3,14 +3,29 @@ map: home-launcher
 ticket: "04"
 title: "Lists as icon cards; a list opens to a real checklist"
 type: build
-status: open
+status: built
 status-detail: >
-  Opened 2026-09-27 from ticket 01's resolution (variant C, Keep-style list).
-  Needs 02's theme, font and icons. Runs in parallel with 03 (disjoint
-  files).
+  Built 2026-09-27. ListsViewModel (AndroidViewModel, one StateFlow) plus
+  ListVisual/ListProgress (pure, unit-tested) drive an icon-card Lists page
+  and a Keep-style open list, all under SoftTheme; ChecklistController.ItemState
+  gained tickDay (additive) closing the untick trap, proven by a controller
+  test. compileDebugKotlin green; testDebugUnitTest 3644/3644 by XML (up from
+  3611 baseline + AppDrawerCacheTest), one confirmed pre-existing
+  order-dependent flake (AssistantStripScreenshotTest/UncaughtExceptionsBeforeTest,
+  passes clean in isolation, unrelated to this ticket's files); detekt clean
+  for every file this ticket touches (78 new baseline entries, named per file
+  under their own `=== File.kt ===` markers - mostly Compose's own PascalCase
+  naming convention that this repo's detekt.yml has no `ignoreAnnotated`
+  exception for, plus ListsViewModel's TooManyFunctions, a direct consequence
+  of the ticket's own "one ViewModel" design; 107 pre-existing findings
+  elsewhere, in files this ticket never touched, already unbaselined before
+  this ticket started). Roborazzi baselines recorded (5 PNGs). Needs a run on
+  the phone; the calendar day view's own untick has the identical
+  any-day-plain-list bug (finding for Kevin, not fixed here per the ticket's
+  own instruction).
 blockers: ["02"]
 blocked-by: ["[[02-soft-theme-and-chrome]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
