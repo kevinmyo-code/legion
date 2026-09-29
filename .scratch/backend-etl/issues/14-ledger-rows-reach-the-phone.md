@@ -4,7 +4,7 @@ ticket: "14"
 title: "Ledger rows reach the phone: categorised at insert, mirrored whole, deletions honoured"
 type: build
 status: built
-status-detail: "Built 2026-09-28 on feat/phone-ledger-pull (not merged, not deployed). Server and Android suites green by JUnit. Owed: deploy, then the phone check below. Open decision: the ~850 rows stored before this cannot be categorised on the server."
+status-detail: "Decision resolved 2026-09-28 (Kevin: \"yes 2\"): category overrides table, built 2026-09-29 on feat/ledger-category-overrides with the Transfers not-spending flag. Not merged, not deployed. Owed: deploy (server BEFORE the APK), the live apply_category_rules backfill (dry run first), and the phone checks below."
 blockers: ["06", "13"]
 blocked-by: ["[[06-drive-statements-watcher]]", "[[13-bofa-activity-csv-server-side]]"]
 tags: [ticket]
@@ -59,7 +59,42 @@ from code:
 - Unverified in words was already true on every Money surface: tile ("unverified"), budget section
   ("includes pending transactions not yet on a statement"), rows ("pending, not verified").
 
-## Decision owed: the rows already stored (Kevin)
+## Decision: option 2 (Kevin, 2026-09-28: "yes 2")
+
+Resolved. Built 2026-09-29 on `feat/ledger-category-overrides`, in this ticket rather than a new
+one because the brief put it here.
+
+- **Server: `ledger_transaction_categories`** (`server/ingest/category_overrides.py`, DDL in
+  `ingest/migrations/0007`). One row per transaction; `source` in {`rule`, `person`}; `deleted_at`
+  tombstone; household must equal the transaction's (composite FK); `rule` never replaces a live
+  `person` row (API refusal in words and a SQL trigger); cascades with a rule-7-superseded row. No
+  FK to `categories`, reasons in `create_sql`'s docstring. In `TENANT_TABLES`, leak-tested.
+- **Server: the effective category.** `GET /api/ledger/transactions/` and `/api/changes` serve
+  `category` = override if live, else stored; plus `stored_category` and `category_source`
+  (`person` / `rule` / `stored` / null). Installed APKs get the effective category with no change.
+- **Server: `PUT|DELETE /api/ledger/transaction_categories/<transaction_id>/`**, synced like the
+  other config routes.
+- **Server: `manage.py apply_category_rules [--dry-run] [--household <uuid>]`.** Writes `rule`
+  overrides for rows whose effective category is empty. Idempotent, never touches a `person` row,
+  leaves a deliberately deleted override alone. There is no server-side budget or report figure to
+  change: the server serves rows, not totals (grepped).
+- **Phone:** a category set by hand (`recategorize`, `setCategory`, `confirmCategoryGuess`) goes to
+  the engine as a `person` override, queued in the outbox when the engine is down and said so in
+  words (voice result, Money screen line). The mirror's precedence is written once,
+  `backend/LedgerTransactionsMirror.kt` `mirroredCategoryFill`. The phone's own rules after the
+  mirror are now the offline fallback only.
+
+### Added 2026-09-29: Transfers is not spending
+
+Kevin, 2026-09-29: "ignore zelle for spending. its just transfer between here and there."
+`categories.excluded_from_spend` (server migration `0008`, Room v71 `excludedFromSpend`) is the one
+definition. Every phone spend figure leaves those rows out and says so in words ("N transactions in
+Transfers (USD X) excluded from spend"; HOME: "Excludes USD X in Transfers"). `Transfers` is seeded
+on the phone with the flag on and reaches the server through the category backfill. Card-payment
+pairing (`analyzeTransfers`) is unchanged. The rules `ZELLE PAYMENT TO` and
+`ONLINE BANKING TRANSFER TO SAV` -> Transfers are to be added on live after deploy, not here.
+
+## Decision owed: the rows already stored (Kevin) - RESOLVED above, kept for the reasoning
 
 `forbid_mutation_of_facts` refuses every UPDATE on `ledger_transactions`, category included. So the
 one-shot `apply_category_rules` backfill the plan asked for **cannot be built** without touching the
@@ -100,4 +135,21 @@ refuses for gated rows. Recommendation: (2), as its own ticket.
   4. Airplane mode, SYNC NOW, back to HOME: the tile says "Not synced - this phone's last copy"
      and the figures are unchanged. Airplane off, SYNC NOW: the line goes.
   5. A voice-logged pending charge ("log a $5 coffee") survives a SYNC NOW.
-- [ ] Kevin runs nothing extra on the live DB: there is no backfill command (see the decision).
+- [x] ~~Kevin runs nothing extra on the live DB~~ superseded by option 2: there IS a backfill now.
+
+### Option 2 + Transfers (2026-09-29)
+
+- [ ] **Deploy the server BEFORE installing the new APK.** The new APK sends
+      `excluded_from_spend` on every category write, and an engine without the column refuses an
+      unknown field with a 400; the override route does not exist before deploy either.
+- [ ] **Live backfill**, dry run first, then for real (commands in the build report).
+- [ ] On the A25:
+  1. Money: a row set by hand (tap a row, pick a category) survives SYNC NOW; the web list or
+     `GET /api/ledger/transactions/` shows it with `category_source: person`.
+  2. Airplane mode, set a category, back to Money: the line under the title says it is saved on this
+     phone and not yet on the server. Airplane off, SYNC NOW: the "Money:" line reports "sent 1
+     category choices", and the line under the title goes.
+  3. Settings/categories include `Transfers`. After the live rules are added and a mirror runs, a
+     Zelle row shows under Transfers, the Money tile says "Excludes USD X in Transfers", the SPEND
+     figure drops by that amount, and card payments are still in the own-account disclosure.
+  4. Ask by voice for this month's spend: the answer says the Transfers amount was excluded.
