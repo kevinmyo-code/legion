@@ -46,6 +46,19 @@ class HomeTileReadingsTest {
             excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),
         )
 
+    @Test
+    fun `the Money tile says in words how much Transfers left out of spend`() {
+        val budget = budgetFixture(emptyList()).copy(
+            notSpendingExcluded = com.kevin.legion.ledger.NotSpendingExcluded(
+                2, 650_00L, listOf("Transfers"), emptyList(),
+            ),
+        )
+        val line = moneyDisclosureLine(budget)!!
+        assertTrue(line, line.contains("Excludes"))
+        assertTrue(line, line.contains("in Transfers"))
+        assertTrue(line, line.contains(com.kevin.legion.ledger.formatMoney(650_00L, LedgerCurrency.USD)))
+    }
+
     private fun dueRow(overdue: Boolean): DueRowView =
         DueRowView(label = "Oil change", value = "1,200 mi", sub = "every 5,000 mi", overdue = overdue)
 

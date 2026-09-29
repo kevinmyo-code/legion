@@ -73,10 +73,12 @@ object LedgerConfigWriteThrough {
         val guid: String,
         val name: String,
         val isFoodCategory: Boolean,
+        // Defaulted so an entry queued by an older build still decodes.
+        val excludedFromSpend: Boolean = false,
     ) {
-        fun toFields() = CategoryFields(name, isFoodCategory)
+        fun toFields() = CategoryFields(name, isFoodCategory, excludedFromSpend)
         companion object {
-            fun from(row: Category) = CategoryPayload(row.guid, row.name, row.isFoodCategory)
+            fun from(row: Category) = CategoryPayload(row.guid, row.name, row.isFoodCategory, row.excludedFromSpend)
         }
     }
 

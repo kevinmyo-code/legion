@@ -59,11 +59,18 @@ class CarDatabaseFreshInstallTest {
         // "stranger clones, sideloads, opens the app for the first time" case.
         val names = CarDatabase.getDatabase(context).categoryDao().allNames()
 
-        assertEquals(CategorySeed.starter.size, names.size)
+        // v71: plus the not-spending starters (Transfers), seeded from their own list.
+        assertEquals(CategorySeed.starter.size + CategorySeed.notSpending.size, names.size)
         for ((name, _) in CategorySeed.starter) {
             assertTrue("expected '$name' among a fresh install's categories, got $names", name in names)
         }
         assertTrue("expected 'Pets' specifically among a fresh install's categories", "Pets" in names)
+    }
+
+    @Test
+    fun `a fresh database has Transfers, and it is the only category that is not spending`() = runBlocking {
+        val dao = CarDatabase.getDatabase(context).categoryDao()
+        assertEquals(listOf("Transfers"), dao.notSpendingNames())
     }
 
     @Test

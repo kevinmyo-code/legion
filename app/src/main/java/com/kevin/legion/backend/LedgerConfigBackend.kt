@@ -38,11 +38,16 @@ data class RemoteCategory(
     val updatedAtMs: Long,
     val deleted: Boolean,
     val originGuid: String,
+    /** `categories.excluded_from_spend` (2026-09-29). Null when the transport does not carry the
+     * column at all (Supabase), which the pull reads as "keep the phone's own value", never as
+     * false - a transport that cannot see the flag must not clear it. */
+    val excludedFromSpend: Boolean? = null,
 )
 
 data class CategoryFields(
     val name: String,
     val isFoodCategory: Boolean,
+    val excludedFromSpend: Boolean = false,
 )
 
 // ---------------------------------------------------------------------------------------------

@@ -32,6 +32,11 @@ interface CategoryDao {
     @Query("SELECT name FROM categories WHERE deleted = 0 ORDER BY name ASC")
     suspend fun allNames(): List<String>
 
+    /** The live categories flagged [Category.excludedFromSpend] - the one definition of "not
+     * spending" every spend figure reads (`LedgerController.notSpendingCategories`). */
+    @Query("SELECT name FROM categories WHERE deleted = 0 AND excludedFromSpend = 1 ORDER BY name ASC")
+    suspend fun notSpendingNames(): List<String>
+
     /**
      * True if [name] already exists under any case - the case-insensitive duplicate check the
      * add-category affordance needs (`Pets` vs `pets`) that a plain `UNIQUE INDEX` on `name` alone

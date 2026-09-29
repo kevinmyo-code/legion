@@ -2927,3 +2927,41 @@ val MIGRATION_69_70 = object : Migration(SCHEMA_V69, SCHEMA_V70) {
         )
     }
 }
+
+private const val SCHEMA_V71 = 71
+
+/**
+ * `categories.excludedFromSpend` (Kevin, 2026-09-29: "ignore zelle for spending. its just transfer
+ * between here and there.") - see [Category.excludedFromSpend]. The column definition is copied
+ * verbatim out of the generated `71.json` (`excludedFromSpend INTEGER NOT NULL DEFAULT 0`), the only
+ * edit CLAUDE.md section 5 permits; `ALTER TABLE ... ADD COLUMN`, not a rebuild, because a NOT NULL
+ * column with a constant default is additive in SQLite.
+ *
+ * **Then the starter `Transfers` row**, the house pattern for a new starter category
+ * ([MIGRATION_11_12], [MIGRATION_16_17]): inserted if absent with the flag on, a fresh guid (the
+ * [MIGRATION_59_60] expression) and `updatedAtMs` now, so `LedgerConfigBackfill` pushes it to the
+ * server on the next resume - its id is past every backfill cursor and its `serverId` is null. A
+ * `Transfers` that already exists keeps its row and only gains the flag; that one is NOT pushed by
+ * the backfill (its id is behind the cursor), so the server learns the flag the next time the
+ * category is written. Stated rather than hidden in the report.
+ */
+val MIGRATION_70_71 = object : Migration(SCHEMA_V70, SCHEMA_V71) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `categories` ADD COLUMN `excludedFromSpend` INTEGER NOT NULL DEFAULT 0")
+        val uuidExpr = "(" +
+            "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+            "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "lower(hex(randomblob(6)))" +
+            ")"
+        for (name in CategorySeed.notSpending) {
+            db.execSQL(
+                "INSERT OR IGNORE INTO `categories` " +
+                    "(`name`, `isFoodCategory`, `guid`, `updatedAtMs`, `deleted`, `excludedFromSpend`) " +
+                    "VALUES (?, 0, $uuidExpr, (strftime('%s','now') * 1000), 0, 1)",
+                arrayOf<Any>(name),
+            )
+            db.execSQL("UPDATE `categories` SET `excludedFromSpend` = 1 WHERE `name` = ?", arrayOf<Any>(name))
+        }
+    }
+}

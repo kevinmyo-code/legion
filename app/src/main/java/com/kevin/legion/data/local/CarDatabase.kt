@@ -373,7 +373,7 @@ import androidx.room.RoomDatabase
         GeminiUsage::class, LiveConnectDay::class, BackgroundPassState::class,
         FeedSubscription::class,
     ],
-    version = 70,
+    version = 71,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -548,7 +548,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 70
+        const val SCHEMA_VERSION = 71
         // 2026-09-06: bumped to 67 alongside `@Database(version=)` in the same edit again
         // (`conversation_audit.clientUuid` + its unique index - the client-minted identity that
         // replaces `(device_id, local_id)` as the upload's server key, after that pair silently
@@ -680,6 +680,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61, MIGRATION_61_62,
                         MIGRATION_62_63, MIGRATION_63_64, MIGRATION_64_65, MIGRATION_65_66,
                         MIGRATION_66_67, MIGRATION_67_68, MIGRATION_68_69, MIGRATION_69_70,
+                        MIGRATION_70_71,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it
@@ -724,6 +725,15 @@ abstract class CarDatabase : RoomDatabase() {
                                 db.execSQL(
                                     "INSERT OR IGNORE INTO `categories` (`name`, `isFoodCategory`, `guid`) VALUES (?, ?, ?)",
                                     arrayOf<Any>(name, if (isFood) 1 else 0, java.util.UUID.randomUUID().toString()),
+                                )
+                            }
+                            // v71: the not-spending starters (Transfers), flag on. Same row shape
+                            // MIGRATION_70_71 gives an upgrading install.
+                            for (name in CategorySeed.notSpending) {
+                                db.execSQL(
+                                    "INSERT OR IGNORE INTO `categories` " +
+                                        "(`name`, `isFoodCategory`, `guid`, `excludedFromSpend`) VALUES (?, 0, ?, 1)",
+                                    arrayOf<Any>(name, java.util.UUID.randomUUID().toString()),
                                 )
                             }
                         }

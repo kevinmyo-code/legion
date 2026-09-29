@@ -208,6 +208,13 @@ fun moneyDisclosureLine(budget: BudgetVsActual?): String? {
     if (budget.uncategorized.spentCents > 0L) {
         parts += "Excludes ${formatMoney(budget.uncategorized.spentCents, currency)} uncategorized"
     }
+    // 2026-09-29: rows filed under a not-spending category (Transfers). Same "Excludes" word, and
+    // the category named, so the reader knows these were filed away, not forgotten.
+    val notSpending = budget.notSpendingExcluded
+    if (!notSpending.isEmpty) {
+        val names = notSpending.categories.joinToString(", ")
+        parts += "Excludes ${formatMoney(notSpending.totalCents, currency)} in $names"
+    }
     val unverified = budget.lines.any { it.hasProvisionalRows } || budget.uncategorized.hasProvisionalRows
     if (unverified) parts += "unverified"
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" - ")

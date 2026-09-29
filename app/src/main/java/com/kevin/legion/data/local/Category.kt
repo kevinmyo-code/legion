@@ -41,4 +41,10 @@ data class Category(
     val serverId: String? = null,
     @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    // v71 (MIGRATION_70_71, Kevin 2026-09-29: "ignore zelle for spending. its just transfer
+    // between here and there."): a category that is NOT spending. THE one definition every spend
+    // total reads (`ledger/LedgerBudget.kt`'s `notSpending`), mirrored from the server's
+    // `categories.excluded_from_spend` (`server/ingest/category_flags.py`). `Transfers` is the
+    // first and is seeded with it on ([CategorySeed.notSpending]).
+    @ColumnInfo(defaultValue = "0") val excludedFromSpend: Boolean = false,
 )
