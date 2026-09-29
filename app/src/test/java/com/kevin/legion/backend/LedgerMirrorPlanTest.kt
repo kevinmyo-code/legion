@@ -22,6 +22,7 @@ class LedgerMirrorPlanTest {
         category: String? = null,
         categoryPending: Boolean = category == null,
         originGuid: String? = null,
+        categorySource: String? = null,
     ) = RemoteLedgerTransaction(
         serverId = serverId,
         statementId = if (provenance == "UNRECONCILED") null else "stmt-1",
@@ -39,7 +40,83 @@ class LedgerMirrorPlanTest {
         provenance = provenance,
         createdAtMs = 1_788_000_000_000L,
         originGuid = originGuid,
+        categorySource = categorySource,
     )
+
+    // ---- backend-etl ticket 14 option 2: mirroredCategoryFill's precedence ----------------------
+
+    @Test
+    fun `a server person category wins over a category the phone's own rules filled in`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "s-1", category = "Shopping")),
+            listOf(remote("s-1", category = "Gifts", categoryPending = false, categorySource = "person")),
+            complete = true,
+        )
+        assertEquals(LedgerMirrorPlan.CategoryFill(1, "Gifts", false), plan.categoryFills.single())
+    }
+
+    @Test
+    fun `a server rule category never overwrites a category the phone holds`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "s-1", category = "Travel")),
+            listOf(remote("s-1", category = "Transport", categoryPending = false, categorySource = "rule")),
+            complete = true,
+        )
+        assertTrue(plan.categoryFills.isEmpty())
+    }
+
+    @Test
+    fun `a server rule category fills a row the phone holds uncategorised`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "s-1")),
+            listOf(remote("s-1", category = "Transport", categoryPending = false, categorySource = "rule")),
+            complete = true,
+        )
+        assertEquals(LedgerMirrorPlan.CategoryFill(1, "Transport", false), plan.categoryFills.single())
+    }
+
+    @Test
+    fun `a choice still queued on this phone is not overwritten by the older server person value`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "s-1", category = "Travel")),
+            listOf(remote("s-1", category = "Gifts", categoryPending = false, categorySource = "person")),
+            complete = true,
+            pendingPersonServerIds = setOf("s-1"),
+        )
+        assertTrue(plan.categoryFills.isEmpty())
+    }
+
+    @Test
+    fun `a server with no category never un-categorises the phone's row`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "s-1", category = "Travel")),
+            listOf(remote("s-1", category = null)),
+            complete = true,
+        )
+        assertTrue(plan.categoryFills.isEmpty())
+    }
+
+    @Test
+    fun `a server person category equal to the phone's is not rewritten`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "s-1", category = "Gifts")),
+            listOf(remote("s-1", category = "Gifts", categoryPending = false, categorySource = "person")),
+            complete = true,
+        )
+        assertTrue(plan.categoryFills.isEmpty())
+    }
+
+    @Test
+    fun `a phone-minted row is never touched by a server person category`() {
+        val phoneRow = local(1, "s-1", sourceFile = "voice", category = "Travel")
+        assertNull(
+            mirroredCategoryFill(
+                phoneRow,
+                remote("s-1", category = "Gifts", categoryPending = false, categorySource = "person"),
+                personWriteQueued = false,
+            ),
+        )
+    }
 
     private fun local(
         id: Long,
@@ -64,7 +141,9 @@ class LedgerMirrorPlanTest {
 
     @Test
     fun `a server row the phone has never seen is inserted as a synced row keyed by its server id`() {
-        val plan = planLedgerMirror(emptyList(), listOf(remote("s-1", category = "Groceries", categoryPending = false)), complete = true)
+        val plan = planLedgerMirror(
+            emptyList(), listOf(remote("s-1", category = "Groceries", categoryPending = false)), complete = true,
+        )
 
         val row = plan.toInsert.single()
         assertEquals(SYNCED_SOURCE_FILE, row.sourceFile)
@@ -78,7 +157,9 @@ class LedgerMirrorPlanTest {
     fun `an uncategorised server row lands uncategorised, never labelled a guess`() {
         // Server `category_pending` defaults true on a row nobody categorised; the phone's flag
         // means "unconfirmed AI guess" and would print "category guessed, not confirmed".
-        val plan = planLedgerMirror(emptyList(), listOf(remote("s-1", category = null, categoryPending = true)), complete = true)
+        val plan = planLedgerMirror(
+            emptyList(), listOf(remote("s-1", category = null, categoryPending = true)), complete = true,
+        )
 
         val row = plan.toInsert.single()
         assertNull(row.category)
@@ -93,7 +174,10 @@ class LedgerMirrorPlanTest {
             complete = true,
         )
 
-        assertEquals(listOf(IngestMethod.UNRECONCILED, IngestMethod.UNRECONCILED), plan.toInsert.map { it.ingestMethod })
+        assertEquals(
+            listOf(IngestMethod.UNRECONCILED, IngestMethod.UNRECONCILED),
+            plan.toInsert.map { it.ingestMethod },
+        )
         assertEquals(1, plan.unrecognizedProvenance.size)
         assertTrue(plan.unrecognizedProvenance.single().contains("s-3"))
     }
@@ -170,7 +254,9 @@ class LedgerMirrorPlanTest {
     fun `a row this phone minted and once uploaded is recognised by origin guid, not duplicated`() {
         val plan = planLedgerMirror(
             listOf(local(1, "phone-guid", sourceFile = "voice", pendingLoggedAt = 1L)),
-            listOf(remote("s-9", "UNRECONCILED", category = "Dining", categoryPending = false, originGuid = "phone-guid")),
+            listOf(
+                remote("s-9", "UNRECONCILED", category = "Dining", categoryPending = false, originGuid = "phone-guid"),
+            ),
             complete = true,
         )
         assertTrue(plan.toInsert.isEmpty())

@@ -45,8 +45,9 @@ class EngineSyncNow(
     }
 
     /**
-     * Ledger transactions: the engine mirror (backend-etl ticket 14). No outbox and no backfill -
-     * the phone has no write path into `ledger_transactions` at all; the gate is the only writer.
+     * Ledger transactions: the engine mirror (backend-etl ticket 14). The phone has no write path
+     * into `ledger_transactions` at all; the gate is the only writer. Its one outbox is the
+     * person-set categories laid over those rows (option 2), drained first.
      * `as? DjangoLedgerBackend` is the transport check, as in [placesLine].
      */
     private suspend fun ledgerLine(): String {
@@ -55,15 +56,20 @@ class EngineSyncNow(
             ?: return "Money: not on the engine (transport is Supabase, or no token on this device).$note"
         var failed: String? = null
         val line = guardingForeground(onFailure = { failed = it.message ?: "failed, with no message." }) {
+            // Drain-then-pull, like every other line here: queued category choices first.
+            val drained = com.kevin.legion.backend.LedgerTransactionCategoryOutboxDrain.drain(app, backend)
             val r = LedgerTransactionsSync.runMirror(app, backend)
             val removed = if (r.deletionsSkipped) {
                 "none removed (the engine's list could not be confirmed complete)"
             } else {
                 "${r.deleted} removed"
             }
+            val refused = r.unrecognizedProvenance.size
             "Money: pulled ${r.inserted} new, ${r.categoriesFilled} categories from the engine, " +
-                "$removed; ${r.rulesApplied} categorised by your rules on this phone." +
-                if (r.unrecognizedProvenance.isEmpty()) "" else " ${r.unrecognizedProvenance.size} refused: unknown provenance."
+                "$removed; ${r.rulesApplied} categorised by your rules on this phone; " +
+                "sent ${drained.succeeded} category choices, ${drained.stillPending} still queued, " +
+                "${drained.poisoned} stuck." +
+                if (refused == 0) "" else " $refused refused: unknown provenance."
         }
         return (line ?: "Money: $failed") + note
     }

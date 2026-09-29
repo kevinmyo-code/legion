@@ -157,10 +157,14 @@ object LedgerTransactionsSync {
      * exactly as it was. The caller records that ([LedgerMirrorStatus]) so the Money surfaces can
      * say so.
      *
-     * **Then the phone's own categorisation rules run** over whatever is still uncategorised. Rows
-     * the engine stored before it learned to categorise at insert can never be categorised there
-     * (the gate's trigger refuses the UPDATE; `server/ingest/category_rules.py`), so without this
-     * they would stay uncategorised on every surface and outside every budget line. It is the same
+     * **Then the phone's own categorisation rules run** over whatever is still uncategorised.
+     * **Since backend-etl ticket 14 option 2 this is the OFFLINE FALLBACK, not the primary path**:
+     * the engine now categorises the rows it stored before insert-time rules by laying a `rule`
+     * override over them (`manage.py apply_category_rules`), and serves the effective category on
+     * the list, so a mirrored row normally arrives categorised. What this still covers: a rule
+     * written on this phone that has not reached the server yet, an engine whose backfill has not
+     * run, and a row this phone minted itself. Kept rather than removed because each of those is
+     * real, and it only ever fills `category IS NULL`, so it cannot fight the server. It is the same
      * [com.kevin.legion.ledger.LedgerController.applyCategoryRules] the ledger screen's button runs,
      * over the same `category_rules` the engine holds (pulled by [LedgerConfigSync]), not a second
      * implementation. [categorize] is the seam a test replaces.
@@ -176,9 +180,11 @@ object LedgerTransactionsSync {
         val set = backend.fetchTransactionSet().getOrThrow()
         val database = CarDatabase.getDatabase(context)
         val dao = database.ledgerTransactionDao()
+        // Choices made here and still queued outrank the server's older value (mirroredCategoryFill).
+        val pendingPerson = LedgerTransactionCategoryWriteThrough.pendingServerIds(context)
         var deleted = 0
         val plan = database.withTransaction {
-            val plan = planLedgerMirror(dao.getAll(), set.rows, set.complete)
+            val plan = planLedgerMirror(dao.getAll(), set.rows, set.complete, pendingPerson)
             if (plan.toInsert.isNotEmpty()) dao.insertAll(plan.toInsert)
             for (fill in plan.categoryFills) dao.updateCategoryById(fill.localId, fill.category, fill.categoryPending)
             for (chunk in plan.toDeleteSyncIds.chunked(DELETE_CHUNK)) deleted += dao.deleteSyncedBySyncIds(chunk)
@@ -261,6 +267,9 @@ object LedgerTransactionsSync {
                 if (!onDjango && resolveUserIdForAutoPull(SupabaseAuth(app)) == null) return@launch
                 val backend = backends.ledgerBackend() ?: return@launch
                 if (onDjango) {
+                    // Drain before the mirror, so the mirror reads the server with this phone's
+                    // queued category choices already in it.
+                    LedgerTransactionCategoryOutboxDrain.maybeDrain(app)
                     runMirror(app, backend)
                 } else {
                     val report = pull(app, backend)

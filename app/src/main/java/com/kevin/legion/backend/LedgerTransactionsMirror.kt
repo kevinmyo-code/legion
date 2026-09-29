@@ -65,6 +65,43 @@ internal fun ledgerIngestMethodFor(raw: String): IngestMethod? = when (raw) {
 internal fun localCategoryPending(remote: RemoteLedgerTransaction): Boolean =
     remote.category != null && remote.categoryPending
 
+/** `category_source` on the engine's transaction list when a person's override is what shows. */
+internal const val CATEGORY_SOURCE_PERSON = "person"
+
+/**
+ * **THE precedence between the phone's category and the engine's, for one server-origin row, in
+ * one place** (backend-etl ticket 14 option 2). The server's half of the same order lives in
+ * `server/ingest/category_overrides.py`: person override, then rule override, then the row's own
+ * stored category.
+ *
+ * 1. **A person's choice made on THIS phone that has not reached the server yet** ([personWriteQueued])
+ *    wins over anything the server says: the server's value is older than it.
+ * 2. **A server `person` category** (someone chose it - here and already sent, or on another client)
+ *    wins over whatever the phone holds, including a category the phone's own rules filled in.
+ * 3. **Otherwise the phone's category stands** - a server `rule` or `stored` category only fills a
+ *    row the phone holds uncategorised. A category a person set on the phone is never overwritten
+ *    by a rule, and neither is one the phone's rules chose (both come from the same rules).
+ * 4. A server with no category changes nothing: the phone never un-categorises a row because the
+ *    server has not caught up (a deleted override, an engine not yet backfilled).
+ *
+ * Returns the fill to apply, or null for "leave the phone's row as it is".
+ */
+internal fun mirroredCategoryFill(
+    local: LedgerTransaction,
+    remote: RemoteLedgerTransaction,
+    personWriteQueued: Boolean,
+): LedgerMirrorPlan.CategoryFill? {
+    val serverCategory = remote.category
+    val alreadyShowsIt = local.category == serverCategory && !local.categoryPending
+    return when {
+        local.sourceFile != SYNCED_SOURCE_FILE || serverCategory == null || personWriteQueued -> null
+        remote.categorySource == CATEGORY_SOURCE_PERSON ->
+            if (alreadyShowsIt) null else LedgerMirrorPlan.CategoryFill(local.id, serverCategory, false)
+        local.category == null -> LedgerMirrorPlan.CategoryFill(local.id, serverCategory, localCategoryPending(remote))
+        else -> null
+    }
+}
+
 /** A server row as a new Room row. `syncId = serverId`, so a later pull recognises it. */
 internal fun RemoteLedgerTransaction.toLocalRow(ingestMethod: IngestMethod): LedgerTransaction =
     LedgerTransaction(
@@ -91,10 +128,10 @@ internal fun RemoteLedgerTransaction.toLocalRow(ingestMethod: IngestMethod): Led
  *
  * - **Insert** a server row the phone has never seen - recognised by `serverId` among local
  *   `syncId`s, or by its `origin_guid` (a row this phone minted and once uploaded).
- * - **Fill a category** on a server-origin row the phone holds uncategorised, when the server now
- *   states one. **Never overwrite a category the phone has**: a person may have set it here, and
- *   that choice cannot reach the server (the gate's trigger refuses every UPDATE on
- *   `ledger_transactions`), so a server-wins rule would undo their edit on every sync.
+ * - **Fill or replace a category** on a server-origin row by [mirroredCategoryFill]'s precedence -
+ *   read it there, it is the one statement of the rule. In short: a server `person` category wins,
+ *   a server `rule`/`stored` one only fills a gap, and a choice still queued on this phone
+ *   ([pendingPersonServerIds]) is never overwritten by the older server value.
  * - **Delete** a server-origin row ([SYNCED_SOURCE_FILE]) whose `syncId` the server no longer
  *   lists - a rule-7 supersession removed it there. Only when [complete] is true, and not when the
  *   server listed nothing at all while the phone holds server rows: an empty answer is far more
@@ -107,6 +144,7 @@ fun planLedgerMirror(
     local: List<LedgerTransaction>,
     remote: List<RemoteLedgerTransaction>,
     complete: Boolean,
+    pendingPersonServerIds: Set<String> = emptySet(),
 ): LedgerMirrorPlan {
     val localBySyncId = local.associateBy { it.syncId }
     val toInsert = mutableListOf<LedgerTransaction>()
@@ -117,22 +155,19 @@ fun planLedgerMirror(
     for (r in remote) {
         val byServerId = localBySyncId[r.serverId]
         val byOriginGuid = r.originGuid?.let { localBySyncId[it] }
-        if (byServerId != null || byOriginGuid != null) {
-            alreadyPresent++
-            val serverCategory = r.category
-            if (byServerId != null && byServerId.sourceFile == SYNCED_SOURCE_FILE &&
-                byServerId.category == null && serverCategory != null
-            ) {
-                fills += LedgerMirrorPlan.CategoryFill(byServerId.id, serverCategory, localCategoryPending(r))
-            }
-            continue
-        }
         val method = ledgerIngestMethodFor(r.provenance)
-        if (method == null) {
-            unrecognized += "${r.description} (${r.serverId}): unrecognised provenance '${r.provenance}' - not inserted"
-            continue
+        when {
+            byServerId != null || byOriginGuid != null -> {
+                alreadyPresent++
+                byServerId
+                    ?.let { mirroredCategoryFill(it, r, personWriteQueued = r.serverId in pendingPersonServerIds) }
+                    ?.let { fills += it }
+            }
+            method == null ->
+                unrecognized += "${r.description} (${r.serverId}): unrecognised provenance '${r.provenance}' - " +
+                    "not inserted"
+            else -> toInsert += r.toLocalRow(method)
         }
-        toInsert += r.toLocalRow(method)
     }
 
     val localSynced = local.filter { it.sourceFile == SYNCED_SOURCE_FILE }

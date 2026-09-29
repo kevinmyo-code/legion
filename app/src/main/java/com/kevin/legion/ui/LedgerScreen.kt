@@ -319,7 +319,13 @@ fun LedgerScreen(
             val categoryNames = LedgerController.allCategories(context).map { it.name }
             // backend-etl ticket 14: whether the ENGINE's ledger could be read on the last try. The
             // `read` banner below is this screen's own Room read, a different fact.
-            val syncLine = com.kevin.legion.backend.LedgerMirrorStatus.line(context)
+            // Option 2 of the same ticket: a hand-set category still queued for the server is said
+            // here too, in words, until it lands - the same line, since both are "this screen is
+            // ahead of or behind the server".
+            val syncLine = listOfNotNull(
+                com.kevin.legion.backend.LedgerMirrorStatus.line(context),
+                com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.pendingSentence(context),
+            ).takeIf { it.isNotEmpty() }?.joinToString(" ")
             state.copy(
                 syncLine = syncLine,
                 loading = false,

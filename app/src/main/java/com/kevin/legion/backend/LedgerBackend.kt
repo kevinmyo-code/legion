@@ -39,6 +39,13 @@ data class RemoteLedgerTransaction(
     val provenance: String,
     val createdAtMs: Long,
     val originGuid: String?,
+    /**
+     * Which one [category] is (backend-etl ticket 14 option 2): `person` or `rule` when a
+     * `ledger_transaction_categories` override is laid over the row, `stored` when it is the row's
+     * own column, null when there is no category or the transport does not say (Supabase, or an
+     * engine deployed before overrides). [category] is already the EFFECTIVE one on the engine.
+     */
+    val categorySource: String? = null,
 )
 
 /**
@@ -141,6 +148,22 @@ interface LedgerBackend {
      */
     suspend fun fetchTransactionSet(): Result<RemoteTransactionSet> =
         fetchActiveTransactions().map { RemoteTransactionSet(it, complete = false) }
+
+    /**
+     * A person's category for one server transaction ([serverId]), laid OVER the gated row
+     * (backend-etl ticket 14 option 2; `PUT /api/ledger/transaction_categories/<id>/` with
+     * `source: person`). The row itself is never written - the gate's trigger refuses that.
+     *
+     * **The default refuses in words**: only the Django engine has the route. A transport without
+     * it keeps the category on this phone, and [LedgerTransactionCategoryWriteThrough] never calls
+     * this on one.
+     */
+    suspend fun setTransactionCategory(serverId: String, category: String): Result<Unit> =
+        Result.failure(
+            LedgerBackendException(
+                "This server has no route for a transaction's category, so it was not sent; it stays on this phone.",
+            ),
+        )
 }
 
 /** [LedgerBackend.fetchTransactionSet]'s answer. [complete] false means "at least these rows",

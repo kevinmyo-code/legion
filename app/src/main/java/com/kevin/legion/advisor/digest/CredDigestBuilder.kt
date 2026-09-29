@@ -196,7 +196,8 @@ class CredDigestBuilder : DigestBuilder {
         if (current.coverage.isEmpty()) return DigestText.line("MERCHANTS", DigestText.notLogged())
         val (start, end) = monthBoundsUtc(month)
         val rows = LedgerController.transactionsForCurrencyInRange(context, entity.currency, start, end)
-        val expenses = operatingExpenses(entity, rows, rows)
+        val notSpending = LedgerController.notSpendingCategories(context)
+        val expenses = operatingExpenses(entity, rows, rows, notSpending = notSpending)
         if (expenses.isEmpty()) return DigestText.line("MERCHANTS", "none")
 
         val spends = expenses.groupBy { it.description }

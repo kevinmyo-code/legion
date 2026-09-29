@@ -41,6 +41,8 @@ private data class DjangoLedgerTransactionRow(
     val provenance: String,
     @SerialName("created_at") val createdAt: String,
     @SerialName("origin_guid") val originGuid: String? = null,
+    // backend-etl ticket 14 option 2. `category` above is the EFFECTIVE one; this says which.
+    @SerialName("category_source") val categorySource: String? = null,
 ) {
     fun toRemote() = RemoteLedgerTransaction(
         serverId = id,
@@ -59,8 +61,30 @@ private data class DjangoLedgerTransactionRow(
         provenance = provenance,
         createdAtMs = ledgerParseTs(createdAt),
         originGuid = originGuid,
+        categorySource = categorySource,
     )
 }
+
+/** One `ledger_transaction_categories` row as `server/api/ledger.py` renders it; only what the
+ * phone reads back. */
+@Serializable
+private data class DjangoTransactionCategoryRow(
+    val id: String,
+    @SerialName("transaction_id") val transactionId: String,
+    val category: String,
+    val source: String,
+)
+
+/** The PUT body. `source` is always sent, never defaulted: this client only ever writes a
+ * person's choice, and says so. */
+@Serializable
+private data class DjangoTransactionCategoryWrite(
+    val category: String,
+    val source: String,
+)
+
+private const val TRANSACTION_CATEGORIES_PATH = "/api/ledger/transaction_categories/"
+private const val SOURCE_PERSON = "person"
 
 /**
  * [LedgerBackend] over the household Django engine - **read-only, because the table is.**
@@ -69,8 +93,10 @@ private data class DjangoLedgerTransactionRow(
  * its detail route carries `get` and nothing else, so a PUT or DELETE reaches
  * `http_method_not_allowed` and is answered with the gate's own address. The single write path into
  * this table is `POST /api/ingest/statement`, which runs CLAUDE.md section 4's gate server-side.
- * **This class therefore offers no write function that could be called by accident** - see
- * [uploadMigratedTransaction], the one place the interface asks for one, for what happens instead.
+ * **This class therefore offers no write into that table** - see [uploadMigratedTransaction], the
+ * one place the interface asks for one, for what happens instead. Its one write,
+ * [setTransactionCategory], goes to `ledger_transaction_categories`, a separate authored table laid
+ * over the gated rows (backend-etl ticket 14 option 2).
  *
  * **Two departures from the generic synced shape, both forced by the schema rather than chosen:**
  *
@@ -113,6 +139,29 @@ class DjangoLedgerBackend(http: EngineHttp) : LedgerBackend {
         translatingEngineCall("load your transactions") {
             val fetched = transactions.fetchEverything()
             RemoteTransactionSet(fetched.rows.map { it.toRemote() }, fetched.complete)
+        }
+
+    private val transactionCategories = EngineSyncedTable(
+        http = http,
+        path = TRANSACTION_CATEGORIES_PATH,
+        rowSerializer = DjangoTransactionCategoryRow.serializer(),
+        idOf = { it.id },
+    )
+
+    /**
+     * `PUT /api/ledger/transaction_categories/<serverId>/` - the one write this backend makes, and
+     * it is not a write into `ledger_transactions`: it lays a person's category over the gated row
+     * in its own table (backend-etl ticket 14 option 2). Keyed by the transaction, so a retry from
+     * the outbox cannot make a second row.
+     */
+    override suspend fun setTransactionCategory(serverId: String, category: String): Result<Unit> =
+        translatingEngineCall("save that transaction's category") {
+            val body = engineSyncedJson.encodeToString(
+                DjangoTransactionCategoryWrite.serializer(),
+                DjangoTransactionCategoryWrite(category = category, source = SOURCE_PERSON),
+            )
+            transactionCategories.put(serverId, body)
+            Unit
         }
 
     override suspend fun fetchChangedTransactionsSince(sinceMs: Long): Result<List<RemoteLedgerTransaction>> =
