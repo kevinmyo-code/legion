@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Forty-five names. The forty-sixth `public` table, `household_members`, is
+# Forty-six names. The forty-seventh `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -75,6 +75,10 @@ TENANT_TABLES: tuple[str, ...] = (
     "budget_targets",
     "statements",
     "ledger_transactions",
+    # backend-etl ticket 14 option 2: a category laid over a gated row. Born
+    # tenanted; its household must equal its transaction's, by composite FK
+    # (`ingest/category_overrides.py`).
+    "ledger_transaction_categories",
     # pantry
     "grocery_staples",
     "meal_logs",

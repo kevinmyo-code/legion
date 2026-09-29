@@ -9,8 +9,27 @@ left to be inferred from which base class each viewset happens to extend:
 | `categories` | full CRUD | authored config, `LedgerConfigBackend` already writes it |
 | `category_rules` | full CRUD | same |
 | `budget_targets` | full CRUD | same |
+| `ledger_transaction_categories` | full CRUD, keyed by transaction | authored: a category laid OVER a gated row |
 | `statements` | **GET only** | the section 4 gate's own output |
 | `ledger_transactions` | **GET only** | the section 4 gate's own output |
+
+## A transaction's category is the EFFECTIVE one
+
+backend-etl ticket 14, option 2 (Kevin, 2026-09-28: "yes 2"). The gate's
+trigger refuses every UPDATE on `ledger_transactions`, so a category that
+arrives after the row - a person's, or a rule's via
+`manage.py apply_category_rules` - is a row in `ledger_transaction_categories`
+instead. On `GET /api/ledger/transactions/` (and in `/api/changes`):
+
+- `category` is the **effective** category: a live override's if there is
+  one, else the row's own. Every reader, including an installed phone that
+  has never heard of overrides, sees the right one without asking.
+- `category_pending` is False under a live override.
+- `stored_category` is the row's own column, exactly as the gate wrote it.
+- `category_source` says which one `category` is: `person`, `rule`,
+  `stored`, or null when there is none.
+
+The precedence is written once, in `ingest/category_overrides.py`.
 
 Ticket 04 spells the second half out: "`statements`, `receipts`,
 `ledger_transactions`, `receipt_line_items` - **no PUT, no DELETE.** Written
@@ -69,11 +88,13 @@ from rest_framework import serializers
 from api.synced import (
     GatedReadSerializer,
     GatedReadViewSet,
+    HouseholdScopedPrimaryKeyRelatedField,
     SyncedModelViewSet,
     SyncedSerializer,
     blank_error,
     choice_error,
 )
+from ingest.category_overrides import STORED, with_effective_category
 from ingest.provisional import ROW_NOTE
 from legacy.enums import Provenance
 from legacy.models.ledger import (
@@ -81,6 +102,7 @@ from legacy.models.ledger import (
     Category,
     CategoryRule,
     LedgerTransaction,
+    LedgerTransactionCategory,
     Statement,
 )
 
@@ -107,6 +129,7 @@ class CategorySerializer(SyncedSerializer):
             "id",
             "name",
             "is_food_category",
+            "excluded_from_spend",
             "provenance",
             "created_at",
             "updated_at",
@@ -114,6 +137,15 @@ class CategorySerializer(SyncedSerializer):
             "origin_guid",
         ]
         read_only_fields = ["id", "provenance", "created_at", "updated_at", "deleted_at"]
+        extra_kwargs = {
+            "excluded_from_spend": {
+                "help_text": (
+                    "True for a category that is not spending (money moving between the "
+                    "household's own places, e.g. Transfers). Every spend total leaves its rows "
+                    "out AND says so in words. Defaults false; omitted on a PUT, it is unchanged."
+                )
+            }
+        }
 
     def validate_name(self, value: str) -> str:
         # `categories` carries no CHECK at all (CONSTRAINTS.md's own
@@ -223,6 +255,106 @@ class BudgetTargetViewSet(_LedgerViewSet):
     serializer_class = BudgetTargetSerializer
 
 
+SOURCE_CHOICES = (LedgerTransactionCategory.SOURCE_PERSON, LedgerTransactionCategory.SOURCE_RULE)
+
+
+class LedgerTransactionCategorySerializer(SyncedSerializer):
+    """One `ledger_transaction_categories` row: a category shown in place of a
+    gated transaction's own.
+
+    `transaction_id` can only name a transaction in the caller's household
+    (`HouseholdScopedPrimaryKeyRelatedField`); one in another household reads
+    as one that does not exist, which from here it does not.
+
+    **`source` defaults to `person` on every write**, not only on insert. A
+    PUT says "the row in this state", and a client that left `source` out of
+    a PUT over a `rule` row is a person choosing a category; keeping `rule`
+    would let the backfill's word stand over theirs.
+
+    **A `rule` never replaces a live `person` row.** Refused here in words; a
+    trigger refuses it again in SQL (`ingest/category_overrides.py`).
+    """
+
+    transaction_id = HouseholdScopedPrimaryKeyRelatedField(
+        source="transaction", queryset=LedgerTransaction.objects.all()
+    )
+
+    class Meta:
+        model = LedgerTransactionCategory
+        fields = [
+            "id",
+            "transaction_id",
+            "category",
+            "source",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "origin_guid",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "deleted_at"]
+        extra_kwargs = {
+            "source": {
+                "required": False,
+                "help_text": (
+                    "`person` (the default: someone chose it) or `rule` (written by "
+                    "`manage.py apply_category_rules` from the household's rules). A rule "
+                    "never replaces a live person row."
+                ),
+            },
+            "origin_guid": {"required": False, "allow_null": True},
+        }
+
+    def validate_category(self, value: str) -> str:
+        if not value or not value.strip():
+            raise blank_error("category")
+        return value
+
+    def validate_source(self, value: str) -> str:
+        if value not in SOURCE_CHOICES:
+            raise choice_error("source", value, SOURCE_CHOICES)
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        attrs.setdefault("source", LedgerTransactionCategory.SOURCE_PERSON)
+        existing = self.instance
+        if (
+            existing is not None
+            and existing.deleted_at is None
+            and existing.source == LedgerTransactionCategory.SOURCE_PERSON
+            and attrs["source"] == LedgerTransactionCategory.SOURCE_RULE
+        ):
+            raise serializers.ValidationError(
+                {
+                    "source": (
+                        "Nothing was changed. A person set this transaction's category, "
+                        "and a rule never replaces it."
+                    )
+                }
+            )
+        return attrs
+
+
+class LedgerTransactionCategoryViewSet(_LedgerViewSet):
+    """`/api/ledger/transaction_categories/<transaction_id>/`.
+
+    **Keyed by the transaction**, not by an `origin_guid`: there is one row
+    per transaction, so the transaction's own id is the natural identity and
+    a PUT to it is idempotent by construction. `origin_guid` is on the row for
+    a client that mints its own identity, and is not used for routing.
+
+    DELETE tombstones the override, and the stored category comes back into
+    view. A later PUT revives it (`put_revives_tombstone`), because setting a
+    category again after clearing it is the same intention as the first time.
+    """
+
+    table = "ledger_transaction_categories"
+    url_segment = "transaction_categories"
+    serializer_class = LedgerTransactionCategorySerializer
+    identity_field = "transaction_id"
+    identity_url_converter = "uuid"
+    put_revives_tombstone = True
+
+
 # =============================================================================
 # The two GATED tables. GET only - see this module's own doc comment.
 # =============================================================================
@@ -316,6 +448,44 @@ class LedgerTransactionSerializer(GatedReadSerializer):
     def get_verification_note(self, row) -> str | None:
         return ROW_NOTE if row.provenance == Provenance.UNRECONCILED else None
 
+    # backend-etl ticket 14 option 2: the category every reader shows. These
+    # read annotations `with_effective_category` puts on the queryset
+    # (`LedgerTransactionViewSet.decorate`), and a queryset without them fails
+    # loudly here rather than quietly serving the stored column as if it were
+    # the effective one.
+    category = serializers.CharField(
+        source="effective_category",
+        allow_null=True,
+        help_text=(
+            "The EFFECTIVE category: a live `ledger_transaction_categories` override's if "
+            "there is one, else the row's own (`stored_category`). What every surface shows."
+        ),
+    )
+    category_pending = serializers.BooleanField(
+        source="effective_category_pending",
+        help_text="False under a live override; otherwise the row's own flag.",
+    )
+    stored_category = serializers.CharField(
+        source="category",
+        allow_null=True,
+        help_text=(
+            "The row's own `category` column, exactly as the gate wrote it. Never changes: "
+            "`forbid_mutation_of_facts` refuses every UPDATE."
+        ),
+    )
+    category_source = serializers.ChoiceField(
+        choices=[
+            LedgerTransactionCategory.SOURCE_PERSON,
+            LedgerTransactionCategory.SOURCE_RULE,
+            STORED,
+        ],
+        allow_null=True,
+        help_text=(
+            "Which one `category` is: `person` or `rule` (a live override), `stored` (the "
+            "row's own column), or null when the row has no category."
+        ),
+    )
+
     class Meta:
         model = LedgerTransaction
         fields = [
@@ -331,6 +501,8 @@ class LedgerTransactionSerializer(GatedReadSerializer):
             "line_ref",
             "category",
             "category_pending",
+            "stored_category",
+            "category_source",
             "pending_logged_at",
             "reversal_of",
             "provenance",
@@ -402,6 +574,11 @@ class LedgerTransactionViewSet(_GatedLedgerViewSet):
     serializer_class = LedgerTransactionSerializer
     gate_endpoint = STATEMENT_ENDPOINT
 
+    @classmethod
+    def decorate(cls, queryset):
+        """The effective category (`ingest/category_overrides.py`)."""
+        return with_effective_category(queryset)
+
 
 # Registry order is the order routes are declared and the order the changes
 # feed's keys are built: config first, then the gated pair, which is the order
@@ -411,6 +588,7 @@ LEDGER_VIEWSETS = [
     CategoryViewSet,
     CategoryRuleViewSet,
     BudgetTargetViewSet,
+    LedgerTransactionCategoryViewSet,
     StatementViewSet,
     LedgerTransactionViewSet,
 ]

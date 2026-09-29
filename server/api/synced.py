@@ -473,7 +473,19 @@ class SyncedModelViewSet(viewsets.ViewSet):
         below, which itself calls it. A `self.model().objects.` anywhere in
         this file that is not this line is a defect.
         """
-        return self.model().objects.filter(household=self.household())
+        return self.decorate(self.model().objects.filter(household=self.household()))
+
+    @classmethod
+    def decorate(cls, queryset):
+        """What every read of this table adds to an already-scoped queryset -
+        nothing, except where a serializer reads a computed value.
+
+        `LedgerTransactionViewSet` is the one that does: a transaction's
+        category is read through `ingest/category_overrides.with_effective_category`.
+        `api/changes.py` calls this too, so the feed and the per-table route
+        cannot serve one row two ways. It never narrows the scope; the
+        household filter is applied before it."""
+        return queryset
 
     def serializer_context(self) -> dict:
         """What every serializer this viewset builds is handed.

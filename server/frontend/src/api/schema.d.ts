@@ -2078,6 +2078,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/transaction_categories/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `?since=<iso>` (tombstones included) and `?active=1` (live rows
+         *     only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+         *     feed, and `?active=1` alone is every live row since the epoch.
+         *
+         *     A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+         *     holds that rule for the whole API and quotes the phone-side cursor
+         *     comment it comes from.
+         */
+        get: operations["api_ledger_transaction_categories_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/transaction_categories/{identity}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT <table>/<identity>/`. Idempotent by construction: the
+         *     identity comes from the URL, so a retry cannot make a second row.
+         *     200 whether the row was created or updated - the caller asked for
+         *     the row to exist in this state and it does, and which of the two
+         *     happened is not something a retrying client can act on.
+         */
+        put: operations["api_ledger_transaction_categories_update"];
+        post?: never;
+        /**
+         * @description `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+         *     stays, because a phone that has not synced since still needs to
+         *     learn the row is gone. Idempotent - a second delete is still a 204,
+         *     matching `EventsBackend.softDelete`'s own contract.
+         */
+        delete: operations["api_ledger_transaction_categories_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/transactions/": {
         parameters: {
             query?: never;
@@ -2731,6 +2785,8 @@ export interface components {
             readonly id: string;
             name: string;
             is_food_category: boolean;
+            /** @description True for a category that is not spending (money moving between the household's own places, e.g. Transfers). Every spend total leaves its rows out AND says so in words. Defaults false; omitted on a PUT, it is unchanged. */
+            excluded_from_spend?: boolean;
             readonly provenance: components["schemas"]["ProvenanceEnum"];
             /** Format: date-time */
             readonly created_at: string;
@@ -2768,6 +2824,13 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        /**
+         * @description * `person` - person
+         *     * `rule` - rule
+         *     * `stored` - stored
+         * @enum {string}
+         */
+        CategorySourceEnum: "person" | "rule" | "stored";
         Changes: {
             /**
              * Format: date-time
@@ -2794,6 +2857,7 @@ export interface components {
             categories?: components["schemas"]["Category"][];
             category_rules?: components["schemas"]["CategoryRule"][];
             budget_targets?: components["schemas"]["BudgetTarget"][];
+            ledger_transaction_categories?: components["schemas"]["LedgerTransactionCategory"][];
             statements?: components["schemas"]["Statement"][];
             ledger_transactions?: components["schemas"]["LedgerTransaction"][];
             grocery_staples?: components["schemas"]["GroceryStaple"][];
@@ -3406,8 +3470,20 @@ export interface components {
             /** Format: int64 */
             readonly balance_cents: number | null;
             readonly line_ref: string;
+            /** @description The EFFECTIVE category: a live `ledger_transaction_categories` override's if there is one, else the row's own (`stored_category`). What every surface shows. */
             readonly category: string | null;
+            /** @description False under a live override; otherwise the row's own flag. */
             readonly category_pending: boolean;
+            /** @description The row's own `category` column, exactly as the gate wrote it. Never changes: `forbid_mutation_of_facts` refuses every UPDATE. */
+            readonly stored_category: string | null;
+            /**
+             * @description Which one `category` is: `person` or `rule` (a live override), `stored` (the row's own column), or null when the row has no category.
+             *
+             *     * `person` - person
+             *     * `rule` - rule
+             *     * `stored` - stored
+             */
+            readonly category_source: (components["schemas"]["CategorySourceEnum"] | components["schemas"]["NullEnum"]) | null;
             /** Format: date-time */
             readonly pending_logged_at: string | null;
             /**
@@ -3429,6 +3505,38 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             readonly origin_guid: string | null;
+        };
+        /**
+         * @description One `ledger_transaction_categories` row: a category shown in place of a
+         *     gated transaction's own.
+         *
+         *     `transaction_id` can only name a transaction in the caller's household
+         *     (`HouseholdScopedPrimaryKeyRelatedField`); one in another household reads
+         *     as one that does not exist, which from here it does not.
+         *
+         *     **`source` defaults to `person` on every write**, not only on insert. A
+         *     PUT says "the row in this state", and a client that left `source` out of
+         *     a PUT over a `rule` row is a person choosing a category; keeping `rule`
+         *     would let the backfill's word stand over theirs.
+         *
+         *     **A `rule` never replaces a live `person` row.** Refused here in words; a
+         *     trigger refuses it again in SQL (`ingest/category_overrides.py`).
+         */
+        LedgerTransactionCategory: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            transaction_id: string;
+            category: string;
+            /** @description `person` (the default: someone chose it) or `rule` (written by `manage.py apply_category_rules` from the household's rules). A rule never replaces a live person row. */
+            source?: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: date-time */
+            readonly deleted_at: string | null;
+            origin_guid?: string | null;
         };
         LoginRequest: {
             /** Format: email */
@@ -3948,6 +4056,16 @@ export interface components {
         };
         PagedLedgerTransaction: {
             results: components["schemas"]["LedgerTransaction"][];
+            /**
+             * Format: date-time
+             * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
+             */
+            next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
+        };
+        PagedLedgerTransactionCategory: {
+            results: components["schemas"]["LedgerTransactionCategory"][];
             /**
              * Format: date-time
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
@@ -8564,6 +8682,101 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Statement"];
                 };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_ledger_transaction_categories_list: {
+        parameters: {
+            query?: {
+                /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
+                active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
+                /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedLedgerTransactionCategory"];
+                };
+            };
+        };
+    };
+    api_ledger_transaction_categories_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `transaction_id`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LedgerTransactionCategory"];
+                "application/x-www-form-urlencoded": components["schemas"]["LedgerTransactionCategory"];
+                "multipart/form-data": components["schemas"]["LedgerTransactionCategory"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerTransactionCategory"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    api_ledger_transaction_categories_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `transaction_id`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done. Soft-deleted (the tombstone row stays so an unsynced client learns of it). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description No such row. Nothing was changed. */
             404: {

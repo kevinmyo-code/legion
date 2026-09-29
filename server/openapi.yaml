@@ -4899,6 +4899,145 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/ledger/transaction_categories/:
+    get:
+      operationId: api_ledger_transaction_categories_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedLedgerTransactionCategory'
+          description: ''
+  /api/ledger/transaction_categories/{identity}/:
+    put:
+      operationId: api_ledger_transaction_categories_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `transaction_id`.
+        required: true
+      tags:
+      - ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LedgerTransactionCategory'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LedgerTransactionCategory'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LedgerTransactionCategory'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerTransactionCategory'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_ledger_transaction_categories_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `transaction_id`.
+        required: true
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
   /api/ledger/transactions/:
     get:
       operationId: api_ledger_transactions_list
@@ -6283,6 +6422,12 @@ components:
           type: string
         is_food_category:
           type: boolean
+        excluded_from_spend:
+          type: boolean
+          description: True for a category that is not spending (money moving between
+            the household's own places, e.g. Transfers). Every spend total leaves
+            its rows out AND says so in words. Defaults false; omitted on a PUT, it
+            is unchanged.
         provenance:
           allOf:
           - $ref: '#/components/schemas/ProvenanceEnum'
@@ -6365,6 +6510,16 @@ components:
       - provenance
       - substring
       - updated_at
+    CategorySourceEnum:
+      enum:
+      - person
+      - rule
+      - stored
+      type: string
+      description: |-
+        * `person` - person
+        * `rule` - rule
+        * `stored` - stored
     Changes:
       type: object
       properties:
@@ -6454,6 +6609,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BudgetTarget'
+        ledger_transaction_categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerTransactionCategory'
         statements:
           type: array
           items:
@@ -7733,9 +7892,31 @@ components:
           type: string
           readOnly: true
           nullable: true
+          description: 'The EFFECTIVE category: a live `ledger_transaction_categories`
+            override''s if there is one, else the row''s own (`stored_category`).
+            What every surface shows.'
         category_pending:
           type: boolean
           readOnly: true
+          description: False under a live override; otherwise the row's own flag.
+        stored_category:
+          type: string
+          readOnly: true
+          nullable: true
+          description: 'The row''s own `category` column, exactly as the gate wrote
+            it. Never changes: `forbid_mutation_of_facts` refuses every UPDATE.'
+        category_source:
+          readOnly: true
+          nullable: true
+          description: |-
+            Which one `category` is: `person` or `rule` (a live override), `stored` (the row's own column), or null when the row has no category.
+
+            * `person` - person
+            * `rule` - rule
+            * `stored` - stored
+          oneOf:
+          - $ref: '#/components/schemas/CategorySourceEnum'
+          - $ref: '#/components/schemas/NullEnum'
         pending_logged_at:
           type: string
           format: date-time
@@ -7782,6 +7963,7 @@ components:
       - balance_cents
       - category
       - category_pending
+      - category_source
       - created_at
       - currency
       - description
@@ -7792,8 +7974,64 @@ components:
       - provenance
       - reversal_of
       - statement_id
+      - stored_category
       - txn_date
       - verification_note
+    LedgerTransactionCategory:
+      type: object
+      description: |-
+        One `ledger_transaction_categories` row: a category shown in place of a
+        gated transaction's own.
+
+        `transaction_id` can only name a transaction in the caller's household
+        (`HouseholdScopedPrimaryKeyRelatedField`); one in another household reads
+        as one that does not exist, which from here it does not.
+
+        **`source` defaults to `person` on every write**, not only on insert. A
+        PUT says "the row in this state", and a client that left `source` out of
+        a PUT over a `rule` row is a person choosing a category; keeping `rule`
+        would let the backfill's word stand over theirs.
+
+        **A `rule` never replaces a live `person` row.** Refused here in words; a
+        trigger refuses it again in SQL (`ingest/category_overrides.py`).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        transaction_id:
+          type: string
+          format: uuid
+        category:
+          type: string
+        source:
+          type: string
+          description: '`person` (the default: someone chose it) or `rule` (written
+            by `manage.py apply_category_rules` from the household''s rules). A rule
+            never replaces a live person row.'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+          nullable: true
+      required:
+      - category
+      - created_at
+      - deleted_at
+      - id
+      - transaction_id
+      - updated_at
     LoginRequest:
       type: object
       properties:
@@ -8833,6 +9071,28 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LedgerTransaction'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
+      required:
+      - next
+      - next_after
+      - results
+    PagedLedgerTransactionCategory:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerTransactionCategory'
         next:
           type: string
           format: date-time

@@ -381,6 +381,33 @@ def test_the_gate_writes_its_five_tables_into_the_calling_household(token_a, tok
             assert len(rows) == expected, (url, len(rows), rows)
 
 
+def test_category_overrides_are_scoped_by_household(token_a, token_b):
+    """backend-etl ticket 14 option 2. An override is keyed by a transaction
+    id, so the leak to guard is not only "B lists A's override" but "B lays a
+    category over A's transaction" - which from inside B must read as a
+    transaction that does not exist."""
+    assert token_a.post("/api/ingest/statement", a_statement(), format="json").status_code == 201
+    assert token_b.post("/api/ingest/statement", a_statement(), format="json").status_code == 201
+    a_txn = token_a.get(f"/api/ledger/transactions/?since={EPOCH}").data["results"][0]
+    b_txn = token_b.get(f"/api/ledger/transactions/?since={EPOCH}").data["results"][0]
+
+    url = "/api/ledger/transaction_categories/"
+    assert token_a.put(f"{url}{a_txn['id']}/", {"category": "A's"}, format="json").status_code == 200
+    assert token_b.put(f"{url}{b_txn['id']}/", {"category": "B's"}, format="json").status_code == 200
+
+    for client, theirs in ((token_a, "B's"), (token_b, "A's")):
+        rows = client.get(f"{url}?since={EPOCH}").data["results"]
+        assert len(rows) == 1 and rows[0]["category"] != theirs, rows
+        shown = {r["category"] for r in client.get(f"/api/ledger/transactions/?since={EPOCH}").data["results"]}
+        assert theirs not in shown, shown
+
+    # B cannot lay a category over A's transaction, nor clear A's override.
+    leak = token_b.put(f"{url}{a_txn['id']}/", {"category": "B's"}, format="json")
+    assert leak.status_code == 400, leak.data
+    assert token_b.delete(f"{url}{a_txn['id']}/").status_code == 404
+    assert token_a.get(f"{url}?since={EPOCH}&active=1").data["results"][0]["category"] == "A's"
+
+
 def test_freshness_never_shows_another_households_runs(token_a, token_b, household_b):
     """backend-etl ticket 01. `ingest_runs` has no synced route, so this is
     its leak test: B's runs - including an error message that names B's own
@@ -494,6 +521,7 @@ def test_every_registered_table_has_a_leak_test():
         "obd_samples",
         "statements",
         "ledger_transactions",
+        "ledger_transaction_categories",
         "receipts",
         "receipt_line_items",
         "ingested_files",
