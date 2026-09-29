@@ -66,6 +66,7 @@ from django.db.models.functions import Now
 from rest_framework import status
 
 from ingest import gate
+from ingest.category_rules import category_for_insert, household_rules
 from legacy.enums import IngestState, Provenance
 from legacy.models.ledger import LedgerTransaction
 
@@ -218,6 +219,11 @@ def _commit(payload: dict[str, Any], household):
             removed, _ = LedgerTransaction.objects.filter(id__in=stale_ids).delete()
 
     _upsert_file(payload, sha, IngestState.INGESTED, None, household)
+    # Categorised at the INSERT, the only write the trigger allows
+    # (ingest/category_rules.py). A provisional row with a category counts
+    # toward its budget and still says "unverified" wherever it shows.
+    rules = household_rules(household)
+    categorised = [category_for_insert(None, line["description"], rules) for line in to_insert]
     LedgerTransaction.objects.bulk_create(
         [
             LedgerTransaction(
@@ -232,12 +238,12 @@ def _commit(payload: dict[str, Any], household):
                 amount_cents=line["amount_cents"],
                 balance_cents=None,
                 line_ref=line["line_ref"],
-                category=None,
-                category_pending=True,
+                category=category,
+                category_pending=pending,
                 provenance=Provenance.UNRECONCILED,
                 created_at=Now(),
             )
-            for line in to_insert
+            for line, (category, pending) in zip(to_insert, categorised, strict=True)
         ]
     )
 

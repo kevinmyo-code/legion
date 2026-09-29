@@ -72,6 +72,7 @@ from rest_framework.views import APIView
 from api.schema import DetailSerializer
 from household.tenancy import household_of
 from ingest import gate
+from ingest.category_rules import category_for_insert, household_rules
 from ingest.dedup import ExistingRow, resolve_dedup
 from legacy.enums import IngestState, Provenance
 from legacy.models.ingest import IngestedFile
@@ -608,6 +609,17 @@ class StatementIngestView(_IngestView):
             ),
         )
 
+        # The household's categorisation rules, applied at the INSERT because
+        # the trigger refuses any later UPDATE (ingest/category_rules.py). A
+        # category the payload stated is kept as stated.
+        rules = household_rules(household)
+        categorised = {
+            ordinal: category_for_insert(
+                lines[ordinal]["category"], lines[ordinal]["description"], rules
+            )
+            for ordinal in dedup.insert_ordinals
+        }
+
         LedgerTransaction.objects.bulk_create(
             [
                 LedgerTransaction(
@@ -622,8 +634,8 @@ class StatementIngestView(_IngestView):
                     amount_cents=lines[ordinal]["amount_cents"],
                     balance_cents=lines[ordinal]["balance_cents"],
                     line_ref=lines[ordinal]["line_ref"],
-                    category=lines[ordinal]["category"],
-                    category_pending=lines[ordinal]["category"] is None,
+                    category=categorised[ordinal][0],
+                    category_pending=categorised[ordinal][1],
                     provenance=provenance,
                     created_at=Now(),
                 )
