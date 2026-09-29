@@ -342,7 +342,7 @@ private fun TileGrid(
                 iconRes = R.drawable.ms_account_balance_wallet,
                 title = "Money",
                 status = moneyTileStatus(state.budget, failed = state.moneyFailed),
-                disclosure = moneyTileDisclosure(state.budget),
+                disclosure = moneyTileDisclosure(state.budget, state.moneySyncLine),
                 onClick = callbacks.onOpenMoney,
             )
             TileCard(

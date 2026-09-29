@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kevin.legion.backend.EventKind
+import com.kevin.legion.backend.LedgerMirrorStatus
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
@@ -36,6 +37,7 @@ import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 private const val DAY_MS = 24 * 60 * 60 * 1000L
@@ -61,6 +63,15 @@ private const val OVERDUE_LOOKBACK_DAYS = 30L
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
+
+    init {
+        // The ledger mirror runs fire-and-forget from the same resume that calls refresh(), so
+        // its rows usually land after this screen has already read the budget. Re-read when it
+        // says Room changed (or its sync status did), skipping the StateFlow's initial value.
+        viewModelScope.launch {
+            LedgerMirrorStatus.changes.drop(1).collect { refresh() }
+        }
+    }
 
     // ADR 0050: HOME must never crash - loadState spans CarDatabase.getDatabase plus every
     // controller it wires (audit finding 4), and any of them throwing must still land on
@@ -155,6 +166,7 @@ private suspend fun loadState(context: Context): HomeUiState {
                 items.count { VehicleController.isUnknown(it) }
         },
         readVoiceNotesCount = { VoiceNoteController.listNotes(context).size },
+        readMoneySyncLine = { LedgerMirrorStatus.line(context, short = true) },
     )
 }
 
@@ -180,6 +192,7 @@ internal suspend fun assembleHomeState(
     readMealGap: suspend () -> Pair<DailyMealGap, Boolean>,
     readMaintenance: suspend () -> Pair<List<DueRowView>, Int>,
     readVoiceNotesCount: suspend () -> Int,
+    readMoneySyncLine: () -> String? = { null },
 ): HomeUiState {
     val (checklistCount, listsFailed) = try {
         readChecklistCount() to false
@@ -224,6 +237,12 @@ internal suspend fun assembleHomeState(
         listsFailed = listsFailed,
         budget = budget,
         moneyFailed = moneyFailed,
+        // A prefs read, but HOME must never crash (ADR 0050), so it is guarded like every tile.
+        moneySyncLine = try {
+            readMoneySyncLine()
+        } catch (e: Exception) {
+            null
+        },
         mealGap = mealGap,
         hasMealTarget = hasMealTarget,
         bodyFailed = bodyFailed,

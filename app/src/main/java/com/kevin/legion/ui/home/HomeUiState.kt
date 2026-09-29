@@ -37,6 +37,9 @@ data class HomeUiState(
     val listsFailed: Boolean = false,
     val budget: BudgetVsActual? = null,
     val moneyFailed: Boolean = false,
+    /** [com.kevin.legion.backend.LedgerMirrorStatus.line]: non-null when the last read of the
+     * engine's ledger failed, so the figure above is the phone's copy (CLAUDE.md section 7). */
+    val moneySyncLine: String? = null,
     val mealGap: DailyMealGap = DailyMealGap.NotLogged,
     val hasMealTarget: Boolean = false,
     val bodyFailed: Boolean = false,
