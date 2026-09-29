@@ -100,9 +100,12 @@ def create_sql(household_schema: str) -> str:
     """
     hh = household_schema
     return f"""
-create schema if not exists private;
-
-create or replace function private.touch_updated_at()
+-- Every function here is this table's own and lives in `public`, never
+-- `private`: the live engine role (`legion_engine`) has no USAGE on `private`,
+-- whose functions `postgres` owns, and the first deploy of this migration
+-- failed on exactly that ("permission denied for schema private",
+-- 2026-09-29). Same precedent as checklists/migrations/0001_initial.py.
+create or replace function public.ledger_category_touch_updated_at()
     returns trigger
     language plpgsql
     set search_path = ''
@@ -147,9 +150,9 @@ create unique index if not exists {TABLE}_household_origin_guid_uniq
 drop trigger if exists touch_updated_at on public.{TABLE};
 create trigger touch_updated_at
     before update on public.{TABLE}
-    for each row execute function private.touch_updated_at();
+    for each row execute function public.ledger_category_touch_updated_at();
 
-create or replace function private.ledger_category_person_outranks_rule()
+create or replace function public.ledger_category_person_outranks_rule()
     returns trigger
     language plpgsql
     set search_path = ''
@@ -170,13 +173,14 @@ $$;
 drop trigger if exists person_outranks_rule on public.{TABLE};
 create trigger person_outranks_rule
     before update on public.{TABLE}
-    for each row execute function private.ledger_category_person_outranks_rule();
+    for each row execute function public.ledger_category_person_outranks_rule();
 """
 
 
 DROP_SQL = f"""
 drop table if exists public.{TABLE};
-drop function if exists private.ledger_category_person_outranks_rule();
+drop function if exists public.ledger_category_person_outranks_rule();
+drop function if exists public.ledger_category_touch_updated_at();
 alter table if exists public.ledger_transactions drop constraint if exists {TXN_HOUSEHOLD_KEY};
 """
 

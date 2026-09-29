@@ -431,3 +431,16 @@ def test_the_flag_column_is_added_idempotently_and_defaults_false():
         )
         default, nullable = cursor.fetchone()
     assert default == "false" and nullable == "NO"
+
+
+def test_the_migration_sql_never_touches_the_private_schema():
+    """The live engine role (`legion_engine`) has no USAGE on `private`, whose
+    functions `postgres` owns. The tests run as a superuser and cannot see
+    that, so the first deploy failed with "permission denied for schema
+    private" (2026-09-29). This pins the SQL, not the privilege."""
+    from ingest.category_overrides import create_sql
+
+    sql = create_sql("django")
+    assert "private." not in sql
+    assert "create schema" not in sql.lower()
+    assert "private." not in DROP_SQL
