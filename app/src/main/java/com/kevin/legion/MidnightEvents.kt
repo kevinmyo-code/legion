@@ -845,6 +845,26 @@ object MidnightEvents {
         )
     }
 
+    /** A foreground [com.kevin.legion.backend.LedgerTransactionsSync.mirror] pass on the Django
+     * engine completed. `deletionsSkipped` true means the engine's list was not known complete (or
+     * was empty against a non-empty phone) and nothing was removed - worth looking at if it
+     * persists after the engine's keyset paging is deployed. */
+    fun ledgerTransactionsMirrorSucceeded(
+        inserted: Int,
+        categoriesFilled: Int,
+        deleted: Int,
+        deletionsSkipped: Boolean,
+        unrecognizedProvenance: Int,
+        rulesApplied: Int,
+    ) = safe {
+        Log.d(
+            TAG,
+            "ledger_transactions_mirror inserted=$inserted categoriesFilled=$categoriesFilled " +
+                "deleted=$deleted deletionsSkipped=$deletionsSkipped " +
+                "unrecognizedProvenance=$unrecognizedProvenance rulesApplied=$rulesApplied",
+        )
+    }
+
     /** [com.kevin.legion.backend.LedgerTransactionsSync.maybeAutoPull] threw outright - degraded to
      * this log line, same posture as [fleetAutoPullFailed]. */
     fun ledgerTransactionsAutoPullFailed(e: Throwable) = safe {

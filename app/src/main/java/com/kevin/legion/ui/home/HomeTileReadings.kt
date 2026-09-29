@@ -226,8 +226,10 @@ fun groceriesDisclosureLine(budget: BudgetVsActual?): String? {
  * want it (uncategorised present, unverified, the Groceries line's own tier note) - joined rather
  * than one silently winning over another, since all three are independently true facts CLAUDE.md
  * §4 rule 7 requires stated. */
-fun moneyTileDisclosure(budget: BudgetVsActual?): String? =
-    listOfNotNull(moneyDisclosureLine(budget), groceriesDisclosureLine(budget))
+fun moneyTileDisclosure(budget: BudgetVsActual?, syncLine: String? = null): String? =
+    // [syncLine] first: "the server couldn't be read" qualifies every figure after it, so it
+    // leads rather than trailing the uncategorised/unverified notes (CLAUDE.md section 7).
+    listOfNotNull(syncLine, moneyDisclosureLine(budget), groceriesDisclosureLine(budget))
         .takeIf { it.isNotEmpty() }
         ?.joinToString("; ")
 

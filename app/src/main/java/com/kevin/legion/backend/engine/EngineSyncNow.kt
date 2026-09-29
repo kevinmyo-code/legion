@@ -6,6 +6,7 @@ import com.kevin.legion.backend.ChecklistsOutboxDrain
 import com.kevin.legion.backend.ChecklistsSync
 import com.kevin.legion.backend.EventsOutboxDrain
 import com.kevin.legion.backend.EventsSync
+import com.kevin.legion.backend.LedgerTransactionsSync
 import com.kevin.legion.backend.PlacesBackfill
 import com.kevin.legion.backend.PlacesSync
 import com.kevin.legion.backend.VoiceNotesBackfill
@@ -39,7 +40,32 @@ class EngineSyncNow(
         lines += checklistsLine()
         lines += placesLine()
         lines += voiceNotesLine()
+        lines += ledgerLine()
         return lines.joinToString("\n")
+    }
+
+    /**
+     * Ledger transactions: the engine mirror (backend-etl ticket 14). No outbox and no backfill -
+     * the phone has no write path into `ledger_transactions` at all; the gate is the only writer.
+     * `as? DjangoLedgerBackend` is the transport check, as in [placesLine].
+     */
+    private suspend fun ledgerLine(): String {
+        val note = fallbackNote(EngineBackends.ASPECT_LEDGER)
+        val backend = backends.ledgerBackend() as? DjangoLedgerBackend
+            ?: return "Money: not on the engine (transport is Supabase, or no token on this device).$note"
+        var failed: String? = null
+        val line = guardingForeground(onFailure = { failed = it.message ?: "failed, with no message." }) {
+            val r = LedgerTransactionsSync.runMirror(app, backend)
+            val removed = if (r.deletionsSkipped) {
+                "none removed (the engine's list could not be confirmed complete)"
+            } else {
+                "${r.deleted} removed"
+            }
+            "Money: pulled ${r.inserted} new, ${r.categoriesFilled} categories from the engine, " +
+                "$removed; ${r.rulesApplied} categorised by your rules on this phone." +
+                if (r.unrecognizedProvenance.isEmpty()) "" else " ${r.unrecognizedProvenance.size} refused: unknown provenance."
+        }
+        return (line ?: "Money: $failed") + note
     }
 
     private suspend fun eventsLine(): String {

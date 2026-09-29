@@ -308,6 +308,14 @@ class MainActivity : ComponentActivity() {
             com.kevin.legion.backend.LedgerConfigOutboxDrain.maybeDrain(applicationContext)
             com.kevin.legion.backend.LedgerConfigBackfill.maybeAutoRun(applicationContext)
             com.kevin.legion.backend.LedgerConfigSync.maybeAutoPull(applicationContext)
+            // Ledger TRANSACTIONS (backend-etl ticket 14). Had a Django branch and no caller at all,
+            // so the rows the engine ingests never reached Room and the Money tile read $0. On the
+            // engine it mirrors the whole list (inserts, category fills, rule-7 deletions); on
+            // Supabase it is the old insert-if-absent pull. Fire-and-forget with its own five-minute
+            // throttle. Placed after the config pull only as a courtesy - that pull is itself
+            // fire-and-forget, so the rules it brings may land after this pass's categoriser runs,
+            // and the next pass picks them up.
+            com.kevin.legion.backend.LedgerTransactionsSync.maybeAutoPull(applicationContext)
         }
         // live-sync's last aspect slice ("give LEGION's lists, goals and grocery staples a
         // Supabase home, end to end"): goals/grocery_staples/item_lists/list_items. Same

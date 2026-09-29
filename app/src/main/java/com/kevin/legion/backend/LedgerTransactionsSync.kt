@@ -1,13 +1,12 @@
 package com.kevin.legion.backend
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.backend.engine.EngineTransport
 import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.IngestMethod
-import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,9 +50,13 @@ internal object LedgerTransactionsPullCursor {
  * tombstone branch (nothing to receive one), and therefore no way for this pull to notice a
  * supersession that already happened server-side. That is a genuine, narrow gap: a device that
  * pulled a since-superseded `UNRECONCILED` row before the reconciled statement landed keeps showing
- * it until something else removes it locally - out of this ticket's scope (no local write path for
- * ledger transactions is being added here at all, per the ticket's own constraint), named rather
- * than silently accepted.
+ * it until something else removes it locally.
+ *
+ * **On the Django engine that gap is closed by [mirror], not by [pull]** (backend-etl ticket 14): the
+ * engine's full list is the set, so a server-origin row it no longer lists is deleted here, and the
+ * foreground pull on that transport runs [mirror] instead. [pull] survives unchanged in behaviour
+ * for the Supabase transport and its Realtime trigger, where the list cannot be vouched complete
+ * and a delete-by-absence would be unsafe.
  *
  * **Identity, in the absence of a local `serverId` column.** [LedgerTransaction] carries no
  * `serverId` field and none is being added here (no schema change was needed - see this object's own
@@ -84,16 +87,18 @@ object LedgerTransactionsSync {
         val unrecognizedProvenance: List<String>,
     )
 
-    private fun mapProvenance(raw: String): IngestMethod? = when (raw) {
-        "DETERMINISTIC" -> IngestMethod.DETERMINISTIC
-        "LLM_RECONCILED" -> IngestMethod.LLM_RECONCILED
-        "UNRECONCILED" -> IngestMethod.UNRECONCILED
-        // A hand-authored server row, same mapping LedgerRecordBridge.ingestMethodFor already
-        // applies for RecordProvenance.USER - no document backs it, so it is the most literal case
-        // of "no anchor to check against" IngestMethod.UNRECONCILED already names.
-        "USER" -> IngestMethod.UNRECONCILED
-        else -> null
-    }
+    /** What one [mirror] pass did. [deletionsSkipped] true means nothing was removed because the
+     * engine's list was not known to be the whole set. [rulesApplied] is how many rows the phone's
+     * own categorisation rules then filled ([com.kevin.legion.ledger.LedgerController.applyCategoryRules]). */
+    data class MirrorReport(
+        val inserted: Int,
+        val categoriesFilled: Int,
+        val deleted: Int,
+        val deletionsSkipped: Boolean,
+        val alreadyPresent: Int,
+        val unrecognizedProvenance: List<String>,
+        val rulesApplied: Int,
+    )
 
     /**
      * Insert-if-absent only - see this file's own class doc for why an append-only, tombstone-free
@@ -120,37 +125,15 @@ object LedgerTransactionsSync {
                 continue
             }
 
-            val ingestMethod = mapProvenance(r.provenance)
+            val ingestMethod = ledgerIngestMethodFor(r.provenance)
             if (ingestMethod == null) {
                 unrecognized.add("${r.description} (${r.serverId}): unrecognised provenance '${r.provenance}' - not inserted")
                 continue
             }
 
-            toInsert.add(
-                LedgerTransaction(
-                    // "synced" rather than a fabricated filename - CLAUDE.md section 4 rule 5 never
-                    // invents a fact the source didn't state, and the server carries no filename for
-                    // a row this pull downloads. Matches LedgerController's own "voice" convention
-                    // for a row with no document behind it (LedgerController.kt:249).
-                    sourceFile = "synced",
-                    // Reverses LedgerReconcile's own upload mapping exactly (accountNickname =
-                    // txn.accountId) so a migrated-then-pulled-back row round-trips to the same
-                    // accountId string it left with.
-                    accountId = r.accountNickname,
-                    currency = LedgerCurrency.valueOf(r.currency),
-                    txnDate = r.txnDateEpochMs,
-                    description = r.description,
-                    amountCents = r.amountCents,
-                    balanceCents = r.balanceCents,
-                    lineRef = r.lineRef,
-                    ingestMethod = ingestMethod,
-                    syncId = r.serverId,
-                    sourceFileId = null,
-                    category = r.category,
-                    categoryPending = r.categoryPending,
-                    pendingLoggedAt = r.pendingLoggedAtMs,
-                ),
-            )
+            // Shared with [mirror] (LedgerTransactionsMirror.kt), so the two transports cannot map
+            // one server row two ways.
+            toInsert.add(r.toLocalRow(ingestMethod))
             inserted++
         }
 
@@ -160,6 +143,84 @@ object LedgerTransactionsSync {
 
         remote.maxOfOrNull { it.createdAtMs }?.let { LedgerTransactionsPullCursor.advance(context, it) }
         return PullReport(inserted, alreadyPresent, unrecognized)
+    }
+
+    /**
+     * The Django engine's pull, and the one that closes this file's named gap: **Room's
+     * server-origin rows are made to match the engine's full list** - inserted, category-filled,
+     * and deleted where the engine no longer lists them (a rule-7 supersession, which is now the
+     * daily path: each day's card export is replaced by the next and eventually by the statement).
+     * [planLedgerMirror] holds every rule, including the two that make a delete safe (only
+     * [SYNCED_SOURCE_FILE] rows, and only off a list known to be complete).
+     *
+     * **The fetch happens before any write**, so an unreachable engine throws out of here with Room
+     * exactly as it was. The caller records that ([LedgerMirrorStatus]) so the Money surfaces can
+     * say so.
+     *
+     * **Then the phone's own categorisation rules run** over whatever is still uncategorised. Rows
+     * the engine stored before it learned to categorise at insert can never be categorised there
+     * (the gate's trigger refuses the UPDATE; `server/ingest/category_rules.py`), so without this
+     * they would stay uncategorised on every surface and outside every budget line. It is the same
+     * [com.kevin.legion.ledger.LedgerController.applyCategoryRules] the ledger screen's button runs,
+     * over the same `category_rules` the engine holds (pulled by [LedgerConfigSync]), not a second
+     * implementation. [categorize] is the seam a test replaces.
+     *
+     * No cursor: the whole list every time, which is the contract. At household scale that is one
+     * to three pages.
+     */
+    suspend fun mirror(
+        context: Context,
+        backend: LedgerBackend,
+        categorize: suspend (Context) -> Int = { com.kevin.legion.ledger.LedgerController.applyCategoryRules(it) },
+    ): MirrorReport {
+        val set = backend.fetchTransactionSet().getOrThrow()
+        val database = CarDatabase.getDatabase(context)
+        val dao = database.ledgerTransactionDao()
+        var deleted = 0
+        val plan = database.withTransaction {
+            val plan = planLedgerMirror(dao.getAll(), set.rows, set.complete)
+            if (plan.toInsert.isNotEmpty()) dao.insertAll(plan.toInsert)
+            for (fill in plan.categoryFills) dao.updateCategoryById(fill.localId, fill.category, fill.categoryPending)
+            for (chunk in plan.toDeleteSyncIds.chunked(DELETE_CHUNK)) deleted += dao.deleteSyncedBySyncIds(chunk)
+            plan
+        }
+        val rulesApplied = categorize(context)
+        return MirrorReport(
+            inserted = plan.toInsert.size,
+            categoriesFilled = plan.categoryFills.size,
+            deleted = deleted,
+            deletionsSkipped = plan.deletionsSkipped,
+            alreadyPresent = plan.alreadyPresent,
+            unrecognizedProvenance = plan.unrecognizedProvenance,
+            rulesApplied = rulesApplied,
+        )
+    }
+
+    /** Below SQLite's bound-variable limit on every API level this app runs on. */
+    private const val DELETE_CHUNK = 500
+
+    /**
+     * [mirror] with its outcome recorded for the Money surfaces: success stamps
+     * [LedgerMirrorStatus.recordSuccess]; a failure stamps [LedgerMirrorStatus.recordFailure] and
+     * rethrows, so the caller's own logging still sees it. Shared by the foreground pull and
+     * [com.kevin.legion.backend.engine.EngineSyncNow], so the "couldn't reach the server" line means
+     * the same thing whichever one ran last.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    suspend fun runMirror(context: Context, backend: LedgerBackend): MirrorReport {
+        val report = try {
+            mirror(context, backend)
+        } catch (e: Exception) {
+            LedgerMirrorStatus.recordFailure(context)
+            throw e
+        }
+        val changedRoom = report.inserted + report.categoriesFilled + report.deleted + report.rulesApplied > 0
+        LedgerMirrorStatus.recordSuccess(context, changedRoom)
+        MidnightEvents.ledgerTransactionsMirrorSucceeded(
+            report.inserted, report.categoriesFilled, report.deleted, report.deletionsSkipped,
+            report.unrecognizedProvenance.size, report.rulesApplied,
+        )
+        return report
     }
 
     private val autoPullScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -199,10 +260,14 @@ object LedgerTransactionsSync {
                 // BodySync.maybeAutoPull's own doc comment for why.
                 if (!onDjango && resolveUserIdForAutoPull(SupabaseAuth(app)) == null) return@launch
                 val backend = backends.ledgerBackend() ?: return@launch
-                val report = pull(app, backend)
-                MidnightEvents.ledgerTransactionsAutoPullSucceeded(
-                    report.inserted, report.alreadyPresent, report.unrecognizedProvenance.size,
-                )
+                if (onDjango) {
+                    runMirror(app, backend)
+                } else {
+                    val report = pull(app, backend)
+                    MidnightEvents.ledgerTransactionsAutoPullSucceeded(
+                        report.inserted, report.alreadyPresent, report.unrecognizedProvenance.size,
+                    )
+                }
             } catch (e: Exception) {
                 MidnightEvents.ledgerTransactionsAutoPullFailed(e)
             }
