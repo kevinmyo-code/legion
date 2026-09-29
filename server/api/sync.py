@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from django.core.exceptions import ValidationError
 from django.db import DatabaseError, transaction
+from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.fields import DateTimeField
@@ -83,6 +85,62 @@ def paginate_since(queryset, page_size: int = PAGE_SIZE, cursor_field: str = "up
         page = rows[:page_size]
         return page, DateTimeField().to_representation(getattr(page[-1], cursor_field))
     return rows, None
+
+
+def parse_after(queryset, raw: str | None):
+    """`?after=<pk>`, coerced by the model's own primary-key field, or None.
+
+    None for absent AND for unparsable, and None means "no tiebreak": the
+    page is then the old inclusive `cursor_field >= since` read. Same
+    posture as `parse_since` - a caller that cannot be understood sees too
+    much, never silently nothing.
+    """
+    if not raw:
+        return None
+    try:
+        return queryset.model._meta.pk.to_python(raw)
+    except ValidationError:
+        return None
+
+
+def paginate_keyset(queryset, since, after, page_size: int = PAGE_SIZE, cursor_field: str = "updated_at"):
+    """`paginate_since` with a primary-key tiebreak, for `SyncedModelViewSet`.
+
+    **Why it exists: the gated tables share one timestamp per ingest.**
+    `ledger_transactions` is keyed on `created_at`, and the gate writes every
+    line of one statement in one `bulk_create` with `created_at=Now()` -
+    Postgres's transaction time, identical on every row. A statement or a
+    card export of more than `page_size` lines therefore filled a whole page
+    with one timestamp, `next` repeated the cursor it was given, and a client
+    following the documented loop stopped there, holding a truncated table
+    and no way to know. That was harmless-looking while the phone only
+    inserted what was missing. It is not harmless once the phone replaces
+    its set of server rows with what the server lists, because a truncated
+    list reads as "the server deleted these".
+
+    The fix is the ordinary keyset: order by `(cursor_field, pk)`, and hand
+    back the last row's `pk` as `next_after` beside the unchanged `next`. A
+    caller that sends both gets rows strictly after that position; a caller
+    that sends only `since` gets exactly what it got before, so an installed
+    client that has never heard of `after` is unaffected.
+
+    `queryset` must NOT already be filtered on `since` - this does it.
+    Returns `(rows, next_iso, next_after)`; both cursors are None on the last
+    page.
+    """
+    if after is None:
+        queryset = queryset.filter(**{f"{cursor_field}__gte": since})
+    else:
+        queryset = queryset.filter(
+            Q(**{f"{cursor_field}__gt": since}) | Q(**{cursor_field: since, "pk__gt": after})
+        )
+    queryset = queryset.order_by(cursor_field, "pk")
+    rows = list(queryset[: page_size + 1])
+    if len(rows) > page_size:
+        page = rows[:page_size]
+        last = page[-1]
+        return page, DateTimeField().to_representation(getattr(last, cursor_field)), str(last.pk)
+    return rows, None, None
 
 
 def save_or_400(save_callable):

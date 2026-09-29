@@ -112,4 +112,4 @@ def test_the_eight_body_tables_are_all_routed(auth_client):
     for table in tables:
         response = auth_client.get(f"/api/body/{table}/")
         assert response.status_code == 200, table
-        assert response.data == {"results": [], "next": None}, table
+        assert response.data == {"results": [], "next": None, "next_after": None}, table

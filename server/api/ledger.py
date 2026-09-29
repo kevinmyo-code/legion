@@ -373,6 +373,28 @@ class StatementViewSet(_GatedLedgerViewSet):
 
 
 class LedgerTransactionViewSet(_GatedLedgerViewSet):
+    """**How a client learns that a row is gone: the full list is the set.**
+
+    A row leaves this table in exactly one way - a rule-7 supersession
+    physically DELETEs an UNRECONCILED row when a verified statement, or a
+    newer provisional export, covers its dates - and there is no tombstone
+    to observe (`has_tombstones = False`; the table has no `deleted_at`). So
+    the contract is the simplest one that is correct: **a client that wants
+    to mirror this table fetches the whole list (no `since`), and any row it
+    holds from this server that the list does not contain has been
+    deleted.** At household scale (about a thousand rows) that is one to
+    three pages. No tombstone table, no deleted-ids feed.
+
+    It is only correct if the list is COMPLETE, which is why the list pages
+    with a keyset (`next` plus `next_after`, `api/sync.paginate_keyset`): a
+    statement's lines share one `created_at`, and without the tiebreak a
+    page of them re-served itself and a client stopped early, which under
+    this contract would have read as mass deletion. A client must treat any
+    fetch that did not reach a page with `next: null` as incomplete and
+    delete nothing. `backend/LedgerTransactionsSync.kt` on the phone is the
+    first client that does this.
+    """
+
     table = "ledger_transactions"
     # `/api/ledger/transactions/`, this ticket's own path. `ledger/ledger_transactions`
     # would say the word twice; the changes-feed key stays `ledger_transactions`.

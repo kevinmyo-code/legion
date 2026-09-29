@@ -1576,6 +1576,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_freshness_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/me": {
         parameters: {
             query?: never;
@@ -1784,6 +1800,38 @@ export interface paths {
          *     The request body IS that RPC's `payload`, unchanged, and is a free-form JSON object on purpose (see this module's source for why it is not a serializer). Keys read: `content_sha256` (required), `provenance` (defaults to `LLM_RECONCILED`), `items` (array of `{name, quantity?, unit_price_cents?, total_price_cents, estimated_calories_kcal?, estimated_protein_g?, estimated_carbs_g?, estimated_fat_g?}`), the anchors `total_cents` / `subtotal_cents?` / `tax_cents?` / `other_charges_cents?`, `store`, `purchase_date`, `currency`, `photo_object_path?`, and the file facts `source_file_id?` / `display_name?` / `size_bytes?`. Money is an integer number of cents. **The four `estimated_*` fields are estimates and are excluded from the reconciliation arithmetic** (CLAUDE.md section 4 rule 5).
          */
         post: operations["api_ingest_receipt_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_ingest_sessions_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/sessions/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_ingest_sessions_retrieve"];
+        put: operations["api_ingest_sessions_update"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2955,6 +3003,12 @@ export interface components {
             origin_guid: string;
         };
         /**
+         * @description * `cookie_jar` - Cookie jar
+         *     * `oauth_refresh` - OAuth refresh token
+         * @enum {string}
+         */
+        CredentialKindEnum: "cookie_jar" | "oauth_refresh";
+        /**
          * @description `{"detail": "..."}` - the shape every hand-written refusal in this API
          *     uses, and the shape DRF itself uses for 401/403/404/405. The strings are
          *     written to be shown to a person: they say what did NOT happen (CLAUDE.md
@@ -3092,6 +3146,18 @@ export interface components {
             origin_guid?: string | null;
             structured_meta?: unknown;
             kind?: string;
+        };
+        Freshness: {
+            sources: components["schemas"]["FreshnessSource"][];
+        };
+        FreshnessSource: {
+            source: components["schemas"]["SourceEnum"];
+            /** Format: date-time */
+            last_ok_at: string | null;
+            last_outcome: (components["schemas"]["LastOutcomeEnum"] | components["schemas"]["NullEnum"]) | null;
+            last_error: string | null;
+            stale: boolean;
+            sentence: string;
         };
         /**
          * @description Field-for-field `RemoteGroceryStaple` / `GroceryStapleFields`
@@ -3305,6 +3371,15 @@ export interface components {
             reason: string | null;
         };
         /**
+         * @description * `ok` - OK
+         *     * `failed` - Failed
+         *     * `needs_login` - Needs login
+         *     * `skipped_locked` - Skipped, already running
+         *     * `skipped` - Skipped, not set up
+         * @enum {string}
+         */
+        LastOutcomeEnum: "ok" | "failed" | "needs_login" | "skipped_locked" | "skipped";
+        /**
          * @description One `public.ledger_transactions` row.
          *
          *     `provenance` is the load-bearing field on the wire, not decoration.
@@ -3349,6 +3424,8 @@ export interface components {
              *     * `USER` - User
              */
             readonly provenance: components["schemas"]["ProvenanceEnum"];
+            /** @description A sentence beginning 'Unverified' on every UNRECONCILED row (section 4 rule 7: the source stated no anchor, so the row is provisional). Null on a row that passed the gate. A surface showing the row, or a total containing it, shows this. */
+            readonly verification_note: string | null;
             /** Format: date-time */
             readonly created_at: string;
             readonly origin_guid: string | null;
@@ -3570,6 +3647,8 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        /** @enum {unknown} */
+        NullEnum: null;
         /**
          * @description What `POST .../batch/` answers with.
          *
@@ -3720,6 +3799,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedBudgetTarget: {
             results: components["schemas"]["BudgetTarget"][];
@@ -3728,6 +3809,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedBuildEntry: {
             results: components["schemas"]["BuildEntry"][];
@@ -3736,6 +3819,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedCategory: {
             results: components["schemas"]["Category"][];
@@ -3744,6 +3829,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedCategoryRule: {
             results: components["schemas"]["CategoryRule"][];
@@ -3752,6 +3839,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedChassisQuirk: {
             results: components["schemas"]["ChassisQuirk"][];
@@ -3760,6 +3849,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedChecklist: {
             results: components["schemas"]["Checklist"][];
@@ -3784,6 +3875,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedCodeEvent: {
             results: components["schemas"]["CodeEvent"][];
@@ -3792,6 +3885,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedCompanionMemory: {
             results: components["schemas"]["CompanionMemory"][];
@@ -3800,6 +3895,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedDrive: {
             results: components["schemas"]["Drive"][];
@@ -3808,6 +3905,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedDriveReassignment: {
             results: components["schemas"]["DriveReassignment"][];
@@ -3816,6 +3915,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedEvent: {
             results: components["schemas"]["Event"][];
@@ -3832,6 +3933,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedIngestedFile: {
             results: components["schemas"]["IngestedFile"][];
@@ -3840,6 +3943,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedLedgerTransaction: {
             results: components["schemas"]["LedgerTransaction"][];
@@ -3848,6 +3953,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedMaintenanceSchedule: {
             results: components["schemas"]["MaintenanceSchedule"][];
@@ -3856,6 +3963,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedMealLog: {
             results: components["schemas"]["MealLog"][];
@@ -3864,6 +3973,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedMealTarget: {
             results: components["schemas"]["MealTarget"][];
@@ -3872,6 +3983,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedMemory: {
             results: components["schemas"]["Memory"][];
@@ -3880,6 +3993,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedMemoryAudit: {
             results: components["schemas"]["MemoryAudit"][];
@@ -3888,6 +4003,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedObdSample: {
             results: components["schemas"]["ObdSample"][];
@@ -3904,6 +4021,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedPlace: {
             results: components["schemas"]["Place"][];
@@ -3912,6 +4031,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedReceipt: {
             results: components["schemas"]["Receipt"][];
@@ -3920,6 +4041,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedReceiptLineItem: {
             results: components["schemas"]["ReceiptLineItem"][];
@@ -3928,6 +4051,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedServiceHistory: {
             results: components["schemas"]["ServiceHistory"][];
@@ -3936,6 +4061,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedSleepLog: {
             results: components["schemas"]["SleepLog"][];
@@ -3944,6 +4071,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedSleepTarget: {
             results: components["schemas"]["SleepTarget"][];
@@ -3952,6 +4081,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedStatement: {
             results: components["schemas"]["Statement"][];
@@ -3960,6 +4091,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedVehicle: {
             results: components["schemas"]["Vehicle"][];
@@ -3968,6 +4101,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedVehicleSpec: {
             results: components["schemas"]["VehicleSpec"][];
@@ -3976,6 +4111,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedVoiceNote: {
             results: components["schemas"]["VoiceNote"][];
@@ -3984,6 +4121,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedWorkoutPlan: {
             results: components["schemas"]["WorkoutPlan"][];
@@ -3992,6 +4131,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedWorkoutPlanItem: {
             results: components["schemas"]["WorkoutPlanItem"][];
@@ -4000,6 +4141,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PagedWorkoutSetLog: {
             results: components["schemas"]["WorkoutSetLog"][];
@@ -4008,6 +4151,8 @@ export interface components {
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
              */
             next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
         };
         PatchedChecklist: {
             /** Format: uuid */
@@ -4295,6 +4440,9 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid?: string | null;
         };
+        SessionList: {
+            sessions: components["schemas"]["SessionMetadata"][];
+        };
         /**
          * @description `POST /api/auth/session/login`. No `device_name` - a browser session
          *     is not a device token (ADR 0044 rule 3: different credentials, different
@@ -4305,6 +4453,32 @@ export interface components {
             email: string;
             password: string;
         };
+        SessionMetadata: {
+            source: components["schemas"]["SessionSourceEnum"];
+            kind: components["schemas"]["CredentialKindEnum"];
+            /** Format: date-time */
+            captured_at: string;
+            /** Format: date-time */
+            expires_hint: string | null;
+            /** Format: date-time */
+            invalid_since: string | null;
+            config: unknown;
+        };
+        SessionPut: {
+            /** @description canvas/webassign: {"cookies": [{"name", "value", "domain", ...}]}. drive: {"refresh_token", "client_id", "client_secret", "token_uri", "scopes"}. Never a password. */
+            secret: unknown;
+            /** @description Non-secret settings a job needs (Canvas base_url, a Drive folder id). Merged into what is stored. Shown to every member. */
+            config?: unknown;
+            /** Format: date-time */
+            expires_hint?: string | null;
+        };
+        /**
+         * @description * `canvas` - Canvas
+         *     * `webassign` - WebAssign
+         *     * `drive` - Google Drive
+         * @enum {string}
+         */
+        SessionSourceEnum: "canvas" | "webassign" | "drive";
         /**
          * @description `POST /api/auth/signup`.
          *
@@ -4407,6 +4581,16 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        /**
+         * @description * `canvas` - Canvas
+         *     * `webassign` - WebAssign
+         *     * `drive_statements` - Drive statements
+         *     * `backup` - Backup
+         *     * `obd_rollup` - OBD roll-up
+         *     * `heartbeat` - Heartbeat
+         * @enum {string}
+         */
+        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat";
         /**
          * @description One `public.statements` row: a bank statement's header and, crucially,
          *     the three anchors the gate checked it against (section 4 rule 8).
@@ -5063,6 +5247,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -5156,6 +5342,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -5249,6 +5437,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -5342,6 +5532,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -5435,6 +5627,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -5528,6 +5722,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -5621,6 +5817,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -5714,6 +5912,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -6443,6 +6643,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -6534,6 +6736,8 @@ export interface operations {
     api_fleet_chassis_quirks_list: {
         parameters: {
             query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -6597,6 +6801,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -6690,6 +6896,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -6783,6 +6991,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -6876,6 +7086,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -6969,6 +7181,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -7193,6 +7407,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -7286,6 +7502,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -7377,6 +7595,8 @@ export interface operations {
     api_fleet_vehicle_specs_list: {
         parameters: {
             query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -7440,6 +7660,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -7524,6 +7746,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_freshness_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One entry per scheduled source, always all of them, for the caller's household only. Render `sentence` as it is; do not compose a phrase from `last_ok_at`. `stale` is true when no run succeeded inside the source's threshold (canvas 2h, webassign/drive_statements/backup/obd_rollup 36h, heartbeat 1h), and false for a source the household has not set up. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Freshness"];
                 };
             };
         };
@@ -7744,6 +7986,8 @@ export interface operations {
     api_ingest_files_list: {
         parameters: {
             query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -7844,6 +8088,104 @@ export interface operations {
             };
         };
     };
+    api_ingest_sessions_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata for every login this household has handed over. Never the secret. `invalid_since` set means an upstream refused it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionList"];
+                };
+            };
+        };
+    };
+    api_ingest_sessions_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One stored login's metadata. Never the secret. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionMetadata"];
+                };
+            };
+            /** @description No login stored for this source. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    api_ingest_sessions_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionPut"];
+                "application/x-www-form-urlencoded": components["schemas"]["SessionPut"];
+                "multipart/form-data": components["schemas"]["SessionPut"];
+            };
+        };
+        responses: {
+            /** @description Stored, replacing any earlier login for this source and clearing `invalid_since`. The body is metadata only; the secret is not echoed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionMetadata"];
+                };
+            };
+            /** @description Nothing was stored: `bofa` (never leaves the laptop), an unknown source, a secret of the wrong shape, anything naming a password, or a config key that names a secret. `detail` says which. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing was stored: the caller is not an owner. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing was stored: LEGION_VAULT_KEY is unset or invalid. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     api_ingest_statement_create: {
         parameters: {
             query?: never;
@@ -7899,6 +8241,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -7992,6 +8336,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8085,6 +8431,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8176,6 +8524,8 @@ export interface operations {
     api_ledger_statements_list: {
         parameters: {
             query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8229,6 +8579,8 @@ export interface operations {
     api_ledger_transactions_list: {
         parameters: {
             query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8284,6 +8636,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
                 /** @description The vehicle this device is currently in (the phone's `ActiveVehicle.current()` - a dongle MAC or a `car:<uuid>`). Supplying it applies the recall rule: every `driver` and `relationship` memory comes back, and `car_anchored` memories come back ONLY for this vehicle. **Omitting it returns everything**, because this route is also the replication feed and a replica has to be whole - see `api/memory.py`'s own module doc. Send it whenever the rows are going into a prompt; omit it when they are going into a local cache. */
@@ -8379,6 +8733,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8472,6 +8828,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8535,6 +8893,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8626,6 +8986,8 @@ export interface operations {
     api_pantry_line_items_list: {
         parameters: {
             query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8679,6 +9041,8 @@ export interface operations {
     api_pantry_receipts_list: {
         parameters: {
             query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8734,6 +9098,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
@@ -8827,6 +9193,8 @@ export interface operations {
             query?: {
                 /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
                 active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
             };
