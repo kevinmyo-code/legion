@@ -5939,3 +5939,19 @@ Settled in one interview and a clickable prototype canvas, every call his:
   supersedes ADR 0023 surface by surface.
 
 Map: `.scratch/home-launcher/`. The prototype source is kept in its `research/prototype-canvas/`.
+
+## 2026-09-29 - A late-month Housing charge counts in the next month
+
+Rent is charged to the card as `RPS*The Pointe at V RD ...`, category Housing, usually a day or so
+before the month it pays for (2026-07-30, 2026-08-31), so the Money tile showed September with no
+rent and July and August with two. Offered:
+
+- (a) leave as is;
+- (b) "Treat a Housing charge in the last 3 days of a month as belonging to the next month."
+
+**Kevin: "b".** Built as one definition, `budgetMonthOf` in `ledger/BudgetMonth.kt`: an outflow
+whose category is Housing, dated on or after `lengthOfMonth - 2`, belongs to the next month. Every
+spend-by-month figure reads it; transfer pairing stays on calendar dates. A reading rule only: the
+row's date is never changed and nothing is stored differently. Every figure that includes or
+leaves out a moved row says so in words (`earlyChargeSentences`). Ticket:
+`.scratch/backend-etl/issues/15-rent-counts-in-the-month-it-pays-for.md`.
