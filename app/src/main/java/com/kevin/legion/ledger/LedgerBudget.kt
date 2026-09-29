@@ -133,6 +133,10 @@ data class BudgetVsActual(
      * disclosed by [notSpendingExcludedSentence]. Defaulted so a caller that built one before this
      * existed still states the truth: nothing excluded. */
     val notSpendingExcluded: NotSpendingExcluded = NotSpendingExcluded.NONE,
+    /** 2026-09-29 (Kevin, "b"): Housing charges [budgetMonthOf] moved into or out of [month],
+     * disclosed by [earlyChargeSentences]. Defaulted so a caller that built one before this existed
+     * still states the truth: nothing moved. */
+    val earlyChargesMoved: EarlyChargesMoved = EarlyChargesMoved.NONE,
 ) {
     /**
      * Same guard the old P&L's `isComplete` used: an EMPTY [coverage] list must never read as
@@ -180,7 +184,14 @@ data class BudgetVsActual(
  * states for daily bars, applied here at month granularity) and why this type carries no sentinel
  * for it - the caller reconstructs the gap from a hole in this list's own month sequence instead.
  */
-data class MonthSpend(val month: YearMonth, val totalCents: Long, val isComplete: Boolean, val hasProvisionalRows: Boolean)
+data class MonthSpend(
+    val month: YearMonth,
+    val totalCents: Long,
+    val isComplete: Boolean,
+    val hasProvisionalRows: Boolean,
+    /** [BudgetVsActual.earlyChargesMoved] for [month], so the trend row states the same words. */
+    val earlyChargesMoved: EarlyChargesMoved = EarlyChargesMoved.NONE,
+)
 
 /**
  * The pure per-month aggregation/omission rule [LedgerController.monthlySpendTrend] applies to
@@ -197,7 +208,7 @@ internal fun monthSpendFrom(month: YearMonth, budget: BudgetVsActual): MonthSpen
     // imported for, and dropping it from the trend entirely would state the stronger claim.
     if (budget.coverage.isEmpty() && budget.allOperatingSpendCents == 0L) return null
     val hasProvisionalRows = budget.lines.any { it.hasProvisionalRows } || budget.uncategorized.hasProvisionalRows
-    return MonthSpend(month, totalCents, budget.isComplete, hasProvisionalRows)
+    return MonthSpend(month, totalCents, budget.isComplete, hasProvisionalRows, budget.earlyChargesMoved)
 }
 
 /**
@@ -445,6 +456,20 @@ fun buildBudgetVsActual(
 
     val uncategorizedSpentCents = -uncategorizedRows.sumOf { it.amountCents }
 
+    // 2026-09-29: the rows budgetMonthOf moved across this month's edges, for the disclosure.
+    // Counted here: spend rows dated outside the calendar month. Counted next month: this calendar
+    // month's rows that moved out, classified by the SAME operatingExpenses call so only real spend
+    // (not a paired transfer, inside the account filter, not a not-spending category) is mentioned.
+    val countedHere = expenses.filter { YearMonth.from(calendarDateOf(it)) != month }
+    // A candidate the caller nevertheless put in inPeriod IS counted here, so never say it is not.
+    val inPeriodSet = inPeriod.toSet()
+    val movedOutCandidates = pairingWindow.filter {
+        YearMonth.from(calendarDateOf(it)) == month && budgetMonthOf(it) != month && it !in inPeriodSet
+    }
+    val countedNextMonth = if (movedOutCandidates.isEmpty()) emptyList() else operatingExpenses(
+        entity, movedOutCandidates, pairingWindow, maxDaysApart, ownAccountIds, accountFilter, notSpending,
+    )
+
     return BudgetVsActual(
         entity = entity,
         month = month,
@@ -462,5 +487,6 @@ fun buildBudgetVsActual(
             categories = notSpendingRows.mapNotNull { it.category }.distinct().sorted(),
             rows = notSpendingRows,
         ),
+        earlyChargesMoved = EarlyChargesMoved(countedHere, countedNextMonth),
     )
 }

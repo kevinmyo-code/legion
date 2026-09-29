@@ -484,6 +484,12 @@ object LedgerController {
     suspend fun excludedOwnAccountMovements(context: Context, entity: LedgerEntity, month: YearMonth): ExcludedOwnAccountMovements =
         budgetVsActual(context, entity, month).excludedOwnAccountMovements
 
+    /** The Housing charges [budgetMonthOf] moved across [month]'s edges - the SAME [buildBudgetVsActual]
+     * classification [budgetVsActual] discloses, for a surface that sums [monthOperatingExpenses]
+     * itself and must say the same words. */
+    suspend fun earlyChargesMoved(context: Context, entity: LedgerEntity, month: YearMonth): EarlyChargesMoved =
+        budgetVsActual(context, entity, month).earlyChargesMoved
+
     /** [YearMonth]'s own UTC start, matching every parser's `atStartOfDay(ZoneOffset.UTC)` convention. */
     private fun monthStartMillis(month: YearMonth): Long =
         month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
@@ -502,16 +508,10 @@ object LedgerController {
      */
     private fun monthPairingWindow(
         rows: List<LedgerTransaction>, entity: LedgerEntity, month: YearMonth,
-    ): Pair<List<LedgerTransaction>, List<LedgerTransaction>> {
-        val monthStartMs = monthStartMillis(month)
-        val monthEndMs = monthEndMillis(month)
-        val windowMs = PAIRING_WINDOW_DAYS * 24L * 60 * 60 * 1000
-        val pairingWindow = rows.filter {
-            it.currency == entity.currency && it.txnDate in (monthStartMs - windowMs)..(monthEndMs + windowMs)
-        }
-        val inPeriod = pairingWindow.filter { it.txnDate in monthStartMs..monthEndMs }
-        return pairingWindow to inPeriod
-    }
+    ): Pair<List<LedgerTransaction>, List<LedgerTransaction>> =
+        // 2026-09-29 (Kevin, "b"): the period is the BUDGET month (budgetMonthOf - a Housing charge in
+        // the last 3 days counts in the next month); the pairing window stays on calendar dates.
+        budgetMonthRows(rows, entity.currency, month, PAIRING_WINDOW_DAYS)
 
     /** D9: sets [category]'s budget for [entity]'s currency from [month] onward - D2's "copy forward", written at the point of change rather than duplicated every month. See [com.kevin.legion.data.local.BudgetTarget]'s doc comment for why this is a single upsert, not a per-month row.
      *

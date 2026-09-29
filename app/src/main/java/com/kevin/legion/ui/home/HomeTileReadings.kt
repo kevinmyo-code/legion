@@ -215,6 +215,10 @@ fun moneyDisclosureLine(budget: BudgetVsActual?): String? {
         val names = notSpending.categories.joinToString(", ")
         parts += "Excludes ${formatMoney(notSpending.totalCents, currency)} in $names"
     }
+    // 2026-09-29 (Kevin, "b"): a Housing charge counted in a different month than its date. The
+    // tile states the shared sentence whole - short tile wording would be a second phrasing of it.
+    parts += com.kevin.legion.ledger.earlyChargeSentences(budget.earlyChargesMoved, budget.month, currency)
+        .map { it.removeSuffix(".") }
     val unverified = budget.lines.any { it.hasProvisionalRows } || budget.uncategorized.hasProvisionalRows
     if (unverified) parts += "unverified"
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" - ")
