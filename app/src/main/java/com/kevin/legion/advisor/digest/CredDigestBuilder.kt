@@ -63,6 +63,10 @@ class CredDigestBuilder : DigestBuilder {
         val lines = mutableListOf<String>()
         lines += budgetLine(current)
         lines += uncategorizedLine(current)
+        // 2026-09-29 (Kevin, "b"): Housing charges counted in a different month than their date.
+        lines += com.kevin.legion.ledger
+            .earlyChargeSentences(current.earlyChargesMoved, current.month, current.entity.currency)
+            .map { DigestText.line("HOUSING_MONTH", it) }
         lines += provisionalLine(context, entity, month)
         lines += coverageLine(current)
         lines += spendLine(monthly)

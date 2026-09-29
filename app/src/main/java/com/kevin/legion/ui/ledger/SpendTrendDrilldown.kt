@@ -130,6 +130,17 @@ private fun SpendTrendRow(spend: MonthSpend, entity: LedgerEntity) {
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
             )
         }
+        // 2026-09-29 (Kevin, "b"): a Housing charge counted in a different month than its date.
+        val earlySentences = com.kevin.legion.ledger
+            .earlyChargeSentences(spend.earlyChargesMoved, spend.month, entity.currency)
+        for (sentence in earlySentences) {
+            Text(
+                sentence,
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+            )
+        }
     }
 }
 

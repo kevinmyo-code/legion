@@ -1061,6 +1061,8 @@ object LiveToolbox {
                 "total presented without it would understate the month. Transactions filed under a " +
                 "category that is not spending (Transfers) are excluded too: whenever " +
                 "excluded_not_spending_count is above zero, say so using not_spending_note. " +
+                "A Housing charge (rent) made in the last 3 days of a month counts in the NEXT " +
+                "month's spend: whenever early_housing_notes is non-empty, say each note out loud. " +
                 "If the response's verified field is false, say " +
                 "the figure is not fully confirmed (pending bank data, an unconfirmed AI-guessed " +
                 "category, or a month not fully covered by an imported statement).",
@@ -4335,6 +4337,16 @@ object LiveToolbox {
             .put(
                 "not_spending_note",
                 com.kevin.legion.ledger.notSpendingExcludedSentence(budget.notSpendingExcluded, budget.entity.currency),
+            )
+            // 2026-09-29 (Kevin, "b"): a Housing charge in the last 3 days of a month counts in the
+            // next month. The shared sentences, one per moved row; empty when nothing moved.
+            .put(
+                "early_housing_notes",
+                org.json.JSONArray(
+                    com.kevin.legion.ledger.earlyChargeSentences(
+                        budget.earlyChargesMoved, month, budget.entity.currency,
+                    ),
+                ),
             )
     }
 

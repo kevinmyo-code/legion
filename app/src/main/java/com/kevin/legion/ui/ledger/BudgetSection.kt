@@ -282,8 +282,9 @@ private fun BudgetLineRow(line: BudgetLine, entity: LedgerEntity, month: YearMon
 /**
  * Every "left out of spend" sentence the SPEND pane states, each with where a tap takes you: the
  * own-account movements (2026-08-13) and rows in a not-spending category such as Transfers
- * (2026-09-29). Empty ones are omitted - the pane says what WAS excluded, and each sentence is the
- * one shared definition in `ledger/LedgerBudget.kt`.
+ * (2026-09-29), and Housing charges counted in a different month than their date (2026-09-29,
+ * `earlyChargeSentences`). Empty ones are omitted - the pane says what WAS excluded or moved, and
+ * each sentence is the one shared definition in `ledger/LedgerBudget.kt`.
  */
 internal fun exclusionDisclosures(
     budget: BudgetVsActual?,
@@ -297,10 +298,15 @@ internal fun exclusionDisclosures(
     val ownSentence = com.kevin.legion.ledger.excludedOwnAccountMovementsSentence(own, currency)
     val notSpendingSentence = com.kevin.legion.ledger.notSpendingExcludedSentence(notSpending, currency)
     val openNotSpending: () -> Unit = { onOpenCategory(notSpending.categories.firstOrNull()) }
+    // 2026-09-29 (Kevin, "b"): Housing charges counted in a different month than their date, one
+    // sentence per row, tappable into the Housing rows this month counts.
+    val openEarlyCategory: () -> Unit = { onOpenCategory(com.kevin.legion.ledger.EARLY_CHARGE_CATEGORY) }
+    val earlySentences = com.kevin.legion.ledger.earlyChargeSentences(budget.earlyChargesMoved, budget.month, currency)
+        .map { it to openEarlyCategory }
     return listOfNotNull(
         (ownSentence to onOpenExcludedOwnAccountMovements).takeUnless { own.isEmpty },
         (notSpendingSentence to openNotSpending).takeUnless { notSpending.isEmpty },
-    )
+    ) + earlySentences
 }
 
 private fun paceFractionFor(month: YearMonth, zone: ZoneId = ZoneId.systemDefault()): Float? {

@@ -110,6 +110,7 @@ object GeneratedViewQueryRunner {
             excludedCents += excluded.sumOf { -it.amountCents }
             GeneratedViewPoint(label = month.month.name.take(3), valueCents = kept.sumOf { -it.amountCents })
         }
+        val moved = earlyChargeNotes(context, months, window = emptySet())
 
         val allEmpty = points.all { it.valueCents == 0L } && excludedCount == 0
         return RunResult.Rendered(
@@ -117,7 +118,7 @@ object GeneratedViewQueryRunner {
                 shape = spec.shape,
                 title = spec.title,
                 points = if (allEmpty) emptyList() else points,
-                provenanceText = ledgerProvenance(months.size, excludedCount, excludedCents),
+                provenanceText = ledgerProvenance(months.size, excludedCount, excludedCents, moved),
             ),
         )
     }
@@ -140,13 +141,14 @@ object GeneratedViewQueryRunner {
         val rows = LedgerController.monthOperatingExpenses(context, LEDGER_ENTITY, months.single())
         val (kept, excluded) = rows.partition { it.ingestMethod != IngestMethod.UNRECONCILED }
         val excludedCents = excluded.sumOf { -it.amountCents }
+        val moved = earlyChargeNotes(context, months, window = emptySet())
 
         if (kept.isEmpty()) {
             return RunResult.Rendered(
                 GeneratedViewPayload(
                     shape = spec.shape,
                     title = spec.title,
-                    provenanceText = ledgerProvenance(1, excluded.size, excludedCents),
+                    provenanceText = ledgerProvenance(1, excluded.size, excludedCents, moved),
                 ),
             )
         }
@@ -178,7 +180,7 @@ object GeneratedViewQueryRunner {
                 } else {
                     emptyList()
                 },
-                provenanceText = ledgerProvenance(1, excluded.size, excludedCents),
+                provenanceText = ledgerProvenance(1, excluded.size, excludedCents, moved),
             ),
         )
     }
@@ -191,13 +193,15 @@ object GeneratedViewQueryRunner {
         val allRows = months.flatMap { LedgerController.monthOperatingExpenses(context, LEDGER_ENTITY, it) }
         val (kept, excluded) = allRows.partition { it.ingestMethod != IngestMethod.UNRECONCILED }
         val excludedCents = excluded.sumOf { -it.amountCents }
+        // One figure across the window: a row moved between two months inside it changes nothing.
+        val moved = earlyChargeNotes(context, months, window = months.toSet())
 
         if (kept.isEmpty() && excluded.isEmpty()) {
             return RunResult.Rendered(
                 GeneratedViewPayload(
                     shape = spec.shape,
                     title = spec.title,
-                    provenanceText = ledgerProvenance(months.size, 0, 0L),
+                    provenanceText = ledgerProvenance(months.size, 0, 0L, moved),
                 ),
             )
         }
@@ -216,12 +220,17 @@ object GeneratedViewQueryRunner {
                 title = spec.title,
                 totalLabel = headline,
                 rows = rows,
-                provenanceText = ledgerProvenance(months.size, excluded.size, excludedCents),
+                provenanceText = ledgerProvenance(months.size, excluded.size, excludedCents, moved),
             ),
         )
     }
 
-    private fun ledgerProvenance(monthCount: Int, excludedCount: Int, excludedCents: Long): String {
+    private fun ledgerProvenance(
+        monthCount: Int,
+        excludedCount: Int,
+        excludedCents: Long,
+        movedSentences: List<String> = emptyList(),
+    ): String {
         val counted = "Counted every reconciled ledger transaction across " +
             "$monthCount month${if (monthCount == 1) "" else "s"}."
         val excludedSentence = if (excludedCount == 0) {
@@ -231,7 +240,7 @@ object GeneratedViewQueryRunner {
                 "(${formatMoney(excludedCents, LEDGER_ENTITY.currency)}) never faced the reconciliation gate " +
                 "and are excluded from this total."
         }
-        return "$counted $excludedSentence"
+        return (listOf(counted, excludedSentence) + movedSentences).joinToString(" ")
     }
 
     // ------------------------------------------------------------------------------------ PANTRY
@@ -380,3 +389,28 @@ object GeneratedViewQueryRunner {
         }
     }
 }
+
+/**
+ * 2026-09-29 (Kevin, "b"): the shared [com.kevin.legion.ledger.earlyChargeSentences] for each of
+ * [months] - Housing charges counted in a different month than their date. [window] non-empty
+ * means one figure spans those months, so only moves across the window's edge are stated.
+ * Unreconciled rows are left out of "includes": this surface excludes them from its figures.
+ */
+private suspend fun earlyChargeNotes(
+    context: Context,
+    months: List<YearMonth>,
+    window: Set<YearMonth>,
+): List<String> =
+    months.flatMap { month ->
+        val moved = LedgerController.earlyChargesMoved(context, LedgerEntity.US, month)
+        val edgeOnly = com.kevin.legion.ledger.EarlyChargesMoved(
+            countedHere = moved.countedHere.filter {
+                it.ingestMethod != IngestMethod.UNRECONCILED &&
+                    YearMonth.from(com.kevin.legion.ledger.calendarDateOf(it)) !in window
+            },
+            countedNextMonth = moved.countedNextMonth.filter {
+                com.kevin.legion.ledger.budgetMonthOf(it) !in window
+            },
+        )
+        com.kevin.legion.ledger.earlyChargeSentences(edgeOnly, month, LedgerEntity.US.currency)
+    }
