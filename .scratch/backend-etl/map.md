@@ -63,6 +63,7 @@ for that reason. Every table is filled by the phone pushing, and the phone pushe
 | 09 | `connect_session.py bofa`: log in monthly, script pulls new statements to Drive | 02, 06 |
 | 10 | Port `BofaStatementParser` to Python | 06 |
 | 13 | BofA activity CSVs server side: readers, rule 7 writer, routing (split from 09) | 06 |
+| 14 | Ledger rows reach the phone: categorised at insert, mirrored whole, deletions honoured | 06, 13 |
 
 Out of this map, owned by the Android terminal: django-engine 17 (conversation audit), and the
 phone's freshness line (Android reads ticket 01's endpoint).

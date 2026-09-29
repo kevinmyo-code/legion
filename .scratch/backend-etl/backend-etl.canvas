@@ -129,6 +129,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "4661135e49068918",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/14-ledger-rows-reach-the-phone.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -242,6 +252,20 @@
       "fromNode": "d2bf4febb60153d6",
       "fromSide": "right",
       "toNode": "232bcc8dc95979a6",
+      "toSide": "left"
+    },
+    {
+      "id": "e1a19a5e86980427",
+      "fromNode": "d2bf4febb60153d6",
+      "fromSide": "right",
+      "toNode": "4661135e49068918",
+      "toSide": "left"
+    },
+    {
+      "id": "10a44bfe10047a70",
+      "fromNode": "232bcc8dc95979a6",
+      "fromSide": "right",
+      "toNode": "4661135e49068918",
       "toSide": "left"
     }
   ]

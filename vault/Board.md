@@ -152,6 +152,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-etl/map\|backend-etl]] | [[09-bofa-statement-pull\|09]] | build | connect_session.py bofa: log in daily, the script pulls new statements and mid-month activity  waiting on [[02-session-vault-and-login-handover\|02]], [[06-drive-statements-watcher\|06]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[10-port-bofa-parser-to-python\|10]] | build | Port BofaStatementParser to Python so BofA statements skip the LLM  waiting on [[06-drive-statements-watcher\|06]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[13-bofa-activity-csv-server-side\|13]] | build | BofA activity CSVs on the server: deterministic readers, the rule 7 writer, watcher routing  waiting on [[06-drive-statements-watcher\|06]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[14-ledger-rows-reach-the-phone\|14]] | build | Ledger rows reach the phone: categorised at insert, mirrored whole, deletions honoured  waiting on [[06-drive-statements-watcher\|06]], [[13-bofa-activity-csv-server-side\|13]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[04-net-worth-is-never-one-number\|04]] | build | Net worth as a figure plus what is unverified, never one number  waiting on [[02-what-a-net-worth-may-be\|02]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
@@ -219,7 +220,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
-| [[.scratch/backend-etl/map\|backend-etl]] | 13 | 11 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | 14 | 12 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
