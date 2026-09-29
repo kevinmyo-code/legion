@@ -139,6 +139,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "f762ea4e6fde2946",
+      "type": "file",
+      "file": ".scratch/backend-etl/issues/15-rent-counts-in-the-month-it-pays-for.md",
+      "x": 3120,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -266,6 +276,13 @@
       "fromNode": "232bcc8dc95979a6",
       "fromSide": "right",
       "toNode": "4661135e49068918",
+      "toSide": "left"
+    },
+    {
+      "id": "230fa44e3d14a721",
+      "fromNode": "4661135e49068918",
+      "fromSide": "right",
+      "toNode": "f762ea4e6fde2946",
       "toSide": "left"
     }
   ]
