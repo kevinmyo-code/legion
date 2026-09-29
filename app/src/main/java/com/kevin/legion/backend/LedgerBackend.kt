@@ -126,7 +126,26 @@ interface LedgerBackend {
      */
     suspend fun fetchChangedTransactionsSince(sinceMs: Long): Result<List<RemoteLedgerTransaction>> =
         Result.success(emptyList())
+
+    /**
+     * The whole table, and whether this read is known to be ALL of it - what
+     * [LedgerTransactionsSync.mirror] needs, because it treats "the server no longer lists this
+     * row" as "the server deleted it" (a rule-7 supersession) and must never do so off a partial
+     * read.
+     *
+     * **The default says `complete = false`**, so a backend that cannot vouch for completeness
+     * (Supabase: PostgREST caps an unranged select, and this interface never learned to range it)
+     * can be mirrored for inserts and category updates but never deletes anything. Only
+     * [com.kevin.legion.backend.engine.DjangoLedgerBackend] overrides it, from the page loop's own
+     * `next: null` signal.
+     */
+    suspend fun fetchTransactionSet(): Result<RemoteTransactionSet> =
+        fetchActiveTransactions().map { RemoteTransactionSet(it, complete = false) }
 }
+
+/** [LedgerBackend.fetchTransactionSet]'s answer. [complete] false means "at least these rows",
+ * never "exactly these rows". */
+data class RemoteTransactionSet(val rows: List<RemoteLedgerTransaction>, val complete: Boolean)
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseLedgerBackend] for every failure branch - owned
  * by this package, never a raw supabase-kt/Ktor exception, same posture as [FleetBackendException]/

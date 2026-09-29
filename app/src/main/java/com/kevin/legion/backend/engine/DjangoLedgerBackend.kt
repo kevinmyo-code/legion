@@ -3,6 +3,7 @@ package com.kevin.legion.backend.engine
 import com.kevin.legion.backend.LedgerBackend
 import com.kevin.legion.backend.MigratedLedgerTransaction
 import com.kevin.legion.backend.RemoteLedgerTransaction
+import com.kevin.legion.backend.RemoteTransactionSet
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -99,6 +100,19 @@ class DjangoLedgerBackend(http: EngineHttp) : LedgerBackend {
     override suspend fun fetchActiveTransactions(): Result<List<RemoteLedgerTransaction>> =
         translatingEngineCall("load your transactions") {
             transactions.fetchChangedSince(null).map { it.toRemote() }
+        }
+
+    /**
+     * The whole table with the page loop's own completeness verdict - `server/api/ledger.py`'s
+     * `LedgerTransactionViewSet` doc states the contract: the full list IS the set, and a client
+     * may treat an absent row as deleted only when the read reached `next: null`. Before the
+     * engine's keyset tiebreak was deployed, a statement of more than 500 lines stalled on one
+     * shared `created_at` and this reports `complete = false`, which is the honest answer.
+     */
+    override suspend fun fetchTransactionSet(): Result<RemoteTransactionSet> =
+        translatingEngineCall("load your transactions") {
+            val fetched = transactions.fetchEverything()
+            RemoteTransactionSet(fetched.rows.map { it.toRemote() }, fetched.complete)
         }
 
     override suspend fun fetchChangedTransactionsSince(sinceMs: Long): Result<List<RemoteLedgerTransaction>> =

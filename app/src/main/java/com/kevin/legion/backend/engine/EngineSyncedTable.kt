@@ -36,7 +36,23 @@ internal val engineSyncedJson = Json {
 internal data class EnginePage<ROW>(
     val results: List<ROW> = emptyList(),
     val next: String? = null,
+    /** The last row's server id on a full page (`api/sync.paginate_keyset`), handed back as
+     * `?after=` beside `?since=<next>` so a page of rows sharing ONE timestamp cannot re-serve
+     * itself. Absent from an engine that predates it, in which case [EngineSyncedTable] sends only
+     * `since`, exactly as before. */
+    @kotlinx.serialization.SerialName("next_after") val nextAfter: String? = null,
 )
+
+/**
+ * Every row a full read returned, and whether the read actually reached the last page.
+ *
+ * [complete] is false when the loop stopped for any reason other than the engine saying `next:
+ * null`: a page that repeated its own cursor (an engine without the keyset tiebreak, holding more
+ * than one page of rows on one timestamp) or the [EngineSyncedTable] page cap. **A caller that
+ * treats "not in this list" as "deleted" must check it** - an incomplete read is not evidence that
+ * anything is gone.
+ */
+internal data class EngineFetch<ROW>(val rows: List<ROW>, val complete: Boolean)
 
 /**
  * One table on the Django engine's generic synced shape (`server/api/synced.py`'s
@@ -113,6 +129,16 @@ internal class EngineSyncedTable<ROW>(
      * `/api/events` is the older hand-written view and takes no `active` parameter). */
     suspend fun fetchActive(): List<ROW> = fetchPages(sinceIso = null, activeOnly = true)
 
+    /** Every row (no `since`), with whether the read reached the last page - see [EngineFetch]. For
+     * a caller that mirrors the table and so has to know an absent row is really absent. */
+    suspend fun fetchEverything(): EngineFetch<ROW> = fetchPagesReporting(sinceIso = null, activeOnly = false)
+
+    private suspend fun fetchPages(
+        sinceIso: String?,
+        activeOnly: Boolean,
+        extraQuery: Map<String, String> = emptyMap(),
+    ): List<ROW> = fetchPagesReporting(sinceIso, activeOnly, extraQuery).rows
+
     /**
      * Every page, followed to the end.
      *
@@ -120,21 +146,30 @@ internal class EngineSyncedTable<ROW>(
      * own `fetchPagesSince` documents: `paginate_since` hands back the last row's own `updated_at`
      * and `parse_since` compares with `>=`, so the last row of each page reappears as the first
      * row of the next - rows are therefore collected into a map keyed by server id (a repeat
-     * overwrites itself rather than duplicating), the loop stops the moment `next` repeats the
-     * cursor it was just given, and [MAX_PAGES] caps it outright.
+     * overwrites itself rather than duplicating), the loop stops the moment the cursor it is handed
+     * repeats the one it just sent, and [MAX_PAGES] caps it outright.
+     *
+     * **The cursor is the pair `(next, next_after)`** when the engine sends `next_after`
+     * (`api/sync.paginate_keyset`): with it, a page of rows sharing one timestamp is followed past
+     * rather than re-served, which is the case the old `next == cursor` stop silently truncated. An
+     * engine without it sends `next` alone, [nextAfter] stays null, and the loop is byte-for-byte
+     * the old one. Either way, only `next: null` counts as [EngineFetch.complete].
      */
-    private suspend fun fetchPages(
+    private suspend fun fetchPagesReporting(
         sinceIso: String?,
         activeOnly: Boolean,
         extraQuery: Map<String, String> = emptyMap(),
-    ): List<ROW> {
+    ): EngineFetch<ROW> {
         val collected = LinkedHashMap<String, ROW>()
         var cursor = sinceIso
+        var after: String? = null
         var pages = 0
+        var complete = false
         while (pages < MAX_PAGES) {
             val query = buildMap {
                 putAll(extraQuery)
                 cursor?.let { put("since", it) }
+                after?.let { put("after", it) }
                 if (activeOnly) put("active", "1")
             }
             val page = engineSyncedJson.decodeFromString(
@@ -143,11 +178,16 @@ internal class EngineSyncedTable<ROW>(
             )
             page.results.forEach { collected[idOf(it)] = it }
             val next = page.next
-            if (next == null || next == cursor) break
+            if (next == null) {
+                complete = true
+                break
+            }
+            if (next == cursor && page.nextAfter == after) break
             cursor = next
+            after = page.nextAfter
             pages++
         }
-        return collected.values.toList()
+        return EngineFetch(collected.values.toList(), complete)
     }
 
     /**
