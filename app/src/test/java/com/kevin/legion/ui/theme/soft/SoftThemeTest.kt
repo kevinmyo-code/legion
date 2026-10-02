@@ -111,10 +111,88 @@ class SoftThemeTest {
         assertContrastAtLeast(SoftColors.onAlert, SoftColors.card)
     }
 
-    private fun assertContrastAtLeast(foreground: Color, background: Color, minimum: Double = 4.5) {
+    // ---- SoftSemantics: the soft LegionSemantics the shared drill-down primitives read ----
+
+    @Test
+    fun `soft semantics keeps its deliberate same-value pair and no other`() {
+        // `data` and `debit` share SoftColors.text on purpose: a value is ordinary text and a debit is
+        // never accented (the mission-control `credit`/`debit` precedent, intended not accidental).
+        // Every OTHER field must differ from every other, or a state that is meant to read differently
+        // (estimate vs quarantine vs credit vs marker, faint vs ghost) collapses into one hue.
+        val sem = SoftSemantics
+        assertEquals(sem.data, sem.debit)
+        val fields = linkedMapOf(
+            "credit" to sem.credit,
+            "debit" to sem.debit,
+            "estimated" to sem.estimated,
+            "quarantined" to sem.quarantined,
+            "rule" to sem.rule,
+            "ruleFaint" to sem.ruleFaint,
+            "faint" to sem.faint,
+            "ghost" to sem.ghost,
+            "chrome" to sem.chrome,
+            "chromeText" to sem.chromeText,
+            "chromeDim" to sem.chromeDim,
+            "marker" to sem.marker,
+        )
+        val seen = mutableMapOf<Color, String>()
+        for ((name, color) in fields) {
+            val clash = seen[color]
+            // `chrome` and `marker` are both SoftColors.primary: chrome is structure/accent, marker is a
+            // chart point; neither is ever compared against the other for meaning. Allowed.
+            val allowed = (name == "marker" && clash == "chrome")
+            assertTrue("semantics '$name' ($color) collides with '$clash'", clash == null || allowed)
+            seen[color] = name
+        }
+    }
+
+    @Test
+    fun `estimate and quarantine stay different hues so neither can stand in for the other`() {
+        assertTrue(SoftSemantics.estimated != SoftSemantics.quarantined)
+        assertTrue(SoftSemantics.estimated != SoftSemantics.credit)
+        assertTrue(SoftSemantics.quarantined != SoftSemantics.credit)
+    }
+
+    @Test
+    fun `every semantic text colour clears 4_5 against card`() {
+        val sem = SoftSemantics
+        for ((name, color) in listOf(
+            "data" to sem.data, "credit" to sem.credit, "estimated" to sem.estimated,
+            "quarantined" to sem.quarantined, "faint" to sem.faint, "ghost" to sem.ghost,
+            "chromeText" to sem.chromeText, "chrome" to sem.chrome, "marker" to sem.marker,
+        )) {
+            assertContrastAtLeast(color, SoftColors.card, label = name)
+        }
+    }
+
+    @Test
+    fun `estimate and quarantine text also clear 4_5 against the ground and the alert container`() {
+        assertContrastAtLeast(SoftSemantics.estimated, SoftColors.ground, label = "estimated on ground")
+        assertContrastAtLeast(
+            SoftSemantics.quarantined, SoftColors.alertContainer, label = "quarantined on alertContainer",
+        )
+    }
+
+    @Test
+    fun `soft semantics is not the mission-control semantics`() {
+        // Guards the switch itself: if SoftSemantics ever fell back to the old values, SoftTheme
+        // would look soft in chrome only and mint everywhere a screen reads a semantic colour.
+        assertTrue(SoftSemantics.data != com.kevin.legion.ui.theme.DeckData)
+        assertTrue(SoftSemantics.faint != com.kevin.legion.ui.theme.DeckFaint)
+        assertTrue(SoftSemantics.chrome != com.kevin.legion.ui.theme.DeckChrome)
+    }
+
+    @Test
+    fun `every area has its own home icon`() {
+        val icons = AreaAccent.entries.map { it.icon }
+        assertTrue(icons.all { it != 0 })
+        assertEquals("two areas share one icon", icons.size, icons.toSet().size)
+    }
+
+    private fun assertContrastAtLeast(foreground: Color, background: Color, minimum: Double = 4.5, label: String = "") {
         val ratio = contrastRatio(foreground, background)
         val message = "contrast %.2f is below the WCAG minimum %.1f for %s against %s"
-            .format(ratio, minimum, foreground, background)
+            .format(ratio, minimum, foreground, background) + if (label.isEmpty()) "" else " ($label)"
         assertTrue(message, ratio >= minimum)
     }
 }

@@ -50,6 +50,7 @@ import com.kevin.legion.ui.apps.HomeCategory
 import com.kevin.legion.ui.apps.launchDrawerApp
 import com.kevin.legion.ui.media.MediaTransport
 import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.AreaChip
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -477,12 +478,7 @@ private fun TileCard(
             .padding(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(28.dp).background(accent.container, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                MsIcon(iconRes, contentDescription = null, tint = accent.onContainer, size = 16.dp)
-            }
+            AreaChip(accent, iconRes = iconRes)
             Spacer(Modifier.width(8.dp))
             Text(
                 title,

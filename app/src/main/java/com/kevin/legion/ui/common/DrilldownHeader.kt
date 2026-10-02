@@ -7,11 +7,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
 
 /**
  * Shared "< BACK" + title header every in-screen drilldown opens with - lifted out of
@@ -20,9 +23,21 @@ import com.kevin.legion.ui.theme.LegionType
  * exact same header [com.kevin.legion.ui.BodyScreen]'s MASS/INTAKE/SLEEP drilldowns already use,
  * rather than a second hand-rolled copy drifting from this one. Same shape
  * [com.kevin.legion.ui.ledger.CategoryDrilldownScreen]'s own header row uses.
+ *
+ * Under SoftTheme this is the single-row [SoftScreenTopBar] (see [DeckScreenHeader]); [accent] and
+ * [iconRes] are read only there.
  */
 @Composable
-fun DrilldownHeader(title: String, onBack: () -> Unit) {
+fun DrilldownHeader(
+    title: String,
+    onBack: () -> Unit,
+    accent: AreaAccent? = null,
+    @DrawableRes iconRes: Int? = null,
+) {
+    if (LocalSoftActive.current) {
+        SoftScreenTopBar(title = title, onBack = onBack, accent = accent, iconRes = iconRes)
+        return
+    }
     Column {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) {

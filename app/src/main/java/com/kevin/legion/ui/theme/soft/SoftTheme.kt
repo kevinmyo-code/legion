@@ -5,8 +5,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.ui.theme.LegionSemantics
+import com.kevin.legion.ui.theme.LocalLegionSemantics
 
 /**
  * Corner radii ticket 02 names: small 10dp, medium 16dp, large 20dp, extraLarge 24dp. `extraSmall`
@@ -138,20 +142,87 @@ internal val SoftColorScheme = darkColorScheme(
     surfaceContainerHighest = Color(0xFF24272F),
 )
 
+
 /**
- * Wraps only the chrome ticket 02 converts (`StatusLine`, `AssistantStrip`) - and, from ticket 03
- * onward, HOME and Lists. Every other screen keeps
- * [com.kevin.legion.ui.theme.LegionTheme] until its own ticket (ADR 0051: "surface by surface").
- * Nested INSIDE that outer theme at each converted call site, not a replacement for it at the root -
- * `MaterialTheme` is a CompositionLocal provider, so a nested one overrides colours/type/shapes for
- * its own subtree only.
+ * True only inside [SoftTheme] ([com.kevin.legion.ui.theme.LegionTheme] resets it to false). The
+ * shared `ui/common` primitives branch on this ONE flag, never on comparing colour values, to pick
+ * their soft or mission-control rendering. Static: it changes only when a whole theme does.
+ */
+val LocalSoftActive = staticCompositionLocalOf { false }
+
+/**
+ * The soft palette poured into [LegionSemantics]'s existing field names, so every screen that reads
+ * `LocalLegionSemantics.current.<name>` turns soft the moment it sits under [SoftTheme] with no call
+ * site edit. Mapping, and why:
+ * - `data` = [SoftColors.text]: values are no longer mint, a value is just primary text. `debit` the
+ *   same (a debit is never accented). `credit` = [SoftColors.good]; the `+` and the word at the call
+ *   site still carry the meaning, hue only reinforces.
+ * - `estimated` = [SoftColors.caution]; `quarantined` = [SoftColors.onAlert] (alert-coloured text on
+ *   a card; the filled form is [SoftColors.alertContainer], drawn by `QuarantineTag`). Both are
+ *   reinforcement only: CLAUDE.md section 4 rules 5 and 7 still require the words on screen.
+ * - `faint` = [SoftColors.text2], `ghost` = [SoftColors.text3].
+ * - `rule` = [SoftColors.barRule], `ruleFaint` = [SoftColors.cardHigh]: quiet hairlines and tracks.
+ * - `chrome` = [SoftColors.primary], `chromeText` = [SoftColors.onPrimaryContainer] (brighter tier for
+ *   text), `chromeDim` = [SoftColors.primaryContainer] (structural line or border).
+ * - `marker` = [SoftColors.primary], deliberately NOT [SoftColors.caution] so a chart marker and an
+ *   estimate stay different hues, as the mission-control pair did.
+ * `internal` so `SoftThemeTest` can read it.
+ */
+internal val SoftSemantics = LegionSemantics(
+    credit = SoftColors.good,
+    debit = SoftColors.text,
+    estimated = SoftColors.caution,
+    quarantined = SoftColors.onAlert,
+    rule = SoftColors.barRule,
+    ruleFaint = SoftColors.cardHigh,
+    faint = SoftColors.text2,
+    ghost = SoftColors.text3,
+    chrome = SoftColors.primary,
+    chromeText = SoftColors.onPrimaryContainer,
+    chromeDim = SoftColors.primaryContainer,
+    marker = SoftColors.primary,
+    data = SoftColors.text,
+)
+
+/**
+ * Wraps the chrome ticket 02 converted (`StatusLine`, `AssistantStrip`), HOME, Lists, Apps, and every
+ * drill-down screen as it is converted. Screens not yet converted keep
+ * [com.kevin.legion.ui.theme.LegionTheme] (ADR 0051: "surface by surface"). Nested INSIDE that outer
+ * theme at each converted call site, not a replacement for it at the root - `MaterialTheme` and the
+ * locals below are CompositionLocal providers, so a nested one overrides for its own subtree only.
+ *
+ * Also provides [LocalLegionSemantics] = [SoftSemantics] and [LocalSoftActive] = true, which is what
+ * turns the shared `ui/common` primitives (`DeckPane`, `DeckScreenHeader`, `DeckRow`, ...) and
+ * `LegionType.amount/reading/stamp` soft.
+ *
+ * **Converting a drill-down screen (how-to for screen builders):**
+ * 1. In the screen's own file wrap its content in `SoftTheme { ... }`, the way `ChecklistsScreen.kt`
+ *    does. Not at the nav host: Settings and Driving mode stay on LegionTheme for now.
+ * 2. Open with `DeckScreenHeader(title, onBack, accent = AreaAccent.X)`. The chip glyph defaults to
+ *    `accent.icon` (HOME's tile glyph); pass `iconRes` only to override. Calendar=CALENDAR,
+ *    Money and Pantry=MONEY, Body=BODY, Fleet=FLEET, Recordings=RECORDINGS, News=NEWS,
+ *    Reports and Ask=REPORTS.
+ * 3. Replace raw `Deck*` colour constants from `ui/theme/Color.kt` (`DeckData`, `DeckAmber`, ...) with
+ *    `LocalLegionSemantics.current.<field>` or `SoftColors`. Those constants stay mission-control.
+ * 4. Rewrite caller-supplied stamp strings ("MONTH", "NOT BUILT") in sentence case. Primitives skip
+ *    their own `.uppercase()` under soft but never alter a string the caller passed in.
+ * 5. Use `MsIcon` with `res/drawable/ms_*` for glyphs, not "<" text arrows.
+ * 6. Trust wording stays in words: estimate, UNRECONCILED/unverified and quarantine render as text
+ *    beside the number, never colour alone, never collapsed behind a `HelpRow`.
+ * 7. Hand-built cards and chips use `MaterialTheme.shapes` (16/20dp) and `SoftColors.card/cardHigh`,
+ *    not 1dp borders or bezels.
  */
 @Composable
 fun SoftTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = SoftColorScheme,
-        typography = SoftTypography,
-        shapes = SoftShapes,
-        content = content,
-    )
+    CompositionLocalProvider(
+        LocalLegionSemantics provides SoftSemantics,
+        LocalSoftActive provides true,
+    ) {
+        MaterialTheme(
+            colorScheme = SoftColorScheme,
+            typography = SoftTypography,
+            shapes = SoftShapes,
+            content = content,
+        )
+    }
 }

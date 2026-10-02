@@ -8,17 +8,26 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.R
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.AreaChip
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
+import com.kevin.legion.ui.theme.soft.MsIcon
+import com.kevin.legion.ui.theme.soft.SoftColors
 
 /**
  * Shared list furniture for every aspect screen. Extracted from the
@@ -45,6 +54,17 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 @Composable
 fun SectionHeader(left: String, right: String? = null) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // Lists' SectionLabel shape with an optional trailing value; no hairline underneath.
+        Row(
+            Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 14.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(left, style = MaterialTheme.typography.titleSmall, color = SoftColors.text2)
+            if (right != null) Text(right, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
+        }
+        return
+    }
     Column {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -73,12 +93,24 @@ fun SectionHeader(left: String, right: String? = null) {
  * button's width so the title stays optically centred, carried over verbatim
  * from the screens this was extracted from - not a slot for a third control.
  *
+ * Under [com.kevin.legion.ui.theme.soft.SoftTheme] it renders [SoftScreenTopBar] instead; [accent] and
+ * [iconRes] are read only there (an optional tonal area chip) and ignored under LegionTheme.
+ *
  * **Those first three screens are NOT yet converted to call this.** They are
  * verified, working, and identical in output; changing them is a mechanical
  * follow-up, not part of the restyle that motivated the extraction.
  */
 @Composable
-fun DeckScreenHeader(title: String, onBack: () -> Unit) {
+fun DeckScreenHeader(
+    title: String,
+    onBack: () -> Unit,
+    accent: AreaAccent? = null,
+    @DrawableRes iconRes: Int? = null,
+) {
+    if (LocalSoftActive.current) {
+        SoftScreenTopBar(title = title, onBack = onBack, accent = accent, iconRes = iconRes)
+        return
+    }
     Column {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -96,6 +128,40 @@ fun DeckScreenHeader(title: String, onBack: () -> Unit) {
             Text("", style = LegionType.stamp, modifier = Modifier.padding(horizontal = 12.dp))
         }
         Hairline()
+    }
+}
+
+/**
+ * The soft drill-down top bar: `ListsPageTopBar`'s exact shape (56dp row, 48dp icon button with the
+ * Material Symbols Rounded back arrow, Figtree `titleLarge` title, sentence case as the caller wrote
+ * it) plus an optional [AreaChip] between the arrow and the title when [accent] is given. The chip
+ * is the same tonal circle HOME's tile for that area draws; [iconRes] overrides its glyph, otherwise
+ * the area's own `AreaAccent.icon`. Shared by [DeckScreenHeader] and [DrilldownHeader] so the two
+ * entry points cannot drift apart under SoftTheme.
+ */
+@Composable
+internal fun SoftScreenTopBar(
+    title: String,
+    onBack: () -> Unit,
+    accent: AreaAccent? = null,
+    @DrawableRes iconRes: Int? = null,
+) {
+    Row(
+        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            MsIcon(res = R.drawable.ms_arrow_back, contentDescription = "Back", tint = SoftColors.text)
+        }
+        if (accent != null) {
+            AreaChip(accent, iconRes = iconRes ?: accent.icon, size = 32.dp, iconSize = 18.dp)
+        }
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            color = SoftColors.text,
+            modifier = Modifier.weight(1f).padding(start = if (accent != null) 10.dp else 4.dp),
+        )
     }
 }
 
@@ -171,6 +237,6 @@ fun NotBuiltRow(label: String, why: String) {
             Text(label, style = MaterialTheme.typography.bodyMedium, color = sem.ghost)
             Text(why, style = LegionType.stamp, color = sem.ghost)
         }
-        Text("NOT BUILT", style = LegionType.stamp, color = sem.ghost)
+        Text("Not built".deckCase(), style = LegionType.stamp, color = sem.ghost)
     }
 }

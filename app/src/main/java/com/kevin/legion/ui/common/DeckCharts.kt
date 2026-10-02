@@ -320,7 +320,7 @@ fun DeckSmallMultiple(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                label.uppercase(),
+                label.deckCase(),
                 style = LegionType.stamp,
                 color = sem.faint,
                 maxLines = 1,
@@ -668,7 +668,7 @@ fun DeckBarLabelRow(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         for (bar in bars) {
             Text(
-                bar?.label?.uppercase().orEmpty(),
+                (bar?.label?.deckCase()).orEmpty(),
                 style = LegionType.stamp,
                 color = sem.faint,
                 maxLines = 1,

@@ -21,7 +21,7 @@ import com.kevin.legion.R
  * `ui/theme/Color.kt`), because [com.kevin.legion.ui.theme.LegionTheme] keeps running on every
  * screen this ticket does not convert (ADR 0051: "surface by surface").
  */
-private val Figtree = FontFamily(
+internal val Figtree = FontFamily(
     Font(R.font.figtree_regular, FontWeight.Normal),
     Font(R.font.figtree_medium, FontWeight.Medium),
     Font(R.font.figtree_semibold, FontWeight.SemiBold),
@@ -29,12 +29,32 @@ private val Figtree = FontFamily(
 )
 
 /**
- * The ten roles ticket 02 names, sizes/weights exactly as specified. Every OTHER [Typography] role
- * (display*, headlineLarge/Medium) is left at Material 3's own baseline - this ticket restyles the
- * shell chrome, not a full type ramp, and nothing built so far reads a role this file does not
- * override.
+ * The ten roles ticket 02 names, sizes/weights exactly as specified, plus the display (Large/Medium/
+ * Small), headlineLarge and headlineMedium roles the drill-down conversion added
+ * (see the comment at the first of them). Before
+ * that addition those five were left at Material 3's own baseline; this comment said so, and it no
+ * longer holds.
  */
 val SoftTypography = Typography(
+    // display* / headlineLarge / headlineMedium were left at M3's baseline (Roboto) by the shell
+    // tickets because nothing they built read them. Drill-downs do (hero readouts, screen titles),
+    // so under SoftTheme they resolve to Figtree too rather than silently falling back to the
+    // system face. Sizes follow the ladder already above, not a new taste call.
+    displayLarge = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 42.sp,
+    ),
+    displayMedium = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 36.sp,
+    ),
+    displaySmall = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 32.sp,
+    ),
+    headlineLarge = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 34.sp,
+    ),
+    headlineMedium = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, lineHeight = 30.sp,
+    ),
     headlineSmall = TextStyle(
         fontFamily = Figtree, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 32.sp,
     ),
@@ -66,3 +86,25 @@ val SoftTypography = Typography(
         fontFamily = Figtree, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp,
     ),
 )
+
+/**
+ * Soft equivalents of [com.kevin.legion.ui.theme.LegionType]'s three extra roles, picked by that
+ * object's getters when [LocalSoftActive] is true so no call site changes. Figtree is proportional,
+ * so the tabular `tnum` OpenType feature stands in for the monospace that kept money and reading
+ * columns aligned under Martian Mono (same technique [com.kevin.legion.ui.common.StatusLine]'s clock
+ * already uses). No letterSpacing stamp: sentence case needs none.
+ */
+internal object SoftLegionType {
+    val amount = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp,
+        fontFeatureSettings = "tnum",
+    )
+    val reading = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 20.sp,
+        fontFeatureSettings = "tnum",
+    )
+    val stamp = TextStyle(
+        fontFamily = Figtree, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp,
+        fontFeatureSettings = "tnum",
+    )
+}

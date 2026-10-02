@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
 
 /**
  * LEGION's theme. Direction "VACUUM with a tinge of SENTRY" on Material 3's
@@ -253,7 +254,12 @@ val LocalLegionSemantics = staticCompositionLocalOf { DarkSemantics }
  */
 @Composable
 fun LegionTheme(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalLegionSemantics provides DarkSemantics) {
+    // Resets LocalSoftActive: a LegionTheme nested inside a SoftTheme (Settings reached from a soft
+    // screen) must render mission-control, not inherit the flag.
+    CompositionLocalProvider(
+        LocalLegionSemantics provides DarkSemantics,
+        LocalSoftActive provides false,
+    ) {
         MaterialTheme(
             colorScheme = DarkScheme,
             typography = LegionTypography,

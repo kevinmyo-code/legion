@@ -51,6 +51,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
+import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckMotionEnabled
@@ -119,6 +125,12 @@ fun DeckSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    if (LocalSoftActive.current) {
+        // A stock M3 Switch, coloured by the soft scheme. It announces on/off itself, so the
+        // two-segment ON/OFF stateDescription below is not needed here.
+        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = modifier, enabled = enabled)
+        return
+    }
     val sem = LocalLegionSemantics.current
     val stateWord = if (checked) "ON" else "OFF"
     Box(
@@ -185,6 +197,26 @@ fun DeckCheckbox(
     enabled: Boolean = true,
 ) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // M3 Checkbox with no click handler of its own: the Row's toggleable owns the gesture and
+        // the Role.Checkbox semantics, same as the mission-control row, so the whole row stays one
+        // target. Label shown as the caller wrote it (sentence case).
+        Row(
+            modifier
+                .sizeIn(minHeight = 48.dp)
+                .toggleable(value = checked, onValueChange = onCheckedChange, enabled = enabled, role = Role.Checkbox),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) SoftColors.text else SoftColors.text3,
+            )
+        }
+        return
+    }
     val glyph = if (checked) "[X]" else "[ ]"
     Row(
         modifier
@@ -234,6 +266,23 @@ fun DeckRadio(
     enabled: Boolean = true,
 ) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        Row(
+            modifier
+                .sizeIn(minHeight = 48.dp)
+                .selectable(selected = selected, onClick = onClick, enabled = enabled, role = Role.RadioButton),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            RadioButton(selected = selected, onClick = null, enabled = enabled)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) SoftColors.text else SoftColors.text3,
+            )
+        }
+        return
+    }
     val glyph = if (selected) "(*)" else "( )"
     Row(
         modifier
@@ -289,6 +338,38 @@ fun DeckButton(
     confirming: Boolean = false,
 ) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // Pill button. Default = primary button (primaryContainer / onPrimaryContainer, the Talk-pill
+        // pairing); destructive = quiet cardHigh until confirming, then the alert pair, so the point
+        // of no return still changes shape-of-meaning, not only hue (the caller's text changes too).
+        val softFill: Color
+        val softContent: Color
+        when {
+            !enabled -> { softFill = SoftColors.cardHigh; softContent = SoftColors.text3 }
+            destructive && confirming -> { softFill = SoftColors.alertContainer; softContent = SoftColors.onAlert }
+            destructive -> { softFill = SoftColors.cardHigh; softContent = SoftColors.text }
+            else -> { softFill = SoftColors.primaryContainer; softContent = SoftColors.onPrimaryContainer }
+        }
+        val softInteraction = remember { MutableInteractionSource() }
+        Box(
+            modifier
+                .sizeIn(minHeight = 48.dp, minWidth = 88.dp)
+                .legionPressScale(softInteraction)
+                .background(softFill, RoundedCornerShape(percent = 50))
+                .clickable(
+                    enabled = enabled,
+                    role = Role.Button,
+                    interactionSource = softInteraction,
+                    indication = LocalIndication.current,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text, style = MaterialTheme.typography.labelLarge, color = softContent)
+        }
+        return
+    }
     val outline: Color
     val fill: Color?
     val content: Color
@@ -386,6 +467,30 @@ fun DeckTextField(
     val isFocused by interactionSource.collectIsFocusedAsState()
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val density = LocalDensity.current
+
+    if (LocalSoftActive.current) {
+        // Rounded filled field: sentence-case label above, cardHigh container, the platform caret
+        // (primary) instead of the hand-drawn block, so the lagging-layout clamp below is not in play.
+        Column(modifier.sizeIn(minHeight = 48.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = SoftColors.text2)
+            Spacer(Modifier.height(4.dp))
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                enabled = enabled,
+                singleLine = singleLine,
+                textStyle = LegionType.reading.copy(color = if (enabled) SoftColors.text else SoftColors.text3),
+                cursorBrush = SolidColor(SoftColors.primary),
+                keyboardOptions = keyboardOptions,
+                interactionSource = interactionSource,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SoftColors.cardHigh, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            )
+        }
+        return
+    }
 
     val cursorAlpha = if (isFocused && enabled && motionEnabled) {
         val transition = rememberInfiniteTransition(label = "deck-textfield-cursor")

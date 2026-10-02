@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,6 +68,7 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckEntranceEnabled
 import com.kevin.legion.ui.theme.deckMotionEnabled
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 
@@ -108,6 +110,13 @@ import com.kevin.legion.ui.theme.soft.SoftColors
  * rewritten doc for the soft-Material shape it has now. Every OTHER primitive in this file
  * ([DeckPane], [DeckTag], [QuarantineTag], [DeckMeter], [DeckRow], [DeckFeedRow], [DeckSectionRule])
  * is untouched - they still serve the mission-control screens ADR 0051 has not reached yet.
+ *
+ * **Drill-down conversion (2026-10-02): the claim above no longer holds for the primitives.** Every
+ * primitive in this file now has a soft branch chosen by [LocalSoftActive] (set only by
+ * [com.kevin.legion.ui.theme.soft.SoftTheme]); under [com.kevin.legion.ui.theme.LegionTheme] each one
+ * draws exactly what it did before. [StatusLine] and the two pills below it were already soft and are
+ * unaffected. Trust wording is untouched by the soft branches: a caller's `UNRECONCILED`/estimate/
+ * quarantine text renders in words in both, and nothing here collapses it.
  */
 
 // ------------------------------------------------------------------- DeckPane
@@ -168,6 +177,10 @@ fun DeckPane(
     alarm: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    if (LocalSoftActive.current) {
+        SoftPane(header, headerAccent, modifier, stretchToParentHeight, alarm, content)
+        return
+    }
     val sem = LocalLegionSemantics.current
     // Ticket 04 section 2's two ALARM materials that land on the frame itself (the pill's own
     // inverted/pulsing treatment is a SEPARATE call site's job, not this shared primitive's - see
@@ -241,6 +254,51 @@ fun DeckPane(
                 .padding(start = 8.dp),
             alarm = alarm,
         )
+    }
+}
+
+/**
+ * [DeckPane] under SoftTheme: a rounded [SoftColors.card] card (16dp, `MaterialTheme.shapes.medium`),
+ * no frame, no pill, no entrance fade. The header is a sentence-case [SoftColors.text2] label above
+ * the content, [headerAccent] following after a middle dot in [SoftColors.text3]-or-better. An
+ * [alarm] pane swaps to [SoftColors.alertContainer] with [SoftColors.onAlert] header text; the
+ * pulse is gone, the words and the fill still carry the alarm (never the pulse alone, as before).
+ * Resizes smoothly when [deckMotionEnabled]. [header] is shown as given, never uppercased.
+ */
+@Composable
+private fun SoftPane(
+    header: String,
+    headerAccent: String?,
+    modifier: Modifier,
+    stretchToParentHeight: Boolean,
+    alarm: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val headerColor = if (alarm) SoftColors.onAlert else SoftColors.text2
+    val accentColor = if (alarm) SoftColors.onAlert else SoftColors.text3
+    Column(
+        modifier
+            .fillMaxWidth()
+            .let { if (stretchToParentHeight) it.fillMaxHeight() else it }
+            .background(if (alarm) SoftColors.alertContainer else SoftColors.card, MaterialTheme.shapes.medium)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .let { if (deckMotionEnabled()) it.animateContentSize() else it },
+    ) {
+        if (header.isNotEmpty()) {
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = headerColor)) { append(header) }
+                    if (headerAccent != null) {
+                        withStyle(SpanStyle(color = accentColor)) { append("  \u00B7  $headerAccent") }
+                    }
+                },
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
+        content()
     }
 }
 
@@ -336,6 +394,24 @@ enum class DeckTagStyle { OUTLINE_MUTED, INVERTED_AMBER, INVERTED_GREEN }
 @Composable
 fun DeckTag(text: String, style: DeckTagStyle, modifier: Modifier = Modifier) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // Rounded tonal chip: a faint tint of the signal colour over the card, text in the signal
+        // colour. The words are the caller's, shown as given - the chip never replaces them.
+        val tone = when (style) {
+            DeckTagStyle.OUTLINE_MUTED -> SoftColors.text2
+            DeckTagStyle.INVERTED_AMBER -> SoftColors.caution
+            DeckTagStyle.INVERTED_GREEN -> SoftColors.good
+        }
+        val chipFill = if (style == DeckTagStyle.OUTLINE_MUTED) SoftColors.cardHigh else tone.copy(alpha = 0.16f)
+        Box(
+            modifier
+                .background(chipFill, RoundedCornerShape(percent = 50))
+                .padding(horizontal = 10.dp, vertical = 3.dp),
+        ) {
+            Text(text, style = LegionType.stamp, color = tone)
+        }
+        return
+    }
     // Not a Triple: its type parameters are invariant, and the OUTLINE_MUTED
     // branch's `bg = null` would infer as `Triple<Nothing?, Color, Boolean>`,
     // which does not unify with the other branches' `Triple<Color, Color,
@@ -382,6 +458,18 @@ fun DeckTag(text: String, style: DeckTagStyle, modifier: Modifier = Modifier) {
 @Composable
 fun QuarantineTag(text: String, modifier: Modifier = Modifier) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // The one alarm-weight chip stays: alertContainer fill, onAlert words. The caller's text
+        // (QUARANTINED and the like) renders as given, so the state is worded, not colour alone.
+        Box(
+            modifier
+                .background(SoftColors.alertContainer, RoundedCornerShape(percent = 50))
+                .padding(horizontal = 10.dp, vertical = 3.dp),
+        ) {
+            Text(text, style = LegionType.stamp, color = SoftColors.onAlert)
+        }
+        return
+    }
     Box(
         modifier
             .background(sem.quarantined)
@@ -424,6 +512,31 @@ fun DeckMeter(fraction: Float, paceFraction: Float? = null, modifier: Modifier =
         animationSpec = if (motionEnabled) tween(DRAW_IN_MS) else snap(),
         label = "deck-meter-fill",
     )
+    if (LocalSoftActive.current) {
+        // Rounded track (cardHighest, one tier above the card it sits on) with a primary fill that
+        // turns caution once the fill passes the pace tick. The tick itself is drawn in text so
+        // "ahead of pace" is also readable from position, not just from the hue.
+        val over = paceFraction != null && target > paceFraction
+        val softFill = if (over) SoftColors.caution else SoftColors.primary
+        Canvas(modifier.fillMaxWidth().height(8.dp)) {
+            val radius = CornerRadius(size.height / 2f, size.height / 2f)
+            drawRoundRect(SoftColors.cardHighest, cornerRadius = radius)
+            val fillWidth = size.width * animatedFraction
+            if (fillWidth > 0f) {
+                drawRoundRect(softFill, size = size.copy(width = fillWidth.coerceAtLeast(size.height)), cornerRadius = radius)
+            }
+            if (paceFraction != null) {
+                val x = size.width * paceFraction.coerceIn(0f, 1f)
+                drawRoundRect(
+                    SoftColors.text,
+                    topLeft = Offset(x - 1.dp.toPx(), 0f),
+                    size = size.copy(width = 2.dp.toPx()),
+                    cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx()),
+                )
+            }
+        }
+        return
+    }
     val trackColor = sem.ruleFaint
     val fillColor = sem.data
     val paceColor = MaterialTheme.colorScheme.primary
@@ -476,6 +589,37 @@ fun DeckRow(
     valueColor: Color? = null,
 ) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // Roomy, no separators (Lists draws none): label in primary text on the left, truncating;
+        // value on the right in the amount role, never truncating. A caller's valueColor (a ghost
+        // "not logged", a caution estimate) still applies; words remain the caller's.
+        Row(
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp)
+                .padding(horizontal = 2.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = SoftColors.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (tag != null) tag()
+            Text(
+                value,
+                style = LegionType.amount,
+                color = valueColor ?: sem.data,
+                maxLines = 1,
+                overflow = TextOverflow.Visible,
+            )
+        }
+        return
+    }
     val dashStroke = with(LocalDensity.current) { 1.dp.toPx() }
     Row(
         modifier
@@ -534,6 +678,40 @@ fun DeckRow(
 @Composable
 fun DeckFeedRow(code: String, name: String, value: String, modifier: Modifier = Modifier) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // Still display-only and still dense (no 48dp target claimed), but sentence case and no
+        // dashed rules: code in the quietest tier, name in text, value in the amount role.
+        Row(
+            modifier.fillMaxWidth().heightIn(min = 28.dp).padding(vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                code,
+                style = LegionType.stamp,
+                color = SoftColors.text3,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(40.dp),
+            )
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SoftColors.text2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                value,
+                style = LegionType.amount,
+                color = sem.data,
+                maxLines = 1,
+                overflow = TextOverflow.Visible,
+            )
+        }
+        return
+    }
     val dashStroke = with(LocalDensity.current) { 1.dp.toPx() }
     Row(
         modifier
@@ -605,6 +783,18 @@ fun DeckFeedRow(code: String, name: String, value: String, modifier: Modifier = 
 @Composable
 fun DeckSectionRule(label: String, modifier: Modifier = Modifier) {
     val sem = LocalLegionSemantics.current
+    if (LocalSoftActive.current) {
+        // Lists' SectionLabel: a quiet sentence-case label, no rule line.
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            color = SoftColors.text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier.fillMaxWidth().padding(start = 4.dp, top = 14.dp, bottom = 4.dp),
+        )
+        return
+    }
     Row(
         modifier
             .fillMaxWidth()

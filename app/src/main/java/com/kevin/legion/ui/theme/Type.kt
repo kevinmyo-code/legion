@@ -1,6 +1,8 @@
 package com.kevin.legion.ui.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -8,6 +10,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.kevin.legion.R
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
+import com.kevin.legion.ui.theme.soft.SoftLegionType
 
 /**
  * LEGION's type scale. Mono everywhere - headers, labels and body all read as
@@ -166,28 +170,45 @@ val LegionTypography = Typography(
  * `labelSmall` only.
  */
 object LegionType {
+    // Each role is a @Composable getter, not a val: under SoftTheme (LocalSoftActive) it resolves to
+    // the Figtree equivalent in SoftLegionType, otherwise the unchanged Martian Mono style. Callers
+    // keep writing `LegionType.amount`. The cost: they must be in composition (a non-composable
+    // lambda that reads one needs the style hoisted to a local first).
+
     /** A transaction amount in a list. Tabular by construction. */
-    val amount = TextStyle(
-        fontFamily = Mono,
-        fontWeight = FontWeight.Bold,
-        fontSize = 12.sp,
-        lineHeight = 16.6.sp,
-    )
+    val amount: TextStyle
+        @Composable @ReadOnlyComposable
+        get() = if (LocalSoftActive.current) SoftLegionType.amount else MonoAmount
 
     /** A secondary figure: a live PID value, an item count, a macro number. */
-    val reading = TextStyle(
-        fontFamily = Mono,
-        fontWeight = FontWeight.Normal,
-        fontSize = 13.5.sp,
-        lineHeight = 18.sp,
-    )
+    val reading: TextStyle
+        @Composable @ReadOnlyComposable
+        get() = if (LocalSoftActive.current) SoftLegionType.reading else MonoReading
 
     /** A date or unit sitting beneath a description. */
-    val stamp = TextStyle(
-        fontFamily = Mono,
-        fontWeight = FontWeight.Normal,
-        fontSize = 9.sp,
-        lineHeight = 12.6.sp,
-        letterSpacing = 0.45.sp,
-    )
+    val stamp: TextStyle
+        @Composable @ReadOnlyComposable
+        get() = if (LocalSoftActive.current) SoftLegionType.stamp else MonoStamp
 }
+
+private val MonoAmount = TextStyle(
+    fontFamily = Mono,
+    fontWeight = FontWeight.Bold,
+    fontSize = 12.sp,
+    lineHeight = 16.6.sp,
+)
+
+private val MonoReading = TextStyle(
+    fontFamily = Mono,
+    fontWeight = FontWeight.Normal,
+    fontSize = 13.5.sp,
+    lineHeight = 18.sp,
+)
+
+private val MonoStamp = TextStyle(
+    fontFamily = Mono,
+    fontWeight = FontWeight.Normal,
+    fontSize = 9.sp,
+    lineHeight = 12.6.sp,
+    letterSpacing = 0.45.sp,
+)

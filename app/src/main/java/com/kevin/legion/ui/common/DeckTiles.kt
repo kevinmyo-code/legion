@@ -185,7 +185,7 @@ private fun HalfTileHero(text: String) {
 private fun HalfTileCaption(text: String) {
     val sem = LocalLegionSemantics.current
     Text(
-        text.uppercase(),
+        text.deckCase(),
         style = LegionType.stamp,
         color = sem.faint,
         maxLines = 1,

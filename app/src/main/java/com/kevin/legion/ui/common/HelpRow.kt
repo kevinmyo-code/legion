@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
 
 /**
  * A one-line `WHY` stamp that expands an explanation on tap, and is collapsed by default
@@ -66,9 +67,11 @@ fun HelpRow(
     // caret alone would leave a screen reader announcing "WHY" with no indication it is actionable,
     // which is what the contentDescription below covers.
     val marker = if (expanded) "-" else "+"
+    // The default label is the mission-control stamp WHY; under soft the same words in sentence case.
+    val shownLabel = if (LocalSoftActive.current && label == HELP_ROW_DEFAULT_LABEL) "Why" else label
     Column(modifier.fillMaxWidth()) {
         Text(
-            "$marker $label",
+            "$marker $shownLabel",
             style = LegionType.stamp,
             color = sem.faint,
             modifier = Modifier
