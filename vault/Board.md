@@ -39,8 +39,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
-| [[.scratch/engine-mcp/map\|engine-mcp]] | [[02-sdk-django-and-client-support\|02]] | research | What the SDK, Django and the target clients actually support at spec 2026-07-28 |
+| [[.scratch/engine-mcp/map\|engine-mcp]] | [[01-where-the-mcp-server-lives\|01]] | decision | Where the MCP server lives: inside Django, a sidecar, or a stdio adapter |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[03-one-source-for-tool-definitions\|03]] | decision | One source of truth for tool definitions |
+| [[.scratch/engine-mcp/map\|engine-mcp]] | [[05-auth-per-caller\|05]] | decision | Auth per caller, and what a token is allowed to do |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
@@ -169,9 +170,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[09-android-http-backends\|09]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[11-fresh-clone-end-to-end\|11]] | test | Fresh clone, end to end: the clone-and-run test in its new shape  waiting on [[10-cutover\|10]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
-| [[.scratch/engine-mcp/map\|engine-mcp]] | [[01-where-the-mcp-server-lives\|01]] | decision | Where the MCP server lives: inside Django, a sidecar, or a stdio adapter  waiting on [[02-sdk-django-and-client-support\|02]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[04-how-the-phone-consumes-engine-tools\|04]] | decision | How the phone's Live session consumes engine tools  waiting on [[01-where-the-mcp-server-lives\|01]], [[03-one-source-for-tool-definitions\|03]] |
-| [[.scratch/engine-mcp/map\|engine-mcp]] | [[05-auth-per-caller\|05]] | decision | Auth per caller, and what a token is allowed to do  waiting on [[02-sdk-django-and-client-support\|02]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[06-which-tools-and-the-honesty-contract\|06]] | decision | Which tools are exposed, read before write, and the honesty contract  waiting on [[03-one-source-for-tool-definitions\|03]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[07-can-an-mcp-client-feed-the-gate\|07]] | decision | Can an MCP client hand a document to the gate  waiting on [[06-which-tools-and-the-honesty-contract\|06]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[08-public-exposure-and-clone-and-run\|08]] | decision | Public exposure and clone-and-run  waiting on [[01-where-the-mcp-server-lives\|01]], [[05-auth-per-caller\|05]] |
@@ -243,7 +242,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/django-engine/map\|django-engine]] | 15 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
-| [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 12 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
+| [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 11 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | 7 | 6 | [[.scratch/generated-ui/generated-ui.canvas\|open]] |

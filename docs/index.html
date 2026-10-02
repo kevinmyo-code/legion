@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>190 tickets open</h1>
+<h1>189 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 31 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 51 are waiting on another ticket first. <b>82 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 31 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 49 are waiting on another ticket first. <b>82 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">190</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">47</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n">189</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">48</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">82</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">51</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n amber">49</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">88</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">87</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">10</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -183,28 +183,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
-<h2>engine-mcp</h2>
-<span class="counts"><span class="k">12</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k amber">9</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
-<span class="bar"><i style="flex:3"></i><b style="flex:9"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">What the SDK, Django and the target clients actually support at spec 2026-07-28</span></span><span class="chip c-research">research</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">One source of truth for tool definitions</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">09</span><span class="body"><span class="tt">Read-only spike, Claude Code queries the engine through a stdio adapter</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">01</span><span class="body"><span class="tt">Where the MCP server lives: inside Django, a sidecar, or a stdio adapter</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #02</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">How the phone&#x27;s Live session consumes engine tools</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #01, #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Auth per caller, and what a token is allowed to do</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #02</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Which tools are exposed, read before write, and the honesty contract</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Can an MCP client hand a document to the gate</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">Public exposure and clone-and-run</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #01, #05</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">The engine&#x27;s MCP endpoint, read tools, and the tenancy leak test over it</span></span><span class="chip c-build">build</span><span class="state">waiting on #01, #03, #05, #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">The phone bridges engine tools into its Live session</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #10</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">OAuth for third-party clients</span></span><span class="chip c-build">build</span><span class="state">waiting on #05, #08, #10</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
 <h2>django-engine</h2>
 <span class="counts"><span class="k">11</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
 <span class="bar"><i style="flex:7"></i><b style="flex:4"></b></span>
@@ -221,6 +199,27 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">Android: HTTP implementations of the twelve backend interfaces, behind the Hilt binding</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Cutover: one evening, counted, reversible for thirty days</span><span class="det">Narrowed 2026-09-05: no data migration. The rows stay in the Supabase Postgres; cutover is Django becoming the only writer and the phone switching transports. Ticket 07.</span></span><span class="chip c-build">build</span><span class="state">waiting on #03, #04, #05, #06, #07, #09</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Fresh clone, end to end: the clone-and-run test in its new shape</span></span><span class="chip c-test">test</span><span class="state">waiting on #10</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>engine-mcp</h2>
+<span class="counts"><span class="k">11</span> open<span class="sep">&middot;</span><span class="k mint">4</span> ready<span class="sep">&middot;</span><span class="k amber">7</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
+<span class="bar"><i style="flex:4"></i><b style="flex:7"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">Where the MCP server lives: inside Django, a sidecar, or a stdio adapter</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">One source of truth for tool definitions</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">05</span><span class="body"><span class="tt">Auth per caller, and what a token is allowed to do</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">09</span><span class="body"><span class="tt">Read-only spike, Claude Code queries the engine through a stdio adapter</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">How the phone&#x27;s Live session consumes engine tools</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #01, #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Which tools are exposed, read before write, and the honesty contract</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Can an MCP client hand a document to the gate</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #06</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">Public exposure and clone-and-run</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #01, #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">The engine&#x27;s MCP endpoint, read tools, and the tenancy leak test over it</span></span><span class="chip c-build">build</span><span class="state">waiting on #01, #03, #05, #06</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">The phone bridges engine tools into its Live session</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #10</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">OAuth for third-party clients</span></span><span class="chip c-build">build</span><span class="state">waiting on #05, #08, #10</span></li>
 </ul>
 </section>
 <section class="map">

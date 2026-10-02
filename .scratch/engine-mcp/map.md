@@ -104,6 +104,11 @@ concrete. 03 is the decision everything else hangs on. 07 waits on 06 and on
 
 ## Decisions so far
 
+- **02 (research, 2026-10-02):** SDK 2.2.0 can be driven from WSGI per request. `django-mcp-server`
+  breaks on SDK 2.x. DCR is the only OAuth registration every target client shares. Gemini Live has
+  no MCP, so 04's bridge is the only path.
+  [research](research/02-sdk-django-and-client-support.md)
+
 ## Not yet specified
 
 - **The aspect engine has no server half.** `list_aspects`/`describe_aspect`/`query_records` are the

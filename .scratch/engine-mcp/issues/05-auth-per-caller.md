@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["02"]
 blocked-by: ["[[02-sdk-django-and-client-support]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 
