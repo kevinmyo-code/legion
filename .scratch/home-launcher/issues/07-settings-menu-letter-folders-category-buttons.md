@@ -3,14 +3,28 @@ map: home-launcher
 ticket: "07"
 title: "Settings menu, letter folders in Apps, and category buttons under the dock"
 type: build
-status: open
+status: built
 status-detail: >
-  Opened 2026-10-02 with every decision taken (Kevin picked prototype A from
-  research/tray-canvas/). Building on feat/home-tray.
+  Built 2026-10-02 on feat/home-tray: SettingsGearMenu (ui/common) behind
+  StatusLine's new onOpenPhoneSettings; letterFolders() in ui/apps/AppDrawer.kt
+  with AppFolders (folder grid, dialog, flat search grid) in AppsScreen;
+  CategoryPicks/CategoryPicksStore (ui/apps) plus CategoryRow and
+  CategorySheets (ui/home) as a new row under the dock. Suite green (3821
+  tests, 0 failures, from the JUnit XML), detekt: nothing on any line this
+  ticket wrote (new composables baselined, as the repo does). Screenshots
+  recorded and looked at: HOME with a full dock and a mixed category row, the
+  worst-case tile state still shows every trust disclosure, folders, an open
+  folder, search, the dropdown's rows, both sheets, the 360x520 fallback. To
+  fit, the today card/tile padding tighten, tile rows are weighted, and HOME
+  now scrolls while music is playing (the now-playing row does not fit above
+  620dp+64dp). Owed on the phone (ticket 05): Phone settings opens Android
+  Settings and where the real popup lands; Mail with Gmail and Outlook (work)
+  asks which; a one-app category opens directly; an unset one opens the
+  chooser; letter folders open and launch; a work app launches.
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

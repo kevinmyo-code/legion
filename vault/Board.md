@@ -119,6 +119,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[31-silent-success\|31]] | bug | It did the thing and did not say so |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[32-sitrep-on-demand-only\|32]] | build | Sitreps happen when asked, never on a schedule |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[02-soft-theme-and-chrome\|02]] | build | Soft theme, bundled font and icons, and the shell chrome restyled |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[07-settings-menu-letter-folders-category-buttons\|07]] | build | Settings menu, letter folders in Apps, and category buttons under the dock |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
@@ -238,7 +239,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/hardening/map\|hardening]] | 8 | 4 | [[.scratch/hardening/hardening.canvas\|open]] |
-| [[.scratch/home-launcher/map\|home-launcher]] | 6 | 5 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | 7 | 6 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
