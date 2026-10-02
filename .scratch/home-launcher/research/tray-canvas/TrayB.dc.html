@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tray B: letter sections</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&amp;display=block">
+<style>
+body{margin:0;background:#0b0c0f}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+a{color:inherit;text-decoration:none}
+input{font:inherit;color:inherit;background:none;border:0;outline:none}
+input::placeholder{color:#8A8F9B}
+</style>
+</helmet>
+<div style="position: relative; width: 384px; height: 832px; box-sizing: border-box; display: flex; flex-direction: column; background: #121317; color: #E6E7EC; font-family: 'Figtree', system-ui, sans-serif; overflow: hidden">
+
+<div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 2px 0 16px">
+<div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: #A9ADB8">
+<span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 4px; background: #7EDBA5; display: block"></span>Synced</span>
+<span>OBD off</span>
+</div>
+<div style="display: flex; align-items: center; gap: 0">
+<span style="font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 4px">14:02</span>
+<button aria-label="All apps" onClick="{{openTray}}" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: {{appsColor}}; background: {{appsBg}}"><span class="material-symbols-rounded" aria-hidden="true">apps</span></button>
+<button aria-label="Settings" aria-expanded="{{menuOpen}}" onClick="{{toggleMenu}}" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: {{gearColor}}; background: {{gearBg}}"><span class="material-symbols-rounded" aria-hidden="true">settings</span></button>
+</div>
+</div>
+
+<sc-if value="{{isHome}}" hint-placeholder-val="{{ true }}">
+<div style="height: 788px; display: flex; flex-direction: column">
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 2px 16px 0">
+<button style="background: #1C1E24; border-radius: 24px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; text-align: left; flex-shrink: 0">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px; font-weight: 500; color: #A9ADB8">Friday</span>
+<span style="font-size: 24px; font-weight: 700; letter-spacing: -0.01em">October 2</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 19px; font-weight: 600"><span class="material-symbols-rounded" aria-hidden="true" style="color: #FFD36B">sunny</span>84°</span>
+<span style="font-size: 12px; color: #A9ADB8">Clear, AQI 41 good</span>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 14px">
+<span class="material-symbols-rounded" aria-hidden="true" style="font-size: 19px; color: #A8C8FF">schedule</span>
+<span>Next: Lab report due, 11:59 PM</span>
+</div>
+</button>
+<div style="flex-grow: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 10px">
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #1F3450; color: #A8C8FF; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">calendar_month</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">Calendar</span>
+<span style="font-size: 12px; color: #A9ADB8">4 due today</span>
+</span>
+</button>
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #43340F; color: #FFD36B; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">checklist</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">Lists</span>
+<span style="font-size: 12px; color: #A9ADB8">5 lists</span>
+</span>
+</button>
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #173D2B; color: #7EDBA5; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">account_balance_wallet</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">Money</span>
+<span style="font-size: 12px; color: #A9ADB8">$1,240 of $2,000 spent</span>
+</span>
+</button>
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #4A1F2C; color: #FFB1C3; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">monitor_heart</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">Body</span>
+<span style="font-size: 12px; color: #A9ADB8">1,450 kcal, estimated</span>
+</span>
+</button>
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #0F3B40; color: #77DCE5; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">directions_car</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">Fleet</span>
+<span style="font-size: 12px; color: #FFB4AB">2 services overdue</span>
+</span>
+</button>
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #33265A; color: #CDBDFF; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">graphic_eq</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">Recordings</span>
+<span style="font-size: 12px; color: #A9ADB8">12 saved</span>
+</span>
+</button>
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #4A2A12; color: #FFB77C; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">newspaper</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">News</span>
+<span style="font-size: 12px; color: #A9ADB8">Feeds and newsletters</span>
+</span>
+</button>
+<button style="background: #1C1E24; border-radius: 20px; padding: 12px 12px 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; min-height: 0">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #262E57; color: #B9C3FF; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">bar_chart</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 15px; font-weight: 600">Reports</span>
+<span style="font-size: 12px; color: #A9ADB8">Spending, groceries</span>
+</span>
+</button>
+
+</div>
+</div>
+
+<div style="flex-shrink: 0; padding: 10px 6px 6px">
+<div style="display: flex; justify-content: space-between">
+<sc-for list="{{cats}}" as="c" hint-placeholder-count="5">
+<button onClick="{{c.tap}}" aria-label="{{c.aria}}" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 2px 0">
+<span style="position: relative; width: 52px; height: 52px; box-sizing: border-box; border-radius: 26px; background: {{c.bg}}; color: {{c.fg}}; border: {{c.border}}; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true">{{c.icon}}</span>
+<sc-if value="{{c.multi}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; right: -3px; top: -3px; min-width: 20px; height: 20px; border-radius: 10px; background: #E6E7EC; color: #121317; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box">{{c.count}}</span></sc-if>
+</span>
+<span style="font-size: 12px; color: {{c.labelColor}}">{{c.short}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+
+<div style="flex-shrink: 0; padding: 8px 16px 12px; background: #16181D; border-top: 1px solid #23262D">
+<button style="width: 100%; height: 50px; border-radius: 25px; background: #733423; color: #FFDBD1; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 16px; font-weight: 600"><span class="material-symbols-rounded" aria-hidden="true">mic</span>Tap to talk</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isTray}}" hint-placeholder-val="{{ false }}">
+<div style="height: 788px; display: flex; flex-direction: column; background: #121317">
+<div style="flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 2px 16px 10px 4px">
+<button aria-label="Back to home" onClick="{{closeTray}}" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span></button>
+<label style="flex: 1; display: flex; align-items: center; gap: 8px; height: 44px; border-radius: 22px; background: #1C1E24; padding: 0 14px; color: #A9ADB8"><span class="material-symbols-rounded" aria-hidden="true">search</span><input aria-label="Search apps" placeholder="Search apps" value="{{query}}" onChange="{{onQuery}}" style="flex: 1; min-width: 0; font-size: 15px"></label>
+</div>
+<sc-if value="{{searching}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 24px">
+<sc-if value="{{noResults}}" hint-placeholder-val="{{ false }}"><p style="font-size: 14px; color: #A9ADB8; margin: 12px 4px">No app matches "{{query}}".</p></sc-if>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 6px; padding: 0">
+<sc-for list="{{results}}" as="a" hint-placeholder-count="4">
+<button onClick="{{a.open}}" style="display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0; min-width: 0">
+<span style="width: 50px; height: 50px; border-radius: 16px; background: {{a.bg}}; color: {{a.fg}}; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px">{{a.g}}</span>
+<span style="font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{a.n}}</span>
+<sc-if value="{{a.work}}" hint-placeholder-val="{{ false }}"><span style="font-size: 10px; font-weight: 700; color: #A8C8FF; letter-spacing: 0.06em; margin-top: -3px">WORK</span></sc-if>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{notSearching}}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; min-height: 0; display: flex">
+<div style="flex: 1; min-width: 0; overflow-y: auto; padding: 0 2px 24px 16px; scroll-behavior: smooth">
+<sc-for list="{{sections}}" as="s" hint-placeholder-count="6">
+<div id="{{s.anchor}}" style="padding-top: 4px">
+<button onClick="{{s.toggle}}" aria-expanded="{{s.open}}" style="width: 100%; display: flex; align-items: center; gap: 12px; height: 44px">
+<span style="width: 32px; height: 32px; border-radius: 10px; background: {{s.chipBg}}; color: {{s.chipFg}}; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center">{{s.L}}</span>
+<span style="flex: 1; font-size: 13px; color: #A9ADB8; text-align: left">{{s.countText}}</span>
+<span class="material-symbols-rounded" aria-hidden="true" style="color: #A9ADB8">{{s.chev}}</span>
+</button>
+<sc-if value="{{s.open}}" hint-placeholder-val="{{ true }}">
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 6px; padding: 0 0 6px">
+<sc-for list="{{s.apps}}" as="a" hint-placeholder-count="4">
+<button onClick="{{a.open}}" style="display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0; min-width: 0">
+<span style="width: 50px; height: 50px; border-radius: 16px; background: {{a.bg}}; color: {{a.fg}}; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px">{{a.g}}</span>
+<span style="font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{a.n}}</span>
+<sc-if value="{{a.work}}" hint-placeholder-val="{{ false }}"><span style="font-size: 10px; font-weight: 700; color: #A8C8FF; letter-spacing: 0.06em; margin-top: -3px">WORK</span></sc-if>
+</button>
+</sc-for>
+</div>
+</sc-if>
+<div style="height: 1px; background: #23262D; margin-top: 4px"></div>
+</div>
+</sc-for>
+</div>
+<nav aria-label="Jump to letter" style="flex-shrink: 0; width: 26px; display: flex; flex-direction: column; justify-content: space-between; padding: 4px 0 20px; align-items: center">
+<sc-for list="{{rail}}" as="r" hint-placeholder-count="26">
+<sc-if value="{{r.has}}" hint-placeholder-val="{{ true }}"><a href="{{r.href}}" aria-label="{{r.aria}}" style="font-size: 11px; font-weight: 700; color: #A8C8FF; width: 26px; text-align: center; line-height: 22px">{{r.L}}</a></sc-if>
+<sc-if value="{{r.none}}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="font-size: 11px; color: #4A4F5A; width: 26px; text-align: center; line-height: 22px">{{r.L}}</span></sc-if>
+</sc-for>
+</nav>
+</div>
+
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{ false }}">
+<button aria-label="Close menu" onClick="{{toggleMenu}}" style="position: absolute; inset: 0; background: rgba(0,0,0,0.25); cursor: default"></button>
+<div role="menu" style="position: absolute; top: 44px; right: 8px; width: 264px; background: #2A2D34; border-radius: 18px; padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,0.55)">
+<button role="menuitem" onClick="{{openPhoneSettings}}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 12px; min-height: 56px; box-sizing: border-box">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #1F3450; color: #A8C8FF; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">smartphone</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">Phone settings</span><span style="font-size: 12px; color: #A9ADB8">Wi-Fi, display, battery</span></span>
+</button>
+<div style="height: 1px; background: #383C45; margin: 2px 12px"></div>
+<button role="menuitem" onClick="{{openAppSettings}}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 12px; min-height: 56px; box-sizing: border-box">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: #733423; color: #FFDBD1; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">tune</span></span>
+<span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">LEGION settings</span><span style="font-size: 12px; color: #A9ADB8">Assistant, connections, privacy</span></span>
+</button>
+</div>
+</sc-if>
+
+<sc-if value="{{sheetOpen}}" hint-placeholder-val="{{ false }}">
+<button aria-label="Close" onClick="{{closeSheet}}" style="position: absolute; inset: 0; background: rgba(0,0,0,0.55); cursor: default"></button>
+<div role="dialog" aria-label="{{sheetTitle}}" style="position: absolute; left: 0; right: 0; bottom: 0; background: #1C1E24; border-radius: 28px 28px 0 0; padding: 10px 16px 18px">
+<div style="width: 36px; height: 4px; border-radius: 2px; background: #4A4F5A; margin: 0 auto 12px"></div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 0 4px 8px">
+<span style="width: 36px; height: 36px; border-radius: 18px; background: {{sheetBg}}; color: {{sheetFg}}; display: flex; align-items: center; justify-content: center"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">{{sheetIcon}}</span></span>
+<span style="font-size: 18px; font-weight: 700">{{sheetTitle}}</span>
+<span style="flex: 1"></span>
+<span style="font-size: 12px; color: #A9ADB8">Open with</span>
+</div>
+<sc-for list="{{sheetApps}}" as="a" hint-placeholder-count="2">
+<button onClick="{{a.open}}" style="width: 100%; display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 0 4px; box-sizing: border-box">
+<span style="width: 44px; height: 44px; border-radius: 14px; background: {{a.bg}}; color: {{a.fg}}; display: flex; align-items: center; justify-content: center; font-weight: 700">{{a.g}}</span>
+<span style="flex: 1; font-size: 16px; text-align: left">{{a.n}}</span>
+<sc-if value="{{a.work}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 700; color: #A8C8FF; letter-spacing: 0.06em">WORK</span></sc-if>
+<span class="material-symbols-rounded" aria-hidden="true" style="color: #A9ADB8">open_in_new</span>
+</button>
+</sc-for>
+<button onClick="{{editFromSheet}}" style="width: 100%; height: 48px; margin-top: 8px; border-radius: 24px; border: 1px solid #383C45; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 600; color: #A8C8FF"><span class="material-symbols-rounded" aria-hidden="true" style="font-size: 20px">edit</span>Choose apps</button>
+</div>
+</sc-if>
+
+<sc-if value="{{editOpen}}" hint-placeholder-val="{{ false }}">
+<button aria-label="Cancel" onClick="{{cancelEdit}}" style="position: absolute; inset: 0; background: rgba(0,0,0,0.55); cursor: default"></button>
+<div role="dialog" aria-label="{{editTitle}}" style="position: absolute; left: 0; right: 0; bottom: 0; height: 640px; background: #1C1E24; border-radius: 28px 28px 0 0; padding: 10px 0 0; display: flex; flex-direction: column">
+<div style="width: 36px; height: 4px; border-radius: 2px; background: #4A4F5A; margin: 0 auto 12px; flex-shrink: 0"></div>
+<div style="padding: 0 20px 10px; flex-shrink: 0">
+<div style="font-size: 18px; font-weight: 700">{{editTitle}}</div>
+<div style="font-size: 13px; color: #A9ADB8; margin-top: 4px">Pick one or more. One app opens straight away; more than one asks which.</div>
+</div>
+<div style="flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px">
+<sc-for list="{{editRows}}" as="r" hint-placeholder-count="8">
+<button role="checkbox" aria-checked="{{r.checked}}" onClick="{{r.toggle}}" style="width: 100%; display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 0 8px; box-sizing: border-box; border-radius: 12px">
+<span style="width: 36px; height: 36px; border-radius: 11px; background: {{r.bg}}; color: {{r.fg}}; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">{{r.g}}</span>
+<span style="flex: 1; font-size: 15px; text-align: left">{{r.n}}</span>
+<sc-if value="{{r.work}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 700; color: #A8C8FF; letter-spacing: 0.06em">WORK</span></sc-if>
+<span class="material-symbols-rounded" aria-hidden="true" style="color: {{r.boxColor}}">{{r.box}}</span>
+</button>
+</sc-for>
+</div>
+<div style="flex-shrink: 0; display: flex; gap: 10px; padding: 12px 16px 16px; border-top: 1px solid #23262D">
+<button onClick="{{cancelEdit}}" style="flex: 1; height: 48px; border-radius: 24px; border: 1px solid #383C45; box-sizing: border-box; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center">Cancel</button>
+<button onClick="{{saveEdit}}" style="flex: 1; height: 48px; border-radius: 24px; background: #A8C8FF; color: #0F2440; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{saveLabel}}</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="position: absolute; left: 24px; right: 24px; bottom: 96px; background: #E6E7EC; color: #121317; border-radius: 14px; padding: 12px 16px; font-size: 14px; font-weight: 500; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.4)">{{toast}}</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+var VARIANT = 'B';
+var PAL = [['#1F3450','#A8C8FF'],['#43340F','#FFD36B'],['#173D2B','#7EDBA5'],['#4A1F2C','#FFB1C3'],['#0F3B40','#77DCE5'],['#33265A','#CDBDFF'],['#4A2A12','#FFB77C'],['#262E57','#B9C3FF']];
+var RAW = [['amazon','Amazon'],['bofa','Bank of America'],['calc','Calculator'],['camera','Camera'],['chrome','Chrome'],['clock','Clock'],['contacts','Contacts'],['dbs','DBS digibank'],['discord','Discord'],['drive','Drive'],['fitbit','Fitbit'],['gmail','Gmail'],['gmaps','Google Maps'],['heb','H-E-B'],['instagram','Instagram'],['keep','Keep Notes'],['kindle','Kindle'],['messages','Messages'],['auth','Authenticator',1],['netflix','Netflix'],['notion','Notion'],['outlook','Outlook',1],['phone','Phone'],['photos','Photos'],['play','Play Store'],['slack','Slack'],['spotify','Spotify'],['target','Target'],['teams','Teams',1],['uber','Uber'],['venmo','Venmo'],['waze','Waze'],['whatsapp','WhatsApp'],['youtube','YouTube'],['ytmusic','YouTube Music'],['zelle','Zelle']];
+var APPS = RAW.map(function (r, i) {
+  var n = r[1]; var w = n.split(' ');
+  var g = (w.length > 1 ? w[0][0] + w[1][0] : n[0]).toUpperCase();
+  var p = PAL[(i * 3) % 8];
+  return { id: r[0], n: n, work: !!r[2], bg: p[0], fg: p[1], g: g, L: n[0].toUpperCase() };
+}).sort(function (a, b) { return a.n.toLowerCase() < b.n.toLowerCase() ? -1 : 1; });
+var BYID = {}; APPS.forEach(function (a) { BYID[a.id] = a; });
+var CATS = [
+  { id: 'bank', n: 'Banking', short: 'Bank', icon: 'account_balance', bg: '#173D2B', fg: '#7EDBA5' },
+  { id: 'music', n: 'Music', short: 'Music', icon: 'music_note', bg: '#33265A', fg: '#CDBDFF' },
+  { id: 'maps', n: 'Navigation', short: 'Maps', icon: 'navigation', bg: '#0F3B40', fg: '#77DCE5' },
+  { id: 'mail', n: 'Email', short: 'Mail', icon: 'mail', bg: '#1F3450', fg: '#A8C8FF' },
+  { id: 'chat', n: 'Messages', short: 'Chat', icon: 'chat', bg: '#43340F', fg: '#FFD36B' }
+];
+var CATBY = {}; CATS.forEach(function (c) { CATBY[c.id] = c; });
+var DEFAULT_PICKS = { bank: ['bofa', 'dbs', 'zelle'], music: ['spotify'], maps: ['gmaps', 'waze'], mail: ['gmail', 'outlook'], chat: [] };
+var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+function plural(n) { return n + (n === 1 ? ' app' : ' apps'); }
+
+class Component extends DCLogic {
+  s() { return this.state || {}; }
+  picks() { return this.s().picks || DEFAULT_PICKS; }
+  toast(msg) {
+    var self = this;
+    this.setState({ toast: msg, menu: false, sheet: null, folder: null });
+    clearTimeout(this._t);
+    this._t = setTimeout(function () { self.setState({ toast: null }); }, 2000);
+  }
+  openApp(a) { this.toast('Opens ' + a.n + (a.work ? ' (work profile)' : '')); }
+  dec(a) { var self = this; return Object.assign({}, a, { open: function () { self.openApp(a); } }); }
+  tapCat(c) {
+    var ids = this.picks()[c.id] || [];
+    if (ids.length === 0) this.setState({ editing: c.id, draft: [] });
+    else if (ids.length === 1) this.openApp(BYID[ids[0]]);
+    else this.setState({ sheet: c.id });
+  }
+  renderVals() {
+    var self = this, st = this.s(), picks = this.picks();
+    var screen = st.screen || 'home';
+    var q = (st.query || '').trim().toLowerCase();
+    var cats = CATS.map(function (c) {
+      var n = (picks[c.id] || []).length;
+      return Object.assign({}, c, {
+        count: n, multi: n > 1,
+        bg: n ? c.bg : 'transparent', fg: n ? c.fg : '#8A8F9B',
+        border: n ? '0' : '1.5px dashed #4A4F5A',
+        labelColor: n ? '#E6E7EC' : '#8A8F9B',
+        aria: c.n + (n === 0 ? ', not set up' : n === 1 ? ', opens ' + BYID[picks[c.id][0]].n : ', choose from ' + n + ' apps'),
+        tap: function () { self.tapCat(c); }
+      });
+    });
+    var sheetCat = st.sheet ? CATBY[st.sheet] : null;
+    var editCat = st.editing ? CATBY[st.editing] : null;
+    var draft = st.draft || [];
+    var byLetter = {};
+    APPS.forEach(function (a) { (byLetter[a.L] = byLetter[a.L] || []).push(a); });
+    var present = LETTERS.filter(function (L) { return byLetter[L]; });
+    var mini = function (a) { return { bg: a.bg, fg: a.fg, g: a.g }; };
+    var out = {
+      isHome: screen === 'home', isTray: screen === 'tray',
+      appsColor: screen === 'tray' ? '#A8C8FF' : '#A9ADB8', appsBg: screen === 'tray' ? '#1F3450' : 'transparent',
+      gearColor: st.menu ? '#A8C8FF' : '#A9ADB8', gearBg: st.menu ? '#1F3450' : 'transparent',
+      openTray: function () { self.setState({ screen: 'tray', menu: false, query: '' }); },
+      closeTray: function () { self.setState({ screen: 'home', folder: null, query: '' }); },
+      menuOpen: !!st.menu,
+      toggleMenu: function () { self.setState({ menu: !st.menu }); },
+      openPhoneSettings: function () { self.toast('Opens Android Settings'); },
+      openAppSettings: function () { self.toast('Opens LEGION settings'); },
+      cats: cats,
+      sheetOpen: !!sheetCat,
+      sheetTitle: sheetCat ? sheetCat.n : '', sheetIcon: sheetCat ? sheetCat.icon : '',
+      sheetBg: sheetCat ? sheetCat.bg : '', sheetFg: sheetCat ? sheetCat.fg : '',
+      sheetApps: sheetCat ? (picks[sheetCat.id] || []).map(function (id) { return self.dec(BYID[id]); }) : [],
+      closeSheet: function () { self.setState({ sheet: null }); },
+      editFromSheet: function () { self.setState({ editing: st.sheet, draft: (picks[st.sheet] || []).slice(), sheet: null }); },
+      editOpen: !!editCat,
+      editTitle: editCat ? 'Apps for ' + editCat.n : '',
+      saveLabel: draft.length ? 'Save ' + plural(draft.length) : 'Save, none set',
+      editRows: editCat ? APPS.map(function (a) {
+        var on = draft.indexOf(a.id) >= 0;
+        return Object.assign({}, a, {
+          checked: on, box: on ? 'check_box' : 'check_box_outline_blank', boxColor: on ? '#A8C8FF' : '#6B7080',
+          toggle: function () {
+            var d = (self.s().draft || []).slice(); var i = d.indexOf(a.id);
+            if (i >= 0) d.splice(i, 1); else d.push(a.id);
+            self.setState({ draft: d });
+          }
+        });
+      }) : [],
+      cancelEdit: function () { self.setState({ editing: null, draft: null }); },
+      saveEdit: function () {
+        var p = Object.assign({}, self.picks()); p[st.editing] = draft.slice();
+        var n = draft.length, c = CATBY[st.editing];
+        self.setState({ picks: p, editing: null, draft: null });
+        self.toast(c.n + ': ' + (n === 0 ? 'no app set' : n === 1 ? 'opens ' + BYID[draft[0]].n : plural(n) + ', asks which'));
+      },
+      hasToast: !!st.toast, toast: st.toast || '',
+      query: st.query || '',
+      onQuery: function (e) { self.setState({ query: e.target.value }); },
+      searching: q.length > 0, notSearching: q.length === 0,
+      results: APPS.filter(function (a) { return a.n.toLowerCase().indexOf(q) >= 0 || a.id.indexOf(q) >= 0; }).map(function (a) { return self.dec(a); })
+    };
+    out.noResults = out.searching && out.results.length === 0;
+
+    if (VARIANT === 'A') {
+      out.letters = present.map(function (L) {
+        var apps = byLetter[L];
+        return { L: L, count: apps.length, minis: apps.slice(0, 4).map(mini), aria: L + ', ' + plural(apps.length),
+          open: function () { self.setState({ folder: L }); } };
+      });
+      var f = st.folder;
+      out.folderOpen = !!f && screen === 'tray';
+      out.folderLetter = f || '';
+      out.folderCount = f ? plural(byLetter[f].length) : '';
+      out.folderAria = f ? 'Apps starting with ' + f : '';
+      out.folderApps = f ? byLetter[f].map(function (a) { return self.dec(a); }) : [];
+      out.closeFolder = function () { self.setState({ folder: null }); };
+    }
+    if (VARIANT === 'B') {
+      var col = st.collapsed || {};
+      out.sections = present.map(function (L) {
+        var open = !col[L];
+        return { L: L, anchor: 'sec-' + L, open: open, chev: open ? 'expand_less' : 'expand_more',
+          chipBg: open ? '#1F3450' : '#24272E', chipFg: open ? '#A8C8FF' : '#E6E7EC',
+          countText: plural(byLetter[L].length),
+          apps: byLetter[L].map(function (a) { return self.dec(a); }),
+          toggle: function () { var c = Object.assign({}, self.s().collapsed || {}); c[L] = !c[L]; self.setState({ collapsed: c }); } };
+      });
+      out.rail = LETTERS.map(function (L) { var has = !!byLetter[L]; return { L: L, has: has, none: !has, href: '#sec-' + L, aria: 'Jump to ' + L }; });
+    }
+    if (VARIANT === 'C') {
+      var groups = [], cur = [];
+      present.forEach(function (L, i) {
+        cur.push(L);
+        var size = cur.reduce(function (s, x) { return s + byLetter[x].length; }, 0);
+        if (size >= 5 || i === present.length - 1) { groups.push(cur); cur = []; }
+      });
+      var exp = st.expanded || {};
+      out.ranges = groups.map(function (g) {
+        var label = g.length === 1 ? g[0] : g[0] + '-' + g[g.length - 1];
+        var apps = []; g.forEach(function (L) { apps = apps.concat(byLetter[L]); });
+        var open = !!exp[label];
+        return { label: label, open: open, chev: open ? 'expand_less' : 'expand_more', count: apps.length,
+          minis: apps.slice(0, 5).map(mini), apps: apps.map(function (a) { return self.dec(a); }),
+          toggle: function () { var e = Object.assign({}, self.s().expanded || {}); e[label] = !e[label]; self.setState({ expanded: e }); } };
+      });
+    }
+    return out;
+  }
+}
+</script>
+</body>
+</html>

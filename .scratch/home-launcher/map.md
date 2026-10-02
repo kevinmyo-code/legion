@@ -48,6 +48,8 @@ touched ([[../../docs/adr/0051-design-language-soft-material|ADR 0051]]).
 | 03 | build | HOME is a launcher; CALENDAR is its own route again; the meter bands retire | 02 |
 | 04 | build | Lists as icon cards; a list opens to a real checklist | 02 |
 | 05 | task | Ship pass on the A25 | 03, 04 |
+| 06 | build | A dock of five pinned apps above the talk bar | 03 |
+| 07 | build | Settings menu, letter folders in Apps, category buttons under the dock | - |
 
 03 and 04 touch disjoint files and run in parallel, each in its own worktree.
 

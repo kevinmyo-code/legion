@@ -1,0 +1,70 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-02T19:04:25Z"
+  },
+  "title": "LEGION Home tray prototypes",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 384,
+      "h": 832,
+      "title": "A. Letter folders",
+      "is_interactive": true,
+      "radius": 28
+    },
+    "TrayB.dc.html": {
+      "x": 464,
+      "y": 0,
+      "w": 384,
+      "h": 832,
+      "title": "B. Letter sections + A-Z rail",
+      "is_interactive": true,
+      "radius": 28
+    },
+    "TrayC.dc.html": {
+      "x": 928,
+      "y": 0,
+      "w": 384,
+      "h": 832,
+      "title": "C. Range folders",
+      "is_interactive": true,
+      "radius": 28
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "TrayB.dc.html",
+    "TrayC.dc.html"
+  ],
+  "notes": {
+    "pick": {
+      "x": 0,
+      "y": -260,
+      "text": "App tray: pick A, B or C",
+      "kind": "title1",
+      "maxW": 1312
+    },
+    "how": {
+      "x": 0,
+      "y": 912,
+      "w": 560,
+      "size": "m",
+      "text": "Press Play on A, B or C. Grid icon (top right) opens the tray; the gear opens Phone settings / LEGION settings. Search in the tray filters all apps. The five round buttons above Tap to talk replace the pinned dock: Bank, Maps and Mail have several apps and ask which; Music has one and opens it; Chat has none and asks you to pick. In any 'Open with' sheet, Choose apps lets you tick one or more."
+    },
+    "same": {
+      "x": 640,
+      "y": 912,
+      "w": 560,
+      "size": "m",
+      "text": "Same in all three: the settings menu and the category buttons. Only the tray differs. A: one folder per letter, tap opens it. B: every letter is a collapsible section with a jump rail. C: letters grouped into folders of about five apps."
+    }
+  },
+  "designSystems": []
+}
