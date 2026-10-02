@@ -3,11 +3,12 @@ map: django-engine
 ticket: "13"
 title: "Rule 7 provisional ingestion has no endpoint, and the commit paths structurally cannot be one"
 type: decision
-status: open
+status: resolved
+status-detail: "Resolved 2026-09-28 (Kevin) to option 2: the engine gets a provisional path, fed by deterministic Python readers of BofA activity CSVs pulled daily by connect_session.py bofa. Build lives in backend-etl ticket 09."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -86,3 +87,14 @@ missing, not the cleanup.
 
 `ingest/views.py`'s `PROVISIONAL_REFUSAL` names this ticket by path. If this ticket resolves to
 option 1, that sentence should stop pointing at a ticket and start stating the rule.
+
+## Resolved 2026-09-28 (Kevin): option 2, deterministic by a Python CSV reader
+
+Kevin: *"it might also be mid month transaction history pulls no? statements only come end of
+month"*, *"i want the ledger daily"*, *"nvm i'll login daily."* The engine gets a provisional
+ingestion path. "Deterministic by what, server-side, with no PdfBox" is answered by the file type:
+BofA's activity export is CSV, and a CSV reader needs no PDF library and no LLM. All four rule 7
+conditions bind as written above. The producer is `backend-etl` ticket 09 (daily login pull, files
+land in the statement Drive folder, the `drive_statements` watcher routes a recognised BofA
+activity CSV here). `PROVISIONAL_REFUSAL` in `ingest/views.py` stops pointing at this ticket when
+that build lands.

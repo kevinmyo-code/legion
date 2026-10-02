@@ -28,7 +28,13 @@ DEFAULT_REGION = "us-south1"
 # name exists with a "latest" version - `README.md` in this folder gives
 # the `gcloud secrets create` command. Never read from `.env`, never
 # printed, never passed through `--set-env-vars`.
-SECRET_ENV_VARS = ("SECRET_KEY", "DATABASE_URL")
+# LEGION_VAULT_KEY: the Fernet key for ingest's session vault (backend-etl
+# ticket 02). Without it the vault refuses to store and every job reads
+# needs_login, so it rides with the other two.
+# LEGION_GEMINI_KEY: the household's own Gemini API key, which `drive_statements`
+# (backend-etl ticket 06) uses to read a statement PDF no parser recognises.
+# Without it that job records `skipped` in words and sends nothing to Gemini.
+SECRET_ENV_VARS = ("SECRET_KEY", "DATABASE_URL", "LEGION_VAULT_KEY", "LEGION_GEMINI_KEY")
 
 # Non-secret configuration, read from `deploy/cloudrun/.env` (copy
 # `.env.example`). Deliberately a SEPARATE file from `deploy/.env`: that one

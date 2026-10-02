@@ -86,6 +86,34 @@ data class ExcludedOwnAccountMovements(val count: Int, val totalCents: Long, val
 }
 
 /**
+ * Rows filed under a category that is NOT spending (Kevin, 2026-09-29: "ignore zelle for spending.
+ * its just transfer between here and there."), pulled out of every spend total and disclosed in
+ * words ([notSpendingExcludedSentence]).
+ *
+ * **Which categories those are has ONE definition: [com.kevin.legion.data.local.Category.excludedFromSpend]**,
+ * mirrored from the server's `categories.excluded_from_spend` (`server/ingest/category_flags.py`).
+ * The set of names is read from Room once per figure ([LedgerController.notSpendingCategories]) and
+ * handed in; nothing here compares against a hard-coded name.
+ *
+ * A different claim from [ExcludedOwnAccountMovements]: those are detected from the rows themselves
+ * by [analyzeTransfers] (a card payment and its matching leg); these are excluded because a person or
+ * a rule filed them under such a category. The two never overlap in a total - this filter runs on
+ * what [analyzeTransfers] left as operating spend, so card-payment pairing is unchanged by it.
+ */
+data class NotSpendingExcluded(
+    val count: Int,
+    val totalCents: Long,
+    val categories: List<String>,
+    val rows: List<LedgerTransaction>,
+) {
+    val isEmpty: Boolean get() = count == 0
+
+    companion object {
+        val NONE = NotSpendingExcluded(0, 0L, emptyList(), emptyList())
+    }
+}
+
+/**
  * [coverage]/[isComplete] carry the SAME meaning [ProfitAndLoss.isComplete] used to (ticket 06:
  * "reuse... `coversMonthWithoutGaps`") - D13: "missing coverage is stated in words, next to the
  * number... `coversMonthWithoutGaps` already computes this; it must reach the user's eye, not just
@@ -101,6 +129,14 @@ data class BudgetVsActual(
     val uncategorized: UncategorizedSpend,
     val coverage: List<AccountCoverage>,
     val excludedOwnAccountMovements: ExcludedOwnAccountMovements,
+    /** 2026-09-29: rows in a not-spending category (Transfers), out of every figure here and
+     * disclosed by [notSpendingExcludedSentence]. Defaulted so a caller that built one before this
+     * existed still states the truth: nothing excluded. */
+    val notSpendingExcluded: NotSpendingExcluded = NotSpendingExcluded.NONE,
+    /** 2026-09-29 (Kevin, "b"): Housing charges [budgetMonthOf] moved into or out of [month],
+     * disclosed by [earlyChargeSentences]. Defaulted so a caller that built one before this existed
+     * still states the truth: nothing moved. */
+    val earlyChargesMoved: EarlyChargesMoved = EarlyChargesMoved.NONE,
 ) {
     /**
      * Same guard the old P&L's `isComplete` used: an EMPTY [coverage] list must never read as
@@ -148,7 +184,14 @@ data class BudgetVsActual(
  * states for daily bars, applied here at month granularity) and why this type carries no sentinel
  * for it - the caller reconstructs the gap from a hole in this list's own month sequence instead.
  */
-data class MonthSpend(val month: YearMonth, val totalCents: Long, val isComplete: Boolean, val hasProvisionalRows: Boolean)
+data class MonthSpend(
+    val month: YearMonth,
+    val totalCents: Long,
+    val isComplete: Boolean,
+    val hasProvisionalRows: Boolean,
+    /** [BudgetVsActual.earlyChargesMoved] for [month], so the trend row states the same words. */
+    val earlyChargesMoved: EarlyChargesMoved = EarlyChargesMoved.NONE,
+)
 
 /**
  * The pure per-month aggregation/omission rule [LedgerController.monthlySpendTrend] applies to
@@ -165,7 +208,7 @@ internal fun monthSpendFrom(month: YearMonth, budget: BudgetVsActual): MonthSpen
     // imported for, and dropping it from the trend entirely would state the stronger claim.
     if (budget.coverage.isEmpty() && budget.allOperatingSpendCents == 0L) return null
     val hasProvisionalRows = budget.lines.any { it.hasProvisionalRows } || budget.uncategorized.hasProvisionalRows
-    return MonthSpend(month, totalCents, budget.isComplete, hasProvisionalRows)
+    return MonthSpend(month, totalCents, budget.isComplete, hasProvisionalRows, budget.earlyChargesMoved)
 }
 
 /**
@@ -183,6 +226,20 @@ fun excludedOwnAccountMovementsSentence(excluded: ExcludedOwnAccountMovements, c
     val plural = if (excluded.count == 1) "transaction" else "transactions"
     return "${excluded.count} $plural moving money to your own accounts (${formatMoney(excluded.totalCents, currency)}) " +
         "excluded from spend."
+}
+
+/**
+ * The words every surface states beside a spend figure whenever [BudgetVsActual.notSpendingExcluded]
+ * is non-empty - e.g. "3 transactions in Transfers (USD 450.00) excluded from spend." The same
+ * shape and posture as [excludedOwnAccountMovementsSentence], defined once here. Names the
+ * category, because "transfers" read as a detector's verdict would be a different claim from "you
+ * (or your rule) filed these under Transfers". Empty-safe.
+ */
+fun notSpendingExcludedSentence(excluded: NotSpendingExcluded, currency: LedgerCurrency): String {
+    if (excluded.isEmpty) return "Nothing filed under a not-spending category this month."
+    val plural = if (excluded.count == 1) "transaction" else "transactions"
+    return "${excluded.count} $plural in ${excluded.categories.joinToString(", ")} " +
+        "(${formatMoney(excluded.totalCents, currency)}) excluded from spend."
 }
 
 /**
@@ -225,6 +282,11 @@ private fun rowTier(row: LedgerTransaction): TrustTier =
  * [matchesAccountFilter]'s own doc comment for why narrowing the rows BEFORE that call would break
  * transfer pairing for a card payment whose partner leg lives on an account the filter excludes.
  * `null` (the default) matches everything, so an untouched call site's behaviour is unchanged.
+ *
+ * [notSpending] (2026-09-29) is the set of category names flagged
+ * [com.kevin.legion.data.local.Category.excludedFromSpend]. Their rows are dropped AFTER
+ * [analyzeTransfers] has classified everything, so card-payment pairing sees exactly what it saw
+ * before; [notSpendingExpenses] returns what this drops, for the disclosure.
  */
 fun operatingExpenses(
     entity: LedgerEntity,
@@ -233,6 +295,33 @@ fun operatingExpenses(
     maxDaysApart: Int = 5,
     ownAccountIds: Set<String> = emptySet(),
     accountFilter: Set<String>? = null,
+    notSpending: Set<String> = emptySet(),
+): List<LedgerTransaction> =
+    operatingExpensesBeforeCategoryExclusion(
+        entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter,
+    ).filterNot { it.category != null && it.category in notSpending }
+
+/** The rows [operatingExpenses] drops for [notSpending] - the same classification, the other half. */
+fun notSpendingExpenses(
+    entity: LedgerEntity,
+    inPeriod: List<LedgerTransaction>,
+    pairingWindow: List<LedgerTransaction>,
+    maxDaysApart: Int = 5,
+    ownAccountIds: Set<String> = emptySet(),
+    accountFilter: Set<String>? = null,
+    notSpending: Set<String>,
+): List<LedgerTransaction> =
+    operatingExpensesBeforeCategoryExclusion(
+        entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter,
+    ).filter { it.category != null && it.category in notSpending }
+
+private fun operatingExpensesBeforeCategoryExclusion(
+    entity: LedgerEntity,
+    inPeriod: List<LedgerTransaction>,
+    pairingWindow: List<LedgerTransaction>,
+    maxDaysApart: Int,
+    ownAccountIds: Set<String>,
+    accountFilter: Set<String>?,
 ): List<LedgerTransaction> {
     val ownCurrencyInPeriod = inPeriod.filter { it.currency == entity.currency }
     val ownCurrencyPairingWindow = pairingWindow.filter { it.currency == entity.currency }
@@ -329,8 +418,13 @@ fun buildBudgetVsActual(
     maxDaysApart: Int = 5,
     ownAccountIds: Set<String> = emptySet(),
     accountFilter: Set<String>? = null,
+    notSpending: Set<String> = emptySet(),
 ): BudgetVsActual {
-    val expenses = operatingExpenses(entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter)
+    val expenses = operatingExpenses(
+        entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter, notSpending,
+    )
+    val notSpendingRows = if (notSpending.isEmpty()) emptyList() else
+        notSpendingExpenses(entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter, notSpending)
     val byCategory = expenses.filter { it.category != null }.groupBy { it.category!! }
     val uncategorizedRows = expenses.filter { it.category == null }
     val filteredCoverage = coverage.filter { matchesAccountFilter(it.accountId, accountFilter) }
@@ -362,6 +456,20 @@ fun buildBudgetVsActual(
 
     val uncategorizedSpentCents = -uncategorizedRows.sumOf { it.amountCents }
 
+    // 2026-09-29: the rows budgetMonthOf moved across this month's edges, for the disclosure.
+    // Counted here: spend rows dated outside the calendar month. Counted next month: this calendar
+    // month's rows that moved out, classified by the SAME operatingExpenses call so only real spend
+    // (not a paired transfer, inside the account filter, not a not-spending category) is mentioned.
+    val countedHere = expenses.filter { YearMonth.from(calendarDateOf(it)) != month }
+    // A candidate the caller nevertheless put in inPeriod IS counted here, so never say it is not.
+    val inPeriodSet = inPeriod.toSet()
+    val movedOutCandidates = pairingWindow.filter {
+        YearMonth.from(calendarDateOf(it)) == month && budgetMonthOf(it) != month && it !in inPeriodSet
+    }
+    val countedNextMonth = if (movedOutCandidates.isEmpty()) emptyList() else operatingExpenses(
+        entity, movedOutCandidates, pairingWindow, maxDaysApart, ownAccountIds, accountFilter, notSpending,
+    )
+
     return BudgetVsActual(
         entity = entity,
         month = month,
@@ -372,5 +480,13 @@ fun buildBudgetVsActual(
         ),
         coverage = filteredCoverage,
         excludedOwnAccountMovements = excludedOwnAccountMovements(entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter),
+        notSpendingExcluded = NotSpendingExcluded(
+            count = notSpendingRows.size,
+            // Positive, like every other "how much" caveat; amountCents is negative on an expense.
+            totalCents = -notSpendingRows.sumOf { it.amountCents },
+            categories = notSpendingRows.mapNotNull { it.category }.distinct().sorted(),
+            rows = notSpendingRows,
+        ),
+        earlyChargesMoved = EarlyChargesMoved(countedHere, countedNextMonth),
     )
 }

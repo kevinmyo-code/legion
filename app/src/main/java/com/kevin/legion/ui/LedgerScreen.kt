@@ -75,6 +75,7 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import java.time.YearMonth
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import com.kevin.legion.ledger.maskedAccountLabel
 import com.kevin.legion.ledger.sameCard
@@ -120,6 +121,9 @@ data class LedgerUiState(
     // knows about its own last read, and the words it owes the user because of it. Additive next
     // to `loading` above - every existing render branch keyed off `loading` is untouched.
     val read: ReadState = ReadState(),
+    /** Non-null when the last read of the ENGINE's ledger failed - the figures are the phone's
+     * copy ([com.kevin.legion.backend.LedgerMirrorStatus.line]). A different fact from [read]. */
+    val syncLine: String? = null,
     val transactions: List<LedgerTransaction> = emptyList(),
     val balances: List<AccountBalance> = emptyList(),
     val quarantined: List<IngestedFile> = emptyList(),
@@ -261,6 +265,12 @@ fun LedgerScreen(
     // for a stale id to drift from what `moneyAccountOptions` below actually offers.
     var moneyAccountFilterId by remember { mutableStateOf<String?>(null) }
 
+    // backend-etl ticket 14: the engine mirror is fire-and-forget from the app's resume, so its rows
+    // (and its "not synced" status) can land after this screen loaded. Reload when it says so.
+    LaunchedEffect(Unit) {
+        com.kevin.legion.backend.LedgerMirrorStatus.changes.drop(1).collect { reloadNonce++ }
+    }
+
     LaunchedEffect(reloadNonce) {
         // Backend-erp phase 3: this whole body used to have no try/catch at all, so a Room or
         // asset-IO throw propagated straight out of the LaunchedEffect and crashed the tab. Wrapped
@@ -307,7 +317,17 @@ fun LedgerScreen(
             // moments in time.
             val uncategorizedSplit = LedgerController.uncategorizedTransactionsSplit(context)
             val categoryNames = LedgerController.allCategories(context).map { it.name }
+            // backend-etl ticket 14: whether the ENGINE's ledger could be read on the last try. The
+            // `read` banner below is this screen's own Room read, a different fact.
+            // Option 2 of the same ticket: a hand-set category still queued for the server is said
+            // here too, in words, until it lands - the same line, since both are "this screen is
+            // ahead of or behind the server".
+            val syncLine = listOfNotNull(
+                com.kevin.legion.backend.LedgerMirrorStatus.line(context),
+                com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.pendingSentence(context),
+            ).takeIf { it.isNotEmpty() }?.joinToString(" ")
             state.copy(
+                syncLine = syncLine,
                 loading = false,
                 transactions = transactions,
                 balances = balances,
@@ -878,6 +898,18 @@ fun LedgerContent(
             // below the fold - see readStateLine's own doc for why silence is correct otherwise.
             item(key = "money-read-state") {
                 ReadStateBanner(state.read, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+            }
+            // The engine's side of the same question (backend-etl ticket 14): when the last read of
+            // the server's ledger failed, every figure below is the phone's copy, said in words.
+            state.syncLine?.let { line ->
+                item(key = "money-sync-state") {
+                    Text(
+                        line,
+                        style = LegionType.stamp,
+                        color = sem.quarantined,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    )
+                }
             }
 
             // The nomination picker (2026-08-18) - an account can carry balances from an ingested

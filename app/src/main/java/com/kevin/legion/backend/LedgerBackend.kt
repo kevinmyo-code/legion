@@ -39,6 +39,13 @@ data class RemoteLedgerTransaction(
     val provenance: String,
     val createdAtMs: Long,
     val originGuid: String?,
+    /**
+     * Which one [category] is (backend-etl ticket 14 option 2): `person` or `rule` when a
+     * `ledger_transaction_categories` override is laid over the row, `stored` when it is the row's
+     * own column, null when there is no category or the transport does not say (Supabase, or an
+     * engine deployed before overrides). [category] is already the EFFECTIVE one on the engine.
+     */
+    val categorySource: String? = null,
 )
 
 /**
@@ -126,7 +133,42 @@ interface LedgerBackend {
      */
     suspend fun fetchChangedTransactionsSince(sinceMs: Long): Result<List<RemoteLedgerTransaction>> =
         Result.success(emptyList())
+
+    /**
+     * The whole table, and whether this read is known to be ALL of it - what
+     * [LedgerTransactionsSync.mirror] needs, because it treats "the server no longer lists this
+     * row" as "the server deleted it" (a rule-7 supersession) and must never do so off a partial
+     * read.
+     *
+     * **The default says `complete = false`**, so a backend that cannot vouch for completeness
+     * (Supabase: PostgREST caps an unranged select, and this interface never learned to range it)
+     * can be mirrored for inserts and category updates but never deletes anything. Only
+     * [com.kevin.legion.backend.engine.DjangoLedgerBackend] overrides it, from the page loop's own
+     * `next: null` signal.
+     */
+    suspend fun fetchTransactionSet(): Result<RemoteTransactionSet> =
+        fetchActiveTransactions().map { RemoteTransactionSet(it, complete = false) }
+
+    /**
+     * A person's category for one server transaction ([serverId]), laid OVER the gated row
+     * (backend-etl ticket 14 option 2; `PUT /api/ledger/transaction_categories/<id>/` with
+     * `source: person`). The row itself is never written - the gate's trigger refuses that.
+     *
+     * **The default refuses in words**: only the Django engine has the route. A transport without
+     * it keeps the category on this phone, and [LedgerTransactionCategoryWriteThrough] never calls
+     * this on one.
+     */
+    suspend fun setTransactionCategory(serverId: String, category: String): Result<Unit> =
+        Result.failure(
+            LedgerBackendException(
+                "This server has no route for a transaction's category, so it was not sent; it stays on this phone.",
+            ),
+        )
 }
+
+/** [LedgerBackend.fetchTransactionSet]'s answer. [complete] false means "at least these rows",
+ * never "exactly these rows". */
+data class RemoteTransactionSet(val rows: List<RemoteLedgerTransaction>, val complete: Boolean)
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseLedgerBackend] for every failure branch - owned
  * by this package, never a raw supabase-kt/Ktor exception, same posture as [FleetBackendException]/

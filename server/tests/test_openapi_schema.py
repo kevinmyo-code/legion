@@ -134,7 +134,9 @@ def test_declared_list_response_matches_a_real_synced_list_call(auth_client):
     assert set(response.json()) == set(declared), (
         "The schema and the endpoint disagree about the top-level keys of a list response."
     )
-    assert set(declared) == {"results", "next"}
+    # `next_after` is the keyset tiebreak (api/sync.paginate_keyset); the
+    # hand-written events route below does not emit it and is checked apart.
+    assert set(declared) == {"results", "next", "next_after"}
 
 
 @pytest.mark.django_db

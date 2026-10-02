@@ -364,8 +364,19 @@ object LedgerController {
         return buildBudgetVsActual(
             entity, month, inPeriod, pairingWindow, targets, coverage,
             ownAccountIds = ownAccountIds, accountFilter = accountFilter,
+            notSpending = notSpendingCategories(context),
         )
     }
+
+    /**
+     * The names of the categories that are not spending (Kevin, 2026-09-29: "ignore zelle for
+     * spending"), read from [com.kevin.legion.data.local.Category.excludedFromSpend] - the one
+     * definition, synced from the server's `categories.excluded_from_spend`. Every spend figure on
+     * this phone passes this set to [operatingExpenses]/[buildBudgetVsActual]; nothing compares a
+     * category against a hard-coded name.
+     */
+    suspend fun notSpendingCategories(context: Context): Set<String> =
+        db(context).categoryDao().notSpendingNames().toSet()
 
     /**
      * Ticket 04 (quant-viz): month-over-month total spend for [entity], one [MonthSpend] per month
@@ -428,7 +439,13 @@ object LedgerController {
         val rows = allTransactions(context)
         val (pairingWindow, inPeriod) = monthPairingWindow(rows, entity, month)
         val ownAccountIds = rows.filter { it.currency == entity.currency }.map { it.accountId }.toSet()
-        val expenses = operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter)
+        // Drilling INTO a not-spending category (Transfers) shows its rows - the disclosure's
+        // "inspectable, not asserted" half - so only the OTHER flagged categories are dropped.
+        val notSpending = notSpendingCategories(context) - setOfNotNull(category)
+        val expenses = operatingExpenses(
+            entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter,
+            notSpending = notSpending,
+        )
         return expenses.filter { it.category == category }.sortedByDescending { it.txnDate }
     }
 
@@ -451,7 +468,10 @@ object LedgerController {
         val rows = allTransactions(context)
         val (pairingWindow, inPeriod) = monthPairingWindow(rows, entity, month)
         val ownAccountIds = rows.filter { it.currency == entity.currency }.map { it.accountId }.toSet()
-        return operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter)
+        return operatingExpenses(
+            entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter,
+            notSpending = notSpendingCategories(context),
+        )
     }
 
     /**
@@ -463,6 +483,12 @@ object LedgerController {
      */
     suspend fun excludedOwnAccountMovements(context: Context, entity: LedgerEntity, month: YearMonth): ExcludedOwnAccountMovements =
         budgetVsActual(context, entity, month).excludedOwnAccountMovements
+
+    /** The Housing charges [budgetMonthOf] moved across [month]'s edges - the SAME [buildBudgetVsActual]
+     * classification [budgetVsActual] discloses, for a surface that sums [monthOperatingExpenses]
+     * itself and must say the same words. */
+    suspend fun earlyChargesMoved(context: Context, entity: LedgerEntity, month: YearMonth): EarlyChargesMoved =
+        budgetVsActual(context, entity, month).earlyChargesMoved
 
     /** [YearMonth]'s own UTC start, matching every parser's `atStartOfDay(ZoneOffset.UTC)` convention. */
     private fun monthStartMillis(month: YearMonth): Long =
@@ -482,16 +508,10 @@ object LedgerController {
      */
     private fun monthPairingWindow(
         rows: List<LedgerTransaction>, entity: LedgerEntity, month: YearMonth,
-    ): Pair<List<LedgerTransaction>, List<LedgerTransaction>> {
-        val monthStartMs = monthStartMillis(month)
-        val monthEndMs = monthEndMillis(month)
-        val windowMs = PAIRING_WINDOW_DAYS * 24L * 60 * 60 * 1000
-        val pairingWindow = rows.filter {
-            it.currency == entity.currency && it.txnDate in (monthStartMs - windowMs)..(monthEndMs + windowMs)
-        }
-        val inPeriod = pairingWindow.filter { it.txnDate in monthStartMs..monthEndMs }
-        return pairingWindow to inPeriod
-    }
+    ): Pair<List<LedgerTransaction>, List<LedgerTransaction>> =
+        // 2026-09-29 (Kevin, "b"): the period is the BUDGET month (budgetMonthOf - a Housing charge in
+        // the last 3 days counts in the next month); the pairing window stays on calendar dates.
+        budgetMonthRows(rows, entity.currency, month, PAIRING_WINDOW_DAYS)
 
     /** D9: sets [category]'s budget for [entity]'s currency from [month] onward - D2's "copy forward", written at the point of change rather than duplicated every month. See [com.kevin.legion.data.local.BudgetTarget]'s doc comment for why this is a single upsert, not a per-month row.
      *
@@ -796,6 +816,13 @@ object LedgerController {
         val matched = rows.filter { it.description.uppercase().contains(merchantKey) }
         val merchantsTouched = matched.map { it.description }.distinct().size
         val rowsTouched = updateCategoryOnRows(context, matched, category, categoryPending = false)
+        // A person named this category, so every row it reached is a person's choice on the
+        // server too (backend-etl ticket 14 option 2) - not only the future rows the rule governs.
+        val server = if (rowsTouched > 0) {
+            com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.push(context, matched, category)
+        } else {
+            com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.Report.NONE
+        }
 
         if (rowsTouched > 0) {
             // ledger-config-supabase ticket: LedgerConfigWriteThrough, not the DAO directly - the
@@ -811,7 +838,7 @@ object LedgerController {
                 ),
             )
         }
-        return CategorySetResult(rowsTouched = rowsTouched, merchantsTouched = merchantsTouched)
+        return CategorySetResult(rowsTouched = rowsTouched, merchantsTouched = merchantsTouched, server = server)
     }
 
     /**
@@ -871,6 +898,8 @@ object LedgerController {
             it.categoryPending && it.category == category && it.description.uppercase().contains(merchantKey.uppercase())
         }
         updateCategoryOnRows(context, matched, category, categoryPending = false)
+        // Confirming a guess is a person's choice (D18), so it reaches the server as one.
+        com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.push(context, matched, category)
     }
 
     /**
@@ -879,9 +908,18 @@ object LedgerController {
      * "future only" guard - and always lands as confirmed, never pending: a driver picking a
      * category directly is as confirmed a fact as this record has.
      */
-    suspend fun recategorize(context: Context, transactionId: Long, category: String) {
+    suspend fun recategorize(
+        context: Context,
+        transactionId: Long,
+        category: String,
+    ): com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.Report {
         ensureLegacyReconciled(context)
         db(context).ledgerTransactionDao().setCategoryConfirmed(transactionId, category)
+        // backend-etl ticket 14 option 2: the choice reaches the server as a person override, or is
+        // queued and said so. The local write above has already happened either way.
+        val row = allTransactions(context).firstOrNull { it.id == transactionId }
+            ?: return com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.Report.NONE
+        return com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.push(context, listOf(row), category)
     }
 
     /** Reasoned "typical" constants for a short merchant-name-plus-category prompt - see [categoryGuessEstimate]'s doc comment for why these aren't measured. */
@@ -1077,6 +1115,10 @@ data class CategorySetResult(
     val merchantsTouched: Int = 0,
     val keyTooShort: Boolean = false,
     val isNoiseKey: Boolean = false,
+    /** What reaching the server did (backend-etl ticket 14 option 2); its sentence, when non-null,
+     * is said beside the result. */
+    val server: com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.Report =
+        com.kevin.legion.backend.LedgerTransactionCategoryWriteThrough.Report.NONE,
 )
 
 /**

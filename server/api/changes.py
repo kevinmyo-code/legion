@@ -304,8 +304,10 @@ class ChangesView(APIView):
             for viewset in SYNCED_ASPECTS.get(aspect, ()):
                 model = viewset.model()
                 cursor = viewset.cursor_field
+                # `decorate` after `scoped`: a ledger transaction's category
+                # is the effective one here exactly as on its own route.
                 rows = (
-                    scoped(model, request)
+                    viewset.decorate(scoped(model, request))
                     .filter(**{f"{cursor}__gte": since})
                     .order_by(cursor, "pk")
                 )

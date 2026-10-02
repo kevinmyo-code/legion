@@ -204,13 +204,15 @@ fun BudgetSection(
         // rows and how much, and tappable so the claim is inspectable rather than asserted. Placed
         // next to the coverage caveat below since both are "this figure is not the whole picture"
         // statements about the SAME total.
-        if (budget != null && !budget.excludedOwnAccountMovements.isEmpty) {
+        // 2026-09-29 (Kevin: "ignore zelle for spending"): rows in a not-spending category are the
+        // second exclusion stated here, same shape, tappable into that category's own rows.
+        for ((sentence, onClick) in exclusionDisclosures(budget, onOpenExcludedOwnAccountMovements, onOpenCategory)) {
             Spacer(Modifier.height(6.dp))
             Text(
-                com.kevin.legion.ledger.excludedOwnAccountMovementsSentence(budget.excludedOwnAccountMovements, budget.entity.currency),
+                sentence,
                 style = MaterialTheme.typography.bodySmall,
                 color = sem.faint,
-                modifier = Modifier.clickable(onClick = onOpenExcludedOwnAccountMovements),
+                modifier = Modifier.clickable(onClick = onClick),
             )
         }
 
@@ -277,6 +279,36 @@ private fun BudgetLineRow(line: BudgetLine, entity: LedgerEntity, month: YearMon
  * own "device zone default" posture for anything that reads "today" off the calendar rather than a
  * stored UTC-stamped transaction date.
  */
+/**
+ * Every "left out of spend" sentence the SPEND pane states, each with where a tap takes you: the
+ * own-account movements (2026-08-13) and rows in a not-spending category such as Transfers
+ * (2026-09-29), and Housing charges counted in a different month than their date (2026-09-29,
+ * `earlyChargeSentences`). Empty ones are omitted - the pane says what WAS excluded or moved, and
+ * each sentence is the one shared definition in `ledger/LedgerBudget.kt`.
+ */
+internal fun exclusionDisclosures(
+    budget: BudgetVsActual?,
+    onOpenExcludedOwnAccountMovements: () -> Unit,
+    onOpenCategory: (String?) -> Unit,
+): List<Pair<String, () -> Unit>> {
+    if (budget == null) return emptyList()
+    val currency = budget.entity.currency
+    val own = budget.excludedOwnAccountMovements
+    val notSpending = budget.notSpendingExcluded
+    val ownSentence = com.kevin.legion.ledger.excludedOwnAccountMovementsSentence(own, currency)
+    val notSpendingSentence = com.kevin.legion.ledger.notSpendingExcludedSentence(notSpending, currency)
+    val openNotSpending: () -> Unit = { onOpenCategory(notSpending.categories.firstOrNull()) }
+    // 2026-09-29 (Kevin, "b"): Housing charges counted in a different month than their date, one
+    // sentence per row, tappable into the Housing rows this month counts.
+    val openEarlyCategory: () -> Unit = { onOpenCategory(com.kevin.legion.ledger.EARLY_CHARGE_CATEGORY) }
+    val earlySentences = com.kevin.legion.ledger.earlyChargeSentences(budget.earlyChargesMoved, budget.month, currency)
+        .map { it to openEarlyCategory }
+    return listOfNotNull(
+        (ownSentence to onOpenExcludedOwnAccountMovements).takeUnless { own.isEmpty },
+        (notSpendingSentence to openNotSpending).takeUnless { notSpending.isEmpty },
+    ) + earlySentences
+}
+
 private fun paceFractionFor(month: YearMonth, zone: ZoneId = ZoneId.systemDefault()): Float? {
     val today = LocalDate.now(zone)
     if (YearMonth.from(today) != month) return null

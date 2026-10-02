@@ -422,6 +422,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -549,6 +558,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -678,6 +696,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -805,6 +832,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -934,6 +970,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -1061,6 +1106,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -1190,6 +1244,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -1317,6 +1380,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -2178,6 +2250,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -2293,6 +2374,15 @@ paths:
         comment it comes from.
       parameters:
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -2391,6 +2481,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -2520,6 +2619,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -2647,6 +2755,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -2776,6 +2893,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -2903,6 +3029,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -3237,6 +3372,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -3365,6 +3509,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -3480,6 +3633,15 @@ paths:
         comment it comes from.
       parameters:
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -3579,6 +3741,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -3682,6 +3853,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/freshness:
+    get:
+      operationId: api_freshness_retrieve
+      tags:
+      - freshness
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Freshness'
+          description: One entry per scheduled source, always all of them, for the
+            caller's household only. Render `sentence` as it is; do not compose a
+            phrase from `last_ok_at`. `stale` is true when no run succeeded inside
+            the source's threshold (canvas 2h, webassign/drive_statements/backup/obd_rollup
+            36h, heartbeat 1h), and false for a source the household has not set up.
   /api/households/me:
     get:
       operationId: api_households_me_retrieve
@@ -3951,6 +4141,15 @@ paths:
         comment it comes from.
       parameters:
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -4069,6 +4268,86 @@ paths:
             the payload tripped. Nothing was written, and no quarantine row was recorded
             either, because this is not a verdict about a document: it is a payload
             nothing could evaluate. Distinct from a quarantine, which is a 200.'
+  /api/ingest/sessions:
+    get:
+      operationId: api_ingest_sessions_list
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+          description: Metadata for every login this household has handed over. Never
+            the secret. `invalid_since` set means an upstream refused it.
+  /api/ingest/sessions/{source}:
+    get:
+      operationId: api_ingest_sessions_retrieve
+      parameters:
+      - in: path
+        name: source
+        schema:
+          type: string
+        required: true
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionMetadata'
+          description: One stored login's metadata. Never the secret.
+        '404':
+          description: No login stored for this source.
+    put:
+      operationId: api_ingest_sessions_update
+      parameters:
+      - in: path
+        name: source
+        schema:
+          type: string
+        required: true
+      tags:
+      - ingest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionPut'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SessionPut'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SessionPut'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionMetadata'
+          description: Stored, replacing any earlier login for this source and clearing
+            `invalid_since`. The body is metadata only; the secret is not echoed.
+        '400':
+          description: 'Nothing was stored: `bofa` (never leaves the laptop), an unknown
+            source, a secret of the wrong shape, anything naming a password, or a
+            config key that names a secret. `detail` says which.'
+        '403':
+          description: 'Nothing was stored: the caller is not an owner.'
+        '503':
+          description: 'Nothing was stored: LEGION_VAULT_KEY is unset or invalid.'
   /api/ingest/statement:
     post:
       operationId: api_ingest_statement_create
@@ -4146,6 +4425,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -4275,6 +4563,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -4403,6 +4700,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -4518,6 +4824,15 @@ paths:
         comment it comes from.
       parameters:
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -4584,6 +4899,145 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/ledger/transaction_categories/:
+    get:
+      operationId: api_ledger_transaction_categories_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: string
+          enum:
+          - '1'
+          - 'on'
+          - 'true'
+          - 'yes'
+        description: Narrows the feed to live rows (`deleted_at is null`). Composes
+          with `since`. Anything else, `0` and `false` included, means the narrowing
+          was not asked for and tombstones stay in - a caller who cannot be understood
+          sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: ISO-8601 UTC watermark. Returns rows with `updated_at >= since`,
+          tombstones included, oldest first. **Omitted or unparsable means EVERYTHING,
+          never nothing** (api/sync.parse_since), so a fresh client's first pull is
+          the whole table. Hand back the `next` cursor from the previous page, or
+          `server_time` from GET /api/changes; both are already `Z`-suffixed so they
+          need no extra encoding.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedLedgerTransactionCategory'
+          description: ''
+  /api/ledger/transaction_categories/{identity}/:
+    put:
+      operationId: api_ledger_transaction_categories_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `transaction_id`.
+        required: true
+      tags:
+      - ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LedgerTransactionCategory'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LedgerTransactionCategory'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LedgerTransactionCategory'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerTransactionCategory'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+    delete:
+      operationId: api_ledger_transaction_categories_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        description: The row's `transaction_id`.
+        required: true
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (the tombstone row stays so an unsynced
+            client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
   /api/ledger/transactions/:
     get:
       operationId: api_ledger_transactions_list
@@ -4596,6 +5050,15 @@ paths:
         holds that rule for the whole API and quotes the phone-side cursor
         comment it comes from.
       parameters:
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -4690,6 +5153,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -4830,6 +5302,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -4958,6 +5439,15 @@ paths:
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -5056,6 +5546,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -5172,6 +5671,15 @@ paths:
         comment it comes from.
       parameters:
       - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
+      - in: query
         name: since
         schema:
           type: string
@@ -5250,6 +5758,15 @@ paths:
         holds that rule for the whole API and quotes the phone-side cursor
         comment it comes from.
       parameters:
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -5342,6 +5859,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -5470,6 +5996,15 @@ paths:
           with `since`. Anything else, `0` and `false` included, means the narrowing
           was not asked for and tombstones stay in - a caller who cannot be understood
           sees too much, never silently nothing.
+      - in: query
+        name: after
+        schema:
+          type: string
+        description: 'Keyset tiebreak: the `next_after` from the previous page, sent
+          together with `since=<next>`. Returns rows strictly after that position
+          in `(cursor, id)` order, so a page of rows sharing one timestamp cannot
+          re-serve itself. Omitted or unparsable means no tiebreak: the inclusive
+          `since` read, exactly as before (api/sync.paginate_keyset).'
       - in: query
         name: since
         schema:
@@ -5887,6 +6422,12 @@ components:
           type: string
         is_food_category:
           type: boolean
+        excluded_from_spend:
+          type: boolean
+          description: True for a category that is not spending (money moving between
+            the household's own places, e.g. Transfers). Every spend total leaves
+            its rows out AND says so in words. Defaults false; omitted on a PUT, it
+            is unchanged.
         provenance:
           allOf:
           - $ref: '#/components/schemas/ProvenanceEnum'
@@ -5969,6 +6510,16 @@ components:
       - provenance
       - substring
       - updated_at
+    CategorySourceEnum:
+      enum:
+      - person
+      - rule
+      - stored
+      type: string
+      description: |-
+        * `person` - person
+        * `rule` - rule
+        * `stored` - stored
     Changes:
       type: object
       properties:
@@ -6058,6 +6609,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BudgetTarget'
+        ledger_transaction_categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerTransactionCategory'
         statements:
           type: array
           items:
@@ -6557,6 +7112,14 @@ components:
       - text
       - updated_at
       - vehicle_id
+    CredentialKindEnum:
+      enum:
+      - cookie_jar
+      - oauth_refresh
+      type: string
+      description: |-
+        * `cookie_jar` - Cookie jar
+        * `oauth_refresh` - OAuth refresh token
     Detail:
       type: object
       description: |-
@@ -6853,6 +7416,43 @@ components:
       - provenance
       - title
       - updated_at
+    Freshness:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/FreshnessSource'
+      required:
+      - sources
+    FreshnessSource:
+      type: object
+      properties:
+        source:
+          $ref: '#/components/schemas/SourceEnum'
+        last_ok_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_outcome:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/LastOutcomeEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        last_error:
+          type: string
+          nullable: true
+        stale:
+          type: boolean
+        sentence:
+          type: string
+      required:
+      - last_error
+      - last_ok_at
+      - last_outcome
+      - sentence
+      - source
+      - stale
     GroceryStaple:
       type: object
       description: |-
@@ -7220,6 +7820,20 @@ components:
       - live
       - reason
       - uses_left
+    LastOutcomeEnum:
+      enum:
+      - ok
+      - failed
+      - needs_login
+      - skipped_locked
+      - skipped
+      type: string
+      description: |-
+        * `ok` - OK
+        * `failed` - Failed
+        * `needs_login` - Needs login
+        * `skipped_locked` - Skipped, already running
+        * `skipped` - Skipped, not set up
     LedgerTransaction:
       type: object
       description: |-
@@ -7278,9 +7892,31 @@ components:
           type: string
           readOnly: true
           nullable: true
+          description: 'The EFFECTIVE category: a live `ledger_transaction_categories`
+            override''s if there is one, else the row''s own (`stored_category`).
+            What every surface shows.'
         category_pending:
           type: boolean
           readOnly: true
+          description: False under a live override; otherwise the row's own flag.
+        stored_category:
+          type: string
+          readOnly: true
+          nullable: true
+          description: 'The row''s own `category` column, exactly as the gate wrote
+            it. Never changes: `forbid_mutation_of_facts` refuses every UPDATE.'
+        category_source:
+          readOnly: true
+          nullable: true
+          description: |-
+            Which one `category` is: `person` or `rule` (a live override), `stored` (the row's own column), or null when the row has no category.
+
+            * `person` - person
+            * `rule` - rule
+            * `stored` - stored
+          oneOf:
+          - $ref: '#/components/schemas/CategorySourceEnum'
+          - $ref: '#/components/schemas/NullEnum'
         pending_logged_at:
           type: string
           format: date-time
@@ -7304,6 +7940,14 @@ components:
             * `LLM_RECONCILED` - Llm Reconciled
             * `UNRECONCILED` - Unreconciled
             * `USER` - User
+        verification_note:
+          type: string
+          nullable: true
+          readOnly: true
+          description: 'A sentence beginning ''Unverified'' on every UNRECONCILED
+            row (section 4 rule 7: the source stated no anchor, so the row is provisional).
+            Null on a row that passed the gate. A surface showing the row, or a total
+            containing it, shows this.'
         created_at:
           type: string
           format: date-time
@@ -7319,6 +7963,7 @@ components:
       - balance_cents
       - category
       - category_pending
+      - category_source
       - created_at
       - currency
       - description
@@ -7329,7 +7974,64 @@ components:
       - provenance
       - reversal_of
       - statement_id
+      - stored_category
       - txn_date
+      - verification_note
+    LedgerTransactionCategory:
+      type: object
+      description: |-
+        One `ledger_transaction_categories` row: a category shown in place of a
+        gated transaction's own.
+
+        `transaction_id` can only name a transaction in the caller's household
+        (`HouseholdScopedPrimaryKeyRelatedField`); one in another household reads
+        as one that does not exist, which from here it does not.
+
+        **`source` defaults to `person` on every write**, not only on insert. A
+        PUT says "the row in this state", and a client that left `source` out of
+        a PUT over a `rule` row is a person choosing a category; keeping `rule`
+        would let the backfill's word stand over theirs.
+
+        **A `rule` never replaces a live `person` row.** Refused here in words; a
+        trigger refuses it again in SQL (`ingest/category_overrides.py`).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        transaction_id:
+          type: string
+          format: uuid
+        category:
+          type: string
+        source:
+          type: string
+          description: '`person` (the default: someone chose it) or `rule` (written
+            by `manage.py apply_category_rules` from the household''s rules). A rule
+            never replaces a live person row.'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+          nullable: true
+      required:
+      - category
+      - created_at
+      - deleted_at
+      - id
+      - transaction_id
+      - updated_at
     LoginRequest:
       type: object
       properties:
@@ -7735,6 +8437,9 @@ components:
       - provenance
       - store
       - updated_at
+    NullEnum:
+      enum:
+      - null
     ObdBatchResult:
       type: object
       description: |-
@@ -8038,8 +8743,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedBudgetTarget:
       type: object
@@ -8054,8 +8765,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedBuildEntry:
       type: object
@@ -8070,8 +8787,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedCategory:
       type: object
@@ -8086,8 +8809,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedCategoryRule:
       type: object
@@ -8102,8 +8831,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedChassisQuirk:
       type: object
@@ -8118,8 +8853,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedChecklist:
       type: object
@@ -8166,8 +8907,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedCodeEvent:
       type: object
@@ -8182,8 +8929,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedCompanionMemory:
       type: object
@@ -8198,8 +8951,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedDrive:
       type: object
@@ -8214,8 +8973,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedDriveReassignment:
       type: object
@@ -8230,8 +8995,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedEvent:
       type: object
@@ -8262,8 +9033,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedIngestedFile:
       type: object
@@ -8278,8 +9055,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedLedgerTransaction:
       type: object
@@ -8294,8 +9077,36 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
+      - results
+    PagedLedgerTransactionCategory:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerTransactionCategory'
+        next:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Cursor for the next page: hand it back as `?since=`. Null
+            means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
+      required:
+      - next
+      - next_after
       - results
     PagedMaintenanceSchedule:
       type: object
@@ -8310,8 +9121,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedMealLog:
       type: object
@@ -8326,8 +9143,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedMealTarget:
       type: object
@@ -8342,8 +9165,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedMemory:
       type: object
@@ -8358,8 +9187,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedMemoryAudit:
       type: object
@@ -8374,8 +9209,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedObdSample:
       type: object
@@ -8406,8 +9247,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedPlace:
       type: object
@@ -8422,8 +9269,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedReceipt:
       type: object
@@ -8438,8 +9291,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedReceiptLineItem:
       type: object
@@ -8454,8 +9313,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedServiceHistory:
       type: object
@@ -8470,8 +9335,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedSleepLog:
       type: object
@@ -8486,8 +9357,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedSleepTarget:
       type: object
@@ -8502,8 +9379,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedStatement:
       type: object
@@ -8518,8 +9401,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedVehicle:
       type: object
@@ -8534,8 +9423,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedVehicleSpec:
       type: object
@@ -8550,8 +9445,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedVoiceNote:
       type: object
@@ -8566,8 +9467,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedWorkoutPlan:
       type: object
@@ -8582,8 +9489,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedWorkoutPlanItem:
       type: object
@@ -8598,8 +9511,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PagedWorkoutSetLog:
       type: object
@@ -8614,8 +9533,14 @@ components:
           nullable: true
           description: 'Cursor for the next page: hand it back as `?since=`. Null
             means this was the last page.'
+        next_after:
+          type: string
+          nullable: true
+          description: 'The last row''s id on a full page: hand it back as `?after=`
+            beside `?since=<next>`. Null exactly when `next` is null.'
       required:
       - next
+      - next_after
       - results
     PatchedChecklist:
       type: object
@@ -9259,6 +10184,15 @@ components:
       - service_name
       - updated_at
       - vehicle_id
+    SessionList:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionMetadata'
+      required:
+      - sessions
     SessionLoginRequest:
       type: object
       description: |-
@@ -9275,6 +10209,58 @@ components:
       required:
       - email
       - password
+    SessionMetadata:
+      type: object
+      properties:
+        source:
+          $ref: '#/components/schemas/SessionSourceEnum'
+        kind:
+          $ref: '#/components/schemas/CredentialKindEnum'
+        captured_at:
+          type: string
+          format: date-time
+        expires_hint:
+          type: string
+          format: date-time
+          nullable: true
+        invalid_since:
+          type: string
+          format: date-time
+          nullable: true
+        config: {}
+      required:
+      - captured_at
+      - config
+      - expires_hint
+      - invalid_since
+      - kind
+      - source
+    SessionPut:
+      type: object
+      properties:
+        secret:
+          description: 'canvas/webassign: {"cookies": [{"name", "value", "domain",
+            ...}]}. drive: {"refresh_token", "client_id", "client_secret", "token_uri",
+            "scopes"}. Never a password.'
+        config:
+          description: Non-secret settings a job needs (Canvas base_url, a Drive folder
+            id). Merged into what is stored. Shown to every member.
+        expires_hint:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - secret
+    SessionSourceEnum:
+      enum:
+      - canvas
+      - webassign
+      - drive
+      type: string
+      description: |-
+        * `canvas` - Canvas
+        * `webassign` - WebAssign
+        * `drive` - Google Drive
     SignupRequest:
       type: object
       description: |-
@@ -9454,6 +10440,22 @@ components:
       - provenance
       - target_minutes
       - updated_at
+    SourceEnum:
+      enum:
+      - canvas
+      - webassign
+      - drive_statements
+      - backup
+      - obd_rollup
+      - heartbeat
+      type: string
+      description: |-
+        * `canvas` - Canvas
+        * `webassign` - WebAssign
+        * `drive_statements` - Drive statements
+        * `backup` - Backup
+        * `obd_rollup` - OBD roll-up
+        * `heartbeat` - Heartbeat
     Statement:
       type: object
       description: |-

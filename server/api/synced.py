@@ -122,7 +122,7 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 
 from api.schema import SyncedAutoSchema
-from api.sync import paginate_since, parse_since, save_or_400
+from api.sync import paginate_keyset, parse_after, parse_since, save_or_400
 from household.tenancy import household_of
 from legacy.enums import Provenance
 
@@ -473,7 +473,19 @@ class SyncedModelViewSet(viewsets.ViewSet):
         below, which itself calls it. A `self.model().objects.` anywhere in
         this file that is not this line is a defect.
         """
-        return self.model().objects.filter(household=self.household())
+        return self.decorate(self.model().objects.filter(household=self.household()))
+
+    @classmethod
+    def decorate(cls, queryset):
+        """What every read of this table adds to an already-scoped queryset -
+        nothing, except where a serializer reads a computed value.
+
+        `LedgerTransactionViewSet` is the one that does: a transaction's
+        category is read through `ingest/category_overrides.with_effective_category`.
+        `api/changes.py` calls this too, so the feed and the per-table route
+        cannot serve one row two ways. It never narrows the scope; the
+        household filter is applied before it."""
+        return queryset
 
     def serializer_context(self) -> dict:
         """What every serializer this viewset builds is handed.
@@ -519,21 +531,28 @@ class SyncedModelViewSet(viewsets.ViewSet):
         comment it comes from.
         """
         since = parse_since(request.query_params.get("since"))
-        queryset = self.queryset().filter(**{f"{self.cursor_field}__gte": since})
+        queryset = self.queryset()
+        after = parse_after(queryset, request.query_params.get("after"))
         if self.has_tombstones and request.query_params.get("active", "").strip().lower() in TRUTHY:
             queryset = queryset.filter(deleted_at__isnull=True)
-        # Secondary sort on the primary key so a page boundary is stable
-        # when several rows share one `updated_at` - which they routinely
-        # do, since `now()` is fixed for a transaction. Known limit, stated
-        # rather than papered over: a full page of rows sharing ONE
-        # timestamp would re-serve itself forever, because the cursor is an
-        # inclusive `updated_at` and cannot express "after this row". 500
-        # simultaneous writes to one table is not a shape this app has, and
-        # fixing it properly means a compound cursor, which is a bigger
-        # change than this ticket.
-        queryset = queryset.order_by(self.cursor_field, "pk")
-        page, next_since = paginate_since(queryset, cursor_field=self.cursor_field)
-        return Response({"results": self._serialize(page, many=True), "next": next_since})
+        # Ordered by `(cursor_field, pk)` with a keyset tiebreak. This used to
+        # read "a full page of rows sharing ONE timestamp would re-serve
+        # itself forever ... not a shape this app has". It became one: the
+        # gate writes a whole statement with one `created_at`, so a card
+        # export of more than 500 lines fills a page with a single timestamp. `next_after`
+        # (the last row's pk) lets a client say "after this row"; see
+        # `api/sync.paginate_keyset`. A client sending only `since` gets the
+        # old inclusive read, unchanged.
+        page, next_since, next_after = paginate_keyset(
+            queryset, since, after, cursor_field=self.cursor_field
+        )
+        return Response(
+            {
+                "results": self._serialize(page, many=True),
+                "next": next_since,
+                "next_after": next_after,
+            }
+        )
 
     def retrieve(self, request, identity):
         """`GET <table>/<identity>/`. One row, tombstoned or not.

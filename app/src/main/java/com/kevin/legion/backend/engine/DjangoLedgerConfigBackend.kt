@@ -50,6 +50,8 @@ private data class DjangoCategoryRow(
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("deleted_at") val deletedAt: String? = null,
     @SerialName("origin_guid") val originGuid: String,
+    // Null from an engine deployed before the column existed: "unknown", not "false".
+    @SerialName("excluded_from_spend") val excludedFromSpend: Boolean? = null,
 ) {
     fun toRemote() = RemoteCategory(
         serverId = id,
@@ -58,6 +60,7 @@ private data class DjangoCategoryRow(
         updatedAtMs = ledgerParseTs(updatedAt),
         deleted = deletedAt != null,
         originGuid = originGuid,
+        excludedFromSpend = excludedFromSpend,
     )
 }
 
@@ -75,6 +78,9 @@ private data class DjangoCategoryRow(
 private data class DjangoCategoryWrite(
     val name: String,
     @SerialName("is_food_category") val isFoodCategory: Boolean,
+    // 2026-09-29. Always sent: an engine without the column refuses it with a 400 naming the
+    // field (version skew said out loud), so the server must be deployed before this build.
+    @SerialName("excluded_from_spend") val excludedFromSpend: Boolean,
 )
 
 // ---------------------------------------------------------------------------------------------
@@ -207,7 +213,11 @@ class DjangoLedgerConfigBackend(http: EngineHttp) : LedgerConfigBackend {
         translatingEngineCall("save that category") {
             val body = engineSyncedJson.encodeToString(
                 DjangoCategoryWrite.serializer(),
-                DjangoCategoryWrite(name = fields.name, isFoodCategory = fields.isFoodCategory),
+                DjangoCategoryWrite(
+                    name = fields.name,
+                    isFoodCategory = fields.isFoodCategory,
+                    excludedFromSpend = fields.excludedFromSpend,
+                ),
             )
             categories.put(originGuid, body).toRemote()
         }

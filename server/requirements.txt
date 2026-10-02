@@ -14,10 +14,21 @@ python-dotenv==1.0.1
 # checked 2026-09-08; published 2026-02-27) and pulls in nothing transitive -
 # brotli is an extra this does not ask for.
 whitenoise==6.12.0
+# backend-etl ticket 02, 2026-09-27. Fernet for the session vault
+# (`ingest/vault.py`): the saved Canvas cookies and the Drive refresh token are
+# stored encrypted under LEGION_VAULT_KEY, never in the clear.
+cryptography==50.0.1
+# backend-etl ticket 10, 2026-09-28. Text out of a BofA statement PDF for the
+# deterministic parser (`ingest/parsers/pdf_text.py`). Pure Python, no
+# dependencies (a py3-none-any wheel), so the slim image needs no compiler.
+# Chosen over pdfplumber, which pulls Pillow and a native PDFium build and
+# collapses the runs of spaces the Kotlin parser's tests pin.
+pypdf==6.19.0
 
 # Transitive, pinned by `uv pip freeze` against the above.
 asgiref==3.12.1
 attrs==26.1.0
+cffi==2.1.1
 colorama==0.4.6
 inflection==0.5.1
 iniconfig==2.3.0
@@ -26,6 +37,7 @@ jsonschema-specifications==2025.9.1
 packaging==26.3
 pluggy==1.6.0
 psycopg-binary==3.2.10
+pycparser==3.0
 pygments==2.21.0
 pytest==9.1.1
 pyyaml==6.0.3

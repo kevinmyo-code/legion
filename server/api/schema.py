@@ -153,7 +153,22 @@ ACTIVE_PARAMETER = OpenApiParameter(
 _PAGED_CACHE: dict[type, type] = {}
 
 
-def paged_serializer(item_serializer: type[serializers.BaseSerializer]) -> type:
+AFTER_PARAMETER = OpenApiParameter(
+    name="after",
+    location=OpenApiParameter.QUERY,
+    type=OpenApiTypes.STR,
+    required=False,
+    description=(
+        "Keyset tiebreak: the `next_after` from the previous page, sent together with "
+        "`since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, "
+        "so a page of rows sharing one timestamp cannot re-serve itself. Omitted or "
+        "unparsable means no tiebreak: the inclusive `since` read, exactly as before "
+        "(api/sync.paginate_keyset)."
+    ),
+)
+
+
+def paged_serializer(item_serializer: type[serializers.BaseSerializer], keyset: bool = False) -> type:
     """The `{"results": [...], "next": ...}` envelope over `item_serializer`.
 
     `next` is the `updated_at` of the last row on a FULL page, rendered by
@@ -161,26 +176,37 @@ def paged_serializer(item_serializer: type[serializers.BaseSerializer]) -> type:
     `api/sync.paginate_since` for the query-string footgun that forced
     that), and null when this was the last page. A client pages by
     re-requesting with `since=<next>` until `next` comes back null.
+
+    `keyset=True` adds `next_after`, for the `SyncedModelViewSet` routes that
+    emit it (`api/sync.paginate_keyset`). The hand-written list views
+    (events, checklists, OBD samples) do not, so their envelope does not
+    claim it.
     """
-    cached = _PAGED_CACHE.get(item_serializer)
+    cache_key = (item_serializer, keyset)
+    cached = _PAGED_CACHE.get(cache_key)
     if cached is not None:
         return cached
     name = item_serializer.__name__.removesuffix("Serializer")
-    built = type(
-        f"Paged{name}Serializer",
-        (serializers.Serializer,),
-        {
-            "results": item_serializer(many=True),
-            "next": serializers.DateTimeField(
-                allow_null=True,
-                help_text=(
-                    "Cursor for the next page: hand it back as `?since=`. Null means this "
-                    "was the last page."
-                ),
+    fields = {
+        "results": item_serializer(many=True),
+        "next": serializers.DateTimeField(
+            allow_null=True,
+            help_text=(
+                "Cursor for the next page: hand it back as `?since=`. Null means this "
+                "was the last page."
             ),
-        },
-    )
-    _PAGED_CACHE[item_serializer] = built
+        ),
+    }
+    if keyset:
+        fields["next_after"] = serializers.CharField(
+            allow_null=True,
+            help_text=(
+                "The last row's id on a full page: hand it back as `?after=` beside "
+                "`?since=<next>`. Null exactly when `next` is null."
+            ),
+        )
+    built = type(f"Paged{name}Serializer", (serializers.Serializer,), fields)
+    _PAGED_CACHE[cache_key] = built
     return built
 
 
@@ -251,7 +277,7 @@ class SyncedAutoSchema(AutoSchema):
         item = view.serializer_class
         action = view.action
         if action == "list":
-            return {200: paged_serializer(item)}
+            return {200: paged_serializer(item, keyset=True)}
         if action == "retrieve":
             return {200: item, 404: NOT_FOUND}
         if action == "create":
@@ -282,8 +308,8 @@ class SyncedAutoSchema(AutoSchema):
             # written to fix: true of the code, false about the effect. See
             # `api/synced.SyncedModelViewSet.has_tombstones`.
             if not view.has_tombstones:
-                return [SINCE_PARAMETER]
-            return [SINCE_PARAMETER, ACTIVE_PARAMETER]
+                return [SINCE_PARAMETER, AFTER_PARAMETER]
+            return [SINCE_PARAMETER, AFTER_PARAMETER, ACTIVE_PARAMETER]
         if view.action in {"retrieve", "upsert", "destroy"}:
             # Replaces the auto-resolved path parameter(s) with the same type
             # (the URL converter still decides `str` vs `uuid`) plus a

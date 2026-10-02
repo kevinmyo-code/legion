@@ -385,6 +385,91 @@ class LedgerBudgetTest {
         assertTrue("a Zelle payment to a person must never be disclosed as an own-account movement", result.excludedOwnAccountMovements.isEmpty)
     }
 
+    // ---- 2026-09-29: a not-spending category (Transfers) leaves spend, disclosed in words -------
+
+    @Test
+    fun `a row filed under Transfers never counts in spend, and is disclosed with count and amount`() {
+        val groceries = txn("checking", -80_00, description = "KROGER", category = "Groceries")
+        val zelle = txn("checking", -400_00, description = "ZELLE PAYMENT TO MIA", category = "Transfers")
+        val savings = txn(
+            "checking", -250_00, description = "ONLINE BANKING TRANSFER TO SAV 1234", category = "Transfers",
+        )
+
+        val result = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(groceries, zelle, savings),
+            pairingWindow = listOf(groceries, zelle, savings),
+            targets = mapOf("Groceries" to 100_00),
+            coverage = completeCoverage("checking"),
+            notSpending = setOf("Transfers"),
+        )
+
+        assertEquals(80_00L, result.spentCents)
+        assertTrue("Transfers must not be a budget line", result.lines.none { it.category == "Transfers" })
+        assertEquals(0L, result.uncategorized.spentCents)
+        assertEquals(2, result.notSpendingExcluded.count)
+        assertEquals(650_00L, result.notSpendingExcluded.totalCents)
+        assertEquals(listOf("Transfers"), result.notSpendingExcluded.categories)
+        assertEquals(
+            "2 transactions in Transfers (${formatMoney(650_00L, LedgerCurrency.USD)}) excluded from spend.",
+            notSpendingExcludedSentence(result.notSpendingExcluded, LedgerCurrency.USD),
+        )
+    }
+
+    @Test
+    fun `without the flag the same Transfers row is ordinary spend - the flag is the definition, not the name`() {
+        val zelle = txn("checking", -400_00, description = "ZELLE PAYMENT TO MIA", category = "Transfers")
+        val result = buildBudgetVsActual(
+            entity = LedgerEntity.US, month = MONTH, inPeriod = listOf(zelle), pairingWindow = listOf(zelle),
+            targets = emptyMap(), coverage = completeCoverage("checking"),
+        )
+        assertEquals(400_00L, result.spentCents)
+        assertTrue(result.notSpendingExcluded.isEmpty)
+    }
+
+    @Test
+    fun `a not-spending category does not disturb card-payment pairing`() {
+        val groceries = txn("checking", -80_00, description = "KROGER", category = "Groceries")
+        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 7823", category = "Groceries")
+        val zelle = txn("checking", -400_00, description = "ZELLE PAYMENT TO MIA", category = "Transfers")
+        val rows = listOf(groceries, cardPayment, zelle)
+
+        val result = buildBudgetVsActual(
+            entity = LedgerEntity.US, month = MONTH, inPeriod = rows, pairingWindow = rows,
+            targets = mapOf("Groceries" to 100_00), coverage = completeCoverage("checking"),
+            ownAccountIds = setOf("4111111111117823"),
+            notSpending = setOf("Transfers"),
+        )
+
+        // The card payment is still the own-account disclosure's, exactly as without Transfers...
+        assertEquals(1, result.excludedOwnAccountMovements.count)
+        assertEquals(cardPayment.id, result.excludedOwnAccountMovements.rows.single().id)
+        // ...the Zelle row is the not-spending disclosure's, and neither is counted twice.
+        assertEquals(zelle.id, result.notSpendingExcluded.rows.single().id)
+        assertEquals(80_00L, result.spentCents)
+    }
+
+    @Test
+    fun `operatingExpenses drops not-spending rows, and nothing else`() {
+        val groceries = txn("checking", -80_00, description = "KROGER", category = "Groceries")
+        val zelle = txn("checking", -400_00, description = "ZELLE PAYMENT TO MIA", category = "Transfers")
+        val uncategorised = txn("checking", -9_00, description = "MYSTERY")
+        val rows = listOf(groceries, zelle, uncategorised)
+        val kept = operatingExpenses(LedgerEntity.US, rows, rows, notSpending = setOf("Transfers"))
+        assertEquals(setOf(groceries.id, uncategorised.id), kept.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `the not-spending sentence states zero honestly and is singular for one row`() {
+        assertEquals(
+            "Nothing filed under a not-spending category this month.",
+            notSpendingExcludedSentence(NotSpendingExcluded.NONE, LedgerCurrency.USD),
+        )
+        val one = NotSpendingExcluded(1, 5_00L, listOf("Transfers"), emptyList())
+        assertTrue(notSpendingExcludedSentence(one, LedgerCurrency.USD).startsWith("1 transaction in Transfers"))
+    }
+
     @Test
     fun `omitting ownAccountIds leaves the disclosure empty - the pre-2026-08-13 default`() {
         val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 7823", category = "Groceries")

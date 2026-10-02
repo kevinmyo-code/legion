@@ -27,14 +27,14 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[28-service-history-reads-still-serve-the-legacy-table\|28]] | build | 28-service-history-reads-still-serve-the-legacy-table |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[29-audit-rows-age-out-before-they-are-uploaded\|29]] | decision | 29-audit-rows-age-out-before-they-are-uploaded |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[12-canvas-submitted-on-the-phone\|12]] | build | The phone shows what Canvas says beside each coursework task (Android terminal) |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
-| [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[06-canvas-sync\|06]] | build | Canvas sync on the server, so schoolwork is current enough to advise on |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
 | [[.scratch/django-engine/map\|django-engine]] | [[12-pytest-leaves-a-connection-behind\|12]] | build | Every pytest run leaves a connection on test_postgres and breaks the next one |
-| [[.scratch/django-engine/map\|django-engine]] | [[13-provisional-ingestion-has-no-endpoint\|13]] | decision | Rule 7 provisional ingestion has no endpoint, and the commit paths structurally cannot be one |
 | [[.scratch/django-engine/map\|django-engine]] | [[14-rules-that-live-only-on-the-phone\|14]] | build | Three rules live only on the phone, and a second app would not have them |
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
@@ -48,6 +48,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[03-pre-migration-backup\|03]] | task | Automatic backup before any schema migration |
 | [[.scratch/hardening/map\|hardening]] | [[05-ledger-gate-defects\|05]] | task | Three ledger gate defects found while grounding backend-erp ticket 03 |
 | [[.scratch/hardening/map\|hardening]] | [[06-kotlin-bump-and-compose-pin\|06]] | task | Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned |
+| [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/one-home/map\|one-home]] | [[09-sync-the-feed-subscriptions\|09]] | decision | Decide whether feed subscriptions sync, and build the leg if they do |
@@ -91,6 +92,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[17-dates-is-engine-only\|17]] | decision | 17-dates-is-engine-only |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[18-the-generic-ui-still-runs-on-the-engine\|18]] | decision | 18-the-generic-ui-still-runs-on-the-engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[20-the-reminder-default-made-the-retraction-delete-appointments\|20]] | decision | 20-the-reminder-default-made-the-retraction-delete-appointments |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[01-job-runner-and-freshness\|01]] | build | Job runner, ingest_runs, freshness endpoint, deploy/crontab |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[11-canvas-submitted-on-the-web\|11]] | build | The web app shows what Canvas says beside each coursework task |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | [[01-sunday-reads-empty\|01]] | build | Seven things are due Sunday and the assistant says it knows of none |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[05-one-outstanding-view\|05]] | build | One outstanding view: what needs doing, across checklists, reminders and tasks |
 | [[.scratch/command-center/map\|command-center]] | [[02-settings-submenus\|02]] | build | Settings stops being one long wall |
@@ -118,7 +121,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[30-balance-arithmetic-in-three-places\|30]] | bug | The balance formula is written out in three places again |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[31-silent-success\|31]] | bug | It did the thing and did not say so |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[32-sitrep-on-demand-only\|32]] | build | Sitreps happen when asked, never on a schedule |
-| [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[02-soft-theme-and-chrome\|02]] | build | Soft theme, bundled font and icons, and the shell chrome restyled |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[07-settings-menu-letter-folders-category-buttons\|07]] | build | Settings menu, letter folders in Apps, and category buttons under the dock |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
@@ -146,6 +150,14 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/architecture/map\|architecture]] | [[03-bind-the-backend-interfaces\|03]] | build | Bind the backend interfaces  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
 | [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected  waiting on [[03-bind-the-backend-interfaces\|03]] |
 | [[.scratch/architecture/map\|architecture]] | [[06-convert-as-touched-and-the-shim-trigger\|06]] | decision | Convert as touched, and when the shim retires  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[02-session-vault-and-login-handover\|02]] | build | Session vault and the login handover script  waiting on [[01-job-runner-and-freshness\|01]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[06-drive-statements-watcher\|06]] | build | drive_statements: raw bank statements from a Drive folder, through the gate  waiting on [[02-session-vault-and-login-handover\|02]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[08-web-freshness-line\|08]] | build | The web app says how fresh each feed is  waiting on [[01-job-runner-and-freshness\|01]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[09-bofa-statement-pull\|09]] | build | connect_session.py bofa: log in daily, the script pulls new statements and mid-month activity  waiting on [[02-session-vault-and-login-handover\|02]], [[06-drive-statements-watcher\|06]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[10-port-bofa-parser-to-python\|10]] | build | Port BofaStatementParser to Python so BofA statements skip the LLM  waiting on [[06-drive-statements-watcher\|06]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[13-bofa-activity-csv-server-side\|13]] | build | BofA activity CSVs on the server: deterministic readers, the rule 7 writer, watcher routing  waiting on [[06-drive-statements-watcher\|06]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[14-ledger-rows-reach-the-phone\|14]] | build | Ledger rows reach the phone: categorised at insert, mirrored whole, deletions honoured  waiting on [[06-drive-statements-watcher\|06]], [[13-bofa-activity-csv-server-side\|13]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | [[15-rent-counts-in-the-month-it-pays-for\|15]] | build | Rent counts in the month it pays for: a late-month Housing charge moves to the next month  waiting on [[14-ledger-rows-reach-the-phone\|14]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[04-net-worth-is-never-one-number\|04]] | build | Net worth as a figure plus what is unverified, never one number  waiting on [[02-what-a-net-worth-may-be\|02]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
@@ -153,9 +165,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/django-engine/map\|django-engine]] | [[02-models-column-exact\|02]] | build | The 41 tables as Django models, column-exact, with the integrity SQL shipped by migration  waiting on [[01-server-skeleton\|01]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[04-domain-api-and-changes-feed\|04]] | build | The domain API: one resource shape for 38 tables, a changes feed, idempotent upsert by origin_guid  waiting on [[02-models-column-exact\|02]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[05-media-photos-and-audio\|05]] | build | Media: receipt photos and voice-note audio on a volume, served only to a token  waiting on [[04-domain-api-and-changes-feed\|04]] |
-| [[.scratch/django-engine/map\|django-engine]] | [[06-worker-backups-first\|06]] | build | The worker: a nightly dump with a drilled restore, then Canvas, then WebAssign  waiting on [[02-models-column-exact\|02]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[09-android-http-backends\|09]] | build | Android: HTTP implementations of the twelve backend interfaces, behind the Hilt binding  waiting on [[04-domain-api-and-changes-feed\|04]] |
-| [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[06-worker-backups-first\|06]], [[09-android-http-backends\|09]] |
+| [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[09-android-http-backends\|09]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[11-fresh-clone-end-to-end\|11]] | test | Fresh clone, end to end: the clone-and-run test in its new shape  waiting on [[10-cutover\|10]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[01-where-the-mcp-server-lives\|01]] | decision | Where the MCP server lives: inside Django, a sidecar, or a stdio adapter  waiting on [[02-sdk-django-and-client-support\|02]] |
@@ -174,6 +185,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/goal-plans/map\|goal-plans]] | [[04-checklist-and-surfaces\|04]] | build | The daily checklist, on Body and Home  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[05-wellbeing-digest\|05]] | build | The Wellbeing switch finally gets content  waiting on [[04-checklist-and-surfaces\|04]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[06-daily-items-not-repeats\|06]] | build | A day's items you can actually tick  waiting on [[04-checklist-and-surfaces\|04]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[03-home-is-a-launcher\|03]] | build | HOME is a launcher; CALENDAR is its own route again; the meter bands retire  waiting on [[02-soft-theme-and-chrome\|02]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[04-lists-as-icon-cards\|04]] | build | Lists as icon cards; a list opens to a real checklist  waiting on [[02-soft-theme-and-chrome\|02]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[05-ship-pass\|05]] | task | Ship pass: the launcher and the lists on the A25  waiting on [[03-home-is-a-launcher\|03]], [[04-lists-as-icon-cards\|04]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | [[06-pinned-app-dock\|06]] | build | A dock of five pinned apps above the talk bar  waiting on [[03-home-is-a-launcher\|03]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
@@ -197,6 +212,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
@@ -218,12 +234,13 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
+| [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
-| [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 6 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
+| [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
-| [[.scratch/django-engine/map\|django-engine]] | 15 | 13 | [[.scratch/django-engine/django-engine.canvas\|open]] |
+| [[.scratch/django-engine/map\|django-engine]] | 15 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 12 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
@@ -235,6 +252,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/hardening/map\|hardening]] | 8 | 4 | [[.scratch/hardening/hardening.canvas\|open]] |
+| [[.scratch/home-launcher/map\|home-launcher]] | 7 | 6 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

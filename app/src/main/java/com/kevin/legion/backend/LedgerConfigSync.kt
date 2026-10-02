@@ -183,12 +183,17 @@ object LedgerConfigSync {
                     serverId = r.serverId,
                     updatedAtMs = r.updatedAtMs,
                     deleted = r.deleted,
+                    // A transport that does not carry the flag (null) inserts false.
+                    excludedFromSpend = r.excludedFromSpend ?: false,
                 )
             },
             toMerged = { r, existing ->
                 existing.copy(
                     name = r.name,
                     isFoodCategory = r.isFoodCategory,
+                    // Null means the transport cannot see the column: keep the phone's value
+                    // rather than clearing a flag nobody changed.
+                    excludedFromSpend = r.excludedFromSpend ?: existing.excludedFromSpend,
                     serverId = r.serverId,
                     updatedAtMs = r.updatedAtMs,
                     deleted = r.deleted,

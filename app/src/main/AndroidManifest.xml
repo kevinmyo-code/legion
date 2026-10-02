@@ -35,6 +35,9 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- The Quiet tile (2026-09-27): LEGION's own Do Not Disturb mode needs DND access, which the
+         user grants on a system screen. Without it the tile says so and changes nothing. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
@@ -119,6 +122,12 @@
          Setup screen). Browsers are queried for SpotifyWebApi.beginAuthorization's
          ACTION_VIEW hop to Spotify's approval page. -->
     <queries>
+        <!-- The app drawer (ADR 0050) lists every launchable app. Without this, package
+             visibility on API 30+ hides most of them. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.spotify.music" />
         <intent>
@@ -159,10 +168,36 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
-        <!-- Normal phone app entry point - not a launcher/home-screen replacement
-             (LauncherSettings retired with the car-launcher product). singleTask
-             kept for the Spotify OAuth redirect (below), same reasoning as
-             Midnight AI's MainActivity doc comment. -->
+        <!-- The phone's assistant (2026-09-27): holding the side key with LEGION as the digital
+             assistant app lands here, NOT on MainActivity. It may show over the lock screen only
+             to ask for the unlock prompt, and draws nothing, so no app data ever appears on a
+             locked phone. See AssistActivity's doc for the parked-request bug this closes.
+             VOICE_COMMAND is the older headset/button equivalent. NOT noHistory: the unlock
+             prompt covers this activity, and noHistory discards it right then, so the "unlocked"
+             callback never arrived and the conversation never started. Every path finish()es
+             itself instead. -->
+        <activity
+            android:name=".ui.AssistActivity"
+            android:exported="true"
+            android:showWhenLocked="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- The app's entry point, and the phone's home app when Kevin picks it (ADR 0050,
+             2026-09-27, reversing CLAUDE.md's "Not a launcher"). The CATEGORY_HOME filter below
+             only makes it SELECTABLE in Settings > Default apps > Home app; nothing here forces it.
+             singleTask matters twice: the Spotify OAuth redirect (below), and a Home press, which
+             must reach the existing instance via onNewIntent rather than stack a new one. -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -175,6 +210,11 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <!-- Spotify App Remote's app-fixed OAuth redirect (SpotifyController.REDIRECT_URI).
                  Must match this scheme+host verbatim; the driver enters the same URI as the
@@ -369,6 +409,21 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
+        <!-- The Quiet tile: vibrate, calls and alarms only, every other notification silent.
+             See quiet/QuietMode.kt. -->
+        <service
+            android:name=".quiet.QuietTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_quiet_tile"
+            android:label="Quiet"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
     </application>
 
 </manifest>

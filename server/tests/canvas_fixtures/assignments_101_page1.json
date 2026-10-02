@@ -1,0 +1,75 @@
+[
+  {
+    "id": 5001,
+    "course_id": 101,
+    "name": "Module 2: Quiz",
+    "description": "<p>Covers sections 2.1-2.4.</p>",
+    "due_at": "2026-09-14T04:59:59Z",
+    "points_possible": 10.0,
+    "grading_type": "points",
+    "submission_types": ["online_quiz"],
+    "published": true,
+    "updated_at": "2026-09-10T15:02:11Z",
+    "submission": {
+      "id": 90001,
+      "assignment_id": 5001,
+      "workflow_state": "graded",
+      "submitted_at": "2026-09-12T18:00:00Z",
+      "score": 9.0,
+      "grade": "9",
+      "late": false,
+      "missing": false,
+      "excused": false,
+      "late_policy_status": null
+    }
+  },
+  {
+    "id": 5002,
+    "course_id": 101,
+    "name": "Module 3: Problem Set",
+    "description": "<p>Problems 3.1 through 3.12.</p>",
+    "due_at": "2026-09-21T04:59:59Z",
+    "points_possible": 20.0,
+    "grading_type": "points",
+    "submission_types": ["online_upload"],
+    "published": true,
+    "updated_at": "2026-09-11T09:30:00Z",
+    "submission": {
+      "id": 90002,
+      "assignment_id": 5002,
+      "workflow_state": "unsubmitted",
+      "submitted_at": null,
+      "score": null,
+      "grade": null,
+      "late": false,
+      "missing": false,
+      "excused": null,
+      "late_policy_status": null
+    }
+  },
+  {
+    "id": 5003,
+    "course_id": 101,
+    "name": "Module 3: Discussion - Sampling Bias",
+    "description": "<p>Read the case study.</p><p><strong>Initial post due Wednesday</strong> by 11:59 PM. Then reply to two classmates by Friday.</p>",
+    "due_at": "2026-09-19T04:59:59Z",
+    "points_possible": 10.0,
+    "grading_type": "points",
+    "submission_types": ["discussion_topic"],
+    "published": true,
+    "updated_at": "2026-09-12T08:00:00Z",
+    "discussion_topic": {"id": 7003, "title": "Module 3: Discussion - Sampling Bias"},
+    "submission": {
+      "id": 90003,
+      "assignment_id": 5003,
+      "workflow_state": "unsubmitted",
+      "submitted_at": null,
+      "score": null,
+      "grade": null,
+      "late": false,
+      "missing": false,
+      "excused": null,
+      "late_policy_status": null
+    }
+  }
+]

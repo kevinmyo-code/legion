@@ -416,8 +416,30 @@ object ChecklistController {
 
     /** One item plus whether it is ticked for [day]/[checklist] - the per-day read a screen
      * renders directly. [value] is the measured tick's actual number ([ChecklistTick.value]) -
-     * null on a binary item, and null on a measured item that has not been ticked yet. */
-    data class ItemState(val item: ChecklistItem, val ticked: Boolean, val tickedAt: Long?, val value: Double? = null)
+     * null on a binary item, and null on a measured item that has not been ticked yet.
+     *
+     * **[tickDay] - home-launcher ticket 04, the untick trap.** Additive, defaulted null so no
+     * existing call site breaks. For a routine ([Checklist.scheduleKind] non-null) this is [day]
+     * itself when [ticked] - a schedule tracks per day, so the day being VIEWED is the day any
+     * untick must clear. For a plain list [ticked] is true the moment ANY live tick exists on ANY
+     * day (this class's own [itemsWithTickState] doc comment), so [tickDay] is that tick's OWN
+     * [ChecklistTick.day] - the day it actually happened, which is not necessarily [day]. Null
+     * when [ticked] is false; there is no day to untick.
+     *
+     * **Why this exists at all**: [untick] only ever clears `(itemId, day = today())` by default,
+     * and a screen that always passes the day it is CURRENTLY viewing (`today()`, or the calendar's
+     * `selectedDayStart`) can only ever clear a tick that happens to live on that same day. A plain
+     * item ticked yesterday and viewed today renders ticked (correctly - trap 1's "any day" rule)
+     * but tapping it to untick, passing today's day, hits no row and silently does nothing - the
+     * item stays ticked forever from that screen's point of view. [tickDay] is the fix: a caller
+     * unticks `(itemId, tickDay)`, the day the tick actually lives on, not the day being viewed. */
+    data class ItemState(
+        val item: ChecklistItem,
+        val ticked: Boolean,
+        val tickedAt: Long?,
+        val value: Double? = null,
+        val tickDay: Int? = null,
+    )
 
     /** What [itemsWithTickState] hands back - the same "an empty read and a failed read are not
      * the same sentence" shape [com.kevin.legion.voice.VoiceNoteController.VoiceNotesForDayResult]
@@ -466,13 +488,19 @@ object ChecklistController {
                     .associateBy { it.itemId }
                 items.map { item ->
                     val tick = ticks[item.id]
-                    ItemState(item, ticked = tick != null, tickedAt = tick?.tickedAt, value = tick?.value)
+                    ItemState(
+                        item, ticked = tick != null, tickedAt = tick?.tickedAt,
+                        value = tick?.value, tickDay = tick?.day,
+                    )
                 }
             } else {
                 items.map { item ->
                     val ticks = db(context).checklistTickDao().allForItem(item.id)
                     val latest = ticks.maxByOrNull { it.tickedAt }
-                    ItemState(item, ticked = ticks.isNotEmpty(), tickedAt = latest?.tickedAt, value = latest?.value)
+                    ItemState(
+                        item, ticked = ticks.isNotEmpty(), tickedAt = latest?.tickedAt,
+                        value = latest?.value, tickDay = latest?.day,
+                    )
                 }
             }
         }.fold(

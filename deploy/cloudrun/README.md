@@ -49,11 +49,16 @@ should stay inside every one of these limits without trying.
    Every script in this folder also accepts the project via `GOOGLE_CLOUD_PROJECT` (env var or
    `deploy/cloudrun/.env`) and refuses to run without one either way - there is no
    Kevin-hosted default project (CLAUDE.md section 7).
-3. **Create the two secrets** the scripts reference by name (never by value - nothing in this
+3. **Create the three secrets** the scripts reference by name (never by value - nothing in this
    folder ever holds SECRET_KEY or DATABASE_URL in memory):
    ```
    python -c "import secrets; print(secrets.token_urlsafe(50))" | gcloud secrets create SECRET_KEY --data-file=-
    echo -n "postgres://user:password@host:port/dbname" | gcloud secrets create DATABASE_URL --data-file=-
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode(), end='')" | gcloud secrets create LEGION_VAULT_KEY --data-file=-
+   ```
+   Then let the runtime service account read each one (`PROJECT_NUMBER-compute@developer.gserviceaccount.com` by default):
+   ```
+   gcloud secrets add-iam-policy-binding LEGION_VAULT_KEY --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
    ```
    The `DATABASE_URL` is the Supabase session pooler connection string (ticket 07's decided
    database layer), not a value this repo ever holds.
@@ -75,8 +80,8 @@ should stay inside every one of these limits without trying.
    ```
    python deploy_job.py --image us-south1-docker.pkg.dev/YOUR-PROJECT/legion/server:latest
    ```
-7. **Wire the schedule**, once `deploy/crontab` exists (ticket 06 - not built as of this
-   writing; this step has nothing to do until then):
+7. **Wire the schedule** from `deploy/crontab` (backend-etl ticket 01 created it with the
+   `heartbeat` line; later tickets add theirs). Re-run after any change to that file:
    ```
    python install_schedule.py
    ```

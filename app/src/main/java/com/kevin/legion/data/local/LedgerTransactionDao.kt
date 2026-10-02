@@ -237,6 +237,18 @@ interface LedgerTransactionDao {
     suspend fun deletePendingById(id: Long): Int
 
     /**
+     * [com.kevin.legion.backend.LedgerTransactionsSync.mirror]'s delete: a row the engine no longer
+     * lists (a rule-7 supersession removed it server-side). **`sourceFile = 'synced'` is the
+     * guard, the same load-bearing shape as [deletePendingById]'s**: only a row a pull itself
+     * inserted carries that marker (`LedgerTransactionsSync.SYNCED_SOURCE_FILE`), so this cannot
+     * delete a voice-logged pending charge, a row this phone parsed from a file, or anything else
+     * minted here, whatever list of ids a caller passes. Chunk [syncIds] below SQLite's
+     * bound-variable limit. Returns rows removed.
+     */
+    @Query("DELETE FROM ledger_transactions WHERE sourceFile = 'synced' AND syncId IN (:syncIds)")
+    suspend fun deleteSyncedBySyncIds(syncIds: List<String>): Int
+
+    /**
      * True when [accountId] (suffix-matched on the last 4, same [currency] -
      * see [com.kevin.legion.ledger.sameCard] and ticket 12 §0) has at least
      * one row that is NOT [IngestMethod.UNRECONCILED] - i.e. this physical

@@ -271,6 +271,19 @@ def django_db_setup(django_db_setup, django_db_blocker):
             cursor.execute(LEGACY_LEDGER_PANTRY_CONFIG_TEST_SCHEMA_SQL)
             cursor.execute(LEGACY_FLEET_TEST_SCHEMA_SQL)
             _apply_tenancy(cursor)
+            # backend-etl ticket 14 option 2. AFTER tenancy, because its
+            # composite foreign key names `ledger_transactions.household_id`,
+            # which `_apply_tenancy` has only just added. The migration's own
+            # function, not a copy: `ingest/migrations/0007` is a no-op here.
+            from ingest.category_overrides import create_table
+
+            skipped = create_table(cursor)
+            assert skipped is None, skipped
+            # `ingest/migrations/0008`, the same way and for the same reason.
+            from ingest.category_flags import add_column
+
+            skipped = add_column(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

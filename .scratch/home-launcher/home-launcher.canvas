@@ -1,0 +1,118 @@
+{
+  "nodes": [
+    {
+      "id": "bf554707d6222187",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/01-the-shape.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "88496cc59f216272",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/07-settings-menu-letter-folders-category-buttons.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f78fabd698914ca4",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/02-soft-theme-and-chrome.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "412baec7d53facb3",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/03-home-is-a-launcher.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9d4921ed5433850e",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/04-lists-as-icon-cards.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d117de96493be39b",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/05-ship-pass.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4109e005c112cd31",
+      "type": "file",
+      "file": ".scratch/home-launcher/issues/06-pinned-app-dock.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "af948ce2aec639c2",
+      "fromNode": "bf554707d6222187",
+      "fromSide": "right",
+      "toNode": "f78fabd698914ca4",
+      "toSide": "left"
+    },
+    {
+      "id": "0cf89bc8db171d94",
+      "fromNode": "f78fabd698914ca4",
+      "fromSide": "right",
+      "toNode": "412baec7d53facb3",
+      "toSide": "left"
+    },
+    {
+      "id": "de43ac21229a5661",
+      "fromNode": "f78fabd698914ca4",
+      "fromSide": "right",
+      "toNode": "9d4921ed5433850e",
+      "toSide": "left"
+    },
+    {
+      "id": "b2f371ba349a7130",
+      "fromNode": "412baec7d53facb3",
+      "fromSide": "right",
+      "toNode": "d117de96493be39b",
+      "toSide": "left"
+    },
+    {
+      "id": "16e54acc08f2f234",
+      "fromNode": "9d4921ed5433850e",
+      "fromSide": "right",
+      "toNode": "d117de96493be39b",
+      "toSide": "left"
+    },
+    {
+      "id": "39a3e3b2d6b3289e",
+      "fromNode": "412baec7d53facb3",
+      "fromSide": "right",
+      "toNode": "4109e005c112cd31",
+      "toSide": "left"
+    }
+  ]
+}

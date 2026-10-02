@@ -23,6 +23,9 @@ class Category(models.Model):
     id = models.UUIDField(primary_key=True)
     name = models.TextField()
     is_food_category = models.BooleanField()
+    # Not spending (money moving between the household's own places). The one
+    # definition every spend total reads: `ingest/category_flags.py`.
+    excluded_from_spend = models.BooleanField(default=False)
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
@@ -155,3 +158,51 @@ class LedgerTransaction(models.Model):
         constraints = [
             household_unique("ledger_transactions", "origin_guid"),
         ]
+
+
+class LedgerTransactionCategory(models.Model):
+    """A category set OVER a gated `ledger_transactions` row, never on it.
+
+    backend-etl ticket 14, option 2 (Kevin, 2026-09-28: "yes 2").
+    `private.forbid_mutation_of_facts` refuses every UPDATE on
+    `ledger_transactions`, category included, and that rule stays. So a
+    category that arrives after the row - a person's choice, or a rule the
+    household wrote after the row was stored - lives here, one row per
+    transaction, and every read of a transaction's category reads this row IN
+    PLACE OF the stored one while it is live (`deleted_at IS NULL`).
+    `ingest/category_overrides.py` holds the read, the DDL and the backfill.
+
+    AUTHORED, not gated: it has `updated_at` and a `deleted_at` tombstone like
+    `categories`, and deleting it puts the stored category back in view.
+
+    `managed = False` like every other ledger table, but its DDL ships in a
+    Django migration (`ingest/migrations/0007_ledger_transaction_categories.py`),
+    not a Supabase one: ADR 0044 makes Django the engine, and an integrity rule
+    is SQL shipped by a Django migration.
+    """
+
+    SOURCE_RULE = "rule"
+    SOURCE_PERSON = "person"
+
+    id = models.UUIDField(primary_key=True)
+    transaction = models.ForeignKey(
+        LedgerTransaction,
+        db_column="transaction_id",
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+    )
+    category = models.TextField()
+    # CHECK: rule | person. No `choices=` here on purpose: DRF would build its
+    # own "is not a valid choice" refusal ahead of `choice_error`, which names
+    # the allowed set (ticket 04's rule).
+    source = models.TextField(default=SOURCE_PERSON)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(null=True)
+    origin_guid = models.TextField(null=True)
+
+    household = household_field()
+
+    class Meta:
+        managed = False
+        db_table = "ledger_transaction_categories"

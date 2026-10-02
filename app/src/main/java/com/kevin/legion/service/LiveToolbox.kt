@@ -1058,7 +1058,12 @@ object LiveToolbox {
                 "total as if nothing was left out. Transactions with no category are ALSO excluded " +
                 "from this total: whenever uncategorized_cents is above zero, say so out loud using " +
                 "uncategorized_note - that money was spent, it is simply not classified yet, and a " +
-                "total presented without it would understate the month. If the response's verified field is false, say " +
+                "total presented without it would understate the month. Transactions filed under a " +
+                "category that is not spending (Transfers) are excluded too: whenever " +
+                "excluded_not_spending_count is above zero, say so using not_spending_note. " +
+                "A Housing charge (rent) made in the last 3 days of a month counts in the NEXT " +
+                "month's spend: whenever early_housing_notes is non-empty, say each note out loud. " +
+                "If the response's verified field is false, say " +
                 "the figure is not fully confirmed (pending bank data, an unconfirmed AI-guessed " +
                 "category, or a month not fully covered by an imported statement).",
             params = obj(),
@@ -3882,6 +3887,9 @@ object LiveToolbox {
                     }
                     append(", confirmed. Future imports matching \"$merchant\" will use it too - ")
                     append("say \"clear the category rule for $merchant\" to undo that.")
+                    // backend-etl ticket 14 option 2: whether the choice reached the server. Said
+                    // only when something did NOT go (queued, or a row with no server copy).
+                    outcome.server.sentence()?.let { append(" "); append(it) }
                 },
             )
             else -> result(false, "I don't see any transactions from \"$merchant\" on file.")
@@ -4322,6 +4330,24 @@ object LiveToolbox {
             .put("uncategorized_cents", budget.uncategorized.spentCents)
             .put("uncategorized_note", uncategorizedNote)
             .put("note", excludedOwnAccountMovementsSentence(excluded, budget.entity.currency))
+            // 2026-09-29: rows filed under a not-spending category (Transfers). A third exclusion,
+            // stated in its own sentence for the same reason as the two above.
+            .put("excluded_not_spending_count", budget.notSpendingExcluded.count)
+            .put("excluded_not_spending_cents", budget.notSpendingExcluded.totalCents)
+            .put(
+                "not_spending_note",
+                com.kevin.legion.ledger.notSpendingExcludedSentence(budget.notSpendingExcluded, budget.entity.currency),
+            )
+            // 2026-09-29 (Kevin, "b"): a Housing charge in the last 3 days of a month counts in the
+            // next month. The shared sentences, one per moved row; empty when nothing moved.
+            .put(
+                "early_housing_notes",
+                org.json.JSONArray(
+                    com.kevin.legion.ledger.earlyChargeSentences(
+                        budget.earlyChargesMoved, month, budget.entity.currency,
+                    ),
+                ),
+            )
     }
 
     // --- Goals (ticket 19) --------------------------------------------------

@@ -73,7 +73,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.response import Response
 
-from api.sync import paginate_since, parse_since
+from api.sync import paginate_keyset, parse_after, parse_since
 from api.synced import (
     TRUTHY,
     SyncedModelViewSet,
@@ -269,7 +269,8 @@ class CompanionMemoryViewSet(_MemoryViewSet):
         # already drifted once. ADR 0045's scoping is not something a copy is
         # allowed to miss, so it comes from the base class rather than being
         # re-spelled here.
-        queryset = self.queryset().filter(**{f"{self.cursor_field}__gte": since})
+        queryset = self.queryset()
+        after = parse_after(queryset, request.query_params.get("after"))
         if self.has_tombstones and request.query_params.get("active", "").strip().lower() in TRUTHY:
             queryset = queryset.filter(deleted_at__isnull=True)
         if vehicle:
@@ -279,9 +280,18 @@ class CompanionMemoryViewSet(_MemoryViewSet):
             # (read from the DDL, not assumed), so there is no third
             # NULL branch for a row to slip through.
             queryset = queryset.filter(~Q(category=CAR_ANCHORED) | Q(vehicle_id=vehicle))
-        queryset = queryset.order_by(self.cursor_field, "pk")
-        page, next_since = paginate_since(queryset, cursor_field=self.cursor_field)
-        return Response({"results": self._serialize(page, many=True), "next": next_since})
+        # Same keyset as the base `list` (api/sync.paginate_keyset), so this
+        # copy does not drift from it a second time.
+        page, next_since, next_after = paginate_keyset(
+            queryset, since, after, cursor_field=self.cursor_field
+        )
+        return Response(
+            {
+                "results": self._serialize(page, many=True),
+                "next": next_since,
+                "next_after": next_after,
+            }
+        )
 
 
 class MemoryAuditViewSet(_MemoryViewSet):

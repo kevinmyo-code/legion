@@ -36,4 +36,16 @@ object CategorySeed {
         "Fees" to false, "Insurance" to false, "Other" to false,
         "Pets" to false,
     )
+
+    /**
+     * The starter categories that are NOT spending (v71, Kevin 2026-09-29: "ignore zelle for
+     * spending"), seeded with [Category.excludedFromSpend] on - money moving between the household's
+     * own places. A seed default only: after seeding, the flag on the row is the definition, and it
+     * syncs like every other category field.
+     *
+     * **A separate list from [starter], deliberately.** [MIGRATION_11_12] and [MIGRATION_16_17] both
+     * iterate [starter], so appending here would change what those historical migrations insert -
+     * which CLAUDE.md section 5 forbids. Read by the fresh-install callback and [MIGRATION_70_71] only.
+     */
+    val notSpending: Set<String> = setOf("Transfers")
 }

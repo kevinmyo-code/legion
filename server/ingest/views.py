@@ -27,12 +27,18 @@ already decodes with `ignoreUnknownKeys = true` (`DjangoEventsBackend`,
 
 ## Extraction is NOT here
 
-The caller supplies the lines. Server-side extraction - accept the photo, run the
-model, build the candidate rows - is the eventual shape and is deliberately not
-this ticket: it waits on ticket 05 (media, still open and repointed at R2) and on
-a ruling nobody has made about where a user-owned server-side LLM key lives.
-Opening that fork inside the gate's own port would have made two decisions at
-once. Ticket 03's status-detail says the same thing in the same words.
+The caller supplies the lines. For statements the server now has a second
+caller of the same commit: the `drive_statements` job (backend-etl ticket 06,
+`ingest/statements.py`) extracts a bank's own PDF and calls `commit_statement`
+below in-process. What follows is the original note, still true of receipts.
+
+Server-side extraction of a receipt - accept the photo, run the model, build
+the candidate rows - is the eventual shape and is deliberately not this ticket:
+it waits on ticket 05 (media, still open and repointed at R2) and on a ruling
+nobody has made about where a user-owned server-side LLM key lives (for
+statements that ruling is made: `LEGION_GEMINI_KEY`). Opening that fork inside
+the gate's own port would have made two decisions at once. Ticket 03's
+status-detail says the same thing in the same words.
 
 ## Why a quarantine is a 200 and not a 4xx
 
@@ -50,6 +56,7 @@ why those two are not the same thing.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -65,6 +72,7 @@ from rest_framework.views import APIView
 from api.schema import DetailSerializer
 from household.tenancy import household_of
 from ingest import gate
+from ingest.category_rules import category_for_insert, household_rules
 from ingest.dedup import ExistingRow, resolve_dedup
 from legacy.enums import IngestState, Provenance
 from legacy.models.ingest import IngestedFile
@@ -111,8 +119,9 @@ PROVISIONAL_REFUSAL = (
     "This endpoint cannot store a provisional (UNRECONCILED) document, and never could: "
     "a provisional import has no header row at all, which is what "
     "statements_not_provisional and receipts_not_provisional enforce. Nothing was written. "
-    "A document that states no anchor is quarantined here with a reason; rule 7 provisional "
-    "ingestion is .scratch/django-engine/issues/13-provisional-ingestion-has-no-endpoint.md."
+    "A document that states no anchor is quarantined here with a reason. Rule 7 provisional "
+    "rows come only from a deterministic reader of a bank's activity export, through the "
+    "statements folder (ingest/provisional.py), and are stored as unverified."
 )
 
 
@@ -363,7 +372,25 @@ def _upsert_file(
     return IngestedFile.objects.get(household=household, content_sha256=sha)
 
 
-def _quarantine(payload: dict[str, Any], sha: str, reason: str, household) -> Response:
+@dataclass(frozen=True)
+class CommitResult:
+    """What a commit path decided, before it is a DRF `Response`: the body and
+    the status code the endpoint answers with. `commit_statement` returns one,
+    so the `drive_statements` job (backend-etl ticket 06) reads the same verdict
+    the endpoint sends, from the same code, in-process."""
+
+    body: dict[str, Any]
+    status: int
+
+    @property
+    def outcome(self) -> str:
+        return self.body["outcome"]
+
+    def response(self) -> Response:
+        return Response(self.body, status=self.status)
+
+
+def _quarantine(payload: dict[str, Any], sha: str, reason: str, household) -> CommitResult:
     """`private.quarantine_file`, and note what it writes: ONLY the file row.
 
     That is the whole point. A quarantined document leaves a reason and no data,
@@ -375,10 +402,27 @@ def _quarantine(payload: dict[str, Any], sha: str, reason: str, household) -> Re
     next scan with no memory of why it failed, forever.
     """
     _upsert_file(payload, sha, IngestState.QUARANTINED, reason, household)
-    return Response(
+    return CommitResult(
         {"outcome": gate.QUARANTINED, "reason": reason, "inserted": 0},
-        status=status.HTTP_200_OK,
+        status.HTTP_200_OK,
     )
+
+
+def commit_statement(payload: dict[str, Any], household) -> CommitResult:
+    """`public.commit_statement(payload jsonb)`: the ONE statement commit path.
+
+    `POST /api/ingest/statement` calls this, and so does the `drive_statements`
+    job (backend-etl ticket 06) for a statement it extracted, so the gate, the
+    idempotency check, rule 7 supersession, dedup and the persisted anchors are
+    one piece of code with two callers, never two copies.
+
+    Runs in its own `transaction.atomic()` block: a verdict (COMMITTED,
+    ALREADY_COMMITTED, QUARANTINED) is returned; a payload the gate cannot run
+    on raises `gate.GateInputError`, and a constraint the payload trips raises
+    `DatabaseError`, both with everything rolled back.
+    """
+    with transaction.atomic():
+        return StatementIngestView.commit(payload, household)
 
 
 class _IngestView(APIView):
@@ -427,8 +471,7 @@ class StatementIngestView(_IngestView):
     def post(self, request):
         try:
             payload = self._payload(request)
-            with transaction.atomic():
-                return self._commit(payload, household_of(request))
+            return commit_statement(payload, household_of(request)).response()
         except gate.GateInputError as exc:
             # Not a quarantine: the gate could not run at all. See
             # GateInputError's own docstring for why collapsing the two would
@@ -444,19 +487,22 @@ class StatementIngestView(_IngestView):
             # already rolled everything back, so nothing partial survives.
             return Response({"detail": str(exc).strip()}, status=status.HTTP_400_BAD_REQUEST)
 
-    def _commit(self, payload: dict[str, Any], household) -> Response:
+    @classmethod
+    def commit(cls, payload: dict[str, Any], household) -> CommitResult:
+        """The body of `commit_statement`; call that, not this, so the commit
+        always runs inside its transaction."""
         sha = _require_sha(payload, "commit_statement")
 
         existing = _already_committed(sha, household)
         if existing is not None:
-            return Response(
+            return CommitResult(
                 {
                     "outcome": gate.ALREADY_COMMITTED,
                     "content_sha256": sha,
                     "inserted": 0,
                     "note": "This file was already committed. Nothing was written again.",
                 },
-                status=status.HTTP_200_OK,
+                status.HTTP_200_OK,
             )
 
         provenance = payload.get("provenance")
@@ -557,11 +603,22 @@ class StatementIngestView(_IngestView):
 
         dedup = resolve_dedup(
             lines,
-            self._credit_pool(last4, nickname, min_date, max_date, household),
-            self._enumerated_windows(
+            cls._credit_pool(last4, nickname, min_date, max_date, household),
+            cls._enumerated_windows(
                 last4, nickname, statement.id, min_date, max_date, household
             ),
         )
+
+        # The household's categorisation rules, applied at the INSERT because
+        # the trigger refuses any later UPDATE (ingest/category_rules.py). A
+        # category the payload stated is kept as stated.
+        rules = household_rules(household)
+        categorised = {
+            ordinal: category_for_insert(
+                lines[ordinal]["category"], lines[ordinal]["description"], rules
+            )
+            for ordinal in dedup.insert_ordinals
+        }
 
         LedgerTransaction.objects.bulk_create(
             [
@@ -577,8 +634,8 @@ class StatementIngestView(_IngestView):
                     amount_cents=lines[ordinal]["amount_cents"],
                     balance_cents=lines[ordinal]["balance_cents"],
                     line_ref=lines[ordinal]["line_ref"],
-                    category=lines[ordinal]["category"],
-                    category_pending=lines[ordinal]["category"] is None,
+                    category=categorised[ordinal][0],
+                    category_pending=categorised[ordinal][1],
                     provenance=provenance,
                     created_at=Now(),
                 )
@@ -586,7 +643,7 @@ class StatementIngestView(_IngestView):
             ]
         )
 
-        return Response(
+        return CommitResult(
             {
                 "outcome": gate.COMMITTED,
                 "statement_id": str(statement.id),
@@ -608,11 +665,12 @@ class StatementIngestView(_IngestView):
                     ),
                 },
             },
-            status=status.HTTP_201_CREATED,
+            status.HTTP_201_CREATED,
         )
 
+    @staticmethod
     def _credit_pool(
-        self, last4: object, nickname: object, from_date: date, to_date: date, household
+        last4: object, nickname: object, from_date: date, to_date: date, household
     ) -> list[ExistingRow]:
         """`for rec in select ... from public.ledger_transactions where
         account_last4 = ... and account_nickname = ... and txn_date between ...
@@ -634,8 +692,8 @@ class StatementIngestView(_IngestView):
         ).values_list("txn_date", "amount_cents", "description")
         return [ExistingRow(txn_date=d, amount_cents=a, description=desc) for d, a, desc in rows]
 
+    @staticmethod
     def _enumerated_windows(
-        self,
         last4: object,
         nickname: object,
         exclude_id,
@@ -748,7 +806,7 @@ class ReceiptIngestView(_IngestView):
             other_charges_cents=other,
         )
         if not verdict.committed:
-            return _quarantine(payload, sha, verdict.reason or "", household)
+            return _quarantine(payload, sha, verdict.reason or "", household).response()
 
         file_row = _upsert_file(payload, sha, IngestState.INGESTED, None, household)
 

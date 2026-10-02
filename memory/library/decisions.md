@@ -5812,6 +5812,149 @@ cannot tell whether a sentence is true**, and every false claim above was in pro
 The same audit found `docs/architecture/` still drawing the pre-Django topology and `docs/glossary.md`
 still calling Drive's appDataFolder "the only store".
 
+
+---
+
+## 2026-09-27 - LEGION may be the phone's home app
+
+**Kevin:** *"can this app replace my android home screen and become like the native launcher and home
+for the phone?"* Told the idea reversed a pivot ruling and offered a week-long prototype first:
+*"no need for prototype. lets do it and put it on the phone and see. the phone is a throwaway so no
+worries."*
+
+CLAUDE.md section 1 said "Not a launcher". That clause was written against a product, Midnight AI's
+car head-unit launcher with a commercial model, and none of that returns. HOME already is the one
+surface LEGION opens to, and being the home app only makes it the first thing on every unlock.
+Standing rule: [[0050-legion-may-be-the-home-app]].
+
+Built on `feat/launcher`, in a worktree because two other agents were in the main tree: a
+CATEGORY_HOME filter (selectable, never forced), Home always landing on HOME, Back on HOME a no-op
+only while LEGION is the default home app, and an app drawer covering both profiles with search.
+
+**What fell out of it:** a default home app may call `UserManager.requestQuietModeEnabled`. That's
+the work-profile pause Kevin asked for that morning, which Intune refused to a shell (`am stop-user`
+denied). The drawer carries the toggle, and it says in words when LEGION isn't the home app and so
+can't use it.
+
+**Accepted, not solved:** a LEGION crash now strands the phone until Android restarts the home app.
+Fine for a throwaway phone. Isolating the home view from the voice service and database start-up is
+the price of making this anyone else's default.
+## 2026-09-27 - The backend keeps itself current (map `backend-etl`)
+
+Kevin asked for ETL pipelines because backend data looked stale. Measured against the live
+database: the server pulls from nothing (empty crontab, no job commands), every table is phone-push
+from `onResume` only, Canvas last wrote 2026-09-05, ledger 2026-09-02, OBD 2026-08-30. Ruled by
+interview, all Kevin:
+
+1. Jobs run as Cloud Run Jobs fired by Cloud Scheduler, from the one `deploy/crontab`.
+2. Canvas and WebAssign auth: Kevin logs in by hand, a script hands the saved session to the server.
+   No password stored. Supersedes the token plan in two-clients 03 and settles two-clients 05's
+   open auth question.
+3. Bank statements: the server watches a Drive folder and Kevin drops RAW PDFs/CSVs. Extraction
+   moves server-side with the household's own Gemini key. **This knowingly amends CLAUDE.md §4
+   rule 1's 2026-08-25 amendment** (user's own LLM masks before upload): raw documents now reach
+   Cloud Run and Gemini unmasked; CLAUDE.md §4 rule 1 rewritten to match (Kevin: "yes update it"). The gate itself (three anchors, quarantine, provenance, persisted
+   anchors) is unchanged.
+4. Nightly backups go to Kevin's Google Drive, sharing the statement watcher's Drive credential.
+5. `obd_samples`: per-drive roll-up, 90 days raw, deletion only after a successful backup.
+6. A stale or failing feed is said in words on web and phone. No notification, no email.
+
+Supersedes django-engine 06, two-clients 03/05, chief-of-staff 06 as build tickets; their binding
+rules carry forward by reference.
+
+## 2026-09-27 - BofA statements are pulled at login, never by a stored session
+
+Kevin asked whether BofA could work like Canvas: browser login, then statements pulled. Ruled
+(Kevin: "yes that works instead of me manually navigating the page and putting it on the drive
+folder"): the login script itself pulls new statement PDFs while he is logged in, on his own
+machine, and drops them in the Drive folder for the `drive_statements` watcher. No BofA session is
+stored or replayed server-side: idle timeout and device fingerprinting would kill it or flag it
+(reasoned, not tested), and a server replaying a bank session is the pattern that locks accounts.
+Card CSV exports excluded (no anchor, rule 7). backend-etl tickets 09 and 10.
+
+## 2026-09-27 - A discussion is never ticked by Canvas
+
+Kevin, ruling on the question backend-etl 04's build left open: "discussions leave em to me".
+Canvas marks a discussion submitted on the first post, while its `due_at` is the replies deadline,
+so ticking from Canvas's submission state claimed work still owed. Supersedes that build's
+decision 5 (parent ticked by `submitted_at`). `canvas_poll` never sets `done` on a discussion
+parent or any sub-deadline row; they are ticked by hand. The evidence (`submitted_at`,
+`workflow_state`, `score`, `grade`) is still stored, and inserts, due-date updates and tombstones
+are unchanged. Enforced in Postgres (`ingest/migrations/0004_discussions_are_ticked_by_hand.py`,
+replacing `public.upsert_canvas_task`), not in the poller's Python, so no caller of the function can
+bypass it; discussion rows carry `manual_completion: true`, the flag that already meant "Canvas
+cannot see this done".
+
+## 2026-09-28 - The ledger is pulled daily by hand, and mid-month rows are provisional
+
+Kevin wants the ledger current daily (*"i want the ledger daily"*). Statements are monthly, so the
+daily part is BofA's current-activity CSV, pulled by `connect_session.py bofa` in a login Kevin
+performs each day (*"nvm i'll login daily"*), launched from a one-click desktop shortcut (*"give me
+like a 1 button press script"*). Offered a bank feed (SimpleFIN, about $15/year) for zero-effort
+daily freshness at the same trust level, and declined. Mid-month rows go through §4 rule 7's
+provisional path with all four conditions: a deterministic Python CSV reader (never Gemini, zero
+tokens), `UNRECONCILED`, "unverified" in words on every surface, deleted when the month's gated
+statement commits. This resolves django-engine 13 to option 2. A checking CSV that prints its own
+beginning and ending balance may be gated rather than provisional, once a real file confirms the
+shape (reasoned, not seen). backend-etl ticket 09.
+
+## 2026-09-28 - Canvas never ticks; submission is shown, not applied
+
+Kevin: *"i'll manually mark things as done. i just need to know what needs doing. so we dont really
+need to pull canvas submission state. but perhaps we can be a double check, like i can manually
+tick, but the thing also says submitted in canvas"*. **Supersedes the 2026-09-27 entry "A discussion
+is never ticked by Canvas"**, and with it backend-etl 04's build decision that the poller "only ever
+ticks": no row is exempt from Canvas ticking now, because Canvas ticks no row. `canvas_poll` inserts
+every new row `done = false` whatever Canvas says, and never changes `done`, `done_at` or
+`provenance` on an existing row, so it neither ticks nor unticks. It writes
+`structured_meta.canvas_submitted` (bool: `submitted_at` present, or state `submitted` /
+`pending_review`, or `graded` and not missing; `excused` is not submitted) beside the raw evidence,
+and the web and the phone show it in words as a double check (backend-etl 11 and 12). Enforced in
+Postgres (`ingest/migrations/0005_canvas_never_ticks.py`, replacing `public.upsert_canvas_task`
+again; 0003 and 0004 untouched), so no caller of the function can tick. Consequence: WebAssign
+completion (backend-etl 05) is not needed for now and is parked KIV.
+
+## 2026-09-27 - HOME becomes a launcher, and the phone's look goes soft
+
+**Kevin:** *"i want a complete redesign of the home page. right now it needs scrolling. a calendar,
+then lists then whatever scrolls down. i want a single non scrolling landing page with buttons i can
+click to open up and navigate to different pages and reports. every list should be like a card icon
+that i can open. the lists now also doesnt look very appealing. it should look like an actual
+list."*
+
+Settled in one interview and a clickable prototype canvas, every call his:
+
+- **The Android HOME**, not the web one.
+- **A today card over a 2 x 4 grid of tiles**, nothing scrolling: Calendar, Lists, Money, Body,
+  Fleet, Recordings, News, Reports. The calendar moves to its own route. The meter bands retire;
+  a breach becomes that tile's status, in words.
+- **Groceries is a list, not a tile** - *"grocery is just a list no?"* The receipts page is reached
+  from Money.
+- **Recordings keeps one-tap record on its tile.**
+- **A list opens Keep-style**: tick in place, ticked items sink into a collapsible group, add
+  inline. The old list screen had no checkbox at all; ticking happened only on the calendar.
+- **The Lists page is a grid of icon cards** - *"I like C, icon cards. looks clean that way."*
+- **Soft modern Material** over mission control upgraded or light-and-warm, on HOME, Lists and the
+  shell chrome now, every other screen as it is next touched. Standing record: ADR 0051, which
+  supersedes ADR 0023 surface by surface.
+
+Map: `.scratch/home-launcher/`. The prototype source is kept in its `research/prototype-canvas/`.
+
+## 2026-09-29 - A late-month Housing charge counts in the next month
+
+Rent is charged to the card as `RPS*The Pointe at V RD ...`, category Housing, usually a day or so
+before the month it pays for (2026-07-30, 2026-08-31), so the Money tile showed September with no
+rent and July and August with two. Offered:
+
+- (a) leave as is;
+- (b) "Treat a Housing charge in the last 3 days of a month as belonging to the next month."
+
+**Kevin: "b".** Built as one definition, `budgetMonthOf` in `ledger/BudgetMonth.kt`: an outflow
+whose category is Housing, dated on or after `lengthOfMonth - 2`, belongs to the next month. Every
+spend-by-month figure reads it; transfer pairing stays on calendar dates. A reading rule only: the
+row's date is never changed and nothing is stored differently. Every figure that includes or
+leaves out a moved row says so in words (`earlyChargeSentences`). Ticket:
+`.scratch/backend-etl/issues/15-rent-counts-in-the-month-it-pays-for.md`.
 ## 2026-10-02 - Model survey: stay on 3.8 Live, the engine becomes an MCP server
 
 A survey of the 2026 model and tooling landscape (three research agents, web-sourced, leaderboard
