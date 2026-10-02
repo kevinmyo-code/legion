@@ -678,6 +678,14 @@ fun StatusLine(
     keyLabel: String? = null,
     onOpenSettings: (() -> Unit)? = null,
     /**
+     * Home-launcher ticket 07: when given, the gear opens a small dropdown with two items - "Phone
+     * settings" (this callback) and "LEGION settings" ([onOpenSettings]) - instead of going
+     * straight to LEGION's settings. Null keeps the old one-tap gear, so callers that do not
+     * supply a phone-settings launcher (the existing screenshots) are unchanged. The callback owns
+     * its own failure wording: a refused start must say so, never be a dead tap.
+     */
+    onOpenPhoneSettings: (() -> Unit)? = null,
+    /**
      * The app drawer (ADR 0050, LEGION as the phone's home app): reachable from the header on
      * every screen. Null hides the button.
      */
@@ -779,8 +787,12 @@ fun StatusLine(
                 }
             }
             if (onOpenSettings != null) {
-                IconButton(onClick = onOpenSettings) {
-                    MsIcon(res = R.drawable.ms_settings, contentDescription = "Settings", tint = SoftColors.text2)
+                if (onOpenPhoneSettings != null) {
+                    SettingsGearMenu(onOpenLegionSettings = onOpenSettings, onOpenPhoneSettings = onOpenPhoneSettings)
+                } else {
+                    IconButton(onClick = onOpenSettings) {
+                        MsIcon(res = R.drawable.ms_settings, contentDescription = "Settings", tint = SoftColors.text2)
+                    }
                 }
             }
         }

@@ -8,7 +8,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import com.kevin.legion.ui.common.SettingsMenuItems
 import com.kevin.legion.ui.common.StatusLine
+import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import org.junit.Rule
 import org.junit.Test
@@ -105,6 +112,42 @@ class StatusLineScreenshotTest {
                 onOpenAlarm = {},
                 onOpenSettings = {},
             )
+        }
+    }
+
+    /**
+     * The dropdown's two rows, drawn inside the same container the real [DropdownMenu] uses
+     * (cardHighest, 18dp corners), under the header they hang from. Robolectric places a real popup
+     * window at a negative offset (it has no window manager to anchor against) and registers a
+     * second root, so the actual popup cannot be captured here; `SettingsGearMenuTest` proves the
+     * popup opens and its rows are live, and where it lands is owed on the phone.
+     */
+    @Test
+    fun `settings dropdown rows - phone settings and LEGION settings`() {
+        capture("settings-dropdown.png") {
+            androidx.compose.foundation.layout.Column {
+                StatusLine(
+                    synced = true,
+                    obdConnected = true,
+                    clock = "14:02",
+                    onOpenApps = {},
+                    onOpenSettings = {},
+                    onOpenPhoneSettings = {},
+                )
+                androidx.compose.foundation.layout.Box(
+                    Modifier
+                        .align(androidx.compose.ui.Alignment.End)
+                        .padding(end = 8.dp)
+                        .width(264.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+                        .background(SoftColors.cardHighest)
+                        .padding(vertical = 8.dp),
+                ) {
+                    androidx.compose.foundation.layout.Column {
+                        SettingsMenuItems(onOpenPhoneSettings = {}, onOpenLegionSettings = {})
+                    }
+                }
+            }
         }
     }
 

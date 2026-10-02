@@ -729,6 +729,13 @@ private fun LegionShell(
                             onOpenSettings = {
                                 navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
                             },
+                            // Home-launcher ticket 07: the gear is a dropdown, "Phone settings" beside
+                            // "LEGION settings". A failed start is said in words, never a dead tap.
+                            onOpenPhoneSettings = {
+                                com.kevin.legion.ui.common.startPhoneSettings(context)?.let {
+                                    android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
                             // ADR 0050: the app drawer is reachable from the header on every screen.
                             onOpenApps = {
                                 navController.navigate(LegionRoute.APPS) { launchSingleTop = true }
