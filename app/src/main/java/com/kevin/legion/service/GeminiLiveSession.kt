@@ -2,6 +2,7 @@ package com.kevin.legion.service
 
 import android.Manifest
 import android.content.Context
+import androidx.annotation.VisibleForTesting
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -927,7 +928,29 @@ class GeminiLiveSession(
         }
     }
 
-    private fun buildSetup(systemInstruction: String, functionDeclarations: JSONArray): JSONObject {
+    private fun buildSetup(systemInstruction: String, functionDeclarations: JSONArray): JSONObject =
+        buildSetupJson(
+            systemInstruction = systemInstruction,
+            functionDeclarations = functionDeclarations,
+            voiceName = voiceName,
+            vadMode = vadMode,
+            subtitles = subtitles,
+            resumeHandle = requestedResumeHandle,
+        )
+
+    /**
+     * The Live `setup` message, as a pure function of the session state it reads so a unit test
+     * can assert the wire fields without a socket. [buildSetup] passes the live values in.
+     */
+    @VisibleForTesting
+    internal fun buildSetupJson(
+        systemInstruction: String,
+        functionDeclarations: JSONArray,
+        voiceName: String,
+        vadMode: Boolean,
+        subtitles: Boolean,
+        resumeHandle: String?,
+    ): JSONObject {
         val tools = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
         if (functionDeclarations.length() > 0) {
             tools.put(JSONObject().put("functionDeclarations", withBlockingBehavior(functionDeclarations)))
@@ -944,7 +967,18 @@ class GeminiLiveSession(
                         JSONObject().put("voiceName", voiceName.ifBlank { VOICE })
                     )
                 ))
+                // 2026-10-02: affective dialog (the model adapts tone to the user's expression).
+                // Placement is setup.generationConfig.enableAffectiveDialog, read from the
+                // google-genai SDK's mldev converter (python-genai google/genai/_live_converters.py,
+                // _LiveConnectConfig_to_mldev). Supported on v1beta per
+                // ai.google.dev/gemini-api/docs/live-guide.
+                put("enableAffectiveDialog", true)
             })
+            // 2026-10-02: proactive audio - the model may decline to answer speech that is not
+            // addressed to it (road noise, other people in the room). Docs: ai.google.dev/api/live
+            // ("If enabled, the model can reject responding to the last prompt"). The SDK maps it
+            // to setup.proactivity, same as here.
+            put("proactivity", JSONObject().put("proactiveAudio", true))
             put("systemInstruction", JSONObject().put(
                 "parts", JSONArray().put(JSONObject().put("text", systemInstruction))
             ))
@@ -959,16 +993,21 @@ class GeminiLiveSession(
             // An absent/blank `handle` is documented as "then a new session is created" -
             // exactly what a first-ever connection wants.
             put("sessionResumption", JSONObject().apply {
-                requestedResumeHandle?.let { if (it.isNotBlank()) put("handle", it) }
+                resumeHandle?.let { if (it.isNotBlank()) put("handle", it) }
             })
             // Ticket 02, candidate 3 (contextWindowCompression): a DIFFERENT ender than the
             // network drop this ticket is chiefly about - this addresses the context window
-            // filling up over a long conversation, not a dropped socket. slidingWindow with
-            // no explicit triggerTokens uses the server's own default threshold. Included
-            // because it costs nothing and closes a second known way a conversation's memory
-            // can end, but it does NOT make session resumption unnecessary - a network drop
-            // has nothing to do with window size.
-            put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
+            // filling up over a long conversation, not a dropped socket. It does NOT make
+            // session resumption unnecessary - a network drop has nothing to do with window size.
+            // 2026-10-02 (ai.google.dev/api/live, ContextWindowCompressionConfig): triggerTokens
+            // is now explicit. The server default is 80% of the window (~100k tokens) and Live
+            // bills the accumulated context on every turn, so a lower trigger caps per-turn input
+            // cost. The trade: older turns get compressed sooner. Compression shrinks to
+            // targetTokens, which must stay below the trigger.
+            put("contextWindowCompression", JSONObject().apply {
+                put("triggerTokens", COMPRESSION_TRIGGER_TOKENS)
+                put("slidingWindow", JSONObject().put("targetTokens", COMPRESSION_TARGET_TOKENS))
+            })
             // Opt into the driver's input transcript: lets us detect that the
             // driver has started replying (cancels the idle-timeout) and feeds
             // the mic-capture diagnostic log (see userTurnText).
@@ -988,6 +1027,9 @@ class GeminiLiveSession(
                         // speak-only path has no mic and never runs VAD.
                         put("silenceDurationMs", VAD_SILENCE_MS)
                         put("prefixPaddingMs", VAD_PREFIX_PADDING_MS)
+                        // 2026-10-02: less eager start, prompt end (see the constants).
+                        put("startOfSpeechSensitivity", VAD_START_SENSITIVITY)
+                        put("endOfSpeechSensitivity", VAD_END_SENSITIVITY)
                     }
                 },
             ))
@@ -2794,6 +2836,14 @@ class GeminiLiveSession(
         // keeps a little audio before speech onset so the first word isn't clipped.
         private const val VAD_SILENCE_MS = 900
         private const val VAD_PREFIX_PADDING_MS = 300
+        // 2026-10-02 (ai.google.dev/api/live, AutomaticActivityDetection): both default to HIGH.
+        // LOW start detects speech onset less often, so a loud car or a nearby voice trips fewer
+        // false starts; HIGH end keeps turns closing promptly once the user has stopped.
+        internal const val VAD_START_SENSITIVITY = "START_SENSITIVITY_LOW"
+        internal const val VAD_END_SENSITIVITY = "END_SENSITIVITY_HIGH"
+        // 2026-10-02: context compression thresholds, see buildSetupJson.
+        internal const val COMPRESSION_TRIGGER_TOKENS = 32_000
+        internal const val COMPRESSION_TARGET_TOKENS = 16_000
         // Driver silence after Zero's turn that ends a hands-free conversation.
         private const val IDLE_TIMEOUT_MS = 10_000L
         // How long a parked (warm) socket stays connected with no use before it
