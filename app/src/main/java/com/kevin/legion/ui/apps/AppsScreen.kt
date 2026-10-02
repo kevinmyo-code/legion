@@ -8,21 +8,13 @@ import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.UserHandle
 import android.os.UserManager
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -37,10 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.SoftTheme
+
+private const val SEARCH_COLUMNS = 4
 
 /**
  * The app drawer (ADR 0050, 2026-09-27). LEGION may now be the phone's home app, and a home app
@@ -67,6 +61,8 @@ fun AppsScreen() {
     // home"/"Unpin from home" menu label always matches the dock's own current state.
     var pins by remember { mutableStateOf(DockPinsStore.read(context)) }
     var pinMenuApp by remember { mutableStateOf<DrawerApp?>(null) }
+    // Ticket 07: the letter folder that is open as a dialog, if any.
+    var openFolder by remember { mutableStateOf<LetterFolder?>(null) }
 
     LaunchedEffect(reload) {
         loaded = AppDrawerCache.refresh(context)
@@ -112,18 +108,42 @@ fun AppsScreen() {
                     style = MaterialTheme.typography.bodyMedium,
                 )
             else -> {
-                val rows = filterDrawer(state.apps, query)
-                if (rows.isEmpty()) {
-                    Text("No app matches \"${query.trim()}\".", style = MaterialTheme.typography.bodyMedium)
-                }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(rows, key = { "${it.profileKey}/${it.packageName}/${it.className}" }) { app ->
-                        AppRow(
-                            app = app,
-                            icon = state.icons[iconKey(app.profileKey, app.packageName, app.className)],
-                            paused = app.isWork && state.workPaused,
-                            onOpen = { message = launchDrawerApp(context, app, state) },
-                            onLongPress = { pinMenuApp = app },
+                val searching = query.isNotBlank()
+                val rows = if (searching) filterDrawer(state.apps, query) else emptyList()
+                // Soft look for the new grid (ticket 07): the rest of this screen keeps its own
+                // theme until it is converted, so only the folders and dialog are wrapped.
+                SoftTheme {
+                    if (searching) {
+                        if (rows.isEmpty()) {
+                            Text("No app matches \"${query.trim()}\".", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        AppIconGrid(
+                            apps = rows,
+                            icons = state.icons,
+                            workPaused = state.workPaused,
+                            columns = SEARCH_COLUMNS,
+                            onOpen = { app -> message = launchDrawerApp(context, app, state) },
+                            onLongPress = { app -> pinMenuApp = app },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        FolderGrid(
+                            folders = remember(state.apps) { letterFolders(state.apps) },
+                            icons = state.icons,
+                            onOpenFolder = { openFolder = it },
+                        )
+                    }
+                    openFolder?.let { folder ->
+                        FolderDialog(
+                            folder = folder,
+                            icons = state.icons,
+                            workPaused = state.workPaused,
+                            onDismiss = { openFolder = null },
+                            onOpen = { app ->
+                                openFolder = null
+                                message = launchDrawerApp(context, app, state)
+                            },
+                            onLongPress = { app -> pinMenuApp = app },
                         )
                     }
                 }
@@ -155,29 +175,6 @@ fun AppsScreen() {
                 pinMenuApp = null
             },
         )
-    }
-}
-
-@Composable
-private fun AppRow(app: DrawerApp, icon: ImageBitmap?, paused: Boolean, onOpen: () -> Unit, onLongPress: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onLongPress).padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start,
-    ) {
-        if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(40.dp))
-        else Spacer(Modifier.size(40.dp))
-        Spacer(Modifier.width(14.dp))
-        Column {
-            Text(app.label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
-            if (app.isWork) {
-                Text(
-                    if (paused) "WORK - PAUSED" else "WORK",
-                    style = LegionType.stamp,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
     }
 }
 
