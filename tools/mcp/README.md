@@ -11,6 +11,7 @@ call which tool. Installed 2026-09-05.
 | `gradle` | `tools/mcp/gradle/` (ours) | `run_task`, `test_totals`, `detekt_summary` | nothing |
 | `canvas` | `tools/mcp/canvas/` (ours) | `courses`, `assignments`, `discussion_topics`, `todo` | `CANVAS_TOKEN` |
 | `board` | `tools/mcp/board/` (ours) | `ready`, `blocked`, `ticket`, `map` | nothing |
+| `engine` | `tools/mcp/engine/` (ours), engine-mcp ticket 09 | `due`, `checklists`, `places`, `ledger_transactions`, `pantry_receipts` (GET only, through the engine's REST API, scoped to the token's household) | `LEGION_ENGINE_URL`, `LEGION_ENGINE_TOKEN` |
 
 Everything is read-only except `gradle.run_task` (starts Gradle, writes under `app/build/` and
 `build/mcp-logs/`) and the `mobile` tools that touch the phone (install, tap, type, launch).
@@ -50,7 +51,16 @@ wins over the file.
 # .claude/mcp.env - never committed
 LEGION_PG_URL=postgresql://legion_reader:<password>@db.gccxiqusqxkjmjmaadpz.supabase.co:5432/postgres?sslmode=require
 CANVAS_TOKEN=<token from Canvas > Account > Settings > New Access Token>
+LEGION_ENGINE_URL=https://<engine host, no /api>
+LEGION_ENGINE_TOKEN=<a device token Kevin mints for this machine; sent as Authorization: Token <key>>
 ```
+
+**`LEGION_ENGINE_TOKEN`.** A device token like the phone's, one per machine so it can be revoked
+alone. Kevin mints it; nothing in this repo creates one. The engine's login issues one:
+`POST /api/auth/login` with `{"email", "password", "device_name": "claude-code-<machine>"}`
+returns `{"token"}`, shown once; `GET /api/auth/devices` lists it and
+`DELETE /api/auth/devices/<id>` revokes it alone. The `engine` server's tests run against
+a fake engine: `uv run --project tools/mcp/engine python -m unittest discover -s tools/mcp/engine`.
 
 **`LEGION_PG_URL`.** The `legion_reader` role does not exist yet; Kevin creates it and its
 password himself. Two facts about the host, both checked 2026-09-05 from this machine:

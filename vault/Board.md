@@ -42,7 +42,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[01-where-the-mcp-server-lives\|01]] | decision | Where the MCP server lives: inside Django, a sidecar, or a stdio adapter |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[03-one-source-for-tool-definitions\|03]] | decision | One source of truth for tool definitions |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[05-auth-per-caller\|05]] | decision | Auth per caller, and what a token is allowed to do |
-| [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -109,6 +108,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
+| [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[08-daily-prescription-and-autolog\|08]] | build | The checklist prescribes a day, and a ticked day logs itself |
