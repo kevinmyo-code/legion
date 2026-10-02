@@ -64,4 +64,22 @@ class CompanionPhaseNoticeTest {
         assertTrue("under half a minute cannot survive taking the phone out", window >= 30_000L)
         assertTrue("a notice older than five minutes describes a finished problem", window <= 300_000L)
     }
+
+    @Test
+    fun `reaching LISTENING drops a stale failure notice from the replay buffer`() {
+        // A late subscriber must not be handed "NO CONNECTION" over a conversation that connected.
+        CompanionPhase.showNotice("NO CONNECTION - TAP TO RETRY")
+        assertTrue(CompanionPhase.notice.replayCache.isNotEmpty())
+        CompanionPhase.set(Phase.LISTENING)
+        assertTrue(CompanionPhase.notice.replayCache.isEmpty())
+        CompanionPhase.set(Phase.IDLE)
+    }
+
+    @Test
+    fun `a notice raised after LISTENING is still replayable`() {
+        CompanionPhase.set(Phase.LISTENING)
+        CompanionPhase.showNotice("CONNECTION LOST - TAP TO RETRY")
+        assertTrue(CompanionPhase.notice.replayCache.isNotEmpty())
+        CompanionPhase.set(Phase.IDLE)
+    }
 }

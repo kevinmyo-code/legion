@@ -157,6 +157,14 @@ class LiveSessionController(context: Context) {
     // deliberately ended chat doesn't silently bleed into whatever the driver starts next.
     private var sessionResumeHandle: String? = null
 
+    // One automatic cold retry per tap (2026-10-02, "no connection, tap to retry, then it says
+    // listening"). [retriedColdConnectThisTap] is reset by [onTap] and set the moment the Closed
+    // branch re-drives the connect, so a second failure in the same tap falls through to the
+    // notice instead of looping. [coldRetry] re-runs exactly the start that just failed; it is
+    // null for starts with no safe replay (the companion handover).
+    private var retriedColdConnectThisTap = false
+    private var coldRetry: (() -> Unit)? = null
+
     // Ticket 02: set when a real conversation's socket died WITHOUT a resumption handle to
     // carry it forward - i.e. the thread is genuinely gone, not just reconnecting. Consumed
     // (and cleared) by whichever of [resumeWarm] / [startConversation] actually begins the
@@ -319,6 +327,7 @@ class LiveSessionController(context: Context) {
         // A deliberate tap resets the prewarm backoff - the driver is actively
         // asking, so try now rather than honoring a long dead-zone cooldown.
         consecutivePrewarmFailures = 0
+        retriedColdConnectThisTap = false
 
         // Fast-fail with a visible reason instead of a silent 15s connect attempt.
         // Connected calls block a turn - the call owns the speakers. A RINGING phone does NOT
@@ -606,6 +615,7 @@ class LiveSessionController(context: Context) {
         pendingAction = Pending.CONVERSATION
         conversationMode = true
         connectedThisSession = false
+        coldRetry = { startConversation(fromWakeWord) }
         set(Phase.CONNECTING, "Connecting...")
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
@@ -952,6 +962,22 @@ class LiveSessionController(context: Context) {
                 // connection retry? i cant talk at all". Dropping it costs one conversation's
                 // continuity; keeping it cost the whole voice path.
                 if (!everConnected && sessionResumeHandle != null) sessionResumeHandle = null
+                // A tap's cold connect that closed before ever connecting, for a reason that is not
+                // the user's key, quota or mic, gets ONE silent retry, cold and with no handle
+                // (just cleared above). Before this the failure flashed "NO CONNECTION - TAP TO
+                // RETRY" and the strip then showed a working conversation under it. The phase
+                // stays CONNECTING (startConversation sets it); the notice only appears if this
+                // second attempt also fails, because [retriedColdConnectThisTap] is then set.
+                val retry = coldRetry
+                if (retry != null && pendingAction == Pending.CONVERSATION &&
+                    shouldRetryColdConnect(userInitiated, everConnected, event.reason, retriedColdConnectThisTap)
+                ) {
+                    retriedColdConnectThisTap = true
+                    session?.silentDestroy()
+                    session = null
+                    retry()
+                    return
+                }
                 // Only surface errors the driver kicked off (a tap), not a failed
                 // background proactive opener. "stopped"/"idle"/"destroyed"/"warm
                 // expired"/"goAway" are normal closes; anything else is a fault worth
@@ -1216,6 +1242,7 @@ class LiveSessionController(context: Context) {
         pendingAction = Pending.CONVERSATION
         conversationMode = true
         connectedThisSession = false
+        coldRetry = null
         set(Phase.CONNECTING, "Connecting...")
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
@@ -1652,6 +1679,24 @@ class LiveSessionController(context: Context) {
             closeReason: String,
             hasResumeHandle: Boolean,
         ): Boolean = wasConversationActive && closeReason != "stopped" && !hasResumeHandle
+
+        /**
+         * Whether a [LiveEvent.Closed] should be answered with one silent cold retry instead of a
+         * notice. True only for a connect a person asked for ([userInitiated]) that never reached
+         * [LiveEvent.Connected] ([everConnected] false), for a reason that is not a normal close
+         * and not one a retry cannot fix (a rejected key, quota, a missing microphone), and only
+         * if this tap has not already spent its retry ([alreadyRetried]). Pure, so it is directly
+         * unit-testable - see [LiveSessionControllerColdRetryTest].
+         */
+        internal fun shouldRetryColdConnect(
+            userInitiated: Boolean,
+            everConnected: Boolean,
+            reason: String,
+            alreadyRetried: Boolean,
+        ): Boolean = userInitiated && !everConnected && !alreadyRetried &&
+            reason !in NORMAL_CLOSE_REASONS &&
+            reason != "key rejected" && reason != "quota" &&
+            !reason.contains("microphone", ignoreCase = true)
 
         // Ticket 24: how long the socket keeps auto-reconnecting after an unattended close, once
         // nothing real has happened for a while. GUESSED, not measured - the ticket fixed the
