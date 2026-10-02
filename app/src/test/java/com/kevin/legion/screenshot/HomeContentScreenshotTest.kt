@@ -14,7 +14,15 @@ import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MacroTotals
 import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
+import com.kevin.legion.media.NowPlayingInfo
 import com.kevin.legion.ui.apps.DockPin
+import com.kevin.legion.ui.apps.HomeCategory
+import com.kevin.legion.ui.apps.iconKey
+import com.kevin.legion.ui.home.CategoryUi
 import com.kevin.legion.ui.apps.DrawerApp
 import com.kevin.legion.ui.apps.Loaded
 import com.kevin.legion.ui.fleet.DueRowView
@@ -113,41 +121,7 @@ class HomeContentScreenshotTest {
     @Config(qualifiers = "w384dp-h636dp")
     @Test
     fun `alerts - over budget, overdue maintenance, recording, estimated body`() {
-        val state = HomeUiState(
-            loading = false,
-            weekdayLabel = "Sunday",
-            dateLabel = "September 27",
-            weatherText = "72F, partly cloudy",
-            areaAqiLine = "Houston, TX - AQI 42 (Good) - PM2.5, Downtown",
-            nextLine = "Nothing else on the calendar today",
-            chips = buildTodayChips(dueTodayCount = 5, overdueCount = 2, calendarReadFailed = false),
-            checklistCount = 1,
-            budget = budgetFixture(
-                listOf(
-                    BudgetLine(
-                        category = "Dining Out",
-                        gap = PlanGap(target = 20_000L, actual = 24_500L, gap = -4_500L, tier = TrustTier.PROVEN),
-                        hasProvisionalRows = false,
-                        hasPendingCategoryGuesses = false,
-                    ),
-                ),
-                uncategorizedCents = 4_250L,
-            ),
-            mealGap = DailyMealGap.Logged(
-                PlanGap(
-                    target = MacroTotals(2_200, 0.0, 0.0, 0.0),
-                    actual = MacroTotals(1_450, 0.0, 0.0, 0.0),
-                    gap = MacroTotals(750, 0.0, 0.0, 0.0),
-                    tier = TrustTier.REPORTED,
-                ),
-            ),
-            hasMealTarget = true,
-            maintenanceRows = listOf(
-                DueRowView(label = "Oil change", value = "OVERDUE", sub = "was due 200 mi ago", overdue = true),
-            ),
-            maintenanceUnknownCount = 0,
-            voiceNotesCount = 2,
-        )
+        val state = alertsState()
         capture("home-alerts.png", state, recording = true, recordRefusal = null)
     }
 
@@ -200,6 +174,22 @@ class HomeContentScreenshotTest {
 
     // ---------------------------------------------------------------------------- ticket 06's dock
 
+    /** Production HOME always shows the five category buttons, so every shot carries them; unset is
+     * what a fresh install looks like. */
+    private val unsetCategories = HomeCategory.entries.map { CategoryUi(it, emptyList()) }
+
+    private val palette = listOf(
+        Color(0xFF7EDBA5), Color(0xFFA8C8FF), Color(0xFFFFD36B),
+        Color(0xFFFFB1C3), Color(0xFF77DCE5), Color(0xFFCDBDFF),
+    )
+
+    /** A solid-colour square standing in for a launcher icon (real ones need a device). */
+    private fun fakeIcon(i: Int): ImageBitmap {
+        val bitmap = ImageBitmap(48, 48)
+        Canvas(bitmap).drawRect(0f, 0f, 48f, 48f, Paint().apply { color = palette[i % palette.size] })
+        return bitmap
+    }
+
     private val noopDock = DockCallbacks(onLaunch = {}, onUnpin = {}, onMoveLeft = {}, onMoveRight = {})
 
     private fun installedApp(pkg: String, label: String) = DrawerApp(label, pkg, "$pkg.Main", isWork = false, profileKey = 0)
@@ -237,6 +227,90 @@ class HomeContentScreenshotTest {
         capture("home-dock-not-installed.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins, loaded))
     }
 
+
+    // ---------------------------------------------------------------------------- ticket 07's row
+
+    /** Full dock plus a mixed category row on the worst-case tile state: Bank unset, Music one app,
+     * Maps two, Mail two (one is a work app), Chat one that is no longer installed. */
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `categories - full dock and a mixed row on the alerts state`() = captureMixed("home-categories-mixed.png")
+
+    /** The same worst case with music playing: the now-playing row takes another ~60dp. */
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `categories - mixed row while music is playing`() = captureMixed(
+        "home-categories-now-playing.png",
+        NowPlayingInfo(
+            title = "Midnight City", artist = "M83", album = "Hurry Up", isPlaying = true, position = 0L, duration = 1L,
+        ),
+    )
+
+    private fun captureMixed(fileName: String, nowPlaying: NowPlayingInfo? = null) {
+        val dockApps = listOf(
+            installedApp("com.whatsapp", "WhatsApp"),
+            installedApp("com.spotify.music", "Spotify"),
+            installedApp("com.google.android.gm", "Gmail"),
+            installedApp("com.android.chrome", "Chrome"),
+            installedApp("com.google.android.apps.maps", "Maps"),
+        )
+        val outlookWork = DrawerApp("Outlook", "com.microsoft.office.outlook", "o.Main", isWork = true, profileKey = 10)
+        val waze = installedApp("com.waze", "Waze")
+        val apps = dockApps + waze + outlookWork
+        val icons = apps.mapIndexed { i, a -> iconKey(a.profileKey, a.packageName, a.className) to fakeIcon(i) }.toMap()
+        val loaded = Loaded(apps = apps, icons = icons, handles = emptyMap(), workProfile = null, workPaused = false)
+        fun pin(a: DrawerApp) = DockPin(a.packageName, a.profileKey)
+        val picks = mapOf(
+            HomeCategory.MUSIC to listOf(pin(dockApps[1])),
+            HomeCategory.MAPS to listOf(pin(dockApps[4]), pin(waze)),
+            HomeCategory.MAIL to listOf(pin(dockApps[2]), pin(outlookWork)),
+            HomeCategory.CHAT to listOf(DockPin("com.gone.chat", 0)),
+        )
+        val categories = HomeCategory.entries.map { CategoryUi(it, buildDockSlots(picks[it].orEmpty(), loaded)) }
+        capture(
+            fileName, alertsState(), recording = true, recordRefusal = null,
+            dockSlots = buildDockSlots(dockApps.map(::pin), loaded), categories = categories, nowPlaying = nowPlaying,
+        )
+    }
+
+    private fun alertsState(): HomeUiState {
+        return HomeUiState(
+            loading = false,
+            weekdayLabel = "Sunday",
+            dateLabel = "September 27",
+            weatherText = "72F, partly cloudy",
+            areaAqiLine = "Houston, TX - AQI 42 (Good) - PM2.5, Downtown",
+            nextLine = "Nothing else on the calendar today",
+            chips = buildTodayChips(dueTodayCount = 5, overdueCount = 2, calendarReadFailed = false),
+            checklistCount = 1,
+            budget = budgetFixture(
+                listOf(
+                    BudgetLine(
+                        category = "Dining Out",
+                        gap = PlanGap(target = 20_000L, actual = 24_500L, gap = -4_500L, tier = TrustTier.PROVEN),
+                        hasProvisionalRows = false,
+                        hasPendingCategoryGuesses = false,
+                    ),
+                ),
+                uncategorizedCents = 4_250L,
+            ),
+            mealGap = DailyMealGap.Logged(
+                PlanGap(
+                    target = MacroTotals(2_200, 0.0, 0.0, 0.0),
+                    actual = MacroTotals(1_450, 0.0, 0.0, 0.0),
+                    gap = MacroTotals(750, 0.0, 0.0, 0.0),
+                    tier = TrustTier.REPORTED,
+                ),
+            ),
+            hasMealTarget = true,
+            maintenanceRows = listOf(
+                DueRowView(label = "Oil change", value = "OVERDUE", sub = "was due 200 mi ago", overdue = true),
+            ),
+            maintenanceUnknownCount = 0,
+            voiceNotesCount = 2,
+        )
+    }
+
     private fun fallbackState() = HomeUiState(
         loading = false,
         weekdayLabel = "Sunday",
@@ -260,16 +334,19 @@ class HomeContentScreenshotTest {
         recording: Boolean,
         recordRefusal: String?,
         dockSlots: List<DockSlotUi> = emptyList(),
+        categories: List<CategoryUi> = unsetCategories,
+        nowPlaying: NowPlayingInfo? = null,
     ) {
         composeTestRule.setContent {
             HomeContent(
                 state = state,
                 recording = recording,
                 recordRefusal = recordRefusal,
-                nowPlaying = null,
+                nowPlaying = nowPlaying,
                 callbacks = callbacks,
                 dockSlots = dockSlots,
                 dock = noopDock,
+                categories = categories,
             )
         }
         composeTestRule.onRoot().captureRoboImage(fileName)

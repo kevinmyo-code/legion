@@ -4996,5 +4996,35 @@
     <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListItemUi(ChecklistItem(id = 6, checklistId = 12, text = "Book dentist cleaning", sortOrder = 0), ticked = true, value = null, tickDay = 19_900, queued = false)</ID>
     <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$ListsPageState(loading = false, routines = routines, plainLists = plain, archivedLists = archived, showArchived = true)</ID>
     <ID>MaxLineLength:ListsScreenshotTest.kt:ListsScreenshotTest$private</ID>
+    <ID>FunctionNaming:AppFolders.kt:@Composable internal fun AppIconCell( app: DrawerApp, icon: ImageBitmap?, workPaused: Boolean, onOpen: () -&gt; Unit, onLongPress: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:AppFolders.kt:@Composable internal fun AppIconGrid( apps: List&lt;DrawerApp&gt;, icons: Map&lt;String, ImageBitmap&gt;, workPaused: Boolean, columns: Int, onOpen: (DrawerApp) -&gt; Unit, onLongPress: (DrawerApp) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:AppFolders.kt:@Composable internal fun FolderDialog( folder: LetterFolder, icons: Map&lt;String, ImageBitmap&gt;, workPaused: Boolean, onDismiss: () -&gt; Unit, onOpen: (DrawerApp) -&gt; Unit, onLongPress: (DrawerApp) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:AppFolders.kt:@Composable internal fun FolderGrid( folders: List&lt;LetterFolder&gt;, icons: Map&lt;String, ImageBitmap&gt;, onOpenFolder: (LetterFolder) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:AppFolders.kt:@Composable private fun FolderTile(folder: LetterFolder, icons: Map&lt;String, ImageBitmap&gt;, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:CategoryRow.kt:@Composable fun CategoryRow( categories: List&lt;CategoryUi&gt;, chooserRows: List&lt;ChooserRow&gt;, callbacks: CategoryCallbacks, )</ID>
+    <ID>FunctionNaming:CategoryRow.kt:@Composable private fun CategoryButton( ui: CategoryUi, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@Composable internal fun ChooserSheetContent( category: HomeCategory, original: List&lt;DockSlotUi&gt;, working: List&lt;DockPin&gt;, rows: List&lt;ChooserRow&gt;, onToggle: (DockPin) -&gt; Unit, onCancel: () -&gt; Unit, onSave: () -&gt; Unit, modifier: Modifier = Modifier, initialQuery: String = "", )</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@Composable internal fun OpenWithSheetContent(ui: CategoryUi, onLaunch: (DockSlotUi) -&gt; Unit, onChoose: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@Composable private fun AppGlyph(icon: ImageBitmap?, size: Dp)</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@Composable private fun ChooserRowItem( label: String, sub: String?, icon: ImageBitmap?, checked: Boolean, dimmed: Boolean, onToggle: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@Composable private fun ColumnScope.ChooserSearchAndList( rows: List&lt;ChooserRow&gt;, original: List&lt;DockSlotUi&gt;, working: List&lt;DockPin&gt;, onToggle: (DockPin) -&gt; Unit, initialQuery: String, )</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@Composable private fun OpenWithRow(slot: DockSlotUi, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun ChooserSheet( ui: CategoryUi, rows: List&lt;ChooserRow&gt;, onDismiss: () -&gt; Unit, onSave: (List&lt;DockPin&gt;) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:CategorySheets.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun OpenWithSheet( ui: CategoryUi, onDismiss: () -&gt; Unit, onLaunch: (DockSlotUi) -&gt; Unit, onChoose: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:SettingsGearMenu.kt:@Composable internal fun SettingsGearMenu( onOpenLegionSettings: () -&gt; Unit, onOpenPhoneSettings: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:SettingsGearMenu.kt:@Composable internal fun SettingsMenuItems(onOpenPhoneSettings: () -&gt; Unit, onOpenLegionSettings: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:SettingsGearMenu.kt:@Composable private fun SettingsMenuRow( @DrawableRes iconRes: Int, tileColor: Color, iconColor: Color, title: String, subtitle: String, onClick: () -&gt; Unit, )</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFF0F3B40</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFF173D2B</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFF1F3450</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFF33265A</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFF43340F</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFF77DCE5</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFF7EDBA5</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFFA8C8FF</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFFCDBDFF</ID>
+    <ID>MagicNumber:CategoryRow.kt:Tiles$0xFFFFD36B</ID>
+    <ID>MagicNumber:SettingsGearMenu.kt:0xFF1F3450</ID>
+    <ID>MagicNumber:SettingsGearMenu.kt:0xFFA8C8FF</ID>
   </CurrentIssues>
 </SmellBaseline>

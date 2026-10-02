@@ -44,7 +44,9 @@ import com.kevin.legion.media.NowPlayingInfo
 import com.kevin.legion.ui.apps.AppDrawerCache
 import com.kevin.legion.ui.apps.DockPin
 import com.kevin.legion.ui.apps.DockPins
+import com.kevin.legion.ui.apps.CategoryPicksStore
 import com.kevin.legion.ui.apps.DockPinsStore
+import com.kevin.legion.ui.apps.HomeCategory
 import com.kevin.legion.ui.apps.launchDrawerApp
 import com.kevin.legion.ui.media.MediaTransport
 import com.kevin.legion.ui.theme.soft.AreaAccent
@@ -57,8 +59,22 @@ import com.kevin.legion.voice.VoiceNoteStartResult
 import kotlinx.coroutines.launch
 
 /** The A25's content box under the status line/talk bar (ticket's own figure) is the "fits" case;
- * below this, [HomeContent] falls back to a vertical scroll rather than clipping a tile. */
-private val GRID_FITS_MIN_HEIGHT = 560.dp
+ * below this, [HomeContent] falls back to a vertical scroll rather than clipping a tile.
+ * **620dp, was 560dp (ticket 07):** the category row added about 62dp of fixed chrome under the
+ * grid, so the box height at which the grid still gets the ~300dp its disclosures need moved up by
+ * the same amount. The recorded 384 x 636 shots sit just above it and are the check. */
+private val GRID_FITS_MIN_HEIGHT = 620.dp
+
+/** Extra box height the now-playing row needs before the fixed grid still fits. With music playing
+ * the 384 x 636 box does NOT fit it (home-categories-now-playing.png showed Calendar, News and Reports
+ * clipped when it was tried), so HOME scrolls for as long as something is playing. */
+private val NOW_PLAYING_RESERVE = 64.dp
+
+// Tile-row weights, see [TileGrid]. Sum is about 4, so the grid's total height is unchanged.
+private const val ROW_CALENDAR_WEIGHT = 0.85f
+private const val ROW_DISCLOSURE_WEIGHT = 1.4f
+private const val ROW_FLEET_WEIGHT = 1.0f
+private const val ROW_NEWS_WEIGHT = 0.8f
 
 /** Every navigation HOME's grid/rows reach - one bag so [HomeScreen] (stateful) and [HomeContent]
  * (stateless, Roborazzi-renderable with fakes) share one parameter shape. */
@@ -109,10 +125,14 @@ fun HomeScreen(
     var pins by remember { mutableStateOf(DockPinsStore.read(context)) }
     var drawerSnapshot by remember { mutableStateOf(AppDrawerCache.peek()) }
     var dockMessage by remember { mutableStateOf<String?>(null) }
+    // Ticket 07's category row: picks per category, read on every resume like the dock's own, so a
+    // change made elsewhere never shows stale. Same peek-only posture - no second LauncherApps read.
+    var categoryPicks by remember { mutableStateOf(CategoryPicksStore.readAll(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.refresh()
         pins = DockPinsStore.read(context)
+        categoryPicks = CategoryPicksStore.readAll(context)
         drawerSnapshot = AppDrawerCache.peek()
     }
 
@@ -123,6 +143,18 @@ fun HomeScreen(
     LaunchedEffect(Unit) { NowPlayingController.init(context) }
     val nowPlaying by NowPlayingController.state.collectAsStateWithLifecycle()
 
+    // One launch path for the dock and the category buttons: the drawer's own `launchDrawerApp` and
+    // its failure sentence, with a missing app or an unreadable snapshot said in words.
+    val launchSlot: (DockSlotUi) -> Unit = { slot ->
+        val app = slot.app
+        val snapshot = drawerSnapshot
+        dockMessage = when {
+            app == null -> "${slot.label} is not installed."
+            snapshot == null -> "Couldn't open ${slot.label}: apps aren't loaded yet."
+            else -> launchDrawerApp(context, app, snapshot)
+        }
+    }
+
     HomeContent(
         state = state,
         recording = recording,
@@ -130,15 +162,7 @@ fun HomeScreen(
         nowPlaying = nowPlaying,
         dockSlots = buildDockSlots(pins, drawerSnapshot),
         dock = DockCallbacks(
-            onLaunch = { slot ->
-                val app = slot.app
-                val snapshot = drawerSnapshot
-                dockMessage = when {
-                    app == null -> "${slot.label} is not installed."
-                    snapshot == null -> "Couldn't open ${slot.label}: apps aren't loaded yet."
-                    else -> launchDrawerApp(context, app, snapshot)
-                }
-            },
+            onLaunch = launchSlot,
             onUnpin = { pin ->
                 pins = DockPins.unpin(pins, pin)
                 DockPinsStore.write(context, pins)
@@ -153,6 +177,17 @@ fun HomeScreen(
             },
         ),
         dockMessage = dockMessage,
+        categories = HomeCategory.entries.map {
+            CategoryUi(it, buildDockSlots(categoryPicks[it].orEmpty(), drawerSnapshot))
+        },
+        chooserRows = buildChooserRows(drawerSnapshot),
+        categoryCallbacks = CategoryCallbacks(
+            onLaunch = launchSlot,
+            onSave = { category, picks ->
+                CategoryPicksStore.write(context, category, picks)
+                categoryPicks = categoryPicks + (category to picks)
+            },
+        ),
         callbacks = HomeCallbacks(
             onOpenCalendar = onOpenCalendar,
             onOpenLists = onOpenLists,
@@ -195,10 +230,13 @@ fun HomeContent(
     dockSlots: List<DockSlotUi> = emptyList(),
     dock: DockCallbacks = DockCallbacks(onLaunch = {}, onUnpin = {}, onMoveLeft = {}, onMoveRight = {}),
     dockMessage: String? = null,
+    categories: List<CategoryUi> = emptyList(),
+    chooserRows: List<ChooserRow> = emptyList(),
+    categoryCallbacks: CategoryCallbacks = CategoryCallbacks(onLaunch = {}, onSave = { _, _ -> }),
 ) {
     SoftTheme {
         BoxWithConstraints(Modifier.fillMaxSize().background(SoftColors.ground)) {
-            val fitsGrid = maxHeight >= GRID_FITS_MIN_HEIGHT
+            val fitsGrid = maxHeight >= GRID_FITS_MIN_HEIGHT + if (nowPlaying != null) NOW_PLAYING_RESERVE else 0.dp
             val outer = if (fitsGrid) {
                 Modifier.fillMaxSize()
             } else {
@@ -223,6 +261,8 @@ fun HomeContent(
                 // Scaffold bottomBar, so this row being the last thing drawn here already puts it
                 // directly above it.
                 AppDock(slots = dockSlots, callbacks = dock)
+                // Ticket 07: five category buttons as a new row under the pinned dock.
+                CategoryRow(categories = categories, chooserRows = chooserRows, callbacks = categoryCallbacks)
                 dockMessage?.let {
                     Text(
                         it,
@@ -244,7 +284,9 @@ private fun TodayCard(state: HomeUiState, onClick: () -> Unit) {
             .fillMaxWidth()
             .background(SoftColors.card, MaterialTheme.shapes.large)
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            // 12dp top and bottom, not 16dp: ticket 07's category row takes another ~60dp from the
+            // fixed budget, and this card gives some of it back before any tile loses a line.
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
@@ -269,9 +311,9 @@ private fun TodayCard(state: HomeUiState, onClick: () -> Unit) {
             state.nextLine,
             style = MaterialTheme.typography.bodyMedium,
             color = SoftColors.text,
-            modifier = Modifier.padding(top = 10.dp),
+            modifier = Modifier.padding(top = 6.dp),
         )
-        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TodayChip(text = state.chips.dueTodayText, alert = state.chips.readFailed)
             state.chips.overdueText?.let { TodayChip(text = it, alert = true) }
         }
@@ -283,7 +325,7 @@ private fun TodayChip(text: String, alert: Boolean) {
     Box(
         Modifier
             .background(if (alert) SoftColors.alertContainer else SoftColors.cardHigh, MaterialTheme.shapes.small)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = 10.dp, vertical = 2.dp),
     ) {
         Text(
             text,
@@ -305,19 +347,23 @@ private fun TileGrid(
     fillRemaining: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    // 6dp between rows, not 8dp - the same height-back-to-the-grid reasoning as HomeContent's own
-    // tightened Spacer (ticket 06's dock).
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    // 4dp between rows (was 8, then 6) - the same height-back-to-the-grid reasoning as
+    // HomeContent's own tightened Spacer (ticket 06's dock, then ticket 07's category row).
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // Declared INSIDE this Column's own body so `.weight(1f)` resolves against ITS
         // ColumnScope receiver, not the caller's - a per-row weight only means something relative
         // to the rows sharing this Column.
-        val rowModifier = if (fillRemaining) {
-            Modifier.fillMaxWidth().weight(1f)
+        // Rows are NOT equal-height any more (ticket 07). The category row took ~60dp, and at equal
+        // weights Money's two-line figure plus its two-line trust disclosure was clipped - a
+        // disclosure must never be (CLAUDE.md sec 4 rules 5 and 7). Weight follows what each row can
+        // carry: Money/Body hold the disclosures, News/Reports only a one-line label.
+        fun rowModifier(weight: Float) = if (fillRemaining) {
+            Modifier.fillMaxWidth().weight(weight)
         } else {
             Modifier.fillMaxWidth().height(96.dp)
         }
 
-        Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(rowModifier(ROW_CALENDAR_WEIGHT), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
                 accent = AreaAccent.CALENDAR,
@@ -335,7 +381,7 @@ private fun TileGrid(
                 onClick = callbacks.onOpenLists,
             )
         }
-        Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(rowModifier(ROW_DISCLOSURE_WEIGHT), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
                 accent = AreaAccent.MONEY,
@@ -355,7 +401,7 @@ private fun TileGrid(
                 onClick = callbacks.onOpenBody,
             )
         }
-        Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(rowModifier(ROW_FLEET_WEIGHT), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
                 accent = AreaAccent.FLEET,
@@ -381,7 +427,7 @@ private fun TileGrid(
                 },
             )
         }
-        Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(rowModifier(ROW_NEWS_WEIGHT), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
                 accent = AreaAccent.NEWS,
@@ -428,7 +474,7 @@ private fun TileCard(
             // card sits in; this gives that back to the STATUS/DISCLOSURE text below rather than
             // to padding, so a two-line disclosure (home-alerts.png) still renders in full instead
             // of overflowing the card's own background into the tile beneath it.
-            .padding(8.dp),
+            .padding(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(

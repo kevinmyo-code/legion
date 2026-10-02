@@ -108,7 +108,7 @@ fun AppDock(slots: List<DockSlotUi>, callbacks: DockCallbacks) {
     var longPressed by remember { mutableStateOf<DockPin?>(null) }
 
     Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp),
+        Modifier.fillMaxWidth().padding(top = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         slots.forEach { slot ->
@@ -140,7 +140,7 @@ private fun RowScope.DockIcon(slot: DockSlotUi, onClick: () -> Unit, onLongClick
         Modifier
             .weight(1f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 4.dp)
+            .padding(vertical = 2.dp)
             .alpha(if (slot.app == null || slot.paused) DOCK_DIMMED_ALPHA else 1f),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

@@ -64,13 +64,17 @@ internal fun SettingsGearMenu(
     }
 }
 
+/** The phone-settings row's tile and glyph (the prototype's blue); LEGION's row uses the app's own accent. */
+private val PhoneTile = Color(0xFF1F3450)
+private val PhoneGlyph = Color(0xFFA8C8FF)
+
 /** The two menu rows, split out so a screenshot can draw them without a popup window. */
 @Composable
 internal fun SettingsMenuItems(onOpenPhoneSettings: () -> Unit, onOpenLegionSettings: () -> Unit) {
     SettingsMenuRow(
         iconRes = R.drawable.ms_smartphone,
-        tileColor = Color(0xFF1F3450),
-        iconColor = Color(0xFFA8C8FF),
+        tileColor = PhoneTile,
+        iconColor = PhoneGlyph,
         title = "Phone settings",
         subtitle = "Wi-Fi, display, battery",
         onClick = onOpenPhoneSettings,
