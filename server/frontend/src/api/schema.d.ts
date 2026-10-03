@@ -890,6 +890,41 @@ export interface paths {
         patch: operations["api_events_partial_update"];
         trace?: never;
     };
+    "/api/events/{id}/skips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET`/`POST /api/events/<id>/skips`. */
+        get: operations["api_events_skips_list"];
+        put?: never;
+        /** @description `GET`/`POST /api/events/<id>/skips`. */
+        post: operations["api_events_skips_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{id}/skips/{skip_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description `DELETE /api/events/<id>/skips/<YYYY-MM-DD>`. */
+        delete: operations["api_events_skips_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/build_entries/": {
         parameters: {
             query?: never;
@@ -2842,6 +2877,7 @@ export interface components {
              */
             server_time: string;
             events?: components["schemas"]["Event"][];
+            event_skips?: components["schemas"]["EventSkip"][];
             checklists?: components["schemas"]["Checklist"][];
             checklist_items?: components["schemas"]["ChecklistItem"][];
             checklist_ticks?: components["schemas"]["ChecklistTick"][];
@@ -3229,6 +3265,20 @@ export interface components {
              *     * `private` - private
              */
             visibility?: components["schemas"]["VisibilityEnum"];
+        };
+        EventSkip: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly event: string;
+            /** Format: date */
+            skip_date: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: date-time */
+            readonly deleted_at: string | null;
         };
         Freshness: {
             sources: components["schemas"]["FreshnessSource"][];
@@ -4657,6 +4707,13 @@ export interface components {
             /** @default  */
             household_name: string;
             device_name: string;
+        };
+        SkipRequest: {
+            /**
+             * Format: date
+             * @description The occurrence's LOCAL date, YYYY-MM-DD, in the zone the series is read in.
+             */
+            skip_date: string;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -6163,7 +6220,7 @@ export interface operations {
     api_changes_retrieve: {
         parameters: {
             query?: {
-                /** @description Comma-separated aspect names. Selects which top-level keys get populated: `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` fills all eight of its tables; `memory` all three. **Omitted or blank means every known aspect.** An unknown name is a 400 naming it - never a silently smaller response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**: this endpoint is not paged and that table held 20,796 rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here is a design, not an empty table. */
+                /** @description Comma-separated aspect names. Selects which top-level keys get populated: `events` fills `events` AND `event_skips`; `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` fills all eight of its tables; `memory` all three. **Omitted or blank means every known aspect.** An unknown name is a 400 naming it - never a silently smaller response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**: this endpoint is not paged and that table held 20,796 rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here is a design, not an empty table. */
                 aspects?: ("events" | "checklists" | "body" | "fleet" | "ingest" | "ledger" | "memory" | "pantry" | "places" | "voice_notes")[];
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
@@ -6174,7 +6231,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One key per TABLE, named for the table, each holding every row changed at or after `since` with tombstones included, oldest first. **Not paged**: a large first pull should use the per-table `?since=` routes, which are. In `events`, `checklists`, `checklist_items` and `checklist_ticks`, a row private to another member (or under a parent that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at` and `redacted: true`, nothing else (ADR 0052). */
+            /** @description One key per TABLE, named for the table, each holding every row changed at or after `since` with tombstones included, oldest first. **Not paged**: a large first pull should use the per-table `?since=` routes, which are. In `events`, `event_skips`, `checklists`, `checklist_items` and `checklist_ticks`, a row private to another member (or under a parent that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at` and `redacted: true`, nothing else (ADR 0052). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6796,6 +6853,133 @@ export interface operations {
             };
             /** @description Nothing was changed: this member may not make the event private. `detail` is the sentence to show: "Only the person who added this can make it private." */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_events_skips_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every skip of this event, tombstones included (a client filters `deleted_at` itself), by date. Not paged: a series has few. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSkip"][];
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_events_skips_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkipRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["SkipRequest"];
+                "multipart/form-data": components["schemas"]["SkipRequest"];
+            };
+        };
+        responses: {
+            /** @description That date was already skipped, and the skip is returned unchanged; or it had been un-skipped and the same row is a skip again. Idempotent on (event, skip_date): a retry never makes a second row. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSkip"];
+                };
+            };
+            /** @description Skipped. A new skip for that date. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSkip"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_events_skips_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                skip_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Un-skipped: the skip is tombstoned, so the occurrence comes back on every replica. Idempotent: no skip on that date is still a 204. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The date in the path is not YYYY-MM-DD. Nothing was changed. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

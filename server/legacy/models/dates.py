@@ -97,6 +97,11 @@ class EventSkip(models.Model):
     )
     skip_date = models.DateField()
     created_at = models.DateTimeField()
+    # web-revamp ticket 08. Added by `ingest/migrations/0013` (SQL in
+    # `api/event_columns.py`), so a skip travels `/api/changes` and DELETE
+    # tombstones it. `updated_at` is stamped by the touch trigger on UPDATE.
+    updated_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(null=True)
 
     household = household_field()
 

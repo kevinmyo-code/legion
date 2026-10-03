@@ -49,8 +49,9 @@ references and no way to see a quarantine.
 
 `aspects` selects which top-level keys get populated - `checklists` pulls
 in `checklists`, `checklist_items`, AND `checklist_ticks` together (they
-are one aspect's three tables, not three aspects), `events` pulls in just
-`events`, `body` pulls in all eight of its tables, `memory` all three,
+are one aspect's three tables, not three aspects), `events` pulls in
+`events` and `event_skips` (web-revamp ticket 08), `body` pulls in all
+eight of its tables, `memory` all three,
 `ledger` its five (three config tables plus `statements` and
 `ledger_transactions`), `pantry` its three, `ingest` its one, and `fleet`
 eleven of its twelve - every one but `obd_samples`, for the reason above.
@@ -73,6 +74,7 @@ from rest_framework.fields import DateTimeField
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.event_skips import EventSkipSerializer
 from api.events import EventSerializer
 from api.registry import SYNCED_ASPECTS, SYNCED_VIEWSETS
 from api.schema import SINCE_PARAMETER, DetailSerializer
@@ -84,7 +86,7 @@ from checklists.serializers import (
     ChecklistTickSerializer,
 )
 from household.tenancy import feed_rows, render_feed, scoped
-from legacy.models.dates import Event
+from legacy.models.dates import Event, EventSkip
 
 # The two hand-written aspects (Phase 2), then everything on the generic
 # shape (Phase 5). Order matters only for the message a 400 prints.
@@ -114,6 +116,7 @@ def _build_changes_serializer() -> type[serializers.Serializer]:
             )
         ),
         "events": EventSerializer(many=True, required=False),
+        "event_skips": EventSkipSerializer(many=True, required=False),
         "checklists": ChecklistSerializer(many=True, required=False),
         "checklist_items": ChecklistItemSerializer(many=True, required=False),
         "checklist_ticks": ChecklistTickSerializer(many=True, required=False),
@@ -134,6 +137,7 @@ ASPECTS_PARAMETER = OpenApiParameter(
     type={"type": "array", "items": {"type": "string", "enum": list(KNOWN_ASPECTS)}},
     description=(
         "Comma-separated aspect names. Selects which top-level keys get populated: "
+        "`events` fills `events` AND `event_skips`; "
         "`checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` "
         "fills all eight of its tables; `memory` all three. **Omitted or blank means every "
         "known aspect.** An unknown name is a 400 naming it - never a silently smaller "
@@ -158,8 +162,8 @@ class ChangesView(APIView):
                     "One key per TABLE, named for the table, each holding every row changed "
                     "at or after `since` with tombstones included, oldest first. **Not "
                     "paged**: a large first pull should use the per-table `?since=` routes, "
-                    "which are. In `events`, `checklists`, `checklist_items` and "
-                    "`checklist_ticks`, a row private to another member (or under a parent "
+                    "which are. In `events`, `event_skips`, `checklists`, `checklist_items` "
+                    "and `checklist_ticks`, a row private to another member (or under a parent "
                     "that is) arrives only as a redacted tombstone: `id`, `deleted_at`, "
                     "`updated_at` and `redacted: true`, nothing else (ADR 0052)."
                 ),
@@ -283,6 +287,11 @@ class ChangesView(APIView):
         # theirs; it carries the later of the two instants.
         if "events" in requested:
             body["events"] = render_feed(feed_rows(Event, request, since), EventSerializer, request)
+            # web-revamp ticket 08: a repeating event's skips travel with it,
+            # tombstones included, and inherit its visibility.
+            body["event_skips"] = render_feed(
+                feed_rows(EventSkip, request, since), EventSkipSerializer, request
+            )
         if "checklists" in requested:
             body["checklists"] = render_feed(
                 feed_rows(Checklist, request, since), ChecklistSerializer, request

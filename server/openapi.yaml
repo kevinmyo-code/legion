@@ -1514,14 +1514,14 @@ paths:
             - places
             - voice_notes
         description: 'Comma-separated aspect names. Selects which top-level keys get
-          populated: `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`;
-          `body` fills all eight of its tables; `memory` all three. **Omitted or blank
-          means every known aspect.** An unknown name is a 400 naming it - never a
-          silently smaller response. **`fleet` fills eleven of its twelve tables and
-          never `obd_samples`**: this endpoint is not paged and that table held 20,796
-          rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at
-          GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here
-          is a design, not an empty table.'
+          populated: `events` fills `events` AND `event_skips`; `checklists` fills
+          `checklists`, `checklist_items` AND `checklist_ticks`; `body` fills all
+          eight of its tables; `memory` all three. **Omitted or blank means every
+          known aspect.** An unknown name is a 400 naming it - never a silently smaller
+          response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**:
+          this endpoint is not paged and that table held 20,796 rows on 2026-09-07,
+          so telemetry has its own paged, per-vehicle route at GET /api/fleet/obd_samples/?vehicle=<uuid>&since=
+          instead. Its absence here is a design, not an empty table.'
         explode: false
         style: form
       - in: query
@@ -1549,10 +1549,10 @@ paths:
           description: 'One key per TABLE, named for the table, each holding every
             row changed at or after `since` with tombstones included, oldest first.
             **Not paged**: a large first pull should use the per-table `?since=` routes,
-            which are. In `events`, `checklists`, `checklist_items` and `checklist_ticks`,
-            a row private to another member (or under a parent that is) arrives only
-            as a redacted tombstone: `id`, `deleted_at`, `updated_at` and `redacted:
-            true`, nothing else (ADR 0052).'
+            which are. In `events`, `event_skips`, `checklists`, `checklist_items`
+            and `checklist_ticks`, a row private to another member (or under a parent
+            that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at`
+            and `redacted: true`, nothing else (ADR 0052).'
         '400':
           content:
             application/json:
@@ -2241,6 +2241,134 @@ paths:
         '204':
           description: Done. Soft-deleted (the tombstone row stays so an unsynced
             client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/events/{id}/skips:
+    get:
+      operationId: api_events_skips_list
+      description: '`GET`/`POST /api/events/<id>/skips`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - events
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventSkip'
+          description: 'Every skip of this event, tombstones included (a client filters
+            `deleted_at` itself), by date. Not paged: a series has few.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+    post:
+      operationId: api_events_skips_create
+      description: '`GET`/`POST /api/events/<id>/skips`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - events
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkipRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SkipRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SkipRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSkip'
+          description: Skipped. A new skip for that date.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSkip'
+          description: 'That date was already skipped, and the skip is returned unchanged;
+            or it had been un-skipped and the same row is a skip again. Idempotent
+            on (event, skip_date): a retry never makes a second row.'
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/events/{id}/skips/{skip_date}:
+    delete:
+      operationId: api_events_skips_destroy
+      description: '`DELETE /api/events/<id>/skips/<YYYY-MM-DD>`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: skip_date
+        schema:
+          type: string
+        required: true
+      tags:
+      - events
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: 'Un-skipped: the skip is tombstoned, so the occurrence comes
+            back on every replica. Idempotent: no skip on that date is still a 204.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The date in the path is not YYYY-MM-DD. Nothing was changed.
         '404':
           content:
             application/json:
@@ -6562,6 +6690,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Event'
+        event_skips:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventSkip'
         checklists:
           type: array
           items:
@@ -7465,6 +7597,40 @@ components:
       - id
       - provenance
       - title
+      - updated_at
+    EventSkip:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        event:
+          type: string
+          format: uuid
+          readOnly: true
+        skip_date:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - event
+      - id
+      - skip_date
       - updated_at
     Freshness:
       type: object
@@ -10374,6 +10540,16 @@ components:
       - device_name
       - email
       - password
+    SkipRequest:
+      type: object
+      properties:
+        skip_date:
+          type: string
+          format: date
+          description: The occurrence's LOCAL date, YYYY-MM-DD, in the zone the series
+            is read in.
+      required:
+      - skip_date
     SleepLog:
       type: object
       description: |-

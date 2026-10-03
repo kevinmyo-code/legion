@@ -1,0 +1,692 @@
+{
+  "_doc": [
+    "Shared recurrence vectors (web-revamp spec D4). One algorithm, three readers: the phone's app/src/main/java/com/kevin/legion/notes/Recurrence.kt (the reference), server/api/recurrence.py (tests/test_recurrence.py) and the web's src/lib/recurrence.ts.",
+    "Each vector is transcribed from the Kotlin test it names, its fixture rebuilt the way the engine stores an event: starts_at is an instant, the repeat_* fields are the events columns.",
+    "tz is the IANA zone the expansion runs in. skips are LOCAL dates in that zone. window is inclusive at both ends, in instants. expected is every occurrence in order, as LOCAL wall-clock date and time in tz (YYYY-MM-DDTHH:MM); its first ten characters are the local date."
+  ],
+  "vectors": [
+    {
+      "name": "daily-every-1",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: daily every 1 day fires every day in the window",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-05T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-01T00:00",
+        "2026-08-02T00:00",
+        "2026-08-03T00:00",
+        "2026-08-04T00:00",
+        "2026-08-05T00:00"
+      ]
+    },
+    {
+      "name": "daily-every-3",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: daily every 3 days skips the ones in between",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 3,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-10T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-01T00:00",
+        "2026-08-04T00:00",
+        "2026-08-07T00:00",
+        "2026-08-10T00:00"
+      ]
+    },
+    {
+      "name": "daily-not-before-start",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: daily never yields a date before the series start",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-05T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-05T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-05T00:00"
+      ]
+    },
+    {
+      "name": "weekly-mon-wed-fri",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: weekly every 1 week fires on each chosen weekday",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-03T00:00:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 1,
+        "repeat_days_of_week": "MONDAY,WEDNESDAY,FRIDAY",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-03T00:00:00Z",
+        "end": "2026-08-14T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-03T00:00",
+        "2026-08-05T00:00",
+        "2026-08-07T00:00",
+        "2026-08-10T00:00",
+        "2026-08-12T00:00",
+        "2026-08-14T00:00"
+      ]
+    },
+    {
+      "name": "weekly-every-2",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: weekly every 2 weeks skips the alternating week entirely",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-03T00:00:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 2,
+        "repeat_days_of_week": "MONDAY",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-03T00:00:00Z",
+        "end": "2026-09-14T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-03T00:00",
+        "2026-08-17T00:00",
+        "2026-08-31T00:00",
+        "2026-09-14T00:00"
+      ]
+    },
+    {
+      "name": "weekly-not-before-start-in-first-week",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: weekly excludes a day-of-week date earlier in the start week than the start date",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-05T00:00:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 1,
+        "repeat_days_of_week": "MON,WED",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-12T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-05T00:00",
+        "2026-08-10T00:00",
+        "2026-08-12T00:00"
+      ]
+    },
+    {
+      "name": "weekly-no-days",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: weekly with an empty day set yields nothing rather than hanging",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-03T00:00:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 1,
+        "repeat_days_of_week": "",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-12-31T00:00:00Z"
+      },
+      "expected": []
+    },
+    {
+      "name": "monthly-on-15",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: monthly on date fires the same day-of-month each interval",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-15T00:00:00Z",
+        "repeat_kind": "MONTHLY_ON_DATE",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": 15,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-11-01T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-15T00:00",
+        "2026-09-15T00:00",
+        "2026-10-15T00:00"
+      ]
+    },
+    {
+      "name": "monthly-31-clamps",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: monthly on date 31 in a 30-day month fires on that month's last day, not next month's 1st",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-03-31T00:00:00Z",
+        "repeat_kind": "MONTHLY_ON_DATE",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": 31,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-03-01T00:00:00Z",
+        "end": "2026-06-30T00:00:00Z"
+      },
+      "expected": [
+        "2026-03-31T00:00",
+        "2026-04-30T00:00",
+        "2026-05-31T00:00",
+        "2026-06-30T00:00"
+      ]
+    },
+    {
+      "name": "monthly-every-2",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: monthly every 2 months skips the interleaving month",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-01-10T00:00:00Z",
+        "repeat_kind": "MONTHLY_ON_DATE",
+        "repeat_every": 2,
+        "repeat_days_of_week": null,
+        "repeat_day": 10,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-05-31T00:00:00Z"
+      },
+      "expected": [
+        "2026-01-10T00:00",
+        "2026-03-10T00:00",
+        "2026-05-10T00:00"
+      ]
+    },
+    {
+      "name": "yearly",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: yearly fires once a year on the same month and day",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2024-06-15T00:00:00Z",
+        "repeat_kind": "YEARLY",
+        "repeat_every": null,
+        "repeat_days_of_week": null,
+        "repeat_day": 15,
+        "repeat_month": 6,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2024-01-01T00:00:00Z",
+        "end": "2027-01-01T00:00:00Z"
+      },
+      "expected": [
+        "2024-06-15T00:00",
+        "2025-06-15T00:00",
+        "2026-06-15T00:00"
+      ]
+    },
+    {
+      "name": "yearly-feb-29-clamps",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: yearly Feb 29 in a common year fires on Feb 28",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2024-02-29T00:00:00Z",
+        "repeat_kind": "YEARLY",
+        "repeat_every": null,
+        "repeat_days_of_week": null,
+        "repeat_day": 29,
+        "repeat_month": 2,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2024-01-01T00:00:00Z",
+        "end": "2026-12-31T00:00:00Z"
+      },
+      "expected": [
+        "2024-02-29T00:00",
+        "2025-02-28T00:00",
+        "2026-02-28T00:00"
+      ]
+    },
+    {
+      "name": "end-never",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: end Never keeps generating up to the window bound",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-01-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-01-03T00:00:00Z"
+      },
+      "expected": [
+        "2026-01-01T00:00",
+        "2026-01-02T00:00",
+        "2026-01-03T00:00"
+      ]
+    },
+    {
+      "name": "end-on-date-inclusive",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: end OnDate stops generating after the cutoff date, inclusive",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-01-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "ON_DATE",
+        "repeat_end_date": "2026-01-05",
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-01-31T00:00:00Z"
+      },
+      "expected": [
+        "2026-01-01T00:00",
+        "2026-01-02T00:00",
+        "2026-01-03T00:00",
+        "2026-01-04T00:00",
+        "2026-01-05T00:00"
+      ]
+    },
+    {
+      "name": "end-after-count",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: end AfterCount stops after exactly n occurrences regardless of the query window",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-01-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "AFTER_COUNT",
+        "repeat_end_date": null,
+        "repeat_end_count": 3
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-12-31T00:00:00Z"
+      },
+      "expected": [
+        "2026-01-01T00:00",
+        "2026-01-02T00:00",
+        "2026-01-03T00:00"
+      ]
+    },
+    {
+      "name": "end-after-count-window-later",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: end AfterCount with a window entirely after the series ends returns nothing",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-01-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "AFTER_COUNT",
+        "repeat_end_date": null,
+        "repeat_end_count": 3
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-06-01T00:00:00Z",
+        "end": "2026-06-30T00:00:00Z"
+      },
+      "expected": []
+    },
+    {
+      "name": "skip-subtracted",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: a skipped date is subtracted during expansion, not present in the result",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [
+        "2026-08-03"
+      ],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-05T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-01T00:00",
+        "2026-08-02T00:00",
+        "2026-08-04T00:00",
+        "2026-08-05T00:00"
+      ]
+    },
+    {
+      "name": "skip-counts-toward-after-count",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: a skipped occurrence still counts toward an AfterCount limit",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "AFTER_COUNT",
+        "repeat_end_date": null,
+        "repeat_end_count": 5
+      },
+      "skips": [
+        "2026-08-03"
+      ],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-12-31T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-01T00:00",
+        "2026-08-02T00:00",
+        "2026-08-04T00:00",
+        "2026-08-05T00:00"
+      ]
+    },
+    {
+      "name": "every-zero",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: an every of 0 or less yields nothing rather than looping forever",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-01T00:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 0,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-31T00:00:00Z"
+      },
+      "expected": []
+    },
+    {
+      "name": "time-of-day-kept",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt :: a time of day on startsAt is preserved on every later occurrence",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-01T18:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-08-03T00:00:00Z"
+      },
+      "expected": [
+        "2026-08-01T18:00",
+        "2026-08-02T18:00"
+      ]
+    },
+    {
+      "name": "weekly-monday-east-of-utc",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceZoneTest.kt :: weekly Monday stays on Monday east of UTC",
+      "tz": "Asia/Tokyo",
+      "series": {
+        "starts_at": "2026-08-09T15:30:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 1,
+        "repeat_days_of_week": "MONDAY",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-09T15:30:00Z",
+        "end": "2026-09-08T15:30:00Z"
+      },
+      "expected": [
+        "2026-08-10T00:30",
+        "2026-08-17T00:30",
+        "2026-08-24T00:30",
+        "2026-08-31T00:30",
+        "2026-09-07T00:30"
+      ]
+    },
+    {
+      "name": "weekly-monday-west-of-utc",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceZoneTest.kt :: weekly Monday stays on Monday west of UTC",
+      "tz": "America/Los_Angeles",
+      "series": {
+        "starts_at": "2026-08-11T06:30:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 1,
+        "repeat_days_of_week": "MONDAY",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-11T06:30:00Z",
+        "end": "2026-09-10T06:30:00Z"
+      },
+      "expected": [
+        "2026-08-10T23:30",
+        "2026-08-17T23:30",
+        "2026-08-24T23:30",
+        "2026-08-31T23:30",
+        "2026-09-07T23:30"
+      ]
+    },
+    {
+      "name": "monthly-1st-east-of-utc",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceZoneTest.kt :: monthly on the 1st stays on the 1st east of UTC",
+      "tz": "Asia/Tokyo",
+      "series": {
+        "starts_at": "2026-08-31T15:30:00Z",
+        "repeat_kind": "MONTHLY_ON_DATE",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": 1,
+        "repeat_month": null,
+        "repeat_end_kind": "AFTER_COUNT",
+        "repeat_end_date": null,
+        "repeat_end_count": 3
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-31T15:30:00Z",
+        "end": "2026-12-29T15:30:00Z"
+      },
+      "expected": [
+        "2026-09-01T00:30",
+        "2026-10-01T00:30",
+        "2026-11-01T00:30"
+      ]
+    },
+    {
+      "name": "daily-7am-across-dst",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceZoneTest.kt :: a daily 7am reminder stays at 7am across a DST transition",
+      "tz": "America/Chicago",
+      "series": {
+        "starts_at": "2026-03-06T13:00:00Z",
+        "repeat_kind": "DAILY",
+        "repeat_every": 1,
+        "repeat_days_of_week": null,
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "AFTER_COUNT",
+        "repeat_end_date": null,
+        "repeat_end_count": 6
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-03-06T13:00:00Z",
+        "end": "2026-03-16T13:00:00Z"
+      },
+      "expected": [
+        "2026-03-06T07:00",
+        "2026-03-07T07:00",
+        "2026-03-08T07:00",
+        "2026-03-09T07:00",
+        "2026-03-10T07:00",
+        "2026-03-11T07:00"
+      ]
+    },
+    {
+      "name": "same-series-read-in-tokyo",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceZoneTest.kt :: the same series read in UTC and in a device zone disagree - which is the bug",
+      "tz": "Asia/Tokyo",
+      "series": {
+        "starts_at": "2026-08-09T15:30:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 1,
+        "repeat_days_of_week": "MONDAY",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-09T15:30:00Z",
+        "end": "2026-08-23T15:30:00Z"
+      },
+      "expected": [
+        "2026-08-10T00:30",
+        "2026-08-17T00:30",
+        "2026-08-24T00:30"
+      ]
+    },
+    {
+      "name": "same-series-read-in-utc",
+      "kotlin": "app/src/test/java/com/kevin/legion/notes/RecurrenceZoneTest.kt :: the same series read in UTC and in a device zone disagree - which is the bug",
+      "tz": "UTC",
+      "series": {
+        "starts_at": "2026-08-09T15:30:00Z",
+        "repeat_kind": "WEEKLY",
+        "repeat_every": 1,
+        "repeat_days_of_week": "MONDAY",
+        "repeat_day": null,
+        "repeat_month": null,
+        "repeat_end_kind": "NEVER",
+        "repeat_end_date": null,
+        "repeat_end_count": null
+      },
+      "skips": [],
+      "window": {
+        "start": "2026-08-09T15:30:00Z",
+        "end": "2026-08-23T15:30:00Z"
+      },
+      "expected": [
+        "2026-08-10T15:30",
+        "2026-08-17T15:30"
+      ]
+    }
+  ]
+}

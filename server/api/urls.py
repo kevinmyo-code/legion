@@ -87,6 +87,7 @@ route stays with the registry rather than moving to the tidier prefix.
 from django.urls import path
 
 from api.changes import ChangesView
+from api.event_skips import EventSkipDetailView, EventSkipListCreateView
 from api.events import EventDetailView, EventListCreateView
 from api.fleet import OBD_SAMPLE_PATHS
 from api.registry import SYNCED_VIEWSETS
@@ -95,6 +96,13 @@ from api.synced import synced_paths
 urlpatterns = [
     path("events", EventListCreateView.as_view(), name="event-list-create"),
     path("events/<uuid:pk>", EventDetailView.as_view(), name="event-detail"),
+    # web-revamp ticket 08: "not this one" for a repeating event.
+    path("events/<uuid:pk>/skips", EventSkipListCreateView.as_view(), name="event-skip-list"),
+    path(
+        "events/<uuid:pk>/skips/<str:skip_date>",
+        EventSkipDetailView.as_view(),
+        name="event-skip-detail",
+    ),
     path("changes", ChangesView.as_view(), name="changes"),
 ]
 
