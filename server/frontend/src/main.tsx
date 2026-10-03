@@ -4,6 +4,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './index.css'
+import { installReloadOnUpdate } from './lib/sw-reload'
 import { applyTheme, watchSystemTheme } from './lib/theme'
 import { routeTree } from './routeTree.gen'
 
@@ -12,6 +13,10 @@ import { routeTree } from './routeTree.gen'
 // is System.
 applyTheme()
 watchSystemTheme()
+
+// A deploy's new service worker takes over open pages at once; reload into its
+// bundle, never over unsaved input (`lib/sw-reload.ts`).
+installReloadOnUpdate()
 
 const router = createRouter({ routeTree })
 
