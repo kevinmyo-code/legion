@@ -974,11 +974,10 @@ class GeminiLiveSession(
                 // ai.google.dev/gemini-api/docs/live-guide.
                 put("enableAffectiveDialog", true)
             })
-            // 2026-10-02: proactive audio - the model may decline to answer speech that is not
-            // addressed to it (road noise, other people in the room). Docs: ai.google.dev/api/live
-            // ("If enabled, the model can reject responding to the last prompt"). The SDK maps it
-            // to setup.proactivity, same as here.
-            put("proactivity", JSONObject().put("proactiveAudio", true))
+            // No `proactivity` (proactive audio) here. Added 2026-10-02 and rejected by the server
+            // the same day on this v1beta endpoint and model: "Unknown name \"proactivity\" at
+            // 'setup': Cannot find field", which closed every socket before setupComplete and
+            // killed voice. Seen in the A25's logcat, not inferred. LiveSetupFlagsTest pins it out.
             put("systemInstruction", JSONObject().put(
                 "parts", JSONArray().put(JSONObject().put("text", systemInstruction))
             ))
