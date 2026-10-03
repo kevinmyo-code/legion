@@ -32,7 +32,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
@@ -74,7 +73,6 @@ data class CategoryButtonSpec(
     val label: String,
     val description: String,
     val unset: Boolean,
-    val badge: Int?,
     val dimmed: Boolean,
 )
 
@@ -89,19 +87,18 @@ internal fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
             label = category.short,
             description = "${category.title}, not set up. Tap to choose apps.",
             unset = true,
-            badge = null,
             dimmed = false,
         )
         slots.size == 1 -> {
             val slot = slots.single()
             when {
                 slot.app == null -> CategoryButtonSpec(
-                    "Not installed", "${category.title}, the picked app is not installed", false, null, true,
+                    "Not installed", "${category.title}, the picked app is not installed", false, true,
                 )
                 slot.paused -> CategoryButtonSpec(
-                    "Paused", "${category.title}, ${slot.label} is paused with the work profile", false, null, true,
+                    "Paused", "${category.title}, ${slot.label} is paused with the work profile", false, true,
                 )
-                else -> CategoryButtonSpec(category.short, "${category.title}, opens ${slot.label}", false, null, false)
+                else -> CategoryButtonSpec(category.short, "${category.title}, opens ${slot.label}", false, false)
             }
         }
         else -> {
@@ -111,7 +108,6 @@ internal fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
                 description = "${category.title}, ${slots.size} apps, asks which to open" +
                     if (allDown) ". None of them can open right now." else "",
                 unset = false,
-                badge = slots.size,
                 dimmed = allDown,
             )
         }
@@ -238,22 +234,6 @@ private fun CategoryButton(
                     tint = if (spec.unset) SoftColors.text3 else look.glyph,
                     size = 20.dp,
                 )
-            }
-            spec.badge?.let { count ->
-                Box(
-                    Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(SoftColors.primary),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        count.toString(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SoftColors.ground,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
             }
         }
         Text(
