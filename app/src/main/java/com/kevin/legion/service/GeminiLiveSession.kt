@@ -627,6 +627,7 @@ class GeminiLiveSession(
         // Undo any previous teardown's latch before the consumer starts pulling chunks, then
         // pre-warm the output path so the first chunk plays without AudioTrack setup latency.
         reopenPlayback()
+        AssistantCueBridge.register(cueHold)
         io.launch { ensureTrack() }
         // Consumer for audioQueue - see its declaration for why playback runs on
         // its own coroutine instead of inline in the WebSocket callback.
@@ -2095,6 +2096,9 @@ class GeminiLiveSession(
                 // capturing may have flipped false during the blocking read; only
                 // forward audio that belongs to an active turn.
                 if (!capturing) continue
+                // A navigation turn cue is being said (or its tail is still playing): what the mic
+                // hears is the cue, not the user, so none of it goes to the model ([cueHold]).
+                if (cue.micHeld) continue
                 bytesThisTurn += n
                 bytesSinceOpen += n
                 val b64 = Base64.encodeToString(buffer, 0, n, Base64.NO_WRAP)
@@ -2213,7 +2217,9 @@ class GeminiLiveSession(
         val track = synchronized(trackLock) {
             val t = ensureTrackLocked() ?: return
             try {
-                if (t.playState != AudioTrack.PLAYSTATE_PLAYING) t.play()
+                // Not while a navigation turn cue holds playback paused ([cueHold]); the chunk is
+                // still written and waits in the buffer, and [releaseAfterCue] resumes it.
+                if (t.playState != AudioTrack.PLAYSTATE_PLAYING && !cue.playbackPaused) t.play()
             } catch (_: IllegalStateException) {
                 // Lost the race anyway (released between the null check and play()). Dropping the
                 // chunk is correct: the only reason this track is gone is that the driver
@@ -2271,7 +2277,7 @@ class GeminiLiveSession(
                 try {
                     track.pause()
                     track.flush()
-                    track.play()
+                    if (!cue.playbackPaused) track.play()
                     // flush() resets the playback head to 0, so the frame counter it's
                     // compared against has to reset with it or awaitPlaybackDrained
                     // would wait for frames that will never play.
@@ -2354,10 +2360,52 @@ class GeminiLiveSession(
         delay(MIC_REOPEN_SETTLE_MS)
     }
 
+    // --- Navigation turn cues (mapbox-nav tickets 05 and 11) -----------------------------------
+
+    /** What a cue is holding right now; see [CueHoldState]. Playback flag is written under [trackLock]. */
+    private val cue = CueHoldState()
+
+    // An object property rather than the class implementing the interface: detekt's baseline keys a
+    // class-level entry on the class declaration's exact text, and adding a supertype would have
+    // changed it and un-baselined this class's existing findings.
+    private val cueHold = object : AssistantCueHold {
+        override fun holdForCue() {
+            synchronized(trackLock) {
+                cue.hold()
+                try {
+                    audioTrack?.takeIf { it.playState == AudioTrack.PLAYSTATE_PLAYING }?.pause()
+                } catch (_: IllegalStateException) {
+                    // Released under us: nothing is playing, so there is nothing to hold.
+                }
+            }
+        }
+
+        override fun releaseAfterCue() {
+            val token = synchronized(trackLock) {
+                val t = cue.release()
+                try {
+                    audioTrack?.takeIf { it.playState == AudioTrack.PLAYSTATE_PAUSED }?.play()
+                } catch (_: IllegalStateException) {
+                    // Released under us, same as above.
+                }
+                t
+            }
+            // The assistant's resumed tail would otherwise be heard by the open mic as the user, so the
+            // gate outlasts the cue until playback has drained (or the session is gone).
+            io.launch {
+                awaitPlaybackDrained()
+                cue.drained(token)
+            }
+        }
+    }
+
     private fun releaseTrack() = synchronized(trackLock) {
         // Set the flag BEFORE releasing: a playback coroutine that is between chunks must see
         // "closed" rather than a null track it would rebuild for a dead session ([playbackClosed]).
         playbackClosed = true
+        // A closed session can no longer be held for a cue, and must not stay the registered one.
+        AssistantCueBridge.unregister(cueHold)
+        cue.reset()
         audioTrack?.let { track ->
             try {
                 track.pause()

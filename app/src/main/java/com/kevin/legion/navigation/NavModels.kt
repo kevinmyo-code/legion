@@ -97,7 +97,7 @@ data class NavState(
     val routes: List<NavRouteInfo> = emptyList(),
     val selectedRoute: Int = 0,
     val avoid: Set<AvoidKind> = emptySet(),
-    /** Turn cues muted (state only; speaking cues is ticket 11). Survives a trip. */
+    /** Turn cues muted: `NavCueSpeaker` speaks no cue while true; the assistant is untouched. Survives a trip. */
     val muted: Boolean = false,
     val camera: NavCameraMode = NavCameraMode.FOLLOWING,
     val rerouting: Boolean = false,

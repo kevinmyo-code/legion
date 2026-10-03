@@ -28,6 +28,7 @@ import com.mapbox.navigation.core.trip.session.LocationMatcherResult
 import com.mapbox.navigation.core.trip.session.LocationObserver
 import com.mapbox.navigation.core.trip.session.RouteProgressObserver
 import com.mapbox.navigation.core.trip.session.TripSessionState
+import com.mapbox.navigation.core.trip.session.VoiceInstructionsObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -151,8 +152,16 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         }
     }
 
+    // Ticket 05: the SDK decides WHAT and WHEN; LEGION's own speech path says it (`NavCueSpeaker`).
+    // `announcement()` is plain text, in the voice units the route options asked for. Mapbox's own
+    // voice player is never created, so there is no second, uncoordinated voice.
+    private val voiceObserver = VoiceInstructionsObserver { voice ->
+        voice.announcement()?.takeIf { it.isNotBlank() }?.let { listener?.onVoiceInstruction(it) }
+    }
+
     init {
         nav.registerRouteProgressObserver(progressObserver)
+        nav.registerVoiceInstructionsObserver(voiceObserver)
         nav.registerLocationObserver(locationObserver)
         nav.registerRoutesObserver(routesObserver)
         nav.registerArrivalObserver(arrivalObserver)
@@ -240,6 +249,7 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         nav.unregisterLocationObserver(locationObserver)
         nav.unregisterRoutesObserver(routesObserver)
         nav.unregisterArrivalObserver(arrivalObserver)
+        nav.unregisterVoiceInstructionsObserver(voiceObserver)
         nav.getRerouteController()?.unregisterRerouteStateObserver(rerouteObserver)
         feed.clear()
         listener = null

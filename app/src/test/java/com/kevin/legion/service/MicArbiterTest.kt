@@ -229,9 +229,40 @@ class MicArbiterTest {
                 MicArbiter.Claimant.LIVE_TURN,
                 MicArbiter.Claimant.RING_LISTENING,
                 MicArbiter.Claimant.VOICE_NOTE,
+                // Inserted by mapbox-nav ticket 11: below every conversation-shaped claimant, above the wake word.
+                MicArbiter.Claimant.NAV_CUE,
                 MicArbiter.Claimant.WAKE_WORD,
             ),
             all,
         )
+    }
+
+    // ------------------------------------------------------------------ NAV_CUE (mapbox-nav ticket 11)
+
+    @Test
+    fun `a navigation cue takes the mic from the wake word but never from anything else`() {
+        val cue = MicArbiter.Claimant.NAV_CUE
+        MicArbiter.request(MicArbiter.Claimant.WAKE_WORD)
+        assertTrue("the cue would otherwise be heard by the wake recognizer", MicArbiter.request(cue))
+        assertEquals(cue, MicArbiter.current())
+
+        listOf(
+            MicArbiter.Claimant.LIVE_TURN,
+            MicArbiter.Claimant.RING_LISTENING,
+            MicArbiter.Claimant.VOICE_NOTE,
+        ).forEach { holder ->
+            releaseAll()
+            MicArbiter.request(holder)
+            assertFalse("a cue must never preempt $holder (a live turn would be stopped)", MicArbiter.request(cue))
+            assertEquals(holder, MicArbiter.current())
+        }
+    }
+
+    @Test
+    fun `the wake word cannot take the mic back from a cue while it is being said`() {
+        MicArbiter.request(MicArbiter.Claimant.NAV_CUE)
+        assertFalse(MicArbiter.request(MicArbiter.Claimant.WAKE_WORD))
+        MicArbiter.release(MicArbiter.Claimant.NAV_CUE)
+        assertTrue("after the cue it retries and gets it", MicArbiter.request(MicArbiter.Claimant.WAKE_WORD))
     }
 }

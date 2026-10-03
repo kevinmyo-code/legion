@@ -76,6 +76,13 @@ class MapboxNavController(
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<NavState> = _state.asStateFlow()
 
+    /**
+     * Where a turn cue's text goes (ticket 05, ticket 11): `NavCueSpeaker`, which owns speaking it.
+     * Set once by the Application. Only a cue that arrives while a session should be running is
+     * forwarded, so a late callback after [end] or arrival speaks nothing.
+     */
+    var cueSink: ((String) -> Unit)? = null
+
     private fun initialState(muted: Boolean = false): NavState =
         NavFormat.stateForToken(tokens.state.value)?.copy(muted = muted)
             ?: NavState(NavPhase.IDLE, "Ready. ${NavFormat.NOTHING_NAVIGATING}", muted = muted)
@@ -556,8 +563,8 @@ class MapboxNavController(
     }
 
     /**
-     * Turn cues muted or not. **State only**: speaking cues is ticket 11 and never touches the
-     * assistant's own voice.
+     * Turn cues muted or not. **Silences cues only, never the assistant** (ticket 05): `NavCueSpeaker`
+     * reads this flag, and stops a cue already speaking when it flips on.
      */
     fun setMuted(muted: Boolean): NavResult {
         _state.value = _state.value.copy(muted = muted)
@@ -730,6 +737,21 @@ class MapboxNavController(
         }
     }
 
+    override fun onVoiceInstruction(text: String) {
+        if (!guard.sessionShouldRun) return
+        cueSink?.invoke(text)
+    }
+
+    /**
+     * Speech for turn cues is not available on this phone (no text-to-speech engine). The banner
+     * still shows every turn, so the trip is fine; this says in words why nothing is spoken, once.
+     */
+    fun noteCuesUnspoken() {
+        val s = _state.value
+        if (guard.phase != NavPhase.GUIDING || s.notice != null) return
+        _state.value = s.copy(notice = CUES_UNSPOKEN)
+    }
+
     override fun onArrival() {
         val s = _state.value
         if (!guard.arrived()) return
@@ -813,6 +835,7 @@ class MapboxNavController(
         const val REPLACED_PICK = "Changing the trip asked Mapbox for a fresh route, so the alternative you " +
             "picked was replaced by its fastest route. Pick again if you want a different one."
         const val MS_PER_S = 1000.0
+        const val CUES_UNSPOKEN = "Spoken turn cues are not available on this phone, so turns show on screen only."
 
         /** About 100 m: a requested stop comes back from Directions at the coordinates it was given. */
         const val WAYPOINT_TOLERANCE = 1e-3

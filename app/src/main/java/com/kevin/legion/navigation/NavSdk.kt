@@ -34,6 +34,13 @@ interface NavSdkListener {
     fun onReroute(state: RerouteStatus, message: String?)
 
     fun onArrival()
+
+    /**
+     * The text of a spoken turn cue, at the moment Mapbox times it (`VoiceInstructionsObserver`,
+     * `announcement()`, already in the seam's unit system). LEGION speaks it (ticket 05); Mapbox's own
+     * voice player is never wired.
+     */
+    fun onVoiceInstruction(text: String)
 }
 
 enum class RerouteStatus { IDLE, FETCHING, FAILED }
