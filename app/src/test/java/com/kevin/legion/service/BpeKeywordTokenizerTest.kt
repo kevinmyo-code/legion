@@ -29,27 +29,26 @@ class BpeKeywordTokenizerTest {
     }
 
     @Test
-    fun `a name becomes a hey line and the fixed phrase stays`() {
+    fun `a name becomes the single hey line`() {
         val r = WakeKeywords.build("Alfred", tokenizer) as WakeKeywords.Result.Ok
         val lines = r.fileText.trim().lines()
-        assertEquals(2, lines.size)
-        assertTrue(lines[0].endsWith("@excelsior"))
-        assertTrue(lines[1].endsWith("@hey_alfred"))
-        assertTrue(lines[1].startsWith("▁HE"))
+        assertEquals(1, lines.size)
+        assertTrue(lines[0].endsWith("@hey_alfred"))
+        assertTrue(lines[0].startsWith("▁HE"))
     }
 
     @Test
-    fun `excelsior is representable and printed for the A25 log`() {
-        val tokens = tokenizer.tokensOf("excelsior")
+    fun `hey alfred is representable`() {
+        val tokens = tokenizer.tokensOf("hey alfred")
         assertNotNull(tokens)
-        println("EXCELSIOR_TOKENS=" + tokens!!.joinToString(" "))
-        assertTrue(tokens.none { it == "<unk>" })
+        assertTrue(tokens!!.none { it == "<unk>" })
     }
 
     @Test
-    fun `a blank name still yields the fixed phrase and never an empty file`() {
-        val r = WakeKeywords.build("  ", tokenizer) as WakeKeywords.Result.Ok
-        assertEquals(1, r.fileText.trim().lines().size)
+    fun `a blank name is refused in words and never an empty file`() {
+        val r = WakeKeywords.build("  ", tokenizer)
+        assertTrue(r is WakeKeywords.Result.Refused)
+        assertTrue((r as WakeKeywords.Result.Refused).reason.contains("no companion name"))
     }
 
     @Test

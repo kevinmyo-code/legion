@@ -31,7 +31,7 @@ object VoiceGuideData {
         val entries: List<Entry>,
     )
 
-    val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"Excelsior\" if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
+    val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"hey\" and your companion's name if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
 
     val GROUPS: List<Group> = listOf(
         Group(

@@ -6035,3 +6035,12 @@ Vosk grammar over the buffered ~2 s before Gemini opens. A hit Vosk rejects is l
 - **On-device tokenisation**: sherpa's text2token is Python; `BpeKeywordTokenizer` reads the model's
   SentencePiece file and segments by best score (greedy BPE merging did NOT reproduce the reference).
 - Setting `WakeWordPreferences.useTwoStage` (default on) falls back to Vosk-only.
+
+## 2026-10-03 - "Excelsior" dropped; the wake phrase is "hey <companion name>" only
+
+Kevin: "just keep hey alfred." On-device (A25 logcat, 2026-10-03) "excelsior" never fired, under
+Vosk-only (11:40-12:33) or the two-stage spotter (12:34:01: VAD on, no KWS hit), while "hey alfred"
+fired first try (12:34:13: KWS hit, confirm accept, Gemini opened). Supersedes the 2026-09-10 entry
+above for the wake half; "that will be all" sleeps unchanged. `WakePhrases.WAKE` is gone;
+`grammar(name)` is `["hey <name>"]`, or EMPTY for a blank name. Wake-word ticket 09's rule is
+live again: `WakeWordEngine.start` and `WakeKeywords.build` refuse a blank name in words.

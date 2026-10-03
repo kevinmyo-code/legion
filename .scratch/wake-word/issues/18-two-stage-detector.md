@@ -52,3 +52,10 @@ the CPU:
 - On the A25: trigger rate on the real phrase across 20 tries in a quiet room and with music; false
   opens over 30 minutes of TV; battery overnight with it on versus the 2026-10-03 baseline of about
   21 mA idle with the wake word off (ticket 03's measurement).
+
+## Changed 2026-10-03
+
+"Excelsior" was dropped as a wake phrase (Kevin: "just keep hey alfred"). On the A25 it never fired
+under Vosk-only or the two-stage spotter, while "hey alfred" fired first try (12:34:13: KWS hit,
+confirm accept, Gemini opened). The keywords file is now the single line "hey <name>"; a blank
+name is refused in words (ticket 09's rule restored).

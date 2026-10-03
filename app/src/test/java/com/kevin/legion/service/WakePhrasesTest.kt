@@ -16,36 +16,24 @@ class WakePhrasesTest {
     // --- grammar ----------------------------------------------------------
 
     @Test
-    fun `grammar always contains the fixed wake phrase`() {
-        assertTrue(WakePhrases.grammar("Alfred").contains("excelsior"))
+    fun `grammar is exactly hey plus the lowercased name`() {
+        assertEquals(listOf("hey alfred"), WakePhrases.grammar("Alfred"))
+        assertEquals(listOf("hey kratos"), WakePhrases.grammar("  KRATOS  "))
     }
 
     /**
-     * The regression that matters most: a blank companion name used to build an EMPTY grammar,
-     * which `WakeWordEngine.start` then had to refuse outright rather than listen for nothing.
-     * The fixed phrase does not depend on a name, so there is always something to listen for now.
+     * Ticket 09 restored (2026-10-03): the only wake phrase needs a name, so a blank name is an
+     * EMPTY grammar, which `WakeWordEngine.start` and `WakeKeywords.build` refuse in words.
      */
     @Test
-    fun `a blank name still yields a usable grammar`() {
-        assertEquals(listOf("excelsior"), WakePhrases.grammar(""))
-        assertEquals(listOf("excelsior"), WakePhrases.grammar("   "))
-    }
-
-    /**
-     * "hey <name>" is retained behind the fixed phrase until the phone confirms "excelsior" is in
-     * the small Vosk model's lexicon. When Kevin confirms it fires, this test is the one that
-     * should be deleted alongside the second grammar entry - it is asserting a temporary state on
-     * purpose, and it should fail loudly if someone removes the fallback without saying so.
-     */
-    @Test
-    fun `the companion name phrase is retained and lowercased`() {
-        assertEquals(listOf("excelsior", "hey dorothy"), WakePhrases.grammar("Dorothy"))
-        assertEquals(listOf("excelsior", "hey kratos"), WakePhrases.grammar("  KRATOS  "))
+    fun `a blank name yields an empty grammar`() {
+        assertEquals(emptyList<String>(), WakePhrases.grammar(""))
+        assertEquals(emptyList<String>(), WakePhrases.grammar("   "))
     }
 
     @Test
-    fun `a companion literally named excelsior does not duplicate the entry`() {
-        assertEquals(listOf("excelsior", "hey excelsior"), WakePhrases.grammar("Excelsior"))
+    fun `excelsior is no longer a wake phrase`() {
+        assertFalse(WakePhrases.grammar("Alfred").contains("excelsior"))
     }
 
     // --- sleep phrase -----------------------------------------------------

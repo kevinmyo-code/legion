@@ -3,11 +3,12 @@ package com.kevin.legion.service
 /**
  * The two fixed phrases that open and close a conversation (Kevin, 2026-09-10).
  *
- * **"Excelsior" wakes. "That will be all" sleeps.** Kevin asked for a summon/dismiss pair out of
- * pop culture rather than the companion's own name: *"instead of hey x name, we have a secret
- * phrase for waking and stopping voice."* The pair he chose is Stan Lee's sign-off for the summon
- * and the canonical butler's dismissal for the release, which suits a roster whose register band
- * is Alfred/JARVIS (CLAUDE.md sec 1).
+ * **"Hey <companion name>" wakes. "That will be all" sleeps.** Kevin tried a fixed pop-culture
+ * wake word ("Excelsior", 2026-09-10) and dropped it 2026-10-03: *"just keep hey alfred."* On the
+ * A25 "excelsior" never fired, under Vosk alone (11:40-12:33) or the two-stage spotter (12:34:01,
+ * VAD on, no KWS hit), while "hey alfred" fired first try (12:34:13: KWS hit, confirm accept,
+ * Gemini opened). The dismissal "that will be all" is unchanged and suits the register band
+ * (CLAUDE.md sec 1).
  *
  * **The two halves are NOT symmetrical, and cannot be.** This is the fact that shapes the whole
  * file, so it is stated before the code rather than discovered later:
@@ -42,18 +43,6 @@ package com.kevin.legion.service
 object WakePhrases {
 
     /**
-     * The wake phrase, lowercase because Vosk grammars and its results both are.
-     *
-     * **A single word, against [WakeWordEngine]'s own two-word rule** (custom-wake-word ticket 07,
-     * 2026-07-19 field data: a bare word false-triggers on ordinary conversation, radio and
-     * podcasts). The exemption is specific rather than a relaxation of the rule: that finding was
-     * about *common short names*, and this is a four-syllable Latinate word that essentially never
-     * occurs in speech. The rule's purpose - do not put something the room says all day into the
-     * grammar - is satisfied by the word itself instead of by a "hey" prefix.
-     */
-    const val WAKE = "excelsior"
-
-    /**
      * The sleep phrase, in the normalised form [normalise] produces, so
      * [isSleepPhrase] compares like with like.
      */
@@ -67,30 +56,18 @@ object WakePhrases {
     private const val SLEEP_CONTRACTED = "that ll be all"
 
     /**
-     * The Vosk grammar: the fixed [WAKE] phrase, plus "hey <companion name>" retained behind it.
+     * The Vosk grammar: exactly one phrase, "hey <companion name>", lowercase because Vosk
+     * grammars and its results both are. The two-word form is the weak-name guardrail from
+     * custom-wake-word ticket 07 (2026-07-19 field data: a bare short name false-triggers on
+     * ordinary conversation, radio and podcasts).
      *
-     * **Retaining the old phrase is deliberate and is meant to be temporary.** Kevin asked for the
-     * fixed phrase *instead of* "hey <name>", and dropping it is a one-line change here. It is
-     * still in the list because the small Vosk model (`vosk-model-small-en-us-0.15`) compiles its
-     * lexicon into the binary FSTs under `graph/`, with no readable word list, so **there is no way
-     * to confirm off the device that "excelsior" is a word this model can recognise at all.** If
-     * it is not, a
-     * grammar containing only [WAKE] listens forever for a phrase nobody can say - the exact
-     * silent failure `WakeWordEngine.buildTargetWords` refuses an empty grammar to avoid, and one
-     * that would look identical to the wake word simply being broken.
-     *
-     * Once Kevin confirms on the phone that "excelsior" fires, delete the second entry. Until
-     * then a known-working phrase sits behind the new one and costs nothing but a grammar slot.
-     *
-     * A blank [companionName] yields a list of just [WAKE] rather than a blank second entry;
-     * `buildTargetWords` no longer has to treat "no name" as "no grammar", because there is now
-     * always a phrase that does not depend on a name.
+     * **A blank [companionName] yields an EMPTY list, deliberately** (wake-word ticket 09):
+     * there is no phrase that does not depend on a name, so [WakeWordEngine.start] and
+     * [WakeKeywords.build] refuse rather than listen forever for a phrase nobody can say.
      */
     fun grammar(companionName: String): List<String> {
-        val words = linkedSetOf(WAKE)
         val name = companionName.trim().lowercase()
-        if (name.isNotBlank()) words.add("hey $name")
-        return words.toList()
+        return if (name.isBlank()) emptyList() else listOf("hey $name")
     }
 
     /**

@@ -35,12 +35,11 @@ import org.vosk.Recognizer
 import java.io.File
 
 /**
- * The shipping wake phrase: **"excelsior"** (Kevin, 2026-09-10), with "hey <companion name>"
- * retained behind it (`.scratch/custom-wake-word/`, `memory/library/decisions.md` 2026-07-19).
- * Vosk with a runtime-reconfigurable grammar, which is what let the phrase be an arbitrary
- * user-chosen name in the first place and is what now lets it be a fixed word instead, with no
- * per-phrase training at build time either way. [WakePhrases] owns both phrases and the reasoning;
- * this engine owns the microphone.
+ * The one wake phrase: **"hey <companion name>"** (`.scratch/custom-wake-word/`,
+ * `memory/library/decisions.md` 2026-07-19; the fixed "excelsior" experiment was dropped
+ * 2026-10-03). Vosk with a runtime-reconfigurable grammar, which is what lets the phrase be an
+ * arbitrary user-chosen name with no per-phrase training at build time. [WakePhrases] owns the
+ * phrases and the reasoning; this engine owns the microphone.
  *
  * **This engine is the WAKE half only.** The matching "that will be all" sleep phrase is not and
  * cannot be a grammar entry here: [MicArbiter] hands the microphone to `LIVE_TURN` the moment a
@@ -277,17 +276,14 @@ object WakeWordEngine {
     }
 
     /**
-     * The grammar phrases, now owned by [WakePhrases.grammar] (Kevin, 2026-09-10): the fixed
-     * "excelsior" wake phrase, with "hey <name>" retained behind it until the phone confirms the
-     * new one fires. Read [WakePhrases]' doc for why the wake half is a Vosk phrase and the sleep
-     * half provably cannot be one, and for the single-word exemption to ticket 07's rule below.
+     * The grammar phrases, owned by [WakePhrases.grammar]: just "hey <name>" (Kevin, 2026-10-03).
+     * Read [WakePhrases]' doc for why the wake half is a Vosk phrase and the sleep half provably
+     * cannot be one.
      *
-     * **A blank name no longer yields an empty list.** [WakePhrases.WAKE] does not depend on a
-     * companion name, so the paragraph below describing an empty grammar now only applies if
-     * someone deletes that constant. [start]'s refusal is kept exactly as it is - a guard that
-     * cannot currently trigger is the cheap half of this; removing it and being wrong is not.
+     * **A blank name yields an empty list and [start] refuses** (ticket 09, restored 2026-10-03
+     * when "excelsior" was dropped; for a while a name-free phrase made this guard unreachable).
      *
-     * The original reasoning, still binding on the "hey <name>" entry:
+     * The original reasoning, still binding:
      *
      * "Hey <name>" - a two-word phrase, not a bare word (custom-wake-word ticket 07,
      * 2026-07-19 field data). A bare single word false-triggers too easily on ordinary
