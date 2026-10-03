@@ -205,11 +205,13 @@ One web client, two surfaces, split by viewport.
   everything shared in their household, and their own private rows". Tenancy stays by household; a
   private row is still in the household and still dies with it.
 - **Schema (Django migrations, additive, nullable):**
-  - `events.owner_user_id` null FK to `household.User`, ON DELETE SET NULL. Null means shared.
+  - `events.owner_user_id` null FK to `household.User`, ON DELETE RESTRICT (a user owning private
+    rows cannot be hard-deleted; SET NULL would make them shared). Null means shared.
   - `checklists.owner_user_id`, same.
   - `events.created_by_id`, `checklists.created_by_id`, `checklist_items.created_by_id`: nullable
-    FK, set server-side from `request.user` on create, never accepted from the body, never on the
-    wire. Used for push attribution and for D3's who-may-make-private rule.
+    FK, ON DELETE SET NULL (attribution only), set server-side from `request.user` on create, never
+    accepted from the body, never on the wire. Used for push attribution and for D3's
+    who-may-make-private rule.
   - Items, ticks and event skips inherit their parent's visibility. No column on them.
   - When a member is removed from the household, their private rows are deleted (tombstoned) in the
     same transaction. A shared row they created stays shared.
@@ -293,6 +295,8 @@ One web client, two surfaces, split by viewport.
 - Accounts key on `account_last4` (scout: nickname splits one card). `label` is the most recent
   server-ingested `account_nickname` for that last4, falling back to "Card ending 7823".
 - `unverified` is true when any contributing row is `UNRECONCILED`. The client renders the word.
+- `complete` is true only when every account active in the month has gated statements covering
+  every day of it, so the current month (provisional activity) is never complete (accepted 2026-10-03).
 - **Parity is a test, not a hope.** `server/tests/test_spend_parity.py` replays the phone's
   `LedgerBudget` / `LedgerTransfers` / `BudgetMonth` unit-test cases as fixtures and must produce the
   same cents. The phone switching to this endpoint is an Android follow-up; until then both compute

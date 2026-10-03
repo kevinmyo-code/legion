@@ -62,13 +62,16 @@ class Event(models.Model):
     # (SQL in `household/visibility_sql.py`), not by Supabase. Null owner is
     # shared; set is private to that member. `created_by` is set from the
     # request on create and never accepted from a body. Neither is ever on
-    # the wire: the serializer renders `visibility` instead. ON DELETE SET
-    # NULL lives in the SQL, so Django is told DO_NOTHING.
+    # the wire: the serializer renders `visibility` instead. The owner is
+    # ON DELETE RESTRICT in the SQL (`ingest/migrations/0014`): a user who
+    # owns private rows cannot be hard-deleted, because SET NULL would make
+    # them shared. Django is told RESTRICT too, so it refuses before the SQL
+    # does. `created_by` is ON DELETE SET NULL in the SQL (attribution only).
     owner_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         db_column="owner_user_id",
         null=True,
-        on_delete=models.DO_NOTHING,
+        on_delete=models.RESTRICT,
         related_name="+",
     )
     created_by = models.ForeignKey(

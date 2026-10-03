@@ -88,8 +88,10 @@ class Checklist(models.Model):
     # request on create, never from a body. Neither is on the wire; the
     # serializer renders `visibility`. The database refuses an owner who is
     # not a member of the row's household (`household/visibility_sql.py`).
+    # RESTRICT, never SET_NULL: a user who owns private lists cannot be
+    # hard-deleted, because SET NULL would make them shared (spec D3).
     owner_user = models.ForeignKey(
-        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+        "household.User", null=True, blank=True, on_delete=models.RESTRICT, related_name="+"
     )
     created_by = models.ForeignKey(
         "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
