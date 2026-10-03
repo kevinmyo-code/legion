@@ -28,6 +28,7 @@ import { Route as AuthedSettingsAccountRouteImport } from './routes/_authed.sett
 import { Route as AuthedSettingsAppearanceRouteImport } from './routes/_authed.settings.appearance'
 import { Route as AuthedSettingsDevicesRouteImport } from './routes/_authed.settings.devices'
 import { Route as AuthedSettingsHouseholdRouteImport } from './routes/_authed.settings.household'
+import { Route as AuthedSettingsNotificationsRouteImport } from './routes/_authed.settings.notifications'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -124,6 +125,12 @@ const AuthedSettingsHouseholdRoute = AuthedSettingsHouseholdRouteImport.update({
   path: '/household',
   getParentRoute: () => AuthedSettingsRoute,
 } as any)
+const AuthedSettingsNotificationsRoute =
+  AuthedSettingsNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthedSettingsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
+  '/settings/notifications': typeof AuthedSettingsNotificationsRoute
   '/settings/': typeof AuthedSettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -162,6 +170,7 @@ export interface FileRoutesByTo {
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
+  '/settings/notifications': typeof AuthedSettingsNotificationsRoute
   '/settings': typeof AuthedSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -184,6 +193,7 @@ export interface FileRoutesById {
   '/_authed/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/_authed/settings/devices': typeof AuthedSettingsDevicesRoute
   '/_authed/settings/household': typeof AuthedSettingsHouseholdRoute
+  '/_authed/settings/notifications': typeof AuthedSettingsNotificationsRoute
   '/_authed/settings/': typeof AuthedSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -206,6 +216,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/devices'
     | '/settings/household'
+    | '/settings/notifications'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/devices'
     | '/settings/household'
+    | '/settings/notifications'
     | '/settings'
   id:
     | '__root__'
@@ -246,6 +258,7 @@ export interface FileRouteTypes {
     | '/_authed/settings/appearance'
     | '/_authed/settings/devices'
     | '/_authed/settings/household'
+    | '/_authed/settings/notifications'
     | '/_authed/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -391,6 +404,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedSettingsHouseholdRouteImport
       parentRoute: typeof AuthedSettingsRoute
     }
+    '/_authed/settings/notifications': {
+      id: '/_authed/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AuthedSettingsNotificationsRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
   }
 }
 
@@ -399,6 +419,7 @@ interface AuthedSettingsRouteChildren {
   AuthedSettingsAppearanceRoute: typeof AuthedSettingsAppearanceRoute
   AuthedSettingsDevicesRoute: typeof AuthedSettingsDevicesRoute
   AuthedSettingsHouseholdRoute: typeof AuthedSettingsHouseholdRoute
+  AuthedSettingsNotificationsRoute: typeof AuthedSettingsNotificationsRoute
   AuthedSettingsIndexRoute: typeof AuthedSettingsIndexRoute
 }
 
@@ -407,6 +428,7 @@ const AuthedSettingsRouteChildren: AuthedSettingsRouteChildren = {
   AuthedSettingsAppearanceRoute: AuthedSettingsAppearanceRoute,
   AuthedSettingsDevicesRoute: AuthedSettingsDevicesRoute,
   AuthedSettingsHouseholdRoute: AuthedSettingsHouseholdRoute,
+  AuthedSettingsNotificationsRoute: AuthedSettingsNotificationsRoute,
   AuthedSettingsIndexRoute: AuthedSettingsIndexRoute,
 }
 

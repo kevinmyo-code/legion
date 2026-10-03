@@ -3,8 +3,8 @@ map: web-revamp
 ticket: 15
 title: Push notifications
 type: build
-status: open
-status-detail: "server half built; client half owed"
+status: built
+status-detail: "both halves built; owed: VAPID keys, schedule installed, Mia subscribes on her iPhone, a real push arrives"
 blockers: ["05", "08", "14"]
 blocked-by: ["[[05-join-signup-and-settings]]", "[[08-repeat-exceptions-on-the-engine]]", "[[14-reminder-lead-time-on-events]]"]
 open-blockers: 3
@@ -34,6 +34,21 @@ See `.scratch/web-revamp/spec.md` D7.
       nothing when nothing is due; 410 deletes the subscription; 5 failures delete it; one-tap off
       stops that kind.
 - [x] pytest: `copy.py` strings contain none of "haven't", "miss", "streak", "days since", "come back".
-- [ ] vitest: iOS non-standalone shows the install card; subscribe POSTs the subscription.
+- [x] vitest: iOS non-standalone shows the install card; subscribe POSTs the subscription.
+      (`-notifications.test.tsx`; the worker's push and click handlers as plain functions in
+      `push-sw.test.ts`; web half built 2026-10-03.)
+- [x] In a real Chromium (`npm run push-sw`, `e2e/push-sw.spec.ts`): the BUILT `sw.js` activates as a
+      classic worker, a push delivered through the DevTools protocol shows the notification, the
+      "Turn these off" click handler POSTs `/api/push/preferences/off` and then says what the engine
+      said, and `/api/` is never answered from or written to a cache. At the swap the precache was
+      the same 72 entries (modulo hashes) the generated worker had.
+- [x] Shots in `research/shots/15/`: every notifications state (on, off, denied, iOS install card,
+      unsupported browser, not set up, unreachable, everything off), 390x844 and 1440x900, light and
+      dark.
+- [ ] Impossible without a phone, owed on live (Kevin): the "Turn these off" button itself, pressed by
+      the OS. Reasoned, not seen: MDN lists notification `actions` as limited availability (not
+      Baseline) and I did not see the Safari cell, so on an iPhone the button may not render and the
+      one-tap silence there would be the master off on this page. The click handler is tested; the OS
+      pressing it is not.
 - [ ] Owed on live (Kevin): VAPID keys in env, `install_schedule.py` run for the new line, Mia
       subscribes, a Groceries add and a 30-minute reminder both reach her phone.

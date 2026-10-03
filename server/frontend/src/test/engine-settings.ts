@@ -311,6 +311,9 @@ export function handleSettings(
     return { status: 204 }
   }
 
+  const pushReply = handlePush(s.push, method, pathname, body)
+  if (pushReply) return pushReply
+
   if (method === 'GET' && pathname === '/api/auth/devices') return { status: 200, body: s.devices }
 
   match = pathname.match(/^\/api\/auth\/devices\/(\d+)$/)
@@ -325,6 +328,101 @@ export function handleSettings(
     }
     s.devices.splice(at, 1)
     return { status: 204 }
+  }
+
+  return undefined
+}
+
+const PUSH_OFF = 'Notifications are not set up on this server.'
+const KIND_NAMES: Record<string, string> = {
+  list_changes: 'list changes',
+  event_reminders: 'event reminders',
+  task_due_morning: 'the morning list of what is due',
+}
+
+function subscriptionBody(id: string, tz: string) {
+  return { id, user_agent: '', tz, created_at: '2026-10-03T12:00:00Z', last_ok_at: null }
+}
+
+/** `/api/push/*`, with the real server's sentences (`server/push/views.py`, `copy.py`). */
+function handlePush(push: PushState, method: string, pathname: string, body: unknown): Reply | undefined {
+  if (!pathname.startsWith('/api/push/')) return undefined
+
+  if (method === 'GET' && pathname === '/api/push/vapid-public-key') {
+    return {
+      status: 200,
+      body: push.enabled
+        ? { enabled: true, public_key: push.publicKey, detail: null }
+        : { enabled: false, public_key: null, detail: PUSH_OFF },
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/push/subscriptions') {
+    if (!push.enabled) {
+      return { status: 503, body: { detail: `${PUSH_OFF} Nothing was saved.` } }
+    }
+    const sent = body as { endpoint: string; keys: { p256dh: string; auth: string }; tz?: string }
+    if (!sent.endpoint.startsWith('https://')) {
+      return {
+        status: 400,
+        body: { endpoint: ['A push endpoint is an https:// address from the browser. Nothing was saved.'] },
+      }
+    }
+    const existing = push.subscriptions.find((sub) => sub.endpoint === sent.endpoint)
+    if (existing) {
+      existing.tz = sent.tz ?? existing.tz
+      return { status: 200, body: subscriptionBody(existing.id, existing.tz) }
+    }
+    const created = {
+      id: `00000000-0000-4000-8000-${(push.subscriptions.length + 1).toString(16).padStart(12, '0')}`,
+      endpoint: sent.endpoint,
+      tz: sent.tz ?? 'UTC',
+    }
+    push.subscriptions.push(created)
+    return { status: 201, body: subscriptionBody(created.id, created.tz) }
+  }
+
+  const match = pathname.match(/^\/api\/push\/subscriptions\/([^/]+)$/)
+  if (match && method === 'DELETE') {
+    const at = push.subscriptions.findIndex((sub) => sub.id === match[1])
+    if (at === -1) {
+      return { status: 404, body: { detail: 'No subscription of yours has that id. Nothing was removed.' } }
+    }
+    push.subscriptions.splice(at, 1)
+    return { status: 204 }
+  }
+
+  if (method === 'GET' && pathname === '/api/push/preferences') return { status: 200, body: push.preferences }
+  if (method === 'PUT' && pathname === '/api/push/preferences') {
+    const sent = body as Preference
+    if (!/^\d\d:\d\d$/.test(sent.morning_time)) {
+      return {
+        status: 400,
+        body: { morning_time: ['Time has wrong format. Use one of these formats instead: hh:mm.'] },
+      }
+    }
+    push.preferences = { ...sent }
+    return { status: 200, body: push.preferences }
+  }
+
+  if (method === 'POST' && pathname === '/api/push/preferences/off') {
+    const kind = (body as { kind: string }).kind
+    if (!(kind in KIND_NAMES)) {
+      return {
+        status: 400,
+        body: {
+          detail: `'${kind}' is not a kind of notification. Use one of: ${Object.keys(KIND_NAMES).join(', ')}. Nothing was changed.`,
+        },
+      }
+    }
+    push.preferences = { ...push.preferences, [kind]: false }
+    return {
+      status: 200,
+      body: {
+        ...push.preferences,
+        detail: `You will not get ${KIND_NAMES[kind]} any more. Turn them back on in Settings, Notifications.`,
+      },
+    }
   }
 
   return undefined

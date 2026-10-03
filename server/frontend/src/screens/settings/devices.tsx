@@ -26,8 +26,11 @@ function stamp(iso: string): string {
  * is looking for "this laptop" and finds nothing would otherwise wonder whether
  * it is signed in at all: a browser holds a session, not a device token.
  *
- * "Last used" is a security fact (is that old phone still being used?), not an
- * engagement figure, and it is a date, never "N days ago".
+ * "Last seen", not "last used": any request counts, the phone's background sync
+ * included, so the time can be later than the last time anyone touched the phone
+ * (the Google Account help says the same of its own list). It is a security fact
+ * (is that old phone still talking to the engine?) and not an engagement figure,
+ * and it is a date, never "N days ago".
  */
 export function DevicesScreen() {
   const devices = useDevices()
@@ -78,7 +81,7 @@ function DeviceRow({ device }: { device: Device }) {
           <p className="text-[0.8125rem] text-muted-foreground">
             Signed in {stamp(device.created_at)}
             {' · '}
-            {device.last_seen_at ? `Last used ${stamp(device.last_seen_at)}` : 'Not used since signing in'}
+            {device.last_seen_at ? `Last seen ${stamp(device.last_seen_at)}` : 'Not seen yet'}
           </p>
         </div>
         {!confirming && (

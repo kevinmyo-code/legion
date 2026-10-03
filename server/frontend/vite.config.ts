@@ -52,41 +52,21 @@ export default defineConfig({
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        // **Take over on the next load, do not wait for every tab to close.**
-        // `registerType: 'autoUpdate'` installs the new worker but, on its own,
-        // leaves it in `waiting` until the last client holding the OLD worker
-        // goes away - and a PWA added to a home screen, or a tab left open, can
-        // hold it for days. The symptom is not an error: the app simply keeps
-        // serving the previous build, so a deploy looks like it did nothing.
-        // Found 2026-09-12 when the phone kept rendering the pre-shell layout
-        // after the Today/Lists deploy, and again an hour earlier when the login
-        // screen still read "Not connected yet" from a build two days old.
-        //
-        // Safe here because `/api/` is NetworkOnly (below): taking over
-        // mid-session can swap the shell under a user, but it can never serve
-        // them a cached figure, which is the failure CLAUDE.md section 4 cares
-        // about. The shell may be stale, the data may not.
-        skipWaiting: true,
-        clientsClaim: true,
-        // Without this, the service worker answers EVERY navigation with the
-        // cached `index.html`, including the ones Django owns. `/admin` would
-        // render the SPA shell, `/api` HTML instead of JSON, `/media` a page
-        // instead of a file. The denylist is the mirror image of the negative
-        // lookahead in `legion/urls.py` - the same set of Django-owned prefixes,
-        // enforced a second time in the browser because the service worker
-        // never reaches the server to be told.
-        navigateFallbackDenylist: [/^\/api/, /^\/admin/, /^\/media/, /^\/static/, /^\/health/],
-        runtimeCaching: [
-          {
-            // NetworkOnly, and it is a rule not a default. CLAUDE.md section 4
-            // makes provenance and the unverified label load-bearing; a cached
-            // API response is a figure with no way to know how old it is, shown
-            // as if it were current. The shell may be stale, the data may not.
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-            handler: 'NetworkOnly',
-          },
-        ],
+      // **A hand-written worker, not a generated one** (web-revamp 15): `generateSW`
+      // has no place for a `push` handler. `src/sw.ts` keeps every rule the
+      // generated worker had, each with its reason where it is written there:
+      // `skipWaiting` + `clientsClaim` (commit 206af39: a deploy must not wait for
+      // every tab to close), `/api/` NetworkOnly (CLAUDE.md section 4: a cached
+      // figure has no way to say how old it is), and the navigation denylist that
+      // mirrors Django's own prefixes. What changed is only that it can show a
+      // notification now.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
+        // Same precache as the generated worker had (index.html, the bundle, the
+        // manifest and its icons); the build prints the entry count to compare.
+        globPatterns: ['**/*.{js,css,html}'],
       },
     }),
   ],

@@ -289,8 +289,8 @@ describe('devices', () => {
     expect(await screen.findByText("Mia's iPhone")).toBeInTheDocument()
     expect(screen.getByText(/This browser signs in a different way and is not listed\./)).toBeInTheDocument()
     expect(screen.getAllByText(/Signed in Sep 20, 2026/)).toHaveLength(2)
-    expect(screen.getByText(/Last used Oct 3, 2026/)).toBeInTheDocument()
-    expect(screen.getByText(/Not used since signing in/)).toBeInTheDocument()
+    expect(screen.getByText(/Last seen Oct 3, 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/Not seen yet/)).toBeInTheDocument()
   })
 
   test('revoking asks first, then removes that device and leaves the others', async () => {

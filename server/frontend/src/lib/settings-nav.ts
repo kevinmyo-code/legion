@@ -1,4 +1,4 @@
-import { Palette, Smartphone, UserRound, Users, type LucideIcon } from 'lucide-react'
+import { Bell, Palette, Smartphone, UserRound, Users, type LucideIcon } from 'lucide-react'
 
 /**
  * The sections of Settings, in one table, so the family index list and the
@@ -9,7 +9,12 @@ import { Palette, Smartphone, UserRound, Users, type LucideIcon } from 'lucide-r
  * FOR, plainly, and never what a person has or has not done in the app.
  */
 export interface SettingsSection {
-  to: '/settings/account' | '/settings/household' | '/settings/devices' | '/settings/appearance'
+  to:
+    | '/settings/account'
+    | '/settings/household'
+    | '/settings/notifications'
+    | '/settings/devices'
+    | '/settings/appearance'
   label: string
   blurb: string
   icon: LucideIcon
@@ -27,6 +32,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: 'Household',
     blurb: 'Its name, who is in it, and invite links.',
     icon: Users,
+  },
+  {
+    to: '/settings/notifications',
+    label: 'Notifications',
+    blurb: 'What is sent to your devices, and whether this one gets it.',
+    icon: Bell,
   },
   {
     to: '/settings/devices',

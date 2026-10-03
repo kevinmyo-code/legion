@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test'
 
 import type { Shot } from './shots.spec'
 import { ME, createEngine, seedHousehold, type Engine } from '../src/test/engine'
-import { livePreview, makeDevice, makeInvite } from '../src/test/engine-settings'
+import { defaultSettings, livePreview, makeDevice, makeInvite } from '../src/test/engine-settings'
 
 /**
  * Tickets 05 and 15: join, signup and every Settings screen. Rows live here, not
@@ -213,4 +213,127 @@ export const settingsShots: Shot[] = [
     labels: [...BOTH],
   },
   { name: 'settings-appearance', url: '/settings/appearance', ready: 'Saved on this device only. Each device keeps its own.', engine: () => settingsEngine(), labels: [...BOTH] },
+]
+
+// Ticket 15: notifications. Chromium in a headless test has its own idea of
+// `Notification.permission` and no push service, so the browser side is stubbed
+// before the page loads, the way `src/test/push-browser.ts` does it for vitest.
+interface BrowserStub {
+  ios?: boolean
+  unsupported?: boolean
+  permission?: 'granted' | 'denied' | 'default'
+  subscribed?: boolean
+}
+
+function installPushStub(stub: BrowserStub) {
+  const IOS_UA =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
+  if (stub.ios) {
+    Object.defineProperty(navigator, 'userAgent', { get: () => IOS_UA, configurable: true })
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true })
+  }
+  if (stub.unsupported) {
+    Reflect.deleteProperty(window, 'PushManager')
+    return
+  }
+  const permission = stub.permission ?? 'default'
+  Object.defineProperty(window, 'Notification', {
+    value: { permission, requestPermission: async () => permission },
+    configurable: true,
+  })
+  const held = stub.subscribed ? { endpoint: 'https://push.example/sub-1', unsubscribe: async () => true } : null
+  Object.defineProperty(navigator, 'serviceWorker', {
+    value: { ready: Promise.resolve({ pushManager: { getSubscription: async () => held } }) },
+    configurable: true,
+  })
+}
+
+const withBrowser = (stub: BrowserStub, ready: string | RegExp) => async (page: Page) => {
+  await page.addInitScript(installPushStub, stub)
+  await page.reload()
+  await expect(page.getByText(ready).first()).toBeVisible()
+}
+
+const pushEngine = (push: Partial<ReturnType<typeof defaultSettings>['push']> = {}) => () =>
+  settingsEngine('member', { push: { ...defaultSettings().push, ...push } })
+
+const N = ['15'] as const
+
+export const notificationShots: Shot[] = [
+  {
+    name: 'notifications-on',
+    url: '/settings/notifications',
+    ready: 'This device',
+    engine: pushEngine(),
+    after: withBrowser({ permission: 'granted', subscribed: true }, 'Notifications are on for this device.'),
+    labels: [...N],
+  },
+  {
+    name: 'notifications-off',
+    url: '/settings/notifications',
+    ready: 'This device',
+    engine: pushEngine(),
+    after: withBrowser({ permission: 'default' }, 'Turn on notifications on this device'),
+    labels: [...N],
+  },
+  {
+    name: 'notifications-denied',
+    url: '/settings/notifications',
+    ready: 'This device',
+    engine: pushEngine(),
+    after: withBrowser({ permission: 'denied' }, /are blocked for LEGION/),
+    labels: [...N],
+  },
+  {
+    name: 'notifications-ios',
+    url: '/settings/notifications',
+    ready: 'This device',
+    engine: pushEngine(),
+    after: withBrowser({ ios: true }, 'Add LEGION to your Home Screen first'),
+    labels: [...N],
+  },
+  {
+    name: 'notifications-unsupported',
+    url: '/settings/notifications',
+    ready: 'This device',
+    engine: pushEngine(),
+    after: withBrowser({ unsupported: true }, /This browser cannot receive notifications/),
+    labels: [...N],
+  },
+  {
+    name: 'notifications-not-set-up',
+    url: '/settings/notifications',
+    ready: 'Notifications are not set up on this server.',
+    engine: pushEngine({ enabled: false }),
+    labels: [...N],
+  },
+  {
+    name: 'notifications-unreachable',
+    url: '/settings/notifications',
+    ready: /Could not reach the engine, so this page cannot say whether notifications are set up/,
+    engine: () => {
+      const engine = pushEngine()()
+      engine.refusals['GET /api/push/vapid-public-key'] = { status: 503, body: { detail: 'down' } }
+      return engine
+    },
+    labels: [...N],
+  },
+  {
+    name: 'notifications-all-off',
+    url: '/settings/notifications',
+    ready: 'This device',
+    engine: pushEngine({
+      preferences: { list_changes: false, event_reminders: false, task_due_morning: false, morning_time: '07:30' },
+    }),
+    after: withBrowser({ permission: 'granted', subscribed: true }, 'Everything is off.'),
+    labels: [...N],
+  },
+  {
+    name: 'settings',
+    url: '/settings',
+    ready: 'What is sent to your devices',
+    engine: () => settingsEngine(),
+    labels: [...N],
+    familyOnly: true,
+  },
 ]

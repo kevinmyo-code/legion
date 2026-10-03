@@ -27,5 +27,8 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // The service worker runs under the WebWorker library, which cannot share a
+  // program with DOM (they declare the same globals). It has its own project.
+  "exclude": ["src/sw.ts"]
 }
