@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 
 import { api } from '@/api/client'
 import { useHousehold } from '@/api/queries'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 
 /**
@@ -48,16 +49,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <header className="flex items-center justify-between gap-3 border-b px-4 py-3 md:hidden">
+      <header className="flex items-center justify-between gap-3 px-4 py-3 md:hidden">
         <span className="font-semibold">
           {household.data?.name ?? 'LEGION'}
         </span>
-        <Button variant="ghost" size="icon" aria-label="Sign out" onClick={signOut}>
-          <LogOut />
-        </Button>
+        <div className="flex items-center gap-1">
+          <ThemeToggle compact />
+          <Button variant="ghost" size="icon" aria-label="Sign out" onClick={signOut}>
+            <LogOut />
+          </Button>
+        </div>
       </header>
 
-      <nav className="hidden w-56 shrink-0 flex-col border-r p-4 md:flex">
+      <nav className="hidden w-56 shrink-0 flex-col bg-surface-1 p-4 md:flex">
         <span className="mb-6 truncate px-2 text-sm font-semibold text-muted-foreground">
           {household.isPending && 'LEGION'}
           {household.isError && 'LEGION (offline)'}
@@ -71,8 +75,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors ${
-                  active ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/50'
+                className={`flex h-12 items-center gap-3 rounded-full px-4 text-sm transition-colors ${
+                  active
+                    ? 'bg-primary-container font-semibold text-primary-container-foreground'
+                    : 'text-muted-foreground hover:bg-surface-3'
                 }`}
               >
                 <Icon className="size-4" />
@@ -80,6 +86,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             )
           })}
+        </div>
+        <div className="mb-2">
+          <ThemeToggle />
         </div>
         <Button variant="ghost" className="justify-start gap-2" onClick={signOut}>
           <LogOut className="size-4" />
@@ -94,7 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ultrawide, which is its own kind of unreadable. */}
       <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-20 md:pb-4 lg:p-8">{children}</main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t bg-background md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-10 flex bg-surface-2 pb-[env(safe-area-inset-bottom)] md:hidden">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon
           const active = pathname === item.to
@@ -102,8 +111,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               key={item.to}
               to={item.to}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
-                active ? 'font-medium text-foreground' : 'text-muted-foreground'
+              className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-xs ${
+                active ? 'font-semibold text-foreground' : 'text-muted-foreground'
               }`}
             >
               <Icon className="size-5" />

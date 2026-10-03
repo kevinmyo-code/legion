@@ -4,17 +4,47 @@
     <meta charset="UTF-8" />
     <!-- The scaffold's Vite-logo favicon is gone: shipping someone else's mark
          as LEGION's is a small untruth on a page anyone can load. These are the
-         placeholder icons `scripts/make_icons.py` generates; ticket 05 owns the
-         real mark. -->
+         placeholder icons `scripts/make_icons.py` generates, drawn from the web's
+         own palette (ADR 0053), not the phone's. -->
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <!-- Matches the manifest's theme_color, which is DeckChrome from the
-         phone's palette (app/.../ui/theme/Color.kt). Stated here as well so
-         the browser tints correctly on the first paint, before the manifest
-         has been fetched. -->
-    <meta name="theme-color" content="#FF5330" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- The page ground in light and dark (src/lib/theme-colors.ts), so the
+         browser tints correctly on the first paint, before the manifest has
+         been fetched. `theme.ts` rewrites both when a person overrides the
+         device's scheme; `data-scheme` is how it knows which is which. -->
+    <meta name="theme-color" content="#f8f8fb" media="(prefers-color-scheme: light)" data-scheme="light" />
+    <meta name="theme-color" content="#0f0f12" media="(prefers-color-scheme: dark)" data-scheme="dark" />
     <title>LEGION</title>
+    <!-- Before first paint: put the `dark` class on <html> so a dark device
+         (or a stored "Dark") never flashes white. Same read as
+         src/lib/theme.ts - key `legion.theme.v1`, unreadable storage means the
+         device's own setting - and theme.test.ts runs this exact script to keep
+         the two from drifting. -->
+    <script>
+      (function () {
+        var pref = 'system';
+        try {
+          var stored = localStorage.getItem('legion.theme.v1');
+          if (stored === 'light' || stored === 'dark') pref = stored;
+        } catch (e) {}
+        var dark =
+          pref === 'dark' ||
+          (pref === 'system' &&
+            typeof matchMedia === 'function' &&
+            matchMedia('(prefers-color-scheme: dark)').matches);
+        var root = document.documentElement;
+        if (dark) root.classList.add('dark');
+        root.style.colorScheme = dark ? 'dark' : 'light';
+        if (pref !== 'system') {
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            metas[i].setAttribute('content', dark ? '#0f0f12' : '#f8f8fb');
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -4,7 +4,14 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './index.css'
+import { applyTheme, watchSystemTheme } from './lib/theme'
 import { routeTree } from './routeTree.gen'
+
+// `index.html` already set the `dark` class before first paint; this finishes the
+// job (the `theme-color` metas) and follows the device live while the preference
+// is System.
+applyTheme()
+watchSystemTheme()
 
 const router = createRouter({ routeTree })
 

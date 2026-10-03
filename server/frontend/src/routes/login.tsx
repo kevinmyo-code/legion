@@ -61,9 +61,9 @@ function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm rounded-sheet">
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
+          <CardTitle className="text-2xl">Sign in</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={onSubmit}>
@@ -91,11 +91,11 @@ function Login() {
                 onChange={(event) => setPassword(event.target.value)}
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={submitting}>
+            {error && <p className="text-[0.9375rem] text-destructive">{error}</p>}
+            <Button type="submit" size="lg" disabled={submitting}>
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="text-center text-[0.8125rem] text-muted-foreground">
               Signup and invite codes are not built on the web yet - ask
               whoever set up your household for an account.
             </p>

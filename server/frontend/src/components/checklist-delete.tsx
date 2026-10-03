@@ -55,22 +55,23 @@ export function DeleteChecklistControl({
       <Button
         variant="ghost"
         size="icon-sm"
+        className="text-muted-foreground"
         aria-label={`Delete "${checklistName}"`}
         onClick={() => setConfirming(true)}
       >
-        <Trash2 className="size-3.5" />
+        <Trash2 className="size-4" />
       </Button>
     )
   }
 
   return (
     <div className="flex flex-col items-end gap-1.5 text-right">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         The list goes. What you ticked off it is kept.
       </p>
       <div className="flex gap-2">
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => setConfirming(false)}
           disabled={remove.isPending}
@@ -87,7 +88,7 @@ export function DeleteChecklistControl({
         </Button>
       </div>
       {remove.isError && (
-        <span className="text-xs text-destructive">Could not delete. {remove.error.message}</span>
+        <span className="text-[0.8125rem] text-destructive">Could not delete. {remove.error.message}</span>
       )}
     </div>
   )
