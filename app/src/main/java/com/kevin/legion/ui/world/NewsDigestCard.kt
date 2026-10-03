@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.sitrep.SitrepBuilder
 import com.kevin.legion.sitrep.SitrepModule
+import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -57,6 +57,11 @@ import kotlinx.coroutines.launch
  * [SitrepBuilder.build] falls back to a no-config Gmail search when
  * [com.kevin.legion.sitrep.SitrepSettings.newsletterSenders] is empty
  * (`SitrepBuilder.NO_CONFIG_NEWSLETTER_QUERY`), so this card needs no setup of its own.
+ *
+ * **Soft Material restyle (ADR 0051, soft-misc): presentation only.** Rendered under the SoftTheme
+ * that `NewsScreen` provides, so the pane is a rounded card and the two actions are pill
+ * [DeckButton]s in sentence case. No state, fetch or persistence changed: the digest text still
+ * lives only in `remember` and nothing from the mail is written anywhere.
  */
 @Composable
 fun NewsDigestCard(modifier: Modifier = Modifier) {
@@ -83,9 +88,9 @@ fun NewsDigestCard(modifier: Modifier = Modifier) {
                     "Not checked this session - a check reads newsletter-shaped mail from your Gmail and summarizes it.",
                     style = LegionType.stamp,
                     color = sem.faint,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(vertical = 6.dp),
                 )
-                TextButton(onClick = { check() }) { Text("CHECK NEWSLETTERS") }
+                DeckButton("Check newsletters", onClick = { check() })
             }
             is NewsDigestState.Loading -> Row(
                 Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -103,7 +108,7 @@ fun NewsDigestCard(modifier: Modifier = Modifier) {
                     color = sem.faint,
                     modifier = Modifier.padding(top = 6.dp),
                 )
-                TextButton(onClick = { check() }) { Text("CHECK AGAIN") }
+                DeckButton("Check again", onClick = { check() }, modifier = Modifier.padding(top = 6.dp))
             }
         }
     }

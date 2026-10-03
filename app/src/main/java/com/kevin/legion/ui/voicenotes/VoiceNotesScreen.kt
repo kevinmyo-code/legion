@@ -1,17 +1,26 @@
 package com.kevin.legion.ui.voicenotes
 
 import android.media.MediaPlayer
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -28,15 +37,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.data.local.VoiceNote
 import com.kevin.legion.data.local.VoiceNoteKind
+import com.kevin.legion.ui.common.DeckButton
+import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckScreenHeader
-import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.voice.VoiceNoteController
@@ -63,6 +78,12 @@ import kotlinx.coroutines.launch
  * relying on layout or colour alone. An interrupted recording says so on the LIST ROW too, not only
  * once you open it - a driver deciding which recording to trust should not have to open every one
  * to find out.
+ *
+ * **Soft Material (ADR 0051, soft-misc):** both screens here render inside [SoftTheme] with a
+ * RECORDINGS-chip header, rounded cards, sentence-case copy and a record pill drawn with
+ * [SoftColors.recordDot] / [SoftColors.recordingContainer]. Presentation only - every state word,
+ * the AI-generated labels and the interrupted/failed lines are the same sentences as before and
+ * stay always-visible text, never colour alone and never behind a HelpRow.
  */
 @Composable
 fun VoiceNotesScreen(onBack: () -> Unit) {
@@ -95,75 +116,78 @@ fun VoiceNotesScreen(onBack: () -> Unit) {
         return
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            DeckScreenHeader(title = "Voice notes", onBack = onBack)
+    SoftTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
+            Column(Modifier.fillMaxSize()) {
+                DeckScreenHeader(title = "Voice notes", onBack = onBack, accent = AreaAccent.RECORDINGS)
 
-            RecordControlRow(
-                state = recordingState,
-                onStart = {
-                    scope.launch {
-                        when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
-                            is com.kevin.legion.voice.VoiceNoteStartResult.Started -> {
-                                startRefusal = null
-                            }
-                            is com.kevin.legion.voice.VoiceNoteStartResult.Refused -> {
-                                startRefusal = started.reason
+                RecordControlRow(
+                    state = recordingState,
+                    onStart = {
+                        scope.launch {
+                            when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
+                                is com.kevin.legion.voice.VoiceNoteStartResult.Started -> {
+                                    startRefusal = null
+                                }
+                                is com.kevin.legion.voice.VoiceNoteStartResult.Refused -> {
+                                    startRefusal = started.reason
+                                }
                             }
                         }
-                    }
-                },
-                onStop = {
-                    scope.launch {
-                        // Same outcome-verb posture as the stop_voice_note tool (ticket 04): this
-                        // never claims the note is ready, only that it saved and is transcribing -
-                        // see the toast-equivalent text below.
-                        VoiceNoteController.stop(context)
-                        reloadNonce++
-                    }
-                },
-            )
-            startRefusal?.let { reason ->
-                Text(
-                    reason,
-                    style = LegionType.stamp,
-                    color = LocalLegionSemantics.current.estimated,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                )
-            }
-            if (recordingState == VoiceNoteRecordingState.Idle) {
-                // The stop button already reads before its own outcome verb - this line is what a
-                // driver sees right after tapping stop, so it carries the same "saved and being
-                // transcribed, never ready" wording the voice tool's own result string does.
-                Text(
-                    "A stopped recording is saved and transcribed in the background - it will show " +
-                        "a summary here once that finishes, not immediately.",
-                    style = LegionType.stamp,
-                    color = LocalLegionSemantics.current.faint,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                )
-            }
-
-            if (loading) {
-                Text("Loading...", style = LegionType.stamp, color = LocalLegionSemantics.current.ghost,
-                    modifier = Modifier.padding(12.dp))
-            } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item(key = "header") { SectionHeader("RECORDINGS", notes.size.toString()) }
-                    if (notes.isEmpty()) {
-                        item(key = "empty") {
-                            Text(
-                                "No voice notes yet.",
-                                style = LegionType.stamp,
-                                color = LocalLegionSemantics.current.ghost,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            )
+                    },
+                    onStop = {
+                        scope.launch {
+                            // Same outcome-verb posture as the stop_voice_note tool (ticket 04): this
+                            // never claims the note is ready, only that it saved and is transcribing -
+                            // see the toast-equivalent text below.
+                            VoiceNoteController.stop(context)
+                            reloadNonce++
                         }
-                    } else {
-                        items(notes, key = { it.id }) { note ->
-                            Column {
+                    },
+                )
+                startRefusal?.let { reason ->
+                    Text(
+                        reason,
+                        style = LegionType.stamp,
+                        color = LocalLegionSemantics.current.estimated,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                    )
+                }
+                if (recordingState == VoiceNoteRecordingState.Idle) {
+                    // The stop button already reads before its own outcome verb - this line is what a
+                    // driver sees right after tapping stop, so it carries the same "saved and being
+                    // transcribed, never ready" wording the voice tool's own result string does.
+                    Text(
+                        "A stopped recording is saved and transcribed in the background - it will show " +
+                            "a summary here once that finishes, not immediately.",
+                        style = LegionType.stamp,
+                        color = LocalLegionSemantics.current.faint,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                    )
+                }
+
+                if (loading) {
+                    Text("Loading...", style = LegionType.stamp, color = LocalLegionSemantics.current.ghost,
+                        modifier = Modifier.padding(20.dp))
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        item(key = "header") { SectionHeader("Recordings", notes.size.toString()) }
+                        if (notes.isEmpty()) {
+                            item(key = "empty") {
+                                Text(
+                                    "No voice notes yet.",
+                                    style = LegionType.stamp,
+                                    color = LocalLegionSemantics.current.ghost,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+                                )
+                            }
+                        } else {
+                            items(notes, key = { it.id }) { note ->
                                 VoiceNoteRow(note = note, onClick = { selectedId = note.id })
-                                Hairline()
                             }
                         }
                     }
@@ -204,22 +228,61 @@ fun RecordControlRow(
             delay(500)
         }
     }
+    val soft = LocalSoftActive.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = if (soft) 16.dp else 12.dp, vertical = 8.dp)
+            .let { if (soft) it.background(SoftColors.card, MaterialTheme.shapes.medium).padding(horizontal = 14.dp, vertical = 10.dp) else it },
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (startedAt != null) {
-            Text(
-                "Recording - ${formatMmSs(elapsedMs)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LocalLegionSemantics.current.debit,
-            )
-            Button(onClick = onStop) { Text("STOP") }
+            // The live recording shows as words ("Recording - 0:12") with the red dot beside it; the
+            // dot is reinforcement, the sentence is the state.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (soft) {
+                    Box(Modifier.padding(end = 8.dp).size(10.dp).background(SoftColors.recordDot, CircleShape))
+                }
+                Text(
+                    "Recording - ${formatMmSs(elapsedMs)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LocalLegionSemantics.current.debit,
+                )
+            }
+            if (soft) {
+                RecordPill(label = "Stop", filled = true, onClick = onStop)
+            } else {
+                DeckButton("Stop", onClick = onStop)
+            }
         } else {
             Text("Not recording", style = LegionType.stamp, color = LocalLegionSemantics.current.faint)
-            Button(onClick = onStart) { Text("RECORD") }
+            if (soft) {
+                RecordPill(label = "Record", filled = false, onClick = onStart)
+            } else {
+                DeckButton("Record", onClick = onStart)
+            }
         }
+    }
+}
+
+/**
+ * The soft record control: a pill whose dot is [SoftColors.recordDot]. Idle it is the quiet
+ * `cardHigh` pill with the dot as its only colour; while recording it fills
+ * [SoftColors.recordingContainer], so the stop affordance reads as the live one. The label is
+ * always words ("Record" / "Stop"), the dot never carries the state alone.
+ */
+@Composable
+private fun RecordPill(label: String, filled: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .background(if (filled) SoftColors.recordingContainer else SoftColors.cardHigh, RoundedCornerShape(percent = 50))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.padding(end = 8.dp).size(10.dp).background(SoftColors.recordDot, CircleShape))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = SoftColors.text)
     }
 }
 
@@ -233,8 +296,13 @@ fun RecordControlRow(
 fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
     val sem = LocalLegionSemantics.current
     val rowState = voiceNoteRowState(note)
+    val soft = LocalSoftActive.current
     Column(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp),
+        Modifier
+            .fillMaxWidth()
+            .let { if (soft) it.background(SoftColors.card, MaterialTheme.shapes.medium) else it }
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (soft) 14.dp else 12.dp, vertical = if (soft) 12.dp else 10.dp),
     ) {
         Text(
             note.title ?: "Untitled recording",
@@ -395,60 +463,65 @@ fun VoiceNoteDetailScreen(
                             }
                         }
                     }
-                }) { Text("DELETE") }
+                }) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } },
         )
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            DeckScreenHeader(title = note.title ?: "Untitled recording", onBack = onBack)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { showRenameDialog = true }) { Text("RENAME") }
-                TextButton(onClick = { showDeleteDialog = true }) {
-                    Text("DELETE", color = LocalLegionSemantics.current.estimated)
+    // Nested SoftTheme is harmless when a caller (CalendarScreen's RECORDED section) already
+    // provides one, and is what makes this screen soft when it is opened from here.
+    SoftTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
+            Column(Modifier.fillMaxSize()) {
+                DeckScreenHeader(title = note.title ?: "Untitled recording", onBack = onBack, accent = AreaAccent.RECORDINGS)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    DeckButton("Rename", onClick = { showRenameDialog = true })
+                    DeckButton("Delete", onClick = { showDeleteDialog = true }, destructive = true)
                 }
-            }
-            deleteError?.let {
-                Text(it, style = LegionType.stamp, color = LocalLegionSemantics.current.estimated,
-                    modifier = Modifier.padding(horizontal = 12.dp))
-            }
-            renameError?.let {
-                Text(it, style = LegionType.stamp, color = LocalLegionSemantics.current.estimated,
-                    modifier = Modifier.padding(horizontal = 12.dp))
-            }
-            VoiceNoteDetail(
-                note = note,
-                playing = playing,
-                retrying = retrying,
-                onRetry = {
-                    retrying = true
-                    scope.launch {
-                        VoiceNoteController.retryTranscription(context, note.id)
-                        onRetried()
-                    }
-                },
-                onTogglePlayback = {
-                    val path = note.audioPath
-                    if (path == null) return@VoiceNoteDetail
-                    if (playing) {
-                        mediaPlayer.pause()
-                        playing = false
-                    } else {
-                        try {
-                            mediaPlayer.reset()
-                            mediaPlayer.setDataSource(path)
-                            mediaPlayer.prepare()
-                            mediaPlayer.setOnCompletionListener { playing = false }
-                            mediaPlayer.start()
-                            playing = true
-                        } catch (e: Exception) {
-                            playing = false
+                deleteError?.let {
+                    Text(it, style = LegionType.stamp, color = LocalLegionSemantics.current.estimated,
+                        modifier = Modifier.padding(horizontal = 20.dp))
+                }
+                renameError?.let {
+                    Text(it, style = LegionType.stamp, color = LocalLegionSemantics.current.estimated,
+                        modifier = Modifier.padding(horizontal = 20.dp))
+                }
+                VoiceNoteDetail(
+                    note = note,
+                    playing = playing,
+                    retrying = retrying,
+                    onRetry = {
+                        retrying = true
+                        scope.launch {
+                            VoiceNoteController.retryTranscription(context, note.id)
+                            onRetried()
                         }
-                    }
-                },
-            )
+                    },
+                    onTogglePlayback = {
+                        val path = note.audioPath
+                        if (path == null) return@VoiceNoteDetail
+                        if (playing) {
+                            mediaPlayer.pause()
+                            playing = false
+                        } else {
+                            try {
+                                mediaPlayer.reset()
+                                mediaPlayer.setDataSource(path)
+                                mediaPlayer.prepare()
+                                mediaPlayer.setOnCompletionListener { playing = false }
+                                mediaPlayer.start()
+                                playing = true
+                            } catch (e: Exception) {
+                                playing = false
+                            }
+                        }
+                    },
+                )
+            }
         }
     }
 }
@@ -467,7 +540,9 @@ fun VoiceNoteDetail(
     onTogglePlayback: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+    // Scrolls: a long transcript used to run off the bottom of a fixed-height column (found while
+    // restyling; a presentation fix, no data path touched).
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         val kindWord = if (note.kind == VoiceNoteKind.MEETING) "Meeting" else "Solo"
         Text(
             "$kindWord recording - ${shortDate(note.startedAt)} ${clockTime(note.startedAt)} - " +
@@ -494,40 +569,49 @@ fun VoiceNoteDetail(
                 color = sem.estimated,
                 modifier = Modifier.padding(top = 6.dp),
             )
-            Button(onClick = onRetry, enabled = !retrying, modifier = Modifier.padding(top = 6.dp)) {
-                Text(if (retrying) "RETRYING..." else "RETRY")
-            }
+            DeckButton(
+                if (retrying) "Retrying..." else "Retry",
+                onClick = onRetry,
+                enabled = !retrying,
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
 
         if (note.audioPath != null) {
-            Button(onClick = onTogglePlayback, modifier = Modifier.padding(top = 10.dp)) {
-                Text(if (playing) "PAUSE" else "PLAY AUDIO")
-            }
+            DeckButton(
+                if (playing) "Pause" else "Play audio",
+                onClick = onTogglePlayback,
+                modifier = Modifier.padding(top = 10.dp),
+            )
         } else {
             Text("Audio is no longer available for this recording.", style = LegionType.stamp, color = sem.ghost,
                 modifier = Modifier.padding(top = 10.dp))
         }
 
-        SectionHeader("SUMMARY")
-        if (note.summary != null) {
-            // Same wording as the list row, deliberately - one vocabulary for this claim across
-            // the whole screen (ticket 04's own rule: never by colour or a glyph alone).
-            Text("AI-generated summary - not a verbatim account:", style = LegionType.stamp, color = sem.faint)
-            Text(note.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 4.dp))
-        } else {
-            Text("Not transcribed yet - the audio is saved and this will fill in once transcription finishes.",
-                style = LegionType.stamp, color = sem.ghost)
+        Spacer(Modifier.height(10.dp))
+        DeckPane(header = "Summary") {
+            if (note.summary != null) {
+                // Same wording as the list row, deliberately - one vocabulary for this claim across
+                // the whole screen (ticket 04's own rule: never by colour or a glyph alone).
+                Text("AI-generated summary - not a verbatim account:", style = LegionType.stamp, color = sem.faint)
+                Text(note.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 4.dp))
+            } else {
+                Text("Not transcribed yet - the audio is saved and this will fill in once transcription finishes.",
+                    style = LegionType.stamp, color = sem.ghost)
+            }
         }
 
-        SectionHeader("TRANSCRIPT")
-        if (note.transcript != null) {
-            Text("AI-generated transcript - as close to verbatim as the model could make out:",
-                style = LegionType.stamp, color = sem.faint)
-            Text(note.transcript, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 4.dp))
-        } else {
-            Text("Not transcribed yet.", style = LegionType.stamp, color = sem.ghost)
+        Spacer(Modifier.height(10.dp))
+        DeckPane(header = "Transcript") {
+            if (note.transcript != null) {
+                Text("AI-generated transcript - as close to verbatim as the model could make out:",
+                    style = LegionType.stamp, color = sem.faint)
+                Text(note.transcript, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 4.dp))
+            } else {
+                Text("Not transcribed yet.", style = LegionType.stamp, color = sem.ghost)
+            }
         }
     }
 }
