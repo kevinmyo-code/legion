@@ -42,6 +42,9 @@ import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.launch
+import com.kevin.legion.ui.fleet.FleetSoftSurface
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * `fleet/cars` - the car roster and the explicit picker
@@ -203,7 +206,6 @@ fun CarsContent(
     onAddCar: (year: Int, make: String, model: String, trim: String, name: String, engine: String) -> Unit,
     onRename: (vehicleId: String, newName: String) -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
     // Which dialog is open, if any - plain local UI state, same "ephemeral, not
     // persisted, doesn't belong in CarsUiState" posture as
     // CategoryDrilldownScreen's expandedTxnId. At most one at a time.
@@ -233,28 +235,26 @@ fun CarsContent(
         )
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
+            DeckScreenHeader(title = "Cars", onBack = onBack, accent = AreaAccent.FLEET)
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-                Text("CARS", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { showAddDialog = true }) {
-                        Text("ADD CAR", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                        Text("Add car", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }
                     // Disabled rather than hidden when nothing is archived: a
                     // toggle that appears only once you have archived something is
                     // a toggle nobody discovers before they need it.
                     TextButton(onClick = onToggleArchived, enabled = state.archivedCount > 0) {
                         Text(
-                            if (state.showArchived) "HIDE ARCHIVED" else "SHOW ARCHIVED",
-                            style = LegionType.stamp,
+                            if (state.showArchived) "Hide archived" else "Show archived",
+                            style = MaterialTheme.typography.labelLarge,
                             color = if (state.archivedCount > 0) MaterialTheme.colorScheme.primary else sem.ghost,
                         )
                     }
@@ -268,7 +268,7 @@ fun CarsContent(
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
-                item(key = "auto-header") { SectionHeader("SELECTION", if (state.isAuto) "AUTO" else "PINNED") }
+                item(key = "auto-header") { SectionHeader("Selection", if (state.isAuto) "Auto" else "Pinned") }
                 item(key = "auto-row") {
                     AutoCarRow(isAuto = state.isAuto, resolvesTo = state.autoResolvesTo, onSelect = onFollowAdapter)
                     Hairline()
@@ -276,7 +276,7 @@ fun CarsContent(
 
                 item(key = "cars-header") {
                     SectionHeader(
-                        "CARS",
+                        "Cars",
                         if (state.archivedCount > 0 && !state.showArchived) {
                             "${state.rows.size} - ${state.archivedCount} archived"
                         } else {

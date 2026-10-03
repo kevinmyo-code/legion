@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.fleet
 
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -1088,25 +1089,27 @@ fun DtcClearDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    // Only the confirm-prompt turn (outcome == null) ever offers CONFIRM/CANCEL - once a real
-    // outcome comes back (D2's five states), the only thing left to do is read it and dismiss.
-    val awaitingConfirm = !loading && result?.outcome == null
-    AlertDialog(
-        // FIX half 1: no dismiss of any kind while a real op is in flight. This alone does not
-        // close the cancellation window (see the KDoc above) - it only narrows it, since a
-        // dismissal that races the exact instant loading flips true/false is still theoretically
-        // reachable. The scope move above is what actually closes it.
-        properties = DialogProperties(dismissOnBackPress = !loading, dismissOnClickOutside = !loading),
-        onDismissRequest = { if (!loading) onDismiss() },
-        title = { Text(if (loading) "Reading codes..." else if (awaitingConfirm) "Clear stored codes?" else "Clear codes") },
-        text = { Text(if (loading) "Checking what's stored before asking." else result?.message.orEmpty()) },
-        confirmButton = {
-            if (awaitingConfirm) {
-                TextButton(onClick = onConfirm) { Text("Clear") }
-            } else {
-                TextButton(onClick = onDismiss) { Text("OK") }
-            }
-        },
-        dismissButton = { if (awaitingConfirm) TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    SoftTheme {
+        // Only the confirm-prompt turn (outcome == null) ever offers CONFIRM/CANCEL - once a real
+        // outcome comes back (D2's five states), the only thing left to do is read it and dismiss.
+        val awaitingConfirm = !loading && result?.outcome == null
+        AlertDialog(
+            // FIX half 1: no dismiss of any kind while a real op is in flight. This alone does not
+            // close the cancellation window (see the KDoc above) - it only narrows it, since a
+            // dismissal that races the exact instant loading flips true/false is still theoretically
+            // reachable. The scope move above is what actually closes it.
+            properties = DialogProperties(dismissOnBackPress = !loading, dismissOnClickOutside = !loading),
+            onDismissRequest = { if (!loading) onDismiss() },
+            title = { Text(if (loading) "Reading codes..." else if (awaitingConfirm) "Clear stored codes?" else "Clear codes") },
+            text = { Text(if (loading) "Checking what's stored before asking." else result?.message.orEmpty()) },
+            confirmButton = {
+                if (awaitingConfirm) {
+                    TextButton(onClick = onConfirm) { Text("Clear") }
+                } else {
+                    TextButton(onClick = onDismiss) { Text("OK") }
+                }
+            },
+            dismissButton = { if (awaitingConfirm) TextButton(onClick = onDismiss) { Text("Cancel") } },
+        )
+    }
 }

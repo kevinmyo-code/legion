@@ -47,6 +47,9 @@ import com.kevin.legion.util.Temp
 import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.ObdHistory
 import com.kevin.legion.vehicle.VehicleController
+import com.kevin.legion.ui.fleet.FleetSoftSurface
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * `fleet/telemetry` - the recorded `obd_samples` history for the ACTIVE car.
@@ -196,24 +199,13 @@ fun TelemetryContent(
     onSelectPid: (String) -> Unit,
     onSelectRange: (TelemetryRange) -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-                Text("TELEMETRY", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                // Balances the back button so the title stays centred. Kept as
-                // an empty spacer rather than a third control: nothing else
-                // belongs in this bar (see the file doc on why the car is not
-                // switchable from here).
-                Text("", style = LegionType.stamp, modifier = Modifier.padding(horizontal = 12.dp))
-            }
+            // Soft top bar (back arrow, area chip, title). The old empty balancing spacer is gone
+            // with the centred title; still no third control: see the file doc on why the car is
+            // not switchable from here.
+            DeckScreenHeader(title = "Telemetry", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
 
             when {
