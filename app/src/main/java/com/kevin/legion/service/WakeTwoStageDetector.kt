@@ -124,6 +124,9 @@ class WakeTwoStageDetector private constructor(
         private const val CONFIRM_SECONDS = 2
         private const val PREROLL_SAMPLES = SAMPLE_RATE / 2
         private const val ASSET_DIR = "wake-kws"
+        // Bumped when a bundled model file changes: files already copied to filesDir are never
+        // re-copied, so the first (mobile) encoder would otherwise outlive its replacement.
+        private const val COPY_DIR = "wake-kws-v2"
         private const val ENCODER = "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
         private const val DECODER = "decoder-epoch-12-avg-2-chunk-16-left-64.onnx"
         private const val JOINER = "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
@@ -142,7 +145,8 @@ class WakeTwoStageDetector private constructor(
         // Early returns carry the refuse-in-words results.
         @Suppress("TooGenericExceptionCaught", "ReturnCount", "NestedBlockDepth", "LongMethod") // see the line above
         fun create(context: Context, companionName: String, log: (String) -> Unit): Created {
-            val dir = File(context.filesDir, ASSET_DIR)
+            val dir = File(context.filesDir, COPY_DIR)
+            File(context.filesDir, ASSET_DIR).deleteRecursively()
             val breaker = TwoStageBreaker(object : TwoStageBreaker.Store {
                 override var markerSet: Boolean
                     get() = WakeWordPreferences.twoStageMarker(context)
