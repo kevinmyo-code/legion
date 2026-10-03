@@ -589,6 +589,25 @@ def test_make_private_counts_on_a_dry_run_changes_once_then_changes_nothing(
     assert titles == {None, "Dinner"}
 
 
+def test_make_private_by_title_prefix_reaches_rows_with_no_metadata(
+    kevin_client, household_a, kevin
+):
+    for title in ("COSC 4320 Software Engineering", "COSC 3318 Python Programming"):
+        kevin_client.post("/api/events", {"title": title}, format="json")
+    kevin_client.post("/api/events", {"title": "cosc lowercase is not a class"}, format="json")
+    kevin_client.post("/api/events", {"title": "Dentist"}, format="json")
+    base = ["--household", str(household_a.id), "--user-email", kevin.email]
+
+    dry = _make_private(*base, "--title-prefix", "COSC ", "--dry-run")
+    assert "Dry run, nothing was changed. 2 shared events whose title starts with 'COSC '" in dry
+    assert "Made 2 shared" in _make_private(*base, "--title-prefix", "COSC ")
+    assert set(Event.objects.filter(owner_user=kevin).values_list("title", flat=True)) == {
+        "COSC 4320 Software Engineering",
+        "COSC 3318 Python Programming",
+    }
+    assert "Made 0 shared" in _make_private(*base, "--title-prefix", "COSC ")
+
+
 def test_make_private_refuses_a_non_member_in_words(household_a, user_b):
     with pytest.raises(CommandError, match="not a member"):
         _make_private(

@@ -2,7 +2,8 @@
 one member (ADR 0052, web-revamp ticket 06, spec D3 "Backfill").
 
     manage.py make_private --household <id> --user-email <email> \\
-        (--origin-prefix canvas: | --structured-meta-key course) [--dry-run]
+        (--origin-prefix canvas: | --structured-meta-key course | --title-prefix "COSC ")
+        [--dry-run]
 
 Kevin runs it twice on live: once for `canvas:` (Canvas coursework, which
 `origin_guid` names `canvas:<assignment id>`), once for `course` (the class
@@ -31,7 +32,8 @@ from django.db import transaction
 class Command(BaseCommand):
     help = (
         "Makes existing shared events private to one member of a household, selected by "
-        "origin_guid prefix or by a structured_meta key. Idempotent; --dry-run counts only."
+        "origin_guid prefix, a structured_meta key, or a title prefix. Idempotent; --dry-run "
+        "counts only."
     )
 
     def add_arguments(self, parser):
@@ -46,6 +48,12 @@ class Command(BaseCommand):
         which.add_argument(
             "--structured-meta-key",
             help="Events whose structured_meta has this top-level key, e.g. course",
+        )
+        # Live data, 2026-10-03: the class schedule carries no metadata at all, only a title
+        # ("COSC 4320 Software Engineering"), so neither selector above can reach it.
+        which.add_argument(
+            "--title-prefix",
+            help='Events whose title starts with this (case-sensitive), e.g. "COSC "',
         )
         parser.add_argument(
             "--dry-run", action="store_true", help="Count what would change; change nothing."
@@ -79,6 +87,10 @@ class Command(BaseCommand):
             prefix = options["origin_prefix"]
             matching = matching.filter(origin_guid__startswith=prefix)
             what = f"events whose origin_guid starts with {prefix!r}"
+        elif options["title_prefix"]:
+            prefix = options["title_prefix"]
+            matching = matching.filter(title__startswith=prefix)
+            what = f"events whose title starts with {prefix!r}"
         else:
             key = options["structured_meta_key"]
             matching = matching.filter(structured_meta__has_key=key)
