@@ -2,6 +2,7 @@ package com.kevin.legion.ui.media
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
+import com.kevin.legion.ui.theme.soft.SoftColors
 
 /**
  * Notification-listener access refused - the UI half of the fix commit d683d2c made for
@@ -51,8 +54,15 @@ fun MediaTransportAccessBanner(hasAccess: Boolean) {
     if (!MediaAccessResolver.shouldShowBanner(hasNotificationAccess = hasAccess)) return
     val context = LocalContext.current
     val sem = LocalLegionSemantics.current
+    // A rounded card under SoftTheme (MediaScreen); the legacy previews below keep the bare row,
+    // since LocalSoftActive is false there.
+    val cardModifier = if (LocalSoftActive.current) {
+        Modifier.fillMaxWidth().background(SoftColors.card, MaterialTheme.shapes.medium)
+    } else {
+        Modifier.fillMaxWidth()
+    }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        cardModifier.padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -68,7 +78,7 @@ fun MediaTransportAccessBanner(hasAccess: Boolean) {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         }) {
-            Text("SETTINGS", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            Text("Settings", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }

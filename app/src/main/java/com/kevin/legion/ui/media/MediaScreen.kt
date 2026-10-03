@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,13 +35,15 @@ import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
 import com.kevin.legion.ui.common.DeckButton
+import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.common.DeckTextField
 import com.kevin.legion.ui.common.ReadingRow
-import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.spotify.SpotifyConnectResolver
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import kotlinx.coroutines.launch
 
 /**
@@ -230,163 +233,176 @@ fun MediaScreen(onBack: () -> Unit) {
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            DeckScreenHeader(title = "Media", onBack = onBack)
+    // Soft Material (ADR 0051, soft-misc): the screen is no area's tile (HOME reaches it from its
+    // media affordance, not a tile), so the header carries no area chip. Each section is a rounded
+    // card via [DeckPane]; the rows that used to hang below a section header now sit inside it.
+    SoftTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
+            Column(Modifier.fillMaxSize()) {
+                DeckScreenHeader(title = "Media", onBack = onBack)
 
-            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
-                item { MediaTransportAccessBanner(hasAccess = hasNotificationAccess) }
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    item { MediaTransportAccessBanner(hasAccess = hasNotificationAccess) }
 
-                // ------------------------------------------------------------- now playing
-                item {
-                    SectionHeader(left = "Now playing")
-                    val info = nowPlaying
-                    if (info == null) {
-                        Text(
-                            "Nothing playing right now.",
-                            style = LegionType.stamp,
-                            color = sem.faint,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    } else {
-                        ReadingRow(label = info.title, value = if (info.isPlaying) "PLAYING" else "PAUSED", sub = info.artist)
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        DeckButton("PREV", enabled = !transportWorking, onClick = { runTransport(MediaTransport.Action.PREVIOUS) })
-                        DeckButton(
-                            if (nowPlaying?.isPlaying == true) "PAUSE" else "PLAY",
-                            enabled = !transportWorking,
-                            onClick = { runTransport(if (nowPlaying?.isPlaying == true) MediaTransport.Action.PAUSE else MediaTransport.Action.PLAY) },
-                        )
-                        DeckButton("NEXT", enabled = !transportWorking, onClick = { runTransport(MediaTransport.Action.NEXT) })
-                    }
-                    transportMessage?.let {
-                        Text(it, style = LegionType.stamp, color = sem.estimated, modifier = Modifier.padding(horizontal = 12.dp))
-                    }
-                }
-
-                // ------------------------------------------------------------------- volume
-                item {
-                    SectionHeader(left = "Volume", right = "$volumePercent%")
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        DeckButton("LOWER", onClick = { volumePercent = VolumeController.lower(context) })
-                        DeckButton("RAISE", onClick = { volumePercent = VolumeController.raise(context) })
-                        DeckButton("MUTE", onClick = { volumePercent = VolumeController.mute(context, true) })
-                        DeckButton("UNMUTE", onClick = { volumePercent = VolumeController.mute(context, false) })
-                    }
-                }
-
-                // -------------------------------------------------------------------- queue
-                item {
-                    SectionHeader(left = "Queue")
-                    if (!searchReady) {
-                        Text(
-                            MediaSpotifyGateResolver.notReadyMessage(stage),
-                            style = LegionType.stamp,
-                            color = sem.estimated,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    } else {
-                        DeckButton(
-                            if (queueLoading) "LOADING..." else "WHAT'S NEXT",
-                            enabled = !queueLoading,
-                            onClick = ::runQueue,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        )
-                        queueMessage?.let {
-                            Text(it, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
-                        }
-                    }
-                }
-                items(queueRows) { track -> ReadingRow(label = track.name, value = track.artist) }
-
-                // ---------------------------------------------------------- search & play
-                item {
-                    SectionHeader(left = "Search & play")
-                    if (!searchReady) {
-                        Text(
-                            MediaSpotifyGateResolver.notReadyMessage(stage),
-                            style = LegionType.stamp,
-                            color = sem.estimated,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    } else {
-                        DeckTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            label = "Song or artist",
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                        )
-                        DeckButton(
-                            if (searching) "SEARCHING..." else "SEARCH",
-                            enabled = !searching,
-                            onClick = ::runSearch,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                        searchResult?.let { row ->
-                            ReadingRow(
-                                label = row.title,
-                                value = "PLAY",
-                                sub = row.subtitle,
-                                modifier = Modifier.clickable {
-                                    playUri(row.uri, row.title) { message -> searchMessage = message }
-                                },
-                            )
-                        }
-                        searchMessage?.let {
-                            Text(it, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
-                        }
-                    }
-                }
-
-                // -------------------------------------------------------------------- library
-                item {
-                    SectionHeader(left = "Library")
-                    if (!searchReady) {
-                        Text(
-                            MediaSpotifyGateResolver.notReadyMessage(stage),
-                            style = LegionType.stamp,
-                            color = sem.estimated,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    } else {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            BrowseSource.entries.forEach { source ->
+                    // --------------------------------------------------------- now playing
+                    item {
+                        DeckPane(header = "Now playing") {
+                            val info = nowPlaying
+                            if (info == null) {
+                                Text(
+                                    "Nothing playing right now.",
+                                    style = LegionType.stamp,
+                                    color = sem.faint,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            } else {
+                                ReadingRow(label = info.title, value = if (info.isPlaying) "Playing" else "Paused", sub = info.artist)
+                            }
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                DeckButton("Prev", enabled = !transportWorking, onClick = { runTransport(MediaTransport.Action.PREVIOUS) })
                                 DeckButton(
-                                    text = source.label,
-                                    enabled = !browsing,
-                                    onClick = { runBrowse(source) },
+                                    if (nowPlaying?.isPlaying == true) "Pause" else "Play",
+                                    enabled = !transportWorking,
+                                    onClick = { runTransport(if (nowPlaying?.isPlaying == true) MediaTransport.Action.PAUSE else MediaTransport.Action.PLAY) },
+                                )
+                                DeckButton("Next", enabled = !transportWorking, onClick = { runTransport(MediaTransport.Action.NEXT) })
+                            }
+                            transportMessage?.let {
+                                Text(it, style = LegionType.stamp, color = sem.estimated)
+                            }
+                        }
+                    }
+
+                    // ----------------------------------------------------------- volume
+                    item {
+                        DeckPane(header = "Volume", headerAccent = "$volumePercent%") {
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                DeckButton("Lower", onClick = { volumePercent = VolumeController.lower(context) })
+                                DeckButton("Raise", onClick = { volumePercent = VolumeController.raise(context) })
+                                DeckButton("Mute", onClick = { volumePercent = VolumeController.mute(context, true) })
+                                DeckButton("Unmute", onClick = { volumePercent = VolumeController.mute(context, false) })
+                            }
+                        }
+                    }
+
+                    // ------------------------------------------------------------ queue
+                    item {
+                        DeckPane(header = "Queue") {
+                            if (!searchReady) {
+                                Text(
+                                    MediaSpotifyGateResolver.notReadyMessage(stage),
+                                    style = LegionType.stamp,
+                                    color = sem.estimated,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            } else {
+                                DeckButton(
+                                    if (queueLoading) "Loading..." else "What's next",
+                                    enabled = !queueLoading,
+                                    onClick = ::runQueue,
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                )
+                                queueMessage?.let {
+                                    Text(it, style = LegionType.stamp, color = sem.faint)
+                                }
+                            }
+                            queueRows.forEach { track -> ReadingRow(label = track.name, value = track.artist) }
+                        }
+                    }
+
+                    // ------------------------------------------------------ search & play
+                    item {
+                        DeckPane(header = "Search & play") {
+                            if (!searchReady) {
+                                Text(
+                                    MediaSpotifyGateResolver.notReadyMessage(stage),
+                                    style = LegionType.stamp,
+                                    color = sem.estimated,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            } else {
+                                DeckTextField(
+                                    value = query,
+                                    onValueChange = { query = it },
+                                    label = "Song or artist",
+                                )
+                                DeckButton(
+                                    if (searching) "Searching..." else "Search",
+                                    enabled = !searching,
+                                    onClick = ::runSearch,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                                searchResult?.let { row ->
+                                    ReadingRow(
+                                        label = row.title,
+                                        value = "Play",
+                                        sub = row.subtitle,
+                                        modifier = Modifier.clickable {
+                                            playUri(row.uri, row.title) { message -> searchMessage = message }
+                                        },
+                                    )
+                                }
+                                searchMessage?.let {
+                                    Text(it, style = LegionType.stamp, color = sem.faint)
+                                }
+                            }
+                        }
+                    }
+
+                    // ---------------------------------------------------------- library
+                    item {
+                        DeckPane(header = "Library") {
+                            if (!searchReady) {
+                                Text(
+                                    MediaSpotifyGateResolver.notReadyMessage(stage),
+                                    style = LegionType.stamp,
+                                    color = sem.estimated,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            } else {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    BrowseSource.entries.forEach { source ->
+                                        DeckButton(
+                                            text = source.label,
+                                            enabled = !browsing,
+                                            onClick = { runBrowse(source) },
+                                        )
+                                    }
+                                }
+                                browseMessage?.let {
+                                    Text(it, style = LegionType.stamp, color = sem.faint)
+                                }
+                            }
+                            browseRows.forEach { row ->
+                                ReadingRow(
+                                    label = row.title,
+                                    value = if (row.uri != null) "Play" else "",
+                                    sub = row.subtitle,
+                                    modifier = if (row.uri != null) {
+                                        Modifier.clickable { playUri(row.uri, row.title) { message -> browseMessage = message } }
+                                    } else {
+                                        Modifier
+                                    },
                                 )
                             }
                         }
-                        browseMessage?.let {
-                            Text(it, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
-                        }
                     }
-                }
-                items(browseRows) { row ->
-                    ReadingRow(
-                        label = row.title,
-                        value = if (row.uri != null) "PLAY" else "",
-                        sub = row.subtitle,
-                        modifier = if (row.uri != null) {
-                            Modifier.clickable { playUri(row.uri, row.title) { message -> browseMessage = message } }
-                        } else {
-                            Modifier
-                        },
-                    )
-                }
 
-                item { Spacer(Modifier.height(24.dp)) }
+                    item { Spacer(Modifier.height(8.dp)) }
+                }
             }
         }
     }
@@ -394,10 +410,10 @@ fun MediaScreen(onBack: () -> Unit) {
 
 /** browse_my_music's `source` vocabulary, the subset with a minimal on-screen surface (ticket 04's "minimal library browse"). */
 internal enum class BrowseSource(val wireValue: String, val label: String) {
-    SAVED_ALBUMS("saved_albums", "ALBUMS"),
-    RECENTLY_PLAYED("recently_played", "RECENT"),
-    TOP_TRACKS("top_tracks", "TOP"),
-    LEGION_HISTORY("legion_history", "HISTORY"),
+    SAVED_ALBUMS("saved_albums", "Albums"),
+    RECENTLY_PLAYED("recently_played", "Recent"),
+    TOP_TRACKS("top_tracks", "Top"),
+    LEGION_HISTORY("legion_history", "History"),
 }
 
 /** One browse-list row. [uri] is null when the source's own payload carries no play target (see runBrowse). */

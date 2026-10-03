@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.news
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,9 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,9 +29,15 @@ import com.kevin.legion.data.local.FeedSubscription
 import com.kevin.legion.news.FeedFetchResult
 import com.kevin.legion.news.FeedFetcher
 import com.kevin.legion.news.FeedSubscriptionController
+import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckPane
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.common.DeckTextField
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.world.NewsDigestCard
 import com.kevin.legion.util.clockTime
 import kotlinx.coroutines.launch
@@ -54,9 +59,16 @@ import kotlinx.coroutines.launch
  * **Nothing here is stored beyond the subscription URLs.** A fetched [FeedFetchResult] lives only
  * in [checkStates] (`remember`, no Room row, no cache file) - navigating away and back starts
  * blank again, same posture [NewsDigestCard]'s own doc comment describes for Gmail.
+ *
+ * **Soft Material (ADR 0051, soft-misc):** renders inside [SoftTheme] with a NEWS-chip header.
+ * [onBack] defaults to a no-op because this route used to have no header; `MainActivity`'s
+ * `composable(LegionRoute.NEWS)` passes `onBack = { navController.popBackStack() }` to wire the
+ * arrow. The outer "Newsletters" pane that used to wrap [NewsDigestCard] is gone - the card draws
+ * its own pane under the same title, so the old nesting would have been a card inside a card.
+ * Presentation only; no behaviour changed.
  */
 @Composable
-fun NewsScreen() {
+fun NewsScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sem = LocalLegionSemantics.current
@@ -81,77 +93,82 @@ fun NewsScreen() {
         }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp)) {
-        DeckPane(header = "Newsletters", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            NewsDigestCard()
-        }
+    SoftTheme {
+        Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
+            DeckScreenHeader(title = "News", onBack = onBack, accent = AreaAccent.NEWS)
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                NewsDigestCard()
 
-        DeckPane(header = "Feeds", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            for (subscription in subscriptions) {
-                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            subscription.title ?: subscription.url,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = sem.data,
-                            modifier = Modifier.padding(end = 8.dp),
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(onClick = { check(subscription) }) { Text("CHECK") }
-                            TextButton(
-                                onClick = {
-                                    scope.launch { FeedSubscriptionController.remove(context, subscription.id) }
-                                    checkStates.remove(subscription.id)
-                                },
-                            ) { Text("REMOVE") }
+                DeckPane(header = "Feeds") {
+                    for (subscription in subscriptions) {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            Text(
+                                subscription.title ?: subscription.url,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = sem.data,
+                            )
+                            Row(
+                                Modifier.padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                DeckButton("Check", onClick = { check(subscription) })
+                                DeckButton(
+                                    "Remove",
+                                    onClick = {
+                                        scope.launch { FeedSubscriptionController.remove(context, subscription.id) }
+                                        checkStates.remove(subscription.id)
+                                    },
+                                    destructive = true,
+                                )
+                            }
+                            FeedCheckBody(checkStates[subscription.id], sem)
                         }
                     }
-                    FeedCheckBody(checkStates[subscription.id], sem)
-                }
-            }
-            if (subscriptions.isEmpty()) {
-                Text(
-                    "No feeds yet - add one below.",
-                    style = LegionType.stamp,
-                    color = sem.faint,
-                    modifier = Modifier.padding(vertical = 6.dp),
-                )
-            }
+                    if (subscriptions.isEmpty()) {
+                        Text(
+                            "No feeds yet - add one below.",
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                    }
 
-            Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                OutlinedTextField(
-                    value = newUrl,
-                    onValueChange = { newUrl = it; addRefusal = null },
-                    label = { Text("Feed URL") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = newTitle,
-                    onValueChange = { newTitle = it },
-                    label = { Text("Name (optional)") },
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                )
-                TextButton(
-                    modifier = Modifier.padding(top = 4.dp),
-                    onClick = {
-                        scope.launch {
-                            when (val result = FeedSubscriptionController.add(context, newUrl, newTitle.ifBlank { null })) {
-                                is FeedSubscriptionController.AddResult.Added -> {
-                                    newUrl = ""
-                                    newTitle = ""
-                                    addRefusal = null
+                    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        DeckTextField(
+                            value = newUrl,
+                            onValueChange = { newUrl = it; addRefusal = null },
+                            label = "Feed URL",
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        DeckTextField(
+                            value = newTitle,
+                            onValueChange = { newTitle = it },
+                            label = "Name (optional)",
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        )
+                        DeckButton(
+                            "Add feed",
+                            modifier = Modifier.padding(top = 8.dp),
+                            onClick = {
+                                scope.launch {
+                                    when (val result = FeedSubscriptionController.add(context, newUrl, newTitle.ifBlank { null })) {
+                                        is FeedSubscriptionController.AddResult.Added -> {
+                                            newUrl = ""
+                                            newTitle = ""
+                                            addRefusal = null
+                                        }
+                                        is FeedSubscriptionController.AddResult.Refused -> addRefusal = result.reason
+                                    }
                                 }
-                                is FeedSubscriptionController.AddResult.Refused -> addRefusal = result.reason
-                            }
+                            },
+                        )
+                        addRefusal?.let { reason ->
+                            Text(reason, style = LegionType.stamp, color = sem.estimated, modifier = Modifier.padding(top = 4.dp))
                         }
-                    },
-                ) { Text("ADD FEED") }
-                addRefusal?.let { reason ->
-                    Text(reason, style = LegionType.stamp, color = sem.estimated, modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
             }
         }

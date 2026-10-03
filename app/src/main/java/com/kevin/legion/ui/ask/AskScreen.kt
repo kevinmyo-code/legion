@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.ask
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -25,6 +26,10 @@ import com.kevin.legion.service.QuerySource
 import com.kevin.legion.service.QueryWindow
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import kotlinx.coroutines.launch
 
 /**
@@ -41,9 +46,15 @@ import kotlinx.coroutines.launch
  * anything the voice path could not also be asked to build. [askRefusal] is the refusal path
  * carried across verbatim from the old pane - a refusal that stops being rendered is a silent
  * failure, ticket 02's own words.
+ *
+ * **Soft Material (ADR 0051, soft-misc):** renders inside [SoftTheme] with a REPORTS-chip header.
+ * [onBack] defaults to a no-op because this route used to have no header at all; `MainActivity`'s
+ * `composable(LegionRoute.ASK)` passes `onBack = { navController.popBackStack() }` to make the
+ * arrow work. Picker values show the enum constant as words ("Total with rows"), display only -
+ * the enums themselves are untouched, so the hands path still cannot express anything voice can't.
  */
 @Composable
-fun AskScreen() {
+fun AskScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -54,56 +65,61 @@ fun AskScreen() {
     var askGrouping by remember { mutableStateOf(QueryGrouping.NONE) }
     var askRefusal by remember { mutableStateOf<String?>(null) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp)) {
-        DeckPane(header = "Ask", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            DeckRow(
-                label = "Shape",
-                value = askShape.name,
-                modifier = Modifier.clickable { askShape = cycle(askShape) },
-            )
-            DeckRow(
-                label = "Source",
-                value = askSource.name,
-                modifier = Modifier.clickable { askSource = cycle(askSource) },
-            )
-            DeckRow(
-                label = "Aggregation",
-                value = askAggregation.name,
-                modifier = Modifier.clickable { askAggregation = cycle(askAggregation) },
-            )
-            DeckRow(
-                label = "Window",
-                value = askWindow.name,
-                modifier = Modifier.clickable { askWindow = cycle(askWindow) },
-            )
-            DeckRow(
-                label = "Grouping",
-                value = askGrouping.name,
-                modifier = Modifier.clickable { askGrouping = cycle(askGrouping) },
-            )
-            DeckRow(
-                label = "Run",
-                value = askRefusal ?: "tap to build",
-                modifier = Modifier.clickable {
-                    val spec = GeneratedViewQuerySpec(
-                        shape = askShape,
-                        source = askSource,
-                        aggregation = askAggregation,
-                        window = askWindow,
-                        grouping = askGrouping,
-                        title = "${askSource.name} - ${askShape.name}",
+    SoftTheme {
+        Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
+            DeckScreenHeader(title = "Reports", onBack = onBack, accent = AreaAccent.REPORTS)
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp)) {
+                DeckPane(header = "Ask") {
+                    DeckRow(
+                        label = "Shape",
+                        value = askShape.readable(),
+                        modifier = Modifier.clickable { askShape = cycle(askShape) },
                     )
-                    scope.launch {
-                        when (val run = GeneratedViewQueryRunner.run(context, spec)) {
-                            is GeneratedViewQueryRunner.RunResult.Refusal -> askRefusal = run.reason
-                            is GeneratedViewQueryRunner.RunResult.Rendered -> {
-                                askRefusal = null
-                                GeneratedViewController.show(run.payload)
+                    DeckRow(
+                        label = "Source",
+                        value = askSource.readable(),
+                        modifier = Modifier.clickable { askSource = cycle(askSource) },
+                    )
+                    DeckRow(
+                        label = "Aggregation",
+                        value = askAggregation.readable(),
+                        modifier = Modifier.clickable { askAggregation = cycle(askAggregation) },
+                    )
+                    DeckRow(
+                        label = "Window",
+                        value = askWindow.readable(),
+                        modifier = Modifier.clickable { askWindow = cycle(askWindow) },
+                    )
+                    DeckRow(
+                        label = "Grouping",
+                        value = askGrouping.readable(),
+                        modifier = Modifier.clickable { askGrouping = cycle(askGrouping) },
+                    )
+                    DeckRow(
+                        label = "Run",
+                        value = askRefusal ?: "Tap to build",
+                        modifier = Modifier.clickable {
+                            val spec = GeneratedViewQuerySpec(
+                                shape = askShape,
+                                source = askSource,
+                                aggregation = askAggregation,
+                                window = askWindow,
+                                grouping = askGrouping,
+                                title = "${askSource.name} - ${askShape.name}",
+                            )
+                            scope.launch {
+                                when (val run = GeneratedViewQueryRunner.run(context, spec)) {
+                                    is GeneratedViewQueryRunner.RunResult.Refusal -> askRefusal = run.reason
+                                    is GeneratedViewQueryRunner.RunResult.Rendered -> {
+                                        askRefusal = null
+                                        GeneratedViewController.show(run.payload)
+                                    }
+                                }
                             }
-                        }
-                    }
-                },
-            )
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -115,3 +131,7 @@ private inline fun <reified T : Enum<T>> cycle(current: T): T {
     val values = enumValues<T>()
     return values[(current.ordinal + 1) % values.size]
 }
+
+/** An enum constant as sentence-case words for display ("TOTAL_WITH_ROWS" -> "Total with rows"). */
+private fun Enum<*>.readable(): String =
+    name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
