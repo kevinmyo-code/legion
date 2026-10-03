@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.fleet
 
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,8 @@ import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 import kotlinx.coroutines.Dispatchers
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 // AnchorWriteOutcome lives in this same package (MaintenanceWrites.kt) - no import needed, but
 // named here for the reader: onSetAnchor's return type, not WriteOutcome, since ticket 31 needs
 // it to carry back the RESOLVED mileage/date/neverDone, not just success/message.
@@ -138,27 +141,15 @@ fun MaintenanceDrilldownScreen(
     onBack: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
+            DeckScreenHeader(title = "Maintenance", onBack = onBack, accent = AreaAccent.FLEET)
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "MAINTENANCE",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                DeckButton(text = "FULL SCHEDULE", onClick = onOpenFullSchedule)
+                DeckButton(text = "Full schedule", onClick = onOpenFullSchedule)
             }
             Hairline()
             // A flat LazyColumn even when dueRows is empty (not a top-level
@@ -197,9 +188,9 @@ fun MaintenanceDrilldownScreen(
                                 // is "an advisory on data").
                                 tag = if (row.overdue || row.isGuess) {
                                     {
-                                        if (row.overdue) DeckTag("OVERDUE", DeckTagStyle.INVERTED_AMBER)
+                                        if (row.overdue) DeckTag("Overdue", DeckTagStyle.INVERTED_AMBER)
                                         if (row.overdue && row.isGuess) Spacer(Modifier.width(4.dp))
-                                        if (row.isGuess) DeckTag("GUESS", DeckTagStyle.INVERTED_AMBER)
+                                        if (row.isGuess) DeckTag("Guess", DeckTagStyle.INVERTED_AMBER)
                                     }
                                 } else {
                                     null
@@ -335,7 +326,6 @@ fun FullScheduleScreen(
     onOpenPopulate: () -> Unit = {},
     onBack: () -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
     val scope = rememberCoroutineScope()
 
     // A local mirror, same fix [ItemDetailScreen] already applies below and for the same reason:
@@ -356,22 +346,10 @@ fun FullScheduleScreen(
     val upcomingRows = rows.filter { it.group == ScheduleGroup.UPCOMING }
     val unknownRows = rows.filter { it.group == ScheduleGroup.UNKNOWN }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "FULL SCHEDULE",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Full schedule", onBack = onBack, accent = AreaAccent.FLEET)
             if (filterUnknownOnly) {
                 Text(
                     "Filtered to items with no history.",
@@ -394,9 +372,9 @@ fun FullScheduleScreen(
             // is present, which also suits it: it is the only one of the three that carries a count
             // and opens a review dialog.
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                DeckButton(text = "ADD ITEM", onClick = onAddItem)
+                DeckButton(text = "Add item", onClick = onAddItem)
                 Spacer(Modifier.width(8.dp))
-                DeckButton(text = "SERVICE HISTORY", onClick = onOpenServiceHistory)
+                DeckButton(text = "Service history", onClick = onOpenServiceHistory)
             }
             if (!filterUnknownOnly && confirmable.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 0.dp)) {
@@ -419,20 +397,20 @@ fun FullScheduleScreen(
                                 color = sem.faint,
                             )
                             Spacer(Modifier.height(8.dp))
-                            DeckButton(text = "POPULATE SCHEDULE", onClick = onOpenPopulate)
+                            DeckButton(text = "Populate schedule", onClick = onOpenPopulate)
                         }
                     }
                 }
                 if (!filterUnknownOnly && overdueRows.isNotEmpty()) {
-                    item(key = "overdue-header") { SectionHeader("OVERDUE", overdueRows.size.toString()) }
+                    item(key = "overdue-header") { SectionHeader("Overdue", overdueRows.size.toString()) }
                     items(overdueRows, key = { "overdue-${it.serviceName}" }) { ScheduleRow(it, onOpenItem) }
                 }
                 if (!filterUnknownOnly && upcomingRows.isNotEmpty()) {
-                    item(key = "upcoming-header") { SectionHeader("UPCOMING", upcomingRows.size.toString()) }
+                    item(key = "upcoming-header") { SectionHeader("Upcoming", upcomingRows.size.toString()) }
                     items(upcomingRows, key = { "upcoming-${it.serviceName}" }) { ScheduleRow(it, onOpenItem) }
                 }
                 if (unknownRows.isNotEmpty()) {
-                    item(key = "unknown-header") { SectionHeader("NO HISTORY", unknownRows.size.toString()) }
+                    item(key = "unknown-header") { SectionHeader("No history", unknownRows.size.toString()) }
                     items(unknownRows, key = { "unknown-${it.serviceName}" }) { ScheduleRow(it, onOpenItem) }
                 }
                 item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
@@ -444,64 +422,68 @@ fun FullScheduleScreen(
     // a plain accept-all was declined specifically because 3,000 looked exactly as authoritative as
     // a number Kevin typed, and this dialog is what keeps that from becoming a rubber stamp.
     if (showConfirmDialog) {
-        DeckDialog(title = "Confirm All", onDismissRequest = { showConfirmDialog = false }) {
-            // The heading no longer claims LEGION guessed all of these (ticket 18): once isGuessTag
-            // widened past SEEDED, this list can also hold LOOKUP rows, which came from a factory
-            // lookup the driver reviewed. Saying "guessed by LEGION" over those would be false, and
-            // the one thing this dialog exists to prevent is a value looking more or less
-            // authoritative than it is. What they genuinely share is that the driver has not
-            // confirmed them, so that is what the heading says.
-            Text(
-                "These ${confirmable.size} intervals have not been confirmed by you. Confirming accepts them exactly as shown:",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            confirmable.forEach { mi ->
-                // Per-row provenance, because the two kinds are NOT equally weak and a bulk confirm
-                // is exactly where that difference would otherwise vanish. A LOOKUP row came from a
-                // lookup shown to be unstable across runs (ticket 18); a SEEDED one was never
-                // reviewed at all.
-                val origin = provenanceWords(mi)?.let { " ($it)" } ?: ""
+        SoftTheme {
+            val sem = LocalLegionSemantics.current
+            DeckDialog(title = "Confirm All", onDismissRequest = { showConfirmDialog = false }) {
+                // The heading no longer claims LEGION guessed all of these (ticket 18): once isGuessTag
+                // widened past SEEDED, this list can also hold LOOKUP rows, which came from a factory
+                // lookup the driver reviewed. Saying "guessed by LEGION" over those would be false, and
+                // the one thing this dialog exists to prevent is a value looking more or less
+                // authoritative than it is. What they genuinely share is that the driver has not
+                // confirmed them, so that is what the heading says.
                 Text(
-                    "${mi.serviceName} - ${intervalWords(mi) ?: "no interval"}$origin",
-                    style = LegionType.stamp,
-                    color = sem.faint,
-                    modifier = Modifier.padding(vertical = 2.dp),
+                    "These ${confirmable.size} intervals have not been confirmed by you. Confirming accepts them exactly as shown:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
-            }
-            Row(Modifier.padding(top = 12.dp)) {
-                DeckButton(text = "CANCEL", onClick = { showConfirmDialog = false })
-                Spacer(Modifier.width(8.dp))
-                DeckButton(
-                    text = "CONFIRM",
-                    onClick = {
-                        scope.launch {
-                            val outcomes = onConfirmAll(confirmable)
-                            // outcomes is index-aligned with confirmable - writeConfirmAll's own doc
-                            // states it's a plain `items.map { ... }` over the SAME list passed in, so
-                            // zipping here is safe. Only the successfully-confirmed rows are patched -
-                            // one item disappearing mid-loop (writeConfirmAll's own doc: "a concurrent
-                            // delete") fails only that row's WriteOutcome and leaves it as-is here too,
-                            // matching CLAUDE.md's "nothing partial reads as more than it is."
-                            val confirmedNames = confirmable.zip(outcomes)
-                                .filter { (_, outcome) -> outcome.success }
-                                .map { (item, _) -> item.serviceName }
-                                .toSet()
-                            currentItems = currentItems.map {
-                                if (it.serviceName in confirmedNames) it.copy(intervalSource = "CONFIRMED") else it
+                confirmable.forEach { mi ->
+                    // Per-row provenance, because the two kinds are NOT equally weak and a bulk confirm
+                    // is exactly where that difference would otherwise vanish. A LOOKUP row came from a
+                    // lookup shown to be unstable across runs (ticket 18); a SEEDED one was never
+                    // reviewed at all.
+                    val origin = provenanceWords(mi)?.let { " ($it)" } ?: ""
+                    Text(
+                        "${mi.serviceName} - ${intervalWords(mi) ?: "no interval"}$origin",
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(vertical = 2.dp),
+                    )
+                }
+                Row(Modifier.padding(top = 12.dp)) {
+                    DeckButton(text = "Cancel", onClick = { showConfirmDialog = false })
+                    Spacer(Modifier.width(8.dp))
+                    DeckButton(
+                        text = "Confirm",
+                        onClick = {
+                            scope.launch {
+                                val outcomes = onConfirmAll(confirmable)
+                                // outcomes is index-aligned with confirmable - writeConfirmAll's own doc
+                                // states it's a plain `items.map { ... }` over the SAME list passed in, so
+                                // zipping here is safe. Only the successfully-confirmed rows are patched -
+                                // one item disappearing mid-loop (writeConfirmAll's own doc: "a concurrent
+                                // delete") fails only that row's WriteOutcome and leaves it as-is here too,
+                                // matching CLAUDE.md's "nothing partial reads as more than it is."
+                                val confirmedNames = confirmable.zip(outcomes)
+                                    .filter { (_, outcome) -> outcome.success }
+                                    .map { (item, _) -> item.serviceName }
+                                    .toSet()
+                                currentItems = currentItems.map {
+                                    if (it.serviceName in confirmedNames) it.copy(intervalSource = "CONFIRMED") else it
+                                }
+                                val failed = outcomes.count { !it.success }
+                                confirmStatus = if (failed == 0) {
+                                    "Confirmed ${outcomes.size} item${if (outcomes.size == 1) "" else "s"}."
+                                } else {
+                                    "$failed of ${outcomes.size} did not confirm - " + outcomes.first { !it.success }.message
+                                }
+                                showConfirmDialog = false
                             }
-                            val failed = outcomes.count { !it.success }
-                            confirmStatus = if (failed == 0) {
-                                "Confirmed ${outcomes.size} item${if (outcomes.size == 1) "" else "s"}."
-                            } else {
-                                "$failed of ${outcomes.size} did not confirm - " + outcomes.first { !it.success }.message
-                            }
-                            showConfirmDialog = false
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
+
         }
     }
 }
@@ -522,9 +504,9 @@ private fun ScheduleRow(row: ScheduleRowView, onOpenItem: (String) -> Unit) {
             value = row.value,
             tag = if (row.group == ScheduleGroup.OVERDUE || row.isGuess) {
                 {
-                    if (row.group == ScheduleGroup.OVERDUE) DeckTag("OVERDUE", DeckTagStyle.INVERTED_AMBER)
+                    if (row.group == ScheduleGroup.OVERDUE) DeckTag("Overdue", DeckTagStyle.INVERTED_AMBER)
                     if (row.group == ScheduleGroup.OVERDUE && row.isGuess) Spacer(Modifier.width(4.dp))
-                    if (row.isGuess) DeckTag("GUESS", DeckTagStyle.INVERTED_AMBER)
+                    if (row.isGuess) DeckTag("Guess", DeckTagStyle.INVERTED_AMBER)
                 }
             } else {
                 null
@@ -577,7 +559,6 @@ fun ItemDetailScreen(
     onAddItem: suspend (name: String, miles: Int?, months: Int?, mode: AnchorMode, mileage: Int?, date: Long?) -> WriteOutcome,
     onBack: () -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
     val scope = rememberCoroutineScope()
     val isAdd = item == null
 
@@ -617,21 +598,13 @@ fun ItemDetailScreen(
 
     val collision = if (isAdd) checkDuplicate(nameText) else null
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                if (isAdd) "ADD ITEM" else current?.serviceName.orEmpty().uppercase(),
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            DeckScreenHeader(
+                title = if (isAdd) "Add item" else current?.serviceName.orEmpty(),
+                onBack = onBack,
+                accent = AreaAccent.FLEET,
             )
             Hairline()
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
@@ -652,7 +625,7 @@ fun ItemDetailScreen(
                     Spacer(Modifier.height(8.dp))
                 } else if (current?.let { isGuessTag(it) } == true) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-                        DeckTag("GUESS", DeckTagStyle.INVERTED_AMBER)
+                        DeckTag("Guess", DeckTagStyle.INVERTED_AMBER)
                         Spacer(Modifier.width(8.dp))
                         // The TAG stays coarse ("unconfirmed"), the SENTENCE is precise - same split
                         // as CONFIRM ALL's dialog, and for the same reason. Hardcoding "LEGION
@@ -674,7 +647,7 @@ fun ItemDetailScreen(
                         )
                     }
                     DeckButton(
-                        text = "CONFIRM AS-IS",
+                        text = "Confirm as-is",
                         onClick = {
                             val target = current ?: return@DeckButton
                             scope.launch {
@@ -687,7 +660,7 @@ fun ItemDetailScreen(
                     Spacer(Modifier.height(8.dp))
                 }
 
-                SectionHeader("INTERVAL")
+                SectionHeader("Interval")
                 DeckTextField(
                     value = milesText,
                     onValueChange = { milesText = it },
@@ -704,7 +677,7 @@ fun ItemDetailScreen(
                 Spacer(Modifier.height(8.dp))
                 if (!isAdd) {
                     DeckButton(
-                        text = "SAVE INTERVAL",
+                        text = "Save interval",
                         onClick = {
                             val target = current ?: return@DeckButton
                             val miles = milesText.trim().toIntOrNull()
@@ -719,7 +692,7 @@ fun ItemDetailScreen(
                     Spacer(Modifier.height(16.dp))
                 }
 
-                SectionHeader("ANCHOR")
+                SectionHeader("Anchor")
                 Column(Modifier.selectableGroup()) {
                     DeckRadio(selected = anchorMode == AnchorMode.NEVER_DONE, onClick = { anchorMode = AnchorMode.NEVER_DONE }, label = "Never done on this car")
                     DeckRadio(selected = anchorMode == AnchorMode.DONT_KNOW, onClick = { anchorMode = AnchorMode.DONT_KNOW }, label = "Don't know")
@@ -749,7 +722,7 @@ fun ItemDetailScreen(
                 }
                 if (!isAdd) {
                     DeckButton(
-                        text = "SAVE ANCHOR",
+                        text = "Save anchor",
                         onClick = {
                             val target = current ?: return@DeckButton
                             val mileage = anchorMileageText.trim().toIntOrNull()
@@ -798,7 +771,7 @@ fun ItemDetailScreen(
                     )
                     Spacer(Modifier.height(16.dp))
 
-                    SectionHeader("SERVICE HISTORY", serviceHistory.size.toString())
+                    SectionHeader("Service history", serviceHistory.size.toString())
                     if (serviceHistory.isEmpty()) {
                         Text(
                             "No service records logged for this item yet.",
@@ -817,7 +790,7 @@ fun ItemDetailScreen(
                     Spacer(Modifier.height(16.dp))
 
                     DeckButton(
-                        text = if (confirmingDelete) "TAP AGAIN TO DELETE" else "DELETE",
+                        text = if (confirmingDelete) "Tap again to delete" else "Delete",
                         destructive = true,
                         confirming = confirmingDelete,
                         onClick = {
@@ -835,7 +808,7 @@ fun ItemDetailScreen(
                     )
                 } else {
                     DeckButton(
-                        text = if (collision != null && !duplicateAcknowledged) "ADD ANYWAY" else "ADD ITEM",
+                        text = if (collision != null && !duplicateAcknowledged) "Add anyway" else "Add item",
                         onClick = {
                             if (collision != null && !duplicateAcknowledged) {
                                 duplicateAcknowledged = true
@@ -881,7 +854,6 @@ private fun parseAnchorDate(text: String): Long? =
  */
 @Composable
 fun RecapDrilldownScreen(recapsNewestFirst: List<MonthlyRecap>, yearlyWrapped: YearlyWrapped?, onBack: () -> Unit) {
-    val sem = LocalLegionSemantics.current
     // Which recap's narrative is expanded, if any - "tapping a row may show
     // narrative in a plain text block" (ticket 05), one at a time so opening a
     // second row's narrative closes the first rather than stacking an
@@ -889,22 +861,10 @@ fun RecapDrilldownScreen(recapsNewestFirst: List<MonthlyRecap>, yearlyWrapped: Y
     var expandedRecapId by remember { mutableStateOf<Long?>(null) }
     val slots = if (recapsNewestFirst.size >= 2) buildRecapMonthSlots(recapsNewestFirst) else emptyList()
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "RECAPS",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Recaps", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
             LazyColumn(Modifier.fillMaxSize()) {
                 // A generated-but-absent Wrapped (no year has rolled over yet)
@@ -935,7 +895,7 @@ fun RecapDrilldownScreen(recapsNewestFirst: List<MonthlyRecap>, yearlyWrapped: Y
                     } else {
                         item(key = "miles-chart") {
                             Text(
-                                "MILES DRIVEN",
+                                "Miles driven",
                                 style = LegionType.stamp,
                                 color = sem.faint,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -953,7 +913,7 @@ fun RecapDrilldownScreen(recapsNewestFirst: List<MonthlyRecap>, yearlyWrapped: Y
                             // posture this screen already uses for a below-two-recaps trend (above).
                             if (MpgTrust.SHOW_MPG) {
                                 Text(
-                                    "AVG MPG",
+                                    "Avg MPG",
                                     style = LegionType.stamp,
                                     color = sem.faint,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -1038,7 +998,7 @@ private fun RecapRow(recap: MonthlyRecap, expanded: Boolean, onToggle: () -> Uni
         DeckRow(
             label = "${monthAbbrevForRecap(recap.month)} ${recap.year}",
             value = "%.0f mi".format(recap.milesDriven),
-            tag = if (recap.notable) { { DeckTag("NOTABLE", DeckTagStyle.OUTLINE_MUTED) } } else null,
+            tag = if (recap.notable) { { DeckTag("Notable", DeckTagStyle.OUTLINE_MUTED) } } else null,
         )
         Text(
             // Cutover 4 (docs/architecture/cutover4-2026-08-24.md, senior review SHOULD-FIX): the
@@ -1074,23 +1034,10 @@ private fun monthAbbrevForRecap(month: Int): String =
  */
 @Composable
 fun DriveHistoryDrilldownScreen(logsNewestFirst: List<DailyDriveLog>, onBack: () -> Unit) {
-    val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "DRIVE HISTORY",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Drive history", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
             if (logsNewestFirst.isEmpty()) {
                 Text(
@@ -1179,7 +1126,6 @@ fun FaultsDrilldownScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val sem = LocalLegionSemantics.current
 
     // See this screen's own doc for why IDENTIFY state lives here rather than per-row.
     var learnedThisSession by remember { mutableStateOf<Map<String, Pair<String, String>>>(emptyMap()) }
@@ -1221,22 +1167,10 @@ fun FaultsDrilldownScreen(
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "FAULTS",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Faults", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
             if (eventsNewestFirst.isEmpty()) {
                 Text(
@@ -1361,9 +1295,9 @@ private fun FaultEventRow(
                 ) {
                     Text(code, style = LegionType.reading, color = sem.quarantined)
                     when {
-                        code in identifyingCodes -> Text("IDENTIFYING...", style = LegionType.stamp, color = sem.faint)
+                        code in identifyingCodes -> Text("Identifying...", style = LegionType.stamp, color = sem.faint)
                         codeNeedsIdentification(code, descriptions) -> Text(
-                            "IDENTIFY",
+                            "Identify",
                             style = LegionType.stamp,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onIdentify(code) }.padding(horizontal = 4.dp, vertical = 2.dp),
@@ -1374,7 +1308,7 @@ private fun FaultEventRow(
                         // IDENTIFY's can never both render for the same code, and their two clickable
                         // Text nodes never compete for the same tap.
                         detailReachable -> Text(
-                            if (detailExpanded) "HIDE" else "DETAILS",
+                            if (detailExpanded) "Hide" else "Details",
                             style = LegionType.stamp,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onToggleDetail(detailKey) }.padding(horizontal = 4.dp, vertical = 2.dp),
@@ -1410,7 +1344,7 @@ private fun FaultEventRow(
 
         // Freeze frame - every PID the ECU actually latched, never a fabricated zero for one it
         // didn't (formatFreezeFrame's own doc).
-        Text("FREEZE FRAME", style = LegionType.stamp, color = sem.faint)
+        Text("Freeze frame", style = LegionType.stamp, color = sem.faint)
         if (freezeFrame.isEmpty()) {
             Text(
                 "No freeze frame recorded for this event.",
@@ -1448,7 +1382,7 @@ private fun FaultEventRow(
         // "what point in the drive the fault set" - see this row's own doc and the note above for why
         // those are two different moments and this heading no longer conflates them.
         Spacer(Modifier.height(6.dp))
-        Text("AROUND WHEN LOGGED", style = LegionType.stamp, color = sem.faint)
+        Text("Around when logged", style = LegionType.stamp, color = sem.faint)
         val speed = speedSamples
         val rpm = rpmSamples
         when {
@@ -1470,7 +1404,7 @@ private fun FaultEventRow(
                 // reasoning formatFreezeFrame's own SPEED conversion states, since this drilldown's
                 // FREEZE FRAME block above already renders mph for the identical reading.
                 if (speed.isNotEmpty()) {
-                    Text("SPEED", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp))
+                    Text("Speed", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp))
                     DeckSparkline(eventTelemetrySparkline(speed))
                     sparklineCaption(speed, event.timestamp, { kmh -> (kmh * 0.621371).roundToInt() }, " mph")?.let { caption ->
                         Text(caption, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 2.dp))

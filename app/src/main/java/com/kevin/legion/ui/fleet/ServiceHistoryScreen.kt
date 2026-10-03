@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.fleet
 
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,8 @@ import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * Ticket 11's third surface (`.scratch/fleet-maintenance/issues/11-service-history-cost-and-fleet-spend.md`):
@@ -88,7 +91,6 @@ fun ServiceHistoryScreen(
     onDeleteRecord: suspend (id: Long) -> WriteOutcome,
     onBack: () -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
 
     // A local mirror, same "the state holder only refreshes on the way out" fix
     // [FullScheduleScreen]/[ItemDetailScreen] both already apply - an edit or delete here must be
@@ -97,22 +99,10 @@ fun ServiceHistoryScreen(
     var editingRecord by remember { mutableStateOf<ServiceRecord?>(null) }
     val grouped = remember(currentRecords) { groupServiceRecordsByYear(currentRecords) }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "SERVICE HISTORY",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Service history", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
             LazyColumn(Modifier.fillMaxSize()) {
                 item(key = "spend-panel") { FleetSpendPanel(spend) }
@@ -185,7 +175,7 @@ private fun FleetSpendPanel(spend: FleetSpendView) {
         Spacer(Modifier.height(8.dp))
         if (spend.byType.isNotEmpty()) {
             Text(
-                "BY SERVICE TYPE",
+                "By service type",
                 style = LegionType.stamp,
                 color = sem.faint,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -195,7 +185,7 @@ private fun FleetSpendPanel(spend: FleetSpendView) {
             Spacer(Modifier.height(8.dp))
         }
         Text(
-            "BY YEAR",
+            "By year",
             style = LegionType.stamp,
             color = sem.faint,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -272,83 +262,85 @@ private fun EditServiceRecordDialog(
     onDelete: suspend () -> WriteOutcome,
     onDeleted: () -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
-    val scope = rememberCoroutineScope()
-    var mileageText by remember(record.id) { mutableStateOf((record.mileage ?: 0).toString()) }
-    // Plain "%.2f" here, deliberately NOT formatCents' grouped-thousands form ("1,234.56") - this
-    // field round-trips through toDoubleOrNull() on SAVE below, and a comma would fail that parse
-    // for any cost >= $1,000 the driver didn't happen to retype by hand.
-    var costText by remember(record.id) { mutableStateOf(record.costCents?.let { "%.2f".format(it / 100.0) }.orEmpty()) }
-    var statusText by remember(record.id) { mutableStateOf<String?>(null) }
-    var confirmingDelete by remember(record.id) { mutableStateOf(false) }
+    SoftTheme {
+        val sem = LocalLegionSemantics.current
+        val scope = rememberCoroutineScope()
+        var mileageText by remember(record.id) { mutableStateOf((record.mileage ?: 0).toString()) }
+        // Plain "%.2f" here, deliberately NOT formatCents' grouped-thousands form ("1,234.56") - this
+        // field round-trips through toDoubleOrNull() on SAVE below, and a comma would fail that parse
+        // for any cost >= $1,000 the driver didn't happen to retype by hand.
+        var costText by remember(record.id) { mutableStateOf(record.costCents?.let { "%.2f".format(it / 100.0) }.orEmpty()) }
+        var statusText by remember(record.id) { mutableStateOf<String?>(null) }
+        var confirmingDelete by remember(record.id) { mutableStateOf(false) }
 
-    DeckDialog(title = record.serviceName.uppercase(), onDismissRequest = onDismiss) {
-        Text(
-            "This delete only removes the record from this phone - it does not sync.",
-            style = LegionType.stamp,
-            color = sem.faint,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
-        if (statusText != null) {
-            Text(statusText!!, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(bottom = 8.dp))
-        }
-        DeckTextField(
-            value = mileageText,
-            onValueChange = { mileageText = it },
-            label = "Mileage",
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
-        Spacer(Modifier.height(8.dp))
-        DeckTextField(
-            value = costText,
-            onValueChange = { costText = it },
-            label = "Cost (dollars)",
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        )
-        Row(Modifier.padding(top = 12.dp)) {
-            DeckButton(
-                text = "SAVE",
-                onClick = {
-                    val mileage = mileageText.trim().toIntOrNull()
-                    if (mileage == null) {
-                        statusText = "Mileage needs to be a number."
-                        return@DeckButton
-                    }
-                    val trimmedCost = costText.trim()
-                    val costCents: Long? = if (trimmedCost.isEmpty()) {
-                        null
-                    } else {
-                        val dollars = trimmedCost.toDoubleOrNull()
-                        if (dollars == null || dollars < 0.0) {
-                            statusText = "Cost needs to be a number, e.g. 45.99 - leave it blank to clear it."
+        DeckDialog(title = record.serviceName.uppercase(), onDismissRequest = onDismiss) {
+            Text(
+                "This delete only removes the record from this phone - it does not sync.",
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            if (statusText != null) {
+                Text(statusText!!, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(bottom = 8.dp))
+            }
+            DeckTextField(
+                value = mileageText,
+                onValueChange = { mileageText = it },
+                label = "Mileage",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            Spacer(Modifier.height(8.dp))
+            DeckTextField(
+                value = costText,
+                onValueChange = { costText = it },
+                label = "Cost (dollars)",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            )
+            Row(Modifier.padding(top = 12.dp)) {
+                DeckButton(
+                    text = "Save",
+                    onClick = {
+                        val mileage = mileageText.trim().toIntOrNull()
+                        if (mileage == null) {
+                            statusText = "Mileage needs to be a number."
                             return@DeckButton
                         }
-                        Math.round(dollars * 100.0)
-                    }
-                    scope.launch {
-                        val outcome = onSave(mileage, costCents)
-                        statusText = outcome.message
-                        if (outcome.success) onSaved(mileage, costCents)
-                    }
-                },
-            )
-            Spacer(Modifier.width(8.dp))
-            DeckButton(
-                text = if (confirmingDelete) "TAP AGAIN TO DELETE" else "DELETE",
-                destructive = true,
-                confirming = confirmingDelete,
-                onClick = {
-                    if (!confirmingDelete) {
-                        confirmingDelete = true
-                    } else {
-                        scope.launch {
-                            val outcome = onDelete()
-                            statusText = outcome.message
-                            if (outcome.success) onDeleted()
+                        val trimmedCost = costText.trim()
+                        val costCents: Long? = if (trimmedCost.isEmpty()) {
+                            null
+                        } else {
+                            val dollars = trimmedCost.toDoubleOrNull()
+                            if (dollars == null || dollars < 0.0) {
+                                statusText = "Cost needs to be a number, e.g. 45.99 - leave it blank to clear it."
+                                return@DeckButton
+                            }
+                            Math.round(dollars * 100.0)
                         }
-                    }
-                },
-            )
+                        scope.launch {
+                            val outcome = onSave(mileage, costCents)
+                            statusText = outcome.message
+                            if (outcome.success) onSaved(mileage, costCents)
+                        }
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                DeckButton(
+                    text = if (confirmingDelete) "Tap again to delete" else "Delete",
+                    destructive = true,
+                    confirming = confirmingDelete,
+                    onClick = {
+                        if (!confirmingDelete) {
+                            confirmingDelete = true
+                        } else {
+                            scope.launch {
+                                val outcome = onDelete()
+                                statusText = outcome.message
+                                if (outcome.success) onDeleted()
+                            }
+                        }
+                    },
+                )
+            }
         }
     }
 }

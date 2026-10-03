@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.fleet
 
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -219,7 +220,7 @@ fun CarRow(
             if (row.active) {
                 Spacer(Modifier.padding(top = 2.dp))
                 Text(
-                    if (row.explicit) "ACTIVE ON THIS PHONE" else "ACTIVE - FOLLOWING THE ADAPTER",
+                    if (row.explicit) "Active on this phone" else "Active - following the adapter",
                     style = LegionType.stamp,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -229,15 +230,15 @@ fun CarRow(
         // pair of opposite actions on the same field, renaming an archived car is still a sane
         // thing to want (fixing a typo before deciding whether to bring it back).
         TextButton(onClick = onRename) {
-            Text("RENAME", style = LegionType.stamp, color = if (row.archived) sem.ghost else MaterialTheme.colorScheme.primary)
+            Text("Rename", style = LegionType.stamp, color = if (row.archived) sem.ghost else MaterialTheme.colorScheme.primary)
         }
         if (row.archived) {
             TextButton(onClick = onUnarchive) {
-                Text("RESTORE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                Text("Restore", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
             }
         } else {
             TextButton(onClick = onArchive) {
-                Text("ARCHIVE", style = LegionType.stamp, color = sem.faint)
+                Text("Archive", style = LegionType.stamp, color = sem.faint)
             }
         }
     }
@@ -271,7 +272,7 @@ fun AutoCarRow(isAuto: Boolean, resolvesTo: String?, onSelect: () -> Unit) {
             )
             if (isAuto) {
                 Spacer(Modifier.padding(top = 2.dp))
-                Text("ACTIVE ON THIS PHONE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                Text("Active on this phone", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -307,49 +308,51 @@ fun AddCarDialog(
     onDismiss: () -> Unit,
     onAdd: (year: Int, make: String, model: String, trim: String, name: String, engine: String) -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
-    var make by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf("") }
-    var yearText by remember { mutableStateOf("") }
-    var trim by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("") }
-    var engine by remember { mutableStateOf("") }
+    SoftTheme {
+        val sem = LocalLegionSemantics.current
+        var make by remember { mutableStateOf("") }
+        var model by remember { mutableStateOf("") }
+        var yearText by remember { mutableStateOf("") }
+        var trim by remember { mutableStateOf("") }
+        var name by remember { mutableStateOf("") }
+        var engine by remember { mutableStateOf("") }
 
-    val validation = CarManageResolver.validateAddCar(make, model, yearText, name, existingLabels)
+        val validation = CarManageResolver.validateAddCar(make, model, yearText, name, existingLabels)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add a car") },
-        text = {
-            Column {
-                OutlinedTextField(value = make, onValueChange = { make = it }, singleLine = true, label = { Text("Make") })
-                Spacer(Modifier.padding(top = 8.dp))
-                OutlinedTextField(value = model, onValueChange = { model = it }, singleLine = true, label = { Text("Model") })
-                Spacer(Modifier.padding(top = 8.dp))
-                OutlinedTextField(value = yearText, onValueChange = { yearText = it }, singleLine = true, label = { Text("Year (optional)") })
-                Spacer(Modifier.padding(top = 8.dp))
-                OutlinedTextField(value = trim, onValueChange = { trim = it }, singleLine = true, label = { Text("Trim (optional)") })
-                Spacer(Modifier.padding(top = 8.dp))
-                OutlinedTextField(value = engine, onValueChange = { engine = it }, singleLine = true, label = { Text("Engine (optional)") })
-                Spacer(Modifier.padding(top = 8.dp))
-                OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Nickname (optional)") })
-                if (validation.error != null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Add a car") },
+            text = {
+                Column {
+                    OutlinedTextField(value = make, onValueChange = { make = it }, singleLine = true, label = { Text("Make") })
                     Spacer(Modifier.padding(top = 8.dp))
-                    // ADVISORY (ticket 13 re-home): a form validation error, not a failed gate.
-                    Text(validation.error, style = LegionType.stamp, color = sem.estimated)
+                    OutlinedTextField(value = model, onValueChange = { model = it }, singleLine = true, label = { Text("Model") })
+                    Spacer(Modifier.padding(top = 8.dp))
+                    OutlinedTextField(value = yearText, onValueChange = { yearText = it }, singleLine = true, label = { Text("Year (optional)") })
+                    Spacer(Modifier.padding(top = 8.dp))
+                    OutlinedTextField(value = trim, onValueChange = { trim = it }, singleLine = true, label = { Text("Trim (optional)") })
+                    Spacer(Modifier.padding(top = 8.dp))
+                    OutlinedTextField(value = engine, onValueChange = { engine = it }, singleLine = true, label = { Text("Engine (optional)") })
+                    Spacer(Modifier.padding(top = 8.dp))
+                    OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Nickname (optional)") })
+                    if (validation.error != null) {
+                        Spacer(Modifier.padding(top = 8.dp))
+                        // ADVISORY (ticket 13 re-home): a form validation error, not a failed gate.
+                        Text(validation.error, style = LegionType.stamp, color = sem.estimated)
+                    }
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onAdd(CarManageResolver.parseYear(yearText) ?: 0, make.trim(), model.trim(), trim.trim(), name.trim(), engine.trim())
-                },
-                enabled = validation.isValid,
-            ) { Text("ADD CAR") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } },
-    )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onAdd(CarManageResolver.parseYear(yearText) ?: 0, make.trim(), model.trim(), trim.trim(), name.trim(), engine.trim())
+                    },
+                    enabled = validation.isValid,
+                ) { Text("Add car") }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        )
+    }
 }
 
 /**
@@ -371,29 +374,31 @@ fun RenameCarDialog(
     onDismiss: () -> Unit,
     onRename: (newName: String) -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
-    var name by remember(currentLabel) { mutableStateOf(currentLabel) }
+    SoftTheme {
+        val sem = LocalLegionSemantics.current
+        var name by remember(currentLabel) { mutableStateOf(currentLabel) }
 
-    val validation = CarManageResolver.validateRename(name, otherLabels)
+        val validation = CarManageResolver.validateRename(name, otherLabels)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Rename") },
-        text = {
-            Column {
-                OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name") })
-                if (validation.error != null) {
-                    Spacer(Modifier.padding(top = 8.dp))
-                    // ADVISORY (ticket 13 re-home): a form validation error, not a failed gate.
-                    Text(validation.error, style = LegionType.stamp, color = sem.estimated)
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Rename") },
+            text = {
+                Column {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name") })
+                    if (validation.error != null) {
+                        Spacer(Modifier.padding(top = 8.dp))
+                        // ADVISORY (ticket 13 re-home): a form validation error, not a failed gate.
+                        Text(validation.error, style = LegionType.stamp, color = sem.estimated)
+                    }
                 }
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onRename(name.trim()) }, enabled = validation.isValid) { Text("RENAME") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } },
-    )
+            },
+            confirmButton = {
+                Button(onClick = { onRename(name.trim()) }, enabled = validation.isValid) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        )
+    }
 }
 
 // ------------------------------------------------------------------------ manual odometer entry
@@ -426,50 +431,52 @@ fun SetOdometerDialog(
     onDismiss: () -> Unit,
     onSubmit: suspend (Int) -> WriteOutcome,
 ) {
-    val sem = LocalLegionSemantics.current
-    val scope = rememberCoroutineScope()
-    var milesText by remember { mutableStateOf("") }
-    var statusText by remember { mutableStateOf<String?>(null) }
-    var submitting by remember { mutableStateOf(false) }
-    val miles = milesText.trim().toIntOrNull()
+    SoftTheme {
+        val sem = LocalLegionSemantics.current
+        val scope = rememberCoroutineScope()
+        var milesText by remember { mutableStateOf("") }
+        var statusText by remember { mutableStateOf<String?>(null) }
+        var submitting by remember { mutableStateOf(false) }
+        val miles = milesText.trim().toIntOrNull()
 
-    DeckDialog(title = "Set Odometer", onDismissRequest = onDismiss) {
-        Text(
-            if (currentValueText.isBlank()) "No reading on file yet." else "Current: $currentValueText",
-            style = LegionType.stamp,
-            color = sem.faint,
-        )
-        if (currentCaveatText.isNotBlank()) {
-            Text(currentCaveatText, style = LegionType.stamp, color = sem.estimated)
-        }
-        Spacer(Modifier.height(8.dp))
-        DeckTextField(
-            value = milesText,
-            onValueChange = { milesText = it; statusText = null },
-            label = "Miles",
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
-        if (statusText != null) {
-            Spacer(Modifier.height(8.dp))
-            Text(statusText!!, style = LegionType.stamp, color = sem.faint)
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DeckButton(text = "CANCEL", onClick = onDismiss)
-            DeckButton(
-                text = "SET",
-                enabled = miles != null && !submitting,
-                onClick = {
-                    val m = miles ?: return@DeckButton
-                    submitting = true
-                    scope.launch {
-                        val outcome = onSubmit(m)
-                        submitting = false
-                        statusText = outcome.message
-                        if (outcome.success) milesText = ""
-                    }
-                },
+        DeckDialog(title = "Set Odometer", onDismissRequest = onDismiss) {
+            Text(
+                if (currentValueText.isBlank()) "No reading on file yet." else "Current: $currentValueText",
+                style = LegionType.stamp,
+                color = sem.faint,
             )
+            if (currentCaveatText.isNotBlank()) {
+                Text(currentCaveatText, style = LegionType.stamp, color = sem.estimated)
+            }
+            Spacer(Modifier.height(8.dp))
+            DeckTextField(
+                value = milesText,
+                onValueChange = { milesText = it; statusText = null },
+                label = "Miles",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            if (statusText != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(statusText!!, style = LegionType.stamp, color = sem.faint)
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DeckButton(text = "Cancel", onClick = onDismiss)
+                DeckButton(
+                    text = "Set",
+                    enabled = miles != null && !submitting,
+                    onClick = {
+                        val m = miles ?: return@DeckButton
+                        submitting = true
+                        scope.launch {
+                            val outcome = onSubmit(m)
+                            submitting = false
+                            statusText = outcome.message
+                            if (outcome.success) milesText = ""
+                        }
+                    },
+                )
+            }
         }
     }
 }

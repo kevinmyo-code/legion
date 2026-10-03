@@ -47,6 +47,8 @@ import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 import com.kevin.legion.vehicle.identityPresent
 import com.kevin.legion.vehicle.loadPopulateDiff
 import kotlinx.coroutines.launch
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * Ticket 14's populate screen (`.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`):
@@ -116,22 +118,9 @@ fun PopulateScreen(vehicleId: String, onBack: () -> Unit) {
     }
 
     val currentVehicle = vehicle
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "POPULATE SCHEDULE",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Populate schedule", onBack = onBack, accent = AreaAccent.FLEET)
 
             when {
                 !loadedVehicle -> LoadingLine("Loading...")
@@ -210,7 +199,7 @@ private fun ErrorLine(text: String, onRetry: () -> Unit) {
     Column(Modifier.padding(12.dp)) {
         Text(text, style = MaterialTheme.typography.bodySmall, color = sem.estimated)
         Spacer(Modifier.height(8.dp))
-        DeckButton(text = "TRY AGAIN", onClick = onRetry)
+        DeckButton(text = "Try again", onClick = onRetry)
     }
 }
 
@@ -225,7 +214,7 @@ private fun MileagePrompt(onSetMileage: () -> Unit) {
             color = sem.estimated,
         )
         Spacer(Modifier.height(4.dp))
-        DeckButton(text = "SET MILEAGE", onClick = onSetMileage)
+        DeckButton(text = "Set mileage", onClick = onSetMileage)
     }
 }
 
@@ -267,7 +256,7 @@ private fun ManualIdentityForm(saving: Boolean, onSave: (year: Int, make: String
         DeckTextField(value = engine, onValueChange = { engine = it }, label = "Engine (optional, e.g. 4.0L I6)")
         Spacer(Modifier.height(16.dp))
         DeckButton(
-            text = if (saving) "SAVING..." else "SAVE AND CONTINUE",
+            text = if (saving) "Saving..." else "Save and continue",
             enabled = canSave,
             onClick = { onSave(year, make.trim(), model.trim(), trim.trim(), engine.trim()) },
         )
@@ -317,7 +306,7 @@ private fun PopulateDiffContent(
 
     LazyColumn(Modifier.fillMaxSize()) {
         if (diff.wouldAdd.isNotEmpty()) {
-            item(key = "add-header") { SectionHeaderCount("WOULD ADD", diff.wouldAdd.size) }
+            item(key = "add-header") { SectionHeaderCount("Would add", diff.wouldAdd.size) }
             items(diff.wouldAdd, key = { "add-${it.serviceName}" }) { candidate ->
                 WouldAddRow(candidate) {
                     scope.launch {
@@ -329,7 +318,7 @@ private fun PopulateDiffContent(
             }
         }
         if (diff.wouldChange.isNotEmpty()) {
-            item(key = "change-header") { SectionHeaderCount("WOULD CHANGE", diff.wouldChange.size) }
+            item(key = "change-header") { SectionHeaderCount("Would change", diff.wouldChange.size) }
             items(diff.wouldChange, key = { "change-${it.serviceName}" }) { row ->
                 WouldChangeRow(row) {
                     scope.launch {
@@ -341,7 +330,7 @@ private fun PopulateDiffContent(
             }
         }
         if (diff.possibleMatch.isNotEmpty()) {
-            item(key = "possible-header") { SectionHeaderCount("POSSIBLE MATCH - SAME THING?", diff.possibleMatch.size) }
+            item(key = "possible-header") { SectionHeaderCount("Possible match - same thing?", diff.possibleMatch.size) }
             items(diff.possibleMatch, key = { "possible-${it.factoryName}" }) { row ->
                 PossibleMatchRow(
                     row,
@@ -363,7 +352,7 @@ private fun PopulateDiffContent(
             }
         }
         if (diff.wouldRestore.isNotEmpty()) {
-            item(key = "restore-header") { SectionHeaderCount("YOU DELETED THESE - ADD BACK?", diff.wouldRestore.size) }
+            item(key = "restore-header") { SectionHeaderCount("You deleted these - add back?", diff.wouldRestore.size) }
             items(diff.wouldRestore, key = { "restore-${it.serviceName}" }) { row ->
                 WouldRestoreRow(row) {
                     scope.launch {
@@ -379,7 +368,7 @@ private fun PopulateDiffContent(
             // car off a single lookup run that ticket 18 showed disagrees with itself roughly every
             // other run - see NotInScheduleRow's own doc for the full reasoning, reproduced in the
             // per-row copy below.
-            item(key = "not-in-header") { SectionHeaderCount("THIS LOOKUP DIDN'T MENTION", diff.notInFactorySchedule.size) }
+            item(key = "not-in-header") { SectionHeaderCount("This lookup didn't mention", diff.notInFactorySchedule.size) }
             items(diff.notInFactorySchedule, key = { "not-in-${it.serviceName}" }) { candidate ->
                 NotInScheduleRow(candidate) {
                     scope.launch {
@@ -410,7 +399,7 @@ private fun WouldAddRow(item: MaintenanceItem, onAccept: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         DeckRow(label = item.serviceName, value = intervalPhrase(item.intervalMiles, item.intervalMonths))
         Spacer(Modifier.height(4.dp))
-        DeckButton(text = "ADD", onClick = onAccept)
+        DeckButton(text = "Add", onClick = onAccept)
     }
 }
 
@@ -430,7 +419,7 @@ private fun WouldChangeRow(row: PopulateChangeRow, onAccept: () -> Unit) {
             color = sem.faint,
         )
         Spacer(Modifier.height(4.dp))
-        DeckButton(text = "ACCEPT CHANGE", onClick = onAccept)
+        DeckButton(text = "Accept change", onClick = onAccept)
     }
 }
 
@@ -459,8 +448,8 @@ private fun PossibleMatchRow(row: PopulatePossibleMatchRow, onSameThing: () -> U
         )
         Spacer(Modifier.height(4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DeckButton(text = "SAME THING", onClick = onSameThing)
-            DeckButton(text = "ADD AS NEW", onClick = onAddAsNew)
+            DeckButton(text = "Same thing", onClick = onSameThing)
+            DeckButton(text = "Add as new", onClick = onAddAsNew)
         }
     }
 }
@@ -479,7 +468,7 @@ private fun WouldRestoreRow(row: PopulateRestoreRow, onAccept: () -> Unit) {
             color = sem.estimated,
         )
         Spacer(Modifier.height(4.dp))
-        DeckButton(text = "ADD IT BACK", onClick = onAccept)
+        DeckButton(text = "Add it back", onClick = onAccept)
     }
 }
 
@@ -506,7 +495,7 @@ private fun NotInScheduleRow(item: MaintenanceItem, onDelete: () -> Unit) {
         )
         Spacer(Modifier.height(4.dp))
         DeckButton(
-            text = if (confirming) "TAP AGAIN TO DELETE" else "DELETE",
+            text = if (confirming) "Tap again to delete" else "Delete",
             destructive = true,
             confirming = confirming,
             onClick = {

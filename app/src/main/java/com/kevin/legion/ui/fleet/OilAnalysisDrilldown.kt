@@ -25,6 +25,8 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.shortDate
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * `OilAnalysis` small-multiples drilldown (quant-viz ticket 06). `OilAnalysis`
@@ -151,23 +153,10 @@ internal fun buildOilAnalyteSeries(orderedAnalyses: List<OilAnalysis>): Pair<Lis
  */
 @Composable
 fun OilAnalysisDrilldownScreen(analysesNewestFirst: List<OilAnalysis>, onBack: () -> Unit) {
-    val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "OIL ANALYSES",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Oil analyses", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
             if (analysesNewestFirst.isEmpty()) {
                 Text(

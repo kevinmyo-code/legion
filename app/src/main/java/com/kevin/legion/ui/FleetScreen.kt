@@ -1,5 +1,6 @@
 package com.kevin.legion.ui
 
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -118,6 +119,10 @@ import kotlinx.coroutines.withContext
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
+import com.kevin.legion.ui.fleet.FleetSoftSurface
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.AreaChip
 
 /**
  * `fleet` tab - the vehicle UPLINK (cyberdeck-ui ticket 09's resolution, built by ticket 18).
@@ -827,14 +832,22 @@ fun FleetContent(
     // preview/test construction sites that predate the FAULTS drilldown keep compiling unchanged.
     onOpenFaults: () -> Unit = {},
 ) {
-    val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
+            // FLEET is a tab root with no back arrow, so this is the soft top bar's chip + title
+            // without the arrow (SoftScreenTopBar itself always draws one).
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
-                Text("FLEET", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                AreaChip(AreaAccent.FLEET, size = 32.dp, iconSize = 18.dp)
+                Text(
+                    "Fleet",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
             }
 
             // Backend-erp phase 3: a stale/failed-read notice, right under the title, never below
@@ -842,7 +855,7 @@ fun FleetContent(
             ReadStateBanner(state.read, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
 
             if (state.loading) {
-                Text("LOADING...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
+                Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
             } else {
                 FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenFaults, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onOpenBuildSheet, onSetOdometer, onClearCodes, onSweepActiveChanged)
             }
@@ -1065,13 +1078,13 @@ private fun UplinkPane(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("STORED CODES", style = LegionType.stamp, color = sem.faint)
+                    Text("Stored codes", style = LegionType.stamp, color = sem.faint)
                     // D5's UI half: destructive, gated on there being anything to clear - a car with
                     // nothing currently stored offers nothing to tap, matching NOTHING_TO_CLEAR's own
                     // "refuse early" reasoning (D2) organically rather than a second explicit check.
                     if (state.faults.isNotEmpty()) {
                         Text(
-                            "CLEAR",
+                            "Clear",
                             style = LegionType.stamp,
                             color = sem.quarantined,
                             modifier = Modifier.clickable(onClick = onClearCodes).padding(horizontal = 4.dp, vertical = 2.dp),
@@ -1220,7 +1233,7 @@ private fun DriveModeOfferRow(onOpenDrivingMode: () -> Unit, linkUp: Boolean) {
             style = LegionType.stamp,
             color = sem.faint,
         )
-        DeckTag("DRIVE MODE", DeckTagStyle.INVERTED_GREEN)
+        DeckTag("Drive mode", DeckTagStyle.INVERTED_GREEN)
     }
 }
 
@@ -1294,7 +1307,7 @@ private fun CarsPane(
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onSetOdometer) {
-                Text("SET ODOMETER", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                Text("Set odometer", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
             }
         }
         Text(
@@ -1420,7 +1433,6 @@ private fun PreviewFleetConnectedEmpty() = LegionTheme {
 fun SavedPlacesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val sem = LocalLegionSemantics.current
 
     var places by remember { mutableStateOf(listOf<TaggedPlace>()) }
     var reloadNonce by remember { mutableStateOf(0) }
@@ -1460,11 +1472,10 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
         currentLocationText = currentLocationReadout(context)
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(modifier = Modifier.padding(16.dp)) {
-            TextButton(onClick = onBack) { Text("< Back") }
-
-            Text("Saved places", style = MaterialTheme.typography.titleMedium)
+            DeckScreenHeader(title = "Saved places", onBack = onBack, accent = AreaAccent.FLEET)
             Text(
                 currentLocationText,
                 style = LegionType.stamp,
@@ -1496,7 +1507,7 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
                                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                                 android.Manifest.permission.ACCESS_COARSE_LOCATION,
                             ))
-                        }) { Text("GRANT") }
+                        }) { Text("Grant") }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -1607,8 +1618,8 @@ private fun SavedPlaceRow(place: TaggedPlace, onNavigate: () -> Unit, onDelete: 
                     color = sem.faint,
                 )
             }
-            TextButton(onClick = onNavigate) { Text("NAVIGATE") }
-            TextButton(onClick = onDelete) { Text("DELETE") }
+            TextButton(onClick = onNavigate) { Text("Navigate") }
+            TextButton(onClick = onDelete) { Text("Delete") }
         }
     }
 }
@@ -1621,23 +1632,25 @@ private fun SavedPlaceRow(place: TaggedPlace, onNavigate: () -> Unit, onDelete: 
  */
 @Composable
 private fun TagPlaceDialog(onDismiss: () -> Unit, onTag: (String) -> Unit) {
-    var label by remember { mutableStateOf("") }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Tag current location") },
-        text = {
-            androidx.compose.material3.OutlinedTextField(
-                value = label,
-                onValueChange = { label = it },
-                label = { Text("Label, e.g. home or work") },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(enabled = label.isNotBlank(), onClick = { onTag(label) }) { Text("Tag") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    SoftTheme {
+        var label by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Tag current location") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text("Label, e.g. home or work") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(enabled = label.isNotBlank(), onClick = { onTag(label) }) { Text("Tag") }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        )
+    }
 }
 
 /**
@@ -1649,13 +1662,15 @@ private fun TagPlaceDialog(onDismiss: () -> Unit, onTag: (String) -> Unit) {
  */
 @Composable
 private fun ForgetPlaceConfirmDialog(label: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Delete \"$label\"?") },
-        text = { Text("This removes the saved place. It can be re-tagged later, but this exact entry is gone.") },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    SoftTheme {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Delete \"$label\"?") },
+            text = { Text("This removes the saved place. It can be re-tagged later, but this exact entry is gone.") },
+            confirmButton = { TextButton(onClick = onConfirm) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        )
+    }
 }
 
 /**

@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.fleet
 
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,8 @@ import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.BuildSheetController
 import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 import kotlinx.coroutines.launch
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * The BUILD SHEET surface (ticket 07, `.scratch/command-center/issues/07-build-sheet-screen.md`) -
@@ -86,30 +89,17 @@ fun BuildSheetScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "BUILD SHEET",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Build sheet", onBack = onBack, accent = AreaAccent.FLEET)
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                DeckButton(text = "ADD ENTRY", onClick = { showAddDialog = true })
+                DeckButton(text = "Add entry", onClick = { showAddDialog = true })
             }
             Hairline()
             LazyColumn(Modifier.fillMaxSize()) {
                 item(key = "spend-panel") { BuildSheetSpendPanel(currentSpendByCategory, currentTotalSpend) }
                 item(key = "spend-hairline") { Hairline() }
-                item(key = "history-header") { SectionHeader("HISTORY", currentEntries.size.toString()) }
+                item(key = "history-header") { SectionHeader("History", currentEntries.size.toString()) }
                 if (currentEntries.isEmpty()) {
                     item(key = "empty") {
                         Text(
@@ -232,78 +222,80 @@ private fun AddBuildEntryDialog(
     onAdd: suspend (title: String, type: String, costCents: Long?, vendor: String, notes: String) -> WriteOutcome,
     onAdded: (BuildEntry) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    var titleText by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("mod") }
-    var costText by remember { mutableStateOf("") }
-    var vendorText by remember { mutableStateOf("") }
-    var notesText by remember { mutableStateOf("") }
-    var statusText by remember { mutableStateOf<String?>(null) }
+    SoftTheme {
+        val scope = rememberCoroutineScope()
+        var titleText by remember { mutableStateOf("") }
+        var type by remember { mutableStateOf("mod") }
+        var costText by remember { mutableStateOf("") }
+        var vendorText by remember { mutableStateOf("") }
+        var notesText by remember { mutableStateOf("") }
+        var statusText by remember { mutableStateOf<String?>(null) }
 
-    DeckDialog(title = "ADD ENTRY", onDismissRequest = onDismiss) {
-        if (statusText != null) {
-            Text(statusText!!, style = LegionType.stamp, color = LocalLegionSemantics.current.faint, modifier = Modifier.padding(bottom = 8.dp))
-        }
-        DeckTextField(value = titleText, onValueChange = { titleText = it }, label = "Title")
-        Spacer(Modifier.height(8.dp))
-        SectionHeader("CATEGORY")
-        Column(Modifier.selectableGroup()) {
-            BuildSheetController.TYPES.forEach { t ->
-                DeckRadio(selected = type == t, onClick = { type = t }, label = t.replaceFirstChar { it.uppercase() })
+        DeckDialog(title = "Add entry", onDismissRequest = onDismiss) {
+            if (statusText != null) {
+                Text(statusText!!, style = LegionType.stamp, color = LocalLegionSemantics.current.faint, modifier = Modifier.padding(bottom = 8.dp))
             }
-        }
-        Spacer(Modifier.height(8.dp))
-        DeckTextField(
-            value = costText,
-            onValueChange = { costText = it },
-            label = "Cost (dollars) - optional",
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        )
-        Spacer(Modifier.height(8.dp))
-        DeckTextField(value = vendorText, onValueChange = { vendorText = it }, label = "Vendor - optional")
-        Spacer(Modifier.height(8.dp))
-        DeckTextField(value = notesText, onValueChange = { notesText = it }, label = "Notes - optional")
-        Row(Modifier.padding(top = 12.dp)) {
-            DeckButton(
-                text = "SAVE",
-                onClick = {
-                    val trimmedTitle = titleText.trim()
-                    if (trimmedTitle.isBlank()) {
-                        statusText = "This needs a title before it can go on the build sheet."
-                        return@DeckButton
-                    }
-                    val trimmedCost = costText.trim()
-                    val costCents: Long? = if (trimmedCost.isEmpty()) {
-                        null
-                    } else {
-                        val dollars = trimmedCost.toDoubleOrNull()
-                        if (dollars == null || dollars < 0.0) {
-                            statusText = "Cost needs to be a number, e.g. 45.99 - leave it blank to skip it."
+            DeckTextField(value = titleText, onValueChange = { titleText = it }, label = "Title")
+            Spacer(Modifier.height(8.dp))
+            SectionHeader("Category")
+            Column(Modifier.selectableGroup()) {
+                BuildSheetController.TYPES.forEach { t ->
+                    DeckRadio(selected = type == t, onClick = { type = t }, label = t.replaceFirstChar { it.uppercase() })
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            DeckTextField(
+                value = costText,
+                onValueChange = { costText = it },
+                label = "Cost (dollars) - optional",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            )
+            Spacer(Modifier.height(8.dp))
+            DeckTextField(value = vendorText, onValueChange = { vendorText = it }, label = "Vendor - optional")
+            Spacer(Modifier.height(8.dp))
+            DeckTextField(value = notesText, onValueChange = { notesText = it }, label = "Notes - optional")
+            Row(Modifier.padding(top = 12.dp)) {
+                DeckButton(
+                    text = "Save",
+                    onClick = {
+                        val trimmedTitle = titleText.trim()
+                        if (trimmedTitle.isBlank()) {
+                            statusText = "This needs a title before it can go on the build sheet."
                             return@DeckButton
                         }
-                        Math.round(dollars * 100.0)
-                    }
-                    val vendorTrimmed = vendorText.trim()
-                    val notesTrimmed = notesText.trim()
-                    scope.launch {
-                        val outcome = onAdd(trimmedTitle, type, costCents, vendorTrimmed, notesTrimmed)
-                        statusText = outcome.message
-                        if (outcome.success) {
-                            onAdded(
-                                BuildEntry(
-                                    vehicleId = "",
-                                    type = BuildSheetController.normalizeType(type),
-                                    title = trimmedTitle,
-                                    vendor = vendorTrimmed,
-                                    cost = costCents?.let { it / 100.0 },
-                                    date = System.currentTimeMillis(),
-                                    notes = notesTrimmed,
-                                ),
-                            )
+                        val trimmedCost = costText.trim()
+                        val costCents: Long? = if (trimmedCost.isEmpty()) {
+                            null
+                        } else {
+                            val dollars = trimmedCost.toDoubleOrNull()
+                            if (dollars == null || dollars < 0.0) {
+                                statusText = "Cost needs to be a number, e.g. 45.99 - leave it blank to skip it."
+                                return@DeckButton
+                            }
+                            Math.round(dollars * 100.0)
                         }
-                    }
-                },
-            )
+                        val vendorTrimmed = vendorText.trim()
+                        val notesTrimmed = notesText.trim()
+                        scope.launch {
+                            val outcome = onAdd(trimmedTitle, type, costCents, vendorTrimmed, notesTrimmed)
+                            statusText = outcome.message
+                            if (outcome.success) {
+                                onAdded(
+                                    BuildEntry(
+                                        vehicleId = "",
+                                        type = BuildSheetController.normalizeType(type),
+                                        title = trimmedTitle,
+                                        vendor = vendorTrimmed,
+                                        cost = costCents?.let { it / 100.0 },
+                                        date = System.currentTimeMillis(),
+                                        notes = notesTrimmed,
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                )
+            }
         }
     }
 }

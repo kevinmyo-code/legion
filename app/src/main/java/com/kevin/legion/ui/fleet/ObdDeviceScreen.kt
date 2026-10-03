@@ -57,6 +57,8 @@ import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.ObdDeviceRegistry
 import com.kevin.legion.vehicle.TcpTransport
 import kotlinx.coroutines.launch
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * ADAPTER - FLEET's fourth in-screen drilldown: scan for, pair, and select the
@@ -354,23 +356,10 @@ fun ObdDeviceContent(
     onUnpair: (ObdDeviceRow) -> Unit,
     onEmulatorToggle: (Boolean) -> Unit,
 ) {
-    val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "ADAPTER",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Adapter", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
 
             if (!state.permissionGranted) {
@@ -383,7 +372,7 @@ fun ObdDeviceContent(
                     modifier = Modifier.padding(12.dp),
                 )
                 TextButton(onClick = onGrantPermissions, modifier = Modifier.padding(horizontal = 4.dp)) {
-                    Text("GRANT PERMISSIONS", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                    Text("Grant permissions", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
                 return@Column
             }
@@ -397,7 +386,7 @@ fun ObdDeviceContent(
 
                 item(key = "paired-header") {
                     Spacer(Modifier.height(12.dp))
-                    SectionHeader("PAIRED")
+                    SectionHeader("Paired")
                 }
                 if (state.paired.isEmpty()) {
                     item(key = "paired-empty") {
@@ -457,7 +446,7 @@ fun ObdDeviceContent(
 private fun LinkPane(state: ObdDeviceUiState) {
     val sem = LocalLegionSemantics.current
     val connected = state.connectionState == ObdBluetoothManager.ConnectionState.CONNECTED
-    DeckPane(header = "Link", headerAccent = if (connected) "CONNECTED" else null) {
+    DeckPane(header = "Link", headerAccent = if (connected) "Connected" else null) {
         Text(
             when (state.connectionState) {
                 ObdBluetoothManager.ConnectionState.CONNECTED -> "// CONNECTED"
@@ -503,7 +492,7 @@ private fun EmulatorPane(emulatorOn: Boolean, onToggle: (Boolean) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("USE OBD EMULATOR (DEBUG)", style = LegionType.stamp, color = sem.faint)
+                Text("Use OBD emulator (debug)", style = LegionType.stamp, color = sem.faint)
                 Text(
                     "TCP to ${TcpTransport.DEFAULT_HOST}:${TcpTransport.DEFAULT_PORT} instead of a real adapter",
                     style = MaterialTheme.typography.bodySmall,
@@ -534,10 +523,10 @@ private fun NearbyHeader(scanning: Boolean, onScan: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("NEARBY", style = LegionType.stamp, color = sem.faint)
+        Text("Nearby", style = LegionType.stamp, color = sem.faint)
         if (scanning) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("SCANNING", style = LegionType.stamp, color = sem.faint)
+                Text("Scanning", style = LegionType.stamp, color = sem.faint)
                 Spacer(Modifier.width(8.dp))
                 CircularProgressIndicator(
                     modifier = Modifier.size(14.dp),
@@ -546,7 +535,7 @@ private fun NearbyHeader(scanning: Boolean, onScan: () -> Unit) {
                 )
             }
         } else {
-            DeckAction("SCAN", onClick = onScan)
+            DeckAction("Scan", onClick = onScan)
         }
     }
 }
@@ -584,7 +573,7 @@ private fun PairedRow(
         DeckRow(
             label = row.name ?: "UNNAMED ADAPTER",
             value = row.mac,
-            tag = if (isActive) { { DeckTag("ACTIVE", DeckTagStyle.INVERTED_GREEN) } } else null,
+            tag = if (isActive) { { DeckTag("Active", DeckTagStyle.INVERTED_GREEN) } } else null,
             modifier = Modifier.clickable(onClick = onSelect),
         )
         Row(
@@ -598,7 +587,7 @@ private fun PairedRow(
                 color = sem.ghost,
                 modifier = Modifier.weight(1f),
             )
-            DeckAction("UNPAIR", onClick = onUnpair)
+            DeckAction("Unpair", onClick = onUnpair)
         }
     }
 }
@@ -618,8 +607,8 @@ private fun NearbyRow(
             label = row.name ?: "UNNAMED DEVICE",
             value = row.mac,
             tag = when {
-                isActive -> { { DeckTag("ACTIVE", DeckTagStyle.INVERTED_GREEN) } }
-                row.isDualMode -> { { DeckTag("BLE + CLASSIC", DeckTagStyle.OUTLINE_MUTED) } }
+                isActive -> { { DeckTag("Active", DeckTagStyle.INVERTED_GREEN) } }
+                row.isDualMode -> { { DeckTag("BLE + classic", DeckTagStyle.OUTLINE_MUTED) } }
                 row.seenBle -> { { DeckTag("BLE", DeckTagStyle.OUTLINE_MUTED) } }
                 else -> null
             },
@@ -657,8 +646,8 @@ private fun NearbyRow(
                 )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (row.seenClassic) DeckAction("PAIR", onClick = onPair)
-                    if (row.seenBle) DeckAction("USE BLE", onClick = onUseBle)
+                    if (row.seenClassic) DeckAction("Pair", onClick = onPair)
+                    if (row.seenBle) DeckAction("Use BLE", onClick = onUseBle)
                 }
             }
         }

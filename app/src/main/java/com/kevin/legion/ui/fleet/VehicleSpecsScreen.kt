@@ -54,6 +54,8 @@ import com.kevin.legion.vehicle.VehicleSpecController
 import com.kevin.legion.vehicle.VinDecoder
 import com.kevin.legion.vehicle.VinRefreshResult
 import kotlinx.coroutines.launch
+import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 
 /**
  * SPECS - FLEET's fifth in-screen drilldown: the car's VIN and its decoded
@@ -198,23 +200,10 @@ fun VehicleSpecsContent(
     /** Ticket 14's populate trigger, one of its two entry points ("beside SYNC ID FROM VIN"). Defaults to a no-op so every pre-existing caller/preview keeps compiling. */
     onOpenPopulate: () -> Unit = {},
 ) {
-    val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    FleetSoftSurface {
+        val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "SPECS",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DeckScreenHeader(title = "Specs", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
 
             LazyColumn(Modifier.fillMaxSize()) {
@@ -232,8 +221,8 @@ fun VehicleSpecsContent(
                                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                SpecAction("COPY", onClick = { onCopyVin(vin) })
-                                if (!reading) SpecAction("RE-READ", onClick = onReadVin)
+                                SpecAction("Copy", onClick = { onCopyVin(vin) })
+                                if (!reading) SpecAction("Re-read", onClick = onReadVin)
                             }
                         } else if (loaded) {
                             Text(
@@ -252,7 +241,7 @@ fun VehicleSpecsContent(
                             // that explains itself when pressed.
                             if (!reading) {
                                 Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                                    SpecAction("READ VIN", onClick = onReadVin)
+                                    SpecAction("Read VIN", onClick = onReadVin)
                                 }
                             }
                         }
@@ -322,7 +311,7 @@ fun VehicleSpecsContent(
                         // action opens a whole new screen (the diff), not an inline outcome the way
                         // the two above are.
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                            SpecAction("POPULATE SCHEDULE", onClick = onOpenPopulate)
+                            SpecAction("Populate schedule", onClick = onOpenPopulate)
                         }
                         if (reconciling) {
                             Row(
@@ -515,7 +504,7 @@ private fun RecallSection(checking: Boolean, outcome: RecallCheckResult?, onSync
                 color = sem.estimated,
             )
             Spacer(Modifier.height(8.dp))
-            SpecAction("SYNC ID FROM VIN", onClick = onSyncId)
+            SpecAction("Sync ID from VIN", onClick = onSyncId)
         }
         RecallCheckResult.LookupFailed -> Text(
             "Couldn't reach NHTSA just now. Check the connection and tap CHECK RECALLS again - " +
