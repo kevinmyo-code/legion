@@ -299,6 +299,8 @@ detekt {
 dependencies {
     // Mapbox Navigation SDK v3 core + ui-maps (mapbox-nav spike).
     implementation(libs.mapbox.navigation)
+    // Search SDK for destination lookup (ticket 03): addresses, POIs, categories, along-route.
+    implementation(libs.mapbox.search)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
