@@ -858,23 +858,29 @@ private fun LegionShell(
                 // As the home app, Back on HOME does nothing: there is nowhere behind the home
                 // screen to go. As an ordinary app it still exits (ADR 0050).
                 androidx.activity.compose.BackHandler(enabled = isDefaultHome) {}
-                com.kevin.legion.ui.home.HomeScreen(
-                    onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
-                    onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
-                    onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
-                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
-                    onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
-                    onOpenRecordings = {
-                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
-                    },
-                    onOpenNews = { navController.navigate(LegionRoute.NEWS) { launchSingleTop = true } },
-                    // "Reports" is the ASK screen (ticket 01's resolution: "Reports is the ASK
-                    // screen, the closed-enum builder over ledger and pantry").
-                    onOpenReports = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
-                    onOpenMedia = {
-                        navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
-                    },
-                )
+                // mapbox-nav: HOME's Maps button opens LEGION's own nav screen (ADR 0054), reached
+                // through the same local as Fleet's Navigate row.
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
+                ) {
+                    com.kevin.legion.ui.home.HomeScreen(
+                        onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                        onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
+                        onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
+                        onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
+                        onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
+                        onOpenRecordings = {
+                            navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
+                        },
+                        onOpenNews = { navController.navigate(LegionRoute.NEWS) { launchSingleTop = true } },
+                        // "Reports" is the ASK screen (ticket 01's resolution: "Reports is the ASK
+                        // screen, the closed-enum builder over ledger and pantry").
+                        onOpenReports = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
+                        onOpenMedia = {
+                            navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
+                        },
+                    )
+                }
             }
             // CALENDAR (home-launcher ticket 03): the month grid + day view, split back off HOME
             // now that HOME has its own content again - see [LegionRoute.CALENDAR]'s own doc

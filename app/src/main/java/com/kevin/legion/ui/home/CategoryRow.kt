@@ -157,20 +157,28 @@ fun CategoryRow(
     if (categories.isEmpty()) return
     var chooserFor by remember { mutableStateOf<HomeCategory?>(null) }
     var askFor by remember { mutableStateOf<HomeCategory?>(null) }
+    // ADR 0054: navigation is LEGION's own Mapbox screen, never another map app, so Maps skips
+    // the picked-app launch and the chooser entirely.
+    val openNav = com.kevin.legion.ui.navigation.LocalNavEntryPoints.current.open
 
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         categories.forEach { ui ->
+            val isMaps = ui.category == HomeCategory.MAPS
             CategoryButton(
                 ui = ui,
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    when (val tap = CategoryPicks.tap(ui.slots.map { it.pin })) {
-                        CategoryTap.Choose -> chooserFor = ui.category
-                        is CategoryTap.Launch -> callbacks.onLaunch(ui.slots.first { it.pin == tap.pin })
-                        is CategoryTap.Ask -> askFor = ui.category
+                    if (isMaps) {
+                        openNav()
+                    } else {
+                        when (val tap = CategoryPicks.tap(ui.slots.map { it.pin })) {
+                            CategoryTap.Choose -> chooserFor = ui.category
+                            is CategoryTap.Launch -> callbacks.onLaunch(ui.slots.first { it.pin == tap.pin })
+                            is CategoryTap.Ask -> askFor = ui.category
+                        }
                     }
                 },
-                onLongClick = { chooserFor = ui.category },
+                onLongClick = { if (isMaps) openNav() else chooserFor = ui.category },
             )
         }
     }
