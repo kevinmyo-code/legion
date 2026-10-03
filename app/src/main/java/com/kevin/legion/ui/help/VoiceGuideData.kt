@@ -59,6 +59,7 @@ object VoiceGuideData {
                 Entry(name = "read_list", say = "What have I got coming up?", does = "Reads back your open reminders, soonest due first, each with its date, place or repeat.", hands = "Calendar tab, tap a day to see that day's reminders."),
                 Entry(name = "set_reminder", say = "Remind me to grab my gym bag when I get to the gym", does = "Sets a reminder tied to a saved place, so it comes up when you next arrive there.", hands = "Partial - Calendar's day view shows and edits a place-triggered reminder, but there is no add-a-new-reminder dialog by hand."),
                 Entry(name = "read_calendar", say = "What's on today?", does = "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", hands = "Calendar tab's month grid and day view, and Home's next-event tile."),
+                Entry(name = "complete_task", say = "Mark my math assignments done", does = "Marks calendar tasks (assignments, quizzes, homework) done, or un-marks them. If more than one task fits it changes nothing and asks which, unless you said all of them. It reports only what it actually changed, and says so when a change is saved on the phone waiting for the server.", hands = "Calendar tab, tap a task's tick box."),
                 Entry(name = "tag_place", say = "Save this as work", does = "Saves where you are now under a name, so reminders can trigger there.", hands = "Fleet > Saved places screen."),
                 Entry(name = "forget_place", say = "Forget the old gym", does = "Removes a saved place.", hands = "Fleet > Saved places screen, delete behind a confirm."),
                 Entry(name = "show_saved_places", say = "Show my saved places", does = "Puts your saved places on screen.", hands = "Is itself the Fleet > Saved places screen."),
@@ -247,6 +248,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 121 as of the last regeneration. */
-    val TOOL_COUNT: Int = 121
+    /** Total entries across every group above - 122 as of the last regeneration. */
+    val TOOL_COUNT: Int = 122
 }
