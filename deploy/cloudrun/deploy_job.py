@@ -28,6 +28,7 @@ import argparse
 from _common import (
     PLAIN_ENV_VARS,
     plain_env_from,
+    secret_names_for,
     capture,
     die,
     find_gcloud,
@@ -148,7 +149,7 @@ def main() -> int:
                 "--task-timeout", TASK_TIMEOUT,
                 "--max-retries", "1",
                 "--quiet",
-                "--set-secrets", secrets_flag_value(),
+                "--set-secrets", secrets_flag_value(secret_names_for(cloud_env)),
                 "--env-vars-file", str(env_file) if env_file else "<temp .yaml, values printed above>",
             ],
             args.dry_run,

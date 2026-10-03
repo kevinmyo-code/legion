@@ -103,6 +103,21 @@ gcloud run jobs executions list --job legion-worker --region us-south1
 gcloud run jobs execute legion-worker --region us-south1 --args=manage.py,backup_nightly
 ```
 
+## Push notifications (optional)
+
+Off until you do this; the web's notifications page says so in words. web-revamp ticket 15.
+
+1. Generate a key pair (the one-liner is in `deploy/.env.example`, under VAPID).
+2. Store the private key as a secret and let the runtime account read it:
+   ```
+   echo -n "<VAPID_PRIVATE_KEY>" | gcloud secrets create VAPID_PRIVATE_KEY --data-file=-
+   gcloud secrets add-iam-policy-binding VAPID_PRIVATE_KEY --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+   ```
+3. Put `VAPID_PUBLIC_KEY` and `VAPID_SUBJECT=mailto:you@example.com` in `deploy/cloudrun/.env`.
+   Setting the public key is what mounts the private secret, so do step 2 first or the deploy fails.
+4. `python deploy.py`, then `python deploy_job.py --image <tag it printed>`, then
+   `python install_schedule.py` for the `push_dispatch` line.
+
 ## What is pure standard library and what is not
 
 `deploy.py`, `deploy_job.py`, `install_schedule.py` and `_common.py` import only `argparse`,

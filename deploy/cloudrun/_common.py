@@ -51,7 +51,15 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # server's own default applies) when not. engine-mcp ticket 10: LEGION_MCP=on turns the
 # /mcp endpoint on, LEGION_MCP_RATE overrides its per-token throttle. Without this the
 # service could never be switched on, because --env-vars-file carries only the names above.
-OPTIONAL_PLAIN_ENV_VARS = ("LEGION_MCP", "LEGION_MCP_RATE")
+# web-revamp ticket 15: VAPID_PUBLIC_KEY and VAPID_SUBJECT are not secret (the public key is
+# handed to every browser); without them push stays off and says so in words.
+OPTIONAL_PLAIN_ENV_VARS = ("LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT")
+
+# Optional secrets: mounted only when the switch named beside them is set in `.env`, because
+# `--set-secrets` fails the whole deploy on a secret that does not exist, and push is optional.
+# VAPID_PRIVATE_KEY rides with VAPID_PUBLIC_KEY: set the public key in `.env` only after
+# `gcloud secrets create VAPID_PRIVATE_KEY` (README.md, "Push notifications").
+OPTIONAL_SECRET_ENV_VARS = {"VAPID_PRIVATE_KEY": "VAPID_PUBLIC_KEY"}
 
 
 def plain_env_from(cloud_env: dict[str, str]) -> dict[str, str]:
@@ -182,6 +190,14 @@ def write_env_vars_file(plain_env: dict[str, str], prefix: str) -> Path:
         encoding="utf-8",
     )
     return env_file
+
+
+def secret_names_for(cloud_env: dict[str, str]) -> tuple[str, ...]:
+    """The required secrets, plus each optional one whose switch is set in `.env`."""
+    optional = tuple(
+        name for name, switch in OPTIONAL_SECRET_ENV_VARS.items() if cloud_env.get(switch)
+    )
+    return SECRET_ENV_VARS + optional
 
 
 def secrets_flag_value(secret_names: tuple[str, ...] = SECRET_ENV_VARS) -> str:

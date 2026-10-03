@@ -31,6 +31,7 @@ import shutil
 from _common import (
     PLAIN_ENV_VARS,
     plain_env_from,
+    secret_names_for,
     SERVER_DIR,
     capture,
     die,
@@ -195,7 +196,7 @@ def main() -> int:
             "--max-instances", str(max_instances),
             "--timeout", "60",
             "--quiet",
-            "--set-secrets", secrets_flag_value(),
+            "--set-secrets", secrets_flag_value(secret_names_for(cloud_env)),
         ]
         if not args.dry_run:
             deploy_command += ["--env-vars-file", str(env_file)]
