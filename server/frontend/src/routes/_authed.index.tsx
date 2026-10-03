@@ -10,6 +10,7 @@ import { HorizonStrip } from '@/components/horizon-strip'
 import { MonthCalendar } from '@/components/month-calendar'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
+import { WorkbenchMoneyPanels } from '@/components/workbench/home-money'
 import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
 import {
@@ -304,6 +305,7 @@ function Today() {
       </div>
 
       <aside className="flex w-full shrink-0 flex-col gap-7 lg:w-80">
+        <WorkbenchMoneyPanels />
         <HorizonStrip cells={horizon} />
 
         <section className="rounded-sheet bg-card px-4 pt-3.5 pb-4 md:px-5">

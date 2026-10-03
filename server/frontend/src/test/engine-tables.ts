@@ -28,11 +28,11 @@ export type Row = Record<string, unknown>
 
 interface Spec {
   /** The row column the URL's identity names. */
-  identity: 'origin_guid' | 'label' | 'id' | 'sync_id' | 'composite'
+  identity: 'origin_guid' | 'label' | 'id' | 'sync_id' | 'composite' | 'transaction_id'
   writable: boolean
   deletable: boolean
   /** The column `since` is compared against. */
-  cursor: 'updated_at' | 'created_at'
+  cursor: 'updated_at' | 'created_at' | 'last_attempt_at'
   /** Whether live-only (`active=1`) means anything on this table. */
   tombstones: boolean
 }
@@ -70,6 +70,14 @@ export const TABLE_SPECS: Record<string, Spec> = {
   'fleet/maintenance_schedules': synced('composite'),
   'fleet/drives': synced('sync_id'),
   places: synced('label'),
+  // The ledger (web-revamp 12). Transactions and files are the gate's: GET only.
+  // Transaction categories are keyed by the transaction they sit over.
+  'ledger/transactions': gated,
+  'ledger/categories': synced(),
+  'ledger/category_rules': synced(),
+  'ledger/budget_targets': synced(),
+  'ledger/transaction_categories': synced('transaction_id'),
+  'ingest/files': { ...gated, cursor: 'last_attempt_at' },
   voice_notes: { ...synced('id'), deletable: true },
 }
 
@@ -116,7 +124,7 @@ export function handleTables(
 
     if (rest === '') {
       if (method !== 'GET') return { status: 405, body: { detail: `Method ${method} not allowed.` } }
-      return list(engine, rows, spec, search)
+      return list(engine, table === 'ledger/transactions' ? withOverrides(engine, rows) : rows, spec, search)
     }
 
     const identity = rest.split('/').map(decodeURIComponent).join('/')
@@ -168,6 +176,29 @@ export function handleTables(
     }
   }
   return null
+}
+
+/**
+ * A ledger transaction as the engine serves it: `category` is the EFFECTIVE one,
+ * a live `transaction_categories` row's if there is one, else the row's own
+ * `stored_category` (`ingest/category_overrides.py`). Seeds only set
+ * `stored_category`; what a person or a rule did to a row is read from the
+ * overrides table, so a PUT or DELETE round-trips.
+ */
+function withOverrides(engine: Engine, rows: Row[]): Row[] {
+  const overrides = new Map(
+    (engine.tables['ledger/transaction_categories'] ?? [])
+      .filter((override) => override.deleted_at == null)
+      .map((override) => [override.transaction_id, override]),
+  )
+  return rows.map((row) => {
+    const override = overrides.get(row.id)
+    if (override) {
+      return { ...row, category: override.category, category_source: override.source ?? 'person', category_pending: false }
+    }
+    const stored = (row.stored_category ?? null) as string | null
+    return { ...row, category: stored, category_source: stored === null ? null : 'stored' }
+  })
 }
 
 function list(engine: Engine, rows: Row[], spec: Spec, search: URLSearchParams): Reply {

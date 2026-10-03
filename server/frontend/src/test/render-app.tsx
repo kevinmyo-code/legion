@@ -30,7 +30,7 @@ export function renderApp(path: string, engine: Engine, surface: Surface = 'work
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
-  return { ...view, device, queryClient }
+  return { ...view, device, queryClient, router }
 }
 
 /** Radix tabs switch on `mousedown`, not `click`, so a test has to press the way a mouse does. */

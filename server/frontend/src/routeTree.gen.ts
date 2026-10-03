@@ -15,6 +15,7 @@ import { Route as AuthedIndexRouteImport } from './routes/_authed.index'
 import { Route as AuthedBodyRouteImport } from './routes/_authed.body'
 import { Route as AuthedFleetRouteImport } from './routes/_authed.fleet'
 import { Route as AuthedListsRouteImport } from './routes/_authed.lists'
+import { Route as AuthedMoneyRouteImport } from './routes/_authed.money'
 import { Route as AuthedNotesRouteImport } from './routes/_authed.notes'
 import { Route as AuthedPantryRouteImport } from './routes/_authed.pantry'
 import { Route as AuthedPlacesRouteImport } from './routes/_authed.places'
@@ -48,6 +49,11 @@ const AuthedListsRoute = AuthedListsRouteImport.update({
   path: '/lists',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedMoneyRoute = AuthedMoneyRouteImport.update({
+  id: '/money',
+  path: '/money',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedNotesRoute = AuthedNotesRouteImport.update({
   id: '/notes',
   path: '/notes',
@@ -70,6 +76,7 @@ export interface FileRoutesByFullPath {
   '/body': typeof AuthedBodyRoute
   '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
+  '/money': typeof AuthedMoneyRoute
   '/notes': typeof AuthedNotesRoute
   '/pantry': typeof AuthedPantryRoute
   '/places': typeof AuthedPlacesRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByTo {
   '/body': typeof AuthedBodyRoute
   '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
+  '/money': typeof AuthedMoneyRoute
   '/notes': typeof AuthedNotesRoute
   '/pantry': typeof AuthedPantryRoute
   '/places': typeof AuthedPlacesRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   '/_authed/body': typeof AuthedBodyRoute
   '/_authed/fleet': typeof AuthedFleetRoute
   '/_authed/lists': typeof AuthedListsRoute
+  '/_authed/money': typeof AuthedMoneyRoute
   '/_authed/notes': typeof AuthedNotesRoute
   '/_authed/pantry': typeof AuthedPantryRoute
   '/_authed/places': typeof AuthedPlacesRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
     | '/body'
     | '/fleet'
     | '/lists'
+    | '/money'
     | '/notes'
     | '/pantry'
     | '/places'
@@ -113,6 +123,7 @@ export interface FileRouteTypes {
     | '/body'
     | '/fleet'
     | '/lists'
+    | '/money'
     | '/notes'
     | '/pantry'
     | '/places'
@@ -124,6 +135,7 @@ export interface FileRouteTypes {
     | '/_authed/body'
     | '/_authed/fleet'
     | '/_authed/lists'
+    | '/_authed/money'
     | '/_authed/notes'
     | '/_authed/pantry'
     | '/_authed/places'
@@ -179,6 +191,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedListsRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/money': {
+      id: '/_authed/money'
+      path: '/money'
+      fullPath: '/money'
+      preLoaderRoute: typeof AuthedMoneyRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/notes': {
       id: '/_authed/notes'
       path: '/notes'
@@ -207,6 +226,7 @@ interface AuthedRouteChildren {
   AuthedBodyRoute: typeof AuthedBodyRoute
   AuthedFleetRoute: typeof AuthedFleetRoute
   AuthedListsRoute: typeof AuthedListsRoute
+  AuthedMoneyRoute: typeof AuthedMoneyRoute
   AuthedNotesRoute: typeof AuthedNotesRoute
   AuthedPantryRoute: typeof AuthedPantryRoute
   AuthedPlacesRoute: typeof AuthedPlacesRoute
@@ -217,6 +237,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedBodyRoute: AuthedBodyRoute,
   AuthedFleetRoute: AuthedFleetRoute,
   AuthedListsRoute: AuthedListsRoute,
+  AuthedMoneyRoute: AuthedMoneyRoute,
   AuthedNotesRoute: AuthedNotesRoute,
   AuthedPantryRoute: AuthedPantryRoute,
   AuthedPlacesRoute: AuthedPlacesRoute,

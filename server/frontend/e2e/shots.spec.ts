@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { seedAspects } from '../src/test/aspects-seed'
 import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
+import { seedLedger, seedSpend } from '../src/test/ledger-seed'
 
 /**
  * Screenshots of the real build against the fake engine: every route in `ROUTES`
@@ -55,6 +56,10 @@ const CARD = 'This page is made for a bigger screen.'
 /** The household plus the Pantry, Body, Fleet, Places and Notes tables. */
 const withAspects = (tables = seedAspects()) =>
   createEngine({ ...seedHousehold(), householdName: 'The Test House', tables })
+
+/** The household plus the ledger: transactions, categories, rules, targets, files and spend. */
+const withLedger = (tables = seedLedger()) =>
+  createEngine({ ...seedHousehold(), householdName: 'The Test House', tables, spend: seedSpend() })
 
 /** Radix tabs switch on mousedown, which `click()` includes. */
 const openTab = (name: string) => async (page: Page) => {
@@ -241,6 +246,119 @@ const ROUTES: Shot[] = [
     labels: ['17'],
     workbenchOnly: true,
   },
+
+  // Ticket 12: Money.
+  { name: 'money', url: '/money', ready: 'Showing 15 of 15 transactions.', engine: withLedger, labels: ['12'], workbenchOnly: 'card' },
+  {
+    name: 'money-detail',
+    url: '/money',
+    ready: 'Showing 15 of 15 transactions.',
+    engine: withLedger,
+    after: async (page) => {
+      await page.getByRole('button', { name: 'Details of Shell 5521' }).click()
+      await expect(page.getByRole('complementary', { name: 'Selected transaction' })).toBeVisible()
+    },
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'money-combobox',
+    url: '/money',
+    ready: 'Showing 15 of 15 transactions.',
+    engine: withLedger,
+    after: async (page) => {
+      await page.getByRole('button', { name: /^Category for Costco Wholesale:/ }).click()
+      await expect(page.getByRole('listbox', { name: 'Categories' })).toBeVisible()
+    },
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'money-needs-category',
+    url: '/money?need=true',
+    ready: 'Showing 7 of 15 transactions.',
+    engine: withLedger,
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'money-loading',
+    url: '/money',
+    ready: /Still loading transactions: 5 so far/,
+    engine: () => {
+      const engine = withLedger()
+      engine.pageSize = 5
+      engine.delay = (_method, pathname, search) =>
+        pathname === '/api/ledger/transactions/' && search.has('since') ? new Promise(() => {}) : undefined
+      return engine
+    },
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'money-rollback',
+    url: '/money',
+    ready: 'Showing 15 of 15 transactions.',
+    engine: () => {
+      const engine = withLedger()
+      engine.refusals['PUT /api/ledger/transaction_categories/*'] = {
+        status: 400,
+        body: { category: ['That category is not on the list.'] },
+      }
+      return engine
+    },
+    after: async (page) => {
+      await page.getByRole('button', { name: /^Category for Shell 5521:/ }).click()
+      await page.getByRole('listbox', { name: 'Categories' }).getByRole('option', { name: 'Fuel' }).click()
+      await expect(page.getByRole('alert')).toContainText('is back to no category')
+    },
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'money-budgets',
+    url: '/money?tab=budgets',
+    ready: 'Left out of the lines above',
+    engine: withLedger,
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'money-budget-edit',
+    url: '/money?tab=budgets',
+    ready: 'Left out of the lines above',
+    engine: withLedger,
+    after: async (page) => {
+      await page.getByRole('button', { name: 'Edit target for Groceries' }).click()
+      await expect(page.getByLabel(/Monthly target for Groceries/)).toBeVisible()
+    },
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  { name: 'money-categories', url: '/money?tab=categories', ready: 'Counts as spending', engine: withLedger, labels: ['12'], workbenchOnly: true },
+  { name: 'money-rules', url: '/money?tab=rules', ready: 'TRADER JOE', engine: withLedger, labels: ['12'], workbenchOnly: true },
+  { name: 'money-files', url: '/money?tab=files', ready: 'BofA_card_Sep.csv', engine: withLedger, labels: ['12'], workbenchOnly: true },
+  {
+    name: 'money-empty',
+    url: '/money',
+    ready: /No transactions yet\./,
+    engine: () => withLedger({}),
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'money-unreachable',
+    url: '/money',
+    ready: /Could not reach the engine, so this is not the real list of transactions/,
+    engine: () => {
+      const engine = withLedger()
+      engine.failingTables.add('ledger/transactions')
+      return engine
+    },
+    labels: ['12'],
+    workbenchOnly: true,
+  },
+  { name: 'home-money', url: '/', ready: '7 transactions need a category', engine: withLedger, labels: ['12'], workbenchOnly: true },
 ]
 
 /** Answer every `/api` call from the fake engine. */
@@ -252,6 +370,7 @@ async function useEngine(page: Page, engine: Engine) {
     }
     const request = route.request()
     const url = new URL(request.url())
+    await engine.delay?.(request.method(), url.pathname, url.searchParams)
     const raw = request.postData()
     const reply = engine.handle(
       request.method(),

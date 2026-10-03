@@ -28,6 +28,7 @@ export function Loaded<T>({
   empty,
   isEmpty = (data) => Array.isArray(data) && data.length === 0,
   quiet = false,
+  pending,
   render,
 }: {
   query: UseQueryResult<T, Error>
@@ -38,11 +39,19 @@ export function Loaded<T>({
   isEmpty?: (data: T) => boolean
   /** Hide the "Last read" line while everything is fine; stale still shows. */
   quiet?: boolean
+  /** Said above the skeleton while the first read is still arriving (a paged
+   * fetch that can say how far along it is). */
+  pending?: ReactNode
   render: (data: T) => ReactNode
 }) {
   if (query.isPending) {
     return (
       <div className="flex flex-col gap-2" aria-busy="true" aria-label={`Loading ${what}`}>
+        {pending && (
+          <p role="status" className="text-[0.9375rem] text-muted-foreground">
+            {pending}
+          </p>
+        )}
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-10 w-3/4" />

@@ -1,4 +1,5 @@
 import { todayEpochDay } from '../lib/day'
+import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event } from '../api/types'
 import { handleTables, type Row } from './engine-tables'
 
@@ -43,7 +44,11 @@ export interface EngineOptions {
   tables?: Record<string, Row[]>
   /** Rows per page of a synced-table list; the real engine's is 500. */
   pageSize?: number
+  /** What `GET /api/ledger/spend` answers; an empty month when absent. */
+  spend?: Spend
 }
+
+export type Spend = components['schemas']['Spend']
 
 export interface Reply {
   status: number
@@ -59,6 +64,12 @@ export interface Engine {
   ticks: Mutable<ChecklistTick>[]
   tables: Record<string, Row[]>
   pageSize: number
+  /** The body of `GET /api/ledger/spend`. Its categories' `target_cents` follow
+   * the live `ledger/budget_targets` rows, so setting a target round-trips. */
+  spend: Spend
+  /** Awaited before a request is answered: hold one page back to see a screen
+   * while a paged read is half done. Resolve to let it through. */
+  delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
   /** Table paths whose reads answer 503: the engine is up but that read failed. */
   failingTables: Set<string>
   /** A forced reply for a `METHOD /path` (or a `METHOD /prefix*`), ahead of every
@@ -246,6 +257,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     ticks: options.ticks ?? [],
     tables: options.tables ?? {},
     pageSize: options.pageSize ?? 500,
+    spend: options.spend ?? emptySpend(),
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -378,6 +390,10 @@ export function createEngine(options: EngineOptions = {}): Engine {
         return { status: 204 }
       }
 
+      if (method === 'GET' && pathname === '/api/ledger/spend') {
+        return { status: 200, body: spendWithTargets(engine) }
+      }
+
       const tableReply = handleTables(engine, method, pathname, search, body)
       if (tableReply) return tableReply
 
@@ -389,6 +405,45 @@ export function createEngine(options: EngineOptions = {}): Engine {
     },
   }
   return engine
+}
+
+export function emptySpend(month = new Date().toISOString().slice(0, 7)): Spend {
+  return {
+    month,
+    currency: 'USD',
+    accounts: [],
+    categories: [],
+    uncategorised_cents: 0,
+    uncategorised_unverified: false,
+    excluded: {
+      not_spending_cents: 0,
+      not_spending_categories: [],
+      own_account_moves_cents: 0,
+      early_charges_moved_cents: 0,
+      early_charges_counted_here_cents: 0,
+      early_charges_counted_next_month_cents: 0,
+    },
+    complete: false,
+  }
+}
+
+/** The spend body, with each category's target read from the live target rows
+ * in force for the month (the latest one effective on or before its first day). */
+function spendWithTargets(engine: Engine): Spend {
+  const first = `${engine.spend.month}-01`
+  const targets = (engine.tables['ledger/budget_targets'] ?? []).filter(
+    (row) => row.deleted_at == null && String(row.effective_from_month) <= first,
+  )
+  return {
+    ...engine.spend,
+    categories: engine.spend.categories.map((line) => {
+      const rows = targets
+        .filter((row) => row.category === line.category)
+        .sort((a, b) => String(a.effective_from_month).localeCompare(String(b.effective_from_month)))
+      const latest = rows[rows.length - 1]
+      return latest ? { ...line, target_cents: latest.amount_cents as number } : line
+    }),
+  }
 }
 
 /** A `Reply` as a real `Response`, the way Django would send it. */
@@ -412,6 +467,7 @@ export function engineFetch(engine: Engine) {
     if (engine.down) throw new TypeError('network error')
     const url = new URL(input.url)
     const method = input.method.toUpperCase()
+    await engine.delay?.(method, url.pathname, url.searchParams)
     let body: unknown = undefined
     if (method !== 'GET' && method !== 'DELETE') {
       const text = await input.text()
