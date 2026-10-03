@@ -28,9 +28,9 @@ believed.
   (ADR 0053), family view below 1024 px for Mia's iPhone PWA, workbench above it for Kevin, private
   rows (ADR 0052, CLAUDE.md section 1 amended), spend computed on the engine, repeat skips, push.
   491 vitest / 0; server CI green (1391 passed) for the first time since 2026-09-29.
-- **Nothing is deployed and nobody has used it on a real device or against live data.** Every web
-  test ran against a fake engine. The owed-by-Kevin list (deploy, `make_private` x2, VAPID wiring,
-  invite Mia, spend parity check) is in the map's Status section; read it there.
+- **Deployed to live the same evening** (revision `legion-00023-ggf`), school rows made private,
+  Canvas re-logged in and syncing. Nobody has used the web on a real device yet, and Mia is not
+  invited. What is done and what is owed is in the map's Status section; read it there.
 - **ADR numbers 0052/0053 are taken.** A session in the main checkout was writing
   `0050-mapbox-native-navigation.md` on a stale tree; it needs 0054.
 

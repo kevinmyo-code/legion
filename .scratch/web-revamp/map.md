@@ -79,15 +79,22 @@ Made in the 2026-10-03 interview, all recorded in the spec:
 green (1391 passed, 44 skipped), its first green run since 2026-09-29. Ticket 18 is a handoff list
 for the Android side and stays open.
 
-**Owed by Kevin, in order, none of it done by an agent:**
-1. Deploy (manual `workflow_dispatch`); seven new migrations apply on live (ingest 0009-0015,
-   checklists 0003-0004, push 0001).
-2. `manage.py make_private` twice: `--origin-prefix canvas:` and `--structured-meta-key course`.
-3. Push: VAPID keys, and `deploy/cloudrun/_common.py` must pass `VAPID_*` to the service and job
-   (it does not yet; push stays off in words until it does), then install the new scheduler line.
-4. Invite Mia from `/settings/household`; she installs the PWA on her iPhone and subscribes.
-5. Check her spend card against the phone's Money figure to the cent (known parity risk: the phone
-   keys accounts on nickname, the server on last4).
+**Done on live, 2026-10-03 evening (Kevin ran each command):**
+- Deployed revision `legion-00023-ggf` and the worker Job on the same image. All 11 migrations
+  applied. The first attempt died at ingest 0013 (`private` schema permission); 0009-0012 had
+  applied under old code in between. Fixed in `40efc935`.
+- `make_private`: 251 school rows private to Kevin. Selectors that matched real data: the
+  `canvas_assignment_id` and `parent_canvas_assignment_id` keys, and `--title-prefix` "COSC ",
+  "MATH 3391", "MKTG 3303" (the class schedule has no metadata). 70 household rows stay shared.
+- Canvas re-login via `connect_session.py canvas` (it had been `needs_login` since 2026-09-29).
+  The first sync after that came back `ok`, and new Canvas rows arrive private.
+- Schedule installed; `legion-worker-push-dispatch` is PAUSED until VAPID keys exist (it ran a
+  Job every 5 minutes for nothing).
+
+**Still owed by Kevin:** look at the site against real data; invite Mia and have her install the
+PWA; check her spend card against the phone to the cent; push keys (`deploy/cloudrun/README.md`)
+and then resume `legion-worker-push-dispatch`. The "Laptop: connect_session" write token is in
+Settings > Devices.
 
 **Open questions for Kevin** (defaults built, each a small change): rail 232 px vs C's 96 px;
 Canvas tasks tickable but not editable; tasks in the week view's all-day lane; weeks start Sunday;
