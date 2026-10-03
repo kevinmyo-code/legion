@@ -35,6 +35,10 @@ interface Shot {
   ready: string | RegExp
   /** Starts the engine in a particular state. */
   engine?: () => Engine
+  /** Runs after the page is ready, to drive it into a state worth a picture. */
+  after?: (page: Page, engine: Engine) => Promise<void>
+  /** The ticket labels this shot belongs to; every label when absent. */
+  labels?: string[]
 }
 
 const seeded = () => createEngine({ ...seedHousehold(), householdName: 'The Test House' })
@@ -48,6 +52,34 @@ const ROUTES: Shot[] = [
   },
   { name: 'home', url: '/', ready: 'Soccer pickup', engine: seeded },
   { name: 'lists', url: '/lists', ready: 'Oat milk', engine: seeded },
+  // The states a screenshot of the happy path never shows (ticket 04).
+  {
+    name: 'home-unreachable',
+    url: '/',
+    ready: /Could not reach the engine, so this is not today's real list/,
+    engine: () => {
+      const engine = seeded()
+      engine.changesFailing = true
+      return engine
+    },
+    labels: ['04'],
+  },
+  {
+    name: 'home-stale',
+    url: '/',
+    ready: 'Soccer pickup',
+    engine: seeded,
+    // The page loaded fine, then the next refresh fails. Becoming visible again is
+    // what makes the app refetch, so fire exactly that.
+    after: async (page, engine) => {
+      engine.changesFailing = true
+      await page.evaluate(() =>
+        document.dispatchEvent(new Event('visibilitychange', { bubbles: true })),
+      )
+      await expect(page.getByText(/not what is there now/)).toBeVisible()
+    },
+    labels: ['04'],
+  },
 ]
 
 /** Answer every `/api` call from the fake engine. */
@@ -82,12 +114,13 @@ for (const viewport of VIEWPORTS) {
         colorScheme: scheme,
       })
 
-      for (const shot of ROUTES) {
+      for (const shot of ROUTES.filter((shot) => !shot.labels || shot.labels.includes(LABEL))) {
         test(shot.name, async ({ page }) => {
           const engine = (shot.engine ?? seeded)()
           await useEngine(page, engine)
           await page.goto(shot.url)
           await expect(page.getByText(shot.ready).first()).toBeVisible()
+          await shot.after?.(page, engine)
           // Let the font, the check animation and the first paint settle.
           await page.evaluate(() => document.fonts.ready)
           await page.waitForTimeout(250)

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { api } from '@/api/client'
+import { CHANGES_POLL_MS, useVisibleInterval } from '@/api/refetch'
 
 /**
  * `GET /api/auth/me` as one hook, shared by the root shell (household name,
@@ -63,6 +64,7 @@ export function useHousehold(enabled: boolean) {
 export const CHANGES_KEY = ['changes', 'events-and-checklists'] as const
 
 export function useChanges(enabled: boolean) {
+  const interval = useVisibleInterval(CHANGES_POLL_MS)
   return useQuery({
     queryKey: CHANGES_KEY,
     queryFn: async () => {
@@ -76,5 +78,12 @@ export function useChanges(enabled: boolean) {
     },
     enabled,
     retry: false,
+    // Live while the page is visible (spec D13). Every 30 s, immediately when the
+    // tab becomes visible or focused again, and when the network comes back.
+    // 'always' because the default only refetches data older than `staleTime`,
+    // and "I switched back to the tab" should always check.
+    refetchInterval: interval,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
   })
 }

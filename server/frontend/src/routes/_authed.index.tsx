@@ -182,8 +182,12 @@ function Today() {
   // CLAUDE.md section 1: unreadable and empty are different sentences. A failed
   // pull with NOTHING cached says so in words rather than rendering as an empty,
   // quiet day. The third case - a failed refetch with data still on screen - is
-  // the `Freshness` line below, not this branch.
-  if (changes.isError) {
+  // the `Freshness` line below, not this branch. It is checked by "is there any
+  // data", never by `isError` alone: TanStack reports `isError` after a failed
+  // BACKGROUND refetch too, with the last good data still attached, and the page
+  // now refetches every 30 s, so `isError` alone would blank a real day behind
+  // an error banner the first time the network blinked.
+  if (changes.isError && changes.data === undefined) {
     return (
       <div className="mx-auto max-w-lg rounded-card bg-destructive-container p-4 text-sm text-destructive-container-foreground">
         Could not reach the engine, so this is not today's real list.{' '}

@@ -8,6 +8,7 @@ import { useSetChecklistTick } from '@/api/mutations'
 import { CHANGES_KEY, useChanges } from '@/api/queries'
 import { newChecklist, newChecklistItem, type Checklist, type ChecklistItem, type ChecklistTick } from '@/api/types'
 import { DeleteChecklistControl } from '@/components/checklist-delete'
+import { Freshness } from '@/components/freshness'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -224,7 +225,10 @@ function Lists() {
     )
   }
 
-  if (changes.isError) {
+  // `isError` is also true after a failed background refetch with the last good
+  // data attached (the page refetches every 30 s), so the unreachable banner is for
+  // "nothing to show", and stale data is the `Freshness` line below.
+  if (changes.isError && changes.data === undefined) {
     return (
       <div className="mx-auto max-w-lg rounded-card bg-destructive-container p-4 text-sm text-destructive-container-foreground">
         Could not reach the engine, so this is not the real state of your lists.{' '}
@@ -242,6 +246,12 @@ function Lists() {
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4">
+      <Freshness
+        updatedAt={changes.dataUpdatedAt}
+        isFetching={changes.isFetching}
+        failureCount={changes.failureCount}
+        error={changes.error}
+      />
       {checklists.length === 0 ? (
         <p className="text-[0.9375rem] text-muted-foreground">No lists yet. Start one below.</p>
       ) : (
