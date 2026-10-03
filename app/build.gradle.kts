@@ -46,6 +46,22 @@ val geminiApiKey: String =
 val tomtomApiKey: String =
     if (project.hasProperty("nokey")) "" else localProps.getProperty("TOMTOM_API_KEY", "")
 
+// Mapbox public access token (`pk.*`), for Navigation SDK v3 (`.scratch/mapbox-nav/`, ADR 0054,
+// ticket 08). Gradle property first (user `~/.gradle/gradle.properties`, so every worktree sees it),
+// then local.properties. Same convenience-key shape as TOMTOM_API_KEY above and for the same reason.
+//
+// **This is the DEV convenience token, not the shipping path.** Clone-and-run means a stranger has
+// none, so the product path is BYO per phone through KeyVault on Setup (ticket 08; NOT built in the
+// spike). With no token navigation must say "not set up" in words, never render a blank map.
+// This is the PUBLIC runtime token that bills usage, not the build-time downloads secret.
+val mapboxAccessToken: String =
+    if (project.hasProperty("nokey")) {
+        ""
+    } else {
+        providers.gradleProperty("MAPBOX_ACCESS_TOKEN").orNull
+            ?: localProps.getProperty("MAPBOX_ACCESS_TOKEN", "")
+    }
+
 // AirNow (US EPA air quality). Same BYO shape and the same degrade-in-words rule: with no key the
 // air-quality answer says it has no key rather than reporting clean air it never measured. A
 // missing reading and a good reading are different sentences (CLAUDE.md sec 1).
@@ -89,6 +105,14 @@ android {
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
         buildConfigField("String", "TOMTOM_API_KEY", "\"$tomtomApiKey\"")
         buildConfigField("String", "AIRNOW_API_KEY", "\"$airnowApiKey\"")
+        buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$mapboxAccessToken\"")
+
+        // arm64-v8a only: the A25 is arm64, and the Mapbox native libs (navigation + maps +
+        // common) are tens of MB per ABI. Applies to every native library in the APK, not just
+        // Mapbox's - Vosk and friends lose their other ABIs too (spike measured the delta).
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     signingConfigs {
@@ -273,6 +297,9 @@ detekt {
 }
 
 dependencies {
+    // Mapbox Navigation SDK v3 core + ui-maps (mapbox-nav spike).
+    implementation(libs.mapbox.navigation)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

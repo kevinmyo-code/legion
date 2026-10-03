@@ -11,6 +11,7 @@ import com.kevin.legion.engine.mirror.MirrorFolderPreferences
 import com.kevin.legion.engine.mirror.MirrorLifecycleBinder
 import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
 import com.kevin.legion.service.ProactivePreferences
+import com.mapbox.common.MapboxOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,6 +53,14 @@ class MidnightApplication : Application() {
         // two, which is harmless - they are idempotent - and is left alone so
         // the assistant path does not depend on this ordering.
         GeminiKeyProvider.init(this)
+        // Mapbox's public token (mapbox-nav spike, ticket 08). Set only when non-blank: the
+        // SDK reads this at first use, and a blank value would shadow a token supplied by any
+        // other path with an empty string. Initialised here, not lazily in a screen, because
+        // Midnight AI's lesson was that SDK init belongs in Application.onCreate. The baked
+        // token is the dev convenience; the BYO KeyVault path replaces it in ticket 09.
+        if (BuildConfig.MAPBOX_ACCESS_TOKEN.isNotBlank()) {
+            MapboxOptions.accessToken = BuildConfig.MAPBOX_ACCESS_TOKEN
+        }
         // Token metering (2026-09-06). Seeded here for the same L12 reason as the caches
         // around it: SubAgent's REST calls run from ledger, pantry and the vehicle agents
         // whether or not the assistant service is switched on, and a meter that only woke

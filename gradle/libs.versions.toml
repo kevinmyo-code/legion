@@ -128,8 +128,16 @@ ksp = "2.2.10-2.0.2"
 # no 2.x releases. alpha.0 is a real alpha (pre-1.0 API surface can still move), accepted here
 # because the ticket's own instruction is exact-Kotlin-compatibility, not release-channel maturity.
 detekt = "2.0.0-alpha.0"
+# Mapbox Navigation SDK v3 (`.scratch/mapbox-nav/`, ADR 0054). The `-ndk27` artifact is the 16 KB
+# page-size build; group is `com.mapbox.navigationcore` (v3 renamed it from `com.mapbox.navigation`).
+# Resolves ANONYMOUSLY from api.mapbox.com/downloads/v2/releases/maven - see settings.gradle.kts.
+mapboxNavigation = "3.32.0"
 
 [libraries]
+# `android-ndk27` pulls navigation, copilot, tripdata, voice and ui-maps (and the Maps SDK through
+# ui-maps). Nav UI widgets are Views, so the spike hosts a MapView in AndroidView rather than
+# adding maps-compose (which would drag a 2023 compose-bom into resolution).
+mapbox-navigation = { group = "com.mapbox.navigationcore", name = "android-ndk27", version.ref = "mapboxNavigation" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
