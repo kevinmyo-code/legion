@@ -807,6 +807,13 @@ class LiveSessionController(context: Context) {
                 pendingAction = Pending.NONE
                 pendingPrompt = null
             }
+            // Ticket 17: the 8 s follow-up window lapsed. A Closed("stopped") follows at once, which
+            // raises no error notice and drops the resume handle; this is the part the person sees
+            // and hears, so a conversation never ends by silently disappearing.
+            is LiveEvent.FollowUpExpired -> {
+                playClosingTone()
+                CompanionPhase.showNotice("Conversation closed")
+            }
             is LiveEvent.SpeakingStarted -> set(Phase.SPEAKING, "Speaking...")
             is LiveEvent.Interrupted -> set(Phase.LISTENING, "Listening...")
             is LiveEvent.CrisisDetected -> {
@@ -1263,6 +1270,23 @@ class LiveSessionController(context: Context) {
         }
     }
 
+    /**
+     * Ticket 17: the short tone that accompanies "Conversation closed". There was no earcon in the
+     * codebase to reuse, so this is the platform's own ACK tone, ~150 ms, on the music stream at
+     * low volume. Best-effort: a ToneGenerator that cannot be created is a missing beep, never a
+     * reason to fail the close.
+     */
+    private fun playClosingTone() {
+        runCatching {
+            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, CLOSING_TONE_VOLUME)
+            tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK, CLOSING_TONE_MS)
+            scope.launch {
+                delay(CLOSING_TONE_RELEASE_DELAY_MS)
+                tone.release()
+            }
+        }
+    }
+
     private fun handleToolCall(call: LiveEvent.ToolCall) {
         scope.launch {
             val s = session ?: return@launch
@@ -1553,6 +1577,11 @@ class LiveSessionController(context: Context) {
 
     companion object {
         private const val IDLE_STATUS = "Tap to talk"
+        // Ticket 17's closing tone: ToneGenerator volume (0-100), length, and how long to wait
+        // before releasing the generator.
+        private const val CLOSING_TONE_VOLUME = 50
+        private const val CLOSING_TONE_MS = 150
+        private const val CLOSING_TONE_RELEASE_DELAY_MS = 500L
 
         /**
          * The sentence a [VoiceRefusal] puts in front of the person who asked.
