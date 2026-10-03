@@ -70,10 +70,12 @@ device model in a prompt had three separate agents reporting work on a phone tha
   are the reporting layer, the xlsx mirror is the audit-and-export surface. Three deliberate
   deviations from real ERP: data trustworthiness is first-class (the §4 gate + provenance), the
   primary client is a voice agent bound by honesty rules, and the trust model is a household with
-  BYO everything. **Membership is the only authorization; tenancy is BY HOUSEHOLD and nothing
-  finer** (Kevin, 2026-09-08, ADR 0045: one engine may hold more than one family, each
-  all-or-nothing to its members). One role, `owner`, exists only to invite and remove members. No
-  approval workflows, ever.
+  BYO everything. **Membership is the only authorization; tenancy is BY HOUSEHOLD** (Kevin,
+  2026-09-08, ADR 0045: one engine may hold more than one family). **Inside a household, a row is
+  shared unless it is private to one member** (Kevin, 2026-10-03, ADR 0052: Canvas coursework and
+  class schedule are Kevin's alone; hand-made rows default to shared). Privacy is ownership of a
+  row, enforced at `household.tenancy.visible()`, never a client-side hide. One role, `owner`,
+  exists only to invite and remove members. No approval workflows, ever.
 - **Register: Alfred/JARVIS is a BAND, not a name.** A tool with a personality. Not a mascot, not
   the car. Competent, dry, useful. The register copy lives in `ai/Personas.kt`; `AssistantIdentity`
   resolves it. **LEGION is the app; the thing Kevin talks to is a named companion he picks per
@@ -444,7 +446,9 @@ here.
       SQL shipped by a Django migration; a business rule lives in Django once, never also in Kotlin.
 - [ ] Server down? The phone still reads from Room, queues the write, and says so in words.
 - [ ] New table, view or report? Scoped by household at the one choke point, listed in
-      `household.tenancy.TENANT_TABLES`, and covered by the tenancy leak test (ADR 0045).
+      `household.tenancy.TENANT_TABLES`, and covered by the tenancy leak test (ADR 0045). A table
+      that can hold private rows reads through `visible()` and is covered by `test_visibility.py`
+      (ADR 0052).
 - [ ] Does it survive clone-and-run by a stranger with their own signing cert?
 - [ ] New tool? Its failure result says in words what did NOT happen, and nothing claims success
       unless the underlying action ran. §7's outcome-verb rule needs a real result to stand on.

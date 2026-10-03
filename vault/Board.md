@@ -65,6 +65,12 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[01-the-calendar-widget\|01]] | build | The calendar widget on the web home - month grid plus day view |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[02-delete-a-finished-list\|02]] | build | Delete a list, from Lists and from Home, and offer it when everything is ticked |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[04-when-did-i-last-buy-x\|04]] | build | When did I last buy X, from tick history, saying only what a tick can say |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[02-design-tokens-light-dark-manifest-icons\|02]] | build | Design tokens, light and dark, manifest and icons |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[04-live-refresh-while-visible\|04]] | build | Live refresh while the page is visible |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[06-private-rows-on-the-engine\|06]] | build | Private rows on the engine |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[08-repeat-exceptions-on-the-engine\|08]] | build | Repeat exceptions on the engine |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[11-spend-on-the-engine\|11]] | build | Spend on the engine: one figure, computed once |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[14-reminder-lead-time-on-events\|14]] | build | Reminder lead time on events |
 | [[.scratch/web-surface/map\|web-surface]] | [[01-the-horizon\|01]] | decision | The horizon: what Today shows beyond tomorrow, and how a cliff reads as a cliff |
 | [[.scratch/web-surface/map\|web-surface]] | [[02-today-rebuilt\|02]] | build | Today, rebuilt |
 | [[.scratch/web-surface/map\|web-surface]] | [[03-desktop-is-not-the-phone\|03]] | decision | Desktop is not the phone reflowed: what the workbench shows that the PWA never does |
@@ -198,6 +204,17 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[05-web-screens-phase-1\|05]] | build | Web screens, phase 1: sign in, sign up, household, Today, Lists, Settings; installed on an iPhone  waiting on [[03-accounts-signup-invites\|03]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[06-web-screens-phase-2\|06]] | build | Web screens, phase 2: Ledger, Pantry, Body, Fleet, Places, Voice notes, and a glanceable home  waiting on [[05-web-screens-phase-1\|05]], [[11-report-endpoints\|11]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[11-report-endpoints\|11]] | build | Report endpoints: aggregates computed once, described in the contract, unverified carried through  waiting on [[02b-rls-belt\|02]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[03-the-shell-split-by-viewport\|03]] | build | The shell split by viewport  waiting on [[02-design-tokens-light-dark-manifest-icons\|02]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[05-join-signup-and-settings\|05]] | build | Join, signup and settings  waiting on [[03-the-shell-split-by-viewport\|03]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[07-shared-and-private-on-the-web\|07]] | build | Shared and private on the web  waiting on [[03-the-shell-split-by-viewport\|03]], [[06-private-rows-on-the-engine\|06]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[09-the-event-sheet\|09]] | build | The event sheet: add, edit, repeats, this one or all  waiting on [[03-the-shell-split-by-viewport\|03]], [[07-shared-and-private-on-the-web\|07]], [[08-repeat-exceptions-on-the-engine\|08]], [[14-reminder-lead-time-on-events\|14]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[10-family-home-lists-and-calendar\|10]] | build | Family Home, Lists and Calendar  waiting on [[03-the-shell-split-by-viewport\|03]], [[07-shared-and-private-on-the-web\|07]], [[09-the-event-sheet\|09]], [[11-spend-on-the-engine\|11]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[12-money-workbench\|12]] | build | Money workbench  waiting on [[03-the-shell-split-by-viewport\|03]], [[04-live-refresh-while-visible\|04]], [[11-spend-on-the-engine\|11]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[13-calendar-workbench\|13]] | build | Calendar workbench  waiting on [[09-the-event-sheet\|09]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[15-push-notifications\|15]] | build | Push notifications  waiting on [[05-join-signup-and-settings\|05]], [[08-repeat-exceptions-on-the-engine\|08]], [[14-reminder-lead-time-on-events\|14]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[16-pantry-and-body-workbench\|16]] | build | Pantry and body workbench  waiting on [[03-the-shell-split-by-viewport\|03]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[17-fleet-places-and-notes-workbench\|17]] | build | Fleet, places and notes workbench  waiting on [[03-the-shell-split-by-viewport\|03]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[18-phone-follow-ups-for-the-android-agent\|18]] | task | Phone follow-ups for the Android agent  waiting on [[06-private-rows-on-the-engine\|06]], [[11-spend-on-the-engine\|11]], [[14-reminder-lead-time-on-events\|14]] |
 | [[.scratch/web-surface/map\|web-surface]] | [[07-rebrief-aspect-screens\|07]] | task | Re-brief web-and-households 06 with what the real data turned out to look like  waiting on [[01-the-horizon\|01]], [[03-desktop-is-not-the-phone\|03]] |
 
 ## KIV
@@ -266,4 +283,5 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/wake-word/map\|wake-word]] | 19 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 9 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |
+| [[.scratch/web-revamp/map\|web-revamp]] | 18 | 17 | [[.scratch/web-revamp/web-revamp.canvas\|open]] |
 | [[.scratch/web-surface/map\|web-surface]] | 7 | 7 | [[.scratch/web-surface/web-surface.canvas\|open]] |
