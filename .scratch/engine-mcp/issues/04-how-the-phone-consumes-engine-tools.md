@@ -3,12 +3,12 @@ map: engine-mcp
 ticket: "04"
 title: "How the phone's Live session consumes engine tools"
 type: decision
-status: open
+status: resolved
 status-detail: ""
 blockers: ["01", "03"]
 blocked-by: ["[[01-where-the-mcp-server-lives]]", "[[03-one-source-for-tool-definitions]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -51,3 +51,5 @@ hold) goes through it. Revisit A only if 02 finds Live accepts MCP servers nativ
 ## Resolution
 
 Kevin picks; 11 builds it.
+
+**Ruled 2026-10-02 (Kevin: *"go with your recs"*): C, one `ask_engine` bridge tool on the phone.** One declaration, bridged at runtime to `/mcp`, so its cost to Live is constant however many engine tools exist. Existing Room-backed tools stay where they are; only server-native capability goes through the bridge. Offline is one sentence in one place: the engine is unreachable, nothing was read or written. The sub-agent behind it carries the outcome-verb rule. Ticket 11 builds it.

@@ -108,6 +108,12 @@ concrete. 03 is the decision everything else hangs on. 07 waits on 06 and on
   breaks on SDK 2.x. DCR is the only OAuth registration every target client shares. Gemini Live has
   no MCP, so 04's bridge is the only path.
   [research](research/02-sdk-django-and-client-support.md)
+- **01, 03, 05, 06 (Kevin, 2026-10-02):** inside Django at `/mcp`; a curated Python registry; device
+  tokens with a read/write scope now, OAuth later; read AND write in v1.
+- **04, 07, 08, 06.2 (Kevin, 2026-10-02, "go with your recs"):** one `ask_engine` bridge tool on the
+  phone (11 builds it); no ingestion over MCP until the statement CSV format exists; Cloud Run, off by
+  default behind `LEGION_MCP`, throttled per token, every call audited; memory tables excluded.
+- **10 built (2026-10-02):** `server/engine_mcp/`, 11 tools, owes a live run.
 
 ## Not yet specified
 

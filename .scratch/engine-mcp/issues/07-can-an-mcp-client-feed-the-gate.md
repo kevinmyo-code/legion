@@ -3,12 +3,12 @@ map: engine-mcp
 ticket: "07"
 title: "Can an MCP client hand a document to the gate"
 type: decision
-status: open
+status: resolved
 status-detail: ""
 blockers: ["06"]
 blocked-by: ["[[06-which-tools-and-the-honesty-contract]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -44,3 +44,5 @@ anchors are stored by the gate already, so B adds no new storage.
 ## Resolution
 
 Kevin picks A or B.
+
+**Ruled 2026-10-02 (Kevin: *"go with your recs"*): A, no ingestion over MCP, until the statement CSV format (`.scratch/backend-erp/issues/03-the-gate-server-side.md`) exists.** No MCP tool submits a statement or a receipt, and ticket 10's registry carries no ingestion tool. When the format is built, B is the shape to reopen this with: one tool that calls the gate endpoint unchanged and returns its verdict verbatim. C stays forbidden by §4 rule 7.

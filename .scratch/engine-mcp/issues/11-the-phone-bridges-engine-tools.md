@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["04", "10"]
 blocked-by: ["[[04-how-the-phone-consumes-engine-tools]]", "[[10-the-engine-mcp-endpoint]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
@@ -16,7 +16,9 @@ tags: [ticket]
 
 ## Build (shape fixed by 04)
 
-Whatever 04 picks, these hold:
+**04 ruled 2026-10-02 (Kevin: *"go with your recs"*): one `ask_engine` tool on the phone.** One Gemini declaration, `ask_engine(question)`, bridged at runtime to `/mcp` (ticket 10): a sub-agent fetches `tools/list`, picks the engine tool, calls it on the phone's device token, and relays the result. The existing Room-backed tools in `LiveToolbox.kt` are untouched; only server-native questions go through it. Its declaration cost is constant however many engine tools exist.
+
+These hold:
 
 - Calls go out on the phone's existing device token (`EngineAuth`), through the existing transport
   in `backend/engine/`.
@@ -32,5 +34,5 @@ Whatever 04 picks, these hold:
 
 ## Verification
 
-- Unit: declaration translation, offline sentence, mail exclusion.
+- Unit: the `ask_engine` declaration, tools/list to sub-agent translation, offline sentence, mail exclusion.
 - On the A25: ask a question only the engine can answer, with the engine up and with it down.

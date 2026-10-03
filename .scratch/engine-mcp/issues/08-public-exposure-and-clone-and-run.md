@@ -3,12 +3,12 @@ map: engine-mcp
 ticket: "08"
 title: "Public exposure and clone-and-run"
 type: decision
-status: open
+status: resolved
 status-detail: ""
 blockers: ["01", "05"]
 blocked-by: ["[[01-where-the-mcp-server-lives]]", "[[05-auth-per-caller]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -44,3 +44,11 @@ from `docker compose up`?
 ## Resolution
 
 Kevin rules on 1-5.
+
+**Ruled 2026-10-02 (Kevin: *"go with your recs"*): Cloud Run, the same service and image, OFF by default.**
+
+1. Off unless `LEGION_MCP` is set on, like `LEGION_OPEN_SIGNUP`. Off, `/mcp` answers 404 in words.
+2. Same Cloud Run service, same image (01 option A).
+3. Throttled per token, its own scope, so a looping model cannot spend the free tier or lock out the phone.
+4. A stranger's public HTTPS is theirs to provide; documented, never hosted.
+5. Every call audited: one row per call with the token, the method and the tool name, never the arguments or the result body.
