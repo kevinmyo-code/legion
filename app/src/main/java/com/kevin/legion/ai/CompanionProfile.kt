@@ -91,6 +91,12 @@ object CompanionProfile {
     // fallback); KEY_GEMINI_KEY_ENC holds the KeyVault-encrypted blob.
     private const val KEY_GEMINI_KEY = "gemini_api_key"
     private const val KEY_GEMINI_KEY_ENC = "gemini_api_key_enc"
+
+    // The pasted Mapbox PUBLIC token (mapbox-nav ticket 08). Same shape as the Gemini key, minus the
+    // legacy-plaintext migration, which never existed for it. Lives in this file so the backup
+    // exclusion in data_extraction_rules.xml (companion_profile.xml) already covers it.
+    private const val KEY_MAPBOX_TOKEN = "mapbox_token"
+    private const val KEY_MAPBOX_TOKEN_ENC = "mapbox_token_enc"
     // User-supplied Shelly Cloud "Authorization cloud key" (BYO, required for the
     // garage/gate feature - Shelly app: User Settings -> Authorization cloud key ->
     // Get key). KEY_SHELLY_AUTH_KEY_ENC holds the KeyVault-encrypted blob;
@@ -348,6 +354,37 @@ object CompanionProfile {
     }
 
     fun hasGeminiKey(context: Context): Boolean = geminiKey(context).isNotBlank()
+
+    /**
+     * The pasted Mapbox public token (KeyVault-encrypted; plaintext slot only if the Keystore is
+     * broken). Blank if none.
+     */
+    fun mapboxToken(context: Context): String {
+        val p = prefs(context)
+        p.getString(KEY_MAPBOX_TOKEN_ENC, null)?.let { enc ->
+            KeyVault.decrypt(enc)?.let { return it }
+        }
+        return p.getString(KEY_MAPBOX_TOKEN, "").orEmpty()
+    }
+
+    fun saveMapboxToken(context: Context, token: String) {
+        val trimmed = token.trim()
+        val enc = KeyVault.encrypt(trimmed)
+        prefs(context).edit().apply {
+            if (enc != null) {
+                putString(KEY_MAPBOX_TOKEN_ENC, enc)
+                remove(KEY_MAPBOX_TOKEN)
+            } else {
+                // Keystore broken on this unit: plaintext beats a bricked token entry (as the Gemini key).
+                putString(KEY_MAPBOX_TOKEN, trimmed)
+                remove(KEY_MAPBOX_TOKEN_ENC)
+            }
+        }.apply()
+    }
+
+    fun clearMapboxToken(context: Context) {
+        prefs(context).edit().remove(KEY_MAPBOX_TOKEN_ENC).remove(KEY_MAPBOX_TOKEN).apply()
+    }
 
     /**
      * User-supplied Shelly Cloud auth_key (stored encrypted via [KeyVault]).

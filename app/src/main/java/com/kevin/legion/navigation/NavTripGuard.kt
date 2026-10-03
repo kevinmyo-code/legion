@@ -1,7 +1,10 @@
 package com.kevin.legion.navigation
 
-/** Where a guided trip is. [NOT_SET_UP] is decided before a guard exists (no token). */
-enum class NavPhase { NOT_SET_UP, IDLE, REQUESTING, GUIDING, ARRIVED, FAILED }
+/**
+ * Where a guided trip is. [NOT_SET_UP] (no token) and [TOKEN_REFUSED] (Mapbox said the token is
+ * bad) are decided before a guard exists, from the token alone; neither ever has a trip.
+ */
+enum class NavPhase { NOT_SET_UP, TOKEN_REFUSED, IDLE, REQUESTING, GUIDING, ARRIVED, FAILED }
 
 /**
  * The billing guard for [MapboxNavController], pure so a test can pin it (mapbox-nav spike,

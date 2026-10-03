@@ -41,12 +41,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * a Free Drive trip. Route requests made before the session starts are billed per request by
  * Mapbox; that is the one cost outside a trip and it is unavoidable.
  *
- * **No token:** [state] says [NavFormat.NOT_SET_UP] in words and no SDK object is ever created.
+ * **No token, or a token Mapbox refused:** [state] says [NavFormat.NOT_SET_UP] / [NavFormat.TOKEN_REFUSED]
+ * in words, and no SDK object is ever created (a refusal learnt mid-request tears the instance down).
  * Main-thread only: every Mapbox callback and every call here is on the main looper.
  */
 class MapboxNavController(
     private val appContext: Context,
-    private val accessToken: () -> String,
+    private val tokens: MapboxTokenSource,
 ) {
     private val guard = NavTripGuard()
     private var navigation: MapboxNavigation? = null
@@ -61,18 +62,35 @@ class MapboxNavController(
     val routes: StateFlow<List<NavigationRoute>> = _routes.asStateFlow()
 
     private fun initialState(): NavState =
-        if (NavFormat.hasToken(accessToken())) {
-            NavState(NavPhase.IDLE, "Ready. Nothing is running and no trip is billed.")
-        } else {
-            NavState(NavPhase.NOT_SET_UP, NavFormat.NOT_SET_UP)
-        }
+        NavFormat.stateForToken(tokens.state.value)
+            ?: NavState(NavPhase.IDLE, "Ready. Nothing is running and no trip is billed.")
+
+    /**
+     * The token changed under us (pasted, cleared, or rejected). A trip on the old token ends, since
+     * it was started on a token that is gone or no longer trusted, and the state re-reads from the
+     * token. Safe on an idle controller.
+     */
+    fun onTokenChanged() {
+        guard.screenLeft()
+        teardown()
+        _state.value = initialState()
+    }
+
+    /** An auth failure came from somewhere other than a route request (the map's style load). */
+    fun onTokenRefused() {
+        guard.requestFailed()
+        guard.screenLeft()
+        teardown()
+        tokens.markRejected()
+        _state.value = NavState(NavPhase.TOKEN_REFUSED, NavFormat.TOKEN_REFUSED)
+    }
 
     /**
      * Requests a route from [origin] to the destination and, when it arrives, starts active
      * guidance. Mapbox points are **lng, lat**, in that order (Midnight AI's lesson).
      */
     private fun refusalFor(origin: Location?): NavState? = when {
-        !NavFormat.hasToken(accessToken()) -> NavState(NavPhase.NOT_SET_UP, NavFormat.NOT_SET_UP)
+        NavFormat.stateForToken(tokens.state.value) != null -> NavFormat.stateForToken(tokens.state.value)
         origin == null -> NavState(
             NavPhase.FAILED,
             "No location fix yet, so no route was requested. Wait for a fix and try again.",
@@ -145,9 +163,13 @@ class MapboxNavController(
         }
 
         override fun onFailure(reasons: List<RouterFailure>, routeOptions: RouteOptions) {
+            val why = reasons.firstOrNull()?.message ?: "unknown reason"
+            if (NavFormat.isAuthFailure(why)) {
+                onTokenRefused()
+                return
+            }
             guard.requestFailed()
             teardown()
-            val why = reasons.firstOrNull()?.message ?: "unknown reason"
             _state.value = NavState(NavPhase.FAILED, "No route: $why.")
         }
 

@@ -49,7 +49,7 @@ import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineView
  * surface, and the words in [NavFormat.NOT_SET_UP] are what the screen says instead.
  */
 @Composable
-fun NavSpikeScreen(onBack: () -> Unit, viewModel: NavSpikeViewModel = viewModel()) {
+fun NavSpikeScreen(onBack: () -> Unit, onOpenSetup: () -> Unit = {}, viewModel: NavSpikeViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val routes by viewModel.routes.collectAsStateWithLifecycle()
 
@@ -64,6 +64,8 @@ fun NavSpikeScreen(onBack: () -> Unit, viewModel: NavSpikeViewModel = viewModel(
         onRoute = viewModel::routeToTestDestination,
         onStop = viewModel::stop,
         onBack = onBack,
+        onOpenSetup = onOpenSetup,
+        onMapAuthFailure = viewModel::onMapAuthFailure,
     )
 }
 
@@ -74,6 +76,8 @@ fun NavSpikeContent(
     onRoute: () -> Unit,
     onStop: () -> Unit,
     onBack: () -> Unit,
+    onOpenSetup: () -> Unit = {},
+    onMapAuthFailure: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -93,18 +97,19 @@ fun NavSpikeContent(
                 enabled = state.phase == NavPhase.GUIDING || state.phase == NavPhase.REQUESTING,
             ) { Text("Stop") }
         }
-        if (state.phase == NavPhase.NOT_SET_UP) {
-            // Never a blank map: say what is missing instead of drawing a surface that cannot load.
-            Text(NavFormat.NOT_SET_UP, style = MaterialTheme.typography.bodyMedium)
+        if (state.phase == NavPhase.NOT_SET_UP || state.phase == NavPhase.TOKEN_REFUSED) {
+            // Never a blank map: say what is missing (or refused) instead of drawing a surface that
+            // cannot load. state.message above is the same sentence; the button is the way out.
+            Button(onClick = onOpenSetup) { Text("Open Setup") }
         } else {
-            RouteMap(routes, Modifier.fillMaxWidth().height(MAP_HEIGHT))
+            RouteMap(routes, onMapAuthFailure, Modifier.fillMaxWidth().height(MAP_HEIGHT))
         }
     }
 }
 
 /** A Maps SDK [MapView] hosted in [AndroidView] (Nav UI widgets are Views; no maps-compose). */
 @Composable
-private fun RouteMap(routes: List<NavigationRoute>, modifier: Modifier) {
+private fun RouteMap(routes: List<NavigationRoute>, onAuthFailure: () -> Unit, modifier: Modifier) {
     val context = LocalContext.current
     val mapView = remember { MapView(context) }
     val routeLineApi = remember { MapboxRouteLineApi(MapboxRouteLineApiOptions.Builder().build()) }
@@ -118,7 +123,12 @@ private fun RouteMap(routes: List<NavigationRoute>, modifier: Modifier) {
         mapView.mapboxMap.setCamera(
             CameraOptions.Builder().center(Point.fromLngLat(start.longitude, start.latitude)).zoom(START_ZOOM).build(),
         )
+        // Mapbox answers a bad token with a style/tile load error; say so in words, never a blank map.
+        val loadErrors = mapView.mapboxMap.subscribeMapLoadingError { error ->
+            if (NavFormat.isAuthFailure(error.message)) onAuthFailure()
+        }
         onDispose {
+            loadErrors.cancel()
             routeLineApi.cancel()
             routeLineView.cancel()
             mapView.onDestroy()

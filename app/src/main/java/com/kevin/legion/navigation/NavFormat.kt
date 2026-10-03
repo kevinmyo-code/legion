@@ -19,8 +19,34 @@ data class NavState(
 
 /** Pure text for navigation state, so the no-token and formatting paths are unit-testable. */
 object NavFormat {
-    const val NOT_SET_UP =
-        "Navigation isn't set up. Add a Mapbox token (Setup, once it lands; for now the build's MAPBOX_ACCESS_TOKEN)."
+    const val NOT_SET_UP = "Navigation isn't set up. Add a Mapbox token in Setup."
+
+    const val TOKEN_REFUSED = "Mapbox refused the token. Check it in Setup."
+
+    /**
+     * The state the token alone forces, or null when the token is fine and the trip decides.
+     * No token wins over a stale rejection: with nothing to refuse, "not set up" is the true answer.
+     */
+    fun stateForToken(token: MapboxTokenState): NavState? = when {
+        !token.isSet -> NavState(NavPhase.NOT_SET_UP, NOT_SET_UP)
+        token.rejected -> NavState(NavPhase.TOKEN_REFUSED, TOKEN_REFUSED)
+        else -> null
+    }
+
+    /**
+     * True when text from an SDK failure (a route request's message, a map load error's message)
+     * reads as an authorization failure: Mapbox answers a bad token with HTTP 401 and wording like
+     * "Not Authorized - Invalid Token". **Matched on wording because the SDK surfaces no typed auth
+     * code** (RouterFailure carries only `type`/`message`; MapLoadingError only a coarse type), so
+     * this is a heuristic and a miss degrades to the plain failure sentence, never to a false trip.
+     */
+    fun isAuthFailure(message: String?): Boolean {
+        val m = message?.lowercase() ?: return false
+        return AUTH_MARKERS.any { it in m }
+    }
+
+    private val AUTH_MARKERS =
+        listOf("401", "unauthorized", "not authorized", "invalid token", "access token", "tokeninvalid")
 
     /** A blank or whitespace-only token is "not set up", never a token to try. */
     fun hasToken(token: String?): Boolean = !token.isNullOrBlank()

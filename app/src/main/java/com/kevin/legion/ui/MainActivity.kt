@@ -1063,7 +1063,10 @@ private fun LegionShell(
             }
             // mapbox-nav spike (ADR 0054) - fully qualified for the same reason as the dial screen above.
             composable(LegionRoute.SETTINGS_NAV_SPIKE) {
-                com.kevin.legion.ui.navigation.NavSpikeScreen(onBack = { navController.popBackStack() })
+                com.kevin.legion.ui.navigation.NavSpikeScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenSetup = { navController.navigate(LegionRoute.SETTINGS_KEY) },
+                )
             }
             // Playbook/memory build (2026-08-18): both are single-screen, no sub-routes of their
             // own - the list-to-editor drill-down inside PlaybookScreen is internal Compose state,

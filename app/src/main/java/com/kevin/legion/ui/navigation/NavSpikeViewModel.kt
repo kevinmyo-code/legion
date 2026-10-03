@@ -3,7 +3,7 @@ package com.kevin.legion.ui.navigation
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.kevin.legion.BuildConfig
+import com.kevin.legion.MidnightApplication
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.navigation.MapboxNavController
@@ -21,7 +21,14 @@ import kotlinx.coroutines.launch
  * `DisposableEffect` is the "no trip outlives its screen" guarantee (ticket 07).
  */
 class NavSpikeViewModel(app: Application) : AndroidViewModel(app) {
-    private val controller = MapboxNavController(app) { BuildConfig.MAPBOX_ACCESS_TOKEN }
+    private val tokens = (app as MidnightApplication).mapboxTokens
+    private val controller = MapboxNavController(app, tokens)
+
+    init {
+        // A paste, a clear or a rejection while this screen is alive re-reads the state from the
+        // token (and ends a trip started on the old one). The first emission is a harmless no-op.
+        viewModelScope.launch { tokens.state.collect { controller.onTokenChanged() } }
+    }
 
     val state: StateFlow<NavState> = controller.state
     val routes = controller.routes
@@ -36,6 +43,9 @@ class NavSpikeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun stop() = controller.stop()
+
+    /** The map's style load failed with an auth error: Mapbox refused the token. */
+    fun onMapAuthFailure() = controller.onTokenRefused()
 
     /** Called from the screen's `onDispose`; the ViewModel can outlive composition across a back-stack entry. */
     fun onScreenLeft() = controller.onScreenLeft()

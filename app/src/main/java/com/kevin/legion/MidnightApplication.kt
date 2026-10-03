@@ -10,6 +10,8 @@ import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.engine.mirror.MirrorFolderPreferences
 import com.kevin.legion.engine.mirror.MirrorLifecycleBinder
 import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
+import com.kevin.legion.navigation.MapboxTokenProvider
+import com.kevin.legion.navigation.MapboxTokenStore
 import com.kevin.legion.service.ProactivePreferences
 import com.mapbox.common.MapboxOptions
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +28,31 @@ import kotlinx.coroutines.launch
  * quota tracking) was retired with the rest of billing/ in the 2026-07-31 pivot.
  */
 class MidnightApplication : Application() {
+    /**
+     * The one Mapbox token owner (mapbox-nav ticket 09). Process-wide because the SDK's token is.
+     * Lazy so a unit test that never builds an Application is not forced through it.
+     */
+    val mapboxTokens: MapboxTokenProvider by lazy {
+        MapboxTokenProvider(
+            store = object : MapboxTokenStore {
+                override fun load() = CompanionProfile.mapboxToken(this@MidnightApplication)
+                override fun save(token: String) = CompanionProfile.saveMapboxToken(this@MidnightApplication, token)
+                override fun clear() = CompanionProfile.clearMapboxToken(this@MidnightApplication)
+            },
+            bakedToken = BuildConfig.MAPBOX_ACCESS_TOKEN,
+            applyToSdk = { token ->
+                // The setter is native. Under Robolectric (unit tests of a build WITH a baked dev
+                // token) the library is absent and Application.onCreate would throw for every test;
+                // on a phone the link never fails, so a failure here is only ever that case.
+                try {
+                    MapboxOptions.accessToken = token
+                } catch (e: UnsatisfiedLinkError) {
+                    android.util.Log.w("MidnightApplication", "Mapbox native library unavailable: ${e.message}")
+                }
+            },
+        )
+    }
+
     /**
      * Process-lifetime scope for start-up work that touches disk or Room and so
      * must not block `onCreate`. Owned by the Application because that is what
@@ -57,10 +84,9 @@ class MidnightApplication : Application() {
         // SDK reads this at first use, and a blank value would shadow a token supplied by any
         // other path with an empty string. Initialised here, not lazily in a screen, because
         // Midnight AI's lesson was that SDK init belongs in Application.onCreate. The baked
-        // token is the dev convenience; the BYO KeyVault path replaces it in ticket 09.
-        if (BuildConfig.MAPBOX_ACCESS_TOKEN.isNotBlank()) {
-            MapboxOptions.accessToken = BuildConfig.MAPBOX_ACCESS_TOKEN
-        }
+        // token is the dev convenience; ticket 09's [MapboxTokenProvider] now owns the order
+        // (pasted token, then baked, then none) and a paste or clear re-applies it live.
+        mapboxTokens.applyAtStartup()
         // Token metering (2026-09-06). Seeded here for the same L12 reason as the caches
         // around it: SubAgent's REST calls run from ledger, pantry and the vehicle agents
         // whether or not the assistant service is switched on, and a meter that only woke
