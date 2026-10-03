@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import type { Event, EventSkip } from '@/api/types'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
 import { buildMonth, type MonthCell } from '@/lib/horizon'
-import { eventsOnDay } from '@/lib/today'
+import { occurrencesOnDay } from '@/lib/recurrence'
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
@@ -38,9 +38,9 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
     setSelectedDay(today)
   }
 
-  const selectedEvents = eventsOnDay(selectedDay, events, skips)
-  const selectedTasks = selectedEvents.filter((event) => event.kind === 'task')
-  const selectedCalendar = selectedEvents.filter((event) => event.kind !== 'task')
+  const selectedEvents = occurrencesOnDay(selectedDay, events, skips)
+  const selectedTasks = selectedEvents.filter((o) => o.event.kind === 'task')
+  const selectedCalendar = selectedEvents.filter((o) => o.event.kind !== 'task')
   const selectedLabel = dateForEpochDay(selectedDay).toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'short',
@@ -91,11 +91,11 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
           <p className="px-1 text-[0.9375rem] text-muted-foreground">Nothing on the calendar this day.</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
-            {selectedTasks.map((event) => (
-              <EventRow key={event.id} event={event} />
+            {selectedTasks.map((occurrence) => (
+              <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
             ))}
-            {selectedCalendar.map((event) => (
-              <EventRow key={event.id} event={event} />
+            {selectedCalendar.map((occurrence) => (
+              <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
             ))}
           </ul>
         )}

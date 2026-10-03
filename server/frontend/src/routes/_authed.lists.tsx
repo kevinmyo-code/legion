@@ -9,6 +9,7 @@ import { CHANGES_KEY, useChanges } from '@/api/queries'
 import { newChecklist, newChecklistItem, type Checklist, type ChecklistItem, type ChecklistTick } from '@/api/types'
 import { DeleteChecklistControl } from '@/components/checklist-delete'
 import { Freshness } from '@/components/freshness'
+import { ListVisibilityToggle } from '@/components/list-visibility-toggle'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -149,7 +150,10 @@ function ChecklistCard({
   return (
     <div className="rounded-sheet bg-card p-4 md:p-5">
       <div className="mb-2 flex items-start justify-between gap-3">
-        <h2 className="text-lg font-medium">{checklist.name}</h2>
+        <div className="flex min-w-0 flex-col items-start gap-1">
+          <h2 className="text-lg font-medium">{checklist.name}</h2>
+          <ListVisibilityToggle checklist={checklist} />
+        </div>
         <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
       </div>
       {complete && (

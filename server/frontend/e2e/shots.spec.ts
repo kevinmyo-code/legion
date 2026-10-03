@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { seedAspects } from '../src/test/aspects-seed'
 import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
+import { calendarShots } from './calendar-shots'
 
 /**
  * Screenshots of the real build against the fake engine: every route in `ROUTES`
@@ -28,7 +29,7 @@ const VIEWPORTS = [
 
 const SCHEMES = ['light', 'dark'] as const
 
-interface Shot {
+export interface Shot {
   /** File name stem. */
   name: string
   url: string
@@ -241,6 +242,9 @@ const ROUTES: Shot[] = [
     labels: ['17'],
     workbenchOnly: true,
   },
+
+  // Tickets 07, 09, 13: the calendar. Rows live in `calendar-shots.ts`.
+  ...calendarShots,
 ]
 
 /** Answer every `/api` call from the fake engine. */

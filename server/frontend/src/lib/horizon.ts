@@ -183,10 +183,27 @@ export function overdueTasks(today: number, events: Event[], skips?: readonly Ev
   return overdueOccurrences(today, events, skips).map((occurrence) => occurrence.event)
 }
 
-export interface CourseGroup {
+export interface CourseGroup<T = Event> {
   /** The course, or `null` for a task whose title carries no course prefix. */
   course: string | null
-  items: Event[]
+  items: T[]
+}
+
+function groupBy<T>(items: T[], titleOf: (item: T) => string): CourseGroup<T>[] {
+  const groups: CourseGroup<T>[] = []
+  const byCourse = new Map<string, CourseGroup<T>>()
+  for (const item of items) {
+    const { course } = splitCourse(titleOf(item))
+    const key = course ?? '\u0000none'
+    let group = byCourse.get(key)
+    if (!group) {
+      group = { course, items: [] }
+      byCourse.set(key, group)
+      groups.push(group)
+    }
+    group.items.push(item)
+  }
+  return groups
 }
 
 /**
@@ -215,20 +232,12 @@ export function splitCourse(title: string): { course: string | null; label: stri
  * so it becomes the heading rather than a repeated prefix on every line.
  */
 export function groupByCourse(events: Event[]): CourseGroup[] {
-  const groups: CourseGroup[] = []
-  const byCourse = new Map<string, CourseGroup>()
-  for (const event of events) {
-    const { course } = splitCourse(event.title)
-    const key = course ?? ' none'
-    let group = byCourse.get(key)
-    if (!group) {
-      group = { course, items: [] }
-      byCourse.set(key, group)
-      groups.push(group)
-    }
-    group.items.push(event)
-  }
-  return groups
+  return groupBy(events, (event) => event.title)
+}
+
+/** `groupByCourse` for occurrences, which is what the screens render. */
+export function groupOccurrencesByCourse(occurrences: Occurrence[]): CourseGroup<Occurrence>[] {
+  return groupBy(occurrences, (occurrence) => occurrence.event.title)
 }
 
 /**

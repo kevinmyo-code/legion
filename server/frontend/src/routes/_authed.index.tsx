@@ -2,24 +2,22 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { useSetChecklistTick } from '@/api/mutations'
 import { useChanges } from '@/api/queries'
-import type { Checklist, ChecklistItem, ChecklistTick, Event } from '@/api/types'
+import type { Checklist, ChecklistItem, ChecklistTick } from '@/api/types'
 import { DeleteChecklistControl } from '@/components/checklist-delete'
 import { EventRow } from '@/components/event-row'
+import { GroupedTasks } from '@/components/grouped-tasks'
 import { Freshness } from '@/components/freshness'
 import { HorizonStrip } from '@/components/horizon-strip'
 import { MonthCalendar } from '@/components/month-calendar'
+import { VisibilityMark } from '@/components/visibility-mark'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
-import {
-  buildHorizon,
-  groupByCourse,
-  loadSentence,
-  nextUp,
-  overdueTasks,
-} from '@/lib/horizon'
-import { eventsOnDay, itemsDueOn, type DueItem } from '@/lib/today'
+import { buildHorizon, loadSentence, nextUp, overdueOccurrences } from '@/lib/horizon'
+import { occurrencesOnDay } from '@/lib/recurrence'
+import { itemsDueOn, type DueItem } from '@/lib/today'
+import { visibilityOf } from '@/lib/visibility'
 
 /** Live (not tombstoned), non-archived rows only, matching every other
  * reader on this page. */
@@ -64,7 +62,10 @@ function HomeListCard({
               : `${tickedCount} of ${ownItems.length} ticked.`}
         </p>
       </div>
-      <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+      <div className="flex shrink-0 items-center gap-1">
+        <VisibilityMark visibility={visibilityOf(checklist)} />
+        <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+      </div>
     </li>
   )
 }
@@ -72,38 +73,6 @@ function HomeListCard({
 export const Route = createFileRoute('/_authed/')({
   component: Today,
 })
-
-/** A day's tasks, grouped by course. Nine rows that all read `11:59 PM` are nine
- * rows whose times say nothing; the course is the only thing that separates them
- * at a glance, so it becomes a heading instead of a prefix repeated nine times. */
-function GroupedTasks({ tasks }: { tasks: Event[] }) {
-  const groups = groupByCourse(tasks)
-  if (groups.length <= 1) {
-    return (
-      <ul className="flex flex-col gap-1.5">
-        {tasks.map((event) => (
-          <EventRow key={event.id} event={event} />
-        ))}
-      </ul>
-    )
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      {groups.map((group) => (
-        <div key={group.course ?? 'none'}>
-          {group.course && (
-            <h4 className="mb-1 px-1.5 text-[0.8125rem] font-medium text-muted-foreground">{group.course}</h4>
-          )}
-          <ul className="flex flex-col gap-1.5">
-            {group.items.map((event) => (
-              <EventRow key={event.id} event={event} showCourse={false} />
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  )
-}
 
 function DueItemRow({ due }: { due: DueItem }) {
   const today = todayEpochDay()
@@ -139,6 +108,7 @@ function DueItemRow({ due }: { due: DueItem }) {
         {due.item.text}
       </span>
       <span className="shrink-0 text-[0.8125rem] text-muted-foreground">{due.checklist.name}</span>
+      <VisibilityMark visibility={visibilityOf(due.checklist)} />
       {setTick.isError && (
         <span className="text-[0.8125rem] text-destructive">Could not save. {setTick.error.message}</span>
       )}
@@ -206,11 +176,11 @@ function Today() {
   )
   const skips = changes.data.event_skips ?? []
   const horizon = buildHorizon(today, events, undefined, skips)
-  const overdue = overdueTasks(today, events, skips)
-  const todaysEvents = eventsOnDay(today, events, skips)
-  const tomorrowsEvents = eventsOnDay(today + 1, events, skips)
-  const tomorrowsTasks = tomorrowsEvents.filter((event) => event.kind === 'task')
-  const tomorrowsCalendar = tomorrowsEvents.filter((event) => event.kind !== 'task')
+  const overdue = overdueOccurrences(today, events, skips)
+  const todaysEvents = occurrencesOnDay(today, events, skips)
+  const tomorrowsEvents = occurrencesOnDay(today + 1, events, skips)
+  const tomorrowsTasks = tomorrowsEvents.filter((o) => o.event.kind === 'task')
+  const tomorrowsCalendar = tomorrowsEvents.filter((o) => o.event.kind !== 'task')
   const upcoming = nextUp(horizon)
 
   const checklists = (changes.data.checklists ?? []).filter(isLive).filter((c) => !c.archived)
@@ -279,8 +249,8 @@ function Today() {
             <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar today.</p>
           ) : (
             <ul className="flex flex-col gap-1.5">
-              {todaysEvents.map((event) => (
-                <EventRow key={event.id} event={event} />
+              {todaysEvents.map((occurrence) => (
+                <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
               ))}
             </ul>
           )}
@@ -294,8 +264,8 @@ function Today() {
               {tomorrowsTasks.length > 0 && <GroupedTasks tasks={tomorrowsTasks} />}
               {tomorrowsCalendar.length > 0 && (
                 <ul className="flex flex-col gap-1.5">
-                  {tomorrowsCalendar.map((event) => (
-                    <EventRow key={event.id} event={event} />
+                  {tomorrowsCalendar.map((occurrence) => (
+                    <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
                   ))}
                 </ul>
               )}
