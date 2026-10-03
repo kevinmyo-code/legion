@@ -5,7 +5,7 @@ charted: 2026-10-03
 charted-by: "Kevin + Opus"
 effort: "`.scratch/mapbox-nav/`"
 tickets: 13
-open: 10
+open: 9
 status: open
 tags: [map]
 ---
@@ -84,6 +84,8 @@ Then 05 (who speaks the turns) and 04; 03 and 07 after.
   token baked from the `MAPBOX_ACCESS_TOKEN` Gradle property; no token is said in words.
 - [Building with and without Mapbox credentials](issues/02-build-with-and-without-credentials.md) - no gate needed:
   the SDK resolves anonymously through Gradle and compiles on the current toolchain (built).
+- [Who speaks the turns, and audio beside a live mic](issues/05-who-speaks-the-turns.md) - LEGION speaks Mapbox's
+  turn text in one steady TTS voice; a cue pauses the assistant and gates the mic.
 
 ## Not yet specified
 

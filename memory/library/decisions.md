@@ -6059,3 +6059,10 @@ app for my self."* The clause stays ambiguous; the risk is accepted knowingly
 (`.scratch/mapbox-nav/issues/13-*.md`). Token placement delegated to Opus: per phone in `KeyVault`
 via Setup, plus a dev token baked from the `MAPBOX_ACCESS_TOKEN` Gradle property, `-Pnokey` baking an
 empty one (`issues/08-*.md`).
+
+## 2026-10-03 - Turn cues: Mapbox decides when, LEGION speaks them, a cue wins
+
+Kevin picked option C on `.scratch/mapbox-nav/issues/05-*.md`. Mapbox's own voice player is never
+wired; its instruction text is spoken by LEGION's speech path in one steady TTS voice, never by the
+persona. A cue pauses the assistant's playback and gates the mic through `MicArbiter`, so it is never
+transcribed as the user. The assistant answers questions about the route from SDK state via a tool.

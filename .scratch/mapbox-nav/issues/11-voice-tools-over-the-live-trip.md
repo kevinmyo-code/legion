@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["04", "05", "10"]
 blocked-by: ["[[04-voice-tool-surface]]", "[[05-who-speaks-the-turns]]", "[[10-route-and-guidance]]"]
-open-blockers: 3
+open-blockers: 2
 ready: false
 tags: [ticket]
 ---
