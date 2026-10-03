@@ -79,7 +79,7 @@ object SearchPhrase {
     }
 }
 
-/** True when a phrase reads as a street address: a house number, then a street, e.g. "1000 N Navarro St, Victoria, TX". */
+/** True when a phrase reads as a street address: a house number, then a street ("1000 N Navarro St, Victoria, TX"). */
 object AddressPhrase {
     private val STREET_ADDRESS = Regex("^\\s*\\d{1,6}\\s+[A-Za-z].*")
 

@@ -441,7 +441,8 @@ class DestinationResolverTest {
 
     @Test fun aResultsCategoryAndAddressShowOnTheDestinationSoItCanBeToldApart() {
         search.reply = {
-            SearchAnswer.Hits(listOf(hit("Shell", detail = "12 Main St", category = "gas station", kind = PlaceKind.POI)))
+            val shell = hit("Shell", detail = "12 Main St", category = "gas station", kind = PlaceKind.POI)
+            SearchAnswer.Hits(listOf(shell))
         }
         val r = resolve("nearest gas station") as Resolution.Resolved
         assertEquals("Gas station · 12 Main St", r.destination.detail)

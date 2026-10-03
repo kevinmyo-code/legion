@@ -114,7 +114,8 @@ fun NavScreen(
 /**
  * The stateless render. [map] is a slot so a test or preview can draw without the native Maps
  * library (the slot is handed the MEASURED height of the top overlay and the bottom sheet so the camera
- * can pad by them, device-run defect 3). With no Mapbox token the map is NOT created at all (a MapView with no token draws a
+ * can pad by them, device-run defect 3). With no Mapbox token the map is NOT created at all (a MapView with no
+ * token draws a
  * blank surface): the screen says what is missing, in words, with a way to Setup.
  */
 @Composable

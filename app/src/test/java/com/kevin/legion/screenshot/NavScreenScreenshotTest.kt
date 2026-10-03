@@ -215,7 +215,11 @@ class NavScreenScreenshotTest {
     @Test fun `trip ended`() = shot(
         "nav-ended.png",
         NavUiState(
-            NavState(NavPhase.ENDED, "Trip ended with 2.1 mi to go. ${NavFormat.NOTHING_NAVIGATING}", destination = home),
+            NavState(
+                NavPhase.ENDED,
+                "Trip ended with 2.1 mi to go. ${NavFormat.NOTHING_NAVIGATING}",
+                destination = home,
+            ),
         ),
     )
 

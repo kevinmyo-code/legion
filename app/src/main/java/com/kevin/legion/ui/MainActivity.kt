@@ -146,20 +146,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        readDeepLinkExtras(intent)
+        readDeepLinkExtras(intent, freshStart = savedInstanceState == null)
         // Fill the app drawer's cache in the background, so even the first APPS tap is instant.
         com.kevin.legion.ui.apps.AppDrawerCache.warm(this)
         setContent {
             LegionTheme {
-                LegionShell(
-                    deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce,
-                    openItemId = openItemId, openItemNonce = openItemNonce,
-                    spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
-                    onSpotifyRedirectConsumed = { spotifyRedirect = null },
-                    homePressNonce = homePressNonce,
-                    tripResumeNonce = tripResumeNonce,
-                    isDefaultHome = isDefaultHome,
-                )
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalTripResumeNonce provides tripResumeNonce,
+                ) {
+                    LegionShell(
+                        deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce,
+                        openItemId = openItemId, openItemNonce = openItemNonce,
+                        spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
+                        onSpotifyRedirectConsumed = { spotifyRedirect = null },
+                        homePressNonce = homePressNonce,
+                        isDefaultHome = isDefaultHome,
+                    )
+                }
             }
         }
     }
@@ -170,9 +173,15 @@ class MainActivity : ComponentActivity() {
         readDeepLinkExtras(intent)
     }
 
-    private fun readDeepLinkExtras(intent: Intent?) {
+    // [freshStart] is false for a rotation / process-restore recreate: the original launcher intent is still
+    // attached to the activity then, and must not pull a running trip's screen up a second time.
+    private fun readDeepLinkExtras(intent: Intent?, freshStart: Boolean = true) {
         if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) homePressNonce++
-        if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) tripResumeNonce++
+        if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER) &&
+            freshStart
+        ) {
+            tripResumeNonce++
+        }
         deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++
         val itemId = intent?.getLongExtra(ReminderAlarmReceiver.EXTRA_OPEN_ITEM_ID, -1L) ?: -1L
@@ -501,21 +510,13 @@ private fun LegionShell(
     spotifyRedirectNonce: Int = 0,
     onSpotifyRedirectConsumed: () -> Unit = {},
     homePressNonce: Int = 0,
-    tripResumeNonce: Int = 0,
     isDefaultHome: Boolean = false,
 ) {
     val navController = rememberNavController()
-    val navTrip = (LocalContext.current.applicationContext as? com.kevin.legion.MidnightApplication)?.navController
-
-    // A launcher-category start (icon or the SDK's trip notification) with a trip running lands on
-    // the nav screen. Skipped on the initial 0 and when no trip is guiding.
-    LaunchedEffect(tripResumeNonce) {
-        val onNav = navController.currentDestination?.route == LegionRoute.NAVIGATE_PATTERN
-        if (tripResumeNonce > 0 && !onNav &&
-            navTrip?.state?.value?.phase == com.kevin.legion.navigation.NavPhase.GUIDING
-        ) {
-            navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true }
-        }
+    // A launcher-category start (icon or the SDK's trip notification) with a trip running lands on the
+    // nav screen; see TripResumeEffect.
+    com.kevin.legion.ui.navigation.TripResumeEffect {
+        navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true }
     }
 
     // Home press: back to HOME from wherever you are, dropping whatever was stacked on top of it.

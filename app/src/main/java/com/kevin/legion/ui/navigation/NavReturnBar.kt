@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,5 +66,28 @@ fun TripReturnBar(onNavScreen: Boolean, onOpen: () -> Unit) {
             )
             Text("Tap to return", style = MaterialTheme.typography.labelLarge, color = accent.onContainer)
         }
+    }
+}
+
+/**
+ * Ticks when the activity gets a MAIN + LAUNCHER start (the icon, or the Navigation SDK's trip
+ * notification, whose content intent is the package's launch intent). Provided by `MainActivity`; a
+ * local rather than a `LegionShell` parameter because that function's detekt baseline entry is keyed on
+ * its exact signature.
+ */
+val LocalTripResumeNonce = staticCompositionLocalOf { 0 }
+
+/**
+ * A launcher-category start with a trip GUIDING lands on the nav screen (device-run defect 8). Does
+ * nothing on the initial 0, when nothing is guiding, or when [openNav] is not needed because the nav
+ * screen is already showing (the caller's `launchSingleTop` makes a repeat a no-op). A Home press is
+ * a different intent category and never reaches here, so it still goes home mid-trip.
+ */
+@Composable
+fun TripResumeEffect(openNav: () -> Unit) {
+    val nonce = LocalTripResumeNonce.current
+    val app = LocalContext.current.applicationContext as? MidnightApplication
+    LaunchedEffect(nonce) {
+        if (nonce > 0 && app?.navController?.state?.value?.phase == NavPhase.GUIDING) openNav()
     }
 }
