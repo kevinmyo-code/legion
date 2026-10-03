@@ -121,6 +121,10 @@ export default defineConfig({
     // `e2e/` is Playwright's, run by `npm run shots`; vitest must not try to load it.
     exclude: ['e2e/**', 'node_modules/**'],
     globals: true,
+    // A route's first render in a file pays for loading its code-split chunk, and
+    // the charted screens pull in Recharts. The 5 s default failed the first test
+    // of a file on a cold transform while every later one passed.
+    testTimeout: 15_000,
     setupFiles: ['./src/test/setup.ts'],
     css: true,
     // Fixed to a real, non-UTC zone (not the host machine's own) so the

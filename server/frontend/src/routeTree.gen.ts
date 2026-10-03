@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedIndexRouteImport } from './routes/_authed.index'
+import { Route as AuthedBodyRouteImport } from './routes/_authed.body'
 import { Route as AuthedListsRouteImport } from './routes/_authed.lists'
+import { Route as AuthedPantryRouteImport } from './routes/_authed.pantry'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -28,35 +30,58 @@ const AuthedIndexRoute = AuthedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedBodyRoute = AuthedBodyRouteImport.update({
+  id: '/body',
+  path: '/body',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedListsRoute = AuthedListsRouteImport.update({
   id: '/lists',
   path: '/lists',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedPantryRoute = AuthedPantryRouteImport.update({
+  id: '/pantry',
+  path: '/pantry',
   getParentRoute: () => AuthedRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
+  '/body': typeof AuthedBodyRoute
   '/lists': typeof AuthedListsRoute
+  '/pantry': typeof AuthedPantryRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/body': typeof AuthedBodyRoute
   '/lists': typeof AuthedListsRoute
+  '/pantry': typeof AuthedPantryRoute
   '/': typeof AuthedIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authed/body': typeof AuthedBodyRoute
   '/_authed/lists': typeof AuthedListsRoute
+  '/_authed/pantry': typeof AuthedPantryRoute
   '/_authed/': typeof AuthedIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/lists'
+  fullPaths: '/' | '/login' | '/body' | '/lists' | '/pantry'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/lists' | '/'
-  id: '__root__' | '/_authed' | '/login' | '/_authed/lists' | '/_authed/'
+  to: '/login' | '/body' | '/lists' | '/pantry' | '/'
+  id:
+    | '__root__'
+    | '/_authed'
+    | '/login'
+    | '/_authed/body'
+    | '/_authed/lists'
+    | '/_authed/pantry'
+    | '/_authed/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -87,6 +112,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedIndexRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/body': {
+      id: '/_authed/body'
+      path: '/body'
+      fullPath: '/body'
+      preLoaderRoute: typeof AuthedBodyRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/lists': {
       id: '/_authed/lists'
       path: '/lists'
@@ -94,16 +126,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedListsRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/pantry': {
+      id: '/_authed/pantry'
+      path: '/pantry'
+      fullPath: '/pantry'
+      preLoaderRoute: typeof AuthedPantryRouteImport
+      parentRoute: typeof AuthedRoute
+    }
   }
 }
 
 interface AuthedRouteChildren {
+  AuthedBodyRoute: typeof AuthedBodyRoute
   AuthedListsRoute: typeof AuthedListsRoute
+  AuthedPantryRoute: typeof AuthedPantryRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedBodyRoute: AuthedBodyRoute,
   AuthedListsRoute: AuthedListsRoute,
+  AuthedPantryRoute: AuthedPantryRoute,
   AuthedIndexRoute: AuthedIndexRoute,
 }
 

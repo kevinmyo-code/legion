@@ -1,5 +1,6 @@
 import { todayEpochDay } from '../lib/day'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event } from '../api/types'
+import { handleTables, type Row } from './engine-tables'
 
 /**
  * The fake engine: what every web test and every screenshot talks to instead of
@@ -38,6 +39,10 @@ export interface EngineOptions {
   checklists?: Checklist[]
   items?: ChecklistItem[]
   ticks?: ChecklistTick[]
+  /** Synced tables by path after `/api/` (`body/bodyweight_logs`); see `engine-tables.ts`. */
+  tables?: Record<string, Row[]>
+  /** Rows per page of a synced-table list; the real engine's is 500. */
+  pageSize?: number
 }
 
 export interface Reply {
@@ -52,6 +57,13 @@ export interface Engine {
   checklists: Mutable<Checklist>[]
   items: Mutable<ChecklistItem>[]
   ticks: Mutable<ChecklistTick>[]
+  tables: Record<string, Row[]>
+  pageSize: number
+  /** Table paths whose reads answer 503: the engine is up but that read failed. */
+  failingTables: Set<string>
+  /** A forced reply for a `METHOD /path` (or a `METHOD /prefix*`), ahead of every
+   * handler: a refused write. */
+  refusals: Record<string, Reply>
   /** True makes every request fail the way a dead network does (a rejected
    * `fetch`), not the way a sick server does. */
   down: boolean
@@ -232,16 +244,26 @@ export function createEngine(options: EngineOptions = {}): Engine {
     checklists: options.checklists ?? [],
     items: options.items ?? [],
     ticks: options.ticks ?? [],
+    tables: options.tables ?? {},
+    pageSize: options.pageSize ?? 500,
+    failingTables: new Set(),
+    refusals: {},
     down: false,
     changesFailing: false,
     householdFailing: false,
     calls: {},
     unhandled: [],
 
-    handle(method, pathname, _search, body) {
+    handle(method, pathname, search, body) {
       const key = `${method} ${pathname}`
       engine.calls[key] = (engine.calls[key] ?? 0) + 1
       const now = new Date().toISOString()
+
+      // An exact `METHOD /path`, or a prefix ending in `*` (`PUT /api/places/*`):
+      // a write whose identity the test cannot know ahead of time.
+      for (const [pattern, reply] of Object.entries(engine.refusals)) {
+        if (pattern === key || (pattern.endsWith('*') && key.startsWith(pattern.slice(0, -1)))) return reply
+      }
 
       if (method === 'GET' && pathname === '/api/auth/me') {
         return engine.signedIn
@@ -355,6 +377,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
         }
         return { status: 204 }
       }
+
+      const tableReply = handleTables(engine, method, pathname, search, body)
+      if (tableReply) return tableReply
 
       engine.unhandled.push(key)
       return {

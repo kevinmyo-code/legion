@@ -2,6 +2,7 @@ import path from 'node:path'
 
 import { expect, test, type Page } from '@playwright/test'
 
+import { seedAspects } from '../src/test/aspects-seed'
 import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
 
 /**
@@ -39,9 +40,26 @@ interface Shot {
   after?: (page: Page, engine: Engine) => Promise<void>
   /** The ticket labels this shot belongs to; every label when absent. */
   labels?: string[]
+  /**
+   * A workbench-only screen. At phone width it is not rendered at all and the
+   * "made for a bigger screen" card stands in: `'card'` takes that card's
+   * picture once (the first shot of a route), `true` skips the phone size.
+   */
+  workbenchOnly?: 'card' | true
 }
 
 const seeded = () => createEngine({ ...seedHousehold(), householdName: 'The Test House' })
+
+const CARD = 'This page is made for a bigger screen.'
+
+/** The household plus the Pantry, Body, Fleet, Places and Notes tables. */
+const withAspects = (tables = seedAspects()) =>
+  createEngine({ ...seedHousehold(), householdName: 'The Test House', tables })
+
+/** Radix tabs switch on mousedown, which `click()` includes. */
+const openTab = (name: string) => async (page: Page) => {
+  await page.getByRole('tab', { name }).click()
+}
 
 const ROUTES: Shot[] = [
   {
@@ -80,6 +98,149 @@ const ROUTES: Shot[] = [
     },
     labels: ['04'],
   },
+
+  // Ticket 16: Pantry and Body.
+  { name: 'pantry', url: '/pantry', ready: 'Grocery staples', engine: withAspects, labels: ['16'], workbenchOnly: 'card' },
+  {
+    name: 'pantry-lines',
+    url: '/pantry',
+    ready: "Trader Joe's",
+    engine: withAspects,
+    after: async (page) => {
+      await page.getByRole('button', { name: /Show lines for Costco/ }).click()
+      await page.getByRole('button', { name: /Show lines for Trader/ }).click()
+      await expect(page.getByText('Rotisserie chicken')).toBeVisible()
+      await expect(page.getByText('Oat milk, 64 oz')).toBeVisible()
+    },
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'pantry-form',
+    url: '/pantry',
+    ready: 'Grocery staples',
+    engine: withAspects,
+    after: async (page) => {
+      await page.getByRole('button', { name: /Add a staple/ }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+    },
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'pantry-empty',
+    url: '/pantry',
+    ready: /No receipts yet\./,
+    engine: () => withAspects({}),
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'pantry-unreachable',
+    url: '/pantry',
+    ready: /Could not reach the engine, so this is not the real list of receipts/,
+    engine: () => {
+      const engine = withAspects()
+      engine.failingTables.add('pantry/receipts')
+      return engine
+    },
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+  { name: 'body-weight', url: '/body', ready: 'Bodyweight', engine: withAspects, labels: ['16'], workbenchOnly: 'card' },
+  {
+    name: 'body-sleep',
+    url: '/body',
+    ready: 'Bodyweight',
+    engine: withAspects,
+    after: async (page) => {
+      await openTab('Sleep')(page)
+      await expect(page.getByText(/Hours slept on the last 14 logged nights\./)).toBeVisible()
+    },
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'body-meals',
+    url: '/body',
+    ready: 'Bodyweight',
+    engine: withAspects,
+    after: async (page) => {
+      await openTab('Meals')(page)
+      await expect(page.getByRole('meter', { name: 'Calories' })).toBeVisible()
+    },
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'body-workouts',
+    url: '/body',
+    ready: 'Bodyweight',
+    engine: withAspects,
+    after: async (page) => {
+      await openTab('Workouts')(page)
+      await expect(page.getByRole('meter', { name: 'Workout days' })).toBeVisible()
+    },
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'body-empty',
+    url: '/body',
+    ready: /No weight logged yet\./,
+    engine: () => withAspects({}),
+    labels: ['16'],
+    workbenchOnly: true,
+  },
+
+  // Ticket 17: Fleet, Places and Notes.
+  { name: 'fleet', url: '/fleet', ready: 'Service history', engine: withAspects, labels: ['17'], workbenchOnly: 'card' },
+  {
+    name: 'fleet-unkeyed',
+    url: '/fleet',
+    ready: 'Service history',
+    engine: withAspects,
+    after: async (page) => {
+      await page.getByRole('button', { name: 'Project' }).click()
+      await expect(page.getByText(/has no key on the engine yet/).first()).toBeVisible()
+    },
+    labels: ['17'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'fleet-form',
+    url: '/fleet',
+    ready: 'Service history',
+    engine: withAspects,
+    after: async (page) => {
+      await page.getByRole('button', { name: /Add a service/ }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+    },
+    labels: ['17'],
+    workbenchOnly: true,
+  },
+  { name: 'places', url: '/places', ready: 'Tagged places', engine: withAspects, labels: ['17'], workbenchOnly: 'card' },
+  {
+    name: 'places-empty',
+    url: '/places',
+    ready: /No places yet\./,
+    engine: () => withAspects({}),
+    labels: ['17'],
+    workbenchOnly: true,
+  },
+  { name: 'notes', url: '/notes', ready: 'Audio is not available on the web.', engine: withAspects, labels: ['17'], workbenchOnly: 'card' },
+  {
+    name: 'notes-unreachable',
+    url: '/notes',
+    ready: /Could not reach the engine, so this is not the real list of voice notes/,
+    engine: () => {
+      const engine = withAspects()
+      engine.failingTables.add('voice_notes')
+      return engine
+    },
+    labels: ['17'],
+    workbenchOnly: true,
+  },
 ]
 
 /** Answer every `/api` call from the fake engine. */
@@ -114,13 +275,19 @@ for (const viewport of VIEWPORTS) {
         colorScheme: scheme,
       })
 
-      for (const shot of ROUTES.filter((shot) => !shot.labels || shot.labels.includes(LABEL))) {
+      const narrow = viewport.width < 1024
+      const shots = ROUTES.filter((shot) => !shot.labels || shot.labels.includes(LABEL)).filter(
+        // A workbench-only screen has no phone-size picture except the card.
+        (shot) => !(narrow && shot.workbenchOnly === true),
+      )
+      for (const shot of shots) {
         test(shot.name, async ({ page }) => {
           const engine = (shot.engine ?? seeded)()
           await useEngine(page, engine)
           await page.goto(shot.url)
-          await expect(page.getByText(shot.ready).first()).toBeVisible()
-          await shot.after?.(page, engine)
+          const card = narrow && shot.workbenchOnly === 'card'
+          await expect(page.getByText(card ? CARD : shot.ready).first()).toBeVisible()
+          if (!card) await shot.after?.(page, engine)
           // Let the font, the check animation and the first paint settle.
           await page.evaluate(() => document.fonts.ready)
           await page.waitForTimeout(250)

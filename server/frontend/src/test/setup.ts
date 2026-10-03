@@ -58,3 +58,18 @@ class BrowserRelativeRequest extends UndiciRequest {
 }
 
 globalThis.Request = BrowserRelativeRequest
+
+/**
+ * jsdom has no `ResizeObserver`, and Recharts' `ResponsiveContainer` (under
+ * shadcn's `ChartContainer`) constructs one on mount. Without this every screen
+ * that draws a chart throws before it renders. The stub never reports a size, so
+ * a chart draws nothing in a test - which is why a chart is always accompanied by
+ * the numbers it plots, and those are what tests assert on.
+ */
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}

@@ -94,7 +94,7 @@ describe('the workbench surface', () => {
     expect(screen.queryByRole('navigation', { name: 'Tabs' })).not.toBeInTheDocument()
   })
 
-  test('lists only built areas: no Money, Pantry, Calendar or Settings yet', async () => {
+  test('lists exactly the built areas, and no area whose screen does not exist yet', async () => {
     stubSurface('workbench')
     renderApp('/')
 
@@ -102,9 +102,14 @@ describe('the workbench surface', () => {
     const labels = within(rail)
       .getAllByRole('link')
       .map((link) => link.textContent)
-    expect(labels).toEqual(['Home', 'Lists'])
-    for (const unbuilt of ['Calendar', 'Money', 'Pantry', 'Body', 'Fleet', 'Places', 'Notes', 'Settings']) {
-      expect(screen.queryByRole('link', { name: unbuilt })).not.toBeInTheDocument()
+    // Derived from the table, not hand-listed: every ticket that builds a screen
+    // flips its `built` flag, and a hard-coded list here would have to change in
+    // each of them. What this guards is the rule, not the roster.
+    expect(labels).toEqual(visibleNav(NAV, 'workbench').map((item) => item.label))
+    expect(labels).toContain('Home')
+    expect(labels).toContain('Lists')
+    for (const item of NAV.filter((entry) => !entry.built)) {
+      expect(screen.queryByRole('link', { name: item.label })).not.toBeInTheDocument()
     }
   })
 
