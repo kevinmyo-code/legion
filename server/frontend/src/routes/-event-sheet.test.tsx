@@ -29,14 +29,20 @@ function daily(): Event {
   })
 }
 
+// The phone's Home has "On today"; the desk's has the next-7-days agenda, which
+// holds today's rows too. Either is the section the day's rows are read from.
+function agendaHeading(): string {
+  return screen.queryByRole('heading', { name: 'On today' }) ? 'On today' : 'Today and the next 7 days'
+}
+
 async function home(engine: Engine, surface: Surface = 'family') {
   const view = renderApp('/', engine, surface)
-  await screen.findByRole('heading', { name: 'On today' })
+  await screen.findByRole('heading', { name: surface === 'family' ? 'On today' : 'Today and the next 7 days' })
   return view
 }
 
 function onToday(): HTMLElement {
-  return screen.getByRole('heading', { name: 'On today' }).closest('section') as HTMLElement
+  return screen.getByRole('heading', { name: agendaHeading() }).closest('section') as HTMLElement
 }
 
 const sheet = () => screen.getByRole('dialog')

@@ -20,21 +20,26 @@ import { cn } from '@/lib/utils'
 export function VisibilityMark({
   visibility,
   onTint = false,
+  compact = false,
   className,
 }: {
   visibility: Visibility
   onTint?: boolean
+  /** Smaller type for a block on the week grid or a chip in a month cell. The
+   * word is still there: compact trims the size, never the sentence. */
+  compact?: boolean
   className?: string
 }) {
   if (visibility === 'private') {
     return (
       <span
         className={cn(
-          'inline-flex h-6 shrink-0 items-center gap-1 px-1 text-[0.8125rem] whitespace-nowrap text-muted-foreground',
+          'inline-flex shrink-0 items-center gap-1 px-1 whitespace-nowrap text-muted-foreground',
+          compact ? 'h-5 text-[0.6875rem]' : 'h-6 text-[0.8125rem]',
           className,
         )}
       >
-        <Lock className="size-3.5" aria-hidden="true" />
+        <Lock className={compact ? 'size-3' : 'size-3.5'} aria-hidden="true" />
         {PRIVATE_WORDS}
       </span>
     )
@@ -42,12 +47,13 @@ export function VisibilityMark({
   return (
     <span
       className={cn(
-        'inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-shared pr-2.5 pl-2 text-[0.8125rem] font-medium whitespace-nowrap text-shared-foreground',
+        'inline-flex shrink-0 items-center gap-1 rounded-full bg-shared font-medium whitespace-nowrap text-shared-foreground',
+        compact ? 'h-5 pr-2 pl-1.5 text-[0.6875rem]' : 'h-6 pr-2.5 pl-2 text-[0.8125rem]',
         onTint && 'bg-[color-mix(in_oklab,var(--shared-accent)_22%,var(--shared))]',
         className,
       )}
     >
-      <Users className="size-3.5" aria-hidden="true" />
+      <Users className={compact ? 'size-3' : 'size-3.5'} aria-hidden="true" />
       {SHARED_WORDS}
     </span>
   )

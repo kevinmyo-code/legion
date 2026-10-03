@@ -13,6 +13,7 @@ import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedIndexRouteImport } from './routes/_authed.index'
 import { Route as AuthedBodyRouteImport } from './routes/_authed.body'
+import { Route as AuthedCalendarRouteImport } from './routes/_authed.calendar'
 import { Route as AuthedFleetRouteImport } from './routes/_authed.fleet'
 import { Route as AuthedListsRouteImport } from './routes/_authed.lists'
 import { Route as AuthedNotesRouteImport } from './routes/_authed.notes'
@@ -36,6 +37,11 @@ const AuthedIndexRoute = AuthedIndexRouteImport.update({
 const AuthedBodyRoute = AuthedBodyRouteImport.update({
   id: '/body',
   path: '/body',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedCalendarRoute = AuthedCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedFleetRoute = AuthedFleetRouteImport.update({
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
   '/body': typeof AuthedBodyRoute
+  '/calendar': typeof AuthedCalendarRoute
   '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
   '/notes': typeof AuthedNotesRoute
@@ -77,6 +84,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/body': typeof AuthedBodyRoute
+  '/calendar': typeof AuthedCalendarRoute
   '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
   '/notes': typeof AuthedNotesRoute
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/_authed/body': typeof AuthedBodyRoute
+  '/_authed/calendar': typeof AuthedCalendarRoute
   '/_authed/fleet': typeof AuthedFleetRoute
   '/_authed/lists': typeof AuthedListsRoute
   '/_authed/notes': typeof AuthedNotesRoute
@@ -102,6 +111,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/body'
+    | '/calendar'
     | '/fleet'
     | '/lists'
     | '/notes'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/body'
+    | '/calendar'
     | '/fleet'
     | '/lists'
     | '/notes'
@@ -122,6 +133,7 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/login'
     | '/_authed/body'
+    | '/_authed/calendar'
     | '/_authed/fleet'
     | '/_authed/lists'
     | '/_authed/notes'
@@ -165,6 +177,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedBodyRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/calendar': {
+      id: '/_authed/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof AuthedCalendarRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/fleet': {
       id: '/_authed/fleet'
       path: '/fleet'
@@ -205,6 +224,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthedRouteChildren {
   AuthedBodyRoute: typeof AuthedBodyRoute
+  AuthedCalendarRoute: typeof AuthedCalendarRoute
   AuthedFleetRoute: typeof AuthedFleetRoute
   AuthedListsRoute: typeof AuthedListsRoute
   AuthedNotesRoute: typeof AuthedNotesRoute
@@ -215,6 +235,7 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedBodyRoute: AuthedBodyRoute,
+  AuthedCalendarRoute: AuthedCalendarRoute,
   AuthedFleetRoute: AuthedFleetRoute,
   AuthedListsRoute: AuthedListsRoute,
   AuthedNotesRoute: AuthedNotesRoute,

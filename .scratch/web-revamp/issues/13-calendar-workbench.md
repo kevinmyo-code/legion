@@ -3,8 +3,8 @@ map: web-revamp
 ticket: 13
 title: Calendar workbench
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built and green: /calendar (week and month on the desk, month and day agenda on the phone), Home agenda \"Today and the next 7 days\", Calendar flipped built in nav. Owed: a run against the live engine, and Kevin's eye on the week grid at his real term."
 blockers: ["09"]
 blocked-by: ["[[09-the-event-sheet]]"]
 open-blockers: 1
@@ -24,6 +24,6 @@ See `.scratch/web-revamp/spec.md` D10 (workbench).
 
 ## Verification
 
-- [ ] vitest: overlapping events lay out side by side; an all-day event sits in the lane; a skip hides
+- [x] vitest: overlapping events lay out side by side; an all-day event sits in the lane; a skip hides
       that occurrence; the done toggle PATCHes; private rows show "Only you".
-- [ ] Shots at 1440x900 in `research/shots/13/`.
+- [x] Shots at 1440x900 in `research/shots/13/`.

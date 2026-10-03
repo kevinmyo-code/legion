@@ -1,10 +1,6 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-
-import { api } from '@/api/client'
-import { CHANGES_KEY } from '@/api/queries'
 import { useEventSheet } from '@/components/event-sheet-context'
+import { TaskCheck } from '@/components/task-check'
 import { VisibilityMark } from '@/components/visibility-mark'
-import { Checkbox } from '@/components/ui/checkbox'
 import { canvasLine, canvasMetaOf } from '@/lib/canvas'
 import { splitCourse } from '@/lib/horizon'
 import type { Occurrence } from '@/lib/recurrence'
@@ -51,20 +47,6 @@ export function EventRow({
 }) {
   const { event } = occurrence
   const sheet = useEventSheet()
-  const queryClient = useQueryClient()
-  const toggleDone = useMutation({
-    mutationFn: async (done: boolean) => {
-      const { error, response } = await api.PATCH('/api/events/{id}', {
-        params: { path: { id: event.id } },
-        body: { done },
-      })
-      if (error) {
-        throw new Error(`PATCH /api/events/${event.id} answered ${response.status}`)
-      }
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: CHANGES_KEY }),
-  })
-
   const { course, label } = splitCourse(event.title)
   const canvasMeta = canvasMetaOf(event.structured_meta)
   const canvas = canvasMeta ? canvasLine(event.done ?? false, canvasMeta) : ''
@@ -103,13 +85,7 @@ export function EventRow({
       )}
     >
       {isTask ? (
-        <Checkbox
-          className="mt-1"
-          checked={event.done}
-          disabled={toggleDone.isPending}
-          onCheckedChange={(checked) => toggleDone.mutate(checked === true)}
-          aria-label={`Mark "${label}" ${event.done ? 'not done' : 'done'}`}
-        />
+        <TaskCheck event={event} className="mt-1" />
       ) : (
         // An event passes whether or not you engage with it (one-today ticket
         // 08). The time sits where a checkbox would, which is what makes the two
@@ -136,9 +112,6 @@ export function EventRow({
         </span>
       )}
       <VisibilityMark visibility={visibility} onTint={tinted} className="mt-0.5" />
-      {toggleDone.isError && (
-        <span className="text-[0.8125rem] text-destructive">Could not save. {toggleDone.error.message}</span>
-      )}
     </li>
   )
 }

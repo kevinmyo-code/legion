@@ -57,7 +57,7 @@ export const NAV: readonly NavItem[] = [
     label: 'Calendar',
     icon: CalendarDays,
     surfaces: BOTH,
-    built: false,
+    built: true,
     rank: { family: 3 },
   },
   { to: '/lists', label: 'Lists', icon: ListChecks, surfaces: BOTH, built: true, rank: { family: 2 } },

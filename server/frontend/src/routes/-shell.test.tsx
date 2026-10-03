@@ -53,7 +53,7 @@ describe('the family surface', () => {
     expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument()
   })
 
-  test('only builds tabs for routes that exist: Home and Lists, no Calendar or Settings yet', async () => {
+  test('only builds tabs for routes that exist: Home, Lists and Calendar, no Settings yet', async () => {
     stubSurface('family')
     renderApp('/')
 
@@ -61,8 +61,7 @@ describe('the family surface', () => {
     const labels = within(tabs)
       .getAllByRole('link')
       .map((link) => link.textContent)
-    expect(labels).toEqual(['Home', 'Lists'])
-    expect(screen.queryByRole('link', { name: 'Calendar' })).not.toBeInTheDocument()
+    expect(labels).toEqual(['Home', 'Lists', 'Calendar'])
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument()
   })
 
@@ -135,10 +134,13 @@ describe('the nav table', () => {
     for (const surface of ['family', 'workbench'] as const) {
       expect(visibleNav(NAV, surface).every((item) => item.built)).toBe(true)
     }
-    const unbuilt = NAV.filter((item) => !item.built).map((item) => item.label)
+    // Whatever is unbuilt in the real table today, and Calendar made unbuilt on
+    // purpose, so the rule is checked whichever screens have shipped.
+    const gap = NAV.map((item) => (item.to === '/calendar' ? { ...item, built: false } : item))
+    const unbuilt = gap.filter((item) => !item.built).map((item) => item.label)
     expect(unbuilt).toContain('Calendar')
     for (const surface of ['family', 'workbench'] as const) {
-      const shown = visibleNav(NAV, surface).map((item) => item.label)
+      const shown = visibleNav(gap, surface).map((item) => item.label)
       for (const label of unbuilt) expect(shown).not.toContain(label)
     }
   })

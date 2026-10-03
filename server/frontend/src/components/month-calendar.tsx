@@ -1,7 +1,8 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { useState } from 'react'
 
 import { EventRow } from '@/components/event-row'
+import { useEventSheet } from '@/components/event-sheet-context'
 import { Button } from '@/components/ui/button'
 import type { Event, EventSkip } from '@/api/types'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
@@ -24,6 +25,7 @@ const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
  */
 export function MonthCalendar({ events, skips }: { events: Event[]; skips?: readonly EventSkip[] }) {
   const today = todayEpochDay()
+  const sheet = useEventSheet()
   const [monthAnchor, setMonthAnchor] = useState(() => dateForEpochDay(today))
   const [selectedDay, setSelectedDay] = useState(today)
 
@@ -86,7 +88,20 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
       </div>
 
       <div className="rounded-card bg-surface-1 p-3">
-        <h3 className="mb-2 px-1 text-[0.9375rem] font-medium">{selectedLabel}</h3>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="px-1 text-[0.9375rem] font-medium">{selectedLabel}</h3>
+          {sheet && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Add an event on ${selectedLabel}`}
+              onClick={() => sheet.open({ kind: 'create', day: selectedDay })}
+            >
+              <Plus />
+              Add
+            </Button>
+          )}
+        </div>
         {selectedEvents.length === 0 ? (
           <p className="px-1 text-[0.9375rem] text-muted-foreground">Nothing on the calendar this day.</p>
         ) : (

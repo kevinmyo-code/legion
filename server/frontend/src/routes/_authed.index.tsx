@@ -4,6 +4,7 @@ import { useSetChecklistTick } from '@/api/mutations'
 import { useChanges } from '@/api/queries'
 import type { Checklist, ChecklistItem, ChecklistTick } from '@/api/types'
 import { DeleteChecklistControl } from '@/components/checklist-delete'
+import { AgendaPanel } from '@/components/agenda-panel'
 import { EventRow } from '@/components/event-row'
 import { GroupedTasks } from '@/components/grouped-tasks'
 import { Freshness } from '@/components/freshness'
@@ -17,6 +18,7 @@ import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
 import { buildHorizon, loadSentence, nextUp, overdueOccurrences } from '@/lib/horizon'
 import { occurrencesOnDay } from '@/lib/recurrence'
+import { useSurface } from '@/lib/surface'
 import { itemsDueOn, type DueItem } from '@/lib/today'
 import { visibilityOf } from '@/lib/visibility'
 
@@ -139,6 +141,7 @@ function Section({
 
 function Today() {
   const changes = useChanges(true)
+  const surface = useSurface()
 
   if (changes.isPending) {
     return (
@@ -220,9 +223,15 @@ function Today() {
           <NewEventButton />
         </div>
 
-        <Section title="Calendar">
-          <MonthCalendar events={events} skips={skips} />
-        </Section>
+        {/* The desk's agenda is the next week in order; the phone keeps the month
+            grid and the two day sections, which `/calendar` also offers. */}
+        {surface === 'workbench' ? (
+          <AgendaPanel events={events} skips={skips} />
+        ) : (
+          <Section title="Calendar">
+            <MonthCalendar events={events} skips={skips} />
+          </Section>
+        )}
 
         {/* Kept, not hidden. A deadline that slid is still work, and dropping it
             quietly is the same class of lie as rendering a failed read as an
@@ -248,34 +257,38 @@ function Today() {
           )}
         </Section>
 
-        <Section title="On today">
-          {todaysEvents.length === 0 ? (
-            <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar today.</p>
-          ) : (
-            <ul className="flex flex-col gap-1.5">
-              {todaysEvents.map((occurrence) => (
-                <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
-              ))}
-            </ul>
-          )}
-        </Section>
+        {surface !== 'workbench' && (
+          <>
+          <Section title="On today">
+            {todaysEvents.length === 0 ? (
+              <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar today.</p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {todaysEvents.map((occurrence) => (
+                  <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
+                ))}
+              </ul>
+            )}
+          </Section>
 
-        <Section title={dayLabel(1)} aside={loadSentence(horizon[1])}>
-          {tomorrowsEvents.length === 0 ? (
-            <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar tomorrow.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {tomorrowsTasks.length > 0 && <GroupedTasks tasks={tomorrowsTasks} />}
-              {tomorrowsCalendar.length > 0 && (
-                <ul className="flex flex-col gap-1.5">
-                  {tomorrowsCalendar.map((occurrence) => (
-                    <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </Section>
+          <Section title={dayLabel(1)} aside={loadSentence(horizon[1])}>
+            {tomorrowsEvents.length === 0 ? (
+              <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar tomorrow.</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {tomorrowsTasks.length > 0 && <GroupedTasks tasks={tomorrowsTasks} />}
+                {tomorrowsCalendar.length > 0 && (
+                  <ul className="flex flex-col gap-1.5">
+                    {tomorrowsCalendar.map((occurrence) => (
+                      <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </Section>
+          </>
+        )}
       </div>
 
       <aside className="flex w-full shrink-0 flex-col gap-7 lg:w-80">

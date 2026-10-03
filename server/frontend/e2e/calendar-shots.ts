@@ -99,4 +99,65 @@ export const calendarShots: Shot[] = [
     labels: ['09'],
     viewportOnly: true,
   },
+
+  // Ticket 13: the calendar. At 390 these are the phone's month and day agenda;
+  // at 1440 the desk's week and month.
+  { name: 'calendar', url: '/calendar', ready: /Last read/, engine: calendar, labels: ['13'] },
+  {
+    name: 'calendar-week-next',
+    url: '/calendar',
+    ready: /Last read/,
+    engine: calendar,
+    after: async (page) => {
+      await page.getByRole('button', { name: 'Next week' }).click()
+      await expect(page.getByText('Planning with Mia').first()).toBeVisible()
+    },
+    labels: ['13'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'calendar-month',
+    url: '/calendar',
+    ready: /Last read/,
+    engine: calendar,
+    after: async (page) => {
+      await page.getByRole('radio', { name: 'Month' }).click()
+      await expect(page.getByRole('radio', { name: 'Month' })).toBeChecked()
+    },
+    labels: ['13'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'calendar-event-edit',
+    url: '/calendar',
+    ready: /Last read/,
+    engine: calendar,
+    after: async (page) => {
+      await page.getByRole('button', { name: 'Next week' }).click()
+      await page.getByRole('button', { name: /^Edit Planning with Mia/ }).click()
+      await expect(page.getByRole('dialog', { name: 'Edit event' })).toBeVisible()
+    },
+    labels: ['13'],
+    workbenchOnly: true,
+    viewportOnly: true,
+  },
+  {
+    name: 'calendar-empty',
+    url: '/calendar',
+    ready: /Nothing on the calendar this week/,
+    engine: () => createEngine({ householdName: 'The Test House' }),
+    labels: ['13'],
+    workbenchOnly: true,
+  },
+  {
+    name: 'calendar-unreachable',
+    url: '/calendar',
+    ready: /Could not reach the engine, so this is not the real calendar/,
+    engine: () => {
+      const engine = calendar()
+      engine.changesFailing = true
+      return engine
+    },
+    labels: ['13'],
+  },
 ]
