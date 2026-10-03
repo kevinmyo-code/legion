@@ -47,6 +47,10 @@ export interface Shot {
    * picture once (the first shot of a route), `true` skips the phone size.
    */
   workbenchOnly?: 'card' | true
+  /** A fixed overlay (a sheet) is pictured at the viewport's own size: growing the
+   * window to the page's height would put a bottom sheet at the bottom of a
+   * page-tall window, which is not where a person sees it. */
+  viewportOnly?: true
 }
 
 const seeded = () => createEngine({ ...seedHousehold(), householdName: 'The Test House' })
@@ -299,9 +303,11 @@ for (const viewport of VIEWPORTS) {
           // window to the page's height first. `fullPage: true` stitches the page
           // together and draws a fixed tab bar halfway down it, which is a lie
           // about where the bar is.
-          const height = await page.evaluate(() => document.documentElement.scrollHeight)
-          await page.setViewportSize({ width: viewport.width, height: Math.max(viewport.height, height) })
-          await page.waitForTimeout(100)
+          if (!shot.viewportOnly) {
+            const height = await page.evaluate(() => document.documentElement.scrollHeight)
+            await page.setViewportSize({ width: viewport.width, height: Math.max(viewport.height, height) })
+            await page.waitForTimeout(100)
+          }
           await page.screenshot({
             path: path.join(OUT, `${shot.name}-${viewport.name}-${scheme}.png`),
           })

@@ -1,3 +1,5 @@
+import { expect, type Page } from '@playwright/test'
+
 import type { Shot } from './shots.spec'
 import { seedCalendar } from '../src/test/calendar-seed'
 import { createEngine } from '../src/test/engine'
@@ -9,6 +11,11 @@ import { createEngine } from '../src/test/engine'
  */
 
 const calendar = () => createEngine({ ...seedCalendar(), householdName: 'The Test House' })
+
+const openNew = async (page: Page) => {
+  await page.getByRole('button', { name: 'New event' }).click()
+  await expect(page.getByRole('dialog', { name: 'New event' })).toBeVisible()
+}
 
 export const calendarShots: Shot[] = [
   {
@@ -24,5 +31,72 @@ export const calendarShots: Shot[] = [
     ready: 'Weekend ideas',
     engine: calendar,
     labels: ['07'],
+  },
+
+  // Ticket 09: the event sheet, over Home.
+  {
+    name: 'sheet-new',
+    url: '/',
+    ready: 'Soccer pickup',
+    engine: calendar,
+    after: openNew,
+    labels: ['09'],
+    viewportOnly: true,
+  },
+  {
+    name: 'sheet-weekly',
+    url: '/',
+    ready: 'Soccer pickup',
+    engine: calendar,
+    after: async (page) => {
+      await openNew(page)
+      const sheet = page.getByRole('dialog')
+      await sheet.getByLabel('Title').fill('Swim lesson')
+      await sheet.getByRole('switch', { name: 'All day' }).click()
+      await sheet.getByRole('radio', { name: 'Weekly' }).click()
+      await sheet.getByRole('button', { name: 'Tue' }).click()
+      await sheet.getByRole('button', { name: 'Thu' }).click()
+      await sheet.getByLabel('Reminder').selectOption('30')
+      await sheet.getByRole('radio', { name: 'Only me' }).click()
+    },
+    labels: ['09'],
+    viewportOnly: true,
+  },
+  {
+    name: 'sheet-which',
+    url: '/',
+    ready: 'Soccer pickup',
+    engine: calendar,
+    after: async (page) => {
+      await page.getByRole('button', { name: 'Edit Water the ferns' }).first().click()
+      const sheet = page.getByRole('dialog', { name: 'Edit event' })
+      await expect(sheet).toBeVisible()
+      await sheet.getByRole('button', { name: 'Delete' }).click()
+      await expect(sheet.getByRole('group', { name: 'Which events' })).toBeVisible()
+    },
+    labels: ['09'],
+    viewportOnly: true,
+  },
+  {
+    name: 'sheet-error',
+    url: '/',
+    ready: 'Soccer pickup',
+    engine: () => {
+      const engine = calendar()
+      engine.refusals['POST /api/events'] = {
+        status: 400,
+        body: { remind_minutes_before: ['7 is not a reminder lead time this engine offers.'] },
+      }
+      return engine
+    },
+    after: async (page) => {
+      await openNew(page)
+      const sheet = page.getByRole('dialog')
+      await sheet.getByLabel('Title').fill('Dentist')
+      await sheet.getByRole('button', { name: 'Add' }).click()
+      await expect(sheet.getByRole('alert')).toBeVisible()
+    },
+    labels: ['09'],
+    viewportOnly: true,
   },
 ]

@@ -9,6 +9,7 @@ import { GroupedTasks } from '@/components/grouped-tasks'
 import { Freshness } from '@/components/freshness'
 import { HorizonStrip } from '@/components/horizon-strip'
 import { MonthCalendar } from '@/components/month-calendar'
+import { NewEventButton } from '@/components/new-event-button'
 import { VisibilityMark } from '@/components/visibility-mark'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -206,14 +207,17 @@ function Today() {
     // the phone keeps the single column it needs.
     <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
       <div className="flex min-w-0 flex-1 flex-col gap-7">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[1.75rem] leading-tight tracking-tight">{dayLabel(0)}</h1>
-          <Freshness
-            updatedAt={changes.dataUpdatedAt}
-            isFetching={changes.isFetching}
-            failureCount={changes.failureCount}
-            error={changes.error}
-          />
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-[1.75rem] leading-tight tracking-tight">{dayLabel(0)}</h1>
+            <Freshness
+              updatedAt={changes.dataUpdatedAt}
+              isFetching={changes.isFetching}
+              failureCount={changes.failureCount}
+              error={changes.error}
+            />
+          </div>
+          <NewEventButton />
         </div>
 
         <Section title="Calendar">

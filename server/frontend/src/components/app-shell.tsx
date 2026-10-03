@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { EventSheetHost } from '@/components/event-sheet-host'
 import { FamilyShell } from '@/components/family-shell'
 import { WorkbenchShell } from '@/components/workbench-shell'
 import { NAV, visibleNav, type NavItem } from '@/lib/nav'
@@ -25,9 +26,13 @@ export function AppShell({
   const surface = useSurface()
   const items = visibleNav(nav, surface)
 
-  return surface === 'workbench' ? (
-    <WorkbenchShell items={items}>{children}</WorkbenchShell>
-  ) : (
-    <FamilyShell items={items}>{children}</FamilyShell>
+  return (
+    <EventSheetHost>
+      {surface === 'workbench' ? (
+        <WorkbenchShell items={items}>{children}</WorkbenchShell>
+      ) : (
+        <FamilyShell items={items}>{children}</FamilyShell>
+      )}
+    </EventSheetHost>
   )
 }

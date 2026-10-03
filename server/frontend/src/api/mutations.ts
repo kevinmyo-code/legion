@@ -2,7 +2,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/api/client'
 import { CHANGES_KEY } from '@/api/queries'
-import type { Changes, ChecklistTick } from '@/api/types'
+import { WriteRefused, runWrite, type WriteVerb } from '@/api/refusal'
+import { wire } from '@/api/synced'
+import type { Changes, ChecklistTick, Event } from '@/api/types'
+import type { EventFields } from '@/lib/event-form'
+import { occurrenceGuid } from '@/lib/event-form'
+import type { Visibility } from '@/lib/visibility'
 
 /**
  * Ticking a checklist item was taking about a second to register on screen
@@ -100,4 +105,114 @@ export function useSetChecklistTick() {
       void queryClient.invalidateQueries({ queryKey: CHANGES_KEY })
     },
   })
+}
+
+/**
+ * Writing events: the five mutations behind the event sheet (web-revamp 09).
+ *
+ * **None of them is optimistic.** An event write can be refused (a blank title,
+ * a reminder the engine does not offer, a 403 for who may make a row private),
+ * and an event that appears and then vanishes is worse than one that waits. Each
+ * runs through `runWrite`, so a refusal rejects with a sentence that opens with
+ * what did not happen and carries the engine's own words, and the sheet stays
+ * open showing it. Success invalidates the shared changes query, so every
+ * screen that renders an occurrence moves together.
+ */
+
+function useEventWrite<V>(write: (vars: V) => Promise<void>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: write,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CHANGES_KEY }),
+  })
+}
+
+export type NewEvent = EventFields & {
+  kind?: string
+  visibility: Visibility
+  origin_guid?: string
+}
+
+export function useCreateEvent() {
+  return useEventWrite(async (event: NewEvent) =>
+    runWrite('saved', () => api.POST('/api/events', { body: wire<Event>(event) })),
+  )
+}
+
+export function useUpdateEvent() {
+  return useEventWrite(
+    async ({ id, fields }: { id: string; fields: Partial<EventFields> & { visibility?: Visibility } }) =>
+      runWrite('saved', () =>
+        api.PATCH('/api/events/{id}', { params: { path: { id } }, body: fields }),
+      ),
+  )
+}
+
+export function useDeleteEvent() {
+  return useEventWrite(async (id: string) =>
+    runWrite('deleted', () => api.DELETE('/api/events/{id}', { params: { path: { id } } })),
+  )
+}
+
+/** "Not this one": the occurrence on `date` (`YYYY-MM-DD`, the date it shows) is
+ * taken out of the series. Idempotent on the engine, so a retry is safe. */
+export function useSkipOccurrence() {
+  return useEventWrite(async ({ id, date, verb }: { id: string; date: string; verb: WriteVerb }) =>
+    runWrite(verb, () =>
+      api.POST('/api/events/{id}/skips', {
+        params: { path: { id } },
+        body: { skip_date: date },
+      }),
+    ),
+  )
+}
+
+/**
+ * "Just this one" on an edit: skip that date in the series, then POST a one-off
+ * carrying the edits, its `origin_guid` the series id and the date, so a retry
+ * finds the row it already made instead of adding a second (spec D4).
+ *
+ * The two calls are two writes, and the second can fail after the first
+ * succeeded. Then the occurrence IS out of the series and the changed copy is
+ * NOT saved, and saying "nothing was saved" would be false. The sentence says
+ * exactly that, and pressing Save again finishes the job: the skip is
+ * idempotent and the create is keyed.
+ */
+export function useEditOccurrence() {
+  return useEventWrite(
+    async ({
+      seriesId,
+      date,
+      event,
+    }: {
+      seriesId: string
+      date: string
+      event: NewEvent
+    }) => {
+      await runWrite('saved', () =>
+        api.POST('/api/events/{id}/skips', {
+          params: { path: { id: seriesId } },
+          body: { skip_date: date },
+        }),
+      )
+      try {
+        await runWrite('saved', () =>
+          api.POST('/api/events', {
+            body: wire<Event>({ ...event, origin_guid: occurrenceGuid({ id: seriesId }, date) }),
+          }),
+        )
+      } catch (error) {
+        // `runWrite` opens with "Nothing was saved." which would contradict the
+        // sentence this one starts with; keep only what the engine said.
+        const reason = (error instanceof Error ? error.message : 'The engine did not say why.').replace(
+          /^Nothing was saved\.\s*/,
+          '',
+        )
+        throw new WriteRefused(
+          `The ${date} occurrence was taken out of the repeating series, but the changed copy was not saved. ` +
+            `Press Save again to finish. ${reason}`,
+        )
+      }
+    },
+  )
 }

@@ -60,6 +60,14 @@ export function seedCalendar(): Pick<EngineOptions, 'events' | 'skips' | 'checkl
     remind_minutes_before: 30,
   })
 
+  const ferns = makeEvent({
+    title: 'Water the ferns',
+    ...span(-9, 8, 0, 15),
+    repeat_kind: 'DAILY',
+    repeat_every: 1,
+    remind_minutes_before: 15,
+  })
+
   const canvasTask = (title: string, dayOffset: number, meta: Record<string, unknown> = {}) =>
     makeEvent({
       title,
@@ -81,6 +89,7 @@ export function seedCalendar(): Pick<EngineOptions, 'events' | 'skips' | 'checkl
     lecture,
     bins,
     swim,
+    ferns,
     canvasTask('COSC 4320 · HW 4 due', 0, { canvas_submitted: true, submission_state: 'submitted' }),
     canvasTask('COSC 4320 · Lab 5 report due', 3),
     canvasTask('COSC 3334 · Module 2: Quiz 3 closes', 2, { missing: false }),
