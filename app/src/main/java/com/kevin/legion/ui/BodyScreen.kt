@@ -1,8 +1,12 @@
 package com.kevin.legion.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +43,9 @@ import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.sleep.SleepController
 import com.kevin.legion.sleep.SleepGap
+import com.kevin.legion.ui.body.BodyAction
+import com.kevin.legion.ui.body.BodyDeleteAction
+import com.kevin.legion.ui.body.BodyRangeChips
 import com.kevin.legion.ui.body.DeleteLogDialog
 import com.kevin.legion.ui.body.LogBodyweightDialog
 import com.kevin.legion.ui.body.LogMealDialog
@@ -45,6 +53,7 @@ import com.kevin.legion.ui.body.LogSleepDialog
 import com.kevin.legion.ui.body.LogWorkoutSetDialog
 import com.kevin.legion.ui.body.SetMealTargetDialog
 import com.kevin.legion.ui.body.SetSleepTargetDialog
+import com.kevin.legion.ui.body.softSentence
 import com.kevin.legion.ui.common.DECK_SPARKLINE_MIN_POINTS
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
@@ -52,20 +61,20 @@ import com.kevin.legion.ui.common.DeckLineChart
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckPoint
 import com.kevin.legion.ui.common.DeckRange
-import com.kevin.legion.ui.common.DeckRangeSelector
 import com.kevin.legion.ui.common.DeckSparkline
 import com.kevin.legion.ui.common.DrilldownHeader
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.GapEmptyRow
 import com.kevin.legion.ui.common.HalfTile
-import com.kevin.legion.ui.common.Hairline
+import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.common.ReadingRow
 import com.kevin.legion.ui.common.dailyBuckets
 import com.kevin.legion.ui.common.deckRangeStartMs
 import com.kevin.legion.ui.common.deckSparklineHasShape
-import com.kevin.legion.ui.theme.LegionTheme
-import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.workouts.WorkoutController
 
@@ -182,8 +191,14 @@ internal sealed class BodyDrilldown {
     data class TrainingProgression(val exercise: String) : BodyDrilldown()
 }
 
+/**
+ * [onBack] is the header's back arrow (soft-body conversion: every drill-down opens with the same
+ * [DeckScreenHeader]). It defaults to a no-op so the existing `BodyScreen()` call compiles; the
+ * route should pass `{ navController.popBackStack() }`. System back is unaffected - the
+ * [BackHandler] below handles in-screen drilldowns and the nav host handles the rest.
+ */
 @Composable
-fun BodyScreen() {
+fun BodyScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(BodyUiState()) }
 
@@ -334,8 +349,9 @@ fun BodyScreen() {
         }
     }
 
+    SoftTheme {
     when (val current = drilldown) {
-        null -> BodyContent(state, onOpenPane = { drilldown = it }, onDataChanged = { reloadKey++ })
+        null -> BodyContent(state, onOpenPane = { drilldown = it }, onDataChanged = { reloadKey++ }, onBack = onBack)
         BodyDrilldown.Mass -> BodyMassDrilldown(
             latest = state.latestBodyweight,
             series = massSeries,
@@ -385,6 +401,7 @@ fun BodyScreen() {
             onDeleted = { reloadKey++ },
         )
     }
+    }
 }
 
 /**
@@ -398,28 +415,30 @@ fun BodyScreen() {
  * to be `public` in the first place.
  */
 @Composable
-internal fun BodyContent(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit = {}, onDataChanged: () -> Unit = {}) {
+internal fun BodyContent(
+    state: BodyUiState,
+    onOpenPane: (BodyDrilldown) -> Unit = {},
+    onDataChanged: () -> Unit = {},
+    onBack: () -> Unit = {},
+) {
     val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
         Column(Modifier.fillMaxSize()) {
-            Text(
-                "BODY",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            )
+            DeckScreenHeader(title = "Body", onBack = onBack, accent = AreaAccent.BODY)
             // Ticket 03's universal-state rule: every row on this screen is TrustTier.REPORTED by
             // construction (nothing here is ever verified against anything external), so the
-            // header says so ONCE rather than tagging every single row with it.
+            // header says so ONCE rather than tagging every single row with it. Said in a full
+            // sentence now that the "UPLINK // SELF-REPORT" stamp is gone - still words, still
+            // always on screen, never collapsed.
             Text(
-                "UPLINK // SELF-REPORT",
-                style = LegionType.stamp,
+                "Everything here is self-reported, not verified.",
+                style = MaterialTheme.typography.bodySmall,
                 color = sem.faint,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 0.dp),
             )
             Spacer(Modifier.height(8.dp))
             if (state.loading) {
-                Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
+                Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))
             } else {
                 BodyPanelList(state, onOpenPane, onDataChanged)
             }
@@ -450,117 +469,99 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
     var showLogSleep by remember { mutableStateOf(false) }
     var showEditSleepTarget by remember { mutableStateOf(false) }
     var showLogSet by remember { mutableStateOf(false) }
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         // ---------------------------------------------------------------- MASS
         item(key = "pane-mass") {
-            DeckPane(header = "MASS", modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Mass) }) {
+            DeckPane(header = "Mass", modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Mass) }) {
                 val latest = state.latestBodyweight
                 if (latest == null) {
                     GapEmptyRow(
                         label = "Bodyweight",
                         message = "Nothing logged yet.",
-                        actionLabel = "+ LOG WEIGHT",
+                        actionLabel = "Log weight",
                         onAction = { showLogWeight = true },
                         voiceHint = "log my weight",
                     )
                 } else {
-                    Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                        // MASS's hero is a VALUE, mint like every other reading in the app (ticket
-                        // 01's "mint is every value, amber is every highlight") - caught here by
-                        // this ticket's own pixel-sampling pass, the same class of bug HOME shipped
-                        // with (all four heroes reading MaterialTheme.colorScheme.primary/amber
-                        // instead of sem.data/mint) before it was fixed there. Pre-dated this
-                        // ticket's own INTAKE/SLEEP tiling; fixed here rather than left in place
-                        // since it sits directly on the BIO surface this ticket builds.
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        // MASS's hero is a plain value: primary text under the soft palette
+                        // (`sem.data` is SoftColors.text here), never an accent.
                         Text(formatWeight(latest.weightValue, latest.weightUnit), style = MaterialTheme.typography.displaySmall, color = sem.data)
-                        Text(bodyweightTrendText(latest, state.previousBodyweight) ?: shortDate(latest.loggedAt), style = LegionType.stamp, color = sem.faint)
+                        Text(bodyweightTrendText(latest, state.previousBodyweight) ?: shortDate(latest.loggedAt), style = MaterialTheme.typography.bodySmall, color = sem.faint)
                     }
                     // Three states, not two (command-center ticket 13 finding 4). "No readings"
                     // and "not enough readings to have a shape yet" are different facts and get
                     // different sentences - the same empty-vs-unreadable rule CLAUDE.md sec 1
-                    // states for a refused permission versus a clear day. Saying "NO READINGS YET"
-                    // under a hero that is currently printing a reading would be a plain lie.
+                    // states for a refused permission versus a clear day. Saying "No readings
+                    // yet" under a hero that is currently printing a reading would be a plain lie.
                     val massPoints = state.massSparkline.count { it != null }
                     if (deckSparklineHasShape(state.massSparkline)) {
-                        DeckSparkline(state.massSparkline, modifier = Modifier.padding(horizontal = 12.dp))
+                        DeckSparkline(state.massSparkline)
                     } else {
                         Text(
-                            if (massPoints == 0) "NO READINGS YET"
-                            else "TREND NEEDS $DECK_SPARKLINE_MIN_POINTS READINGS - $massPoints SO FAR",
-                            style = LegionType.stamp,
+                            if (massPoints == 0) "No readings yet"
+                            else "Trend needs $DECK_SPARKLINE_MIN_POINTS readings, $massPoints so far",
+                            style = MaterialTheme.typography.bodySmall,
                             color = sem.faint,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(vertical = 4.dp),
                         )
                     }
                 }
-                Text(
-                    "+ LOG WEIGHT",
-                    style = LegionType.stamp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).clickable { showLogWeight = true },
-                )
+                if (latest != null) {
+                    BodyAction("Log weight", onClick = { showLogWeight = true }, modifier = Modifier.padding(top = 8.dp))
+                }
             }
         }
-        item(key = "pane-spacer-1") { Spacer(Modifier.height(10.dp)) }
 
         // ------------------------------------------------------ INTAKE / SLEEP (HALF tiles)
-        // Mission-control ticket 16's BIO build: both panels drop from FULL to HALF per ticket 12's
-        // inventory, sharing one row via EqualHeightRow - the same mechanism HOME's BIO/CRED/FLEET/LOG
-        // row uses (see that composable's own doc for why a bare `Row(IntrinsicSize.Min)` crashes on
-        // a DeckPane child). MASS stays FULL above (the surface's hero) - ticket 12's own reasoning,
-        // unchanged by this tiling. Tap-through is unchanged: each tile still opens the exact
-        // drilldown its old FULL panel did.
+        // Both panels share one row via EqualHeightRow - the same mechanism HOME's tile row uses
+        // (see that composable's own doc for why a bare `Row(IntrinsicSize.Min)` crashes on a
+        // pane child). MASS stays full-width above (the surface's hero). Tap-through is
+        // unchanged: each tile still opens the exact drilldown its old FULL panel did.
         item(key = "tile-row-intake-sleep") {
             val intakeTile = buildIntakeTile(state.mealGap, state.hasMealTarget)
             val sleepTile = buildSleepTile(state.sleepGap, state.hasSleepTarget)
-            EqualHeightRow(Modifier.fillMaxWidth(), horizontalGap = 9.dp) {
+            // CLAUDE.md section 4 rule 5: the calorie figure is an LLM estimate, so the word travels
+            // with it on this surface. `buildIntakeTile` (shared with other screens, not editable
+            // here) captions a logged day "OF 2200 KCAL"; this restates it as a sentence that
+            // names the estimate. The empty-state captions are plain sentences already.
+            val intakeCaption = when (val gap = state.mealGap) {
+                is DailyMealGap.Logged -> "kcal estimate, of ${gap.gap.target.caloriesKcal} target"
+                DailyMealGap.NotLogged -> softSentence(intakeTile.caption)
+            }
+            EqualHeightRow(Modifier.fillMaxWidth(), horizontalGap = 10.dp) {
                 HalfTile(
                     header = "Intake",
-                    hero = intakeTile.hero,
-                    caption = intakeTile.caption,
+                    hero = softSentence(intakeTile.hero),
+                    caption = intakeCaption,
                     modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Intake) },
                 ) {
                     if (deckSparklineHasShape(state.intakeSparkline)) {
-                        DeckSparkline(state.intakeSparkline, modifier = Modifier.padding(horizontal = 12.dp))
+                        DeckSparkline(state.intakeSparkline)
                     }
-                    Text(
-                        "+ LOG",
-                        style = LegionType.stamp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showLogMeal = true },
-                    )
-                    Text(
-                        "EDIT TARGET",
-                        style = LegionType.stamp,
-                        color = sem.faint,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showEditMealTarget = true },
-                    )
+                    Spacer(Modifier.height(6.dp))
+                    BodyAction("Log meal", onClick = { showLogMeal = true })
+                    BodyAction("Edit target", onClick = { showEditMealTarget = true }, quiet = true, modifier = Modifier.padding(top = 6.dp))
                 }
                 HalfTile(
                     header = "Sleep",
-                    hero = sleepTile.hero,
-                    caption = sleepTile.caption,
+                    hero = softSentence(sleepTile.hero),
+                    caption = softSentence(sleepTile.caption),
                     modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Sleep) },
                 ) {
                     if (deckSparklineHasShape(state.sleepSparkline)) {
-                        DeckSparkline(state.sleepSparkline, modifier = Modifier.padding(horizontal = 12.dp))
+                        DeckSparkline(state.sleepSparkline)
                     }
-                    Text(
-                        "+ LOG",
-                        style = LegionType.stamp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showLogSleep = true },
-                    )
-                    Text(
-                        "EDIT TARGET",
-                        style = LegionType.stamp,
-                        color = sem.faint,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showEditSleepTarget = true },
-                    )
+                    Spacer(Modifier.height(6.dp))
+                    BodyAction("Log sleep", onClick = { showLogSleep = true })
+                    BodyAction("Edit target", onClick = { showEditSleepTarget = true }, quiet = true, modifier = Modifier.padding(top = 6.dp))
                 }
             }
         }
-        item(key = "pane-spacer-3") { Spacer(Modifier.height(10.dp)) }
 
         // ---------------------------------------------------------------- CHECKLIST
         // Ticket 04, `goal-plans` (Kevin: "revamp of BIO/body tab..."). Full mode - every line,
@@ -581,7 +582,6 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                 onOpenTrainingDrilldown = { onOpenPane(BodyDrilldown.TrainingExercises) },
             )
         }
-        item(key = "pane-spacer-4b") { Spacer(Modifier.height(14.dp)) }
 
         // ---------------------------------------------------------------- GOALS
         // Ticket 19: the one panel on this screen that is read-AND-edit, by design - see
@@ -590,7 +590,6 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
         item(key = "pane-goals") {
             com.kevin.legion.ui.goals.GoalsPanel(aspect = "bio")
         }
-        item(key = "pane-spacer-5") { Spacer(Modifier.height(14.dp)) }
     }
 
     // Rendered as siblings of the LazyColumn, not list items - an AlertDialog paints into its own
@@ -620,6 +619,20 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
 }
 
 // ------------------------------------------------------------------- drilldowns
+
+private val BODY_LIST_PADDING = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp)
+
+/** A chart sits on a rounded card like every other soft pane, inset 16dp like HOME's content. */
+@Composable
+private fun BodyChartCard(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .background(SoftColors.card, RoundedCornerShape(16.dp))
+            .padding(12.dp),
+    ) { content() }
+}
 //
 // DrilldownHeader used to be a private composable in this file; ticket 08 (goal-plans) lifted it
 // to `ui/common/DrilldownHeader.kt` so the relocated TRAINING drilldown
@@ -647,29 +660,28 @@ private fun BodyMassDrilldown(
     val sem = LocalLegionSemantics.current
     val unit = latest?.weightUnit ?: "lbs"
     var pendingDelete by remember { mutableStateOf<BodyweightLog?>(null) }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
         Column(Modifier.fillMaxSize()) {
-            DrilldownHeader(title = "MASS", onBack = onBack)
-            DeckRangeSelector(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            DrilldownHeader(title = "Mass", onBack = onBack, accent = AreaAccent.BODY)
+            BodyRangeChips(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             when {
-                loading -> Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
-                series.all { it == null } -> Text("NO READINGS YET", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(12.dp))
-                else -> DeckLineChart(series = series, yLabel = { v -> "%.0f $unit".format(v) }, xLabels = series.map { "" })
+                loading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))
+                series.all { it == null } -> Text("No readings yet", style = MaterialTheme.typography.bodyMedium, color = sem.faint, modifier = Modifier.padding(16.dp))
+                else -> BodyChartCard { DeckLineChart(series = series, yLabel = { v -> "%.0f $unit".format(v) }, xLabels = series.map { "" }) }
             }
-            Hairline()
+            Spacer(Modifier.height(8.dp))
             when {
                 history.isEmpty() -> GapEmptyRow(
                     label = "History",
                     message = "Nothing logged yet.",
                     voiceHint = "log my weight",
                 )
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = BODY_LIST_PADDING, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(history, key = { "weight-${it.id}" }) { log ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().background(SoftColors.card, MaterialTheme.shapes.medium), verticalAlignment = Alignment.CenterVertically) {
                             ReadingRow(label = "Bodyweight", value = formatWeight(log.weightValue, log.weightUnit), sub = shortDate(log.loggedAt), modifier = Modifier.weight(1f))
-                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                            BodyDeleteAction(onClick = { pendingDelete = log }, tint = sem.quarantined, modifier = Modifier.padding(end = 4.dp))
                         }
-                        Hairline()
                     }
                 }
             }
@@ -703,29 +715,28 @@ private fun BodyIntakeDrilldown(
 ) {
     val sem = LocalLegionSemantics.current
     var pendingDelete by remember { mutableStateOf<MealLog?>(null) }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
         Column(Modifier.fillMaxSize()) {
-            DrilldownHeader(title = "INTAKE", onBack = onBack)
-            DeckRangeSelector(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            DrilldownHeader(title = "Intake", onBack = onBack, accent = AreaAccent.BODY)
+            BodyRangeChips(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             when {
-                loading -> Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
-                bars.all { it == null } -> Text("NOT LOGGED", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(12.dp))
-                else -> DeckBarChart(bars)
+                loading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))
+                bars.all { it == null } -> Text("Not logged", style = MaterialTheme.typography.bodyMedium, color = sem.faint, modifier = Modifier.padding(16.dp))
+                else -> BodyChartCard { DeckBarChart(bars) }
             }
-            Hairline()
+            Spacer(Modifier.height(8.dp))
             when {
                 history.isEmpty() -> GapEmptyRow(
                     label = "History",
                     message = "Nothing logged yet.",
                     voiceHint = "log a meal",
                 )
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = BODY_LIST_PADDING, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(history, key = { "meal-${it.id}" }) { log ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().background(SoftColors.card, MaterialTheme.shapes.medium), verticalAlignment = Alignment.CenterVertically) {
                             ReadingRow(label = log.description, value = mealValueText(log), sub = shortDate(log.loggedAt), modifier = Modifier.weight(1f))
-                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                            BodyDeleteAction(onClick = { pendingDelete = log }, tint = sem.quarantined, modifier = Modifier.padding(end = 4.dp))
                         }
-                        Hairline()
                     }
                 }
             }
@@ -759,29 +770,28 @@ private fun BodySleepDrilldown(
 ) {
     val sem = LocalLegionSemantics.current
     var pendingDelete by remember { mutableStateOf<SleepLog?>(null) }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
         Column(Modifier.fillMaxSize()) {
-            DrilldownHeader(title = "SLEEP", onBack = onBack)
-            DeckRangeSelector(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            DrilldownHeader(title = "Sleep", onBack = onBack, accent = AreaAccent.BODY)
+            BodyRangeChips(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             when {
-                loading -> Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
-                bars.all { it == null } -> Text("NOT LOGGED", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(12.dp))
-                else -> DeckBarChart(bars)
+                loading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))
+                bars.all { it == null } -> Text("Not logged", style = MaterialTheme.typography.bodyMedium, color = sem.faint, modifier = Modifier.padding(16.dp))
+                else -> BodyChartCard { DeckBarChart(bars) }
             }
-            Hairline()
+            Spacer(Modifier.height(8.dp))
             when {
                 history.isEmpty() -> GapEmptyRow(
                     label = "History",
                     message = "Nothing logged yet.",
                     voiceHint = "I slept 7 hours",
                 )
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = BODY_LIST_PADDING, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(history, key = { "sleep-${it.id}" }) { log ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().background(SoftColors.card, MaterialTheme.shapes.medium), verticalAlignment = Alignment.CenterVertically) {
                             ReadingRow(label = "Sleep", value = sleepValueText(log), sub = shortDate(log.sleepDate), modifier = Modifier.weight(1f))
-                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                            BodyDeleteAction(onClick = { pendingDelete = log }, tint = sem.quarantined, modifier = Modifier.padding(end = 4.dp))
                         }
-                        Hairline()
                     }
                 }
             }
@@ -806,25 +816,23 @@ private fun BodyTrainingExerciseListDrilldown(
     onBack: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
         Column(Modifier.fillMaxSize()) {
-            DrilldownHeader(title = "TRAINING // EXERCISES", onBack = onBack)
-            Hairline()
+            DrilldownHeader(title = "Training exercises", onBack = onBack, accent = AreaAccent.BODY)
             when {
-                loading -> Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
+                loading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))
                 exercises.isEmpty() -> GapEmptyRow(
                     label = "Exercises",
                     message = "Nothing logged yet.",
                     voiceHint = "three sets of squats at 225",
                 )
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = BODY_LIST_PADDING, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(exercises, key = { it.exercise }) { entry ->
                         ReadingRow(
                             label = entry.exercise,
                             value = shortDate(entry.lastLoggedAt),
-                            modifier = Modifier.clickable { onSelect(entry.exercise) },
+                            modifier = Modifier.background(SoftColors.card, MaterialTheme.shapes.medium).clickable { onSelect(entry.exercise) },
                         )
-                        Hairline()
                     }
                 }
             }
@@ -855,28 +863,27 @@ private fun BodyExerciseProgressionDrilldown(
     val sem = LocalLegionSemantics.current
     val unit = sets.firstOrNull { it.weightValue != null }?.weightUnit ?: "lbs"
     var pendingDelete by remember { mutableStateOf<WorkoutSetLog?>(null) }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
         Column(Modifier.fillMaxSize()) {
-            DrilldownHeader(title = exercise.uppercase(), onBack = onBack)
-            DeckRangeSelector(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            DrilldownHeader(title = exercise, onBack = onBack, accent = AreaAccent.BODY)
+            BodyRangeChips(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             when {
-                loading -> Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
-                series.all { it == null } -> Text("NO READINGS YET", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(12.dp))
-                else -> DeckLineChart(series = series, yLabel = { v -> "%.0f $unit".format(v) }, xLabels = series.map { "" })
+                loading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))
+                series.all { it == null } -> Text("No readings yet", style = MaterialTheme.typography.bodyMedium, color = sem.faint, modifier = Modifier.padding(16.dp))
+                else -> BodyChartCard { DeckLineChart(series = series, yLabel = { v -> "%.0f $unit".format(v) }, xLabels = series.map { "" }) }
             }
-            Hairline()
+            Spacer(Modifier.height(8.dp))
             when {
                 sets.isEmpty() -> GapEmptyRow(label = "Sets", message = "Nothing logged yet for $exercise.")
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = BODY_LIST_PADDING, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(sets, key = { "set-${it.id}" }) { log ->
                         // Ticket 16: "sets without weight excluded from the chart but listed" -
                         // this row is where a bodyweight/no-number set still shows up, even though
                         // buildExerciseProgression never plotted it above.
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().background(SoftColors.card, MaterialTheme.shapes.medium), verticalAlignment = Alignment.CenterVertically) {
                             ReadingRow(label = workoutSetValueText(log), value = shortDate(log.loggedAt), modifier = Modifier.weight(1f))
-                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                            BodyDeleteAction(onClick = { pendingDelete = log }, tint = sem.quarantined, modifier = Modifier.padding(end = 4.dp))
                         }
-                        Hairline()
                     }
                 }
             }
@@ -896,19 +903,19 @@ private fun BodyExerciseProgressionDrilldown(
 
 @Preview(name = "Body: loading", widthDp = 360, heightDp = 800)
 @Composable
-private fun PreviewBodyLoading() = LegionTheme {
+private fun PreviewBodyLoading() = SoftTheme {
     BodyContent(BodyUiState(loading = true))
 }
 
 @Preview(name = "Body: everything empty (fresh install)", widthDp = 360, heightDp = 800)
 @Composable
-private fun PreviewBodyAllEmpty() = LegionTheme {
+private fun PreviewBodyAllEmpty() = SoftTheme {
     BodyContent(BodyUiState(loading = false))
 }
 
 @Preview(name = "Body: populated - panels, sparklines and gaps", widthDp = 360, heightDp = 900)
 @Composable
-private fun PreviewBodyPopulated() = LegionTheme {
+private fun PreviewBodyPopulated() = SoftTheme {
     val now = System.currentTimeMillis()
     BodyContent(
         BodyUiState(
@@ -938,7 +945,7 @@ private fun PreviewBodyPopulated() = LegionTheme {
 
 @Preview(name = "Body: MASS drilldown", widthDp = 360, heightDp = 800)
 @Composable
-private fun PreviewBodyMassDrilldown() = LegionTheme {
+private fun PreviewBodyMassDrilldown() = SoftTheme {
     val now = System.currentTimeMillis()
     val dayMs = 24L * 60 * 60 * 1000
     BodyMassDrilldown(
@@ -959,7 +966,7 @@ private fun PreviewBodyMassDrilldown() = LegionTheme {
 
 @Preview(name = "Body: TRAINING exercise list", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewBodyTrainingExercises() = LegionTheme {
+private fun PreviewBodyTrainingExercises() = SoftTheme {
     val now = System.currentTimeMillis()
     BodyTrainingExerciseListDrilldown(
         exercises = listOf(
@@ -974,7 +981,7 @@ private fun PreviewBodyTrainingExercises() = LegionTheme {
 
 @Preview(name = "Body: exercise progression", widthDp = 360, heightDp = 800)
 @Composable
-private fun PreviewBodyExerciseProgression() = LegionTheme {
+private fun PreviewBodyExerciseProgression() = SoftTheme {
     val now = System.currentTimeMillis()
     val dayMs = 24L * 60 * 60 * 1000
     BodyExerciseProgressionDrilldown(

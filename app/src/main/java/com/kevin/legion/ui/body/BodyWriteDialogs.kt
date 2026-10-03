@@ -1,9 +1,11 @@
 package com.kevin.legion.ui.body
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.sleep.SleepController
+import com.kevin.legion.ui.common.deckCase
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.workouts.WorkoutController
@@ -311,11 +314,16 @@ fun LogBodyweightDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
 @Composable
 private fun UnitChoice(label: String, selected: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val sem = LocalLegionSemantics.current
+    // Soft theme: lowercase unit ("lbs", "kg") on a rounded chip; the selected unit is a filled chip
+    // AND brighter text, not colour alone. Under LegionTheme [deckCase] still uppercases it.
     Text(
-        label.uppercase(),
+        label.deckCase(),
         style = LegionType.stamp,
         color = if (selected) sem.data else sem.faint,
-        modifier = modifier.clickable(enabled = enabled) { onClick() },
+        modifier = modifier
+            .background(if (selected) sem.chromeDim else sem.ruleFaint, RoundedCornerShape(50))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
     )
 }
 
@@ -426,7 +434,7 @@ fun DeleteLogDialog(subtitle: String, onDelete: suspend () -> String, onDismiss:
                             busy = false
                         }
                     },
-                ) { Text("DELETE", color = sem.quarantined) }
+                ) { Text("Delete".deckCase(), color = sem.quarantined) }
             } else {
                 TextButton(onClick = onDone) { Text("Done") }
             }
