@@ -59,6 +59,8 @@ data class NavProgressInfo(
  *
  * Callbacks arrive on the main thread; so does every call. One instance is one `MapboxNavigation`.
  */
+// The seam mirrors the SDK's verbs one for one; fewer methods would hide a billing-relevant step.
+@Suppress("TooManyFunctions")
 interface NavSdk {
     var listener: NavSdkListener?
 
