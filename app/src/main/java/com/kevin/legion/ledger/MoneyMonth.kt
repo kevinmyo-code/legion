@@ -3,6 +3,7 @@ package com.kevin.legion.ledger
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import java.time.LocalDate
 import java.time.YearMonth
 
 /**
@@ -181,5 +182,36 @@ private fun accountSpend(
         categories = categories,
         uncategorized = uncategorized,
         disclosures = disclosures,
+    )
+}
+
+/**
+ * Everything the Money page reads: the sections plus how FRESH the bank data is. Freshness is its
+ * own fact because "nothing spent this month" and "the newest bank row is from last month" are
+ * different sentences (CLAUDE.md section 1: unreadable, empty and stale are three different
+ * statements). Dates are [calendarDateOf] of ALL rows of the account, whatever month they fall in.
+ */
+data class MoneyMonthData(
+    val accounts: List<AccountMonthResult>,
+    /** Newest row date over every account, or null when there are no rows at all. */
+    val newestOverall: LocalDate?,
+    /** Newest row date per account, keyed by the same name a section is titled with. */
+    val newestByAccount: Map<String, LocalDate>,
+)
+
+fun buildMoneyMonthData(
+    rows: List<LedgerTransaction>,
+    month: YearMonth,
+    notSpending: Set<String>,
+): MoneyMonthData {
+    val newestByAccount = clusterAccounts(rows).associate { cluster ->
+        cluster.name to rows
+            .filter { row -> row.currency == cluster.currency && cluster.ids.any { sameCard(it, row.accountId) } }
+            .maxOf { calendarDateOf(it) }
+    }
+    return MoneyMonthData(
+        accounts = buildAccountMonthResults(rows, month, notSpending),
+        newestOverall = rows.maxOfOrNull { calendarDateOf(it) },
+        newestByAccount = newestByAccount,
     )
 }

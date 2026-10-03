@@ -5004,7 +5004,7 @@
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable fun MoneyMonthScreen(onOpenDetails: () -&gt; Unit)</ID>
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable fun MoneyMonthContent( state: MoneyMonthUiState, onOpenCategory: (AccountMonthSpend, String?) -&gt; Unit, onCloseDrilldown: () -&gt; Unit, onOpenDetails: () -&gt; Unit, )</ID>
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun StatusCard(text: String, alert: Boolean)</ID>
-    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun AccountCard(spend: AccountMonthSpend, onOpenCategory: (AccountMonthSpend, String?) -&gt; Unit)</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun AccountCard( spend: AccountMonthSpend, dataLine: String?, onOpenCategory: (AccountMonthSpend, String?) -&gt; Unit, )</ID>
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun CategoryRow( spend: AccountMonthSpend, row: CategorySpend, onOpenCategory: (AccountMonthSpend, String?) -&gt; Unit, )</ID>
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun DetailsRow(onOpenDetails: () -&gt; Unit)</ID>
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun MoneyDrilldownContent(drilldown: MoneyDrilldownUiState, onBack: () -&gt; Unit)</ID>

@@ -13,6 +13,7 @@ import com.kevin.legion.ui.money.MoneyDrilldownRow
 import com.kevin.legion.ui.money.MoneyDrilldownUiState
 import com.kevin.legion.ui.money.MoneyMonthContent
 import com.kevin.legion.ui.money.MoneyMonthUiState
+import java.time.LocalDate
 import java.time.YearMonth
 import org.junit.Rule
 import org.junit.Test
@@ -73,10 +74,22 @@ class MoneyMonthScreenshotTest {
         ),
     )
 
-    private fun state(vararg accounts: AccountMonthResult, loading: Boolean = false, failed: Boolean = false) =
-        MoneyMonthUiState(
-            monthTitle = "October so far", loading = loading, readFailed = failed, accounts = accounts.toList(),
-        )
+    private val today = LocalDate.of(2026, 10, 2)
+
+    // Defaults: card data through Oct 2, checking through Oct 1 (accounts differ, so per-account lines show).
+    private fun state(
+        vararg accounts: AccountMonthResult,
+        newestOverall: LocalDate? = today,
+        newestByAccount: Map<String, LocalDate> = mapOf(
+            "BofA card" to today, "BofA checking" to today.minusDays(1),
+        ),
+        loading: Boolean = false,
+        failed: Boolean = false,
+    ) = MoneyMonthUiState(
+        monthTitle = "October so far", month = month, today = today,
+        newestOverall = newestOverall, newestByAccount = newestByAccount,
+        loading = loading, readFailed = failed, accounts = accounts.toList(),
+    )
 
     @Test
     fun `normal month two accounts`() = capture(
@@ -94,6 +107,10 @@ class MoneyMonthScreenshotTest {
                     listOf(cat("Dining", 14_260, unverified = 6_200), cat("Fuel", 4_512)),
                 ),
             ),
+            // Every spend row of this account is from the current period.
+            AccountMonthResult.Spend(
+                account("BofA checking", listOf(cat("Groceries", 21_437, unverified = 21_437))),
+            ),
         ),
     )
 
@@ -104,7 +121,17 @@ class MoneyMonthScreenshotTest {
     )
 
     @Test
-    fun `empty month`() = capture("money-month-empty.png", state())
+    fun `empty month`() = capture("money-month-empty.png", state(newestOverall = null, newestByAccount = emptyMap()))
+
+    // The phone's real state on Oct 2: newest row Sep 26 on both accounts, nothing this month.
+    @Test
+    fun `stale data`() {
+        val sep26 = LocalDate.of(2026, 9, 26)
+        capture(
+            "money-month-stale.png",
+            state(newestOverall = sep26, newestByAccount = mapOf("BofA card" to sep26, "BofA checking" to sep26)),
+        )
+    }
 
     @Test
     fun `category drilldown`() = capture(

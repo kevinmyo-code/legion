@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.kevin.legion.backend.LedgerMirrorStatus
 import com.kevin.legion.ledger.AccountMonthSpend
 import com.kevin.legion.ledger.LedgerController
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,9 +43,13 @@ class MoneyMonthViewModel(application: Application) : AndroidViewModel(applicati
         val month = currentMonth()
         viewModelScope.launch {
             try {
-                val accounts = LedgerController.accountMonthResults(getApplication(), month)
+                val data = LedgerController.accountMonthResults(getApplication(), month)
                 _state.update {
-                    it.copy(monthTitle = monthTitleFor(month), loading = false, readFailed = false, accounts = accounts)
+                    it.copy(
+                        monthTitle = monthTitleFor(month), month = month, today = LocalDate.now(),
+                        loading = false, readFailed = false, accounts = data.accounts,
+                        newestOverall = data.newestOverall, newestByAccount = data.newestByAccount,
+                    )
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(monthTitle = monthTitleFor(month), loading = false, readFailed = true) }
