@@ -967,12 +967,10 @@ class GeminiLiveSession(
                         JSONObject().put("voiceName", voiceName.ifBlank { VOICE })
                     )
                 ))
-                // 2026-10-02: affective dialog (the model adapts tone to the user's expression).
-                // Placement is setup.generationConfig.enableAffectiveDialog, read from the
-                // google-genai SDK's mldev converter (python-genai google/genai/_live_converters.py,
-                // _LiveConnectConfig_to_mldev). Supported on v1beta per
-                // ai.google.dev/gemini-api/docs/live-guide.
-                put("enableAffectiveDialog", true)
+                // No enableAffectiveDialog. Added 2026-10-02; with it, the A25 accepted the warm
+                // socket but every tapped conversation closed on the first mic audio with "Request
+                // contains an invalid argument." Removing only this flag fixed it (bisected on the
+                // phone: VAD sensitivity and compression thresholds were not the cause).
             })
             // No `proactivity` (proactive audio) here. Added 2026-10-02 and rejected by the server
             // the same day on this v1beta endpoint and model: "Unknown name \"proactivity\" at

@@ -11,8 +11,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Pins the Live `setup` fields added 2026-10-02: VAD sensitivity, explicit
- * context-compression thresholds and affective dialog. The field names and placements are what
+ * Pins the Live `setup` fields added 2026-10-02: VAD sensitivity and explicit
+ * context-compression thresholds; proactivity and affective dialog are pinned OUT. The field names and placements are what
  * the server parses; a wrong one closes the socket (proactivity did, on the A25), so they are asserted literally.
  * Runs under Robolectric for `org.json`.
  */
@@ -37,9 +37,9 @@ class LiveSetupFlagsTest {
     }
 
     @Test
-    fun `affective dialog sits inside generationConfig`() {
+    fun `affective dialog is never sent - it breaks every tapped conversation on this model`() {
         val s = setup(true)
-        assertTrue(s.getJSONObject("generationConfig").getBoolean("enableAffectiveDialog"))
+        assertFalse(s.getJSONObject("generationConfig").has("enableAffectiveDialog"))
         assertFalse(s.has("enableAffectiveDialog"))
     }
 
