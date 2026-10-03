@@ -30,6 +30,7 @@ import shutil
 
 from _common import (
     PLAIN_ENV_VARS,
+    plain_env_from,
     SERVER_DIR,
     capture,
     die,
@@ -105,7 +106,7 @@ def main() -> int:
             f"{', '.join(missing_plain)} missing from deploy/cloudrun/.env. "
             f"Copy .env.example and fill them in first."
         )
-    plain_env = {name: cloud_env.get(name, "") for name in PLAIN_ENV_VARS}
+    plain_env = plain_env_from(cloud_env)
 
     # --dry-run must produce readable output even on a machine with no
     # gcloud installed at all (this one, today) - find_gcloud() would

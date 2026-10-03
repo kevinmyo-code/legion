@@ -47,6 +47,19 @@ SECRET_ENV_VARS = ("SECRET_KEY", "DATABASE_URL", "LEGION_VAULT_KEY", "LEGION_GEM
 # `--set-env-vars` inline, which breaks on the first comma in a value.
 PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO_DEBUG")
 
+# Optional non-secret switches: passed through when set in `.env`, omitted (so the
+# server's own default applies) when not. engine-mcp ticket 10: LEGION_MCP=on turns the
+# /mcp endpoint on, LEGION_MCP_RATE overrides its per-token throttle. Without this the
+# service could never be switched on, because --env-vars-file carries only the names above.
+OPTIONAL_PLAIN_ENV_VARS = ("LEGION_MCP", "LEGION_MCP_RATE")
+
+
+def plain_env_from(cloud_env: dict[str, str]) -> dict[str, str]:
+    """Every required plain var (blank if missing), plus each optional one that is set."""
+    env = {name: cloud_env.get(name, "") for name in PLAIN_ENV_VARS}
+    env.update({name: cloud_env[name] for name in OPTIONAL_PLAIN_ENV_VARS if cloud_env.get(name)})
+    return env
+
 
 def die(message: str) -> None:
     print(f"\n{message}", file=sys.stderr)
