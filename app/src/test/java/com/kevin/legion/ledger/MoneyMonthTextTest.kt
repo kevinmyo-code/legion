@@ -17,7 +17,10 @@ class MoneyMonthTextTest {
 
     @Test
     fun `all spend unverified`() =
-        assertEquals("Current period, settles when BofA closes it.", currentPeriodLine(spend("BofA card", 5_000, 5_000)))
+        assertEquals(
+            "Current period, settles when BofA closes it.",
+            currentPeriodLine(spend("BofA card", 5_000, 5_000)),
+        )
 
     @Test
     fun `some spend unverified names the amount`() = assertEquals(

@@ -197,6 +197,8 @@ data class MoneyMonthData(
     val newestOverall: LocalDate?,
     /** Newest row date per account, keyed by the same name a section is titled with. */
     val newestByAccount: Map<String, LocalDate>,
+    /** Newest row date per currency: a tile that sums one currency must judge staleness by its own rows. */
+    val newestByCurrency: Map<LedgerCurrency, LocalDate> = emptyMap(),
 )
 
 fun buildMoneyMonthData(
@@ -213,5 +215,58 @@ fun buildMoneyMonthData(
         accounts = buildAccountMonthResults(rows, month, notSpending),
         newestOverall = rows.maxOfOrNull { calendarDateOf(it) },
         newestByAccount = newestByAccount,
+        newestByCurrency = rows.groupBy { it.currency }.mapValues { (_, r) -> r.maxOf { calendarDateOf(it) } },
+    )
+}
+
+/**
+ * HOME's Money tile: this month's spend per category COMBINED across every account of one currency
+ * (Kevin, 2026-10-02: "bar chart of spend per category combined across both accounts"). **Summed
+ * from the per-account sections [buildAccountMonthResults] already built** - never a second spend
+ * definition - so it carries every rule they do (transfers, refunds, Transfers category, budget-month
+ * rent; uncategorised NOT counted, Kevin 2026-08-15).
+ */
+data class CombinedMonthSpend(
+    val currency: LedgerCurrency,
+    val month: YearMonth,
+    val totalCents: Long,
+    /** Categorised spend, largest first. */
+    val categories: List<CategorySpend>,
+    val uncategorizedCents: Long,
+    /** Unverified (current-period) cents inside [totalCents]. */
+    val unverifiedTotalCents: Long,
+    /** Accounts whose figures could not be read; the tile says so, it never sums them as zero. */
+    val unreadableNames: List<String>,
+    /** True when at least one account of this currency has a row in the month. */
+    val hasActivity: Boolean,
+    /** Newest row of THIS currency, any month; null when there are none. */
+    val newest: LocalDate?,
+)
+
+fun combineMonthSpend(data: MoneyMonthData, month: YearMonth, currency: LedgerCurrency): CombinedMonthSpend {
+    val spends = data.accounts.filterIsInstance<AccountMonthResult.Spend>()
+        .map { it.spend }.filter { it.currency == currency }
+    val unreadable = data.accounts.filterIsInstance<AccountMonthResult.Unreadable>().map { it.name }
+    val categories = spends.flatMap { it.categories }
+        .groupBy { it.category }
+        .map { (category, parts) ->
+            CategorySpend(
+                category = category,
+                cents = parts.sumOf { it.cents },
+                unverifiedCents = parts.sumOf { it.unverifiedCents },
+                hasPendingGuess = parts.any { it.hasPendingGuess },
+            )
+        }
+        .sortedWith(compareByDescending<CategorySpend> { it.cents }.thenBy { it.category })
+    return CombinedMonthSpend(
+        currency = currency,
+        month = month,
+        totalCents = spends.sumOf { it.totalCents },
+        categories = categories,
+        uncategorizedCents = spends.sumOf { it.uncategorized?.cents ?: 0L },
+        unverifiedTotalCents = spends.sumOf { it.unverifiedTotalCents },
+        unreadableNames = unreadable,
+        hasActivity = spends.isNotEmpty() || unreadable.isNotEmpty(),
+        newest = data.newestByCurrency[currency],
     )
 }

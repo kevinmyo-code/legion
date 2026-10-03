@@ -123,6 +123,7 @@ fun currentPeriodLine(spend: AccountMonthSpend): String? {
     return when {
         unverified <= 0L -> null
         unverified >= spend.totalCents -> "Current period, settles when $bank closes it."
-        else -> "${formatMoney(unverified, spend.currency)} is from the current period and settles when $bank closes it."
+        else ->
+            "${formatMoney(unverified, spend.currency)} is from the current period and settles when $bank closes it."
     }
 }

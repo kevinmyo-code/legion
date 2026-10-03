@@ -201,7 +201,7 @@ fun moneyTileStatus(budget: BudgetVsActual?, failed: Boolean = false): TileStatu
  * uncategorized" wording here dropped that half of the sentence, leaving a reader to guess whether
  * the figure above already includes it. "Excludes" states the exclusion in the word itself.
  */
-fun moneyDisclosureLine(budget: BudgetVsActual?): String? {
+fun moneyDisclosureLine(budget: BudgetVsActual?, includeUnverified: Boolean = true): String? {
     if (budget == null) return null
     val currency = budget.entity.currency
     val parts = mutableListOf<String>()
@@ -220,8 +220,93 @@ fun moneyDisclosureLine(budget: BudgetVsActual?): String? {
     parts += com.kevin.legion.ledger.earlyChargeSentences(budget.earlyChargesMoved, budget.month, currency)
         .map { it.removeSuffix(".") }
     val unverified = budget.lines.any { it.hasProvisionalRows } || budget.uncategorized.hasProvisionalRows
-    if (unverified) parts += "unverified"
+    // [includeUnverified] false is the bar-chart tile, which says "Current period" in its own line.
+    if (unverified && includeUnverified) parts += "unverified"
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" - ")
+}
+
+/** One bar on the Money tile: label, amount, and its width as a fraction of the largest bar. */
+data class TileBar(val label: String, val amountText: String, val fraction: Float)
+
+/**
+ * What the Money tile shows once the per-category month has been read (Kevin, 2026-10-02: "bar chart
+ * of spend per category combined across both accounts"). [status] is the one line with the combined
+ * total (or the honest empty/stale/failed wording), [currentPeriodLine] the muted word line under the
+ * total, [bars] the top 3 categories, [moreLine] "+N more", [disclosure] the caution line that must
+ * never collapse (CLAUDE.md section 4 rules 5 and 7; memory: trust disclosures are not furniture).
+ */
+data class MoneyTileModel(
+    val status: TileStatus,
+    val currentPeriodLine: String?,
+    val bars: List<TileBar>,
+    val moreLine: String?,
+    val disclosure: String?,
+)
+
+private const val MONEY_TILE_BARS = 3
+
+/**
+ * Pure: [month] reading to tile. Failed, no data at all, stale (newest row before the month began:
+ * "No October data yet", never bars of zero), nothing spent, and the normal bars are five different
+ * sentences. [budget] only supplies the exclusion disclosures ([moneyDisclosureLine], same
+ * `buildBudgetVsActual` classification the figures came from); the unverified word is replaced by
+ * [currentPeriodLine]. [syncLine] leads the disclosure, as on every figure ([moneyTileDisclosure]).
+ */
+fun moneyTileModel(
+    month: com.kevin.legion.ledger.CombinedMonthSpend?,
+    failed: Boolean,
+    budget: BudgetVsActual?,
+    syncLine: String?,
+): MoneyTileModel {
+    val exclusions = listOfNotNull(syncLine, moneyDisclosureLine(budget, includeUnverified = false))
+    return when {
+        month == null -> MoneyTileModel(
+            TileStatus(if (failed) "Couldn't read spending" else "No spending yet", alert = failed),
+            null, emptyList(), null, exclusions.joinOrNull(),
+        )
+        month.categories.isEmpty() -> MoneyTileModel(
+            TileStatus(emptyMonthTileText(month, failed), alert = failed),
+            null, emptyList(), null, (listOfNotNull(unreadableLine(month)) + exclusions).joinOrNull(),
+        )
+        else -> barsTileModel(month, (listOfNotNull(unreadableLine(month)) + exclusions).joinOrNull())
+    }
+}
+
+private fun List<String>.joinOrNull(): String? = takeIf { it.isNotEmpty() }?.joinToString("; ")
+
+private fun unreadableLine(month: com.kevin.legion.ledger.CombinedMonthSpend): String? =
+    month.unreadableNames.takeIf { it.isNotEmpty() }?.let { "Couldn't read ${it.joinToString(", ")}" }
+
+/** The status words when there is nothing to draw: failed, no data at all, stale, or nothing spent. */
+private fun emptyMonthTileText(month: com.kevin.legion.ledger.CombinedMonthSpend, failed: Boolean): String {
+    val monthName = month.month.month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH)
+    val newest = month.newest
+    return when {
+        failed -> "Couldn't read spending"
+        newest == null -> "No bank data yet"
+        newest.isBefore(month.month.atDay(1)) -> "No $monthName data yet"
+        else -> "Nothing spent yet this month"
+    }
+}
+
+private fun barsTileModel(month: com.kevin.legion.ledger.CombinedMonthSpend, disclosure: String?): MoneyTileModel {
+    val currency = month.currency
+    val largest = month.categories.first().cents.coerceAtLeast(1L)
+    val bars = month.categories.take(MONEY_TILE_BARS).map {
+        TileBar(
+            label = it.category ?: "Uncategorized",
+            amountText = formatMoney(it.cents, currency),
+            fraction = (it.cents.toFloat() / largest).coerceIn(0f, 1f),
+        )
+    }
+    val more = month.categories.size - MONEY_TILE_BARS
+    return MoneyTileModel(
+        status = TileStatus("${formatMoney(month.totalCents, currency)} this month"),
+        currentPeriodLine = if (month.unverifiedTotalCents > 0L) "Current period" else null,
+        bars = bars,
+        moreLine = if (more > 0) "+$more more" else null,
+        disclosure = disclosure,
+    )
 }
 
 /** The Groceries line's own tier note (`ledger/LedgerBudget.kt`'s `hasProvisionalRows`/

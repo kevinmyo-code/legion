@@ -37,6 +37,8 @@ data class HomeUiState(
     val listsFailed: Boolean = false,
     val budget: BudgetVsActual? = null,
     val moneyFailed: Boolean = false,
+    /** This month per category, combined across accounts ([moneyTileModel]); null until read or on a failed read. */
+    val moneyMonth: com.kevin.legion.ledger.CombinedMonthSpend? = null,
     /** [com.kevin.legion.backend.LedgerMirrorStatus.line]: non-null when the last read of the
      * engine's ledger failed, so the figure above is the phone's copy (CLAUDE.md section 7). */
     val moneySyncLine: String? = null,

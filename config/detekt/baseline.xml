@@ -5009,6 +5009,7 @@
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun DetailsRow(onOpenDetails: () -&gt; Unit)</ID>
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun MoneyDrilldownContent(drilldown: MoneyDrilldownUiState, onBack: () -&gt; Unit)</ID>
     <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun DrilldownRow(row: MoneyDrilldownRow, currency: LedgerCurrency)</ID>
+    <ID>FunctionNaming:HomeScreen.kt:@Composable private fun MoneyBars(model: MoneyTileModel)</ID>
     <ID>FunctionNaming:CategoryRow.kt:@Composable fun CategoryRow( categories: List&lt;CategoryUi&gt;, chooserRows: List&lt;ChooserRow&gt;, callbacks: CategoryCallbacks, )</ID>
     <ID>FunctionNaming:CategoryRow.kt:@Composable private fun CategoryButton( ui: CategoryUi, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>FunctionNaming:CategorySheets.kt:@Composable internal fun ChooserSheetContent( category: HomeCategory, original: List&lt;DockSlotUi&gt;, working: List&lt;DockPin&gt;, rows: List&lt;ChooserRow&gt;, onToggle: (DockPin) -&gt; Unit, onCancel: () -&gt; Unit, onSave: () -&gt; Unit, modifier: Modifier = Modifier, initialQuery: String = "", )</ID>

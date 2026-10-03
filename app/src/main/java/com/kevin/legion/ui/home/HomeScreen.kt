@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,11 +72,14 @@ private val GRID_FITS_MIN_HEIGHT = 620.dp
  * clipped when it was tried), so HOME scrolls for as long as something is playing. */
 private val NOW_PLAYING_RESERVE = 64.dp
 
-// Tile-row weights, see [TileGrid]. Sum is about 4, so the grid's total height is unchanged.
-private const val ROW_CALENDAR_WEIGHT = 0.85f
-private const val ROW_DISCLOSURE_WEIGHT = 1.4f
+// Tile-row weights, see [TileGrid]. Sum was about 4, about 4.5 since 2026-10-02 (a different split).
+// 2026-10-02: Money row 1.4 to 1.62 for the per-category bars (3 bars, "Current period", "+N more" and
+// the uncategorised disclosure must all fit); Calendar and News give the height back. Fleet stays 1.0 (89dp):
+// Recordings' two-line refusal needs it.
+private const val ROW_CALENDAR_WEIGHT = 0.75f
+private const val ROW_DISCLOSURE_WEIGHT = 1.62f
 private const val ROW_FLEET_WEIGHT = 1.0f
-private const val ROW_NEWS_WEIGHT = 0.8f
+private const val ROW_NEWS_WEIGHT = 0.72f
 
 /** Every navigation HOME's grid/rows reach - one bag so [HomeScreen] (stateful) and [HomeContent]
  * (stateless, Roborazzi-renderable with fakes) share one parameter shape. */
@@ -357,10 +362,12 @@ private fun TileGrid(
         // weights Money's two-line figure plus its two-line trust disclosure was clipped - a
         // disclosure must never be (CLAUDE.md sec 4 rules 5 and 7). Weight follows what each row can
         // carry: Money/Body hold the disclosures, News/Reports only a one-line label.
-        fun rowModifier(weight: Float) = if (fillRemaining) {
-            Modifier.fillMaxWidth().weight(weight)
-        } else {
-            Modifier.fillMaxWidth().height(96.dp)
+        // [growsToContent]: in the scrolling fallback a tile holding trust disclosures grows to fit them
+        // instead of clipping at 96dp (the Money bars and their disclosures are never cut).
+        fun rowModifier(weight: Float, growsToContent: Boolean = false) = when {
+            fillRemaining -> Modifier.fillMaxWidth().weight(weight)
+            growsToContent -> Modifier.fillMaxWidth().heightIn(min = 96.dp)
+            else -> Modifier.fillMaxWidth().height(96.dp)
         }
 
         Row(rowModifier(ROW_CALENDAR_WEIGHT), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -381,15 +388,30 @@ private fun TileGrid(
                 onClick = callbacks.onOpenLists,
             )
         }
-        Row(rowModifier(ROW_DISCLOSURE_WEIGHT), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Bars when the per-category month was read; the old budget figure otherwise (loading, tests).
+        val money = if (state.moneyMonth != null) {
+            moneyTileModel(state.moneyMonth, state.moneyFailed, state.budget, state.moneySyncLine)
+        } else {
+            MoneyTileModel(
+                moneyTileStatus(state.budget, failed = state.moneyFailed), null, emptyList(), null,
+                moneyTileDisclosure(state.budget, state.moneySyncLine),
+            )
+        }
+        Row(
+            rowModifier(ROW_DISCLOSURE_WEIGHT, growsToContent = true),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
                 accent = AreaAccent.MONEY,
                 iconRes = R.drawable.ms_account_balance_wallet,
                 title = "Money",
-                status = moneyTileStatus(state.budget, failed = state.moneyFailed),
-                disclosure = moneyTileDisclosure(state.budget, state.moneySyncLine),
+                status = money.status,
+                disclosure = money.disclosure,
                 onClick = callbacks.onOpenMoney,
+                content = if (money.bars.isEmpty() && money.currentPeriodLine == null) null else {
+                    { MoneyBars(money) }
+                },
             )
             TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
@@ -465,6 +487,7 @@ private fun TileCard(
     onClick: () -> Unit,
     disclosure: String? = null,
     trailing: (@Composable () -> Unit)? = null,
+    content: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier
@@ -515,6 +538,7 @@ private fun TileCard(
                     // width regardless, since [trailing] never draws that low.
                     modifier = Modifier.fillMaxWidth(if (trailing != null) 0.75f else 1f),
                 )
+                content?.invoke()
                 disclosure?.let {
                     Text(
                         it,
@@ -532,6 +556,56 @@ private fun TileCard(
             }
             trailing?.let {
                 Box(Modifier.align(Alignment.TopEnd)) { it() }
+            }
+        }
+    }
+}
+
+/**
+ * The Money tile's body under its total: the muted "Current period" line, up to three category bars
+ * (label, bar scaled to the largest, amount) and "+N more". Everything is words as well as shape - a
+ * bar alone carries no figure - and the line heights are tight because this tile shares a no-scroll
+ * grid (home-launcher ticket 07).
+ */
+@Composable
+private fun MoneyBars(model: MoneyTileModel) {
+    // 14sp line height, not labelSmall's 16: this tile's worst case (3 bars, "Current period",
+    // "+N more", the uncategorised disclosure) must fit its row without taking Fleet's height.
+    val tight = MaterialTheme.typography.labelSmall.copy(lineHeight = 14.sp)
+    Column(Modifier.fillMaxWidth()) {
+        // "+N more" shares the "Current period" line (right-aligned): one 14dp line instead of two.
+        if (model.currentPeriodLine != null || model.moreLine != null) {
+            Row(Modifier.fillMaxWidth()) {
+                Text(
+                    model.currentPeriodLine.orEmpty(),
+                    style = tight,
+                    color = SoftColors.text3,
+                    modifier = Modifier.weight(1f),
+                )
+                model.moreLine?.let { Text(it, style = tight, color = SoftColors.text3) }
+            }
+        }
+        model.bars.forEach { bar ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    bar.label,
+                    style = tight,
+                    color = SoftColors.text2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(60.dp),
+                )
+                // The amount is measured first (never wrapped: "USD" alone would be a lost figure),
+                // the bar takes what is left between the label and the amount.
+                Box(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(bar.fraction)
+                            .height(6.dp)
+                            .background(AreaAccent.MONEY.onContainer, RoundedCornerShape(3.dp)),
+                    )
+                }
+                Text(bar.amountText, style = tight, color = SoftColors.text, maxLines = 1, softWrap = false)
             }
         }
     }
