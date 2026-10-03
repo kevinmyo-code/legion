@@ -5,6 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { seedAspects } from '../src/test/aspects-seed'
 import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
 import { calendarShots } from './calendar-shots'
+import { familyShots } from './family-shots'
 import { seedLedger, seedSpend } from '../src/test/ledger-seed'
 
 /**
@@ -52,6 +53,8 @@ export interface Shot {
    * window to the page's height would put a bottom sheet at the bottom of a
    * page-tall window, which is not where a person sees it. */
   viewportOnly?: true
+  /** A phone-width screen with no wide counterpart: skipped at the desktop size. */
+  familyOnly?: true
 }
 
 const seeded = () => createEngine({ ...seedHousehold(), householdName: 'The Test House' })
@@ -254,6 +257,8 @@ const ROUTES: Shot[] = [
 
   // Tickets 07, 09, 13: the calendar. Rows live in `calendar-shots.ts`.
   ...calendarShots,
+  // Ticket 10: Mia's Home and the family Lists. Rows live in `family-shots.ts`.
+  ...familyShots,
   // Ticket 12: Money.
   { name: 'money', url: '/money', ready: 'Showing 15 of 15 transactions.', engine: withLedger, labels: ['12'], workbenchOnly: 'card' },
   {
@@ -365,7 +370,7 @@ const ROUTES: Shot[] = [
     labels: ['12'],
     workbenchOnly: true,
   },
-  { name: 'home-money', url: '/', ready: '7 transactions need a category', engine: withLedger, labels: ['12'], workbenchOnly: true },
+  { name: 'home-money', url: '/', ready: '7 transactions need a category', engine: withLedger, labels: ['12', '10'], workbenchOnly: true },
 ]
 
 /** Answer every `/api` call from the fake engine. */
@@ -402,10 +407,11 @@ for (const viewport of VIEWPORTS) {
       })
 
       const narrow = viewport.width < 1024
-      const shots = ROUTES.filter((shot) => !shot.labels || shot.labels.includes(LABEL)).filter(
+      const shots = ROUTES.filter((shot) => !shot.labels || shot.labels.includes(LABEL))
         // A workbench-only screen has no phone-size picture except the card.
-        (shot) => !(narrow && shot.workbenchOnly === true),
-      )
+        .filter((shot) => !(narrow && shot.workbenchOnly === true))
+        // A phone-only screen has no desktop picture.
+        .filter((shot) => !(!narrow && shot.familyOnly))
       for (const shot of shots) {
         test(shot.name, async ({ page }) => {
           const engine = (shot.engine ?? seeded)()

@@ -1,26 +1,23 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { useSetChecklistTick } from '@/api/mutations'
 import { useChanges } from '@/api/queries'
 import type { Checklist, ChecklistItem, ChecklistTick } from '@/api/types'
 import { DeleteChecklistControl } from '@/components/checklist-delete'
+import { DueItemRow } from '@/components/due-item-row'
 import { AgendaPanel } from '@/components/agenda-panel'
-import { EventRow } from '@/components/event-row'
 import { GroupedTasks } from '@/components/grouped-tasks'
 import { Freshness } from '@/components/freshness'
 import { HorizonStrip } from '@/components/horizon-strip'
-import { MonthCalendar } from '@/components/month-calendar'
 import { NewEventButton } from '@/components/new-event-button'
 import { VisibilityMark } from '@/components/visibility-mark'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WorkbenchMoneyPanels } from '@/components/workbench/home-money'
 import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
-import { buildHorizon, loadSentence, nextUp, overdueOccurrences } from '@/lib/horizon'
-import { occurrencesOnDay } from '@/lib/recurrence'
+import { buildHorizon, nextUp, overdueOccurrences } from '@/lib/horizon'
 import { useSurface } from '@/lib/surface'
-import { itemsDueOn, type DueItem } from '@/lib/today'
+import { FamilyHome } from '@/screens/home-family'
+import { itemsDueOn } from '@/lib/today'
 import { visibilityOf } from '@/lib/visibility'
 
 /** Live (not tombstoned), non-archived rows only, matching every other
@@ -75,49 +72,18 @@ function HomeListCard({
 }
 
 export const Route = createFileRoute('/_authed/')({
-  component: Today,
+  component: Home,
 })
 
-function DueItemRow({ due }: { due: DueItem }) {
-  const today = todayEpochDay()
-  // Every item here comes from `itemsDueOn`, which only ever includes a
-  // checklist with a real schedule - `tickState`'s own rule for a scheduled
-  // list is that `dayToClear` is always today, so this never needs to look
-  // up a different day the way a plain list's item can.
-  const setTick = useSetChecklistTick()
-
-  return (
-    <li className="flex min-h-11 items-center gap-3 rounded-[1.125rem] bg-surface-2 py-1.5 pr-3 pl-4">
-      <Checkbox
-        checked={due.tickedToday}
-        disabled={setTick.isPending}
-        onCheckedChange={(checked) =>
-          setTick.mutate({
-            checklistId: due.checklist.id,
-            itemId: due.item.id,
-            ticked: checked === true,
-            today,
-            dayToClear: today,
-          })
-        }
-        aria-label={`Mark "${due.item.text}" ${due.tickedToday ? 'not done' : 'done'} for today`}
-      />
-      <span
-        className={
-          due.tickedToday
-            ? 'flex-1 text-[0.9375rem] text-muted-foreground line-through'
-            : 'flex-1 text-[0.9375rem] font-medium'
-        }
-      >
-        {due.item.text}
-      </span>
-      <span className="shrink-0 text-[0.8125rem] text-muted-foreground">{due.checklist.name}</span>
-      <VisibilityMark visibility={visibilityOf(due.checklist)} />
-      {setTick.isError && (
-        <span className="text-[0.8125rem] text-destructive">Could not save. {setTick.error.message}</span>
-      )}
-    </li>
-  )
+/**
+ * `/`: the family Home below 1024 px (Mia's glance-and-tick day, ticket 10) or
+ * the workbench Home from 1024 px up. Two trees, not one page reflowed
+ * (ADR 0053); the family tree lives in `screens/home-family.tsx` and this file
+ * is the workbench's.
+ */
+function Home() {
+  const surface = useSurface()
+  return surface === 'family' ? <FamilyHome /> : <WorkbenchHome />
 }
 
 function Section({
@@ -140,9 +106,8 @@ function Section({
   )
 }
 
-function Today() {
+function WorkbenchHome() {
   const changes = useChanges(true)
-  const surface = useSurface()
 
   if (changes.isPending) {
     return (
@@ -182,10 +147,6 @@ function Today() {
   const skips = changes.data.event_skips ?? []
   const horizon = buildHorizon(today, events, undefined, skips)
   const overdue = overdueOccurrences(today, events, skips)
-  const todaysEvents = occurrencesOnDay(today, events, skips)
-  const tomorrowsEvents = occurrencesOnDay(today + 1, events, skips)
-  const tomorrowsTasks = tomorrowsEvents.filter((o) => o.event.kind === 'task')
-  const tomorrowsCalendar = tomorrowsEvents.filter((o) => o.event.kind !== 'task')
   const upcoming = nextUp(horizon)
 
   const checklists = (changes.data.checklists ?? []).filter(isLive).filter((c) => !c.archived)
@@ -224,15 +185,7 @@ function Today() {
           <NewEventButton />
         </div>
 
-        {/* The desk's agenda is the next week in order; the phone keeps the month
-            grid and the two day sections, which `/calendar` also offers. */}
-        {surface === 'workbench' ? (
-          <AgendaPanel events={events} skips={skips} />
-        ) : (
-          <Section title="Calendar">
-            <MonthCalendar events={events} skips={skips} />
-          </Section>
-        )}
+        <AgendaPanel events={events} skips={skips} />
 
         {/* Kept, not hidden. A deadline that slid is still work, and dropping it
             quietly is the same class of lie as rendering a failed read as an
@@ -257,39 +210,6 @@ function Today() {
             </ul>
           )}
         </Section>
-
-        {surface !== 'workbench' && (
-          <>
-          <Section title="On today">
-            {todaysEvents.length === 0 ? (
-              <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar today.</p>
-            ) : (
-              <ul className="flex flex-col gap-1.5">
-                {todaysEvents.map((occurrence) => (
-                  <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
-                ))}
-              </ul>
-            )}
-          </Section>
-
-          <Section title={dayLabel(1)} aside={loadSentence(horizon[1])}>
-            {tomorrowsEvents.length === 0 ? (
-              <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar tomorrow.</p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {tomorrowsTasks.length > 0 && <GroupedTasks tasks={tomorrowsTasks} />}
-                {tomorrowsCalendar.length > 0 && (
-                  <ul className="flex flex-col gap-1.5">
-                    {tomorrowsCalendar.map((occurrence) => (
-                      <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </Section>
-          </>
-        )}
       </div>
 
       <aside className="flex w-full shrink-0 flex-col gap-7 lg:w-80">

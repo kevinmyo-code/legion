@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { CHANGES_POLL_MS } from '@/api/refetch'
 import { routeTree } from '@/routeTree.gen'
+import { stubSurface } from '@/test/surface'
 import { createEngine, engineFetch, makeEvent, seedHousehold, todayAt, type Engine } from '@/test/engine'
 
 /**
@@ -34,7 +35,8 @@ function setVisibility(state: 'visible' | 'hidden') {
   document.dispatchEvent(new Event('visibilitychange', { bubbles: true }))
 }
 
-function renderApp(engine: Engine, initialEntry = '/') {
+function renderApp(engine: Engine, initialEntry = '/', surface: 'family' | 'workbench' = 'family') {
+  stubSurface(surface)
   vi.stubGlobal('fetch', engineFetch(engine))
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
@@ -123,7 +125,7 @@ describe('polling', () => {
 describe('when a refresh fails', () => {
   test('the rows stay on screen and the freshness line says they are old', async () => {
     const engine = createEngine(seedHousehold())
-    renderApp(engine)
+    renderApp(engine, '/', 'workbench')
     await screen.findAllByText('Soccer pickup')
     expect(screen.getByText(/Last read just now\./)).toBeInTheDocument()
 
@@ -149,7 +151,7 @@ describe('when a refresh fails', () => {
 
   test('the stale line goes away when the next refresh works', async () => {
     const engine = createEngine(seedHousehold())
-    renderApp(engine)
+    renderApp(engine, '/', 'workbench')
     await screen.findAllByText('Soccer pickup')
 
     engine.changesFailing = true
@@ -165,7 +167,7 @@ describe('when a refresh fails', () => {
   test('a first load that fails still says unreachable, never an empty day', async () => {
     const engine = createEngine(seedHousehold())
     engine.changesFailing = true
-    renderApp(engine)
+    renderApp(engine, '/', 'workbench')
 
     expect(
       await screen.findByText(/Could not reach the engine, so this is not today's real list\./),

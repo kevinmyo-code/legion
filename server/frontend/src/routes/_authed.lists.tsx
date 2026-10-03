@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { api } from '@/api/client'
@@ -10,6 +10,7 @@ import { newChecklist, newChecklistItem, type Checklist, type ChecklistItem, typ
 import { DeleteChecklistControl } from '@/components/checklist-delete'
 import { Freshness } from '@/components/freshness'
 import { ListVisibilityToggle } from '@/components/list-visibility-toggle'
+import { PinButton } from '@/components/pin-button'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -143,18 +144,34 @@ function ChecklistCard({
   items: ChecklistItem[]
   ticks: ChecklistTick[]
 }) {
+  const [showTicked, setShowTicked] = useState(false)
   const ownItems = items.filter((item) => item.checklist === checklist.id)
   const today = todayEpochDay()
   const complete = isChecklistComplete(checklist, items, ticks, today)
+  // A ticked item drops out of the list into "Ticked" rather than vanishing: a
+  // mis-tap is undone by opening that section and unticking it (spec D11, user
+  // story 13). `tickState` is the one rule for "ticked", so a scheduled list's
+  // items come back tomorrow.
+  const open = ownItems.filter((item) => !tickState(checklist, item, ticks, today).ticked)
+  const ticked = ownItems.filter((item) => tickState(checklist, item, ticks, today).ticked)
+  const tickedId = `ticked-${checklist.id}`
 
   return (
     <div className="rounded-sheet bg-card p-4 md:p-5">
-      <div className="mb-2 flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col items-start gap-1">
-          <h2 className="text-lg font-medium">{checklist.name}</h2>
-          <ListVisibilityToggle checklist={checklist} />
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col items-start gap-1.5">
+          <h2 className="text-[1.375rem] leading-tight font-medium">{checklist.name}</h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <ListVisibilityToggle checklist={checklist} />
+            {ownItems.length > 0 && (
+              <span className="text-[0.8125rem] text-muted-foreground">{open.length} left</span>
+            )}
+          </div>
         </div>
-        <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+          <PinButton checklist={checklist} />
+        </div>
       </div>
       {complete && (
         <p className="mb-2 rounded-control bg-surface-3 px-3.5 py-2.5 text-[0.8125rem] text-muted-foreground">
@@ -164,12 +181,38 @@ function ChecklistCard({
       )}
       {ownItems.length === 0 ? (
         <p className="text-[0.9375rem] text-muted-foreground">Nothing on this list yet.</p>
+      ) : open.length === 0 ? (
+        <p className="text-[0.9375rem] text-muted-foreground">Nothing left on this list.</p>
       ) : (
-        <ul className="flex flex-col">
-          {ownItems.map((item) => (
+        <ul className="flex flex-col divide-y divide-outline-variant">
+          {open.map((item) => (
             <ItemRow key={item.id} checklist={checklist} item={item} ticks={ticks} />
           ))}
         </ul>
+      )}
+      {ticked.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            aria-expanded={showTicked}
+            aria-controls={tickedId}
+            className="flex min-h-11 w-full items-center gap-1.5 rounded-control px-1 text-left text-[0.9375rem] font-medium text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-primary"
+            onClick={() => setShowTicked((value) => !value)}
+          >
+            Ticked {ticked.length}
+            <ChevronDown
+              className={`size-4 transition-transform ${showTicked ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+          {showTicked && (
+            <ul id={tickedId} className="flex flex-col divide-y divide-outline-variant">
+              {ticked.map((item) => (
+                <ItemRow key={item.id} checklist={checklist} item={item} ticks={ticks} />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       <AddItemForm checklistId={checklist.id} />
     </div>

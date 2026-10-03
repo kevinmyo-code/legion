@@ -56,11 +56,6 @@ test('a skipped occurrence is not shown, and the day around it is', async () => 
   await screen.findByRole('heading', { name: 'On today' })
   expect(within(section('On today')).getByText('Nothing on the calendar today.')).toBeInTheDocument()
   expect(within(section('On today')).queryByText('Water the ferns')).not.toBeInTheDocument()
-  // Tomorrow's occurrence is untouched by today's skip.
-  const tomorrow = new Date(Date.now() + 86_400_000).toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  })
-  expect(within(section(tomorrow)).getByText('Water the ferns')).toBeInTheDocument()
+  // The days around the skip are the calendar's to show (Home is today only);
+  // `-calendar.test.tsx` holds the "other days of the series are still there" half.
 })

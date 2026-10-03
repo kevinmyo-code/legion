@@ -47,7 +47,11 @@ export interface EngineOptions {
   pageSize?: number
   /** What `GET /api/ledger/spend` answers; an empty month when absent. */
   spend?: Spend
+  /** Household members `GET /api/households/me` lists; nobody when absent. */
+  members?: Member[]
 }
+
+export type Member = components['schemas']['HouseholdMember']
 
 export type Spend = components['schemas']['Spend']
 
@@ -69,6 +73,8 @@ export interface Engine {
   /** The body of `GET /api/ledger/spend`. Its categories' `target_cents` follow
    * the live `ledger/budget_targets` rows, so setting a target round-trips. */
   spend: Spend
+  /** The household's members, for `GET /api/households/me`. */
+  members: Member[]
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -267,6 +273,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     tables: options.tables ?? {},
     pageSize: options.pageSize ?? 500,
     spend: options.spend ?? emptySpend(),
+    members: options.members ?? [],
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -306,7 +313,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
         if (engine.householdFailing) {
           return { status: 503, body: { detail: 'The engine could not read the household.' } }
         }
-        return { status: 200, body: { id: 'h1', name: engine.householdName, members: [] } }
+        return { status: 200, body: { id: 'h1', name: engine.householdName, members: engine.members } }
       }
       if (method === 'GET' && pathname === '/api/changes') {
         if (engine.changesFailing) {

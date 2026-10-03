@@ -111,13 +111,19 @@ test('a tick shows as done immediately, before the POST and the refetch resolve'
   fireEvent.click(checkbox)
 
   // The POST has not resolved yet (`resolveTick` has not been called) - if
-  // the checkbox only moved after the network settled, this would still
-  // read unchecked here.
-  await waitFor(() => expect(checkbox).toBeChecked())
+  // the item only moved after the network settled, it would still be in the
+  // open list here. A ticked item drops into the collapsed "Ticked" section
+  // (spec D11), so the proof is that section appearing, then the item in it
+  // reading ticked, all before the engine has answered.
+  const ticked = await screen.findByRole('button', { name: /Ticked 1/ })
+  expect(screen.queryByLabelText('Mark "Milk" done')).not.toBeInTheDocument()
+  fireEvent.click(ticked)
+  const moved = await screen.findByLabelText('Mark "Milk" not done')
+  expect(moved).toBeChecked()
 
   resolveTick()
   await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(3))
-  expect(checkbox).toBeChecked()
+  expect(screen.getByLabelText('Mark "Milk" not done')).toBeChecked()
 })
 
 test('a failed tick rolls back the checkbox and says it could not save', async () => {

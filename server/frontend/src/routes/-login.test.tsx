@@ -68,7 +68,7 @@ test('a correct email and password signs in and lands on Today', async () => {
   })
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
-  expect(await screen.findByText('Nothing due today.')).toBeInTheDocument()
+  expect(await screen.findByText('Nothing to do today.')).toBeInTheDocument()
   // Both the mobile header and the desktop rail render the household name at
   // once in JSDOM (there is no real viewport to apply the `md:hidden` /
   // `hidden md:flex` split), so this asserts presence rather than a single
@@ -99,7 +99,7 @@ test('a wrong password says so and does not navigate anywhere', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
   expect(await screen.findByText('Wrong email or password.')).toBeInTheDocument()
-  expect(screen.queryByText('Nothing due today.')).not.toBeInTheDocument()
+  expect(screen.queryByText('Nothing to do today.')).not.toBeInTheDocument()
 })
 
 test('visiting Today while signed out redirects to /login rather than showing a blank shell', async () => {
@@ -143,7 +143,7 @@ test('a transport failure on Today reads as unreachable, never as an empty day',
   renderApp('/')
 
   expect(
-    await screen.findByText(/Could not reach the engine, so this is not today's real list\./),
+    await screen.findByText(/Could not reach the engine, so what is due today is not known\./),
   ).toBeInTheDocument()
-  expect(screen.queryByText('Nothing due today.')).not.toBeInTheDocument()
+  expect(screen.queryByText('Nothing to do today.')).not.toBeInTheDocument()
 })

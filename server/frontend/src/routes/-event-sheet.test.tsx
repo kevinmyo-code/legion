@@ -373,6 +373,9 @@ test('a Canvas row is not offered for editing: the poller owns it', async () => 
   })
   const engine = createEngine({ events: [canvas] })
   await home(engine)
-  expect(within(onToday()).queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
-  expect(within(onToday()).getByRole('checkbox', { name: /Mark "HW 4 due"/ })).toBeInTheDocument()
+  // A task is a thing to do, so on the phone's Home it sits in "To do today"
+  // rather than "On today"; it is not offered for editing wherever it is.
+  const toDo = (await screen.findByRole('heading', { name: 'To do today' })).closest('section') as HTMLElement
+  expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
+  expect(within(toDo).getByRole('checkbox', { name: /Mark "HW 4 due"/ })).toBeInTheDocument()
 })

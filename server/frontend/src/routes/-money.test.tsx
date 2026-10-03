@@ -697,12 +697,14 @@ describe('home', () => {
     expect(screen.queryByText('Every transaction has a category.')).not.toBeInTheDocument()
   })
 
-  test('family Home has neither money panel, and reads no ledger', async () => {
+  test('family Home has no Needs a decision panel and reads no transactions, only the engine spend', async () => {
     const engine = engineWith()
     renderApp('/', engine, 'family')
-    await screen.findByText('Nothing due today.')
+    await screen.findByText('Nothing to do today.')
+    expect(await screen.findByText('$642.55')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Needs a decision' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Spent this month' })).not.toBeInTheDocument()
-    expect(Object.keys(engine.calls).filter((key) => key.includes('ledger'))).toEqual([])
+    expect(Object.keys(engine.calls).filter((key) => key.includes('ledger'))).toEqual([
+      'GET /api/ledger/spend',
+    ])
   })
 })

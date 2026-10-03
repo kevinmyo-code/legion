@@ -41,9 +41,14 @@ export function isCanvasRow(occurrence: Pick<Occurrence, 'event'>): boolean {
 export function EventRow({
   occurrence,
   showCourse = true,
+  detail,
 }: {
   occurrence: Occurrence
   showCourse?: boolean
+  /** For a TASK: a line under the title that stands in for the time column on the
+   * right. A narrow screen has no room for a title, a time and a mark side by
+   * side, and an overdue row needs the DAY it was due more than the clock. */
+  detail?: string
 }) {
   const { event } = occurrence
   const sheet = useEventSheet()
@@ -73,6 +78,9 @@ export function EventRow({
         <span className="block text-[0.8125rem] opacity-75">{event.location}</span>
       )}
       {occurrence.recurring && <span className="ml-2 text-[0.8125rem] opacity-75">Repeats</span>}
+      {isTask && detail !== undefined && (
+        <span className="block text-[0.8125rem] text-muted-foreground tabular-nums">{detail}</span>
+      )}
       {canvas && <span className="block text-[0.8125rem] text-muted-foreground">{canvas}</span>}
     </>
   )
@@ -106,7 +114,7 @@ export function EventRow({
       ) : (
         <div className="min-w-0 flex-1">{body}</div>
       )}
-      {isTask && (
+      {isTask && detail === undefined && (
         <span className="mt-0.5 shrink-0 text-[0.8125rem] tabular-nums text-muted-foreground">
           {timeLabel(occurrence)}
         </span>
