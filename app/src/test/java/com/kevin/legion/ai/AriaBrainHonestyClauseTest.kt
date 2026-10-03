@@ -50,7 +50,7 @@ class AriaBrainHonestyClauseTest {
         assertTrue(CANNOT_CLAUSE.contains("came back successful"))
         assertTrue(
             "an unsuccessful tool result must be treated as no tool at all - ticket 03's " +
-                "open_navigation can come back false and the driver has to hear that",
+                "navigate can come back false (nothing is navigating) and the driver has to hear that",
             CANNOT_CLAUSE.contains("unsuccessful is the same as no tool"),
         )
         for (capability in listOf("navigation", "Maps", "garage", "Spotify")) {

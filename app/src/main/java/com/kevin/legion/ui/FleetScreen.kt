@@ -1418,17 +1418,17 @@ private fun PreviewFleetConnectedEmpty() = LegionTheme {
 /**
  * `fleet/places` (command-center ticket 06). Rewritten from ticket 07's absorbed-but-unrewritten
  * single Text blob into a real management screen, per ADR 0035 ("every voice capability has a
- * non-voice path") applied to `tag_place`/`forget_place`/`get_current_location`/`open_navigation` -
- * all four were voice-only. **Not a second implementation of any of them**: tag and forget go
+ * non-voice path") applied to `tag_place`/`forget_place`/`get_current_location`/`open_navigation`
+ * (since replaced by the `navigate` tool family, mapbox-nav ticket 11) - all four were voice-only.
+ * **Not a second implementation of any of them**: tag and forget go
  * through the exact [PlaceController.tagPlace]/[PlaceController.forgetPlace] functions the voice
  * tools call (`service/LiveToolbox.kt`'s `dispatch` for `tag_place`/`forget_place`), the
  * current-location readout mirrors `getCurrentLocation`'s own three failure branches and
  * geocode-with-coords-fallback line for line (that function is private to `LiveToolbox`, so it is
  * restated here rather than reached into - see [currentLocationReadout]'s own doc), and the
  * navigate button opens the native nav screen on the place (mapbox-nav ticket 10). **It used to
- * call `NavigationController.launch` directly, the same function `open_navigation` dispatches to;
- * that Google Maps hand-off is no longer reachable from this screen** (ticket 11 retires the
- * controller and the voice tool together).
+ * hand the destination to Google Maps through a launcher the `open_navigation` voice tool shared;
+ * that hand-off is gone from the app** (ADR 0054, retired by ticket 11 together with the tool).
  *
  * **Delete keeps a confirm step on purpose.** ADR 0035 + this ticket's own wording: "a misheard
  * voice delete is why the confirm exists - keep the same care by hand." [PlaceController.forgetPlace]

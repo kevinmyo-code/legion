@@ -15,8 +15,11 @@ tags: [adr]
 There is no hand-off to another map app.** With no token, or with the SDK unable to run, navigation
 is unavailable and the assistant says so in words and points at Setup. Phone only.
 
-Until the Mapbox path ships, `open_navigation`'s Google Maps hand-off stays live. It is removed in
-the same change that ships its replacement, never ahead of it.
+~~Until the Mapbox path ships, `open_navigation`'s Google Maps hand-off stays live. It is removed in
+the same change that ships its replacement, never ahead of it.~~ **Done 2026-10-03 (mapbox-nav
+ticket 11):** the four voice tools (`navigate`, `change_trip`, `trip_status`, `end_trip`) shipped and
+`open_navigation`, `NavigationController` and the `google.navigation` / `geo` `<queries>` went in
+that same change.
 
 ## Context
 

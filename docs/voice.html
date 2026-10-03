@@ -25,7 +25,7 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <main>
 <h1>Talking to LEGION</h1>
 <p class="intro">LEGION is a voice assistant for the phone. Hold the button, or say "Excelsior" if the wake phrase is switched on, then just talk. Say "that will be all" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing.</p>
-<p class="count">121 things it can do by voice.</p>
+<p class="count">124 things it can do by voice.</p>
 <section><h2>Getting started</h2>
 <p class="blurb">The first things worth trying.</p>
 <dl>
@@ -51,7 +51,6 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <dt>&ldquo;Save this as work&rdquo;</dt><dd>Saves where you are now under a name, so reminders can trigger there.<span class="hands">By hand: Fleet &gt; Saved places screen.</span></dd>
 <dt>&ldquo;Forget the old gym&rdquo;</dt><dd>Removes a saved place.<span class="hands">By hand: Fleet &gt; Saved places screen, delete behind a confirm.</span></dd>
 <dt>&ldquo;Show my saved places&rdquo;</dt><dd>Puts your saved places on screen.<span class="hands">By hand: Is itself the Fleet &gt; Saved places screen.</span></dd>
-<dt>&ldquo;Navigate to the hardware store&rdquo;</dt><dd>Hands off to your maps app.<span class="hands">By hand: Fleet &gt; Saved places screen, Navigate button on each place.</span></dd>
 <dt>&ldquo;Show me my agenda&rdquo;</dt><dd>Pops up today&#x27;s due items - reminders, appointments, anything dated today - without leaving where you are.<span class="hands">By hand: Calendar tab, today&#x27;s day view shows the same thing directly.</span></dd>
 <dt>&ldquo;Show me my grocery spend by month&rdquo;</dt><dd>Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.<span class="hands">By hand: Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping.</span></dd>
 <dt>&ldquo;What does the engine say is due this week?&rdquo;</dt><dd>Asks your household server directly for records the phone does not keep itself - what is due, checklists, places, body, ledger, pantry and fleet history - and can add or change them. If the server is unreachable it says nothing was read or written, never that you have nothing.<span class="hands">By hand: A dispatcher onto data your own screens already show (Calendar, checklists, Body, Ledger, Pantry, Fleet, places, recordings); two internal sync tables with no screen are refused.</span></dd>
@@ -91,6 +90,10 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <section><h2>Driving</h2>
 <p class="blurb">Things that only make sense while you are actually out.</p>
 <dl>
+<dt>&ldquo;Take me to the hardware store&rdquo;</dt><dd>Starts turn-by-turn directions inside LEGION, on its own map, with each turn spoken in one steady voice. It looks in your saved places, calendar and contacts first, then on the map. If several places could match it names the best one with its distance and waits for your yes before going. Say &quot;show me the routes&quot; to look without starting. It says so plainly when it could not find the place or no route came back.<span class="hands">By hand: Fleet &gt; Navigate: type the place, pick a route, tap Start. Every saved place also has a Navigate button.</span></dd>
+<dt>&ldquo;Add a stop at a gas station&rdquo;</dt><dd>Changes the trip you are on: add or drop a stop, avoid tolls, highways or ferries, take the other route, mute or unmute the spoken turns (never the assistant itself), show the whole route or follow you again. If the new route cannot include the change it says the trip is unchanged.<span class="hands">By hand: The navigation screen: the Stops, No tolls, Routes and Mute tiles and the overview button. Avoiding highways or ferries is voice only.</span></dd>
+<dt>&ldquo;How long until I get there?&rdquo;</dt><dd>Reads the live trip: time left, distance left, arrival time, the next turn, the road you are on, the speed limit and traffic. With no trip it says it is not navigating, and a value the map does not have, like a speed limit on a road with none posted, it says it does not know.<span class="hands">By hand: The navigation screen&#x27;s turn banner and trip sheet show the same numbers.</span></dd>
+<dt>&ldquo;Stop navigating&rdquo;</dt><dd>Ends the trip, or clears a route you were only previewing. Says so if nothing was running.<span class="hands">By hand: The navigation screen&#x27;s End button.</span></dd>
 <dt>&ldquo;Open the garage&rdquo;</dt><dd>Triggers the garage relay. Asks you to confirm, and never claims to know whether the door opened or closed.<span class="hands">By hand: Voice only - no garage button in the app.</span></dd>
 <dt>&ldquo;Turn it up&rdquo;</dt><dd>Changes the volume.<span class="hands">By hand: Media panel, volume control.</span></dd>
 </dl></section>

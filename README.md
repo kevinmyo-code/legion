@@ -42,16 +42,16 @@ this README does not pretend they have.)
 
 <!-- VOICE-SURFACE:START -->
 
-**121 voice tools across 15 domains**, dispatched from one Gemini Live
+**124 voice tools across 15 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
 | Domain | Tools | Something you would say |
 |---|---|---|
 | Getting started | 9 | &ldquo;Give me a sitrep&rdquo; |
-| Your day | 13 | &ldquo;Remind me to renew my registration next month&rdquo; |
+| Your day | 12 | &ldquo;Remind me to renew my registration next month&rdquo; |
 | The cars | 28 | &ldquo;Any trouble codes?&rdquo; |
-| Driving | 2 | &ldquo;Open the garage&rdquo; |
+| Driving | 6 | &ldquo;Take me to the hardware store&rdquo; |
 | Money | 11 | &ldquo;What's my balance?&rdquo; |
 | Food and shopping | 8 | &ldquo;Scan this receipt&rdquo; |
 | Training and sleep | 10 | &ldquo;Squats, five at a hundred kilos&rdquo; |

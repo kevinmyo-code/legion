@@ -104,8 +104,20 @@ class LiveSetupPayloadSizeTest {
      * engine tool. Already trimmed to a two-sentence description and a one-line `intent`; the
      * rules it carries (engine-unreachable wording, record-versus-ask) cannot move out because
      * the model only ever sees this block.
+     *
+     * **Raised to 22,750 on 2026-10-03 (mapbox-nav ticket 11, the four navigation tools).**
+     * Measured that day: 89 declarations, 82,547 chars of tools JSON plus 7,879 chars of system
+     * instruction = 90,426 chars, ~22,606 estimated tokens, against ~22,111 before (about 495
+     * tokens net: four declarations in, `open_navigation` out). Kevin ruled four wide tools
+     * (ticket 04) precisely because Live re-bills every declaration every turn, so the surface
+     * is already the narrow option; each description was cut to the sentences that carry an
+     * honesty rule (an outcome verb only after a successful result, "several places match means
+     * nothing started", "not navigating" is its own answer, mute never mutes the assistant) and
+     * `navigate` is the largest at roughly 1,200 chars. Trimming those would weaken the exact
+     * clauses CLAUDE.md sec 7 requires, so the ceiling moved. Headroom is ~0.6%, so the next
+     * tool addition trips this again, as intended.
      */
-    private val ceilingTokens = 22_250
+    private val ceilingTokens = 22_750
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {

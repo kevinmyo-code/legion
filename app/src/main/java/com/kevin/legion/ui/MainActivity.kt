@@ -572,7 +572,11 @@ private fun LegionShell(
         // [deepLinkNonce] and [openItemNonce] tick together (both bump in [readDeepLinkExtras] on
         // every intent), so keying this single effect on [deepLinkNonce] alone still re-navigates
         // on a repeat reminder tap.
-        LegionRoute.deepLinkTargetFor(deepLinkRoute, openItemId)?.let { navController.navigate(it) }
+        // The nav screen is single-top: a voice-started trip brings LEGION forward onto it (mapbox-nav
+        // ticket 11), and it may already be the screen showing, which must not stack a second copy.
+        LegionRoute.deepLinkTargetFor(deepLinkRoute, openItemId)?.let { target ->
+            navController.navigate(target) { launchSingleTop = target == LegionRoute.NAVIGATE }
+        }
     }
 
     // The Spotify OAuth token exchange (2026-08-12). Runs HERE, above the NavHost, not inside

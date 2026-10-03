@@ -73,9 +73,14 @@ COPY = {
     "tag_place": ("Save this as work", "Saves where you are now under a name, so reminders can trigger there.", "Fleet > Saved places screen."),
     "forget_place": ("Forget the old gym", "Removes a saved place.", "Fleet > Saved places screen, delete behind a confirm."),
     "show_saved_places": ("Show my saved places", "Puts your saved places on screen.", "Is itself the Fleet > Saved places screen."),
-    "open_navigation": ("Navigate to the hardware store", "Hands off to your maps app.", "Fleet > Saved places screen, Navigate button on each place."),
     "show_agenda_modal": ("Show me my agenda", "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", "Calendar tab, today's day view shows the same thing directly."),
     "show_generated_view": ("Show me my grocery spend by month", "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
+
+    # --- Navigation (mapbox-nav ticket 11) ---
+    "navigate": ("Take me to the hardware store", "Starts turn-by-turn directions inside LEGION, on its own map, with each turn spoken in one steady voice. It looks in your saved places, calendar and contacts first, then on the map. If several places could match it names the best one with its distance and waits for your yes before going. Say \"show me the routes\" to look without starting. It says so plainly when it could not find the place or no route came back.", "Fleet > Navigate: type the place, pick a route, tap Start. Every saved place also has a Navigate button."),
+    "change_trip": ("Add a stop at a gas station", "Changes the trip you are on: add or drop a stop, avoid tolls, highways or ferries, take the other route, mute or unmute the spoken turns (never the assistant itself), show the whole route or follow you again. If the new route cannot include the change it says the trip is unchanged.", "The navigation screen: the Stops, No tolls, Routes and Mute tiles and the overview button. Avoiding highways or ferries is voice only."),
+    "trip_status": ("How long until I get there?", "Reads the live trip: time left, distance left, arrival time, the next turn, the road you are on, the speed limit and traffic. With no trip it says it is not navigating, and a value the map does not have, like a speed limit on a road with none posted, it says it does not know.", "The navigation screen's turn banner and trip sheet show the same numbers."),
+    "end_trip": ("Stop navigating", "Ends the trip, or clears a route you were only previewing. Says so if nothing was running.", "The navigation screen's End button."),
 
     # --- The cars ---
     "get_codes": ("Any trouble codes?", "Reads fault codes stored in the car right now.", "Fleet tab, trouble-code panel."),
@@ -205,9 +210,9 @@ COPY = {
 
 GROUPS = {
     "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation", "switch_companion"],
-    "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_generated_view", "ask_engine"],
+    "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "show_agenda_modal", "show_generated_view", "ask_engine"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
-    "Driving": ["activate_garage", "control_volume"],
+    "Driving": ["navigate", "change_trip", "trip_status", "end_trip", "activate_garage", "control_volume"],
     "Money": ["get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],
     "Food and shopping": ["import_receipt", "list_recent_groceries", "get_grocery_spend", "log_meal", "list_recent_meals", "get_meal_gap", "set_meal_target", "ask_pantry"],
     "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "create_workout_plan", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "ask_body"],

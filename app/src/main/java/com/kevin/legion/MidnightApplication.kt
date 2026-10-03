@@ -25,6 +25,8 @@ import com.kevin.legion.navigation.resolve.PhoneContacts
 import com.kevin.legion.navigation.resolve.PhoneEvents
 import com.kevin.legion.navigation.resolve.PhonePlacesReader
 import com.kevin.legion.navigation.resolve.SavedPlaceSource
+import com.kevin.legion.navigation.voice.NavCueSpeaker
+import com.kevin.legion.navigation.voice.NavVoiceTools
 import com.kevin.legion.service.ProactivePreferences
 import com.mapbox.common.MapboxOptions
 import kotlinx.coroutines.CoroutineScope
@@ -96,6 +98,25 @@ class MidnightApplication : Application() {
     }
 
     /**
+     * Speaks the SDK's turn cues (mapbox-nav tickets 05 and 11). App-owned for the same reason the
+     * controller is: cues must keep coming with the screen off and the nav screen gone.
+     */
+    val navCueSpeaker: NavCueSpeaker by lazy { NavCueSpeaker(this, navController) }
+
+    /** The four voice tools' logic (ticket 04), over the same controller and resolver the nav screen uses. */
+    val navVoiceTools: NavVoiceTools by lazy {
+        NavVoiceTools(
+            controller = navController,
+            resolver = navResolver,
+            fix = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
+            screen = com.kevin.legion.service.NavScreenOpener(this),
+        )
+    }
+
+    /** Main-thread scope for [navCueSpeaker]: the arbiter, the engine callbacks and the SDK all live there. */
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
      * Process-lifetime scope for start-up work that touches disk or Room and so
      * must not block `onCreate`. Owned by the Application because that is what
      * the work's lifetime actually is; nothing cancels it because nothing should.
@@ -129,6 +150,9 @@ class MidnightApplication : Application() {
         // token is the dev convenience; ticket 09's [MapboxTokenProvider] now owns the order
         // (pasted token, then baked, then none) and a paste or clear re-applies it live.
         mapboxTokens.applyAtStartup()
+        // Turn cues need the speaker wired before the first trip starts. Gated off under Robolectric
+        // for the reason the Room blocks below are: it would construct the nav controller in every test.
+        if (!isRunningUnderRobolectric()) navCueSpeaker.attach(mainScope)
         // Token metering (2026-09-06). Seeded here for the same L12 reason as the caches
         // around it: SubAgent's REST calls run from ledger, pantry and the vehicle agents
         // whether or not the assistant service is switched on, and a meter that only woke
