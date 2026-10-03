@@ -29,6 +29,13 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
+# The one file outside `frontend/` the web build reads: the recurrence vectors
+# shared with pytest (web-revamp ticket 08), imported by `src/lib/recurrence.test.ts`
+# as `../../../tests/fixtures/...`. From /frontend/src/lib that resolves to
+# /tests/fixtures, and `tsc -b` type-checks the test, so without this the image
+# build fails before Vite runs.
+COPY tests/fixtures/recurrence_vectors.json /tests/fixtures/recurrence_vectors.json
+
 COPY frontend/ ./
 
 # `npm run build` is `tsc -b && vite build` (frontend/package.json). Both halves
