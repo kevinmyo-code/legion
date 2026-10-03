@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.rotate
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,7 +28,11 @@ import com.kevin.legion.ui.notes.buildMonthCells
 import com.kevin.legion.ui.notes.eventDotCount
 import com.kevin.legion.ui.notes.openTodoMarkCount
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.R
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.MsIcon
+import com.kevin.legion.ui.theme.soft.SoftColors
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -72,31 +78,23 @@ fun MonthCalendar(
     val zone = ZoneId.systemDefault()
     val todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        // Prev/next month, same pattern as `ui/ledger/BudgetSection.kt`'s `< MONTH >` navigator -
-        // this calendar has no natural min/max bound (there is no coverage concept the way ledger
+    // Soft restyle (ADR 0051, calendar drill-down): the whole month sits on ONE rounded card, the
+    // header is sentence case with icon arrows, and there are no ruled lines. Only CalendarScreen
+    // calls this, and CalendarScreen wraps itself in SoftTheme, so the soft tokens are read directly
+    // rather than branching on LocalSoftActive.
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .background(SoftColors.card, MaterialTheme.shapes.large)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+    ) {
+        // This calendar has no natural min/max bound (there is no coverage concept the way ledger
         // has statements), so both arrows stay enabled always rather than growing an artificial one.
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onPrevMonth) {
-                Text("<", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-            }
-            Text(monthGridLabel(month), style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onToggleCollapsed) {
-                    Text(if (collapsed) "MONTH" else "HIDE", style = LegionType.stamp, color = sem.faint)
-                }
-                TextButton(onClick = onNextMonth) {
-                    Text(">", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
+        MonthHeader(month, collapsed, onPrevMonth, onNextMonth, onToggleCollapsed)
 
         if (!collapsed) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 weekdayLetters().forEach { letter ->
                     Text(
                         letter,
@@ -107,11 +105,9 @@ fun MonthCalendar(
                     )
                 }
             }
-            // Cell height 34dp (ticket 14) - six week-rows plus the two header rows above stay
-            // well under ~260dp total, giving height back to the inbox list below.
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 cells.chunked(7).forEach { week ->
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         week.forEach { cell ->
                             MonthCellView(
                                 cell = cell,
@@ -134,77 +130,128 @@ fun MonthCalendar(
     }
 }
 
-/**
- * One 34dp cell: the day number, up to three [eventDotCount] ROUND dots for [MonthCell.eventCount]
- * (density only - never source or importance, per that function's own doc comment), and - Kevin,
- * 2026-09-05, "calendar has dots for events but not for todos... add indicators" - up to three
- * [openTodoMarkCount] SQUARE marks for [MonthCell.openTodoCount] beneath them. **Square, not a
- * second dot of another colour** - CLAUDE.md's "never colour-only" rule (the same one an
- * UNRECONCILED ledger row follows): a shape difference reads in grayscale and to anyone who cannot
- * distinguish the two colours, where a second circle in a different hue would not. A day whose open
- * todos are all ticked draws no square at all - that absence IS the "all done" state, cheaper than a
- * separate glyph and consistent with [eventDotCount] drawing nothing for zero.
- *
- * Today fills with [MaterialTheme.colorScheme.primary]/`onPrimary`, the SAME inverted-amber
- * treatment `ui/common/DeckCharts.kt`'s `DeckRangeSelector` already uses for its own selected
- * stencil chip - a selected (but not today's) day instead gets a 1dp primary border, so the two
- * states can never be confused for each other. Today's own dots/squares invert the same way
- * (`onPrimary`) so both marks stay legible against the filled background rather than one washing
- * out against it. A blank slot ([MonthCell.dayOfMonth] null) renders nothing and is
- * not clickable - it belongs to the neighbouring month, not this one.
- *
- * Moved out of `ui/NotesScreen.kt` alongside [MonthCalendar] - see that function's doc comment.
- */
+/** Prev / title / hide-and-next row. Split out of [MonthCalendar] only to keep that function short. */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
 @Composable
-fun MonthCellView(cell: MonthCell, isToday: Boolean, isSelected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .height(34.dp)
-            .let { if (isToday) it.background(MaterialTheme.colorScheme.primary) else it }
-            .let { if (isSelected) it.border(1.dp, MaterialTheme.colorScheme.primary) else it }
-            .let { if (cell.dayStart != null) it.clickable(onClick = onClick) else it },
-        contentAlignment = Alignment.Center,
+private fun MonthHeader(
+    month: YearMonth,
+    collapsed: Boolean,
+    onPrevMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onToggleCollapsed: () -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (cell.dayOfMonth != null) {
-            val dotColor = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-            // The todo mark deliberately picks a DIFFERENT hue from the event dot when not on
-            // today's inverted background (`tertiary`, already part of the app's own colour scheme
-            // - no new visual language) - shape alone (square vs circle) already carries the
-            // distinction per this function's own doc comment, so the colour split is a legibility
-            // aid on top of that, never the only thing telling the two apart.
-            val todoColor = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.tertiary
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    cell.dayOfMonth.toString(),
-                    style = LegionType.stamp,
-                    color = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        IconButton(onClick = onPrevMonth) {
+            MsIcon(R.drawable.ms_arrow_back, contentDescription = "Previous month", tint = SoftColors.text)
+        }
+        Text(monthGridLabel(month), style = MaterialTheme.typography.titleMedium, color = SoftColors.text)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onToggleCollapsed) {
+                Text(if (collapsed) "Show" else "Hide", style = LegionType.stamp, color = sem.faint)
+            }
+            IconButton(onClick = onNextMonth) {
+                // Same glyph as Previous, turned half a revolution: no forward arrow is vendored.
+                MsIcon(
+                    R.drawable.ms_arrow_back,
+                    contentDescription = "Next month",
+                    tint = SoftColors.text,
+                    modifier = Modifier.rotate(HALF_TURN_DEGREES),
                 )
-                val dots = eventDotCount(cell.eventCount)
-                if (dots > 0) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        repeat(dots) {
-                            Box(Modifier.size(3.dp).background(dotColor, CircleShape))
-                        }
-                    }
-                }
-                val marks = openTodoMarkCount(cell.openTodoCount)
-                if (marks > 0) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        repeat(marks) {
-                            // No [CircleShape] here - the default rectangular clip is the whole
-                            // point (square vs the event dot's circle above).
-                            Box(Modifier.size(3.dp).background(todoColor))
-                        }
-                    }
-                }
             }
         }
     }
 }
 
+private const val HALF_TURN_DEGREES = 180f
+
+/**
+ * One 40dp rounded cell: the day number, up to three [eventDotCount] ROUND dots for
+ * [MonthCell.eventCount] (density only - never source or importance, per that function's own doc
+ * comment), and - Kevin, 2026-09-05, "calendar has dots for events but not for todos... add
+ * indicators" - up to three [openTodoMarkCount] SQUARE marks for [MonthCell.openTodoCount] beneath
+ * them. **Square, not a second dot of another colour** - CLAUDE.md's "never colour-only" rule (the
+ * same one an UNRECONCILED ledger row follows): a shape difference reads in grayscale and to anyone
+ * who cannot distinguish the two colours. A day whose open todos are all ticked draws no square at
+ * all - that absence IS the "all done" state.
+ *
+ * **Restyled for soft Material (ADR 0051): today and selected use the CALENDAR [AreaAccent] pair, no
+ * ruled lines.** Today fills with the pair's `onContainer` (light blue) and draws its text and marks
+ * in the `container` (dark blue); a selected (but not today's) day instead gets a `container` fill
+ * with an `onContainer` outline, so the two states still cannot be confused. A day that is both
+ * keeps the filled treatment plus the outline. A blank slot ([MonthCell.dayOfMonth] null) renders
+ * nothing and is not clickable - it belongs to the neighbouring month, not this one.
+ */
+@Composable
+fun MonthCellView(cell: MonthCell, isToday: Boolean, isSelected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val accent = AreaAccent.CALENDAR
+    val shape = MaterialTheme.shapes.small
+    Box(
+        modifier
+            .height(40.dp)
+            .let {
+                when {
+                    isToday -> it.background(accent.onContainer, shape)
+                    isSelected -> it.background(accent.container, shape)
+                    else -> it
+                }
+            }
+            .let { if (isSelected) it.border(1.5.dp, accent.onContainer, shape) else it }
+            .let { if (cell.dayStart != null) it.clickable(onClick = onClick) else it },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (cell.dayOfMonth != null) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    cell.dayOfMonth.toString(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isToday) accent.container else SoftColors.text,
+                )
+                CellMarks(cell, isToday)
+            }
+        }
+    }
+}
+
+/** The event dots and open-todo squares under a day number (see [MonthCellView]'s doc for why one is
+ * round and the other square). */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun CellMarks(cell: MonthCell, isToday: Boolean) {
+    val accent = AreaAccent.CALENDAR
+    val dotColor = if (isToday) accent.container else accent.onContainer
+    // The todo mark picks a DIFFERENT hue from the event dot when not on today's filled
+    // background - shape alone (square vs circle) already carries the distinction per
+    // [MonthCellView]'s doc comment, so the colour split is a legibility aid on top of that.
+    val todoColor = if (isToday) accent.container else AreaAccent.LISTS.onContainer
+    val dots = eventDotCount(cell.eventCount)
+    if (dots > 0) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            repeat(dots) {
+                Box(Modifier.size(4.dp).background(dotColor, CircleShape))
+            }
+        }
+    }
+    val marks = openTodoMarkCount(cell.openTodoCount)
+    if (marks > 0) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 1.dp)) {
+            repeat(marks) {
+                // No [CircleShape] here - the default rectangular clip is the whole point (square vs
+                // the event dot's circle above).
+                Box(Modifier.size(4.dp).background(todoColor))
+            }
+        }
+    }
+}
+
+// Sentence case ("October 2026"): the old `.uppercase()` was a mission-control stamp.
 private val MONTH_GRID_LABEL: DateTimeFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
 
-private fun monthGridLabel(month: YearMonth): String = month.format(MONTH_GRID_LABEL).uppercase()
+private fun monthGridLabel(month: YearMonth): String = month.format(MONTH_GRID_LABEL)
 
 /** The grid's weekday header letters, locale-ordered starting at [WeekFields.firstDayOfWeek] -
  * [buildMonthCells] lays its columns out in the SAME order, so the two must never diverge. */

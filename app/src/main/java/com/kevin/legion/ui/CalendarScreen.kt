@@ -1,14 +1,19 @@
 package com.kevin.legion.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -27,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
+import com.kevin.legion.R
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.checklists.checklistSectionLabel
@@ -55,8 +61,11 @@ import com.kevin.legion.ui.notes.buildWeekAheadDayCounts
 import com.kevin.legion.ui.notes.formatDateTime
 import com.kevin.legion.util.documentDateCompact
 import com.kevin.legion.ui.notes.toAppointmentEvent
-import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.MsIcon
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.voicenotes.VoiceNoteDetailScreen
 import com.kevin.legion.ui.voicenotes.formatVoiceNoteDuration
 import com.kevin.legion.util.clockTime
@@ -488,159 +497,167 @@ fun CalendarScreen(
         return
     }
 
-    val sem = LocalLegionSemantics.current
+    // ADR 0051: the calendar drill-down renders soft. Wrapped here, below the recording-detail
+    // early return, so that detail (owned by the Recordings screen) is untouched by this file.
+    SoftTheme {
+        val sem = LocalLegionSemantics.current
 
-    // home-launcher ticket 03: CALENDAR is a drill-down again (`DeckScreenHeader`, like every other
-    // one under `LegionTheme`) now that HOME has its own landing page - the old "dropped the
-    // redundant CALENDAR H1" fix this comment used to describe was correct while this screen WAS
-    // the app's own landing page and a tab already named it; it is not the app's landing page any
-    // more, so the header comes back, this time as the shared drill-down header every other screen
-    // already uses rather than a bespoke H1.
-    Column(Modifier.fillMaxSize()) {
-        DeckScreenHeader("Calendar", onBack)
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 10.dp, bottom = 12.dp)) {
-        // Said in words, above the grid, once per month load - never a clean-looking grid with
-        // silently zeroed todo marks, which would read exactly like a month where nothing is due
-        // (2026-09-05 ticket's own instruction, same discipline [recordedLoadFailed] follows below
-        // for a different section of this same screen).
-        if (monthTodoLoadFailed) {
-            Text(
-                "Couldn't load open todos for this month - the event dots above are still current.",
-                style = LegionType.stamp,
-                color = sem.estimated,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-        }
-        if (!monthLoading) {
-            MonthCalendar(
-                // One-today ticket 01 cut the live Google read this flag used to gate on - the
-                // local `events` table is always readable, matching `ui/NotesScreen.kt`'s own
-                // post-cut `monthCalendarLinked = true`.
-                calendarLinked = true,
-                month = displayedMonth,
-                cells = monthCells,
-                // Only the manual HIDE/MONTH toggle collapses the grid now (fixed on-device
-                // 2026-09-01) - selecting a day used to force this true and hide the grid
-                // entirely, which is exactly the "takes me to a new screen" complaint. The grid
-                // stays up; [MonthCellView]'s own `isSelected` border marks the tapped day on it.
-                collapsed = calendarCollapsed,
-                selectedDayStart = selectedDayStart,
-                onToggleCollapsed = { calendarCollapsed = !calendarCollapsed },
-                onPrevMonth = { displayedMonth = displayedMonth.minusMonths(1) },
-                onNextMonth = { displayedMonth = displayedMonth.plusMonths(1) },
-                // Kevin, fixed on-device 2026-09-01: "it should show the due items on the tapped
-                // date" - changes what renders below, in place, never a navigation.
-                onSelectDay = { day -> selectedDayStart = day },
-                onGrantCalendar = {},
-            )
-        }
-
-        // The tapped day's agenda, split into SCHEDULE / YET TO DO / DONE (one-today ticket
-        // 08, "events are not todos" - this screen's own file doc comment has the full
-        // account). Rendered with [CalendarDayRow], a sparse local row (checkbox + label + date
-        // only) rather than the now-deleted `ui/notes/InboxScreen.kt`'s own `InboxRow`.
-        // **CORRECTED one-today ticket 10 slice C, 2026-09-05: this comment used to say an edit
-        // tap-through and a REMOVE/DELETE button were left off deliberately, because
-        // `InboxScreen`'s own [ItemEditDialog] was still a reachable fallback hands path at the
-        // time.** With `ui/NotesScreen.kt`/`InboxScreen.kt` retired, that fallback is gone, and
-        // ticket 10's own precondition ("a reminder's time, repeat and place must be editable from
-        // the calendar day view once it is") makes a plain, absent edit affordance the wrong call
-        // now - [CalendarDayRow] below takes an `onEdit` AND an `onRemove` for exactly this, wired
-        // only for a real [ListItem] reminder ([InboxRowView.source] == [AgendaSource.LOCAL]; see
-        // this file's own class doc) - a REMOVE stamp beside the row, the same
-        // [NotesController.removeItem] funnel `InboxRow`'s own separate REMOVE button already
-        // called, never a second write path. The WRITE funnel for ticking is unchanged either way -
-        // [toggle] below calls the identical [NotesController.tick]/[tickAppointment] pair
-        // `InboxRow`'s own `onToggle` used to.
-        //
-        // The old "BACK TO MONTH" link is gone (fixed on-device 2026-09-01) - there is no
-        // longer a month-only state to return to; the grid above is always visible already, and
-        // [selectedDayStart] is never null, so this section always has a day to render.
-        // `GoalChecklistPanel` ("today's plan") retired here (one-home map, ticket 04's
-        // resolution, 2026-09-10, Kevin: "today's plan > no need since we have bio to do list") -
-        // render side only; `advisor/GoalChecklistSync.kt` is untouched and owned by a concurrent
-        // session retiring its generation half separately. The CHECKLISTS section below (one-today
-        // ticket 09) already covers the same idea through the real recurring-checklist table.
-        val notDone = dayRows.filter { !it.done }
-        val done = dayRows.filter { it.done }
-        Column(Modifier.padding(horizontal = 12.dp)) {
-            // SCHEDULE - events, time-ordered, no checkbox (ticket 08). [scheduleRows] is
-            // already sorted by [Event.startsAt]; every row's own [InboxRowView.tickable] is
-            // false, so [CalendarDayRow] renders it with no checkbox at all - never a disabled
-            // one - and greys it by time alone via its own `done` styling if the caller ever
-            // marked it past (it never does here; [InboxRowView.done] is hardcoded false for
-            // this section since an event has no completion state to be false ABOUT).
-            DeckSectionRule("Schedule")
-            if (scheduleRows.isEmpty()) {
-                Text("Nothing on the calendar this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-            } else {
-                scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
-            }
-            // RECORDED - a read-time join, no checkbox, excluded from the completion ratio below
-            // (this screen's own file doc comment). [recordedLoadFailed] renders its own distinct
-            // sentence, never folded into the ordinary empty-list case.
-            DeckSectionRule("Recorded")
-            if (recordedLoadFailed) {
+        // home-launcher ticket 03: CALENDAR is a drill-down again (`DeckScreenHeader`, like every other
+        // one under `LegionTheme`) now that HOME has its own landing page - the old "dropped the
+        // redundant CALENDAR H1" fix this comment used to describe was correct while this screen WAS
+        // the app's own landing page and a tab already named it; it is not the app's landing page any
+        // more, so the header comes back, this time as the shared drill-down header every other screen
+        // already uses rather than a bespoke H1.
+        Column(Modifier.fillMaxSize()) {
+            DeckScreenHeader("Calendar", onBack, accent = AreaAccent.CALENDAR)
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 10.dp, bottom = 12.dp)) {
+            // Said in words, above the grid, once per month load - never a clean-looking grid with
+            // silently zeroed todo marks, which would read exactly like a month where nothing is due
+            // (2026-09-05 ticket's own instruction, same discipline [recordedLoadFailed] follows below
+            // for a different section of this same screen).
+            if (monthTodoLoadFailed) {
                 Text(
-                    "Couldn't load recordings for this day.",
-                    style = LegionType.stamp,
+                    // CORRECTED 2026-10-02: said "the event dots above", but this note sits ABOVE
+                    // the grid, so the dots are below it.
+                    "Couldn't load open todos for this month - the event dots below are still current.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = sem.estimated,
-                    modifier = Modifier.padding(vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                 )
-            } else if (recordedRows.isEmpty()) {
-                Text("Nothing recorded this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-            } else {
-                recordedRows.forEach { note -> RecordedDayRow(note = note, onClick = { selectedRecordingId = note.id }) }
             }
-            // CHECKLISTS - one section per applicable checklist, named with what Kevin called it,
-            // never merged into YET TO DO/DONE (this screen's own file doc comment). A checklist
-            // with no items yet gets its own honest "no items yet" line rather than an absent
-            // section - it DOES apply to this day (it exists), it simply has nothing in it yet.
-            checklistsToday.forEach { entry ->
-                // Collapsed by default (this ticket's third build) - tapping the header expands it,
-                // and [expandedChecklists] remembers that per checklist for the rest of this
-                // screen's lifetime (this file's own state-declaration comment above).
-                val expanded = expandedChecklists[entry.checklist.id] ?: false
-                DeckSectionRule(
-                    checklistSectionLabel(entry.checklist, entry.items, loadFailed = entry.loadFailed),
-                    modifier = Modifier.clickable { expandedChecklists[entry.checklist.id] = !expanded },
+            if (!monthLoading) {
+                MonthCalendar(
+                    // One-today ticket 01 cut the live Google read this flag used to gate on - the
+                    // local `events` table is always readable, matching `ui/NotesScreen.kt`'s own
+                    // post-cut `monthCalendarLinked = true`.
+                    calendarLinked = true,
+                    month = displayedMonth,
+                    cells = monthCells,
+                    // Only the manual HIDE/MONTH toggle collapses the grid now (fixed on-device
+                    // 2026-09-01) - selecting a day used to force this true and hide the grid
+                    // entirely, which is exactly the "takes me to a new screen" complaint. The grid
+                    // stays up; [MonthCellView]'s own `isSelected` border marks the tapped day on it.
+                    collapsed = calendarCollapsed,
+                    selectedDayStart = selectedDayStart,
+                    onToggleCollapsed = { calendarCollapsed = !calendarCollapsed },
+                    onPrevMonth = { displayedMonth = displayedMonth.minusMonths(1) },
+                    onNextMonth = { displayedMonth = displayedMonth.plusMonths(1) },
+                    // Kevin, fixed on-device 2026-09-01: "it should show the due items on the tapped
+                    // date" - changes what renders below, in place, never a navigation.
+                    onSelectDay = { day -> selectedDayStart = day },
+                    onGrantCalendar = {},
                 )
-                if (expanded) {
-                    when {
-                        entry.loadFailed -> Text(
-                            "Couldn't load today's items for this list.",
-                            style = LegionType.stamp,
-                            color = sem.estimated,
-                            modifier = Modifier.padding(vertical = 6.dp),
+            }
+
+            // The tapped day's agenda, split into SCHEDULE / YET TO DO / DONE (one-today ticket
+            // 08, "events are not todos" - this screen's own file doc comment has the full
+            // account). Rendered with [CalendarDayRow], a sparse local row (checkbox + label + date
+            // only) rather than the now-deleted `ui/notes/InboxScreen.kt`'s own `InboxRow`.
+            // **CORRECTED one-today ticket 10 slice C, 2026-09-05: this comment used to say an edit
+            // tap-through and a REMOVE/DELETE button were left off deliberately, because
+            // `InboxScreen`'s own [ItemEditDialog] was still a reachable fallback hands path at the
+            // time.** With `ui/NotesScreen.kt`/`InboxScreen.kt` retired, that fallback is gone, and
+            // ticket 10's own precondition ("a reminder's time, repeat and place must be editable from
+            // the calendar day view once it is") makes a plain, absent edit affordance the wrong call
+            // now - [CalendarDayRow] below takes an `onEdit` AND an `onRemove` for exactly this, wired
+            // only for a real [ListItem] reminder ([InboxRowView.source] == [AgendaSource.LOCAL]; see
+            // this file's own class doc) - a REMOVE stamp beside the row, the same
+            // [NotesController.removeItem] funnel `InboxRow`'s own separate REMOVE button already
+            // called, never a second write path. The WRITE funnel for ticking is unchanged either way -
+            // [toggle] below calls the identical [NotesController.tick]/[tickAppointment] pair
+            // `InboxRow`'s own `onToggle` used to.
+            //
+            // The old "BACK TO MONTH" link is gone (fixed on-device 2026-09-01) - there is no
+            // longer a month-only state to return to; the grid above is always visible already, and
+            // [selectedDayStart] is never null, so this section always has a day to render.
+            // `GoalChecklistPanel` ("today's plan") retired here (one-home map, ticket 04's
+            // resolution, 2026-09-10, Kevin: "today's plan > no need since we have bio to do list") -
+            // render side only; `advisor/GoalChecklistSync.kt` is untouched and owned by a concurrent
+            // session retiring its generation half separately. The CHECKLISTS section below (one-today
+            // ticket 09) already covers the same idea through the real recurring-checklist table.
+            val notDone = dayRows.filter { !it.done }
+            val done = dayRows.filter { it.done }
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                // SCHEDULE - events, time-ordered, no checkbox (ticket 08). [scheduleRows] is
+                // already sorted by [Event.startsAt]; every row's own [InboxRowView.tickable] is
+                // false, so [CalendarDayRow] renders it with no checkbox at all - never a disabled
+                // one - and greys it by time alone via its own `done` styling if the caller ever
+                // marked it past (it never does here; [InboxRowView.done] is hardcoded false for
+                // this section since an event has no completion state to be false ABOUT).
+                // Each section is a quiet sentence-case label over ONE rounded card ([DayCard]); an
+                // empty or failed section keeps its own sentence inside the card, so the grouping
+                // survives with no rows (ADR 0051 - roomy rows, not dense stamps).
+                DeckSectionRule("Schedule")
+                DayCard {
+                    if (scheduleRows.isEmpty()) {
+                        DayNote("Nothing on the calendar this day.")
+                    } else {
+                        scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
+                    }
+                }
+                // RECORDED - a read-time join, no checkbox, excluded from the completion ratio below
+                // (this screen's own file doc comment). [recordedLoadFailed] renders its own distinct
+                // sentence, never folded into the ordinary empty-list case.
+                DeckSectionRule("Recorded")
+                DayCard {
+                    if (recordedLoadFailed) {
+                        DayNote("Couldn't load recordings for this day.", failed = true)
+                    } else if (recordedRows.isEmpty()) {
+                        DayNote("Nothing recorded this day.")
+                    } else {
+                        recordedRows.forEach { note -> RecordedDayRow(note = note, onClick = { selectedRecordingId = note.id }) }
+                    }
+                }
+                // CHECKLISTS - one section per applicable checklist, named with what Kevin called it,
+                // never merged into YET TO DO/DONE (this screen's own file doc comment). A checklist
+                // with no items yet gets its own honest "no items yet" line rather than an absent
+                // section - it DOES apply to this day (it exists), it simply has nothing in it yet.
+                checklistsToday.forEach { entry ->
+                    // Collapsed by default (this ticket's third build) - tapping the header expands it,
+                    // and [expandedChecklists] remembers that per checklist for the rest of this
+                    // screen's lifetime (this file's own state-declaration comment above).
+                    val expanded = expandedChecklists[entry.checklist.id] ?: false
+                    Row(
+                        Modifier.fillMaxWidth().clickable { expandedChecklists[entry.checklist.id] = !expanded },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DeckSectionRule(
+                            checklistSectionLabel(entry.checklist, entry.items, loadFailed = entry.loadFailed),
+                            modifier = Modifier.weight(1f),
                         )
-                        entry.items.isEmpty() -> Text(
-                            "No items yet.",
-                            style = LegionType.stamp,
-                            color = sem.faint,
-                            modifier = Modifier.padding(vertical = 6.dp),
+                        MsIcon(
+                            if (expanded) R.drawable.ms_keyboard_arrow_up else R.drawable.ms_keyboard_arrow_down,
+                            contentDescription = if (expanded) "Collapse list" else "Expand list",
+                            tint = SoftColors.text2,
+                            modifier = Modifier.padding(top = 10.dp, end = 4.dp),
                         )
-                        else -> entry.items.forEach { itemState ->
-                            ChecklistItemDayRow(
-                                itemState = itemState,
-                                onToggle = { toggleChecklistItem(itemState.item.id, itemState.ticked) },
-                                measureInput = measureInputs[itemState.item.id] ?: "",
-                                onMeasureInputChange = { measureInputs[itemState.item.id] = it },
-                                onSubmitMeasure = { tickMeasuredItem(itemState.item.id, measureInputs[itemState.item.id] ?: "") },
-                                refusalMessage = measureRefusals[itemState.item.id],
-                                queued = itemState.item.id in queuedChecklistItemIds,
-                            )
+                    }
+                    if (expanded) {
+                        DayCard {
+                            when {
+                                entry.loadFailed -> DayNote("Couldn't load today's items for this list.", failed = true)
+                                entry.items.isEmpty() -> DayNote("No items yet.")
+                                else -> entry.items.forEach { itemState ->
+                                    ChecklistItemDayRow(
+                                        itemState = itemState,
+                                        onToggle = { toggleChecklistItem(itemState.item.id, itemState.ticked) },
+                                        measureInput = measureInputs[itemState.item.id] ?: "",
+                                        onMeasureInputChange = { measureInputs[itemState.item.id] = it },
+                                        onSubmitMeasure = { tickMeasuredItem(itemState.item.id, measureInputs[itemState.item.id] ?: "") },
+                                        refusalMessage = measureRefusals[itemState.item.id],
+                                        queued = itemState.item.id in queuedChecklistItemIds,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-            }
-            DeckSectionRule("Yet to do")
-            if (notDone.isEmpty()) {
-                Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-            } else {
                 // onEdit only for a real [ListItem] reminder ([AgendaSource.LOCAL]) - a
                 // [AgendaSource.GOOGLE] task row has no ListItem for [ItemEditDialog] to open (this
-                // screen's own file doc comment).
-                notDone.forEach { row ->
+                // screen's own file doc comment). Both [notDone] and [done] build their rows through
+                // [dayRow] so the two cannot drift apart on which row is editable or removable.
+                @Composable
+                fun dayRow(row: InboxRowView) {
                     CalendarDayRow(
                         row = row,
                         onToggle = { toggle(row.id) },
@@ -661,48 +678,38 @@ fun CalendarScreen(
                         },
                     )
                 }
-            }
-            DeckSectionRule("Done")
-            if (done.isEmpty()) {
-                Text("Nothing done on this day yet.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-            } else {
-                done.forEach { row ->
-                    CalendarDayRow(
-                        row = row,
-                        onToggle = { toggle(row.id) },
-                        onEdit = if (row.source == AgendaSource.LOCAL) {
-                            { editingItem = rawItems.firstOrNull { it.id == row.id } }
-                        } else {
-                            null
-                        },
-                        onRemove = if (row.source == AgendaSource.LOCAL) {
-                            {
-                                val target = rawItems.firstOrNull { it.id == row.id }
-                                if (target != null) {
-                                    scope.launch { NotesController.removeItem(context, target); reloadNonce++ }
-                                }
-                            }
-                        } else {
-                            null
-                        },
-                    )
+                DeckSectionRule("Yet to do")
+                DayCard {
+                    if (notDone.isEmpty()) {
+                        DayNote("Nothing left on this day.")
+                    } else {
+                        notDone.forEach { row -> dayRow(row) }
+                    }
+                }
+                DeckSectionRule("Done")
+                DayCard {
+                    if (done.isEmpty()) {
+                        DayNote("Nothing done on this day yet.")
+                    } else {
+                        done.forEach { row -> dayRow(row) }
+                    }
                 }
             }
+            }
         }
-        }
-    }
 
-    // The reminder editor (this screen's own file doc comment) - the SAME [ItemEditDialog]
-    // `ui/notes/InboxScreen.kt` used to render, reused rather than copied. [onSaved] bumps
-    // [reloadNonce] so the edited row's new date/repeat/place shows immediately without a manual
-    // re-navigation.
-    val editing = editingItem
-    if (editing != null) {
-        ItemEditDialog(
-            item = editing,
-            onDismiss = { editingItem = null },
-            onSaved = { editingItem = null; reloadNonce++ },
-        )
+        // The reminder editor (this screen's own file doc comment) - the SAME [ItemEditDialog]
+        // `ui/notes/InboxScreen.kt` used to render, reused rather than copied. [onSaved] bumps
+        // [reloadNonce] so the edited row's new date/repeat/place shows immediately without a manual
+        // re-navigation.
+        val editing = editingItem
+        if (editing != null) {
+            ItemEditDialog(
+                item = editing,
+                onDismiss = { editingItem = null },
+                onSaved = { editingItem = null; reloadNonce++ },
+            )
+        }
     }
 }
 
@@ -732,12 +739,14 @@ private fun CalendarDayRow(
 ) {
     val sem = LocalLegionSemantics.current
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (row.tickable) {
-            Checkbox(checked = row.done, onCheckedChange = { onToggle() })
+            Checkbox(checked = row.done, onCheckedChange = { onToggle() }, colors = softCheckboxColors())
         } else {
+            // Same 12dp lead-in the checkbox-less rows always had, so a SCHEDULE row's text lines up
+            // with a tickable row's.
             Column(Modifier.padding(start = 12.dp, end = 12.dp)) {}
         }
         Column(
@@ -745,23 +754,63 @@ private fun CalendarDayRow(
         ) {
             Text(
                 row.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (row.done) sem.faint else MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (row.done) sem.faint else SoftColors.text,
             )
             row.dateLabel?.let { label ->
-                Text(label, style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                // The calendar accent's light tone, not the app primary: a time is this area's own.
+                Text(label, style = MaterialTheme.typography.bodySmall, color = AreaAccent.CALENDAR.onContainer)
             }
             if (row.recurring) {
-                Text("Recurring - not tickable", style = LegionType.stamp, color = sem.faint)
+                Text("Recurring - not tickable", style = MaterialTheme.typography.bodySmall, color = sem.faint)
             }
         }
         if (onRemove != null) {
-            TextButton(onClick = onRemove) {
-                Text("REMOVE", style = LegionType.stamp, color = sem.faint)
+            // The word "REMOVE" became a trash icon; contentDescription keeps it named for TalkBack.
+            IconButton(onClick = onRemove) {
+                MsIcon(R.drawable.ms_delete, contentDescription = "Remove", tint = sem.faint, size = 20.dp)
             }
         }
     }
 }
+
+/** The rounded `SoftColors.card` every agenda section's rows sit on (Lists' card shape and HOME's
+ * 16dp gutter), replacing the ruled square panes. */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun DayCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(SoftColors.card, MaterialTheme.shapes.large)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        content = content,
+    )
+}
+
+/** An empty-section or failed-read sentence inside a [DayCard]. [failed] only changes the colour to
+ * the caution tone; the words ("Couldn't load ...") are what carry the difference from an empty day,
+ * never the colour alone (the calendar-briefing rule at the head of this file). */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun DayNote(text: String, failed: Boolean = false) {
+    val sem = LocalLegionSemantics.current
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (failed) sem.estimated else sem.faint,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+    )
+}
+
+/** Soft checkbox: the calendar accent when checked. Lists' `tickedBox` grey is deliberately NOT
+ * reused - on a calendar row the user can still untick, it would read as disabled. */
+@Composable
+private fun softCheckboxColors() = CheckboxDefaults.colors(
+    checkedColor = AreaAccent.CALENDAR.onContainer,
+    checkmarkColor = AreaAccent.CALENDAR.container,
+    uncheckedColor = SoftColors.text3,
+)
 
 /**
  * One RECORDED row: title (same unnamed fallback `ui/voicenotes/VoiceNotesScreen.kt`'s own list
@@ -775,19 +824,26 @@ private fun CalendarDayRow(
 @Composable
 private fun RecordedDayRow(note: VoiceNote, onClick: () -> Unit) {
     val sem = LocalLegionSemantics.current
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp)) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         // Empty leading column, same width as [CalendarDayRow]'s own non-tickable branch, so a
         // RECORDED row's label lines up with a SCHEDULE row's rather than starting flush left.
         Column(Modifier.padding(start = 12.dp, end = 12.dp)) {}
         Column {
             Text(
                 note.title ?: "Untitled recording",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyLarge,
+                color = SoftColors.text,
             )
             Text(
                 "${clockTime(note.startedAt)} - ${formatVoiceNoteDuration(note.startedAt, note.endedAt)}",
-                style = LegionType.stamp,
+                style = MaterialTheme.typography.bodySmall,
                 color = sem.faint,
             )
         }
@@ -853,40 +909,33 @@ private fun ChecklistItemDayRow(
     val item = itemState.item
 
     if (item.measureUnit == null) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            Checkbox(checked = itemState.ticked, onCheckedChange = { onToggle() })
-            Column {
-                Text(
-                    item.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (itemState.ticked) sem.faint else MaterialTheme.colorScheme.onSurface,
-                )
-                if (queued) QueuedNote()
-            }
-        }
+        PlainChecklistItemRow(itemState, onToggle, queued)
         return
     }
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         val value = itemState.value
         if (itemState.ticked && value != null) {
             Row {
                 Column(Modifier.weight(1f)) {
-                    Text(item.text, style = MaterialTheme.typography.bodyMedium, color = sem.faint)
+                    Text(item.text, style = MaterialTheme.typography.bodyLarge, color = sem.faint)
                     val resultLabel = measureTargetResult(item, value)?.let { " - ${measureTargetResultLabel(it)}" } ?: ""
-                    Text(measureValueDisplay(item, value) + resultLabel, style = LegionType.stamp, color = sem.faint)
+                    Text(
+                        measureValueDisplay(item, value) + resultLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = sem.faint,
+                    )
                     if (queued) QueuedNote()
                 }
-                Text(
-                    "UNTICK",
-                    style = LegionType.stamp,
-                    color = sem.faint,
-                    modifier = Modifier.clickable(onClick = onToggle),
-                )
+                // "Untick", not "UNTICK": sentence case. ADR 0049's rule is that the word stays
+                // "tick"/"untick" and never becomes "check"/"complete".
+                TextButton(onClick = onToggle) {
+                    Text("Untick", style = MaterialTheme.typography.labelLarge, color = sem.faint)
+                }
             }
         } else {
-            Text(item.text, style = MaterialTheme.typography.bodyMedium)
-            measurePromptLabel(item)?.let { Text(it, style = LegionType.stamp, color = sem.faint) }
+            Text(item.text, style = MaterialTheme.typography.bodyLarge, color = SoftColors.text)
+            measurePromptLabel(item)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = sem.faint) }
             Row(modifier = Modifier.padding(top = 4.dp)) {
                 OutlinedTextField(
                     value = measureInput,
@@ -896,21 +945,45 @@ private fun ChecklistItemDayRow(
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
-                Text(
-                    "TICK",
-                    style = LegionType.stamp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 12.dp).clickable(onClick = onSubmitMeasure),
-                )
+                TextButton(onClick = onSubmitMeasure, modifier = Modifier.padding(start = 8.dp)) {
+                    Text("Tick", style = MaterialTheme.typography.labelLarge, color = AreaAccent.CALENDAR.onContainer)
+                }
             }
             // Kevin's ruling on the edge: the controller's own refused message shows in words,
             // where the tap happened - never a toast that vanishes, never swallowed.
             if (refusalMessage != null) {
-                Text(refusalMessage, style = LegionType.stamp, color = sem.estimated, modifier = Modifier.padding(top = 2.dp))
+                Text(
+                    refusalMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = sem.estimated,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
             // An unticked measured item can still carry a queued UNTICK - the row is unticked
             // locally and the engine has not been told yet, which is exactly as much a
             // not-yet-delivered fact as a queued tick.
+            if (queued) QueuedNote()
+        }
+    }
+}
+
+/** A plain (non-measured) checklist item: a real checkbox plus its text, faded once ticked. Split out
+ * of [ChecklistItemDayRow] only to keep that function under detekt's length limit. */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun PlainChecklistItemRow(itemState: ChecklistController.ItemState, onToggle: () -> Unit, queued: Boolean) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = itemState.ticked, onCheckedChange = { onToggle() }, colors = softCheckboxColors())
+        Column {
+            Text(
+                itemState.item.text,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (itemState.ticked) sem.faint else SoftColors.text,
+            )
             if (queued) QueuedNote()
         }
     }
@@ -924,7 +997,7 @@ private fun ChecklistItemDayRow(
 private fun QueuedNote() {
     Text(
         "Queued - not on the engine yet.",
-        style = LegionType.stamp,
+        style = MaterialTheme.typography.bodySmall,
         color = LocalLegionSemantics.current.estimated,
         modifier = Modifier.padding(top = 2.dp),
     )
