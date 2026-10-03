@@ -82,6 +82,13 @@ result from that validation was measured under an assumption LEGION no longer ho
   app taking the mic yields silence with no error, and neither Vosk engine detects it, which is now
   [The wake word cannot tell silence from a quiet room](issues/08-silenced-not-quiet.md).
 
+- [How long a conversation stays open](issues/16-how-long-a-conversation-stays-open.md) - Kevin,
+  2026-10-03: open with an **8 second follow-up window** after each answer; the close phrase still
+  works. Build: [ticket 17](issues/17-follow-up-window.md).
+- [Can the A25's always-on audio chip listen for our phrase?](issues/19-dsp-hotword-spike.md) - no:
+  no keyphrase enrollment app and no enrolled models on the phone. The Siri-style two-stage detector
+  runs on the CPU instead: [ticket 18](issues/18-two-stage-detector.md).
+
 ## Not yet specified
 
 <!-- GRADUATED 2026-08-20: "what hey <name> should DO once it fires" left this section the moment
