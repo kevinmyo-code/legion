@@ -7409,6 +7409,11 @@ components:
           nullable: true
         kind:
           type: string
+        remind_minutes_before:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
       required:
       - created_at
       - deleted_at
@@ -9747,6 +9752,11 @@ components:
           nullable: true
         kind:
           type: string
+        remind_minutes_before:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
     PatchedHouseholdPatchRequest:
       type: object
       properties:

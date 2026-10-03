@@ -3210,6 +3210,7 @@ export interface components {
             origin_guid?: string | null;
             structured_meta?: unknown;
             kind?: string;
+            remind_minutes_before?: number | null;
         };
         Freshness: {
             sources: components["schemas"]["FreshnessSource"][];
@@ -4353,6 +4354,7 @@ export interface components {
             origin_guid?: string | null;
             structured_meta?: unknown;
             kind?: string;
+            remind_minutes_before?: number | null;
         };
         PatchedHouseholdPatchRequest: {
             name?: string;

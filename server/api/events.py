@@ -27,6 +27,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.event_columns import REMIND_MINUTES_CHOICES
 from api.schema import (
     NO_CONTENT,
     NOT_FOUND,
@@ -116,6 +117,7 @@ class EventSerializer(serializers.ModelSerializer):
             "origin_guid",
             "structured_meta",
             "kind",
+            "remind_minutes_before",
         ]
         # provenance/created_at/updated_at/deleted_at are server facts, not
         # caller intent (matching EventFields's own doc comment: "these
@@ -164,6 +166,18 @@ class EventSerializer(serializers.ModelSerializer):
     def validate_repeat_end_kind(self, value: str | None) -> str | None:
         if value is not None and value not in REPEAT_END_KIND_CHOICES:
             raise _choice_error("repeat_end_kind", value, REPEAT_END_KIND_CHOICES)
+        return value
+
+    def validate_remind_minutes_before(self, value: int | None) -> int | None:
+        # web-revamp ticket 14. Null clears the reminder; anything outside the
+        # set is refused naming it, and the CHECK in `api/event_columns.py`
+        # refuses it again in SQL for any writer that is not this serializer.
+        if value is not None and value not in REMIND_MINUTES_CHOICES:
+            raise serializers.ValidationError(
+                f"{value} is not a reminder lead time this engine offers. Use one of: "
+                f"{', '.join(str(m) for m in REMIND_MINUTES_CHOICES)} (minutes before the "
+                f"start), or null for no reminder. Nothing was saved."
+            )
         return value
 
     def create(self, validated_data: dict) -> Event:

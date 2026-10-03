@@ -284,6 +284,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_column(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0009` (web-revamp ticket 14), the same way.
+            from api.event_columns import add_remind_minutes_before
+
+            skipped = add_remind_minutes_before(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

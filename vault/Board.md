@@ -71,7 +71,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/web-revamp/map\|web-revamp]] | [[06-private-rows-on-the-engine\|06]] | build | Private rows on the engine |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[08-repeat-exceptions-on-the-engine\|08]] | build | Repeat exceptions on the engine |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[11-spend-on-the-engine\|11]] | build | Spend on the engine: one figure, computed once |
-| [[.scratch/web-revamp/map\|web-revamp]] | [[14-reminder-lead-time-on-events\|14]] | build | Reminder lead time on events |
 | [[.scratch/web-surface/map\|web-surface]] | [[01-the-horizon\|01]] | decision | The horizon: what Today shows beyond tomorrow, and how a cliff reads as a cliff |
 | [[.scratch/web-surface/map\|web-surface]] | [[02-today-rebuilt\|02]] | build | Today, rebuilt |
 | [[.scratch/web-surface/map\|web-surface]] | [[03-desktop-is-not-the-phone\|03]] | decision | Desktop is not the phone reflowed: what the workbench shows that the PWA never does |
@@ -148,6 +147,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[02-household-id-on-every-table\|02]] | build | household_id on every data table, backfilled, and one Django choke point |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[08-ci-cd\|08]] | build | CI for server, Android and frontend; CD to Cloud Run through Workload Identity Federation |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[09-static-domain-dockerfile\|09]] | build | Whitenoise, a multi-stage arm64 image with the Vite build, migrate-on-start, and Caddy on the domain |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[14-reminder-lead-time-on-events\|14]] | build | Reminder lead time on events |
 
 ## Blocked
 
