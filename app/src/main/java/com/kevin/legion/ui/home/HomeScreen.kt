@@ -131,6 +131,9 @@ fun HomeScreen(
     var pins by remember { mutableStateOf(DockPinsStore.read(context)) }
     var drawerSnapshot by remember { mutableStateOf(AppDrawerCache.peek()) }
     var dockMessage by remember { mutableStateOf<String?>(null) }
+    // Set when AppDrawerCache.refresh threw or read no apps at all: said once, in words, instead of
+    // every slot claiming "Not installed".
+    var appsUnreadable by remember { mutableStateOf(false) }
     // Ticket 07's category row: picks per category, read on every resume like the dock's own, so a
     // change made elsewhere never shows stale. Same peek-only posture - no second LauncherApps read.
     var categoryPicks by remember { mutableStateOf(CategoryPicksStore.readAll(context)) }
@@ -140,6 +143,17 @@ fun HomeScreen(
         pins = DockPinsStore.read(context)
         categoryPicks = CategoryPicksStore.readAll(context)
         drawerSnapshot = AppDrawerCache.peek()
+        // Warm the cache ourselves: peek() is null on a cold start until something refreshes it, and
+        // MainActivity's warm may not have finished. Same refresh AppsScreen uses; cheap when warm.
+        scope.launch {
+            val fresh = runCatching { AppDrawerCache.refresh(context) }.getOrNull()
+            if (fresh != null && fresh.apps.isNotEmpty()) {
+                drawerSnapshot = fresh
+                appsUnreadable = false
+            } else if (drawerSnapshot == null) {
+                appsUnreadable = true
+            }
+        }
     }
 
     val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
@@ -154,10 +168,32 @@ fun HomeScreen(
     val launchSlot: (DockSlotUi) -> Unit = { slot ->
         val app = slot.app
         val snapshot = drawerSnapshot
-        dockMessage = when {
-            app == null -> "${slot.label} is not installed."
-            snapshot == null -> "Couldn't open ${slot.label}: apps aren't loaded yet."
-            else -> launchDrawerApp(context, app, snapshot)
+        if (slot.loading || snapshot == null) {
+            // Not read yet: do the refresh, then re-resolve this pin against it and launch.
+            dockMessage = "Still loading your apps."
+            scope.launch {
+                val fresh = runCatching { AppDrawerCache.refresh(context) }.getOrNull()
+                if (fresh == null || fresh.apps.isEmpty()) {
+                    appsUnreadable = true
+                    dockMessage = "Couldn't read your apps."
+                } else {
+                    drawerSnapshot = fresh
+                    appsUnreadable = false
+                    val resolved = buildDockSlots(listOf(slot.pin), fresh).single()
+                    val found = resolved.app
+                    dockMessage = if (found == null) {
+                        "${resolved.label} is not installed."
+                    } else {
+                        launchDrawerApp(context, found, fresh)
+                    }
+                }
+            }
+        } else {
+            dockMessage = if (app == null) {
+                "${slot.label} is not installed."
+            } else {
+                launchDrawerApp(context, app, snapshot)
+            }
         }
     }
 
@@ -182,7 +218,7 @@ fun HomeScreen(
                 DockPinsStore.write(context, pins)
             },
         ),
-        dockMessage = dockMessage,
+        dockMessage = if (appsUnreadable && drawerSnapshot == null) "Couldn't read your apps." else dockMessage,
         categories = HomeCategory.entries.map {
             CategoryUi(it, buildDockSlots(categoryPicks[it].orEmpty(), drawerSnapshot))
         },

@@ -71,9 +71,16 @@ class AppDockTest {
     }
 
     @Test
-    fun `a null drawer snapshot resolves every slot to not installed rather than blocking`() {
-        val slots = buildDockSlots(listOf(DockPin("com.whatsapp", 0)), null)
-        assertNull(slots.single().app)
+    fun `a null drawer snapshot resolves every slot to loading, never not installed`() {
+        val slot = buildDockSlots(listOf(DockPin("com.whatsapp", 0)), null).single()
+        assertNull(slot.app)
+        assertTrue(slot.loading)
+        assertEquals("", slot.label)
+    }
+
+    @Test
+    fun `a loaded snapshot missing the package is not installed, not loading`() {
+        assertFalse(buildDockSlots(listOf(DockPin("com.gone", 0)), loaded(listOf(personal))).single().loading)
     }
 
     @Test

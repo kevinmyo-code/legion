@@ -76,7 +76,8 @@ data class CategoryButtonSpec(
     val dimmed: Boolean,
 )
 
-private fun DockSlotUi.usable(): Boolean = app != null && !paused
+// A loading slot is not known to be down, so it never counts toward "Unavailable".
+private fun DockSlotUi.usable(): Boolean = loading || (app != null && !paused)
 
 /** Pure, so `CategoryButtonSpecTest` can pin every state without a composition. */
 internal fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
@@ -92,6 +93,9 @@ internal fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
         slots.size == 1 -> {
             val slot = slots.single()
             when {
+                slot.loading -> CategoryButtonSpec(
+                    category.short, "${category.title}, loading your apps", false, false,
+                )
                 slot.app == null -> CategoryButtonSpec(
                     "Not installed", "${category.title}, the picked app is not installed", false, true,
                 )

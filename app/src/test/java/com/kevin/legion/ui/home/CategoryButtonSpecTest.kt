@@ -67,4 +67,17 @@ class CategoryButtonSpecTest {
         assertFalse(spec.dimmed)
         assertEquals("Mail", spec.label)
     }
+
+    @Test
+    fun `loading picks read as the category, never Not installed or Unavailable`() {
+        val loading = buildDockSlots(listOf(DockPin("a", 0)), null)
+        val one = categoryButtonSpec(CategoryUi(HomeCategory.MAIL, loading))
+        assertEquals(HomeCategory.MAIL.short, one.label)
+        assertFalse(one.dimmed)
+        val many = categoryButtonSpec(
+            CategoryUi(HomeCategory.MAIL, buildDockSlots(listOf(DockPin("a", 0), DockPin("b", 0)), null)),
+        )
+        assertEquals(HomeCategory.MAIL.short, many.label)
+        assertFalse(many.dimmed)
+    }
 }

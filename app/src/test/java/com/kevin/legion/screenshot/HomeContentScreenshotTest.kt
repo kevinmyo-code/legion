@@ -232,6 +232,19 @@ class HomeContentScreenshotTest {
         capture("home-dock-not-installed.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins, loaded))
     }
 
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `dock and categories - cold start, snapshot not loaded, neutral rather than Not installed`() {
+        val pins = listOf(DockPin("com.whatsapp", 0), DockPin("com.spotify.music", 0))
+        val categories = HomeCategory.entries.map {
+            CategoryUi(it, buildDockSlots(listOf(DockPin("com.spotify.music", 0), DockPin("com.whatsapp", 0)), null))
+        }
+        capture(
+            "home-dock-loading.png", fallbackState(), recording = false, recordRefusal = null,
+            dockSlots = buildDockSlots(pins, null), categories = categories,
+        )
+    }
+
 
     // ---------------------------------------------------------------------------- ticket 07's row
 

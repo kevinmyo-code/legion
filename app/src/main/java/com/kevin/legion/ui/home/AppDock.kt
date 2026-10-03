@@ -55,14 +55,18 @@ data class DockSlotUi(
     val label: String,
     val icon: ImageBitmap?,
     val paused: Boolean,
+    /** True while the drawer snapshot has not loaded yet: the app's state is UNKNOWN, which is not
+     * "not installed" (CLAUDE.md section 1: unreadable and empty are different sentences). */
+    val loading: Boolean = false,
 )
 
 /**
  * Resolves [pins] against a drawer snapshot - pure, so [DockSlotUiTest] can pin every case (an
  * installed app, one no longer installed, one whose work profile is paused) without Robolectric.
  * [loaded] `null` (the cache hasn't warmed yet, the same "instant, then a cheap refresh" state
- * [com.kevin.legion.ui.apps.AppsScreen] already tolerates) resolves every slot to "not installed"
- * rather than blocking the whole dock on one more read.
+ * [com.kevin.legion.ui.apps.AppsScreen] already tolerates) resolves every slot to [DockSlotUi.loading]
+ * - neutral, not "not installed", because nothing has been read yet. Only a LOADED snapshot that
+ * lacks the package says "not installed".
  */
 internal fun buildDockSlots(pins: List<DockPin>, loaded: Loaded?): List<DockSlotUi> = pins.map { pin ->
     val app = loaded?.apps?.firstOrNull { it.packageName == pin.packageName && it.profileKey == pin.userSerial }
@@ -70,9 +74,10 @@ internal fun buildDockSlots(pins: List<DockPin>, loaded: Loaded?): List<DockSlot
     DockSlotUi(
         pin = pin,
         app = app,
-        label = app?.label ?: pin.packageName,
+        label = app?.label ?: if (loaded == null) "" else pin.packageName,
         icon = icon,
         paused = app?.isWork == true && loaded?.workPaused == true,
+        loading = loaded == null,
     )
 }
 
@@ -141,7 +146,7 @@ private fun RowScope.DockIcon(slot: DockSlotUi, onClick: () -> Unit, onLongClick
             .weight(1f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 2.dp)
-            .alpha(if (slot.app == null || slot.paused) DOCK_DIMMED_ALPHA else 1f),
+            .alpha(if ((slot.app == null && !slot.loading) || slot.paused) DOCK_DIMMED_ALPHA else 1f),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -157,6 +162,7 @@ private fun RowScope.DockIcon(slot: DockSlotUi, onClick: () -> Unit, onLongClick
         }
         Text(
             when {
+                slot.loading -> slot.label
                 slot.app == null -> "Not installed"
                 slot.paused -> "Paused"
                 else -> slot.label
