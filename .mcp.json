@@ -52,6 +52,22 @@
         "tools/mcp/board/server.py"
       ]
     },
+    "engine": {
+      "command": "python",
+      "args": [
+        "tools/mcp/launch.py",
+        "--require",
+        "LEGION_ENGINE_URL",
+        "--require",
+        "LEGION_ENGINE_TOKEN",
+        "--",
+        "uv",
+        "run",
+        "--project",
+        "tools/mcp/engine",
+        "tools/mcp/engine/server.py"
+      ]
+    },
     "shadcn": {
       "command": "python",
       "args": [

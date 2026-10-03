@@ -67,7 +67,7 @@ class LegionRouteTest {
         // demoted again to nothing on 2026-09-10; **demoted is not deleted**, and a route deleted
         // here fails at a notification tap rather than at compile time.
         val mustSurvive = listOf(
-            LegionRoute.HOME, LegionRoute.BODY, LegionRoute.MONEY, LegionRoute.MONEY_PANTRY,
+            LegionRoute.HOME, LegionRoute.BODY, LegionRoute.MONEY, LegionRoute.MONEY_DETAILS, LegionRoute.MONEY_PANTRY,
             LegionRoute.FLEET, LegionRoute.FLEET_PLACES, LegionRoute.CHECKLISTS,
             LegionRoute.DASHBOARD, LegionRoute.SETTINGS, LegionRoute.ASK, LegionRoute.NEWS,
         )

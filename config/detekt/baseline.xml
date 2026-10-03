@@ -5001,6 +5001,16 @@
     <ID>FunctionNaming:AppFolders.kt:@Composable internal fun FolderDialog( folder: LetterFolder, icons: Map&lt;String, ImageBitmap&gt;, workPaused: Boolean, onDismiss: () -&gt; Unit, onOpen: (DrawerApp) -&gt; Unit, onLongPress: (DrawerApp) -&gt; Unit, )</ID>
     <ID>FunctionNaming:AppFolders.kt:@Composable internal fun FolderGrid( folders: List&lt;LetterFolder&gt;, icons: Map&lt;String, ImageBitmap&gt;, onOpenFolder: (LetterFolder) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>FunctionNaming:AppFolders.kt:@Composable private fun FolderTile(folder: LetterFolder, icons: Map&lt;String, ImageBitmap&gt;, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable fun MoneyMonthScreen(onOpenDetails: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable fun MoneyMonthContent( state: MoneyMonthUiState, onOpenCategory: (AccountMonthSpend, String?) -&gt; Unit, onCloseDrilldown: () -&gt; Unit, onOpenDetails: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun StatusCard(text: String, alert: Boolean)</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun AccountCard( spend: AccountMonthSpend, dataLine: String?, onOpenCategory: (AccountMonthSpend, String?) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun CategoryRow( spend: AccountMonthSpend, row: CategorySpend, onOpenCategory: (AccountMonthSpend, String?) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun DetailsRow(onOpenDetails: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun MoneyDrilldownContent(drilldown: MoneyDrilldownUiState, onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:MoneyMonthScreen.kt:@Composable private fun DrilldownRow(row: MoneyDrilldownRow, currency: LedgerCurrency)</ID>
+    <ID>FunctionNaming:MoneyBars.kt:@Composable internal fun MoneyBars(model: MoneyTileModel, disclosureLines: Int)</ID>
+    <ID>FunctionNaming:MoneyBars.kt:@Composable private fun MoneyBarRow(bar: TileBar, style: androidx.compose.ui.text.TextStyle)</ID>
     <ID>FunctionNaming:CategoryRow.kt:@Composable fun CategoryRow( categories: List&lt;CategoryUi&gt;, chooserRows: List&lt;ChooserRow&gt;, callbacks: CategoryCallbacks, )</ID>
     <ID>FunctionNaming:CategoryRow.kt:@Composable private fun CategoryButton( ui: CategoryUi, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>FunctionNaming:CategorySheets.kt:@Composable internal fun ChooserSheetContent( category: HomeCategory, original: List&lt;DockSlotUi&gt;, working: List&lt;DockPin&gt;, rows: List&lt;ChooserRow&gt;, onToggle: (DockPin) -&gt; Unit, onCancel: () -&gt; Unit, onSave: () -&gt; Unit, modifier: Modifier = Modifier, initialQuery: String = "", )</ID>

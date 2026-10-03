@@ -60,6 +60,7 @@ private const val CATEGORY_DIMMED_ALPHA = 0.5f
 
 /** The status word a pick that cannot open carries, or null when it can. */
 internal fun slotStatusWord(slot: DockSlotUi): String? = when {
+    slot.loading -> "Loading"
     slot.app == null -> "Not installed"
     slot.paused -> "Paused"
     else -> null
@@ -122,7 +123,11 @@ private fun OpenWithRow(slot: DockSlotUi, onClick: () -> Unit) {
         AppGlyph(slot.icon, 40.dp)
         Column(Modifier.weight(1f)) {
             Text(
-                if (slot.app == null) "Not installed" else slot.label,
+                when {
+                    slot.loading -> "Loading your apps"
+                    slot.app == null -> "Not installed"
+                    else -> slot.label
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 color = SoftColors.text,
                 maxLines = 1,
@@ -202,7 +207,7 @@ private fun ColumnScope.ChooserSearchAndList(
     var query by remember { mutableStateOf(initialQuery) }
     val byApp = remember(rows) { rows.associateBy { it.app } }
     val shown = remember(rows, query) { filterDrawer(rows.map { it.app }, query) }
-    val gone = original.filter { it.app == null }
+    val gone = original.filter { it.app == null && !it.loading }
     OutlinedTextField(
         value = query,
         onValueChange = { query = it },

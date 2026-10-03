@@ -1,0 +1,245 @@
+{
+  "nodes": [
+    {
+      "id": "3f1417be5f996e43",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/02-sdk-django-and-client-support.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "fe2e8bc2fb6ea8f7",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/03-one-source-for-tool-definitions.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f2d48aacd76e7699",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/09-read-only-spike-for-claude-code.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e0ce1a2cceaae895",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/01-where-the-mcp-server-lives.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "38570d6dc2d96494",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/05-auth-per-caller.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d91af6ed002d493c",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/06-which-tools-and-the-honesty-contract.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "6c71455daae4c6f9",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/04-how-the-phone-consumes-engine-tools.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1c8b6b4404efa78c",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/07-can-an-mcp-client-feed-the-gate.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9472812d8ead5af2",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/08-public-exposure-and-clone-and-run.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4b04abd00b4ec707",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/10-the-engine-mcp-endpoint.md",
+      "x": 1040,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c1cc00d89f10ef94",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/11-the-phone-bridges-engine-tools.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e0977c1a0014699a",
+      "type": "file",
+      "file": ".scratch/engine-mcp/issues/12-oauth-for-third-party-clients.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "7893188fba5a62e5",
+      "fromNode": "3f1417be5f996e43",
+      "fromSide": "right",
+      "toNode": "e0ce1a2cceaae895",
+      "toSide": "left"
+    },
+    {
+      "id": "99264a8103971896",
+      "fromNode": "e0ce1a2cceaae895",
+      "fromSide": "right",
+      "toNode": "6c71455daae4c6f9",
+      "toSide": "left"
+    },
+    {
+      "id": "a2de75e1239b588c",
+      "fromNode": "fe2e8bc2fb6ea8f7",
+      "fromSide": "right",
+      "toNode": "6c71455daae4c6f9",
+      "toSide": "left"
+    },
+    {
+      "id": "85d29fe6c914f14f",
+      "fromNode": "3f1417be5f996e43",
+      "fromSide": "right",
+      "toNode": "38570d6dc2d96494",
+      "toSide": "left"
+    },
+    {
+      "id": "115118668f04fa1a",
+      "fromNode": "fe2e8bc2fb6ea8f7",
+      "fromSide": "right",
+      "toNode": "d91af6ed002d493c",
+      "toSide": "left"
+    },
+    {
+      "id": "3e485229b9b88e53",
+      "fromNode": "d91af6ed002d493c",
+      "fromSide": "right",
+      "toNode": "1c8b6b4404efa78c",
+      "toSide": "left"
+    },
+    {
+      "id": "3dbc720644e75edf",
+      "fromNode": "e0ce1a2cceaae895",
+      "fromSide": "right",
+      "toNode": "9472812d8ead5af2",
+      "toSide": "left"
+    },
+    {
+      "id": "c5fa6fa6b7cb62e4",
+      "fromNode": "38570d6dc2d96494",
+      "fromSide": "right",
+      "toNode": "9472812d8ead5af2",
+      "toSide": "left"
+    },
+    {
+      "id": "67c8ef611eca9b67",
+      "fromNode": "e0ce1a2cceaae895",
+      "fromSide": "right",
+      "toNode": "4b04abd00b4ec707",
+      "toSide": "left"
+    },
+    {
+      "id": "b68528a34cb5353f",
+      "fromNode": "fe2e8bc2fb6ea8f7",
+      "fromSide": "right",
+      "toNode": "4b04abd00b4ec707",
+      "toSide": "left"
+    },
+    {
+      "id": "fc1dfd0d3ad81c1a",
+      "fromNode": "38570d6dc2d96494",
+      "fromSide": "right",
+      "toNode": "4b04abd00b4ec707",
+      "toSide": "left"
+    },
+    {
+      "id": "ee4a7037fb795613",
+      "fromNode": "d91af6ed002d493c",
+      "fromSide": "right",
+      "toNode": "4b04abd00b4ec707",
+      "toSide": "left"
+    },
+    {
+      "id": "256e80fe941a7538",
+      "fromNode": "6c71455daae4c6f9",
+      "fromSide": "right",
+      "toNode": "c1cc00d89f10ef94",
+      "toSide": "left"
+    },
+    {
+      "id": "b504c44f26af9bba",
+      "fromNode": "4b04abd00b4ec707",
+      "fromSide": "right",
+      "toNode": "c1cc00d89f10ef94",
+      "toSide": "left"
+    },
+    {
+      "id": "67e8aae31b81a34c",
+      "fromNode": "38570d6dc2d96494",
+      "fromSide": "right",
+      "toNode": "e0977c1a0014699a",
+      "toSide": "left"
+    },
+    {
+      "id": "42cdd7469ce6b278",
+      "fromNode": "9472812d8ead5af2",
+      "fromSide": "right",
+      "toNode": "e0977c1a0014699a",
+      "toSide": "left"
+    },
+    {
+      "id": "c9e71f1613f94d12",
+      "fromNode": "4b04abd00b4ec707",
+      "fromSide": "right",
+      "toNode": "e0977c1a0014699a",
+      "toSide": "left"
+    }
+  ]
+}

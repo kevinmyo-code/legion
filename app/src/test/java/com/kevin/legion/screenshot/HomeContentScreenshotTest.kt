@@ -4,7 +4,10 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.ledger.AccountCoverage
+import com.kevin.legion.ledger.CategorySpend
+import com.kevin.legion.ledger.CombinedMonthSpend
 import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.ExcludedOwnAccountMovements
@@ -33,6 +36,7 @@ import com.kevin.legion.ui.home.HomeContent
 import com.kevin.legion.ui.home.HomeUiState
 import com.kevin.legion.ui.home.buildDockSlots
 import com.kevin.legion.ui.home.buildTodayChips
+import java.time.LocalDate
 import java.time.YearMonth
 import org.junit.Rule
 import org.junit.Test
@@ -90,6 +94,7 @@ class HomeContentScreenshotTest {
             nextLine = "Next: Team standup - 9:00 AM",
             chips = buildTodayChips(dueTodayCount = 2, overdueCount = 0, calendarReadFailed = false),
             checklistCount = 3,
+            moneyMonth = moneyMonthFixture(currentPeriod = false, categoryCount = 3),
             budget = budgetFixture(
                 listOf(
                     BudgetLine(
@@ -227,6 +232,19 @@ class HomeContentScreenshotTest {
         capture("home-dock-not-installed.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins, loaded))
     }
 
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `dock and categories - cold start, snapshot not loaded, neutral rather than Not installed`() {
+        val pins = listOf(DockPin("com.whatsapp", 0), DockPin("com.spotify.music", 0))
+        val categories = HomeCategory.entries.map {
+            CategoryUi(it, buildDockSlots(listOf(DockPin("com.spotify.music", 0), DockPin("com.whatsapp", 0)), null))
+        }
+        capture(
+            "home-dock-loading.png", fallbackState(), recording = false, recordRefusal = null,
+            dockSlots = buildDockSlots(pins, null), categories = categories,
+        )
+    }
+
 
     // ---------------------------------------------------------------------------- ticket 07's row
 
@@ -273,6 +291,35 @@ class HomeContentScreenshotTest {
         )
     }
 
+    /** The Money tile's combined month: [categoryCount] categories (largest first), the first three become bars. */
+    private fun moneyMonthFixture(currentPeriod: Boolean, categoryCount: Int): CombinedMonthSpend {
+        val all = listOf(
+            "Housing" to 180_000L, "Groceries" to 21_437L, "Dining" to 18_880L, "Fuel" to 4_512L, "Utilities" to 9_850L,
+        ).sortedByDescending { it.second }.take(categoryCount)
+        val total = all.sumOf { it.second }
+        return CombinedMonthSpend(
+            currency = LedgerCurrency.USD, month = YearMonth.of(2026, 9), totalCents = total,
+            categories = all.map {
+                CategorySpend(it.first, it.second, if (currentPeriod) it.second else 0L, hasPendingGuess = false)
+            },
+            uncategorizedCents = 0L,
+            unverifiedTotalCents = if (currentPeriod) total else 0L,
+            unreadableNames = emptyList(), hasActivity = true, newest = LocalDate.of(2026, 9, 27),
+        )
+    }
+
+    /** The phone's real state: newest row last month, nothing this month, so no bars of zero. */
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `money tile - stale data says no data yet for the month`() {
+        val stale = CombinedMonthSpend(
+            currency = LedgerCurrency.USD, month = YearMonth.of(2026, 10), totalCents = 0L, categories = emptyList(),
+            uncategorizedCents = 0L, unverifiedTotalCents = 0L, unreadableNames = emptyList(),
+            hasActivity = false, newest = LocalDate.of(2026, 9, 26),
+        )
+        capture("home-money-stale.png", fallbackState().copy(moneyMonth = stale), recording = false, recordRefusal = null)
+    }
+
     private fun alertsState(): HomeUiState {
         return HomeUiState(
             loading = false,
@@ -283,6 +330,7 @@ class HomeContentScreenshotTest {
             nextLine = "Nothing else on the calendar today",
             chips = buildTodayChips(dueTodayCount = 5, overdueCount = 2, calendarReadFailed = false),
             checklistCount = 1,
+            moneyMonth = moneyMonthFixture(currentPeriod = true, categoryCount = 5),
             budget = budgetFixture(
                 listOf(
                     BudgetLine(

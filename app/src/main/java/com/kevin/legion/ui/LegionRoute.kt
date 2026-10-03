@@ -219,8 +219,17 @@ object LegionRoute {
     /** Recorded `obd_samples` history for the active car (2026-08-04) - see [TelemetryScreen]. */
     const val FLEET_TELEMETRY = "fleet/telemetry"
 
-    /** Was `ledger` - renamed for the tab, the screen underneath is still [LedgerScreen] unchanged. */
+    /**
+     * Was `ledger` - renamed for the tab. **Since 2026-10-02 this is the Money page**
+     * ([com.kevin.legion.ui.money.MoneyMonthScreen]): this calendar month's spend per account and
+     * on what, nothing else above the fold. The screen that used to live here, [LedgerScreen],
+     * moved WHOLE to [MONEY_DETAILS], so everything it reaches (statements, budgets, accounts,
+     * groceries) stays a hands path (ADR 0035).
+     */
     const val MONEY = "money"
+
+    /** The old Money screen ([LedgerScreen]), unchanged, one row down from [MONEY]. */
+    const val MONEY_DETAILS = "money/details"
     // MONEY_IMPORT ("money/import") deleted - backend-erp ticket 25 ("statement ingestion leaves
     // the phone entirely"). Bank statements are ingested by the web app now.
     /** Was the standalone `pantry` tab - a grocery receipt is a purchase, so it now lives under Money (2026-08-07 brief). Still [PantryScreen] unchanged, only the route and its tab moved. */

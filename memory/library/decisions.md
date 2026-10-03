@@ -5955,3 +5955,39 @@ spend-by-month figure reads it; transfer pairing stays on calendar dates. A read
 row's date is never changed and nothing is stored differently. Every figure that includes or
 leaves out a moved row says so in words (`earlyChargeSentences`). Ticket:
 `.scratch/backend-etl/issues/15-rent-counts-in-the-month-it-pays-for.md`.
+## 2026-10-02 - Model survey: stay on 3.8 Live, the engine becomes an MCP server
+
+A survey of the 2026 model and tooling landscape (three research agents, web-sourced, leaderboard
+figures from Artificial Analysis, none measured here). Kevin's rulings:
+
+- **Voice stays on `gemini-3.8-live`.** `gemini-3.8-live-extended-thinking` scored far higher on
+  tool use (68.6% vs 30.1% on tau-Voice) but costs roughly 4x per hour, and it accepts only
+  `NON_BLOCKING` tool calls, which collides with the `BLOCKING` stamp the honesty clause leans on.
+  Kevin: *"extended thinking seems too expensive."* No second voice provider: OpenAI's GPT-Live-1
+  matched it at about 7x the cost and a full protocol rewrite.
+- **Other models stay as they are.** Receipt vision on Flash-Lite, the embedding work and a
+  `gemini-3.5-transcribe` split for voice notes were offered and declined for now.
+- **Four Live setup flags approved as quick wins:** proactive audio, VAD start/end sensitivity,
+  explicit context-compression thresholds, affective dialog. Owed: a drive test.
+- **The Django engine becomes an MCP server**, for three callers: the phone's voice session, Claude
+  Code during development, and any other MCP client. Kevin: *"we could let the voice model or any
+  other model query it directly in the app. in the dev side also you could query it while were
+  building together."* Charted as `.scratch/engine-mcp/`.
+- **Picovoice is out** (free tier ended 2026-06-30, keys call home). Kevin reports the Vosk wake
+  word drains battery; openWakeWord and keyless alternatives are under evaluation before he decides.
+
+## 2026-10-02 - engine-mcp: inside Django, a Python registry, device tokens, read and write
+
+Kevin ruled on four of the map's decision tickets the same afternoon:
+
+- **01:** the MCP server is a `/mcp` view inside the Django engine (SDK 2.2.0; `django-mcp-server` is
+  broken on install).
+- **03:** tools are a curated Python registry calling existing service code, not one per OpenAPI
+  operation.
+- **05:** device tokens now, with a read/write scope; OAuth for third-party clients waits. Claude
+  Code may read the live household during development.
+- **06:** **read and write in v1**, against the read-only recommendation. Writes ride the REST
+  views' serializers on a write-scoped token; gated tables stay unwritable; memory tables are
+  excluded by default because that sub-question was not ruled.
+
+Still open: 04 (how the phone consumes it), 07 (ingestion over MCP), 08 (public exposure).

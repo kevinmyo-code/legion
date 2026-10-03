@@ -824,3 +824,119 @@ def test_the_bootstrap_name_defaults_to_home(monkeypatch):
 
     monkeypatch.delenv(BOOTSTRAP_NAME_ENV, raising=False)
     assert bootstrap_household_name() == "Home"
+
+
+# =============================================================================
+# engine-mcp ticket 10: every MCP tool, with a token from each household
+# =============================================================================
+
+
+def _mcp_seed(client, tag: str) -> dict:
+    """One row of every kind an MCP tool can reach, named for its household."""
+    assert client.put(
+        f"/api/places/{tag}-place/", {"latitude": 1.0, "longitude": 2.0}, format="json"
+    ).status_code == 200
+    event = client.post(
+        "/api/events",
+        {"title": f"{tag}-event", "starts_at": "2026-10-05T09:00:00Z"},
+        format="json",
+    ).data
+    checklist = client.post("/api/checklists/", {"name": f"{tag}-list"}, format="json").data
+    item = client.post(
+        f"/api/checklists/{checklist['id']}/items", {"text": f"{tag}-item"}, format="json"
+    ).data
+    receipt = client.post(
+        "/api/ingest/receipt",
+        a_receipt(store=f"{tag.upper()}-STORE", content_sha256=f"sha-{tag}"),
+        format="json",
+    )
+    assert receipt.status_code == 201, receipt.data
+    return {
+        "event": str(event["id"]),
+        "checklist": str(checklist["id"]),
+        "item": str(item["id"]),
+    }
+
+
+def _feed(client) -> dict:
+    feed = dict(client.get("/api/changes").data)
+    feed.pop("server_time", None)
+    return feed
+
+
+def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b, token_a, token_b):
+    from engine_mcp.models import McpCall
+    from engine_mcp.tools import READABLE, TOOLS_BY_NAME
+    from tests.test_engine_mcp import call, client_with
+
+    settings.LEGION_MCP = True
+    a = _mcp_seed(token_a, "alpha")
+    _mcp_seed(token_b, "bravo")
+    mcp_a = client_with(household_user)
+    mcp_b = client_with(user_b)
+    a_marks = ("alpha", "ALPHA", *a.values())
+    covered = set()
+
+    def b_reads(name, arguments):
+        covered.add(name)
+        is_error, text, _ = call(mcp_b, name, arguments)
+        assert not is_error, (name, arguments, text)
+        leaked = [mark for mark in a_marks if mark in text]
+        assert not leaked, (name, arguments, leaked)
+        return text
+
+    # Reads: B sees its own rows and none of A's; A, as the control, sees its own.
+    b_reads("list_tables", {})
+    for table in sorted(READABLE):
+        b_reads("read_records", {"table": table, "active_only": False})
+    assert "bravo-place" in b_reads("read_records", {"table": "places"})
+    assert "BRAVO-STORE" in b_reads("read_records", {"table": "receipts"})
+    window = {"from": "2026-10-01", "to": "2026-10-10"}
+    assert "bravo-event" in b_reads("list_events", window)
+    assert "bravo-item" in b_reads("list_checklists", {"date": "2026-10-05"})
+    assert "alpha-place" in call(mcp_a, "read_records", {"table": "places"})[1]
+    assert "alpha-event" in call(mcp_a, "list_events", window)[1]
+
+    # Writes from B that name A's rows: refused or kept inside B, never A's.
+    a_before = _feed(token_a)
+
+    def b_writes(name, arguments, *, lands_in_b):
+        covered.add(name)
+        is_error, text, _ = call(mcp_b, name, arguments)
+        if lands_in_b:
+            assert not is_error, (name, text)
+        else:
+            assert is_error, (name, text)
+            assert text.startswith("Nothing was"), (name, text)
+
+    b_writes("delete_record", {"table": "places", "identity": "alpha-place"}, lands_in_b=False)
+    b_writes(
+        "write_record",
+        {
+            "table": "places",
+            "identity": "alpha-place",
+            "fields": {"latitude": 9.0, "longitude": 9.0},
+        },
+        lands_in_b=True,
+    )
+    b_writes("update_event", {"id": a["event"], "fields": {"title": "hijacked"}}, lands_in_b=False)
+    b_writes("delete_event", {"id": a["event"]}, lands_in_b=False)
+    b_writes("add_event", {"fields": {"title": "b-only"}}, lands_in_b=True)
+    b_writes(
+        "add_checklist_item", {"checklist_id": a["checklist"], "text": "x"}, lands_in_b=False
+    )
+    b_writes(
+        "tick_checklist_item",
+        {"checklist_id": a["checklist"], "item_id": a["item"], "date": "2026-10-02"},
+        lands_in_b=False,
+    )
+    assert _feed(token_a) == a_before
+    b_places = {row["label"]: row for row in token_b.get("/api/places/").data["results"]}
+    assert b_places["alpha-place"]["latitude"] == 9.0
+
+    assert covered == set(TOOLS_BY_NAME), sorted(set(TOOLS_BY_NAME) - covered)
+
+    # The audit trail is tenanted like every other table.
+    b_household = user_b.household
+    assert McpCall.objects.filter(token__user=user_b).exclude(household=b_household).count() == 0
+    assert McpCall.objects.filter(household=b_household).exclude(token__user=user_b).count() == 0

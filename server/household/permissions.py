@@ -16,9 +16,26 @@ access is still all-or-nothing, and the owner role still gates no data.
 """
 from __future__ import annotations
 
-from rest_framework import permissions
+from rest_framework import exceptions, permissions
 
-from household.models import HouseholdMember
+from household.models import DeviceToken, HouseholdMember
+
+READ_SCOPE_REFUSAL = (
+    "Nothing was written. This device token is read-only (scope `read`), so it may read "
+    "this household's data and change none of it. Use a token issued with scope `write` "
+    "to make changes."
+)
+
+
+def token_may_write(request) -> bool:
+    """False only for a request authenticated by a `read`-scoped device token.
+
+    A browser session (`request.auth` is None) and every token minted before
+    engine-mcp ticket 05 (migration 0004 gave them `write`) may write, exactly
+    as before. `/mcp` asks this per TOOL rather than per HTTP method, because
+    every MCP call is a POST whether it reads or writes."""
+    auth = getattr(request, "auth", None)
+    return not (isinstance(auth, DeviceToken) and not auth.can_write)
 
 
 class IsHouseholdMember(permissions.BasePermission):
@@ -26,7 +43,20 @@ class IsHouseholdMember(permissions.BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-        return HouseholdMember.objects.filter(user=user).exists()
+        if not HouseholdMember.objects.filter(user=user).exists():
+            return False
+        # engine-mcp ticket 05: a read-scoped token is refused on every unsafe
+        # method, here, once, rather than per view - a scope that only the MCP
+        # layer honoured would let a leaked read token write through REST.
+        # `/mcp` opts out (`scope_checked_per_call`) because its POST carries
+        # reads and writes alike, and it refuses write TOOLS itself, in words.
+        if (
+            request.method not in permissions.SAFE_METHODS
+            and not getattr(view, "scope_checked_per_call", False)
+            and not token_may_write(request)
+        ):
+            raise exceptions.PermissionDenied(READ_SCOPE_REFUSAL)
+        return True
 
 
 class IsHouseholdOwner(IsHouseholdMember):

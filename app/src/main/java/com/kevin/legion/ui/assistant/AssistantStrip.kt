@@ -169,6 +169,11 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
         }
     }
 
+    // The resolver lets a notice outrank the phase, so a failure flashed just before a conversation
+    // connected would hide "Listening" until its timer ran out. Listening means the socket really
+    // connected; whatever error was on screen is over (2026-10-02).
+    LaunchedEffect(phase) { if (phase == Phase.LISTENING) notice = null }
+
     AssistantStripContent(
         state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced),
         onTap = {

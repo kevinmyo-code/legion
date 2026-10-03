@@ -11,6 +11,7 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.ledger.LedgerController
+import com.kevin.legion.ledger.combineMonthSpend
 import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.location.AirNow
 import com.kevin.legion.meals.DailyMealGap
@@ -167,6 +168,11 @@ private suspend fun loadState(context: Context): HomeUiState {
         },
         readVoiceNotesCount = { VoiceNoteController.listNotes(context).size },
         readMoneySyncLine = { LedgerMirrorStatus.line(context, short = true) },
+        // The SAME aggregation the Money page reads, summed per category across accounts.
+        readMoneyMonth = {
+            val month = YearMonth.now()
+            combineMonthSpend(LedgerController.accountMonthResults(context, month), month, LedgerEntity.US.currency)
+        },
     )
 }
 
@@ -193,17 +199,14 @@ internal suspend fun assembleHomeState(
     readMaintenance: suspend () -> Pair<List<DueRowView>, Int>,
     readVoiceNotesCount: suspend () -> Int,
     readMoneySyncLine: () -> String? = { null },
+    readMoneyMonth: suspend () -> com.kevin.legion.ledger.CombinedMonthSpend? = { null },
 ): HomeUiState {
     val (checklistCount, listsFailed) = try {
         readChecklistCount() to false
     } catch (e: Exception) {
         0 to true
     }
-    val (budget, moneyFailed) = try {
-        readBudget() to false
-    } catch (e: Exception) {
-        null to true
-    }
+    val money = readMoney(readBudget, readMoneyMonth)
     val (mealPair, bodyFailed) = try {
         readMealGap() to false
     } catch (e: Exception) {
@@ -235,8 +238,9 @@ internal suspend fun assembleHomeState(
         chips = calendar.chips,
         checklistCount = checklistCount,
         listsFailed = listsFailed,
-        budget = budget,
-        moneyFailed = moneyFailed,
+        budget = money.budget,
+        moneyFailed = money.failed,
+        moneyMonth = money.month,
         // A prefs read, but HOME must never crash (ADR 0050), so it is guarded like every tile.
         moneySyncLine = try {
             readMoneySyncLine()
@@ -327,4 +331,33 @@ private suspend fun loadCalendar(
             chips = buildTodayChips(0, 0, calendarReadFailed = true),
         )
     }
+}
+
+/** The Money tile's two reads, each guarded on its own: a failed bars read must not hide the budget
+ * disclosures, and either failing says "couldn't read" ([failed]), never an empty month. */
+private data class MoneyRead(
+    val budget: com.kevin.legion.ledger.BudgetVsActual?,
+    val month: com.kevin.legion.ledger.CombinedMonthSpend?,
+    val failed: Boolean,
+)
+
+@Suppress("TooGenericExceptionCaught", "SwallowedException") // HOME must never crash (ADR 0050)
+private suspend fun readMoney(
+    readBudget: suspend () -> com.kevin.legion.ledger.BudgetVsActual?,
+    readMoneyMonth: suspend () -> com.kevin.legion.ledger.CombinedMonthSpend?,
+): MoneyRead {
+    var failed = false
+    val budget = try {
+        readBudget()
+    } catch (e: Exception) {
+        failed = true
+        null
+    }
+    val month = try {
+        readMoneyMonth()
+    } catch (e: Exception) {
+        failed = true
+        null
+    }
+    return MoneyRead(budget, month, failed)
 }

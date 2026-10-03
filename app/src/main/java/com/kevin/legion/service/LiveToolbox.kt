@@ -11,6 +11,9 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
+import com.kevin.legion.backend.engine.EngineConfig
+import com.kevin.legion.backend.engine.EngineHttp
+import com.kevin.legion.backend.engine.EngineMcpClient
 import com.kevin.legion.advisor.AdvisorAspect
 import com.kevin.legion.advisor.AdvisorBriefs
 import com.kevin.legion.advisor.AdvisorAgent
@@ -606,6 +609,11 @@ object LiveToolbox {
                     "What to play, in the user's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
                         "or 'Discovery by Daft Punk'. Still required even when spotifyUri is set - " +
                         "used to build the spoken confirmation."),
+                "artist" to schema("string",
+                    "The artist, whenever you know it - including from earlier in the " +
+                        "conversation ('play that song' after discussing an album). When you " +
+                        "pass it, put ONLY the title in 'query'. Used for songs and albums; " +
+                        "ignored for artist and playlist requests."),
                 "type" to schema("string",
                     "What kind of thing 'query' names. Defaults to 'song' if omitted.",
                     enum = listOf("song", "artist", "album", "playlist")),
@@ -2308,6 +2316,19 @@ object LiveToolbox {
             required = listOf("question"),
         ))
 
+        // engine-mcp ticket 11 (ruling 04, option C): the ONE declaration through which the
+        // household engine's own tools (`/mcp`) reach the live session. Constant cost however many
+        // tools the engine grows; see [AskEngine].
+        fns.put(fn(
+            name = "ask_engine",
+            description = AskEngine.DESCRIPTION,
+            params = obj(
+                "question" to schema("string", "The user's question or instruction, in their own words."),
+                "intent" to schema("string", AskEngine.INTENT_DESCRIPTION, enum = listOf("record", "ask")),
+            ),
+            required = listOf("question"),
+        ))
+
         // The nine aspect-engine meta-tools (ticket 17, `EngineToolbox`) - declared directly,
         // never hidden behind DISPATCHED, since ticket 06's answer is that this surface is meant
         // to be seen by the live session itself, not routed through a domain dispatcher.
@@ -2575,6 +2596,7 @@ object LiveToolbox {
                     mutatingToolNames = mutatingToolsFor("mail"),
                 )
             }
+            "ask_engine" -> askEngine(context, args, touchedReadThroughToolThisTurn)
             "get_health" -> getHealth(context)
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
@@ -2593,6 +2615,7 @@ object LiveToolbox {
                 args.optString("query"),
                 args.optString("type", "song"),
                 args.optString("spotifyUri", "").ifBlank { null },
+                args.optString("artist", "").ifBlank { null },
             )
             "browse_my_music" -> browseMyMusic(context, args)
             "get_music_queue" -> getMusicQueue(context, args)
@@ -6089,6 +6112,52 @@ object LiveToolbox {
         }
     }
 
+    /** One client for the process so its short `tools/list` cache survives between utterances;
+     * it reads the engine address and token live from [EngineConfig] on every call. */
+    private var engineMcpClient: EngineMcpClient? = null
+
+    /**
+     * `ask_engine` (engine-mcp ticket 11). Same Gemini-key guard and key-health bookkeeping as
+     * [agentResult]; everything about WHAT may cross to the engine lives in [AskEngine].
+     */
+    private suspend fun askEngine(
+        context: Context,
+        args: JSONObject,
+        touchedReadThroughTool: Boolean,
+    ): JSONObject {
+        if (!GeminiKeyProvider.hasKey()) {
+            return result(
+                false,
+                "I need a Gemini key to do that - add your own in Setup to keep going. Nothing was read or written.",
+            )
+        }
+        val client = engineMcpClient ?: EngineConfig(context.applicationContext).let { config ->
+            EngineMcpClient(EngineHttp(config), config::baseUrl).also { engineMcpClient = it }
+        }
+        return AskEngine(
+            client = client,
+            runAgent = { instruction, question, tools ->
+                SubAgent(systemInstruction = instruction, useSearch = false).investigate(
+                    context = "",
+                    question = question,
+                    tools = tools,
+                    maxModelCalls = 4,
+                    budgetMs = 40_000,
+                )
+            },
+            identityClause = { AssistantIdentity.shortClause(context) },
+            nowText = { java.time.OffsetDateTime.now().toString() },
+            onAgentResult = { r ->
+                when (r) {
+                    is AgentResult.Success -> KeyHealth.noteOk()
+                    AgentResult.RateLimited -> KeyHealth.noteRateLimited()
+                    AgentResult.KeyInvalid -> KeyHealth.noteInvalid()
+                    else -> Unit
+                }
+            },
+        ).ask(args.optString("question"), wantsWrite(args), touchedReadThroughTool).toJson()
+    }
+
     /**
      * Delegates to the symptom-triage specialist ([SymptomAgent]). Reads whatever
      * live values are available off the port (so the worker can weigh them) and
@@ -7263,7 +7332,12 @@ object LiveToolbox {
      * for the IDENTICAL reasons - they are the same resolve step with two different things done
      * to the result.
      */
-    private suspend fun resolveSpotifyUri(context: Context, query: String, type: String): SpotifyUriResolution {
+    private suspend fun resolveSpotifyUri(
+        context: Context,
+        query: String,
+        type: String,
+        artist: String? = null,
+    ): SpotifyUriResolution {
         // Tool-facing vocabulary is "song" (matches how a driver actually talks); Spotify's own
         // API calls that "track" - translated at the boundary so nothing upstream of this line
         // needs to know Spotify's word for it.
@@ -7311,7 +7385,7 @@ object LiveToolbox {
         // connection and a genuinely unknown song were indistinguishable to the driver
         // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
         // was written to undo on the Drive side.
-        return when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
+        return when (val outcome = SpotifyWebApi.search(context, query, spotifyType, artist)) {
             is SpotifyWebApi.SearchOutcome.Found -> SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)
             SpotifyWebApi.SearchOutcome.NeedsAuthorization -> SpotifyUriResolution.Failed(result(
                 success = false,
@@ -7335,7 +7409,24 @@ object LiveToolbox {
             ))
             SpotifyWebApi.SearchOutcome.NoMatch -> SpotifyUriResolution.Failed(result(
                 success = false,
-                message = "Spotify has nothing matching \"$query\".",
+                // Names what was searched and says nothing was started: the search now rejects
+                // hits that do not match the request, so NoMatch can mean "Spotify had
+                // something, but not this" (CLAUDE.md §7 outcome-verb rule). Shared with the
+                // queue action, and whatever was already playing keeps playing, so it claims
+                // neither "nothing is playing" nor a play-specific verb.
+                message = "I couldn't find \"$query\"" +
+                    (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
+                    " on Spotify, so I didn't play or queue anything.",
+            ))
+            is SpotifyWebApi.SearchOutcome.Rejected -> SpotifyUriResolution.Failed(result(
+                success = false,
+                // Hits existed and none fit the request. Name them so the model can ask the user
+                // which one was meant; nothing was started, and the message says so.
+                message = "I couldn't find \"$query\"" +
+                    (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
+                    " on Spotify, so I didn't play or queue anything. Closest hits: " +
+                    outcome.closest.joinToString("; ") +
+                    ". Ask the user whether one of those is what they meant.",
             ))
             is SpotifyWebApi.SearchOutcome.Failed -> SpotifyUriResolution.Failed(result(
                 success = false,
@@ -7418,6 +7509,7 @@ object LiveToolbox {
         query: String,
         type: String = "song",
         knownUri: String? = null,
+        artist: String? = null,
     ): JSONObject {
         if (query.isBlank()) return result(success = false, message = "What should I play?")
 
@@ -7447,7 +7539,7 @@ object LiveToolbox {
                 is SpotifyUriResolution.Failed -> return resolved.toolResult
             }
         } else {
-            when (val resolved = resolveSpotifyUri(context, query, type)) {
+            when (val resolved = resolveSpotifyUri(context, query, type, artist)) {
                 is SpotifyUriResolution.Found -> resolved.uri to
                     (resolved.subtitle?.let { "${resolved.name}, $it" } ?: resolved.name)
                 is SpotifyUriResolution.Failed -> return resolved.toolResult

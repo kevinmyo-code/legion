@@ -5,6 +5,7 @@ from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from api.views import healthz
+from engine_mcp.views import McpView
 from ingest.freshness import FreshnessView
 from web.views import spa_index
 
@@ -51,6 +52,12 @@ urlpatterns = [
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.
     path("api/freshness", FreshnessView.as_view(), name="freshness"),
+    # engine-mcp ticket 10: the engine as an MCP server, for Claude Code now and
+    # the phone's `ask_engine` bridge next (ticket 11). Off unless LEGION_MCP is
+    # on; see `engine_mcp/views.py`. Top level, not under `api/`, because it is
+    # not part of the REST contract `openapi.yaml` describes - it is a second
+    # face on the same rules, never a second set of them.
+    path("mcp", McpView.as_view(), name="mcp"),
     # LAST, and it has to be: this pattern matches almost everything, so any
     # route added below it would be unreachable. Django tries patterns in
     # order, so putting the catch-all at the end is what lets every real route
@@ -73,5 +80,5 @@ urlpatterns = [
     # subsumes the other. The cost is that an SPA route beginning with one of
     # these words is unreachable - `/health-log` would be swallowed - which is
     # a real constraint on ticket 05's route names, not a bug here.
-    re_path(r"^(?!api/|admin/|static/|media/|health|healthz).*$", spa_index, name="spa"),
+    re_path(r"^(?!api/|admin/|static/|media/|health|healthz|mcp$).*$", spa_index, name="spa"),
 ]
