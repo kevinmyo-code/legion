@@ -10,8 +10,21 @@ import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.engine.mirror.MirrorFolderPreferences
 import com.kevin.legion.engine.mirror.MirrorLifecycleBinder
 import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
+import com.kevin.legion.location.LocationController
+import com.kevin.legion.navigation.GeoPoint
+import com.kevin.legion.navigation.MapboxNavController
+import com.kevin.legion.navigation.MapboxNavSdk
 import com.kevin.legion.navigation.MapboxTokenProvider
 import com.kevin.legion.navigation.MapboxTokenStore
+import com.kevin.legion.navigation.NavMapFeed
+import com.kevin.legion.navigation.resolve.CalendarSource
+import com.kevin.legion.navigation.resolve.ContactSource
+import com.kevin.legion.navigation.resolve.DestinationResolver
+import com.kevin.legion.navigation.resolve.MapboxPlaceSearch
+import com.kevin.legion.navigation.resolve.PhoneContacts
+import com.kevin.legion.navigation.resolve.PhoneEvents
+import com.kevin.legion.navigation.resolve.PhonePlacesReader
+import com.kevin.legion.navigation.resolve.SavedPlaceSource
 import com.kevin.legion.service.ProactivePreferences
 import com.mapbox.common.MapboxOptions
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +63,35 @@ class MidnightApplication : Application() {
                     android.util.Log.w("MidnightApplication", "Mapbox native library unavailable: ${e.message}")
                 }
             },
+        )
+    }
+
+    /** The raw route/progress objects the nav screen's map draws; written by [navController]'s SDK seam. */
+    val navMapFeed: NavMapFeed by lazy { NavMapFeed() }
+
+    /**
+     * The one navigation controller (mapbox-nav ticket 10, ticket 07: a trip outlives its screen).
+     * App-owned, like [mapboxTokens], because a guided trip ends only on arrival, End or process
+     * death. There is no Hilt in the tree yet; this is the single-instance stopgap CLAUDE.md sec 8
+     * allows, and ticket 11's voice tools read it from here too.
+     */
+    val navController: MapboxNavController by lazy {
+        MapboxNavController(
+            tokens = mapboxTokens,
+            sdkFactory = { MapboxNavSdk(this, navMapFeed) },
+            fix = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
+        )
+    }
+
+    /** Destination lookup in ticket 03's order: saved places, calendar, contacts, then Mapbox search. */
+    val navResolver: DestinationResolver by lazy {
+        DestinationResolver(
+            sources = listOf(
+                SavedPlaceSource(PhonePlacesReader(this)),
+                CalendarSource(PhoneEvents(this)),
+                ContactSource(PhoneContacts(this)),
+            ),
+            placeSearch = MapboxPlaceSearch(),
         )
     }
 

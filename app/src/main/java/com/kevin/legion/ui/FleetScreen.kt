@@ -59,6 +59,7 @@ import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.deckSparklineHasShape
+import com.kevin.legion.ui.navigation.LocalNavEntryPoints
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.ui.fleet.BuildSheetScreen
 import com.kevin.legion.ui.fleet.DriveHistoryDrilldownScreen
@@ -117,10 +118,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.kevin.legion.location.LocationController
-import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.ui.fleet.FleetSoftSurface
 import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.navigation.LocalNavEntryPoints
 import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.AreaChip
 
@@ -1334,6 +1335,13 @@ private fun CarsPane(
             modifier = Modifier.clickable(onClick = onOpenSpecs),
         )
         DeckRow(label = "Places", value = ">", modifier = Modifier.clickable(onClick = onOpenPlaces))
+        // mapbox-nav ticket 10: where a user looks for "Navigate" (the Fleet tile already carries the
+        // car and the saved places). Opens the native nav screen. Reached through a CompositionLocal
+        // rather than a parameter threaded through FleetScreen/FleetContent/FleetListing/CarsPane:
+        // those signatures are keyed in the detekt baseline, and the same entry point is needed by
+        // the saved-places screen, so one provider in MainActivity serves both.
+        val openNavigation = LocalNavEntryPoints.current.open
+        DeckRow(label = "Navigate", value = ">", modifier = Modifier.clickable(onClick = openNavigation))
         // Ticket 07 (command-center): the build sheet's entry point - `FleetUiState.buildSheetCount`
         // was loaded and rendered nowhere until this row (the ticket's own "no half-wired state"
         // rule). Count-as-value matches this pane's own "Places" row above (a bare ">" doorway would
@@ -1417,8 +1425,10 @@ private fun PreviewFleetConnectedEmpty() = LegionTheme {
  * current-location readout mirrors `getCurrentLocation`'s own three failure branches and
  * geocode-with-coords-fallback line for line (that function is private to `LiveToolbox`, so it is
  * restated here rather than reached into - see [currentLocationReadout]'s own doc), and the
- * navigate icon calls [NavigationController.launch] directly, the same function `open_navigation`
- * dispatches to.
+ * navigate button opens the native nav screen on the place (mapbox-nav ticket 10). **It used to
+ * call `NavigationController.launch` directly, the same function `open_navigation` dispatches to;
+ * that Google Maps hand-off is no longer reachable from this screen** (ticket 11 retires the
+ * controller and the voice tool together).
  *
  * **Delete keeps a confirm step on purpose.** ADR 0035 + this ticket's own wording: "a misheard
  * voice delete is why the confirm exists - keep the same care by hand." [PlaceController.forgetPlace]
@@ -1427,6 +1437,7 @@ private fun PreviewFleetConnectedEmpty() = LegionTheme {
  */
 @Composable
 fun SavedPlacesScreen(onBack: () -> Unit) {
+    val navEntry = LocalNavEntryPoints.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -1537,17 +1548,10 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
                     items(places, key = { it.label }) { place ->
                         SavedPlaceRow(
                             place = place,
-                            onNavigate = {
-                                // Same intent shape open_navigation uses (NavigationController.launch,
-                                // mode NAVIGATE - the tool's own default). Coordinates, not a typed
-                                // address: a saved place already has an exact GPS fix, so there is no
-                                // spoken destination string to reconstruct.
-                                NavigationController.launch(
-                                    context,
-                                    "${place.latitude},${place.longitude}",
-                                    NavigationController.Mode.NAVIGATE,
-                                )
-                            },
+                            // mapbox-nav ticket 10: opens the native nav screen on this place (the label
+                            // goes through the destination resolver, saved places first). The Google Maps
+                            // intent this button fired is no longer reachable from here.
+                            onNavigate = { navEntry.openFor(place.label) },
                             onDelete = { pendingDelete = place },
                         )
                         Spacer(Modifier.height(8.dp))

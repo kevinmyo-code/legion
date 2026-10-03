@@ -53,7 +53,6 @@ fun PermissionsDiagnosticsScreen(
     onBack: () -> Unit,
     onOpenCarProbe: () -> Unit,
     onOpenDialer: () -> Unit = {},
-    onOpenNavSpike: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -204,11 +203,6 @@ fun PermissionsDiagnosticsScreen(
                     label = "Car probe",
                     status = "On-screen diagnostic log for Android Auto probes",
                     onClick = onOpenCarProbe,
-                )
-                SettingsNavRow(
-                    label = "Navigation spike",
-                    status = "Mapbox Navigation SDK: one guided route to a test destination",
-                    onClick = onOpenNavSpike,
                 )
 
                 Spacer(Modifier.height(24.dp))

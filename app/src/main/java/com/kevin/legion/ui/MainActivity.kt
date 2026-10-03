@@ -772,6 +772,13 @@ private fun LegionShell(
                     // the app now, and the drill-downs are reached by tapping the row that
                     // summarises them, exactly as they were reached from METERS.
                 }
+                // mapbox-nav ticket 10: the two ways other screens open the nav screen.
+                val navEntryPoints = remember(navController) {
+                    com.kevin.legion.ui.navigation.NavEntryPoints(
+                        open = { navController.navigate(LegionRoute.NAVIGATE) },
+                        openFor = { label -> navController.navigate(LegionRoute.navigateTo(label)) },
+                    )
+                }
                 NavHost(
                     navController = navController,
                     // HOME is the start destination - **CORRECTED home-launcher ticket 03**: this
@@ -894,19 +901,25 @@ private fun LegionShell(
                 // UPLINK panel (ticket 09 answer §1) - FleetScreen no longer takes an
                 // onOpenTelemetry callback at all, see FLEET_TELEMETRY's own comment below
                 // for where the old nav entry point now lands.
-                FleetScreen(
-                    onOpenPlaces = { navController.navigate(LegionRoute.FLEET_PLACES) },
-                    onOpenCars = { navController.navigate(LegionRoute.FLEET_CARS) },
-                    onBack = { navController.popBackStack() },
-                    // Ticket 20: the UPLINK panel's DRIVE MODE row, inert since ticket 18,
-                    // gets its click wired here - ticket 11 answer §1's OFFER, never auto.
-                    onOpenDrivingMode = { navController.navigate(LegionRoute.DRIVING) { launchSingleTop = true } },
-                    // onSweepActiveChanged no longer wired here (home-launcher ticket 02) - it used
-                    // to feed `fleetSweepActive` above, which only ever fed [StatusLine]'s retired
-                    // `cursorSolid`. FleetScreen's own parameter still defaults to a no-op, so this
-                    // is unaffected on FleetScreen's side - see that parameter's own doc comment,
-                    // still accurate about what it reports, just unread now.
-                )
+                // mapbox-nav ticket 10: the Navigate row and a saved place's Navigate action reach the
+                // nav screen through this local (see NavEntryPoints for why not a parameter).
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
+                ) {
+                    FleetScreen(
+                        onOpenPlaces = { navController.navigate(LegionRoute.FLEET_PLACES) },
+                        onOpenCars = { navController.navigate(LegionRoute.FLEET_CARS) },
+                        onBack = { navController.popBackStack() },
+                        // Ticket 20: the UPLINK panel's DRIVE MODE row, inert since ticket 18,
+                        // gets its click wired here - ticket 11 answer §1's OFFER, never auto.
+                        onOpenDrivingMode = { navController.navigate(LegionRoute.DRIVING) { launchSingleTop = true } },
+                        // onSweepActiveChanged no longer wired here (home-launcher ticket 02) - it used
+                        // to feed `fleetSweepActive` above, which only ever fed [StatusLine]'s retired
+                        // `cursorSolid`. FleetScreen's own parameter still defaults to a no-op, so this
+                        // is unaffected on FleetScreen's side - see that parameter's own doc comment,
+                        // still accurate about what it reports, just unread now.
+                    )
+                }
             }
             // Ticket 20: full-bleed, no shell chrome (see isDrivingMode above) - a plain
             // popBackStack covers both exit paths DrivingModeScreen itself drives (the
@@ -915,7 +928,11 @@ private fun LegionShell(
                 DrivingModeScreen(onExit = { navController.popBackStack() })
             }
             composable(LegionRoute.FLEET_PLACES) {
-                SavedPlacesScreen(onBack = { navController.popBackStack() })
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
+                ) {
+                    SavedPlacesScreen(onBack = { navController.popBackStack() })
+                }
             }
             composable(LegionRoute.FLEET_CARS) {
                 CarsScreen(onBack = { navController.popBackStack() })
@@ -1027,7 +1044,6 @@ private fun LegionShell(
                 com.kevin.legion.ui.settings.PermissionsDiagnosticsScreen(
                     onBack = { navController.popBackStack() },
                     onOpenCarProbe = { navController.navigate(LegionRoute.SETTINGS_CAR_PROBE) },
-                    onOpenNavSpike = { navController.navigate(LegionRoute.SETTINGS_NAV_SPIKE) },
                     onOpenDialer = { navController.navigate(LegionRoute.SETTINGS_PHONE) },
                 )
             }
@@ -1061,9 +1077,22 @@ private fun LegionShell(
             composable(LegionRoute.SETTINGS_CAR_PROBE) {
                 CarProbeScreen(onBack = { navController.popBackStack() })
             }
-            // mapbox-nav spike (ADR 0054) - fully qualified for the same reason as the dial screen above.
-            composable(LegionRoute.SETTINGS_NAV_SPIKE) {
-                com.kevin.legion.ui.navigation.NavSpikeScreen(
+            // mapbox-nav ticket 10 (ADR 0054): the navigation screen, replacing the spike. Fully qualified
+            // for the same reason as the dial screen above. The optional `place` argument is a saved
+            // place's Navigate action; it is resolved like typed text. Leaving this screen does NOT end
+            // a trip (ticket 07), so a plain popBackStack is correct here.
+            composable(
+                LegionRoute.NAVIGATE_PATTERN,
+                arguments = listOf(
+                    androidx.navigation.navArgument(LegionRoute.NAVIGATE_PLACE_ARG) {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                com.kevin.legion.ui.navigation.NavScreen(
+                    initialPlace = entry.arguments?.getString(LegionRoute.NAVIGATE_PLACE_ARG),
                     onBack = { navController.popBackStack() },
                     onOpenSetup = { navController.navigate(LegionRoute.SETTINGS_KEY) },
                 )
