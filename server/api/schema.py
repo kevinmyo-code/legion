@@ -168,7 +168,9 @@ AFTER_PARAMETER = OpenApiParameter(
 )
 
 
-def paged_serializer(item_serializer: type[serializers.BaseSerializer], keyset: bool = False) -> type:
+def paged_serializer(
+    item_serializer: type[serializers.BaseSerializer], keyset: bool = False
+) -> type:
     """The `{"results": [...], "next": ...}` envelope over `item_serializer`.
 
     `next` is the `updated_at` of the last row on a FULL page, rendered by

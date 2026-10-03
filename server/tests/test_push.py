@@ -229,7 +229,8 @@ def test_a_repeating_reminder_fires_per_occurrence_and_honours_skips(
     for offset in range(3):
         run(household_a, NOW + offset * day, send)
     assert send.bodies(mia) == ["Swim at 11:00 am, in 1 hour.", "Swim at 11:00 am, in 1 hour."]
-    keys = sorted(PushSent.objects.filter(user=mia, kind="event_reminders").values_list("key", flat=True))
+    sent = PushSent.objects.filter(user=mia, kind="event_reminders")
+    keys = sorted(sent.values_list("key", flat=True))
     assert keys == [f"event:{pk}:2026-10-05", f"event:{pk}:2026-10-07"]
 
 

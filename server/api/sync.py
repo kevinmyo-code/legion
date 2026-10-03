@@ -103,7 +103,9 @@ def parse_after(queryset, raw: str | None):
         return None
 
 
-def paginate_keyset(queryset, since, after, page_size: int = PAGE_SIZE, cursor_field: str = "updated_at"):
+def paginate_keyset(
+    queryset, since, after, page_size: int = PAGE_SIZE, cursor_field: str = "updated_at"
+):
     """`paginate_since` with a primary-key tiebreak, for `SyncedModelViewSet`.
 
     **Why it exists: the gated tables share one timestamp per ingest.**

@@ -98,7 +98,9 @@ def png(width: int, height: int, pixels: bytes) -> bytes:
     )
 
 
-def round_rect_sdf(px: float, py: float, x0: float, y0: float, x1: float, y1: float, r: float) -> float:
+def round_rect_sdf(
+    px: float, py: float, x0: float, y0: float, x1: float, y1: float, r: float
+) -> float:
     """Signed distance to a rounded rectangle: negative inside."""
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     hx, hy = (x1 - x0) / 2 - r, (y1 - y0) / 2 - r

@@ -392,13 +392,16 @@ def test_category_overrides_are_scoped_by_household(token_a, token_b):
     b_txn = token_b.get(f"/api/ledger/transactions/?since={EPOCH}").data["results"][0]
 
     url = "/api/ledger/transaction_categories/"
-    assert token_a.put(f"{url}{a_txn['id']}/", {"category": "A's"}, format="json").status_code == 200
-    assert token_b.put(f"{url}{b_txn['id']}/", {"category": "B's"}, format="json").status_code == 200
+    put_a = token_a.put(f"{url}{a_txn['id']}/", {"category": "A's"}, format="json")
+    put_b = token_b.put(f"{url}{b_txn['id']}/", {"category": "B's"}, format="json")
+    assert put_a.status_code == 200
+    assert put_b.status_code == 200
 
     for client, theirs in ((token_a, "B's"), (token_b, "A's")):
         rows = client.get(f"{url}?since={EPOCH}").data["results"]
         assert len(rows) == 1 and rows[0]["category"] != theirs, rows
-        shown = {r["category"] for r in client.get(f"/api/ledger/transactions/?since={EPOCH}").data["results"]}
+        listed = client.get(f"/api/ledger/transactions/?since={EPOCH}").data["results"]
+        shown = {r["category"] for r in listed}
         assert theirs not in shown, shown
 
     # B cannot lay a category over A's transaction, nor clear A's override.
