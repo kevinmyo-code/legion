@@ -1027,6 +1027,7 @@ private fun LegionShell(
                 com.kevin.legion.ui.settings.PermissionsDiagnosticsScreen(
                     onBack = { navController.popBackStack() },
                     onOpenCarProbe = { navController.navigate(LegionRoute.SETTINGS_CAR_PROBE) },
+                    onOpenNavSpike = { navController.navigate(LegionRoute.SETTINGS_NAV_SPIKE) },
                     onOpenDialer = { navController.navigate(LegionRoute.SETTINGS_PHONE) },
                 )
             }
@@ -1059,6 +1060,10 @@ private fun LegionShell(
             // see CarProbeScreen's own doc for why this exists at all.
             composable(LegionRoute.SETTINGS_CAR_PROBE) {
                 CarProbeScreen(onBack = { navController.popBackStack() })
+            }
+            // mapbox-nav spike (ADR 0054) - fully qualified for the same reason as the dial screen above.
+            composable(LegionRoute.SETTINGS_NAV_SPIKE) {
+                com.kevin.legion.ui.navigation.NavSpikeScreen(onBack = { navController.popBackStack() })
             }
             // Playbook/memory build (2026-08-18): both are single-screen, no sub-routes of their
             // own - the list-to-editor drill-down inside PlaybookScreen is internal Compose state,

@@ -552,7 +552,10 @@
     <ID>FunctionNaming:PantryScreen.kt:@Preview(name = "Pantry: empty, no receipts yet", widthDp = 360, heightDp = 720) @Composable private fun PreviewPantryEmpty()</ID>
     <ID>FunctionNaming:PantryScreen.kt:@Preview(name = "Pantry: loading", widthDp = 360, heightDp = 720) @Composable private fun PreviewPantryLoading()</ID>
     <ID>FunctionNaming:PantryScreen.kt:@Preview(name = "Pantry: one receipt, segregated macros", widthDp = 360, heightDp = 1200) @Composable private fun PreviewPantryPopulated()</ID>
-    <ID>FunctionNaming:PermissionsDiagnosticsScreen.kt:@Composable fun PermissionsDiagnosticsScreen(onBack: () -&gt; Unit, onOpenCarProbe: () -&gt; Unit, onOpenDialer: () -&gt; Unit = {})</ID>
+    <ID>FunctionNaming:NavSpikeScreen.kt:@Composable fun NavSpikeContent( state: NavState, routes: List&lt;NavigationRoute&gt;, onRoute: () -&gt; Unit, onStop: () -&gt; Unit, onBack: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:NavSpikeScreen.kt:@Composable fun NavSpikeScreen(onBack: () -&gt; Unit, viewModel: NavSpikeViewModel = viewModel())</ID>
+    <ID>FunctionNaming:NavSpikeScreen.kt:@Composable private fun RouteMap(routes: List&lt;NavigationRoute&gt;, modifier: Modifier)</ID>
+    <ID>FunctionNaming:PermissionsDiagnosticsScreen.kt:@Composable fun PermissionsDiagnosticsScreen( onBack: () -&gt; Unit, onOpenCarProbe: () -&gt; Unit, onOpenDialer: () -&gt; Unit = {}, onOpenNavSpike: () -&gt; Unit = {}, )</ID>
     <ID>FunctionNaming:PhoneDialScreen.kt:@Composable fun PhoneDialScreen(onBack: () -&gt; Unit)</ID>
     <ID>FunctionNaming:PlaybookScreen.kt:@Composable fun PlaybookScreen(onBack: () -&gt; Unit)</ID>
     <ID>FunctionNaming:PlaybookScreen.kt:@Composable private fun PlaybookEditor(topic: PrimingTopic, onBack: () -&gt; Unit)</ID>
@@ -803,7 +806,7 @@
     <ID>LongMethod:PantryReceiptAgent.kt:PantryReceiptAgent$fun parseAndReconcile(raw: String, sourceImagePath: String): PantryIngestResult</ID>
     <ID>LongMethod:PantryReconcile.kt:PantryReconcile$suspend fun run(context: Context, backend: PantryBackend): Result&lt;Report&gt;</ID>
     <ID>LongMethod:PantryRows.kt:@Composable fun PantryReceiptSection(receipt: PantryReceipt, items: List&lt;PantryLineItem&gt;)</ID>
-    <ID>LongMethod:PermissionsDiagnosticsScreen.kt:@Composable fun PermissionsDiagnosticsScreen(onBack: () -&gt; Unit, onOpenCarProbe: () -&gt; Unit, onOpenDialer: () -&gt; Unit = {})</ID>
+    <ID>LongMethod:PermissionsDiagnosticsScreen.kt:@Composable fun PermissionsDiagnosticsScreen( onBack: () -&gt; Unit, onOpenCarProbe: () -&gt; Unit, onOpenDialer: () -&gt; Unit = {}, onOpenNavSpike: () -&gt; Unit = {}, )</ID>
     <ID>LongMethod:PhoneDialScreen.kt:@Composable fun PhoneDialScreen(onBack: () -&gt; Unit)</ID>
     <ID>LongMethod:PlaceCallAction.kt:PlaceCallAction$suspend fun dispatchVoiceCall( contactQuery: String?, numberQuery: String?, confirmed: Boolean, hasCallPermission: Boolean, hasContactsPermission: Boolean, lookupContacts: (String) -&gt; List&lt;ContactMatch&gt;, isEmergencyNumber: (String) -&gt; Boolean, dial: suspend (String) -&gt; Boolean, ): VoiceCallResult</ID>
     <ID>LongMethod:PlaybookScreen.kt:@Composable private fun PlaybookEditor(topic: PrimingTopic, onBack: () -&gt; Unit)</ID>

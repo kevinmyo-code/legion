@@ -344,6 +344,13 @@ object LegionRoute {
     const val SETTINGS_CAR_PROBE = "settings/car-probe"
 
     /**
+     * The mapbox-nav spike screen (`.scratch/mapbox-nav/`, ADR 0054): one guided route on a map,
+     * debug-grade. Reached from Permissions and diagnostics beside the car probe; ticket 06's real
+     * nav screen replaces it. Lives in `ui/navigation/`.
+     */
+    const val SETTINGS_NAV_SPIKE = "settings/nav-spike"
+
+    /**
      * Connect Spotify - the entry point that makes the whole `media/` Spotify tier reachable
      * (2026-08-12). Same shape as [SETTINGS_DRIVE_SYNC]: before it,
      * [com.kevin.legion.ai.CompanionProfile.saveSpotifyClientId],
