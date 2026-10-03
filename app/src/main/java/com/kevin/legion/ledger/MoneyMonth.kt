@@ -3,6 +3,7 @@ package com.kevin.legion.ledger
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import java.time.LocalDate
 import java.time.YearMonth
 
 /**
@@ -181,5 +182,91 @@ private fun accountSpend(
         categories = categories,
         uncategorized = uncategorized,
         disclosures = disclosures,
+    )
+}
+
+/**
+ * Everything the Money page reads: the sections plus how FRESH the bank data is. Freshness is its
+ * own fact because "nothing spent this month" and "the newest bank row is from last month" are
+ * different sentences (CLAUDE.md section 1: unreadable, empty and stale are three different
+ * statements). Dates are [calendarDateOf] of ALL rows of the account, whatever month they fall in.
+ */
+data class MoneyMonthData(
+    val accounts: List<AccountMonthResult>,
+    /** Newest row date over every account, or null when there are no rows at all. */
+    val newestOverall: LocalDate?,
+    /** Newest row date per account, keyed by the same name a section is titled with. */
+    val newestByAccount: Map<String, LocalDate>,
+    /** Newest row date per currency: a tile that sums one currency must judge staleness by its own rows. */
+    val newestByCurrency: Map<LedgerCurrency, LocalDate> = emptyMap(),
+)
+
+fun buildMoneyMonthData(
+    rows: List<LedgerTransaction>,
+    month: YearMonth,
+    notSpending: Set<String>,
+): MoneyMonthData {
+    val newestByAccount = clusterAccounts(rows).associate { cluster ->
+        cluster.name to rows
+            .filter { row -> row.currency == cluster.currency && cluster.ids.any { sameCard(it, row.accountId) } }
+            .maxOf { calendarDateOf(it) }
+    }
+    return MoneyMonthData(
+        accounts = buildAccountMonthResults(rows, month, notSpending),
+        newestOverall = rows.maxOfOrNull { calendarDateOf(it) },
+        newestByAccount = newestByAccount,
+        newestByCurrency = rows.groupBy { it.currency }.mapValues { (_, r) -> r.maxOf { calendarDateOf(it) } },
+    )
+}
+
+/**
+ * HOME's Money tile: this month's spend per category COMBINED across every account of one currency
+ * (Kevin, 2026-10-02: "bar chart of spend per category combined across both accounts"). **Summed
+ * from the per-account sections [buildAccountMonthResults] already built** - never a second spend
+ * definition - so it carries every rule they do (transfers, refunds, Transfers category, budget-month
+ * rent; uncategorised NOT counted, Kevin 2026-08-15).
+ */
+data class CombinedMonthSpend(
+    val currency: LedgerCurrency,
+    val month: YearMonth,
+    val totalCents: Long,
+    /** Categorised spend, largest first. */
+    val categories: List<CategorySpend>,
+    val uncategorizedCents: Long,
+    /** Unverified (current-period) cents inside [totalCents]. */
+    val unverifiedTotalCents: Long,
+    /** Accounts whose figures could not be read; the tile says so, it never sums them as zero. */
+    val unreadableNames: List<String>,
+    /** True when at least one account of this currency has a row in the month. */
+    val hasActivity: Boolean,
+    /** Newest row of THIS currency, any month; null when there are none. */
+    val newest: LocalDate?,
+)
+
+fun combineMonthSpend(data: MoneyMonthData, month: YearMonth, currency: LedgerCurrency): CombinedMonthSpend {
+    val spends = data.accounts.filterIsInstance<AccountMonthResult.Spend>()
+        .map { it.spend }.filter { it.currency == currency }
+    val unreadable = data.accounts.filterIsInstance<AccountMonthResult.Unreadable>().map { it.name }
+    val categories = spends.flatMap { it.categories }
+        .groupBy { it.category }
+        .map { (category, parts) ->
+            CategorySpend(
+                category = category,
+                cents = parts.sumOf { it.cents },
+                unverifiedCents = parts.sumOf { it.unverifiedCents },
+                hasPendingGuess = parts.any { it.hasPendingGuess },
+            )
+        }
+        .sortedWith(compareByDescending<CategorySpend> { it.cents }.thenBy { it.category })
+    return CombinedMonthSpend(
+        currency = currency,
+        month = month,
+        totalCents = spends.sumOf { it.totalCents },
+        categories = categories,
+        uncategorizedCents = spends.sumOf { it.uncategorized?.cents ?: 0L },
+        unverifiedTotalCents = spends.sumOf { it.unverifiedTotalCents },
+        unreadableNames = unreadable,
+        hasActivity = spends.isNotEmpty() || unreadable.isNotEmpty(),
+        newest = data.newestByCurrency[currency],
     )
 }

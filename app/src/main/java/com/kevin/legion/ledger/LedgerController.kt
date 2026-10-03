@@ -383,8 +383,8 @@ object LedgerController {
      * other figure here funnels through. Throws when the read itself fails - the caller says
      * "couldn't read", it never renders that as an empty month. See [buildAccountMonthResults].
      */
-    suspend fun accountMonthResults(context: Context, month: YearMonth): List<AccountMonthResult> =
-        buildAccountMonthResults(allTransactions(context), month, notSpendingCategories(context))
+    suspend fun accountMonthResults(context: Context, month: YearMonth): MoneyMonthData =
+        buildMoneyMonthData(allTransactions(context), month, notSpendingCategories(context))
 
     /**
      * Ticket 04 (quant-viz): month-over-month total spend for [entity], one [MonthSpend] per month

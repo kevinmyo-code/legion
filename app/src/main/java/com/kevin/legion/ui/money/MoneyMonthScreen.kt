@@ -72,14 +72,30 @@ fun MoneyMonthContent(
             Column(Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
                 Text("Money", style = MaterialTheme.typography.headlineSmall, color = SoftColors.text)
                 Text(state.monthTitle, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text2)
+                if (!state.loading && !state.readFailed) {
+                    state.newestOverall?.let {
+                        Text(
+                            dataThroughLine(it, state.today),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SoftColors.text3,
+                        )
+                    }
+                }
             }
             when {
                 state.loading -> StatusCard("Loading this month.", alert = false)
                 state.readFailed -> StatusCard("Couldn't read your accounts.", alert = true)
-                state.accounts.isEmpty() -> StatusCard("Nothing spent yet this month.", alert = false)
+                state.accounts.isEmpty() -> StatusCard(
+                    emptyMonthMessage(state.month, state.newestOverall, state.today),
+                    alert = false,
+                )
                 else -> state.accounts.forEach { result ->
                     when (result) {
-                        is AccountMonthResult.Spend -> AccountCard(result.spend, onOpenCategory)
+                        is AccountMonthResult.Spend -> AccountCard(
+                            result.spend,
+                            dataLine = perAccountLine(state, result.spend.name),
+                            onOpenCategory = onOpenCategory,
+                        )
                         is AccountMonthResult.Unreadable -> StatusCard("Couldn't read ${result.name}.", alert = true)
                     }
                 }
@@ -103,23 +119,28 @@ private fun StatusCard(text: String, alert: Boolean) {
 }
 
 @Composable
-private fun AccountCard(spend: AccountMonthSpend, onOpenCategory: (AccountMonthSpend, String?) -> Unit) {
+private fun AccountCard(
+    spend: AccountMonthSpend,
+    dataLine: String?,
+    onOpenCategory: (AccountMonthSpend, String?) -> Unit,
+) {
     Column(
         Modifier.fillMaxWidth().background(SoftColors.card, MaterialTheme.shapes.large).padding(vertical = 14.dp),
     ) {
         Column(Modifier.padding(horizontal = 16.dp)) {
             Text(spend.name, style = MaterialTheme.typography.titleSmall, color = SoftColors.text2)
+            dataLine?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3) }
             Text(
                 formatMoney(spend.totalCents, spend.currency),
                 style = MaterialTheme.typography.headlineSmall,
                 color = SoftColors.text,
             )
             Text("spent this month", style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
-            if (spend.unverifiedTotalCents > 0L) {
+            currentPeriodLine(spend)?.let {
                 Text(
-                    "Includes ${formatMoney(spend.unverifiedTotalCents, spend.currency)} unverified",
+                    it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = SoftColors.caution,
+                    color = SoftColors.text3,
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
@@ -171,13 +192,6 @@ private fun CategoryRow(
                     "Not counted in the total",
                     style = MaterialTheme.typography.bodySmall,
                     color = SoftColors.text3,
-                )
-            }
-            if (row.unverifiedCents > 0L) {
-                Text(
-                    "Includes ${formatMoney(row.unverifiedCents, spend.currency)} unverified",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SoftColors.caution,
                 )
             }
         }
@@ -254,10 +268,16 @@ private fun DrilldownRow(row: MoneyDrilldownRow, currency: LedgerCurrency) {
             Text(row.description, style = MaterialTheme.typography.bodyLarge, color = SoftColors.text, maxLines = 2)
             Text(row.date, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
             if (row.unverified) {
-                Text("Unverified", style = MaterialTheme.typography.bodySmall, color = SoftColors.caution)
+                Text("Current period", style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
             }
         }
         Spacer(Modifier.width(12.dp))
         Text(formatMoney(row.cents, currency), style = MaterialTheme.typography.bodyLarge, color = SoftColors.text)
     }
+}
+
+/** The account's own freshness line, only when the accounts disagree (otherwise the top line says it all). */
+private fun perAccountLine(state: MoneyMonthUiState, name: String): String? {
+    if (!accountsDifferInFreshness(state.newestByAccount)) return null
+    return state.newestByAccount[name]?.let { accountDataThroughLine(it, state.today) }
 }
