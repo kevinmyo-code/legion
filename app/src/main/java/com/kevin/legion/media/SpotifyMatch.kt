@@ -32,6 +32,11 @@ internal object SpotifyMatch {
     const val TOKEN_OVERLAP_THRESHOLD = 0.6
     const val MIN_CONTAINED_TOKENS = 2
 
+    private const val BY_SEPARATOR = " by "
+
+    /** How many near-misses a rejection names. */
+    const val CLOSEST_COUNT = 3
+
     /** What a spoken request resolves to once an optional embedded "X by Y" is considered. */
     data class Wanted(val title: String, val artist: String?)
 
@@ -122,10 +127,10 @@ internal object SpotifyMatch {
      * with both halves non-blank.
      */
     fun splitByArtist(query: String): Wanted? {
-        val idx = query.lastIndexOf(" by ", ignoreCase = true)
+        val idx = query.lastIndexOf(BY_SEPARATOR, ignoreCase = true)
         if (idx <= 0) return null
         val title = query.substring(0, idx).trim()
-        val artist = query.substring(idx + 4).trim()
+        val artist = query.substring(idx + BY_SEPARATOR.length).trim()
         return if (title.isNotEmpty() && artist.isNotEmpty()) Wanted(title, artist) else null
     }
 
@@ -140,7 +145,7 @@ internal object SpotifyMatch {
         val a = artist?.trim()?.takeIf { it.isNotEmpty() }
         if (a != null) {
             val split = splitByArtist(q)
-            val title = if (split != null && normalize(split.artist) == normalize(a)) split.title else q
+            val title = if (split != null && normalize(split.artist.orEmpty()) == normalize(a)) split.title else q
             return listOf(Wanted(title, a))
         }
         return listOfNotNull(splitByArtist(q), Wanted(q, null)).distinct()
@@ -155,8 +160,17 @@ internal object SpotifyMatch {
 
     // ---------------------------------------------------------------- picking
 
+    /** The top hits (Spotify's order) as "Title by Artist", for naming what a rejection saw. */
+    fun describe(candidates: List<JSONObject>): List<String> =
+        candidates.take(CLOSEST_COUNT).mapNotNull { c ->
+            val name = c.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val by = artistsOf(c).firstOrNull()?.takeIf { it.isNotBlank() }
+            if (by != null) "$name by $by" else name
+        }
+
     private fun artistsOf(c: JSONObject): List<String> =
-        c.optJSONArray("artists")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") } }
+        c.optJSONArray("artists")
+            ?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") } }
             .orEmpty()
 
     private fun accepts(c: JSONObject, reading: Wanted): Boolean =

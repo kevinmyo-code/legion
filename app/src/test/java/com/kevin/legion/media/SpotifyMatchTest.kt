@@ -133,4 +133,15 @@ class SpotifyMatchTest {
         assertEquals("spotify:track:o", SpotifyMatch.pick(listOf(karaoke, orig), "Mask Off", null, isImp)?.optString("uri"))
         assertEquals("spotify:track:k", SpotifyMatch.pick(listOf(karaoke), "Mask Off", null, isImp)?.optString("uri"))
     }
+
+    @Test
+    fun `describe names the top hits as title by artist`() {
+        val hits = listOf(
+            track("Changes", "2Pac", "spotify:track:1"),
+            track("Penny", "Sparrow", "spotify:track:2"),
+            track("A", "B", "spotify:track:3"),
+            track("D", "E", "spotify:track:4"),
+        )
+        assertEquals(listOf("Changes by 2Pac", "Penny by Sparrow", "A by B"), SpotifyMatch.describe(hits))
+    }
 }

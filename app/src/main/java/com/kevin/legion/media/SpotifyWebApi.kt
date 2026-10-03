@@ -462,6 +462,14 @@ object SpotifyWebApi {
         object NoMatch : SearchOutcome
 
         /**
+         * Spotify answered with hits, but none passed [SpotifyMatch.pick] against the request.
+         * [closest] are the top hits as "Title by Artist" (Spotify's relevance order), so the
+         * caller can say what it saw and let the user choose. Nothing was picked: this is a
+         * refusal to guess, never a fallback to the most popular result.
+         */
+        data class Rejected(val closest: List<String>) : SearchOutcome
+
+        /**
          * Spotify answered with an error this code does not map. [code] is the HTTP
          * status, [detail] its parsed `error.message`, and [raw] the untouched body -
          * carried because the parsed message alone proved to be misleading in the
@@ -610,16 +618,17 @@ object SpotifyWebApi {
             } else {
                 listOf(query)
             }
-            var last: SearchOutcome = SearchOutcome.NoMatch
+            val closest = mutableListOf<String>()
             for (q in attempts) {
                 when (val raw = fetchCandidates(q, type, token)) {
                     is RawSearch.Error -> return@withContext raw.outcome
                     is RawSearch.Items -> {
                         val picked = if (matched) {
-                            SpotifyMatch.pick(
-                                raw.items, query, knownArtist,
-                                isImposter = if (type == "track") ::looksLikeImposter else { _ -> false },
-                            )
+                            // Explicit lambda: a callable reference and a lambda in one if/else
+                            // do not unify to a single function type.
+                            val imposter: (JSONObject) -> Boolean =
+                                if (type == "track") { c -> looksLikeImposter(c) } else { _ -> false }
+                            SpotifyMatch.pick(raw.items, query, knownArtist, isImposter = imposter)
                         } else {
                             // Artists/playlists: Spotify's own top relevance hit.
                             raw.items.firstOrNull()
@@ -629,11 +638,12 @@ object SpotifyWebApi {
                             val (name, subtitle) = pickedDisplayName(picked, type)
                             return@withContext SearchOutcome.Found(uri, name, subtitle)
                         }
-                        last = SearchOutcome.NoMatch
+                        if (matched) closest += SpotifyMatch.describe(raw.items)
                     }
                 }
             }
-            last
+            val named = closest.distinct().take(SpotifyMatch.CLOSEST_COUNT)
+            if (named.isEmpty()) SearchOutcome.NoMatch else SearchOutcome.Rejected(named)
         } catch (e: Exception) {
             // A thrown IOException here is a transport failure, never a verdict on
             // the query - the old code reported it as "not found".
@@ -1245,6 +1255,7 @@ object SpotifyWebApi {
             is SearchOutcome.Unauthorized -> PlaylistResolution.Unauthorized(s.detail)
             SearchOutcome.Unreachable -> PlaylistResolution.Unreachable
             SearchOutcome.NoMatch -> PlaylistResolution.NoMatch
+            is SearchOutcome.Rejected -> PlaylistResolution.NoMatch
             is SearchOutcome.Failed -> PlaylistResolution.Failed(s.code, s.detail)
         }
     }

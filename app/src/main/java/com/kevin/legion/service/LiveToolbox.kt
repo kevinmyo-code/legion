@@ -7355,6 +7355,16 @@ object LiveToolbox {
                     (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
                     " on Spotify, so I didn't play or queue anything.",
             ))
+            is SpotifyWebApi.SearchOutcome.Rejected -> SpotifyUriResolution.Failed(result(
+                success = false,
+                // Hits existed and none fit the request. Name them so the model can ask the user
+                // which one was meant; nothing was started, and the message says so.
+                message = "I couldn't find \"$query\"" +
+                    (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
+                    " on Spotify, so I didn't play or queue anything. Closest hits: " +
+                    outcome.closest.joinToString("; ") +
+                    ". Ask the user whether one of those is what they meant.",
+            ))
             is SpotifyWebApi.SearchOutcome.Failed -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify's search returned an error (${outcome.code})" +
