@@ -232,14 +232,15 @@ data class TileBar(val label: String, val amountText: String, val fraction: Floa
  * What the Money tile shows once the per-category month has been read (Kevin, 2026-10-02: "bar chart
  * of spend per category combined across both accounts"). [status] is the one line with the combined
  * total (or the honest empty/stale/failed wording), [currentPeriodLine] the muted word line under the
- * total, [bars] the top 3 categories, [moreLine] "+N more", [disclosure] the caution line that must
+ * total, [bars] the top 3 categories, [categoryCount] for "+N more", [disclosure] the caution line that must
  * never collapse (CLAUDE.md section 4 rules 5 and 7; memory: trust disclosures are not furniture).
  */
 data class MoneyTileModel(
     val status: TileStatus,
     val currentPeriodLine: String?,
     val bars: List<TileBar>,
-    val moreLine: String?,
+    /** All categories counted, so the tile can say how many bars its height hid. */
+    val categoryCount: Int,
     val disclosure: String?,
 )
 
@@ -262,11 +263,11 @@ fun moneyTileModel(
     return when {
         month == null -> MoneyTileModel(
             TileStatus(if (failed) "Couldn't read spending" else "No spending yet", alert = failed),
-            null, emptyList(), null, exclusions.joinOrNull(),
+            null, emptyList(), 0, exclusions.joinOrNull(),
         )
         month.categories.isEmpty() -> MoneyTileModel(
             TileStatus(emptyMonthTileText(month, failed), alert = failed),
-            null, emptyList(), null, (listOfNotNull(unreadableLine(month)) + exclusions).joinOrNull(),
+            null, emptyList(), 0, (listOfNotNull(unreadableLine(month)) + exclusions).joinOrNull(),
         )
         else -> barsTileModel(month, (listOfNotNull(unreadableLine(month)) + exclusions).joinOrNull())
     }
@@ -299,12 +300,11 @@ private fun barsTileModel(month: com.kevin.legion.ledger.CombinedMonthSpend, dis
             fraction = (it.cents.toFloat() / largest).coerceIn(0f, 1f),
         )
     }
-    val more = month.categories.size - MONEY_TILE_BARS
     return MoneyTileModel(
         status = TileStatus("${formatMoney(month.totalCents, currency)} this month"),
         currentPeriodLine = if (month.unverifiedTotalCents > 0L) "Current period" else null,
         bars = bars,
-        moreLine = if (more > 0) "+$more more" else null,
+        categoryCount = month.categories.size,
         disclosure = disclosure,
     )
 }

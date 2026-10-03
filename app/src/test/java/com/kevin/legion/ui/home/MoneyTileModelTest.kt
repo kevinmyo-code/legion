@@ -124,13 +124,13 @@ class MoneyTileModelTest {
         )
         assertEquals(listOf("A", "B", "C"), model.bars.map { it.label })
         assertEquals(listOf(1f, 0.5f, 0.25f), model.bars.map { it.fraction })
-        assertEquals("+2 more", model.moreLine)
+        assertEquals(5, model.categoryCount)
         assertEquals("USD 176.50 this month", model.status.text)
     }
 
     @Test
-    fun `three categories or fewer have no more line`() {
-        assertNull(moneyTileModel(month(listOf(cat("A", 1_000), cat("B", 500))), false, null, null).moreLine)
+    fun `the tile counts every category so it can say how many its height hid`() {
+        assertEquals(2, moneyTileModel(month(listOf(cat("A", 1_000), cat("B", 500))), false, null, null).categoryCount)
     }
 
     @Test
