@@ -132,6 +132,13 @@ class MainActivity : ComponentActivity() {
     // is: pressing Home twice delivers an identical intent.
     private var homePressNonce by mutableStateOf(0)
 
+    // A LAUNCHER-category start: the icon, or the Navigation SDK's own foreground notification (the
+    // SDK builds its content intent from `getLaunchIntentForPackage`, which is MAIN + LAUNCHER). With
+    // a trip running that start belongs on the nav screen, not wherever the Home press last left the
+    // app (mapbox-nav ticket 10, device-run defect 8). Nonce-keyed like the two above. A Home press
+    // is CATEGORY_HOME, not LAUNCHER, so pressing Home still goes home even mid-trip.
+    private var tripResumeNonce by mutableStateOf(0)
+
     // True only while LEGION is the DEFAULT home app. Back on HOME is swallowed only then - a
     // launcher that Back "exits" just redraws itself, while a normal app should still exit.
     // Re-read in onResume, since Kevin can switch the Home app in Settings at any time.
@@ -150,6 +157,7 @@ class MainActivity : ComponentActivity() {
                     spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
                     onSpotifyRedirectConsumed = { spotifyRedirect = null },
                     homePressNonce = homePressNonce,
+                    tripResumeNonce = tripResumeNonce,
                     isDefaultHome = isDefaultHome,
                 )
             }
@@ -164,6 +172,7 @@ class MainActivity : ComponentActivity() {
 
     private fun readDeepLinkExtras(intent: Intent?) {
         if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) homePressNonce++
+        if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) tripResumeNonce++
         deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++
         val itemId = intent?.getLongExtra(ReminderAlarmReceiver.EXTRA_OPEN_ITEM_ID, -1L) ?: -1L
@@ -492,9 +501,22 @@ private fun LegionShell(
     spotifyRedirectNonce: Int = 0,
     onSpotifyRedirectConsumed: () -> Unit = {},
     homePressNonce: Int = 0,
+    tripResumeNonce: Int = 0,
     isDefaultHome: Boolean = false,
 ) {
     val navController = rememberNavController()
+    val navTrip = (LocalContext.current.applicationContext as? com.kevin.legion.MidnightApplication)?.navController
+
+    // A launcher-category start (icon or the SDK's trip notification) with a trip running lands on
+    // the nav screen. Skipped on the initial 0 and when no trip is guiding.
+    LaunchedEffect(tripResumeNonce) {
+        val onNav = navController.currentDestination?.route == LegionRoute.NAVIGATE_PATTERN
+        if (tripResumeNonce > 0 && !onNav &&
+            navTrip?.state?.value?.phase == com.kevin.legion.navigation.NavPhase.GUIDING
+        ) {
+            navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true }
+        }
+    }
 
     // Home press: back to HOME from wherever you are, dropping whatever was stacked on top of it.
     // Skipped on the initial 0 so a cold start doesn't navigate for no reason.
@@ -772,6 +794,12 @@ private fun LegionShell(
                     // the app now, and the drill-downs are reached by tapping the row that
                     // summarises them, exactly as they were reached from METERS.
                 }
+                // A trip keeps running when its screen is left (Home press, Back); this is the way
+                // back. Absent on the nav screen itself and when nothing is guiding.
+                com.kevin.legion.ui.navigation.TripReturnBar(
+                    onNavScreen = shellBackStackEntry?.destination?.route == LegionRoute.NAVIGATE_PATTERN,
+                    onOpen = { navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true } },
+                )
                 // mapbox-nav ticket 10: the two ways other screens open the nav screen.
                 val navEntryPoints = remember(navController) {
                     com.kevin.legion.ui.navigation.NavEntryPoints(
