@@ -105,6 +105,7 @@ COPY = {
     "register_vehicle": ("Register this vehicle", "Registers a vehicle by VIN or details.", "Fleet tab, add-a-car flow (VIN path)."),
     "manage_vehicle": ("Rename the Jeep to the XJ", "Renames, updates or removes a car.", "Fleet tab, a car row's edit/rename action."),
     "list_vehicles": ("What cars do I have?", "Lists your fleet.", "Fleet tab, car list."),
+    "ask_engine": ("What does the engine say is due this week?", "Asks your household server directly for records the phone does not keep itself - what is due, checklists, places, body, ledger, pantry and fleet history - and can add or change them. If the server is unreachable it says nothing was read or written, never that you have nothing.", "A dispatcher onto data your own screens already show (Calendar, checklists, Body, Ledger, Pantry, Fleet, places, recordings); two internal sync tables with no screen are refused."),
     "ask_fleet": ("Ask the fleet advisor about my tyres", "Sends a harder car question to the fleet specialist.", "Is itself a read-only dispatcher; the fleet screens above already show what it would answer."),
 
     # --- Driving ---
@@ -204,7 +205,7 @@ COPY = {
 
 GROUPS = {
     "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation", "switch_companion"],
-    "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_generated_view"],
+    "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_generated_view", "ask_engine"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["activate_garage", "control_volume"],
     "Money": ["get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],

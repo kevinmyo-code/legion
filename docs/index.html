@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>182 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 31 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 44 are waiting on another ticket first. <b>84 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 31 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 43 are waiting on another ticket first. <b>85 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">182</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">44</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">84</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">44</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">85</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">43</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">78</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">77</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">10</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -428,13 +428,13 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>engine-mcp</h2>
-<span class="counts"><span class="k">4</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="k amber">2</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
-<span class="bar"><i style="flex:2"></i><b style="flex:2"></b></span>
+<span class="counts"><span class="k">4</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">3</span> built<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
+<span class="bar"><i style="flex:3"></i><b style="flex:1"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-built" data-type="built" data-state="built"><span class="num">09</span><span class="body"><span class="tt">Read-only spike, Claude Code queries the engine through a stdio adapter</span><span class="det">owing a live query with Kevin&#x27;s token</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">10</span><span class="body"><span class="tt">The engine&#x27;s MCP endpoint, read and write tools, and the tenancy leak test over it</span><span class="det">Built and suite green 2026-10-02; owes LEGION_MCP=on on Cloud Run and a real Claude Code query against it</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">The phone bridges engine tools into its Live session</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #10</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">11</span><span class="body"><span class="tt">The phone bridges engine tools into its Live session</span><span class="det">Built and suite green 2026-10-02; owes an A25 run (ask an engine-only question, engine up and down) and LEGION_MCP=on on the deployed engine</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">OAuth for third-party clients</span></span><span class="chip c-build">build</span><span class="state">waiting on #05, #08, #10</span></li>
 </ul>
 </section>

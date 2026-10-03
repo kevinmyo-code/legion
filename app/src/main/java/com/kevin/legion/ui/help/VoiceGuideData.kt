@@ -65,6 +65,7 @@ object VoiceGuideData {
                 Entry(name = "open_navigation", say = "Navigate to the hardware store", does = "Hands off to your maps app.", hands = "Fleet > Saved places screen, Navigate button on each place."),
                 Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Calendar tab, today's day view shows the same thing directly."),
                 Entry(name = "show_generated_view", say = "Show me my grocery spend by month", does = "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", hands = "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
+                Entry(name = "ask_engine", say = "What does the engine say is due this week?", does = "Asks your household server directly for records the phone does not keep itself - what is due, checklists, places, body, ledger, pantry and fleet history - and can add or change them. If the server is unreachable it says nothing was read or written, never that you have nothing.", hands = "A dispatcher onto data your own screens already show (Calendar, checklists, Body, Ledger, Pantry, Fleet, places, recordings); two internal sync tables with no screen are refused."),
             ),
         ),
         Group(
@@ -246,6 +247,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 120 as of the last regeneration. */
-    val TOOL_COUNT: Int = 120
+    /** Total entries across every group above - 121 as of the last regeneration. */
+    val TOOL_COUNT: Int = 121
 }
