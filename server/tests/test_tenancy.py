@@ -464,6 +464,49 @@ def test_spend_never_counts_another_households_rows(token_a, token_b):
     assert "bravo" not in str(a_only) and "alpha" not in str(b_only)
 
 
+def test_push_rows_are_scoped_by_household(token_a, token_b, household_a, monkeypatch):
+    """web-revamp ticket 15. A subscription id from another household cannot
+    be deleted, preferences are per person per household, and a dispatch for
+    one household never reaches another's browser."""
+    import datetime as dt
+
+    from push.dispatch import dispatch_household
+    from push.models import PushSubscription
+
+    for name, value in (("VAPID_PUBLIC_KEY", "k"), ("VAPID_PRIVATE_KEY", "p"),
+                        ("VAPID_SUBJECT", "mailto:a@example.com")):
+        monkeypatch.setenv(name, value)
+    subs = {}
+    for client, tag in ((token_a, "alpha"), (token_b, "bravo")):
+        made = client.post(
+            "/api/push/subscriptions",
+            {"endpoint": f"https://push.example.com/{tag}", "keys": {"p256dh": "p", "auth": "a"}},
+            format="json",
+        )
+        assert made.status_code == 201, made.data
+        subs[tag] = made.data["id"]
+    assert token_a.delete(f"/api/push/subscriptions/{subs['bravo']}").status_code == 404
+    assert PushSubscription.objects.filter(pk=subs["bravo"]).exists()
+
+    assert token_b.post(
+        "/api/push/preferences/off", {"kind": "list_changes"}, format="json"
+    ).status_code == 200
+    assert token_a.get("/api/push/preferences").data["list_changes"] is True
+
+    reached = []
+    token_a.post(
+        "/api/events",
+        {"title": "alpha-dentist", "starts_at": "2026-10-05T15:30:00Z",
+         "remind_minutes_before": 30},
+        format="json",
+    )
+    dispatch_household(
+        household_a, dt.datetime(2026, 10, 5, 15, 0, tzinfo=dt.UTC),
+        lambda sub, payload: reached.append(sub.endpoint) or 201,
+    )
+    assert reached == ["https://push.example.com/alpha"]
+
+
 def test_freshness_never_shows_another_households_runs(token_a, token_b, household_b):
     """backend-etl ticket 01. `ingest_runs` has no synced route, so this is
     its leak test: B's runs - including an error message that names B's own

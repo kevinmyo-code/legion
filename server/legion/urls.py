@@ -48,6 +48,8 @@ urlpatterns = [
     # these are commit endpoints that return a verdict, not CRUD over a
     # collection, and grouping them under one prefix keeps that visible.
     path("api/ingest/", include("ingest.urls")),
+    # web-revamp ticket 15: Web Push subscriptions and preferences.
+    path("api/push/", include("push.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

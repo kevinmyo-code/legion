@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Forty-seven names. The forty-eighth `public` table, `household_members`, is
+# Fifty names. The fifty-first `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -96,6 +96,11 @@ TENANT_TABLES: tuple[str, ...] = (
     # engine-mcp ticket 10 (ticket 08's audit ruling): one row per `/mcp`
     # call, Django-managed, born tenanted like `ingest_runs`.
     "mcp_calls",
+    # web-revamp ticket 15: Web Push, Django-managed and born tenanted like
+    # `ingest_runs` (`push/models.py`).
+    "push_subscriptions",
+    "push_preferences",
+    "push_sent",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -133,6 +138,9 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "ingest_runs",
         "source_credentials",
         "mcp_calls",
+        "push_subscriptions",
+        "push_preferences",
+        "push_sent",
     }
 )
 

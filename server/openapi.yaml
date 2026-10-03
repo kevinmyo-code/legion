@@ -6265,6 +6265,174 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/push/preferences:
+    get:
+      operationId: api_push_preferences_retrieve
+      tags:
+      - push
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preference'
+          description: ''
+    put:
+      operationId: api_push_preferences_update
+      tags:
+      - push
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Preference'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Preference'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Preference'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preference'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/push/preferences/off:
+    post:
+      operationId: api_push_preferences_off_create
+      description: |-
+        `POST /api/push/preferences/off {kind}` - the one-tap silence (spec D7,
+        compulsion test (d)).
+      tags:
+      - push
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OffRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OffRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OffRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuthNoCsrf: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OffResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/push/subscriptions:
+    post:
+      operationId: api_push_subscriptions_create
+      tags:
+      - push
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: Subscribed.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: This browser was already subscribed; its keys and zone are
+            updated.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nothing was saved.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Notifications are not set up on this server. Nothing was saved.
+  /api/push/subscriptions/{subscription_id}:
+    delete:
+      operationId: api_push_subscriptions_destroy
+      parameters:
+      - in: path
+        name: subscription_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - push
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Unsubscribed. This browser gets nothing more.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No subscription of yours has that id. Nothing was removed.
+  /api/push/vapid-public-key:
+    get:
+      operationId: api_push_vapid_public_key_retrieve
+      tags:
+      - push
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapidKey'
+          description: ''
   /api/voice_notes/:
     get:
       operationId: api_voice_notes_list
@@ -8940,6 +9108,34 @@ components:
       - unit
       - value
       - vehicle_id
+    OffRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          description: list_changes, event_reminders or task_due_morning.
+      required:
+      - kind
+    OffResponse:
+      type: object
+      properties:
+        list_changes:
+          type: boolean
+        event_reminders:
+          type: boolean
+        task_due_morning:
+          type: boolean
+        morning_time:
+          type: string
+          format: time
+        detail:
+          type: string
+      required:
+      - detail
+      - event_reminders
+      - list_changes
+      - morning_time
+      - task_due_morning
     OilAnalysis:
       type: object
       description: |-
@@ -10210,6 +10406,23 @@ components:
       - longitude
       - provenance
       - updated_at
+    Preference:
+      type: object
+      properties:
+        list_changes:
+          type: boolean
+        event_reminders:
+          type: boolean
+        task_due_morning:
+          type: boolean
+        morning_time:
+          type: string
+          format: time
+      required:
+      - event_reminders
+      - list_changes
+      - morning_time
+      - task_due_morning
     ProvenanceEnum:
       enum:
       - DETERMINISTIC
@@ -10855,6 +11068,7 @@ components:
       - backup
       - obd_rollup
       - heartbeat
+      - push
       type: string
       description: |-
         * `canvas` - Canvas
@@ -10863,6 +11077,7 @@ components:
         * `backup` - Backup
         * `obd_rollup` - OBD roll-up
         * `heartbeat` - Heartbeat
+        * `push` - Notifications
     Spend:
       type: object
       properties:
@@ -11121,6 +11336,65 @@ components:
       - provisional_superseded
       - restatements_skipped
       - statement_id
+    Subscription:
+      type: object
+      description: 'What a member sees of a subscription: never the keys.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user_agent:
+          type: string
+          readOnly: true
+        tz:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_ok_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - id
+      - last_ok_at
+      - tz
+      - user_agent
+    SubscriptionKeys:
+      type: object
+      properties:
+        p256dh:
+          type: string
+        auth:
+          type: string
+      required:
+      - auth
+      - p256dh
+    SubscriptionRequest:
+      type: object
+      description: '`PushSubscription.toJSON()` as a browser gives it, plus the device''s
+        zone.'
+      properties:
+        endpoint:
+          type: string
+        keys:
+          $ref: '#/components/schemas/SubscriptionKeys'
+        user_agent:
+          type: string
+          default: ''
+        tz:
+          type: string
+          default: UTC
+          description: The browser's IANA zone. It decides which local day 'this morning'
+            is.
+      required:
+      - endpoint
+      - keys
     TickRequest:
       type: object
       description: |-
@@ -11143,6 +11417,23 @@ components:
           default: USER_REPORTED
       required:
       - day
+    VapidKey:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        public_key:
+          type: string
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+          description: 'When push is off, the sentence to show: notifications are
+            not set up here.'
+      required:
+      - detail
+      - enabled
+      - public_key
     Vehicle:
       type: object
       description: |-
@@ -11603,6 +11894,12 @@ components:
       type: apiKey
       in: cookie
       name: sessionid
+    cookieAuthNoCsrf:
+      type: apiKey
+      in: cookie
+      name: sessionid
+      description: 'The browser session, with no CSRF token: this route can only turn
+        a notification kind off.'
     deviceToken:
       type: apiKey
       in: header

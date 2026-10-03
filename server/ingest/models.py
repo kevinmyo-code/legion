@@ -38,6 +38,9 @@ class Source(models.TextChoices):
     BACKUP = "backup", "Backup"
     OBD_ROLLUP = "obd_rollup", "OBD roll-up"
     HEARTBEAT = "heartbeat", "Heartbeat"
+    # web-revamp ticket 15: not a feed either; one row per household per run
+    # of `manage.py push_dispatch`, so a stalled sender shows as stale.
+    PUSH = "push", "Notifications"
 
 
 class Outcome(models.TextChoices):
