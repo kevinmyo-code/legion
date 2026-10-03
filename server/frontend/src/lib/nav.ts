@@ -61,7 +61,7 @@ export const NAV: readonly NavItem[] = [
     rank: { family: 3 },
   },
   { to: '/lists', label: 'Lists', icon: ListChecks, surfaces: BOTH, built: true, rank: { family: 2 } },
-  { to: '/money', label: 'Money', icon: Wallet, surfaces: DESK, built: false },
+  { to: '/money', label: 'Money', icon: Wallet, surfaces: DESK, built: true },
   { to: '/pantry', label: 'Pantry', icon: ShoppingBasket, surfaces: DESK, built: true },
   { to: '/body', label: 'Body', icon: HeartPulse, surfaces: DESK, built: true },
   { to: '/fleet', label: 'Fleet', icon: Car, surfaces: DESK, built: true },

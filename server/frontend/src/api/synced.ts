@@ -53,7 +53,15 @@ export interface Table<T> {
 
 const MAX_PAGES = 2000
 
-export async function readAll<T>(table: Table<T>): Promise<T[]> {
+/**
+ * Every live row of a table, following `next` to null. `onProgress` is told how
+ * many rows have arrived after each page, for a screen that wants to say "still
+ * loading" with a number - it is progress only, never a list to render or total.
+ */
+export async function readAll<T>(
+  table: Table<T>,
+  onProgress?: (loaded: number) => void,
+): Promise<T[]> {
   const rows: T[] = []
   let cursor: Cursor = {}
   for (let pages = 0; pages < MAX_PAGES; pages += 1) {
@@ -62,6 +70,7 @@ export async function readAll<T>(table: Table<T>): Promise<T[]> {
       throw new Error(`GET ${table.name} answered ${reply.response.status}`)
     }
     rows.push(...reply.data.results)
+    onProgress?.(rows.length)
     if (reply.data.next === null) return rows
     const next = { since: reply.data.next, after: reply.data.next_after ?? undefined }
     if (next.since === cursor.since && next.after === cursor.after) {
