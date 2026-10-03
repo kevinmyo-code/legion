@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["02", "08", "13"]
 blocked-by: ["[[02-build-with-and-without-credentials]]", "[[08-where-the-token-lives]]", "[[13-vehicle-usage-clause]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 

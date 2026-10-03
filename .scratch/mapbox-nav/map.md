@@ -5,7 +5,7 @@ charted: 2026-10-03
 charted-by: "Kevin + Opus"
 effort: "`.scratch/mapbox-nav/`"
 tickets: 13
-open: 11
+open: 10
 status: open
 tags: [map]
 ---
@@ -82,6 +82,8 @@ Then 05 (who speaks the turns) and 04; 03 and 07 after.
   not covering a personal phone app and accepts the risk; no email.
 - [Where the Mapbox token lives](issues/08-where-the-token-lives.md) - per phone in `KeyVault` via Setup; a dev
   token baked from the `MAPBOX_ACCESS_TOKEN` Gradle property; no token is said in words.
+- [Building with and without Mapbox credentials](issues/02-build-with-and-without-credentials.md) - no gate needed:
+  the SDK resolves anonymously through Gradle and compiles on the current toolchain (built).
 
 ## Not yet specified
 
