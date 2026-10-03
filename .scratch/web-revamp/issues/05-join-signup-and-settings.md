@@ -4,7 +4,7 @@ ticket: 05
 title: "Join, signup and settings"
 type: build
 status: open
-status-detail: ""
+status-detail: "server half built; web half owed"
 blockers: ["03"]
 blocked-by: ["[[03-the-shell-split-by-viewport]]"]
 open-blockers: 1
@@ -30,7 +30,7 @@ See `.scratch/web-revamp/spec.md` D12.
 
 ## Verification
 
-- [ ] pytest: name change, password change (wrong current = 400 sentence, throttled), session kept.
+- [x] pytest: name change, password change (wrong current = 400 sentence, throttled), session kept.
 - [ ] vitest: invite preview then signup lands on Home; expired code sentence; create/copy/revoke
       invite; remove-member confirm says their private things go too; revoke device.
 - [ ] Shots in `research/shots/05/`.

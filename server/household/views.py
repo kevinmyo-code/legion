@@ -24,7 +24,7 @@ ticket 03 landed the same day."""
 from __future__ import annotations
 
 from django.conf import settings
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -48,6 +48,8 @@ from household.serializers import (
     LoginRequestSerializer,
     LoginResponseSerializer,
     MeResponseSerializer,
+    MeUpdateSerializer,
+    PasswordChangeSerializer,
     SessionLoginRequestSerializer,
     SignupRequestSerializer,
 )
@@ -214,7 +216,7 @@ class SessionLoginView(APIView):
 
         login(request, user)
         body = MeResponseSerializer(
-            {"user_id": user.id, "email": user.email, "device_name": ""}
+            {"user_id": user.id, "email": user.email, "device_name": "", "name": user.first_name}
         ).data
         return Response(body, status=status.HTTP_200_OK)
 
@@ -311,12 +313,114 @@ class MeView(APIView):
         },
     )
     def get(self, request):
-        token = request.auth
-        device_name = token.name if isinstance(token, DeviceToken) else ""
-        body = MeResponseSerializer(
-            {"user_id": request.user.id, "email": request.user.email, "device_name": device_name}
-        ).data
-        return Response(body, status=status.HTTP_200_OK)
+        return Response(_me_body(request), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        operation_id="api_auth_me_partial_update",
+        tags=AUTH_TAGS,
+        request=MeUpdateSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=MeResponseSerializer,
+                description="The name is changed. The body is the account as it now is.",
+            ),
+            400: OpenApiResponse(
+                response=DetailSerializer,
+                description="The name is blank or too long. Nothing was changed.",
+            ),
+            401: OpenApiResponse(response=DetailSerializer, description="No live credential."),
+        },
+    )
+    def patch(self, request):
+        """web-revamp ticket 05 (spec D12): a member renames themself. Writes
+        `first_name`, the field `GET /api/households/me` reads members' names
+        from. Only your own account: there is no user id in the path."""
+        body = MeUpdateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        request.user.first_name = body.validated_data["name"]
+        request.user.save(update_fields=["first_name"])
+        return Response(_me_body(request), status=status.HTTP_200_OK)
+
+
+def _me_body(request) -> dict:
+    token = request.auth
+    device_name = token.name if isinstance(token, DeviceToken) else ""
+    return MeResponseSerializer(
+        {
+            "user_id": request.user.id,
+            "email": request.user.email,
+            "device_name": device_name,
+            "name": request.user.first_name,
+        }
+    ).data
+
+
+WRONG_CURRENT_PASSWORD = "Your current password is not right. Nothing was changed."
+
+
+class PasswordChangeView(APIView):
+    """`POST /api/auth/password` (web-revamp ticket 05, spec D12).
+
+    The current password is required even from a signed-in session: a
+    browser left open is not the person. Throttled on the `login` scope,
+    because checking a current password is a password guess like any other.
+    The new one runs Django's `AUTH_PASSWORD_VALIDATORS`, and each refusal
+    is said in words. A browser session survives the change
+    (`update_session_auth_hash`); device tokens are untouched, since a token
+    is not derived from the password.
+    """
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    @extend_schema(
+        operation_id="api_auth_password_create",
+        tags=AUTH_TAGS,
+        request=PasswordChangeSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=DetailSerializer,
+                description="Changed. This session stays signed in; devices stay signed in.",
+            ),
+            400: OpenApiResponse(
+                response=DetailSerializer,
+                description=(
+                    "Nothing was changed: the current password is wrong, or the new one "
+                    "fails a password rule. `detail` says which, in words."
+                ),
+            ),
+            401: OpenApiResponse(response=DetailSerializer, description="No live credential."),
+            429: OpenApiResponse(
+                response=DetailSerializer,
+                description="Too many attempts this minute. Nothing was changed.",
+            ),
+        },
+    )
+    def post(self, request):
+        body = PasswordChangeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        user = request.user
+        if not user.check_password(body.validated_data["current_password"]):
+            return Response(
+                {"detail": WRONG_CURRENT_PASSWORD}, status=status.HTTP_400_BAD_REQUEST
+            )
+        new_password = body.validated_data["new_password"]
+        try:
+            validate_password(new_password, user)
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": "Nothing was changed. " + " ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+        if not isinstance(request.auth, DeviceToken):
+            # A browser session: keep it signed in under the new password hash.
+            update_session_auth_hash(request._request, user)
+        return Response(
+            {"detail": "Your password is changed. You are still signed in here."},
+            status=status.HTTP_200_OK,
+        )
 
 
 # =============================================================================

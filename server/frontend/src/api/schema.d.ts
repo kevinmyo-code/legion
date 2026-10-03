@@ -188,6 +188,38 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * @description web-revamp ticket 05 (spec D12): a member renames themself. Writes
+         *     `first_name`, the field `GET /api/households/me` reads members' names
+         *     from. Only your own account: there is no user id in the path.
+         */
+        patch: operations["api_auth_me_partial_update"];
+        trace?: never;
+    };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/auth/password` (web-revamp ticket 05, spec D12).
+         *
+         *     The current password is required even from a signed-in session: a
+         *     browser left open is not the person. Throttled on the `login` scope,
+         *     because checking a current password is a password guess like any other.
+         *     The new one runs Django's `AUTH_PASSWORD_VALIDATORS`, and each refusal
+         *     is said in words. A browser session survives the change
+         *     (`update_session_auth_hash`); device tokens are untouched, since a token
+         *     is not derived from the password.
+         */
+        post: operations["api_auth_password_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -3669,6 +3701,7 @@ export interface components {
             /** Format: email */
             email: string;
             device_name: string;
+            name: string;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -4357,6 +4390,11 @@ export interface components {
             /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
             next_after: string | null;
         };
+        /** @description `POST /api/auth/password` (web-revamp ticket 05, spec D12). */
+        PasswordChange: {
+            current_password: string;
+            new_password: string;
+        };
         PatchedChecklist: {
             /** Format: uuid */
             readonly id?: string;
@@ -4455,6 +4493,10 @@ export interface components {
             visibility?: components["schemas"]["VisibilityEnum"];
         };
         PatchedHouseholdPatchRequest: {
+            name?: string;
+        };
+        /** @description `PATCH /api/auth/me` (web-revamp ticket 05, spec D12). */
+        PatchedMeUpdate: {
             name?: string;
         };
         /**
@@ -5397,6 +5439,103 @@ export interface operations {
             };
             /** @description The credential is live but its user is not a household member. A `User` row alone is not enough - see `manage.py add_household_member`. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_me_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedMeUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedMeUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedMeUpdate"];
+            };
+        };
+        responses: {
+            /** @description The name is changed. The body is the account as it now is. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description The name is blank or too long. Nothing was changed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No live credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_password_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+                "application/x-www-form-urlencoded": components["schemas"]["PasswordChange"];
+                "multipart/form-data": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Changed. This session stays signed in; devices stay signed in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Nothing was changed: the current password is wrong, or the new one fails a password rule. `detail` says which, in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No live credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many attempts this minute. Nothing was changed. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

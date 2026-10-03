@@ -8,6 +8,7 @@ from household.views import (
     LoginView,
     LogoutView,
     MeView,
+    PasswordChangeView,
     SessionLoginView,
     SessionLogoutView,
     SignupView,
@@ -17,6 +18,8 @@ urlpatterns = [
     path("login", LoginView.as_view(), name="auth-login"),
     path("logout", LogoutView.as_view(), name="auth-logout"),
     path("me", MeView.as_view(), name="auth-me"),
+    # web-revamp ticket 05: change your own password.
+    path("password", PasswordChangeView.as_view(), name="auth-password"),
     path("signup", SignupView.as_view(), name="auth-signup"),
     # `<str:code>` rather than a tighter converter: an invite code is
     # base64url, so it can contain `-` and `_`, and a mistyped code must reach

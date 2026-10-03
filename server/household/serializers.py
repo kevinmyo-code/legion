@@ -54,6 +54,31 @@ class MeResponseSerializer(serializers.Serializer):
     user_id = serializers.UUIDField()
     email = serializers.EmailField()
     device_name = serializers.CharField()
+    # web-revamp ticket 05. `User.first_name`, the one name field this server
+    # keeps (`SignupRequestSerializer` writes it the same way).
+    name = serializers.CharField(allow_blank=True)
+
+
+class MeUpdateSerializer(serializers.Serializer):
+    """`PATCH /api/auth/me` (web-revamp ticket 05, spec D12)."""
+
+    # allow_blank so a blank name reaches `validate_name` and is refused in
+    # this file's words rather than DRF's.
+    name = serializers.CharField(max_length=150, allow_blank=True)
+
+    def validate_name(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError(
+                "A name cannot be blank. Nothing was changed."
+            )
+        return value.strip()
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """`POST /api/auth/password` (web-revamp ticket 05, spec D12)."""
+
+    current_password = serializers.CharField(write_only=True, trim_whitespace=False)
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False)
 
 
 # =============================================================================
