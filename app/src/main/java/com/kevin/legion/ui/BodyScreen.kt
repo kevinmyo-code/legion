@@ -646,7 +646,7 @@ private fun BodyChartCard(content: @Composable () -> Unit) {
  * for a bodyweight log (see `service/LiveToolbox.kt`'s `undoLastLog`) - only the selection differs.
  */
 @Composable
-private fun BodyMassDrilldown(
+internal fun BodyMassDrilldown(
     latest: BodyweightLog?,
     series: List<DeckPoint?>,
     history: List<BodyweightLog>,
@@ -809,7 +809,7 @@ private fun BodySleepDrilldown(
 
 /** TRAINING's first drilldown level: every distinct exercise, most recently worked first - taps into [BodyExerciseProgressionDrilldown]. Entry point relocated to [com.kevin.legion.ui.goals.GoalChecklistPanel] by ticket 08 - see this file's doc comment. */
 @Composable
-private fun BodyTrainingExerciseListDrilldown(
+internal fun BodyTrainingExerciseListDrilldown(
     exercises: List<WorkoutSetLogDao.ExerciseRecency>,
     loading: Boolean,
     onSelect: (String) -> Unit,
@@ -849,7 +849,7 @@ private fun BodyTrainingExerciseListDrilldown(
  * ticket 08 - see this file's doc comment.
  */
 @Composable
-private fun BodyExerciseProgressionDrilldown(
+internal fun BodyExerciseProgressionDrilldown(
     exercise: String,
     series: List<DeckPoint?>,
     sets: List<WorkoutSetLog>,

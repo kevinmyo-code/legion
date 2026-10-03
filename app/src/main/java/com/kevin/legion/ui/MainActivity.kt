@@ -855,14 +855,14 @@ private fun LegionShell(
                 com.kevin.legion.ui.apps.AppsScreen()
             }
             composable(LegionRoute.ASK) {
-                com.kevin.legion.ui.ask.AskScreen()
+                com.kevin.legion.ui.ask.AskScreen(onBack = { navController.popBackStack() })
             }
             // The news feed's own route (one-home ticket 07, ticket 06 resolution point 4) - see
             // `ui/news/NewsScreen.kt`. Reached from the "News" row `ui/HomeMeterBands.kt` renders
             // on HOME, which no longer renders `NewsDigestCard` inline (it moved inside this
             // screen, unmodified).
             composable(LegionRoute.NEWS) {
-                com.kevin.legion.ui.news.NewsScreen()
+                com.kevin.legion.ui.news.NewsScreen(onBack = { navController.popBackStack() })
             }
             // [LegionRoute.METERS] and `ui/MetersScreen.kt` DELETED 2026-09-10 (one-home ticket
             // 03b). Its capabilities were not dropped - ticket 02 rehomed every one of them first,
@@ -881,7 +881,7 @@ private fun LegionShell(
             // class doc for the full route lineage.
 
             composable(LegionRoute.BODY) {
-                BodyScreen()
+                BodyScreen(onBack = { navController.popBackStack() })
             }
 
             // composable(LegionRoute.NOTES) { NotesScreen(...) } DELETED one-today ticket 10
