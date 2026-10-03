@@ -224,6 +224,8 @@ fun SpotifyScreen(
                     true to "UNREACHABLE - could not reach Spotify."
                 SpotifyWebApi.SearchOutcome.NoMatch ->
                     true to "NO MATCH - Spotify answered, with nothing for \"$SEARCH_TEST_QUERY\"."
+                is SpotifyWebApi.SearchOutcome.Rejected ->
+                    true to "NO MATCH - hits, but none fit \"$SEARCH_TEST_QUERY\": ${outcome.closest.joinToString("; ")}"
                 is SpotifyWebApi.SearchOutcome.Failed ->
                     true to "HTTP ${outcome.code} - ${outcome.detail ?: "no detail returned"}\n" +
                         "raw: ${outcome.raw ?: "(empty)"}"

@@ -36,6 +36,8 @@ object MediaSearchResolver {
             "Couldn't reach Spotify just now. Worth trying again when you have a better connection."
         SpotifyWebApi.SearchOutcome.NoMatch ->
             "Spotify has nothing matching \"$query\"."
+        is SpotifyWebApi.SearchOutcome.Rejected ->
+            "Spotify has nothing matching \"$query\". Closest: ${outcome.closest.joinToString("; ")}."
         is SpotifyWebApi.SearchOutcome.Failed ->
             "Spotify's search returned an error (${outcome.code})" + (outcome.detail?.let { ": $it" } ?: ".")
     }
