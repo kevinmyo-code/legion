@@ -493,14 +493,20 @@ private fun TileCard(
     trailing: (@Composable () -> Unit)? = null,
     content: (@Composable () -> Unit)? = null,
 ) {
-    Column(
+    // The card is a Box so [trailing] (Recordings' 48dp record button) can sit at the CARD's top-end
+    // corner, beside the title, needing none of the compact row's height (a 48dp control in the
+    // status area was squashed to a pill by the 62dp row). Its 14dp dot is centred in the 48dp
+    // touch target.
+    Box(
         modifier
             .background(SoftColors.card, MaterialTheme.shapes.large)
-            .clickable(onClick = onClick)
-            // 8dp, not the original 12dp - ticket 06's dock takes real height from the row this
-            // card sits in; this gives that back to the STATUS/DISCLOSURE text below rather than
-            // to padding, so a two-line disclosure (home-alerts.png) still renders in full instead
-            // of overflowing the card's own background into the tile beneath it.
+            .clickable(onClick = onClick),
+    ) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            // 6dp, not the original 12dp - the dock takes real height from the row this card sits
+            // in; this gives it back to the STATUS/DISCLOSURE text rather than to padding.
             .padding(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -558,10 +564,9 @@ private fun TileCard(
                     )
                 }
             }
-            trailing?.let {
-                Box(Modifier.align(Alignment.TopEnd)) { it() }
-            }
         }
+    }
+    trailing?.let { Box(Modifier.align(Alignment.TopEnd)) { it() } }
     }
 }
 /**
