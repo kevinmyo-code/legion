@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Forty-six names. The forty-seventh `public` table, `household_members`, is
+# Forty-seven names. The forty-eighth `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -93,6 +93,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # backend-etl ticket 02: the session vault. Ciphertext only; the key is
     # LEGION_VAULT_KEY in the environment, never in the database.
     "source_credentials",
+    # engine-mcp ticket 10 (ticket 08's audit ruling): one row per `/mcp`
+    # call, Django-managed, born tenanted like `ingest_runs`.
+    "mcp_calls",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -123,7 +126,14 @@ TENANT_TABLES: tuple[str, ...] = (
 # SQL loop finds the column already there and has nothing to do. So is
 # `source_credentials` (ticket 02, same file, same pattern).
 DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
-    {"checklists", "checklist_items", "checklist_ticks", "ingest_runs", "source_credentials"}
+    {
+        "checklists",
+        "checklist_items",
+        "checklist_ticks",
+        "ingest_runs",
+        "source_credentials",
+        "mcp_calls",
+    }
 )
 
 BOOTSTRAP_ID_ENV = "LEGION_BOOTSTRAP_HOUSEHOLD_ID"

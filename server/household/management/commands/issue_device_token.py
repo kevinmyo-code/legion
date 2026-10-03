@@ -24,7 +24,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("email", type=str, help="Email of an existing household member.")
-        parser.add_argument("--name", required=True, help="What this token is for, e.g. 'Claude Code'.")
+        parser.add_argument(
+            "--name", required=True, help="What this token is for, e.g. 'Claude Code'."
+        )
         parser.add_argument(
             "--scope",
             choices=[DeviceToken.SCOPE_READ, DeviceToken.SCOPE_WRITE],

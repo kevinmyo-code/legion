@@ -202,7 +202,9 @@ class DeviceToken(models.Model):
         signup, the test fixtures - is a device the person is signing in on.
         A token minted for a tool rather than a person passes `read`."""
         if scope not in {cls.SCOPE_READ, cls.SCOPE_WRITE}:
-            raise ValueError(f"Nothing was issued. {scope!r} is not a token scope; use read or write.")
+            raise ValueError(
+                f"Nothing was issued. {scope!r} is not a token scope; use read or write."
+            )
         raw_key = _generate_device_key()
         token = cls.objects.create(
             user=user, name=name, key_hash=hash_device_key(raw_key), scope=scope
