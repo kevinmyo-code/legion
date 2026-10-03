@@ -27,6 +27,7 @@ import argparse
 
 from _common import (
     PLAIN_ENV_VARS,
+    plain_env_from,
     capture,
     die,
     find_gcloud,
@@ -86,7 +87,7 @@ def main() -> int:
     # service's plain env vars - a Job that read Django settings
     # differently from the service it shares an image with would be its
     # own bug.
-    plain_env = {name: cloud_env.get(name, "") for name in PLAIN_ENV_VARS}
+    plain_env = plain_env_from(cloud_env)
     missing_plain = [n for n in PLAIN_ENV_VARS if not plain_env[n] and n != "CSRF_TRUSTED_ORIGINS"]
     if missing_plain and not args.dry_run:
         die(

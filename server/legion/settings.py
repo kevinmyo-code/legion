@@ -126,6 +126,9 @@ INSTALLED_APPS = [
     # The web client is a limb like the phone is - it talks to the same API over
     # the same contract - so Django's only job for it is to serve the bundle.
     "web",
+    # engine-mcp ticket 10: the `/mcp` endpoint, and `public.mcp_calls`, its
+    # audit trail. Named `engine_mcp` so it cannot shadow the `mcp` SDK.
+    "engine_mcp",
 ]
 
 MIDDLEWARE = [
@@ -369,6 +372,13 @@ REST_FRAMEWORK = {
         # and redeeming one are the same guess from the same stranger, so
         # they must not each get five a minute.
         "signup": "5/min",
+        # engine-mcp ticket 08 (Kevin, 2026-10-02): `/mcp` is throttled per
+        # TOKEN (`engine_mcp.views.McpTokenThrottle`), so a looping model
+        # spends its own budget and never the phone's. Read from the
+        # environment so an operator can tighten it without a release. The
+        # cache is Django's default per-process LocMemCache, so with gunicorn's
+        # two workers the effective ceiling is up to twice this.
+        "mcp": os.environ.get("LEGION_MCP_RATE", "").strip() or "60/min",
     },
 }
 
@@ -384,6 +394,17 @@ REST_FRAMEWORK = {
 # stranger's second adult joins by code rather than founding a second
 # household nobody wanted.
 LEGION_OPEN_SIGNUP = os.environ.get("LEGION_OPEN_SIGNUP", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+# engine-mcp ticket 08 (Kevin, 2026-10-02): "Cloud Run, OFF by default". The
+# same shape as LEGION_OPEN_SIGNUP and for the same reason: an operator who has
+# not thought about exposing the household to a model gets the closed
+# behaviour. Off, `/mcp` answers 404 in words and does nothing else.
+LEGION_MCP = os.environ.get("LEGION_MCP", "").strip().lower() in {
     "1",
     "true",
     "yes",

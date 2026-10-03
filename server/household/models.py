@@ -158,12 +158,25 @@ class DeviceToken(models.Model):
     another - there is no shared secret across devices to invalidate.
     """
 
+    # engine-mcp ticket 05 (Kevin, 2026-10-02): what a token may do, narrower
+    # than "everything its user can do". `read` may read and nothing else, on
+    # REST (`IsHouseholdMember` refuses an unsafe method) and on `/mcp` (a
+    # write tool refuses in words). `write` is everything, which is what every
+    # token was before this column existed, so it is the default and the value
+    # migration 0004 gives every existing row: the phone keeps working. A dev
+    # or third-party token is minted `read` on purpose
+    # (`manage.py issue_device_token` defaults to it).
+    SCOPE_READ = "read"
+    SCOPE_WRITE = "write"
+    SCOPE_CHOICES = [(SCOPE_READ, "read"), (SCOPE_WRITE, "write")]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="device_tokens")
     name = models.CharField(max_length=255)
     key_hash = models.CharField(max_length=64, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    scope = models.CharField(max_length=8, choices=SCOPE_CHOICES, default=SCOPE_WRITE)
 
     class Meta:
         indexes = [models.Index(fields=["key_hash"])]
@@ -175,13 +188,27 @@ class DeviceToken(models.Model):
     def is_revoked(self) -> bool:
         return self.revoked_at is not None
 
+    @property
+    def can_write(self) -> bool:
+        return self.scope == self.SCOPE_WRITE
+
     @classmethod
-    def issue(cls, user: User, name: str) -> tuple[DeviceToken, str]:
+    def issue(cls, user: User, name: str, scope: str = SCOPE_WRITE) -> tuple[DeviceToken, str]:
         """Create a token and return it alongside the raw key. The raw key
         is the return value, never a model field - callers must hand it to
-        the device immediately and cannot fetch it again later."""
+        the device immediately and cannot fetch it again later.
+
+        `scope` defaults to `write` because every existing caller - login,
+        signup, the test fixtures - is a device the person is signing in on.
+        A token minted for a tool rather than a person passes `read`."""
+        if scope not in {cls.SCOPE_READ, cls.SCOPE_WRITE}:
+            raise ValueError(
+                f"Nothing was issued. {scope!r} is not a token scope; use read or write."
+            )
         raw_key = _generate_device_key()
-        token = cls.objects.create(user=user, name=name, key_hash=hash_device_key(raw_key))
+        token = cls.objects.create(
+            user=user, name=name, key_hash=hash_device_key(raw_key), scope=scope
+        )
         return token, raw_key
 
 
