@@ -56,7 +56,7 @@ One web client, two surfaces, split by viewport.
 | Checklists | `checklists` / `checklist_items` / `checklist_ticks`. **No owner, pinned or icon column.** Tick is optimistic on web, delete is not (decisions 2026-09-16) |
 | Tenancy | `household/tenancy.py` `scoped()` / `household_of()`; `TENANT_TABLES`; leak test `tests/test_tenancy.py`. **No test that two members of one household see different rows** |
 | Ledger | `ledger_transactions` immutable (`forbid_mutation_of_facts`), GET only, `verification_note` "Unverified..." on UNRECONCILED rows. Categories set through `PUT/DELETE /api/ledger/transaction_categories/<txn_id>/` (person outranks rule). `budget_targets`, `categories` (`excluded_from_spend`), `category_rules` CRUD |
-| Ledger source | `connect_session.py bofa` pulls BofA activity CSVs daily to Drive; `drive_statements` watcher every 6 h: current window provisional (rule 7), closed period gated. **Never run against the real BofA site** (backend-etl 09 owes the live dry-run) |
+| Ledger source | `connect_session.py bofa` pulls BofA activity CSVs daily to Drive; `drive_statements` watcher every 6 h: current window provisional (rule 7), closed period gated. Has run against the real BofA site (Kevin, 2026-10-03; backend-etl 09's frontmatter still says owed) |
 | Spend | **No server spend figure.** The phone computes it in `LedgerBudget.operatingExpenses` with transfer pairing, excluded categories and a Housing early-charge month shift |
 | Account identity | Key is `account_last4`. `account_nickname` holds a label for server-ingested rows and the phone's raw account id for phone-uploaded rows, so keying on nickname splits one card |
 | Users | `User.first_name` holds the display name. `GET /api/households/me` lists members with `name` |
@@ -177,8 +177,9 @@ One web client, two surfaces, split by viewport.
 
 - Three clickable directions live at `.scratch/web-revamp/research/prototypes/`: A family warm (the
   2026-09-12 drawing, rendered), B calm Apple, C soft Material light. Same five artboards each.
-  **Kevin picks one; ticket "Pick the web design language" records the pick and ADR 0053.**
-- Whatever wins, these are fixed now and every direction already honours them:
+  **Kevin picked C, soft Material light (2026-10-03). ADR 0053 holds the tokens, shape and type;
+  the font is Roboto Flex via `@fontsource-variable/roboto-flex`.**
+- These hold on top of ADR 0053:
   - **Tokens live in `server/frontend/src/index.css`** as CSS variables under `:root` and
     `.dark`, mapped into Tailwind through the existing `@theme inline` block. Components never use a
     raw colour.

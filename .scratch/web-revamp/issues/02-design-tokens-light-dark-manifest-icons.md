@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01"]
 blocked-by: ["[[01-pick-the-web-design-language]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Design tokens, light and dark, manifest and icons

@@ -5991,3 +5991,28 @@ Kevin ruled on four of the map's decision tickets the same afternoon:
   excluded by default because that sub-question was not ruled.
 
 Still open: 04 (how the phone consumes it), 07 (ingestion over MCP), 08 (public exposure).
+
+## 2026-10-03 - web-revamp: one client, two surfaces, private rows, soft Material light
+
+Kevin, interviewed for `.scratch/web-revamp/spec.md`: *"revamp it. both desktop and mobile pwa."*
+
+- **Scope:** the full web client in one map: look, shell, settings, every aspect screen, push.
+- **Two surfaces by viewport** (ADR 0053): Kevin's workbench at 1024 px and up, Mia's family view
+  below. Rendered as different trees, never CSS-hidden. Records the 2026-09-12 two-surfaces ruling,
+  which never got an entry here.
+- **Look: soft Material light, with dark following the system** (ADR 0053). Picked "C" from three
+  clickable prototypes over family warm (the 2026-09-12 drawing, now retired) and calm Apple.
+- **Private rows, server-enforced** (ADR 0052, amends 0045): *"canvas and my class schedules should
+  be only mine no? shared ones give it a distinct color like pink."* Imports private, hand-made rows
+  shared by default.
+- **Mia's PWA:** today, ticks, add/edit events, groceries as a shared checklist, spend this month on
+  BofA checking and card. iPhone.
+- **Ledger source is the daily BofA activity pull, not statements** (*"we dont use statements
+  anymore"*); the web reviews and categorises, never ingests. Kevin confirms the pull has run
+  against the real BofA site.
+- **Spend computed once, on the engine**, parity-tested against the phone; the endpoint is not
+  blocked on RLS (Kevin overrode web-and-households 11's blocker for it).
+- **Full repeat editing**, "just this one" or "all of them". **Push** for list changes, event
+  reminders, morning tasks; no spend alerts. **No offline writes** on the web.
+- **Workbench order:** Money, Calendar, Pantry and body, Fleet places and notes.
+- **Server work rides in this map** although the server terminal owns `server/` (Kevin: "yes ok").

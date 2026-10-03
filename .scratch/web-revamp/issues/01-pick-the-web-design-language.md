@@ -3,12 +3,12 @@ map: web-revamp
 ticket: 01
 title: Pick the web design language
 type: prototype
-status: open
+status: resolved
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Pick the web design language
@@ -32,3 +32,11 @@ Which direction, and what to change about it? Kevin picks; mixing is allowed ("B
 - File both to `memory/library/decisions.md` (the 2026-09-12 family-first ruling never got an
   entry; say so in this one).
 - Ticket "Design tokens, light and dark, manifest and icons" is then ready.
+
+## Answer
+
+**C, soft Material light** (Kevin, 2026-10-03: "C"), no amendments. Tokens, shape, type and the
+surface rule are recorded in `docs/adr/0053-web-design-language-and-two-surfaces.md`; the prototype
+file `research/prototypes/c-soft-material.html` is the source for every value. Filed to
+`memory/library/decisions.md` 2026-10-03. Ticket "Design tokens, light and dark, manifest and icons"
+is ready.

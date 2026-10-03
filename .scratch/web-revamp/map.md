@@ -59,7 +59,8 @@ look.
 Made in the 2026-10-03 interview, all recorded in the spec:
 
 - Scope: the full web client, phased, one map.
-- Look: reopened; three clickable prototypes, Kevin picks (ticket "Pick the web design language").
+- [Pick the web design language](issues/01-pick-the-web-design-language.md): C, soft Material light. ADR 0053.
+- Private rows: ADR 0052 written; CLAUDE.md section 1 amended.
 - Surfaces split by viewport, rendered not hidden (D1). ADR 0045 allows no roles.
 - Mia's PWA: today, ticks, add/edit events, groceries as a shared checklist, shared lists and events,
   spend on the two BofA accounts this month (D6).
@@ -74,10 +75,10 @@ Made in the 2026-10-03 interview, all recorded in the spec:
 
 ## Flagged for Kevin
 
-- **Spend endpoint overrides web-and-households 11's RLS blocker** for that one route (spec D5).
-- **Server work assigned here** despite the server/Android terminal split (Notes).
+- Spend endpoint skips web-and-households 11's RLS blocker: **approved** by Kevin 2026-10-03.
+- Server work rides in this map: **approved** by Kevin 2026-10-03.
 - **Live data never read.** Class-schedule rows are inferred from phone code; which `account_last4`
-  values exist live is unknown; the BofA pull has never run against the real site (backend-etl 09).
+  values exist live is unknown. The BofA pull HAS run against the real site (Kevin, 2026-10-03).
 
 ## Not yet specified
 
