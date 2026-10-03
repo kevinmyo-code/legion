@@ -53,7 +53,7 @@ describe('the family surface', () => {
     expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument()
   })
 
-  test('only builds tabs for routes that exist: Home, Lists and Calendar, no Settings yet', async () => {
+  test('builds a tab for every route that exists, and Settings is one of them', async () => {
     stubSurface('family')
     renderApp('/')
 
@@ -61,8 +61,7 @@ describe('the family surface', () => {
     const labels = within(tabs)
       .getAllByRole('link')
       .map((link) => link.textContent)
-    expect(labels).toEqual(['Home', 'Lists', 'Calendar'])
-    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument()
+    expect(labels).toEqual(['Home', 'Lists', 'Calendar', 'Settings'])
   })
 
   test('says the household name and, when it cannot, says it could not reach the engine', async () => {

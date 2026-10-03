@@ -22,11 +22,9 @@ import type { Surface } from '@/lib/surface'
  *
  * **`built` is the gate.** An item renders only when its screen exists
  * (web-surface 04: "no item that opens an empty page"). Spec D1 lists four
- * family tabs and nine workbench rails, but today the routes are Home and
- * Lists, so today the tab bar has two tabs and the rail has two items. Each
- * later ticket that builds a screen flips its `built` to true in the same
- * commit as the route, and its tab or rail item appears with it; nothing else
- * needs to change. A test fails if an item is rendered while `built` is false.
+ * family tabs and nine workbench rails. Each ticket that builds a screen flips
+ * its `built` to true in the same commit as the route, and its tab or rail item
+ * appears with it; nothing else needs to change. A test fails if an item is rendered while `built` is false.
  *
  * `to` is a plain string and not a typed route because most of these routes do
  * not exist yet, so the router's generated path type cannot name them. It is
@@ -72,7 +70,7 @@ export const NAV: readonly NavItem[] = [
     label: 'Settings',
     icon: Settings,
     surfaces: BOTH,
-    built: false,
+    built: true,
     separated: true,
     rank: { family: 4 },
   },

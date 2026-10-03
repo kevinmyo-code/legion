@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AuthedIndexRouteImport } from './routes/_authed.index'
 import { Route as AuthedBodyRouteImport } from './routes/_authed.body'
 import { Route as AuthedCalendarRouteImport } from './routes/_authed.calendar'
@@ -20,6 +21,13 @@ import { Route as AuthedMoneyRouteImport } from './routes/_authed.money'
 import { Route as AuthedNotesRouteImport } from './routes/_authed.notes'
 import { Route as AuthedPantryRouteImport } from './routes/_authed.pantry'
 import { Route as AuthedPlacesRouteImport } from './routes/_authed.places'
+import { Route as AuthedSettingsRouteImport } from './routes/_authed.settings'
+import { Route as JoinCodeRouteImport } from './routes/join.$code'
+import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed.settings.index'
+import { Route as AuthedSettingsAccountRouteImport } from './routes/_authed.settings.account'
+import { Route as AuthedSettingsAppearanceRouteImport } from './routes/_authed.settings.appearance'
+import { Route as AuthedSettingsDevicesRouteImport } from './routes/_authed.settings.devices'
+import { Route as AuthedSettingsHouseholdRouteImport } from './routes/_authed.settings.household'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -28,6 +36,11 @@ const AuthedRoute = AuthedRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthedIndexRoute = AuthedIndexRouteImport.update({
@@ -75,10 +88,47 @@ const AuthedPlacesRoute = AuthedPlacesRouteImport.update({
   path: '/places',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedSettingsRoute = AuthedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const JoinCodeRoute = JoinCodeRouteImport.update({
+  id: '/join/$code',
+  path: '/join/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedSettingsIndexRoute = AuthedSettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthedSettingsRoute,
+} as any)
+const AuthedSettingsAccountRoute = AuthedSettingsAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AuthedSettingsRoute,
+} as any)
+const AuthedSettingsAppearanceRoute =
+  AuthedSettingsAppearanceRouteImport.update({
+    id: '/appearance',
+    path: '/appearance',
+    getParentRoute: () => AuthedSettingsRoute,
+  } as any)
+const AuthedSettingsDevicesRoute = AuthedSettingsDevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => AuthedSettingsRoute,
+} as any)
+const AuthedSettingsHouseholdRoute = AuthedSettingsHouseholdRouteImport.update({
+  id: '/household',
+  path: '/household',
+  getParentRoute: () => AuthedSettingsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/body': typeof AuthedBodyRoute
   '/calendar': typeof AuthedCalendarRoute
   '/fleet': typeof AuthedFleetRoute
@@ -87,9 +137,17 @@ export interface FileRoutesByFullPath {
   '/notes': typeof AuthedNotesRoute
   '/pantry': typeof AuthedPantryRoute
   '/places': typeof AuthedPlacesRoute
+  '/settings': typeof AuthedSettingsRouteWithChildren
+  '/join/$code': typeof JoinCodeRoute
+  '/settings/account': typeof AuthedSettingsAccountRoute
+  '/settings/appearance': typeof AuthedSettingsAppearanceRoute
+  '/settings/devices': typeof AuthedSettingsDevicesRoute
+  '/settings/household': typeof AuthedSettingsHouseholdRoute
+  '/settings/': typeof AuthedSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/body': typeof AuthedBodyRoute
   '/calendar': typeof AuthedCalendarRoute
   '/fleet': typeof AuthedFleetRoute
@@ -98,12 +156,19 @@ export interface FileRoutesByTo {
   '/notes': typeof AuthedNotesRoute
   '/pantry': typeof AuthedPantryRoute
   '/places': typeof AuthedPlacesRoute
+  '/join/$code': typeof JoinCodeRoute
   '/': typeof AuthedIndexRoute
+  '/settings/account': typeof AuthedSettingsAccountRoute
+  '/settings/appearance': typeof AuthedSettingsAppearanceRoute
+  '/settings/devices': typeof AuthedSettingsDevicesRoute
+  '/settings/household': typeof AuthedSettingsHouseholdRoute
+  '/settings': typeof AuthedSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/_authed/body': typeof AuthedBodyRoute
   '/_authed/calendar': typeof AuthedCalendarRoute
   '/_authed/fleet': typeof AuthedFleetRoute
@@ -112,13 +177,21 @@ export interface FileRoutesById {
   '/_authed/notes': typeof AuthedNotesRoute
   '/_authed/pantry': typeof AuthedPantryRoute
   '/_authed/places': typeof AuthedPlacesRoute
+  '/_authed/settings': typeof AuthedSettingsRouteWithChildren
+  '/join/$code': typeof JoinCodeRoute
   '/_authed/': typeof AuthedIndexRoute
+  '/_authed/settings/account': typeof AuthedSettingsAccountRoute
+  '/_authed/settings/appearance': typeof AuthedSettingsAppearanceRoute
+  '/_authed/settings/devices': typeof AuthedSettingsDevicesRoute
+  '/_authed/settings/household': typeof AuthedSettingsHouseholdRoute
+  '/_authed/settings/': typeof AuthedSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/signup'
     | '/body'
     | '/calendar'
     | '/fleet'
@@ -127,9 +200,17 @@ export interface FileRouteTypes {
     | '/notes'
     | '/pantry'
     | '/places'
+    | '/settings'
+    | '/join/$code'
+    | '/settings/account'
+    | '/settings/appearance'
+    | '/settings/devices'
+    | '/settings/household'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/signup'
     | '/body'
     | '/calendar'
     | '/fleet'
@@ -138,11 +219,18 @@ export interface FileRouteTypes {
     | '/notes'
     | '/pantry'
     | '/places'
+    | '/join/$code'
     | '/'
+    | '/settings/account'
+    | '/settings/appearance'
+    | '/settings/devices'
+    | '/settings/household'
+    | '/settings'
   id:
     | '__root__'
     | '/_authed'
     | '/login'
+    | '/signup'
     | '/_authed/body'
     | '/_authed/calendar'
     | '/_authed/fleet'
@@ -151,12 +239,21 @@ export interface FileRouteTypes {
     | '/_authed/notes'
     | '/_authed/pantry'
     | '/_authed/places'
+    | '/_authed/settings'
+    | '/join/$code'
     | '/_authed/'
+    | '/_authed/settings/account'
+    | '/_authed/settings/appearance'
+    | '/_authed/settings/devices'
+    | '/_authed/settings/household'
+    | '/_authed/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  SignupRoute: typeof SignupRoute
+  JoinCodeRoute: typeof JoinCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -173,6 +270,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authed/': {
@@ -238,8 +342,77 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedPlacesRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/settings': {
+      id: '/_authed/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthedSettingsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/join/$code': {
+      id: '/join/$code'
+      path: '/join/$code'
+      fullPath: '/join/$code'
+      preLoaderRoute: typeof JoinCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/settings/': {
+      id: '/_authed/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthedSettingsIndexRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
+    '/_authed/settings/account': {
+      id: '/_authed/settings/account'
+      path: '/account'
+      fullPath: '/settings/account'
+      preLoaderRoute: typeof AuthedSettingsAccountRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
+    '/_authed/settings/appearance': {
+      id: '/_authed/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof AuthedSettingsAppearanceRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
+    '/_authed/settings/devices': {
+      id: '/_authed/settings/devices'
+      path: '/devices'
+      fullPath: '/settings/devices'
+      preLoaderRoute: typeof AuthedSettingsDevicesRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
+    '/_authed/settings/household': {
+      id: '/_authed/settings/household'
+      path: '/household'
+      fullPath: '/settings/household'
+      preLoaderRoute: typeof AuthedSettingsHouseholdRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
   }
 }
+
+interface AuthedSettingsRouteChildren {
+  AuthedSettingsAccountRoute: typeof AuthedSettingsAccountRoute
+  AuthedSettingsAppearanceRoute: typeof AuthedSettingsAppearanceRoute
+  AuthedSettingsDevicesRoute: typeof AuthedSettingsDevicesRoute
+  AuthedSettingsHouseholdRoute: typeof AuthedSettingsHouseholdRoute
+  AuthedSettingsIndexRoute: typeof AuthedSettingsIndexRoute
+}
+
+const AuthedSettingsRouteChildren: AuthedSettingsRouteChildren = {
+  AuthedSettingsAccountRoute: AuthedSettingsAccountRoute,
+  AuthedSettingsAppearanceRoute: AuthedSettingsAppearanceRoute,
+  AuthedSettingsDevicesRoute: AuthedSettingsDevicesRoute,
+  AuthedSettingsHouseholdRoute: AuthedSettingsHouseholdRoute,
+  AuthedSettingsIndexRoute: AuthedSettingsIndexRoute,
+}
+
+const AuthedSettingsRouteWithChildren = AuthedSettingsRoute._addFileChildren(
+  AuthedSettingsRouteChildren,
+)
 
 interface AuthedRouteChildren {
   AuthedBodyRoute: typeof AuthedBodyRoute
@@ -250,6 +423,7 @@ interface AuthedRouteChildren {
   AuthedNotesRoute: typeof AuthedNotesRoute
   AuthedPantryRoute: typeof AuthedPantryRoute
   AuthedPlacesRoute: typeof AuthedPlacesRoute
+  AuthedSettingsRoute: typeof AuthedSettingsRouteWithChildren
   AuthedIndexRoute: typeof AuthedIndexRoute
 }
 
@@ -262,6 +436,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedNotesRoute: AuthedNotesRoute,
   AuthedPantryRoute: AuthedPantryRoute,
   AuthedPlacesRoute: AuthedPlacesRoute,
+  AuthedSettingsRoute: AuthedSettingsRouteWithChildren,
   AuthedIndexRoute: AuthedIndexRoute,
 }
 
@@ -271,6 +446,8 @@ const AuthedRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
+  SignupRoute: SignupRoute,
+  JoinCodeRoute: JoinCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

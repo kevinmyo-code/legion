@@ -6,6 +6,7 @@ import { seedAspects } from '../src/test/aspects-seed'
 import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
 import { calendarShots } from './calendar-shots'
 import { familyShots } from './family-shots'
+import { settingsShots } from './settings-shots'
 import { seedLedger, seedSpend } from '../src/test/ledger-seed'
 
 /**
@@ -259,6 +260,8 @@ const ROUTES: Shot[] = [
   ...calendarShots,
   // Ticket 10: Mia's Home and the family Lists. Rows live in `family-shots.ts`.
   ...familyShots,
+  // Tickets 05 and 15: join, signup and Settings. Rows live in `settings-shots.ts`.
+  ...settingsShots,
   // Ticket 12: Money.
   { name: 'money', url: '/money', ready: 'Showing 15 of 15 transactions.', engine: withLedger, labels: ['12'], workbenchOnly: 'card' },
   {

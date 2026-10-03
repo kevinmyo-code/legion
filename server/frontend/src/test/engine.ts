@@ -1,6 +1,7 @@
 import { todayEpochDay } from '../lib/day'
 import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip } from '../api/types'
+import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
 
 /**
@@ -29,6 +30,7 @@ export const ME = {
   user_id: '3f2b1c88-0000-4000-8000-0123456789ab',
   email: 'mia@example.test',
   device_name: '',
+  name: 'Mia',
 }
 
 export interface EngineOptions {
@@ -49,6 +51,8 @@ export interface EngineOptions {
   spend?: Spend
   /** Household members `GET /api/households/me` lists; nobody when absent. */
   members?: Member[]
+  /** Join, signup and settings state (`engine-settings.ts`); defaults when absent. */
+  settings?: Partial<SettingsState>
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -75,6 +79,8 @@ export interface Engine {
   spend: Spend
   /** The household's members, for `GET /api/households/me`. */
   members: Member[]
+  /** What the join, signup and settings routes answer from (`engine-settings.ts`). */
+  settings: SettingsState
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -274,6 +280,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     pageSize: options.pageSize ?? 500,
     spend: options.spend ?? emptySpend(),
     members: options.members ?? [],
+    settings: { ...defaultSettings(), ...options.settings },
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -298,7 +305,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
 
       if (method === 'GET' && pathname === '/api/auth/me') {
         return engine.signedIn
-          ? { status: 200, body: ME }
+          ? { status: 200, body: { ...ME, name: engine.settings.name } }
           : { status: 401, body: { detail: 'Not signed in.' } }
       }
       if (method === 'POST' && pathname === '/api/auth/session/login') {
@@ -486,6 +493,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
       if (method === 'GET' && pathname === '/api/ledger/spend') {
         return { status: 200, body: spendWithTargets(engine) }
       }
+
+      const settingsReply = handleSettings(engine, ME.user_id, ME.email, method, pathname, body)
+      if (settingsReply) return settingsReply
 
       const tableReply = handleTables(engine, method, pathname, search, body)
       if (tableReply) return tableReply

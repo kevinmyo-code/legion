@@ -1,11 +1,8 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { LogOut } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { HouseholdName } from '@/components/household-name'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Button } from '@/components/ui/button'
-import { useSignOut } from '@/components/use-sign-out'
 import { isActive, type NavItem } from '@/lib/nav'
 
 /**
@@ -14,14 +11,13 @@ import { isActive, type NavItem } from '@/lib/nav'
  * a line of text never runs the length of an ultrawide.
  *
  * Kevin's desk, not a stretched phone: the rail is persistent and labelled
- * (nothing to discover), and the household name and the theme and sign-out
- * controls sit at its two ends, out of the content's way. Like the family
+ * (nothing to discover), and the household name and the theme control sit at
+ * its two ends, out of the content's way. Like the family
  * shell it renders only the items it is handed, so an area whose screen is not
  * built has no rail item at all.
  */
 export function WorkbenchShell({ items, children }: { items: NavItem[]; children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const signOut = useSignOut()
 
   return (
     <div className="flex min-h-dvh">
@@ -56,10 +52,6 @@ export function WorkbenchShell({ items, children }: { items: NavItem[]; children
 
         <div className="flex flex-col items-start gap-1 px-1 pt-3">
           <ThemeToggle />
-          <Button variant="ghost" className="gap-2 text-muted-foreground" onClick={signOut}>
-            <LogOut />
-            Sign out
-          </Button>
         </div>
       </aside>
 

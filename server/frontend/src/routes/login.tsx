@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { api } from '@/api/client'
@@ -96,8 +96,11 @@ function Login() {
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
             <p className="text-center text-[0.8125rem] text-muted-foreground">
-              Signup and invite codes are not built on the web yet - ask
-              whoever set up your household for an account.
+              Have an invite? Use the link you were sent, or{' '}
+              <Link to="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
+                enter its code
+              </Link>
+              .
             </p>
           </form>
         </CardContent>

@@ -3,12 +3,12 @@ import type { ReactNode } from 'react'
 
 import { HouseholdName } from '@/components/household-name'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { SignOutIconButton } from '@/components/use-sign-out'
 import { isActive, type NavItem } from '@/lib/nav'
 
 /**
  * The family surface's chrome (below 1024 px): a top bar with the household's
- * name, the theme toggle and sign-out, and a bottom tab bar.
+ * name and the theme toggle, and a bottom tab bar. Sign-out is not here: it is
+ * in Settings, Account (spec D12), so it is not a thumb away from the tabs.
  *
  * Built for a thumb on a phone, and specifically for the iPhone PWA:
  *  - the top bar and the tab bar both pad by `env(safe-area-inset-*)`, because
@@ -32,7 +32,6 @@ export function FamilyShell({ items, children }: { items: NavItem[]; children: R
         <HouseholdName />
         <div className="flex shrink-0 items-center gap-1">
           <ThemeToggle compact />
-          <SignOutIconButton />
         </div>
       </header>
 
