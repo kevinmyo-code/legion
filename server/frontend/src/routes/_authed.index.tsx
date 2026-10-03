@@ -204,10 +204,11 @@ function Today() {
     changes.data.checklist_items ?? [],
     changes.data.checklist_ticks ?? [],
   )
-  const horizon = buildHorizon(today, events)
-  const overdue = overdueTasks(today, events)
-  const todaysEvents = eventsOnDay(today, events)
-  const tomorrowsEvents = eventsOnDay(today + 1, events)
+  const skips = changes.data.event_skips ?? []
+  const horizon = buildHorizon(today, events, undefined, skips)
+  const overdue = overdueTasks(today, events, skips)
+  const todaysEvents = eventsOnDay(today, events, skips)
+  const tomorrowsEvents = eventsOnDay(today + 1, events, skips)
   const tomorrowsTasks = tomorrowsEvents.filter((event) => event.kind === 'task')
   const tomorrowsCalendar = tomorrowsEvents.filter((event) => event.kind !== 'task')
   const upcoming = nextUp(horizon)
@@ -246,7 +247,7 @@ function Today() {
         </div>
 
         <Section title="Calendar">
-          <MonthCalendar events={events} />
+          <MonthCalendar events={events} skips={skips} />
         </Section>
 
         {/* Kept, not hidden. A deadline that slid is still work, and dropping it

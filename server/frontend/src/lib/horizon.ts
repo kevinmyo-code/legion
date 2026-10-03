@@ -1,5 +1,6 @@
-import type { Event } from '@/api/types'
-import { dateForEpochDay, epochDay, localDayOfEvent } from '@/lib/day'
+import type { Event, EventSkip } from '@/api/types'
+import { dateForEpochDay, epochDay } from '@/lib/day'
+import { occurrencesBetween, type Occurrence } from '@/lib/recurrence'
 
 /**
  * The week's SHAPE, not its rows.
@@ -48,11 +49,6 @@ export interface HorizonCell {
   tasksDone: number
 }
 
-/** Live (not tombstoned) rows only, matching every other reader on the web. */
-function isLive<T extends { deleted_at: string | null }>(row: T): boolean {
-  return row.deleted_at === null
-}
-
 interface DayCounts {
   tasks: number
   events: number
@@ -60,24 +56,29 @@ interface DayCounts {
 }
 
 /**
- * Sorts every live, anchored row into one bucket per day in `days`. The one
- * shared core both `buildHorizon` and `buildMonth` run through, so the
- * all-day UTC-midnight recovery (`localDayOf`) and the task/event split are
- * solved in exactly one place rather than twice, three inches apart.
+ * Sorts every live, anchored occurrence into one bucket per day in `days`. The
+ * one shared core both `buildHorizon` and `buildMonth` run through, so the
+ * all-day UTC-midnight recovery, the repeat expansion with its skips
+ * (`lib/recurrence.ts`) and the task/event split are solved in exactly one place
+ * rather than twice, three inches apart.
  *
  * Rows with no `starts_at` are excluded rather than bucketed at an arbitrary
- * day - the same rule `eventsOnDay` applies, and the same one the phone's
- * `activeByKindInLocalWindow` applies: a row with no anchor cannot be placed
- * in a window.
+ * day - the rule `occurrencesBetween` applies, and the same one the phone's
+ * `activeByKindInLocalWindow` applies: a row with no anchor cannot be placed in
+ * a window.
  */
-function bucketByDay(days: number[], events: Event[]): Map<number, DayCounts> {
+function bucketByDay(
+  days: number[],
+  events: Event[],
+  skips: readonly EventSkip[] | undefined,
+): Map<number, DayCounts> {
   const buckets = new Map<number, DayCounts>(
     days.map((day) => [day, { tasks: 0, events: 0, tasksDone: 0 }]),
   )
-  for (const event of events) {
-    if (!isLive(event)) continue
-    if (event.starts_at === null || event.starts_at === undefined) continue
-    const bucket = buckets.get(localDayOfEvent(event.starts_at, event.all_day))
+  if (days.length === 0) return buckets
+  const occurrences = occurrencesBetween(events, skips, Math.min(...days), Math.max(...days))
+  for (const { event, day } of occurrences) {
+    const bucket = buckets.get(day)
     if (!bucket) continue
     if (event.kind === 'task') {
       bucket.tasks += 1
@@ -92,10 +93,15 @@ function bucketByDay(days: number[], events: Event[]): Map<number, DayCounts> {
 /**
  * One cell per day from today, inclusive, for [HORIZON_DAYS] days.
  */
-export function buildHorizon(today: number, events: Event[], days = HORIZON_DAYS): HorizonCell[] {
+export function buildHorizon(
+  today: number,
+  events: Event[],
+  days = HORIZON_DAYS,
+  skips?: readonly EventSkip[],
+): HorizonCell[] {
   const cellDays: number[] = []
   for (let offset = 0; offset < days; offset += 1) cellDays.push(today + offset)
-  const buckets = bucketByDay(cellDays, events)
+  const buckets = bucketByDay(cellDays, events, skips)
   return cellDays.map((day) => ({
     day,
     offset: day - today,
@@ -123,7 +129,7 @@ export interface MonthCell extends DayCounts {
  * on the date it was actually written for - the same trap `buildHorizon` and
  * the phone's `activeByKindInLocalWindow` both had to solve.
  */
-export function buildMonth(monthAnchor: Date, events: Event[]): MonthCell[] {
+export function buildMonth(monthAnchor: Date, events: Event[], skips?: readonly EventSkip[]): MonthCell[] {
   const year = monthAnchor.getFullYear()
   const month = monthAnchor.getMonth()
   const firstOfMonth = epochDay(new Date(year, month, 1))
@@ -138,7 +144,7 @@ export function buildMonth(monthAnchor: Date, events: Event[]): MonthCell[] {
   const cellDays: number[] = []
   for (let day = start; day <= end; day += 1) cellDays.push(day)
 
-  const buckets = bucketByDay(cellDays, events)
+  const buckets = bucketByDay(cellDays, events, skips)
   return cellDays.map((day) => {
     const date = dateForEpochDay(day)
     return { day, date, inMonth: date.getMonth() === month, ...buckets.get(day)! }
@@ -159,16 +165,22 @@ export function buildMonth(monthAnchor: Date, events: Event[]): MonthCell[] {
  */
 export const OVERDUE_WINDOW_DAYS = 14
 
-export function overdueTasks(today: number, events: Event[]): Event[] {
-  return events
-    .filter(isLive)
-    .filter((event) => event.kind === 'task' && !event.done)
-    .filter((event) => event.starts_at !== null && event.starts_at !== undefined)
-    .filter((event) => {
-      const day = localDayOfEvent(event.starts_at as string, event.all_day)
-      return day < today && day >= today - OVERDUE_WINDOW_DAYS
-    })
-    .sort((a, b) => (b.starts_at ?? '').localeCompare(a.starts_at ?? ''))
+export function overdueOccurrences(
+  today: number,
+  events: Event[],
+  skips?: readonly EventSkip[],
+): Occurrence[] {
+  return occurrencesBetween(
+    events.filter((event) => event.kind === 'task' && !event.done),
+    skips,
+    today - OVERDUE_WINDOW_DAYS,
+    today - 1,
+  ).sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+}
+
+/** The same rows as `overdueOccurrences`, as bare events. */
+export function overdueTasks(today: number, events: Event[], skips?: readonly EventSkip[]): Event[] {
+  return overdueOccurrences(today, events, skips).map((occurrence) => occurrence.event)
 }
 
 export interface CourseGroup {

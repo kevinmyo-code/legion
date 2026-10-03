@@ -1,5 +1,5 @@
 import { todayEpochDay } from '../lib/day'
-import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event } from '../api/types'
+import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip } from '../api/types'
 import { handleTables, type Row } from './engine-tables'
 
 /**
@@ -36,6 +36,7 @@ export interface EngineOptions {
   /** False answers 401 on `/api/auth/me`: the signed-out state. */
   signedIn?: boolean
   events?: Event[]
+  skips?: EventSkip[]
   checklists?: Checklist[]
   items?: ChecklistItem[]
   ticks?: ChecklistTick[]
@@ -54,6 +55,7 @@ export interface Engine {
   signedIn: boolean
   householdName: string
   events: Mutable<Event>[]
+  skips: Mutable<EventSkip>[]
   checklists: Mutable<Checklist>[]
   items: Mutable<ChecklistItem>[]
   ticks: Mutable<ChecklistTick>[]
@@ -75,6 +77,9 @@ export interface Engine {
   householdFailing: boolean
   /** How many times each `METHOD /path` was asked for, for refetch assertions. */
   calls: Record<string, number>
+  /** Every write the engine answered, in order, with the body it was sent: what a
+   * test reads to say "the skip went first, then the POST". */
+  writes: { method: string; pathname: string; body: unknown }[]
   /** Requests no handler claimed. A test can assert this stays empty. */
   unhandled: string[]
   handle(method: string, pathname: string, search: URLSearchParams, body: unknown): Reply
@@ -130,6 +135,8 @@ export function makeEvent(overrides: Partial<Event> & { title: string }): Event 
     origin_guid: null,
     structured_meta: null,
     kind: 'event',
+    remind_minutes_before: null,
+    visibility: 'shared',
     ...overrides,
   }
 }
@@ -146,6 +153,7 @@ export function makeChecklist(overrides: Partial<Checklist> & { name: string }):
     updated_at: STAMP,
     deleted_at: null,
     sync_id: null,
+    visibility: 'shared',
     ...overrides,
   }
 }
@@ -241,6 +249,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     signedIn: options.signedIn ?? true,
     householdName: options.householdName ?? 'The Test House',
     events: options.events ?? [],
+    skips: options.skips ?? [],
     checklists: options.checklists ?? [],
     items: options.items ?? [],
     ticks: options.ticks ?? [],
@@ -252,12 +261,15 @@ export function createEngine(options: EngineOptions = {}): Engine {
     changesFailing: false,
     householdFailing: false,
     calls: {},
+    writes: [],
     unhandled: [],
 
     handle(method, pathname, search, body) {
       const key = `${method} ${pathname}`
       engine.calls[key] = (engine.calls[key] ?? 0) + 1
       const now = new Date().toISOString()
+
+      if (method !== 'GET') engine.writes.push({ method, pathname, body })
 
       // An exact `METHOD /path`, or a prefix ending in `*` (`PUT /api/places/*`):
       // a write whose identity the test cannot know ahead of time.
@@ -291,11 +303,33 @@ export function createEngine(options: EngineOptions = {}): Engine {
         const changes: Changes = {
           server_time: now,
           events: engine.events,
+          event_skips: engine.skips,
           checklists: engine.checklists,
           checklist_items: engine.items,
           checklist_ticks: engine.ticks,
         }
         return { status: 200, body: changes }
+      }
+
+      if (method === 'POST' && pathname === '/api/events') {
+        const sent = body as Partial<Event>
+        if (!sent.title || sent.title.trim() === '') {
+          return { status: 400, body: { title: ['title cannot be blank.'] } }
+        }
+        // A retried create with the same `origin_guid` is a no-op, answered 200
+        // with the row that is already there (the real engine's idempotency).
+        const existing = sent.origin_guid
+          ? engine.events.find((event) => event.origin_guid === sent.origin_guid)
+          : undefined
+        if (existing) return { status: 200, body: existing }
+        const created = makeEvent({
+          ...sent,
+          title: sent.title,
+          created_at: now,
+          updated_at: now,
+        })
+        engine.events.push(created)
+        return { status: 201, body: created }
       }
 
       let match = pathname.match(/^\/api\/events\/([^/]+)$/)
@@ -304,6 +338,52 @@ export function createEngine(options: EngineOptions = {}): Engine {
         if (!event) return { status: 404, body: { detail: 'No such event.' } }
         Object.assign(event, body as Partial<Event>, { updated_at: now })
         return { status: 200, body: event }
+      }
+      if (match && method === 'DELETE') {
+        const event = engine.events.find((candidate) => candidate.id === match![1])
+        if (event && event.deleted_at === null) {
+          event.deleted_at = now
+          event.updated_at = now
+        }
+        return { status: 204 }
+      }
+
+      match = pathname.match(/^\/api\/events\/([^/]+)\/skips$/)
+      if (match && method === 'GET') {
+        return { status: 200, body: engine.skips.filter((skip) => skip.event === match![1]) }
+      }
+      if (match && method === 'POST') {
+        if (!engine.events.some((event) => event.id === match![1])) {
+          return { status: 404, body: { detail: `No event with id ${match[1]}. No skip was read or written.` } }
+        }
+        const skipDate = (body as { skip_date: string }).skip_date
+        const existing = engine.skips.find((skip) => skip.event === match![1] && skip.skip_date === skipDate)
+        if (existing) {
+          existing.deleted_at = null
+          existing.updated_at = now
+          return { status: 200, body: existing }
+        }
+        const created: Mutable<EventSkip> = {
+          id: uuid(),
+          event: match[1],
+          skip_date: skipDate,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+        }
+        engine.skips.push(created)
+        return { status: 201, body: created }
+      }
+
+      match = pathname.match(/^\/api\/events\/([^/]+)\/skips\/(\d{4}-\d{2}-\d{2})$/)
+      if (match && method === 'DELETE') {
+        for (const skip of engine.skips) {
+          if (skip.event === match[1] && skip.skip_date === match[2] && skip.deleted_at === null) {
+            skip.deleted_at = now
+            skip.updated_at = now
+          }
+        }
+        return { status: 204 }
       }
 
       if (method === 'POST' && pathname === '/api/checklists/') {
@@ -318,6 +398,12 @@ export function createEngine(options: EngineOptions = {}): Engine {
       }
 
       match = pathname.match(/^\/api\/checklists\/([^/]+)$/)
+      if (match && method === 'PATCH') {
+        const list = engine.checklists.find((candidate) => candidate.id === match![1])
+        if (!list) return { status: 404, body: { detail: 'No such list.' } }
+        Object.assign(list, body as Partial<Checklist>, { updated_at: now })
+        return { status: 200, body: list }
+      }
       if (match && method === 'DELETE') {
         const list = engine.checklists.find((candidate) => candidate.id === match![1])
         if (list) list.deleted_at = now

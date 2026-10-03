@@ -5,7 +5,8 @@ import type { components } from '@/api/schema'
  * implementations drift ADR 0035 forbids, just applied to a type instead of
  * a call. */
 export type Event = components['schemas']['Event']
-export type Checklist = components['schemas']['Checklist']
+export type EventSkip = components['schemas']['EventSkip']
+export type Checklist =components['schemas']['Checklist']
 export type ChecklistItem = components['schemas']['ChecklistItem']
 export type ChecklistTick = components['schemas']['ChecklistTick']
 export type Changes = components['schemas']['Changes']

@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import { EventRow } from '@/components/event-row'
 import { Button } from '@/components/ui/button'
-import type { Event } from '@/api/types'
+import type { Event, EventSkip } from '@/api/types'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
 import { buildMonth, type MonthCell } from '@/lib/horizon'
 import { eventsOnDay } from '@/lib/today'
@@ -22,12 +22,12 @@ const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
  * have to learn a second visual language three inches away. Titles live only
  * in the day view underneath the selected cell.
  */
-export function MonthCalendar({ events }: { events: Event[] }) {
+export function MonthCalendar({ events, skips }: { events: Event[]; skips?: readonly EventSkip[] }) {
   const today = todayEpochDay()
   const [monthAnchor, setMonthAnchor] = useState(() => dateForEpochDay(today))
   const [selectedDay, setSelectedDay] = useState(today)
 
-  const cells = buildMonth(monthAnchor, events)
+  const cells = buildMonth(monthAnchor, events, skips)
   const monthLabel = monthAnchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
   const goToMonth = (offset: number) => {
@@ -38,7 +38,7 @@ export function MonthCalendar({ events }: { events: Event[] }) {
     setSelectedDay(today)
   }
 
-  const selectedEvents = eventsOnDay(selectedDay, events)
+  const selectedEvents = eventsOnDay(selectedDay, events, skips)
   const selectedTasks = selectedEvents.filter((event) => event.kind === 'task')
   const selectedCalendar = selectedEvents.filter((event) => event.kind !== 'task')
   const selectedLabel = dateForEpochDay(selectedDay).toLocaleDateString(undefined, {

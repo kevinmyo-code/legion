@@ -3,12 +3,12 @@ map: web-revamp
 ticket: 08
 title: Repeat exceptions on the engine
 type: build
-status: open
-status-detail: "Server half built and green (skip routes, event_skips in the feed, api/recurrence.py, 26 phone-drawn vectors). Web half owed: lib/recurrence.ts reading the same vectors."
+status: built
+status-detail: "Both halves built. Web: lib/recurrence.ts passes all 26 shared vectors under vitest; skips honoured on Home and the month grid. Owed: pytest re-run of the server half in the shared test DB (the same vectors read clean through api/recurrence.py in a bare import)."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Repeat exceptions on the engine
@@ -29,4 +29,4 @@ See `.scratch/web-revamp/spec.md` D4.
 ## Verification
 
 - [x] pytest: skip routes idempotent, scoped through `visible()`, travel the feed, tombstone on DELETE.
-- [ ] pytest and vitest both pass every vector; a deliberately broken vector fails both.
+- [x] pytest and vitest both pass every vector; a deliberately broken vector fails both.
