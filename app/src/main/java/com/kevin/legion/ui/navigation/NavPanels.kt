@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -19,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.navigation.NavFormat
@@ -58,9 +62,17 @@ private fun PanelFrame(title: String, onClose: () -> Unit, content: @Composable 
             Text(title, style = MaterialTheme.typography.titleMedium, color = SoftColors.text)
             TextButton(onClick = onClose) { Text("Close") }
         }
-        content()
+        // The body scrolls inside a cap so the sheet's own tiles and Start stay reachable and the map
+        // keeps showing (second device run, defect 3).
+        val cap = LocalConfiguration.current.screenHeightDp.dp * PANEL_MAX_SHARE
+        Column(
+            Modifier.heightIn(max = cap).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) { content() }
     }
 }
+
+private const val PANEL_MAX_SHARE = 0.3f
 
 @Composable
 private fun StopsPanel(ui: NavUiState, actions: NavActions) {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +45,8 @@ import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 
+private const val SHEET_MAX_SHARE = 0.5f
+
 private val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 
 /**
@@ -52,9 +56,14 @@ private val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
  */
 @Composable
 private fun SheetColumn(modifier: Modifier, content: @Composable () -> Unit) {
+    // Capped so some map always shows above it (second device run: an open stops panel covered the
+    // whole map). Half the screen is about 60 percent of the map's own height, which is the share the
+    // camera's padding assumes; the sheet scrolls inside the cap.
+    val maxSheet = LocalConfiguration.current.screenHeightDp.dp * SHEET_MAX_SHARE
     Column(
         modifier
             .fillMaxWidth()
+            .heightIn(max = maxSheet)
             .background(SoftColors.card, SheetShape)
             .verticalScroll(rememberScrollState())
             .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 20.dp),

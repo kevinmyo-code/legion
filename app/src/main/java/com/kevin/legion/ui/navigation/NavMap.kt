@@ -303,10 +303,14 @@ fun NavMap(
     // Preview fit and preview overview are one framing: the whole selected route, inside the measured
     // chrome. Re-run when the chrome's size changes (its first measurement lands after the first frame)
     // after a short pause so a sheet growing a row does not chase the camera.
-    LaunchedEffect(phase, routes, selectedRoute, camera, insets) {
+    // The fit includes the user's puck as well as the route (second device run: the origin was clipped
+    // under the sheet). Keyed on whether a fix exists, not on every fix, so the camera is not chased.
+    val hasFix = deviceFix != null
+    LaunchedEffect(phase, routes, selectedRoute, camera, insets, hasFix) {
         if (phase == NavPhase.PREVIEW && routes.isNotEmpty()) {
             delay(FRAME_SETTLE_MS)
-            frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), edge())
+            val fix = deviceFix?.let { Point.fromLngLat(it.longitude, it.latitude) }
+            frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), listOfNotNull(fix), edge())
         }
     }
 
@@ -376,11 +380,12 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
     }
 }
 
-/** Fit the camera to [route] with room for the banner and the bottom sheet. */
-private fun frame(mapView: MapView, route: NavigationRoute, padding: EdgeInsets) {
+/** Fit the camera to [route] and any [extra] points (the puck) with room for the banner and the bottom sheet. */
+private fun frame(mapView: MapView, route: NavigationRoute, extra: List<Point>, padding: EdgeInsets) {
     val geometry = route.directionsRoute.geometry() ?: return
-    val points = PolylineUtils.decode(geometry, POLYLINE_PRECISION)
-    if (points.size < 2) return
+    val routePoints = PolylineUtils.decode(geometry, POLYLINE_PRECISION)
+    if (routePoints.size < 2) return
+    val points = routePoints + extra
     // The callback form: the synchronous overload is a delicate API (it reads the map size before layout).
     mapView.mapboxMap.cameraForCoordinates(
         points,
