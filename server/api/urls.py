@@ -90,6 +90,7 @@ from api.changes import ChangesView
 from api.event_skips import EventSkipDetailView, EventSkipListCreateView
 from api.events import EventDetailView, EventListCreateView
 from api.fleet import OBD_SAMPLE_PATHS
+from api.ledger_spend import SpendView
 from api.registry import SYNCED_VIEWSETS
 from api.synced import synced_paths
 
@@ -104,6 +105,8 @@ urlpatterns = [
         name="event-skip-detail",
     ),
     path("changes", ChangesView.as_view(), name="changes"),
+    # web-revamp ticket 11: spend computed once, on the engine (`api/spend.py`).
+    path("ledger/spend", SpendView.as_view(), name="ledger-spend"),
 ]
 
 for _viewset in SYNCED_VIEWSETS:

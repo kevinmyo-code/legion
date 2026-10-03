@@ -408,6 +408,62 @@ def test_category_overrides_are_scoped_by_household(token_a, token_b):
     assert token_a.get(f"{url}?since={EPOCH}&active=1").data["results"][0]["category"] == "A's"
 
 
+def test_spend_never_counts_another_households_rows(token_a, token_b):
+    """web-revamp ticket 11. `GET /api/ledger/spend` is a figure, not a table,
+    so the leak to guard is a cent of B's in A's total, or B's not-spending
+    flag or budget target shaping A's figure."""
+
+    def statement(tag, cents):
+        return {
+            "content_sha256": f"sha-spend-{tag}",
+            "account_last4": "3119",
+            "account_nickname": f"{tag} checking",
+            "currency": "USD",
+            "provenance": "DETERMINISTIC",
+            "stated_total_cents": None,
+            "opening_balance_cents": 100000,
+            "closing_balance_cents": 100000 - cents,
+            "period_start": "2026-09-01",
+            "period_end": "2026-09-30",
+            "lines": [
+                {"txn_date": "2026-09-05", "description": f"{tag} HEB", "amount_cents": -cents,
+                 "line_ref": f"{tag}-1", "category": "Groceries"},
+            ],
+        }
+
+    for client, tag, cents in ((token_a, "alpha", 1000), (token_b, "bravo", 7000)):
+        made = client.post("/api/ingest/statement", statement(tag, cents), format="json")
+        assert made.status_code == 201, made.data
+    # Each of these would change A's figure if it leaked.
+    flagged = token_b.put(
+        "/api/ledger/categories/guid-b/",
+        {"name": "Groceries", "is_food_category": True, "excluded_from_spend": True},
+        format="json",
+    )
+    assert flagged.status_code == 200, flagged.data
+    target = token_b.put(
+        "/api/ledger/budget_targets/guid-b/",
+        {"category": "Groceries", "currency": "USD", "amount_cents": 1,
+         "effective_from_month": "2026-09-01"},
+        format="json",
+    )
+    assert target.status_code == 200, target.data
+
+    a_only = token_a.get("/api/ledger/spend", {"month": "2026-09"}).data
+    b_only = token_b.get("/api/ledger/spend", {"month": "2026-09"}).data
+    assert [(a["label"], a["spend_cents"]) for a in a_only["accounts"]] == [
+        ("alpha checking", 1000)
+    ]
+    assert a_only["categories"] == [
+        {"category": "Groceries", "spend_cents": 1000, "target_cents": None, "unverified": False}
+    ]
+    assert a_only["excluded"]["not_spending_cents"] == 0
+    # The control: B's own flag and target shape B's figure.
+    assert b_only["excluded"]["not_spending_cents"] == 7000
+    assert [(a["label"], a["spend_cents"]) for a in b_only["accounts"]] == [("bravo checking", 0)]
+    assert "bravo" not in str(a_only) and "alpha" not in str(b_only)
+
+
 def test_freshness_never_shows_another_households_runs(token_a, token_b, household_b):
     """backend-etl ticket 01. `ingest_runs` has no synced route, so this is
     its leak test: B's runs - including an error message that names B's own

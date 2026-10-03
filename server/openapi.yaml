@@ -4968,6 +4968,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/ledger/spend:
+    get:
+      operationId: api_ledger_spend_retrieve
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO code. Defaults to USD.
+      - in: query
+        name: month
+        schema:
+          type: string
+        description: YYYY-MM. Defaults to the current month in `tz`.
+      - in: query
+        name: tz
+        schema:
+          type: string
+        description: The browser's IANA zone, used only to pick the default month.
+          Unknown or absent means UTC.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Spend'
+          description: One budget month's spend, per account and per category, computed
+            by the same rules as the phone's Money screen.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`month` or `currency` is malformed. Nothing was computed.'
   /api/ledger/statements/:
     get:
       operationId: api_ledger_statements_list
@@ -10703,6 +10742,124 @@ components:
         * `backup` - Backup
         * `obd_rollup` - OBD roll-up
         * `heartbeat` - Heartbeat
+    Spend:
+      type: object
+      properties:
+        month:
+          type: string
+          description: YYYY-MM, the budget month these figures are for.
+        currency:
+          type: string
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpendAccount'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpendCategory'
+        uncategorised_cents:
+          type: integer
+          description: Outflows nobody has categorised. NOT counted in any spend figure;
+            say so beside it.
+        uncategorised_unverified:
+          type: boolean
+        excluded:
+          $ref: '#/components/schemas/SpendExcluded'
+        complete:
+          type: boolean
+          description: True only when every account active this month has gated statements
+            covering every day of it. The current month, read from provisional activity,
+            is never complete.
+      required:
+      - accounts
+      - categories
+      - complete
+      - currency
+      - excluded
+      - month
+      - uncategorised_cents
+      - uncategorised_unverified
+    SpendAccount:
+      type: object
+      properties:
+        account_last4:
+          type: string
+        label:
+          type: string
+          description: The card's most recent bank-file name, else "Card ending 7823".
+        spend_cents:
+          type: integer
+          description: Categorised outflows this budget month, after transfers and
+            not-spending categories are taken out. Uncategorised money is not in it.
+        unverified:
+          type: boolean
+          description: True when any row counted in spend_cents is unverified (no
+            gate ever checked it). Say the word beside the figure.
+        unverified_cents:
+          type: integer
+        latest_row_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the newest row for this card reached the engine.
+      required:
+      - account_last4
+      - label
+      - latest_row_at
+      - spend_cents
+      - unverified
+      - unverified_cents
+    SpendCategory:
+      type: object
+      properties:
+        category:
+          type: string
+        spend_cents:
+          type: integer
+        target_cents:
+          type: integer
+          nullable: true
+          description: This month's budget target, or null when none is set.
+        unverified:
+          type: boolean
+      required:
+      - category
+      - spend_cents
+      - target_cents
+      - unverified
+    SpendExcluded:
+      type: object
+      properties:
+        not_spending_cents:
+          type: integer
+          description: Outflows filed under a category marked not spending (e.g. Transfers).
+        not_spending_categories:
+          type: array
+          items:
+            type: string
+        own_account_moves_cents:
+          type: integer
+          description: Outflows whose description names one of the household's own
+            accounts.
+        early_charges_moved_cents:
+          type: integer
+          description: Housing charges in a month's last 3 days moved across this
+            month's edges, both directions together; the two fields after this split
+            them.
+        early_charges_counted_here_cents:
+          type: integer
+          description: Dated last month, counted in this one.
+        early_charges_counted_next_month_cents:
+          type: integer
+          description: Dated this month, counted in the next one.
+      required:
+      - early_charges_counted_here_cents
+      - early_charges_counted_next_month_cents
+      - early_charges_moved_cents
+      - not_spending_categories
+      - not_spending_cents
+      - own_account_moves_cents
     Statement:
       type: object
       description: |-

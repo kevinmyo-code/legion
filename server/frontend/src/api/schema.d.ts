@@ -2060,6 +2060,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_ledger_spend_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/statements/": {
         parameters: {
             query?: never;
@@ -4800,6 +4816,54 @@ export interface components {
          * @enum {string}
          */
         SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat";
+        Spend: {
+            /** @description YYYY-MM, the budget month these figures are for. */
+            month: string;
+            currency: string;
+            accounts: components["schemas"]["SpendAccount"][];
+            categories: components["schemas"]["SpendCategory"][];
+            /** @description Outflows nobody has categorised. NOT counted in any spend figure; say so beside it. */
+            uncategorised_cents: number;
+            uncategorised_unverified: boolean;
+            excluded: components["schemas"]["SpendExcluded"];
+            /** @description True only when every account active this month has gated statements covering every day of it. The current month, read from provisional activity, is never complete. */
+            complete: boolean;
+        };
+        SpendAccount: {
+            account_last4: string;
+            /** @description The card's most recent bank-file name, else "Card ending 7823". */
+            label: string;
+            /** @description Categorised outflows this budget month, after transfers and not-spending categories are taken out. Uncategorised money is not in it. */
+            spend_cents: number;
+            /** @description True when any row counted in spend_cents is unverified (no gate ever checked it). Say the word beside the figure. */
+            unverified: boolean;
+            unverified_cents: number;
+            /**
+             * Format: date-time
+             * @description When the newest row for this card reached the engine.
+             */
+            latest_row_at: string | null;
+        };
+        SpendCategory: {
+            category: string;
+            spend_cents: number;
+            /** @description This month's budget target, or null when none is set. */
+            target_cents: number | null;
+            unverified: boolean;
+        };
+        SpendExcluded: {
+            /** @description Outflows filed under a category marked not spending (e.g. Transfers). */
+            not_spending_cents: number;
+            not_spending_categories: string[];
+            /** @description Outflows whose description names one of the household's own accounts. */
+            own_account_moves_cents: number;
+            /** @description Housing charges in a month's last 3 days moved across this month's edges, both directions together; the two fields after this split them. */
+            early_charges_moved_cents: number;
+            /** @description Dated last month, counted in this one. */
+            early_charges_counted_here_cents: number;
+            /** @description Dated this month, counted in the next one. */
+            early_charges_counted_next_month_cents: number;
+        };
         /**
          * @description One `public.statements` row: a bank statement's header and, crucially,
          *     the three anchors the gate checked it against (section 4 rule 8).
@@ -8872,6 +8936,42 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_ledger_spend_retrieve: {
+        parameters: {
+            query?: {
+                /** @description ISO code. Defaults to USD. */
+                currency?: string;
+                /** @description YYYY-MM. Defaults to the current month in `tz`. */
+                month?: string;
+                /** @description The browser's IANA zone, used only to pick the default month. Unknown or absent means UTC. */
+                tz?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One budget month's spend, per account and per category, computed by the same rules as the phone's Money screen. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Spend"];
+                };
+            };
+            /** @description `month` or `currency` is malformed. Nothing was computed. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
