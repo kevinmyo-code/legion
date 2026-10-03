@@ -583,6 +583,43 @@ fun WakeWordRow(enabled: Boolean, companionName: String?, onToggle: (Boolean) ->
 }
 
 /**
+ * Ticket 18 (`.scratch/wake-word/issues/18-two-stage-detector.md`): switch between the two-stage
+ * wake detector (VAD, keyword spotter, Vosk confirm) and the original Vosk-only path. A dev switch
+ * kept until the A25 run proves the new pipeline; it only matters while the wake word is on.
+ */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+fun WakePipelineRow(twoStage: Boolean, onToggle: (Boolean) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Wake word: two-stage detector",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    if (twoStage) {
+                        "On - a voice-activity gate and keyword spotter listen first, and the " +
+                            "speech recognizer only double-checks a candidate. Untested on battery."
+                    } else {
+                        "Off - the speech recognizer listens to every sound (the original path)."
+                    },
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            DeckSwitch(checked = twoStage, onCheckedChange = onToggle)
+        }
+    }
+}
+
+/**
  * The driver's chosen temperature unit ([com.kevin.legion.util.Temp]), a two-way choice with no
  * destination screen of its own - ticket 07, amended 2026-08-18 to make the unit a setting rather
  * than fixed Celsius. Uses [DeckRadio] rather than a Material `RadioButton`/`Switch` pair,

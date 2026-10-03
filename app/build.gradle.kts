@@ -68,6 +68,12 @@ android {
     defaultConfig {
         applicationId = "com.kevin.legion"
         minSdk = 24
+        // sherpa-onnx's AAR carries arm64, v7, x86 and x86_64 builds, 16-27 MB EACH, and APK
+        // native libs are stored uncompressed. All four would add ~100 MB. The target phone (A25)
+        // is arm64, so only arm64 ships; this also drops Vosk's other three ABIs (~28 MB), which
+        // nets the APK about even. COST: armeabi-v7a phones and x86/x86_64 emulators get no native
+        // libs at all (Vosk included) - use an arm64 image. Wake-word ticket 18.
+        ndk { abiFilters += listOf("arm64-v8a") }
         // DO NOT bump this to 35 without reading AriaForegroundService.startForegroundCompat and
         // BootReceiver first (2026-08-17). At 35, `dataSync` joins `microphone` on the
         // BOOT_COMPLETED-prohibited foreground-service-type list, which breaks the boot-time
@@ -330,6 +336,9 @@ dependencies {
 
     // Custom wake word ("hey <name>"), ported from Midnight AI.
     implementation(libs.vosk.android)
+    // Stage 0 (Silero VAD) and stage 1 (keyword spotting) of the two-stage wake detector,
+    // wake-word ticket 18. Vosk stays for stage 2 only.
+    implementation("${libs.sherpa.onnx.get()}@aar")
 
     // supabase-kt (backend-erp Phase 1, .scratch/backend-erp/issues/05-migration-path.md).
     // BOM first so auth-kt/postgrest-kt below resolve to ONE release with no version.ref of

@@ -5991,3 +5991,22 @@ Kevin ruled on four of the map's decision tickets the same afternoon:
   excluded by default because that sub-question was not ruled.
 
 Still open: 04 (how the phone consumes it), 07 (ingestion over MCP), 08 (public exposure).
+
+## 2026-10-03 - Wake word: two-stage detector on sherpa-onnx (new dependency)
+
+Kevin, after ticket 19 closed the DSP route: *"lets try it that way, how siri does it."* Ticket 18.
+Silero VAD gates a sherpa-onnx keyword spotter; only a spotter hit is re-checked by the existing
+Vosk grammar over the buffered ~2 s before Gemini opens. A hit Vosk rejects is logged, never opens.
+
+- **New dependency: sherpa-onnx 1.13.8** (Apache-2.0), the official static-link-onnxruntime AAR from
+  the k2-fsa GitHub release, resolved by an ivy repo in `settings.gradle.kts` (not on Maven Central;
+  not vendored, so no 38 MB binary in the public repo). CLAUDE.md sec 3 forbids only the listed
+  dropped libraries; this is not one of them.
+- **Models bundled** in `assets/wake-kws/`: gigaspeech 3.3M zipformer KWS (int8 encoder + joiner,
+  fp32 decoder, tokens, bpe.model; 5.5 MB) and silero_vad.onnx (0.64 MB, MIT). Never fetched at runtime.
+- **ABI cost, stated**: native libs are stored uncompressed, so sherpa adds ~24 MB (arm64) and the
+  models ~6 MB. `abiFilters` is now arm64-v8a only, which also drops Vosk's other three ABIs and
+  nets the APK about even. armeabi-v7a phones and x86 emulators get no native libs.
+- **On-device tokenisation**: sherpa's text2token is Python; `BpeKeywordTokenizer` reads the model's
+  SentencePiece file and segments by best score (greedy BPE merging did NOT reproduce the reference).
+- Setting `WakeWordPreferences.useTwoStage` (default on) falls back to Vosk-only.

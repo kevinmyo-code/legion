@@ -3,12 +3,12 @@ map: wake-word
 ticket: 18
 title: "A two-stage wake detector, the way Siri does it"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-10-03, suite green, owing the A25 run: trigger rate over 20 tries quiet and with music, false opens over 30 min of TV, overnight battery vs the 21 mA baseline. VAD and KWS thresholds are guesses; excelsior tokenises to six BPE pieces and may spot poorly."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # A two-stage wake detector, the way Siri does it

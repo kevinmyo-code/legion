@@ -37,6 +37,7 @@ import com.kevin.legion.ui.ActiveCompanionRow
 import com.kevin.legion.ui.IgnitionRow
 import com.kevin.legion.ui.SettingsNavRow
 import com.kevin.legion.ui.TemperatureUnitRow
+import com.kevin.legion.ui.WakePipelineRow
 import com.kevin.legion.ui.WakeWordRow
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.help.VoiceGuideData
@@ -80,6 +81,7 @@ fun AssistantSettingsScreen(
     // switched. Same shape the old monolith used for this same reload.
     var reloadNonce by remember { mutableStateOf(0) }
     var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
+    var wakeTwoStage by remember { mutableStateOf(WakeWordPreferences.useTwoStage(context)) }
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
 
@@ -192,6 +194,21 @@ fun AssistantSettingsScreen(
                         WakeWordPreferences.setEnabled(context, on)
                         wakeWordOn = on
                         if (on) WakeWordEngine.start(context) else WakeWordEngine.stop()
+                    },
+                )
+
+                // Ticket 18: dev switch back to the Vosk-only wake path. Restarting the engine is what
+                // makes the choice take effect, since the pipeline is chosen when capture opens.
+                Spacer(Modifier.height(8.dp))
+                WakePipelineRow(
+                    twoStage = wakeTwoStage,
+                    onToggle = { on ->
+                        WakeWordPreferences.setUseTwoStage(context, on)
+                        wakeTwoStage = on
+                        if (wakeWordOn) {
+                            WakeWordEngine.stop()
+                            WakeWordEngine.start(context)
+                        }
                     },
                 )
 

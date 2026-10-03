@@ -12,11 +12,21 @@ import android.content.Context
 object WakeWordPreferences {
     private const val PREFS = "wake_word_preferences"
     private const val KEY_ENABLED = "enabled"
+    private const val KEY_TWO_STAGE = "two_stage"
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
+
+    /**
+     * Ticket 18: true (default) runs the VAD, keyword-spotter, Vosk-confirm pipeline; false falls
+     * back to the original Vosk-only path until the A25 run has proved the new one.
+     */
+    fun useTwoStage(context: Context): Boolean = prefs(context).getBoolean(KEY_TWO_STAGE, true)
+
+    fun setUseTwoStage(context: Context, on: Boolean) =
+        prefs(context).edit().putBoolean(KEY_TWO_STAGE, on).apply()
 
     fun setEnabled(context: Context, on: Boolean) =
         prefs(context).edit().putBoolean(KEY_ENABLED, on).apply()
