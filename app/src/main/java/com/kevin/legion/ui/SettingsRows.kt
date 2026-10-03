@@ -589,7 +589,7 @@ fun WakeWordRow(enabled: Boolean, companionName: String?, onToggle: (Boolean) ->
  */
 @Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
 @Composable
-fun WakePipelineRow(twoStage: Boolean, onToggle: (Boolean) -> Unit) {
+fun WakePipelineRow(twoStage: Boolean, tripped: Boolean, onToggle: (Boolean) -> Unit) {
     val sem = LocalLegionSemantics.current
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Row(
@@ -604,7 +604,10 @@ fun WakePipelineRow(twoStage: Boolean, onToggle: (Boolean) -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    if (twoStage) {
+                    if (tripped && !twoStage) {
+                        "Two-stage detector turned off after a crash. The speech recognizer is " +
+                            "listening instead; switch this on to try again."
+                    } else if (twoStage) {
                         "On - a voice-activity gate and keyword spotter listen first, and the " +
                             "speech recognizer only double-checks a candidate. Untested on battery."
                     } else {

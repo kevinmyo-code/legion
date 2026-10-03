@@ -11,6 +11,8 @@ import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.File
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 
 /**
  * The audio half of the two-stage wake detector (ticket 18, Kevin 2026-10-03: "how siri does it"):
@@ -24,20 +26,40 @@ import java.io.File
 class WakeTwoStageDetector private constructor(
     private val vad: Vad,
     private val spotter: KeywordSpotter,
-    private val stream: OnlineStream,
+    private var stream: OnlineStream,
     private val machine: WakeStageMachine,
+    private val breaker: TwoStageBreaker,
 ) {
     // The last CONFIRM_SECONDS of audio, as a ring. Written every chunk, including silence: the
     // confirm window must contain the phrase's start, which arrives before the VAD flips on.
     private val ring = ShortArray(SAMPLE_RATE * CONFIRM_SECONDS)
     private var ringWritten = 0L
 
+    // Every native call (VAD, spotter, release) runs on this ONE thread. A native abort cannot be
+    // caught, and release() racing process() from another thread is the one way this class could
+    // hand the library a torn state, so they are serialised rather than trusted to be sequential.
+    private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "wake-two-stage") }
+
+    private val port = object : KeywordStreamPort {
+        override fun accept(samples: FloatArray) = stream.acceptWaveform(samples, SAMPLE_RATE)
+        override fun isReady() = spotter.isReady(stream)
+        override fun decode() = spotter.decode(stream)
+        override fun keyword(): String = spotter.getResult(stream).keyword
+        override fun fresh() {
+            runCatching { stream.release() }
+            stream = spotter.createStream()
+        }
+    }
+
     /**
      * Feeds one captured chunk. Returns true when stage 1 AND stage 2 agree and the caller should
      * open the session. [confirm] receives the buffered audio (oldest first) and answers whether
      * the Vosk grammar hears the wake phrase in it.
      */
-    fun process(buf: ShortArray, n: Int, confirm: (ShortArray) -> Boolean): Boolean {
+    fun process(buf: ShortArray, n: Int, confirm: (ShortArray) -> Boolean): Boolean =
+        executor.submit(Callable { processOnWorker(buf, n, confirm) }).get()
+
+    private fun processOnWorker(buf: ShortArray, n: Int, confirm: (ShortArray) -> Boolean): Boolean {
         push(buf, n)
         val floats = FloatArray(n) { buf[it] / SHORT_SCALE }
         vad.acceptWaveform(floats)
@@ -47,25 +69,37 @@ class WakeTwoStageDetector private constructor(
 
         val wasInSpeech = machine.inSpeech
         val step = machine.onChunk(speech) {
-            // Lead-in: the VAD flips on a few hundred ms into the phrase, so on entry the spotter
-            // is handed the audio just before it too, else "hey" would be missing.
-            val feed = if (wasInSpeech) floats else toFloats(tail(PREROLL_SAMPLES + n))
-            stream.acceptWaveform(feed, SAMPLE_RATE)
-            while (spotter.isReady(stream)) spotter.decode(stream)
-            val hit = spotter.getResult(stream).keyword.isNotBlank()
-            if (hit) spotter.reset(stream)
-            hit
+            // A new utterance gets a CLEAN stream, fed the lead-in first: the VAD flips on a few
+            // hundred ms into the phrase, so without the lead-in "hey" would be missing.
+            val feed = if (wasInSpeech) {
+                floats
+            } else {
+                port.fresh()
+                toFloats(tail(PREROLL_SAMPLES + n))
+            }
+            // Marker only around the KWS (the native code that has crashed), so silence never
+            // leaves it set for a force-stop to mistake for a crash.
+            breaker.markStarted()
+            KwsFeeder.feed(port, feed).also { breaker.onDecodeOk() }
         }
-        if (wasInSpeech && !machine.inSpeech) spotter.reset(stream)
+        // Speech ended: drop the stream rather than decode its partial tail.
+        if (wasInSpeech && !machine.inSpeech) port.fresh()
         if (step !is WakeStageMachine.Step.Candidate) return false
         val accepted = confirm(tail(ring.size))
         return machine.onConfirm(accepted) == WakeStageMachine.Verdict.OPEN
     }
 
     fun release() {
-        runCatching { stream.release() }
-        runCatching { spotter.release() }
-        runCatching { vad.release() }
+        // Queued behind any in-flight process() on the same thread, then the thread ends.
+        runCatching {
+            executor.submit {
+                runCatching { stream.release() }
+                runCatching { spotter.release() }
+                runCatching { vad.release() }
+                breaker.onCleanRelease()
+            }.get()
+        }
+        executor.shutdown()
     }
 
     private fun push(buf: ShortArray, n: Int) {
@@ -106,9 +140,22 @@ class WakeTwoStageDetector private constructor(
          */
         // UnsatisfiedLinkError is an Error: a missing ABI lib must degrade, not crash the service.
         // Early returns carry the refuse-in-words results.
-        @Suppress("TooGenericExceptionCaught", "ReturnCount", "NestedBlockDepth") // see the line above
+        @Suppress("TooGenericExceptionCaught", "ReturnCount", "NestedBlockDepth", "LongMethod") // see the line above
         fun create(context: Context, companionName: String, log: (String) -> Unit): Created {
             val dir = File(context.filesDir, ASSET_DIR)
+            val breaker = TwoStageBreaker(object : TwoStageBreaker.Store {
+                override var markerSet: Boolean
+                    get() = WakeWordPreferences.twoStageMarker(context)
+                    set(v) = WakeWordPreferences.setTwoStageMarker(context, v)
+                override var tripped: Boolean
+                    get() = WakeWordPreferences.twoStageTripped(context)
+                    set(v) = WakeWordPreferences.setTwoStageTripped(context, v)
+            })
+            if (!breaker.shouldStart()) {
+                WakeWordPreferences.setUseTwoStage(context, false)
+                // setUseTwoStage(false) leaves the tripped flag alone; the Settings row reads it.
+                return Created.Unavailable("the previous run died inside the detector - turned off after a crash")
+            }
             try {
                 dir.mkdirs()
                 for (name in MODEL_FILES) {
@@ -159,7 +206,7 @@ class WakeTwoStageDetector private constructor(
                 val spotter = KeywordSpotter(null, kwsConfig)
                 val stream = spotter.createStream()
                 log("two-stage ready: keywords=" + keywords.trim().lines().joinToString(" | "))
-                return Created.Ready(WakeTwoStageDetector(vad, spotter, stream, WakeStageMachine(log)))
+                return Created.Ready(WakeTwoStageDetector(vad, spotter, stream, WakeStageMachine(log), breaker))
             } catch (e: Throwable) {
                 return Created.Unavailable("${e.javaClass.simpleName}: ${e.message}")
             }

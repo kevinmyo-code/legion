@@ -82,6 +82,7 @@ fun AssistantSettingsScreen(
     var reloadNonce by remember { mutableStateOf(0) }
     var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
     var wakeTwoStage by remember { mutableStateOf(WakeWordPreferences.useTwoStage(context)) }
+    val wakeTripped = WakeWordPreferences.twoStageTripped(context)
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
 
@@ -202,6 +203,7 @@ fun AssistantSettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 WakePipelineRow(
                     twoStage = wakeTwoStage,
+                    tripped = wakeTripped && !wakeTwoStage,
                     onToggle = { on ->
                         WakeWordPreferences.setUseTwoStage(context, on)
                         wakeTwoStage = on

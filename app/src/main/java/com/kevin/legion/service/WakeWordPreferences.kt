@@ -13,6 +13,8 @@ object WakeWordPreferences {
     private const val PREFS = "wake_word_preferences"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_TWO_STAGE = "two_stage"
+    private const val KEY_MARKER = "two_stage_marker"
+    private const val KEY_TRIPPED = "two_stage_tripped"
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -25,8 +27,27 @@ object WakeWordPreferences {
      */
     fun useTwoStage(context: Context): Boolean = prefs(context).getBoolean(KEY_TWO_STAGE, true)
 
-    fun setUseTwoStage(context: Context, on: Boolean) =
+    fun setUseTwoStage(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean(KEY_TWO_STAGE, on).apply()
+        if (on) setTwoStageTripped(context, false)
+    }
+
+    /**
+     * Ticket 18 circuit breaker: set while the detector runs, cleared after clean decodes.
+     * commit(), not apply(): the process may abort next.
+     */
+    fun twoStageMarker(context: Context): Boolean = prefs(context).getBoolean(KEY_MARKER, false)
+
+    fun setTwoStageMarker(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean(KEY_MARKER, on).commit()
+    }
+
+    /** True after the breaker turned the detector off; Settings says so in words. */
+    fun twoStageTripped(context: Context): Boolean = prefs(context).getBoolean(KEY_TRIPPED, false)
+
+    fun setTwoStageTripped(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TRIPPED, on).commit()
+    }
 
     fun setEnabled(context: Context, on: Boolean) =
         prefs(context).edit().putBoolean(KEY_ENABLED, on).apply()
