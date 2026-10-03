@@ -6066,3 +6066,10 @@ Kevin picked option C on `.scratch/mapbox-nav/issues/05-*.md`. Mapbox's own voic
 wired; its instruction text is spoken by LEGION's speech path in one steady TTS voice, never by the
 persona. A cue pauses the assistant's playback and gates the mic through `MicArbiter`, so it is never
 transcribed as the user. The assistant answers questions about the route from SDK state via a tool.
+
+## 2026-10-03 - Navigation voice tools: four wide tools, read back when unsure, jump to the map
+
+Kevin on `.scratch/mapbox-nav/` tickets 04, 03 and 07: four wide tools (`navigate`, `change_trip`,
+`trip_status`, `end_trip`), each reporting success only from SDK state after the call; a destination
+is read back only when the match is ambiguous; a trip started by voice while LEGION is in the
+background brings the nav screen to the front.

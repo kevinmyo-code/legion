@@ -25,3 +25,10 @@ What runs when, and what stops it?
 - Billing guard: a trip session starts only on a trip and stops on arrival, cancel, or app death.
   No free-drive in the background. How is "no orphaned session" tested?
 - Arrival: detected by the SDK, announced how, and does the session end itself?
+
+## Ruled 2026-10-03 (Kevin), the rest still open
+
+**A trip started by voice while LEGION is in the background brings the nav screen to the front.**
+Relies on the overlay grant LEGION already holds; untested, and proving it on the A25 is part of this
+ticket. If Android refuses the launch, guidance still starts and the assistant says the map could not
+be brought up, in words.

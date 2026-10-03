@@ -5,7 +5,7 @@ charted: 2026-10-03
 charted-by: "Kevin + Opus"
 effort: "`.scratch/mapbox-nav/`"
 tickets: 13
-open: 9
+open: 8
 status: open
 tags: [map]
 ---
@@ -86,6 +86,9 @@ Then 05 (who speaks the turns) and 04; 03 and 07 after.
   the SDK resolves anonymously through Gradle and compiles on the current toolchain (built).
 - [Who speaks the turns, and audio beside a live mic](issues/05-who-speaks-the-turns.md) - LEGION speaks Mapbox's
   turn text in one steady TTS voice; a cue pauses the assistant and gates the mic.
+- [The voice tool surface and its honesty contract](issues/04-voice-tool-surface.md) - four wide tools
+  (`navigate`, `change_trip`, `trip_status`, `end_trip`); success read back from SDK state; "not navigating"
+  is its own answer.
 
 ## Not yet specified
 

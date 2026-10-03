@@ -26,3 +26,9 @@ tags: [ticket]
 - Ambiguity: two matches, a vague name. Does the assistant read back the top pick before routing,
   always, or only when unsure? A wrong destination confirmed silently is the expensive failure.
 - Caching: temporary vs permanent geocoding terms (01).
+
+## Ruled 2026-10-03 (Kevin), the rest still open
+
+**Read back only when unsure.** A saved place or one clear hit starts immediately and says where
+it is going. Several plausible hits: the assistant names the top pick with its distance and waits for
+a yes. Still open here: resolution order (saved places, calendar, contacts, search) and caching.

@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["04"]
 blocked-by: ["[[04-voice-tool-surface]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 
