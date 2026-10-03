@@ -87,6 +87,11 @@ object CompanionPhase {
     val silenced: StateFlow<Boolean> = _silenced.asStateFlow()
 
     fun set(phase: Phase) {
+        // Reaching LISTENING means a conversation really connected, so any failure notice still
+        // in the replay buffer is stale: without this a late subscriber (the strip recomposing)
+        // replayed "NO CONNECTION" over a working conversation (2026-10-02). The strip clears its
+        // own held copy on the same transition.
+        if (phase == Phase.LISTENING) _notice.resetReplayCache()
         _phase.value = phase
     }
 

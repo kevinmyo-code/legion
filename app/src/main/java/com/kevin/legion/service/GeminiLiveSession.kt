@@ -967,18 +967,15 @@ class GeminiLiveSession(
                         JSONObject().put("voiceName", voiceName.ifBlank { VOICE })
                     )
                 ))
-                // 2026-10-02: affective dialog (the model adapts tone to the user's expression).
-                // Placement is setup.generationConfig.enableAffectiveDialog, read from the
-                // google-genai SDK's mldev converter (python-genai google/genai/_live_converters.py,
-                // _LiveConnectConfig_to_mldev). Supported on v1beta per
-                // ai.google.dev/gemini-api/docs/live-guide.
-                put("enableAffectiveDialog", true)
+                // No enableAffectiveDialog. Added 2026-10-02; with it, the A25 accepted the warm
+                // socket but every tapped conversation closed on the first mic audio with "Request
+                // contains an invalid argument." Removing only this flag fixed it (bisected on the
+                // phone: VAD sensitivity and compression thresholds were not the cause).
             })
-            // 2026-10-02: proactive audio - the model may decline to answer speech that is not
-            // addressed to it (road noise, other people in the room). Docs: ai.google.dev/api/live
-            // ("If enabled, the model can reject responding to the last prompt"). The SDK maps it
-            // to setup.proactivity, same as here.
-            put("proactivity", JSONObject().put("proactiveAudio", true))
+            // No `proactivity` (proactive audio) here. Added 2026-10-02 and rejected by the server
+            // the same day on this v1beta endpoint and model: "Unknown name \"proactivity\" at
+            // 'setup': Cannot find field", which closed every socket before setupComplete and
+            // killed voice. Seen in the A25's logcat, not inferred. LiveSetupFlagsTest pins it out.
             put("systemInstruction", JSONObject().put(
                 "parts", JSONArray().put(JSONObject().put("text", systemInstruction))
             ))

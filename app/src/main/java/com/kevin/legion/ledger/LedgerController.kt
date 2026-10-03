@@ -379,6 +379,14 @@ object LedgerController {
         db(context).categoryDao().notSpendingNames().toSet()
 
     /**
+     * The Money page's read: one section per account active in [month], from the ONE row read every
+     * other figure here funnels through. Throws when the read itself fails - the caller says
+     * "couldn't read", it never renders that as an empty month. See [buildAccountMonthResults].
+     */
+    suspend fun accountMonthResults(context: Context, month: YearMonth): List<AccountMonthResult> =
+        buildAccountMonthResults(allTransactions(context), month, notSpendingCategories(context))
+
+    /**
      * Ticket 04 (quant-viz): month-over-month total spend for [entity], one [MonthSpend] per month
      * from `max(oldest txnDate month, now - maxMonths + 1)` through the current month. Calls the
      * SAME [budgetVsActual] every screen already reads for each month in range (map taste call 6:
@@ -948,7 +956,7 @@ object LedgerController {
     }
 
     /** Matches [analyzeTransfers]'s default `maxDaysApart` - kept as one named constant rather than duplicated so the fetch window and the pairing tolerance can never silently drift apart. */
-    private const val PAIRING_WINDOW_DAYS = 5
+    internal const val PAIRING_WINDOW_DAYS = 5
 
     /**
      * Drops EVERY ledger transaction and EVERY ingested-file record, so the

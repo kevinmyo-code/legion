@@ -5,7 +5,6 @@ import com.kevin.legion.ui.apps.DrawerApp
 import com.kevin.legion.ui.apps.HomeCategory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,7 +23,6 @@ class CategoryButtonSpecTest {
         assertTrue(spec.unset)
         assertEquals("Bank", spec.label)
         assertEquals("Banking, not set up. Tap to choose apps.", spec.description)
-        assertNull(spec.badge)
     }
 
     @Test
@@ -50,9 +48,8 @@ class CategoryButtonSpecTest {
     }
 
     @Test
-    fun `several picks show a count badge and a description that says it asks`() {
+    fun `several picks show no count and a description that says it asks`() {
         val spec = categoryButtonSpec(CategoryUi(HomeCategory.MAIL, listOf(slot(app), slot(work))))
-        assertEquals(2, spec.badge)
         assertEquals("Email, 2 apps, asks which to open", spec.description)
         assertFalse(spec.dimmed)
     }
@@ -62,7 +59,6 @@ class CategoryButtonSpecTest {
         val spec = categoryButtonSpec(CategoryUi(HomeCategory.MAIL, listOf(slot(null), slot(work, paused = true))))
         assertEquals("Unavailable", spec.label)
         assertTrue(spec.dimmed)
-        assertEquals(2, spec.badge)
     }
 
     @Test

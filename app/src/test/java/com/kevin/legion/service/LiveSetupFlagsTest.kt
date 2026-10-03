@@ -11,9 +11,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Pins the Live `setup` fields added 2026-10-02: proactive audio, VAD sensitivity, explicit
- * context-compression thresholds and affective dialog. The field names and placements are what
- * the server parses; a wrong one likely closes the socket, so they are asserted literally.
+ * Pins the Live `setup` fields added 2026-10-02: VAD sensitivity and explicit
+ * context-compression thresholds; proactivity and affective dialog are pinned OUT. The field names and placements are what
+ * the server parses; a wrong one closes the socket (proactivity did, on the A25), so they are asserted literally.
  * Runs under Robolectric for `org.json`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -32,14 +32,14 @@ class LiveSetupFlagsTest {
     }
 
     @Test
-    fun `proactive audio is on at setup level`() {
-        assertTrue(setup(true).getJSONObject("proactivity").getBoolean("proactiveAudio"))
+    fun `proactivity is never sent - the v1beta server rejects it and closes the socket`() {
+        assertFalse(setup(true).has("proactivity"))
     }
 
     @Test
-    fun `affective dialog sits inside generationConfig`() {
+    fun `affective dialog is never sent - it breaks every tapped conversation on this model`() {
         val s = setup(true)
-        assertTrue(s.getJSONObject("generationConfig").getBoolean("enableAffectiveDialog"))
+        assertFalse(s.getJSONObject("generationConfig").has("enableAffectiveDialog"))
         assertFalse(s.has("enableAffectiveDialog"))
     }
 
