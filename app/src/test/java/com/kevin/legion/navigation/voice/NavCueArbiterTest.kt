@@ -13,6 +13,9 @@ private class FakeCueEnv : CueEnvironment {
     val log = mutableListOf<String>()
     val spoken = mutableListOf<String>()
     val unspokenReasons = mutableListOf<String>()
+    val droppedReasons = mutableListOf<String>()
+
+    override fun dropped(why: String) { droppedReasons += why }
 
     override fun hold() { log += "hold" }
 
@@ -58,6 +61,14 @@ class NavCueArbiterTest {
         arbiter.onCue("Turn left")
         assertTrue(env.log.isEmpty())
         assertFalse(arbiter.busy)
+        // Reported as a reason only, never the cue text (phone run 4, defect 3).
+        assertEquals(listOf("muted"), env.droppedReasons)
+    }
+
+    @Test fun aBlankCueIsNotReportedAsDropped() {
+        env.muted = true
+        arbiter.onCue(" ")
+        assertTrue(env.droppedReasons.isEmpty())
     }
 
     @Test fun muteWhileACueIsSpeakingStopsItAndGivesTheAssistantBack() {

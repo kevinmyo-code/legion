@@ -158,3 +158,19 @@ Phone run 3 (Galaxy A25) found three defects. Branch `feat/mapbox-voice`, on top
 `adb logcat -s MapboxNavSdk`: live instances stays 1 across 5+ trips and the SDK's router counter stays flat, no
 "Too many OnboardRouter"; no doubled cues on trip 2; a pasted token mid-session rebuilds once; preview fit shows
 the puck and the whole route above the sheet; stops and routes panels leave map visible; guiding sheet unchanged.
+
+## Third device-run fixes (2026-10-03)
+
+Phone run 4 (Galaxy A25), branch `feat/mapbox-voice`. Three small defects; no Hilt, tool-surface or cue-behaviour change.
+
+| # | Defect | Status | What changed |
+|---|---|---|---|
+| 1 | After End, a new preview kept the follow zoom with the route under the sheet; the overview button did nothing | fixed by cause (decision tested; the SDK camera behaviour reasoned, owes the phone) | The SDK's `NavigationCamera` keeps the last mode it was given; nothing released it after a trip, so it stayed FOLLOWING and beat the preview's own fit, and the overview button only ever asked the SDK while GUIDING. New pure `navigation/NavCameraPlan.decide(phase, mode, routesShown)`: the SDK camera is engaged only while guiding (follow / overview), every other phase releases it (`requestNavigationCameraToIdle`), and a preview always fits route plus puck inside the measured insets whatever the mode, so overview works whenever routes are shown. `NavMap` acts on the decision. `NavCameraPlanTest`. |
+| 2 | Stops panel stayed open after Start and showed on the guiding sheet | fixed (rule tested; wiring reasoned) | `NavViewModel` closes the open panel (and clears the stop field) on any phase change except a preview re-requesting itself (PREVIEW and REQUESTING), via `panelsCloseOn`. Covers Start, End, arrival and voice-driven changes. `PanelCloseTest`. |
+| 3 | A muted cue drop left no trace | fixed (arbiter tested; the log line itself is on-device) | `CueEnvironment.dropped(why)` (default no-op) is called by `NavCueArbiter` when a cue is dropped because muted; `NavCueSpeaker` logs `turn cue dropped: muted` at info under tag `NavCueSpeaker`. Never the cue text. |
+
+### Owed on the phone
+
+Start a trip, End, request "1000 N Navarro St, Victoria, TX": preview fits route and puck above the sheet, and the
+overview button re-fits; Start with the Stops panel open: the guiding sheet has no panel; mute, wait for a cue,
+`adb logcat -s NavCueSpeaker` shows "turn cue dropped: muted".

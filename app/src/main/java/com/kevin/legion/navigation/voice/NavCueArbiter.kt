@@ -35,6 +35,9 @@ interface CueEnvironment {
 
     /** A cue that was not said, and why. The banner still shows the turn; this logs and tells the screen. */
     fun unspoken(text: String, why: String)
+
+    /** A cue dropped on purpose ([why], e.g. "muted"), reported with no text so a phone run can see it. */
+    fun dropped(why: String) = Unit
 }
 
 /**
@@ -42,7 +45,8 @@ interface CueEnvironment {
  * playback pauses for it and resumes after, and the mic is gated for its duration so it is never
  * transcribed as the user. Pure: no Android, no clock.
  *
- * - **Muted:** the cue is dropped (the user asked for silence; not an error, not shown).
+ * - **Muted:** the cue is dropped (the user asked for silence; not an error, not shown, but
+ *   [CueEnvironment.dropped] hears of it so it can be logged).
  * - **No speech engine:** the cue is not said anywhere and [CueEnvironment.unspoken] hears about it.
  * - **A cue while another is speaking:** it waits, and the assistant stays held across both so it
  *   never resumes between them. **Only the newest waiting cue is kept**: "turn left in 300 metres"
@@ -62,7 +66,9 @@ class NavCueArbiter(private val env: CueEnvironment) {
 
     fun onCue(text: String) {
         when {
-            text.isBlank() || env.muted -> Unit
+            text.isBlank() -> Unit
+            // Said in words so a phone run can see a cue was dropped on purpose; never the text (a street name).
+            env.muted -> env.dropped("muted")
             !env.canSpeak -> env.unspoken(text, "no speech engine")
             speaking -> waiting = text
             else -> begin(text)

@@ -48,3 +48,9 @@ speaks a turn instruction.
 
 Owed on the phone (ticket 12): a cue firing while Kevin is mid-sentence and while the assistant is
 mid-reply.
+
+## Ruled 2026-10-03 (Kevin): mute carries over
+
+Asked after the phone run showed mute persisting into the next trip: *"mute carry over"*. Mute is a
+standing preference, not per trip. It stays until unmuted by voice or tile, and the "Turn cues
+muted" pill shows on every trip while it holds, so a muted trip is never silent without saying so.

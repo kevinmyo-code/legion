@@ -121,6 +121,11 @@ class NavCueSpeaker(
         controller.noteCuesUnspoken()
     }
 
+    override fun dropped(why: String) {
+        // No cue text: it carries a street name, which is a place.
+        Log.i(TAG, "turn cue dropped: $why")
+    }
+
     // ------------------------------------------------------------------ engine
 
     private fun say(engine: TextToSpeech, text: String): Boolean {
