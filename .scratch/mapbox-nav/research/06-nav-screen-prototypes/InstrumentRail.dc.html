@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nav B: instrument card and rail</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b0c0f}
+a{color:#FFB4A1}a:hover{color:#FFDBD1}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 384px; height: 832px; position: relative; overflow: hidden; background: #121317; font-family: Figtree, system-ui, sans-serif; color: #E6E7EC">
+
+<sc-if value="{{ isNoSetup }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 32px; box-sizing: border-box">
+<div style="font-size: 24px; font-weight: 700; line-height: 1.25">Navigation isn't set up</div>
+<div style="font-size: 16px; color: #A9ADB8; line-height: 1.5">LEGION needs a Mapbox token to draw maps and give directions. Nothing is navigating.</div>
+<button style="align-self: flex-start; height: 48px; padding: 0 24px; border: none; border-radius: 24px; background: #FFB4A1; color: #3B0A00; font-size: 16px; font-weight: 600" onClick="{{ toPreview }}">Add a token in Setup</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasMap }}" hint-placeholder-val="{{ true }}">
+<svg width="384" height="832" viewBox="0 0 384 832" style="position: absolute; inset: 0" aria-hidden="true">
+<rect width="384" height="832" fill="#17191E"></rect>
+<rect x="20" y="150" width="120" height="90" rx="6" fill="#1D2026"></rect>
+<rect x="190" y="130" width="160" height="110" rx="6" fill="#1D2026"></rect>
+<rect x="30" y="300" width="110" height="140" rx="6" fill="#1B2A22"></rect>
+<rect x="200" y="300" width="150" height="150" rx="6" fill="#1D2026"></rect>
+<rect x="20" y="500" width="130" height="120" rx="6" fill="#1D2026"></rect>
+<rect x="210" y="510" width="150" height="100" rx="6" fill="#1D2026"></rect>
+<path d="M0 270 H384" stroke="#2C3038" stroke-width="16"></path>
+<path d="M0 470 H384" stroke="#2C3038" stroke-width="12"></path>
+<path d="M170 0 V832" stroke="#2C3038" stroke-width="16"></path>
+<path d="M60 0 L120 832" stroke="#25282F" stroke-width="10"></path>
+<path d="M300 0 V832" stroke="#25282F" stroke-width="10"></path>
+<path d="{{ routePath }}" fill="none" stroke="#0F3B40" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="{{ routePath }}" fill="none" stroke="#77DCE5" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+<sc-if value="{{ hasStop }}" hint-placeholder-val="{{ false }}">
+<circle cx="170" cy="380" r="11" fill="#FFC857" stroke="#121317" stroke-width="3"></circle>
+</sc-if>
+<circle cx="230" cy="120" r="12" fill="#FFB4A1" stroke="#121317" stroke-width="3"></circle>
+<circle cx="170" cy="640" r="18" fill="#FFB4A1" fill-opacity="0.2"></circle>
+<path d="M170 626 L180 652 L170 646 L160 652 Z" fill="#FFB4A1" stroke="#121317" stroke-width="2" stroke-linejoin="round"></path>
+</svg>
+</sc-if>
+
+<sc-if value="{{ isGuiding }}" hint-placeholder-val="{{ true }}">
+<div style="position: absolute; top: 12px; left: 12px; width: 280px; background: #1C1E24; border: 1px solid #3A3E47; border-radius: 24px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box">
+<div style="display: flex; align-items: center; gap: 12px">
+<div style="width: 56px; height: 56px; border-radius: 16px; background: #0F3B40; display: flex; align-items: center; justify-content: center">
+<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#77DCE5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 20V10a3 3 0 0 0-3-3H6"></path><path d="M10 3L6 7l4 4"></path></svg>
+</div>
+<div style="font-size: 36px; font-weight: 700; line-height: 1">0.3 mi</div>
+</div>
+<div style="font-size: 19px; font-weight: 600">Kirby Dr</div>
+<div style="font-size: 14px; color: #A9ADB8">Then merge onto I-69 S</div>
+</div>
+
+<div style="position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 10px">
+<button style="{{ muteBtn }}" onClick="{{ toggleMute }}" aria-label="{{ muteLabel }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"></path><path d="M16 9l5 6M21 9l-5 6"></path></svg></button>
+<button style="{{ tollBtn }}" onClick="{{ toggleTolls }}" aria-label="Avoid tolls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M6.5 6.5l11 11"></path></svg></button>
+<button style="{{ stopBtn }}" onClick="{{ toggleStop }}" aria-label="{{ stopLabel }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<button style="{{ btn }}" onClick="{{ toPreview }}" aria-label="Other routes"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M4 12h16M4 18h7"></path></svg></button>
+<button style="{{ btn }}" aria-label="Show whole route"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
+</div>
+
+<sc-if value="{{ muted }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 188px; left: 12px; background: #4A1F24; border-radius: 14px; padding: 8px 14px; font-size: 14px; color: #FFB4AB">Turn cues muted</div>
+</sc-if>
+
+<div style="position: absolute; left: 12px; right: 12px; bottom: 96px; display: flex; justify-content: center">
+<div style="display: flex; align-items: center; gap: 10px; background: #24272E; border: 1px solid #3A3E47; border-radius: 24px; padding: 8px 16px 8px 10px; font-size: 14px; color: #A9ADB8">
+<span style="width: 28px; height: 28px; border-radius: 14px; background: #733423; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFDBD1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>
+<span>"Add a gas stop on the way"</span>
+</div>
+</div>
+
+<div style="position: absolute; left: 12px; right: 12px; bottom: 16px; height: 68px; background: #1C1E24; border: 1px solid #3A3E47; border-radius: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 22px; box-sizing: border-box">
+<div style="display: flex; align-items: baseline; gap: 10px">
+<span style="font-size: 24px; font-weight: 700; color: #7EDBA5">{{ timeLeft }}</span>
+<span style="font-size: 14px; color: #A9ADB8">{{ etaShort }}</span>
+</div>
+<button style="height: 48px; padding: 0 22px; border: none; border-radius: 24px; background: #4A1F24; color: #FFB4AB; font-size: 15px; font-weight: 600" onClick="{{ arrive }}">End</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ isPreview }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; background: #1C1E24; border-radius: 28px 28px 0 0; padding: 16px 16px 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 22px; font-weight: 700">Home</div>
+<sc-for list="{{ routes }}" as="r" hint-placeholder-count="3">
+<button style="{{ r.style }}" onClick="{{ r.pick }}" aria-pressed="{{ r.selected }}">
+<span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px">
+<span style="font-size: 16px; font-weight: 600">{{ r.name }}</span>
+<span style="font-size: 13px; color: #A9ADB8">{{ r.via }}</span>
+</span>
+<span style="font-size: 18px; font-weight: 700">{{ r.time }}</span>
+</button>
+</sc-for>
+<button style="height: 52px; border: none; border-radius: 26px; background: #FFB4A1; color: #3B0A00; font-size: 17px; font-weight: 700" onClick="{{ start }}">Start</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ isArrived }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 12px; right: 12px; bottom: 16px; background: #1C1E24; border: 1px solid #3A3E47; border-radius: 28px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 13px; color: #7EDBA5; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600">{{ endTitle }}</div>
+<div style="font-size: 15px; color: #A9ADB8">{{ endLine }}</div>
+<button style="height: 48px; border: 1px solid #3A3E47; border-radius: 24px; background: transparent; color: #E6E7EC; font-size: 15px; font-weight: 600" onClick="{{ toPreview }}">Done</button>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"screen":{"editor":"enum","options":["preview","guiding","arrived","nosetup"],"default":"guiding"},"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const screen = s.screen || this.props.screen || 'guiding';
+    const muted = !!s.muted, tolls = !!s.tolls, stop = !!s.stop, route = s.route ?? 0;
+    const set = (patch) => () => this.setState(Object.assign({}, s, patch));
+    const routesRaw = [
+      { name: 'Fastest', via: 'via I-69 S · has tolls', time: '18 min' },
+      { name: 'No tolls', via: 'via Kirby Dr', time: '21 min' },
+      { name: 'Shortest', via: 'via Westheimer Rd', time: '23 min' }
+    ];
+    const round = 'width:52px;height:52px;border-radius:26px;display:flex;align-items:center;justify-content:center;border:1px solid #3A3E47;';
+    const off = round + 'background:#1C1E24;color:#E6E7EC;';
+    const on = round + 'background:#733423;color:#FFDBD1;border-color:#733423;';
+    const mins = 18 + (tolls ? 3 : 0) + (stop ? 5 : 0);
+    return {
+      isNoSetup: screen === 'nosetup',
+      hasMap: screen !== 'nosetup',
+      isPreview: screen === 'preview',
+      isGuiding: screen === 'guiding',
+      isArrived: screen === 'arrived',
+      muted, hasStop: stop,
+      routePath: tolls ? 'M170 640 V270 H230 V120' : 'M170 640 V470 H60 L45 270 H230 V120',
+      routes: routesRaw.map((r, i) => Object.assign({}, r, {
+        selected: route === i ? 'true' : 'false',
+        pick: set({ route: i }),
+        style: 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:16px;color:#E6E7EC;text-align:left;' + (route === i ? 'background:#0F3B40;border:2px solid #77DCE5;' : 'background:#24272E;border:2px solid transparent;')
+      })),
+      timeLeft: mins + ' min',
+      etaShort: (stop ? '11.1 mi · ' : '9.4 mi · ') + '6:' + (24 + mins),
+      btn: off, stopBtn: stop ? on : off, tollBtn: tolls ? on : off, muteBtn: muted ? on : off,
+      stopLabel: stop ? 'Drop the stop' : 'Add a stop',
+      muteLabel: muted ? 'Unmute turn cues' : 'Mute turn cues',
+      endTitle: s.ended ? 'Trip ended' : 'Arrived at Home',
+      endLine: s.ended ? 'Ended 2.1 mi short. Nothing is navigating.' : 'You are here. Nothing is navigating.',
+      start: set({ screen: 'guiding' }),
+      arrive: set({ screen: 'arrived', ended: true }),
+      toPreview: set({ screen: 'preview', ended: false }),
+      toggleMute: set({ muted: !muted }),
+      toggleTolls: set({ tolls: !tolls }),
+      toggleStop: set({ stop: !stop })
+    };
+  }
+}
+</script>
+</body>
+</html>
