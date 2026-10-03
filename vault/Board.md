@@ -49,7 +49,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[03-resolving-a-spoken-destination\|03]] | decision | Resolving a spoken destination |
-| [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[06-the-nav-screen\|06]] | prototype | The nav screen |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[07-trip-lifecycle\|07]] | decision | Trip lifecycle: screen off, backgrounded, billed |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[09-sdk-in-the-build\|09]] | build | Mapbox in the build, behind the clone-and-run gate, with token setup |
 | [[.scratch/one-home/map\|one-home]] | [[09-sync-the-feed-subscriptions\|09]] | decision | Decide whether feed subscriptions sync, and build the leg if they do |
@@ -198,7 +197,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
-| [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[10-route-and-guidance\|10]] | build | Route and guidance on the nav screen  waiting on [[03-resolving-a-spoken-destination\|03]], [[06-the-nav-screen\|06]], [[07-trip-lifecycle\|07]], [[09-sdk-in-the-build\|09]] |
+| [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[10-route-and-guidance\|10]] | build | Route and guidance on the nav screen  waiting on [[03-resolving-a-spoken-destination\|03]], [[07-trip-lifecycle\|07]], [[09-sdk-in-the-build\|09]] |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[11-voice-tools-over-the-live-trip\|11]] | build | Voice tools over the live trip, and the Google hand-off retired  waiting on [[10-route-and-guidance\|10]] |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[12-a-real-drive\|12]] | test | A real drive on the A25  waiting on [[11-voice-tools-over-the-live-trip\|11]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
@@ -277,7 +276,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
 | [[.scratch/live-sync/map\|live-sync]] | 0 | 0 | [[.scratch/live-sync/live-sync.canvas\|open]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
-| [[.scratch/mapbox-nav/map\|mapbox-nav]] | 13 | 7 | [[.scratch/mapbox-nav/mapbox-nav.canvas\|open]] |
+| [[.scratch/mapbox-nav/map\|mapbox-nav]] | 13 | 6 | [[.scratch/mapbox-nav/mapbox-nav.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 11 | 7 | [[.scratch/one-home/one-home.canvas\|open]] |

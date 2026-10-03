@@ -5,7 +5,7 @@ charted: 2026-10-03
 charted-by: "Kevin + Opus"
 effort: "`.scratch/mapbox-nav/`"
 tickets: 13
-open: 8
+open: 7
 status: open
 tags: [map]
 ---
@@ -89,6 +89,8 @@ Then 05 (who speaks the turns) and 04; 03 and 07 after.
 - [The voice tool surface and its honesty contract](issues/04-voice-tool-surface.md) - four wide tools
   (`navigate`, `change_trip`, `trip_status`, `end_trip`); success read back from SDK state; "not navigating"
   is its own answer.
+- [The nav screen](issues/06-the-nav-screen.md) - A: turn banner on top, bottom sheet with time left, End and four
+  tiles (stop, tolls, routes, mute); prototypes kept in `research/`.
 
 ## Not yet specified
 
