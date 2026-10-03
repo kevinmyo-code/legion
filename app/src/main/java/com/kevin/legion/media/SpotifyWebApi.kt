@@ -363,8 +363,10 @@ object SpotifyWebApi {
      * token", "no network", and "nothing matched" alike - every one of them means
      * the same thing to the caller: fall back to the intent path.
      *
-     * Asks for a page of results and picks by popularity rather than taking
-     * Spotify's first hit. Relevance ranking on a loose spoken phrase
+     * The pick is [SpotifyMatch.pick]: relevance order, gated on matching the query, popularity
+     * only among exact title ties. Popularity alone (the 2026-08 pick) played 2Pac for a Future
+     * request, because nothing checked the hit against the query. Why popularity still matters
+     * at all: relevance ranking on a loose spoken phrase
      * ("mask off by future") routinely puts karaoke, tribute, and "made famous
      * by" re-records above the real track - they match the words harder because
      * the words are ALL they have. Popularity separates them cleanly: the
@@ -568,14 +570,24 @@ object SpotifyWebApi {
      * "no network", and "nothing matched" alike - every one of them means the same thing to the
      * caller: fall back to the intent path.
      *
-     * The popularity-based disambiguation and [looksLikeImposter] filtering below are a TRACK
+     * 2026-10-02: track and album hits must now pass [SpotifyMatch.pick]'s acceptance check
+     * against the query (and [artist], when known) or the result is [SearchOutcome.NoMatch];
+     * the old "most popular of ten" pick played 2Pac for a Future request and reported success.
+     * Spotify's relevance order is kept; popularity only breaks ties between exact title matches.
+     *
+     * The [looksLikeImposter] filtering is a TRACK
      * problem specifically - karaoke/tribute covers exist because a loose spoken phrase gives
      * them exactly as much to match on as the real recording. Albums, artists and playlists
      * don't have an equivalent impostor-flooding problem in practice, so for those types this
      * just takes Spotify's own top relevance hit rather than re-deriving a ranking Spotify
      * already computed.
      */
-    suspend fun search(context: Context, query: String, type: String = "track"): SearchOutcome = withContext(Dispatchers.IO) {
+    suspend fun search(
+        context: Context,
+        query: String,
+        type: String = "track",
+        artist: String? = null,
+    ): SearchOutcome = withContext(Dispatchers.IO) {
         val token = when (val outcome = accessToken(context)) {
             is TokenOutcome.Token -> outcome.value
             TokenOutcome.NeverAuthorized -> return@withContext SearchOutcome.NeedsAuthorization
@@ -585,66 +597,93 @@ object SpotifyWebApi {
             TokenOutcome.Unreachable -> return@withContext SearchOutcome.Unreachable
         }
         try {
-            var (code, body) = getWithToken(searchUrlFor(query, type), token)
-            // Self-heal a tightened limit ceiling. SEARCH_LIMIT is a measured value, not a
-            // documented one (see its doc), so Spotify lowering it again would silently
-            // break every search exactly as limit=20 did. Retrying once with the parameter
-            // dropped falls back to Spotify's own default page size, which by construction
-            // can never be out of range. Narrow on purpose: only a 400 that actually names
-            // the limit retries, so this cannot mask an unrelated bad request.
-            if (code == 400 && errorDetail(body)?.contains("limit", ignoreCase = true) == true) {
-                Log.w(TAG, "limit=$SEARCH_LIMIT rejected; retrying without it")
-                val retry = getWithToken(searchUrlFor(query, type, limit = null), token)
-                code = retry.first
-                body = retry.second
+            val matched = type == "track" || type == "album"
+            val knownArtist = artist?.trim()?.takeIf { it.isNotEmpty() && matched }
+            // A known artist gets a fielded query first; if that yields nothing ACCEPTABLE, one
+            // retry in plain free text (Spotify's fielded search is strict about spelling, so a
+            // censored title like "Fukk a Interview" can miss there and still hit free text).
+            val attempts = if (knownArtist != null) {
+                listOf(
+                    SpotifyMatch.fieldedQuery(type, query, knownArtist),
+                    "$query $knownArtist",
+                )
+            } else {
+                listOf(query)
             }
-            if (code !in 200..299) {
-                val detail = errorDetail(body)
-                Log.w(TAG, "Search failed $code: $detail")
-                return@withContext when (code) {
-                    401, 403 -> SearchOutcome.Unauthorized(detail)
-                    else -> SearchOutcome.Failed(code, detail, body.trim().take(300))
+            var last: SearchOutcome = SearchOutcome.NoMatch
+            for (q in attempts) {
+                when (val raw = fetchCandidates(q, type, token)) {
+                    is RawSearch.Error -> return@withContext raw.outcome
+                    is RawSearch.Items -> {
+                        val picked = if (matched) {
+                            SpotifyMatch.pick(
+                                raw.items, query, knownArtist,
+                                isImposter = if (type == "track") ::looksLikeImposter else { _ -> false },
+                            )
+                        } else {
+                            // Artists/playlists: Spotify's own top relevance hit.
+                            raw.items.firstOrNull()
+                        }
+                        val uri = picked?.optString("uri")?.takeIf { it.isNotBlank() }
+                        if (picked != null && uri != null) {
+                            val (name, subtitle) = pickedDisplayName(picked, type)
+                            return@withContext SearchOutcome.Found(uri, name, subtitle)
+                        }
+                        last = SearchOutcome.NoMatch
+                    }
                 }
             }
-            run {
-                // Spotify's search response nests results under "<type>s" - "tracks", "albums",
-                // "artists", "playlists" - keyed by the SAME type string the request used.
-                val items = JSONObject(body).optJSONObject("${type}s")?.optJSONArray("items")
-                    ?: return@withContext SearchOutcome.NoMatch
-                val candidates = (0 until items.length())
-                    // A playlist search can hand back a null slot in "items" for a
-                    // deleted/private playlist Spotify still indexes - optJSONObject already
-                    // returns null for that case, which mapNotNull drops, but the array can
-                    // also contain the literal JSON null token rather than an absent slot, so
-                    // this filters both shapes rather than assuming one.
-                    .mapNotNull { items.optJSONObject(it) }
-                    .filter { it.optString("uri").isNotBlank() }
-                if (candidates.isEmpty()) return@withContext SearchOutcome.NoMatch
-
-                val picked = if (type == "track") {
-                    val clean = candidates.filterNot { looksLikeImposter(it) }
-                    // If filtering leaves nothing, the query genuinely WAS for a
-                    // karaoke/tribute cut - honour it rather than returning nothing.
-                    (clean.ifEmpty { candidates })
-                        .maxByOrNull { it.optInt("popularity", 0) }
-                } else {
-                    // Non-track types: trust Spotify's own relevance ranking (first result).
-                    candidates.first()
-                }
-                val uri = picked?.optString("uri")?.takeIf { it.isNotBlank() }
-                if (picked != null && uri != null) {
-                    val (name, subtitle) = pickedDisplayName(picked, type)
-                    SearchOutcome.Found(uri, name, subtitle)
-                } else {
-                    SearchOutcome.NoMatch
-                }
-            }
+            last
         } catch (e: Exception) {
             // A thrown IOException here is a transport failure, never a verdict on
             // the query - the old code reported it as "not found".
             Log.w(TAG, "Search error: ${e.message}")
             SearchOutcome.Unreachable
         }
+    }
+
+    /** One HTTP search: either the usable candidates, or the outcome that ends the search. */
+    private sealed interface RawSearch {
+        data class Items(val items: List<JSONObject>) : RawSearch
+        data class Error(val outcome: SearchOutcome) : RawSearch
+    }
+
+    private fun fetchCandidates(q: String, type: String, token: String): RawSearch {
+        var (code, body) = getWithToken(searchUrlFor(q, type), token)
+        // Self-heal a tightened limit ceiling. SEARCH_LIMIT is a measured value, not a
+        // documented one (see its doc), so Spotify lowering it again would silently
+        // break every search exactly as limit=20 did. Retrying once with the parameter
+        // dropped falls back to Spotify's own default page size, which by construction
+        // can never be out of range. Narrow on purpose: only a 400 that actually names
+        // the limit retries, so this cannot mask an unrelated bad request.
+        if (code == 400 && errorDetail(body)?.contains("limit", ignoreCase = true) == true) {
+            Log.w(TAG, "limit=$SEARCH_LIMIT rejected; retrying without it")
+            val retry = getWithToken(searchUrlFor(q, type, limit = null), token)
+            code = retry.first
+            body = retry.second
+        }
+        if (code !in 200..299) {
+            val detail = errorDetail(body)
+            Log.w(TAG, "Search failed $code: $detail")
+            return RawSearch.Error(
+                when (code) {
+                    401, 403 -> SearchOutcome.Unauthorized(detail)
+                    else -> SearchOutcome.Failed(code, detail, body.trim().take(300))
+                },
+            )
+        }
+        // Spotify's search response nests results under "<type>s" - "tracks", "albums",
+        // "artists", "playlists" - keyed by the SAME type string the request used.
+        val items = JSONObject(body).optJSONObject("${type}s")?.optJSONArray("items")
+            ?: return RawSearch.Items(emptyList())
+        // A playlist search can hand back a null slot in "items" for a deleted/private
+        // playlist Spotify still indexes; optJSONObject returns null for the literal JSON null
+        // token as well as an absent slot, and mapNotNull drops both.
+        return RawSearch.Items(
+            (0 until items.length())
+                .mapNotNull { items.optJSONObject(it) }
+                .filter { it.optString("uri").isNotBlank() },
+        )
     }
 
     /** Outcome of a token exchange - the caller must treat rejection and a network blip differently. */

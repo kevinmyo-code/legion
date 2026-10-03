@@ -606,6 +606,11 @@ object LiveToolbox {
                     "What to play, in the user's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
                         "or 'Discovery by Daft Punk'. Still required even when spotifyUri is set - " +
                         "used to build the spoken confirmation."),
+                "artist" to schema("string",
+                    "The artist, whenever you know it - including from earlier in the " +
+                        "conversation ('play that song' after discussing an album). When you " +
+                        "pass it, put ONLY the title in 'query'. Used for songs and albums; " +
+                        "ignored for artist and playlist requests."),
                 "type" to schema("string",
                     "What kind of thing 'query' names. Defaults to 'song' if omitted.",
                     enum = listOf("song", "artist", "album", "playlist")),
@@ -2593,6 +2598,7 @@ object LiveToolbox {
                 args.optString("query"),
                 args.optString("type", "song"),
                 args.optString("spotifyUri", "").ifBlank { null },
+                args.optString("artist", "").ifBlank { null },
             )
             "browse_my_music" -> browseMyMusic(context, args)
             "get_music_queue" -> getMusicQueue(context, args)
@@ -7263,7 +7269,12 @@ object LiveToolbox {
      * for the IDENTICAL reasons - they are the same resolve step with two different things done
      * to the result.
      */
-    private suspend fun resolveSpotifyUri(context: Context, query: String, type: String): SpotifyUriResolution {
+    private suspend fun resolveSpotifyUri(
+        context: Context,
+        query: String,
+        type: String,
+        artist: String? = null,
+    ): SpotifyUriResolution {
         // Tool-facing vocabulary is "song" (matches how a driver actually talks); Spotify's own
         // API calls that "track" - translated at the boundary so nothing upstream of this line
         // needs to know Spotify's word for it.
@@ -7311,7 +7322,7 @@ object LiveToolbox {
         // connection and a genuinely unknown song were indistinguishable to the driver
         // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
         // was written to undo on the Drive side.
-        return when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
+        return when (val outcome = SpotifyWebApi.search(context, query, spotifyType, artist)) {
             is SpotifyWebApi.SearchOutcome.Found -> SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)
             SpotifyWebApi.SearchOutcome.NeedsAuthorization -> SpotifyUriResolution.Failed(result(
                 success = false,
@@ -7335,7 +7346,14 @@ object LiveToolbox {
             ))
             SpotifyWebApi.SearchOutcome.NoMatch -> SpotifyUriResolution.Failed(result(
                 success = false,
-                message = "Spotify has nothing matching \"$query\".",
+                // Names what was searched and says nothing was started: the search now rejects
+                // hits that do not match the request, so NoMatch can mean "Spotify had
+                // something, but not this" (CLAUDE.md §7 outcome-verb rule). Shared with the
+                // queue action, and whatever was already playing keeps playing, so it claims
+                // neither "nothing is playing" nor a play-specific verb.
+                message = "I couldn't find \"$query\"" +
+                    (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
+                    " on Spotify, so I didn't play or queue anything.",
             ))
             is SpotifyWebApi.SearchOutcome.Failed -> SpotifyUriResolution.Failed(result(
                 success = false,
@@ -7418,6 +7436,7 @@ object LiveToolbox {
         query: String,
         type: String = "song",
         knownUri: String? = null,
+        artist: String? = null,
     ): JSONObject {
         if (query.isBlank()) return result(success = false, message = "What should I play?")
 
@@ -7447,7 +7466,7 @@ object LiveToolbox {
                 is SpotifyUriResolution.Failed -> return resolved.toolResult
             }
         } else {
-            when (val resolved = resolveSpotifyUri(context, query, type)) {
+            when (val resolved = resolveSpotifyUri(context, query, type, artist)) {
                 is SpotifyUriResolution.Found -> resolved.uri to
                     (resolved.subtitle?.let { "${resolved.name}, $it" } ?: resolved.name)
                 is SpotifyUriResolution.Failed -> return resolved.toolResult
