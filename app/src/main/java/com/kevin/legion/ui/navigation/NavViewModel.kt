@@ -21,12 +21,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** What the person is being asked to confirm: several plausible places, top pick first. */
 data class ChoiceUi(val forStop: Boolean, val query: String, val candidates: List<Candidate>, val notes: List<String>)
+
+/**
+ * Whether a phase change closes the open stops / routes panel. A preview re-requesting itself (an added
+ * stop, a toggled toll) passes through REQUESTING and keeps its panel; every other change closes it.
+ */
+internal fun panelsCloseOn(from: NavPhase, to: NavPhase): Boolean {
+    val previewWork = setOf(NavPhase.PREVIEW, NavPhase.REQUESTING)
+    return from != to && !(from in previewWork && to in previewWork)
+}
 
 /** Which small panel is open over the guiding sheet. */
 enum class NavPanel { NONE, STOPS, ROUTES }
@@ -90,6 +101,20 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
         // token. The controller ignores the first emission (the token it already handled), so
         // entering the screen mid-trip never ends the trip.
         viewModelScope.launch { tokens.state.collect { controller.onTokenChanged() } }
+        // A transient panel (stops, routes) belongs to the phase it was opened in: Start, End, arrival or a
+        // voice-driven change all close it, so the Stops panel no longer rides onto the guiding sheet
+        // (phone run 4, defect 2).
+        viewModelScope.launch {
+            var previous = controller.state.value.phase
+            controller.state.map { it.phase }.distinctUntilChanged().collect { now ->
+                if (panelsCloseOn(previous, now)) {
+                    local.update { l ->
+                        if (l.panel == NavPanel.NONE) l else l.copy(panel = NavPanel.NONE, stopInput = "")
+                    }
+                }
+                previous = now
+            }
+        }
         refreshPlaces()
     }
 
