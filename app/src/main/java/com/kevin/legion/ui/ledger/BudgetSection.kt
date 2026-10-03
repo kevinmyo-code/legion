@@ -132,16 +132,12 @@ fun BudgetSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onPrevMonth, enabled = canGoPrevMonth) {
-                Text("<", style = LegionType.stamp, color = if (canGoPrevMonth) MaterialTheme.colorScheme.primary else sem.ghost)
-            }
+            com.kevin.legion.ui.common.MonthStepButton(forward = false, enabled = canGoPrevMonth, onClick = onPrevMonth)
             Text(
                 monthLabel(month), style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.clickable(onClick = onOpenTrend),
             )
-            TextButton(onClick = onNextMonth, enabled = canGoNextMonth) {
-                Text(">", style = LegionType.stamp, color = if (canGoNextMonth) MaterialTheme.colorScheme.primary else sem.ghost)
-            }
+            com.kevin.legion.ui.common.MonthStepButton(forward = true, enabled = canGoNextMonth, onClick = onNextMonth)
         }
 
         // ticket 10: the two hero graphics, gated on `budget != null` exactly as this doc comment

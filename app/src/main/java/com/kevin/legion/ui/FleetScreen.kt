@@ -298,7 +298,7 @@ data class FleetUiState(
      * moving both off the hero pane was the headroom UPLINK needed once the gauge-row density fix
      * alone still measured short on-device (see [UplinkPane]'s doc for the actual pixel numbers).
      */
-    val adapterLabel: String = "NONE SELECTED",
+    val adapterLabel: String = "None selected",
     /**
      * Whether a VIN has been decoded for this car, for the SPECS row's
      * ON FILE / NOT READ state. Just the presence of the string - the row is a
@@ -352,6 +352,9 @@ fun FleetScreen(
     onOpenPlaces: () -> Unit,
     onOpenCars: () -> Unit,
     onOpenDrivingMode: () -> Unit,
+    // Fleet is a drill-down off HOME (the same header and back arrow as Calendar/Body); defaulted so
+    // construction sites that predate the arrow compile unchanged.
+    onBack: () -> Unit = {},
     /**
      * Mission-control ticket 07's uplink sweep, reported up to [MainActivity]'s `LegionShell` so
      * [com.kevin.legion.ui.common.StatusLine]'s shell cursor can yield (`cursorSolid = true`)
@@ -484,7 +487,7 @@ fun FleetScreen(
         val selectedAdapter = ObdBluetoothManager.getActiveDeviceMac(context)
         val adapterLabel = selectedAdapter?.let { mac ->
             if (ObdDeviceRegistry.isBle(context, mac)) "$mac · BLE" else mac
-        } ?: "NONE SELECTED"
+        } ?: "None selected"
 
         // Resolved into a local before the single state assignment below, per
         // this block's own AWAIT FIRST, COPY ONCE note.
@@ -757,6 +760,7 @@ fun FleetScreen(
         onOpenMaintenance = { drilldown = FleetDrilldown.MAINTENANCE },
         onOpenDrives = { drilldown = FleetDrilldown.DRIVES },
         onOpenDrivingMode = onOpenDrivingMode,
+        onBack = onBack,
         onOpenAdapter = { drilldown = FleetDrilldown.ADAPTER },
         onOpenSpecs = { drilldown = FleetDrilldown.SPECS },
         onOpenBuildSheet = { drilldown = FleetDrilldown.BUILD_SHEET },
@@ -819,6 +823,7 @@ fun FleetContent(
     onOpenMaintenance: () -> Unit,
     onOpenDrives: () -> Unit,
     onOpenDrivingMode: () -> Unit = {},
+    onBack: () -> Unit = {},
     onOpenAdapter: () -> Unit = {},
     onOpenSpecs: () -> Unit = {},
     // Ticket 07 (command-center): defaulted to a no-op for the same reason onOpenFaults is below -
@@ -835,20 +840,10 @@ fun FleetContent(
     FleetSoftSurface {
         val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
-            // FLEET is a tab root with no back arrow, so this is the soft top bar's chip + title
-            // without the arrow (SoftScreenTopBar itself always draws one).
-            Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            ) {
-                AreaChip(AreaAccent.FLEET, size = 32.dp, iconSize = 18.dp)
-                Text(
-                    "Fleet",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(start = 10.dp),
-                )
-            }
+            // CORRECTED: this used to say FLEET is a tab root with no back arrow. It is a drill-down
+            // off HOME now (device walk 2026-10-03 found the missing arrow), so it takes the same
+            // soft top bar as Calendar/Body/News.
+            DeckScreenHeader(title = "Fleet", onBack = onBack, accent = AreaAccent.FLEET)
 
             // Backend-erp phase 3: a stale/failed-read notice, right under the title, never below
             // the fold - visible whether or not `state.loading`'s own branch below fires.
@@ -880,7 +875,8 @@ private fun FleetListing(
     onClearCodes: () -> Unit,
     onSweepActiveChanged: (Boolean) -> Unit,
 ) {
-    LazyColumn(Modifier.fillMaxSize()) {
+    // 16dp side padding, matching the other soft pages (the panels were flush with the screen edge).
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)) {
         // ------------------------------------------------------------ UPLINK (leads, always)
         item(key = "uplink-pane") {
             UplinkPane(state, onOpenDrivingMode, onClearCodes, onOpenFaults, onSweepActiveChanged, modifier = Modifier.clickable(onClick = onOpenUplink))
@@ -901,13 +897,13 @@ private fun FleetListing(
             EqualHeightRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalGap = 9.dp) {
                 HalfTile(
                     header = "Maintenance",
-                    hero = maintenanceTile.hero,
+                    hero = com.kevin.legion.ui.fleet.softHero(maintenanceTile.hero),
                     caption = maintenanceTile.caption,
                     modifier = Modifier.clickable(onClick = onOpenMaintenance),
                 )
                 HalfTile(
                     header = "Drives",
-                    hero = drivesTile.hero,
+                    hero = com.kevin.legion.ui.fleet.softHero(drivesTile.hero),
                     caption = drivesTile.caption,
                     modifier = Modifier.clickable(onClick = onOpenDrives),
                 ) {
@@ -1036,7 +1032,7 @@ private fun UplinkPane(
     Box(modifier.fillMaxWidth()) {
     DeckPane(header = "Uplink") {
         Text(
-            if (state.connected) "// LIVE" else "// NO LINK",
+            if (state.connected) "Live" else "No link",
             style = LegionType.stamp,
             color = if (state.connected) sem.credit else sem.faint,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -1334,7 +1330,7 @@ private fun CarsPane(
         // link - stored specs are readable with no adapter present at all.
         DeckRow(
             label = "Specs / VIN",
-            value = if (state.vinOnFile) "ON FILE" else "NOT READ",
+            value = if (state.vinOnFile) "On file" else "Not read",
             modifier = Modifier.clickable(onClick = onOpenSpecs),
         )
         DeckRow(label = "Places", value = ">", modifier = Modifier.clickable(onClick = onOpenPlaces))

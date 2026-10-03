@@ -1,5 +1,7 @@
 package com.kevin.legion.ui.common
 
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.LocalSoftActive
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -565,7 +567,9 @@ private fun DrawScope.drawEndpointLabel(
 @Composable
 fun DeckBarChart(bars: List<DeckBar?>, modifier: Modifier = Modifier, height: Dp = 180.dp) {
     val sem = LocalLegionSemantics.current
-    val fillColor = sem.data
+    // Under SoftTheme `sem.data` resolves to near-white text ink, which painted a solid white block
+    // on the Pantry spend chart (device walk 2026-10-03); a bar is a fill, so it takes the soft accent.
+    val fillColor = if (LocalSoftActive.current) SoftColors.primary else sem.data
     val targetColor = MaterialTheme.colorScheme.primary
     val markerColor = sem.marker
     val targetDash = PathEffect.dashPathEffect(floatArrayOf(6f, 4f), 0f)

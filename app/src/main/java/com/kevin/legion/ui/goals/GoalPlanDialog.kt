@@ -59,7 +59,7 @@ import kotlinx.coroutines.launch
 fun GoalPlanButton(modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     Text(
-        "+ GENERATE PLAN",
+        "Generate plan",
         style = LegionType.stamp,
         color = MaterialTheme.colorScheme.primary,
         modifier = modifier.clickable { open = true },

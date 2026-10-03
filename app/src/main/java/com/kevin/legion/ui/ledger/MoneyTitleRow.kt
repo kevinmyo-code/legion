@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.ledger
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,9 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.soft.AreaAccent
-import com.kevin.legion.ui.theme.soft.AreaChip
 
 /**
  * The Money title row: area chip, "Money", and the two header actions. Pulled out of
@@ -27,22 +28,18 @@ internal fun MoneyTitleRow(
     toCategorizeCount: Int,
     onOpenGroceries: () -> Unit,
     onOpenCategorize: () -> Unit,
+    onBack: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AreaChip(AreaAccent.MONEY, size = 32.dp, iconSize = 18.dp)
-            Text(
-                "Money",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = 10.dp),
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column {
+        // Back arrow + chip + title, the same bar every soft drill-down has. Titled for what the
+        // page is (the Money month page is the front door now), actions on their own row so the
+        // header never has to squeeze four things into a phone's width.
+        DeckScreenHeader(title = "Money details", onBack = onBack, accent = AreaAccent.MONEY)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             // A grocery receipt is a purchase (2026-08-07 brief) -
             // pantry's read screen lives under Money now, reached
             // from here rather than its own tab.

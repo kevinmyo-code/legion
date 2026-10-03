@@ -99,7 +99,7 @@ fun PantryOpsStatusRow(receiptCount: Int?) {
     val sem = LocalLegionSemantics.current
     DeckRow(label = "Receipts reconciled", value = receiptCount?.toString() ?: "-")
     Text(
-        "Quarantined attempts are not counted here - a document that fails the gate is written nowhere (CLAUDE.md §4).",
+        "Quarantined attempts are not counted here - a document that fails the check is never written.",
         style = LegionType.stamp,
         color = sem.ghost,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),

@@ -101,7 +101,7 @@ private fun NominatedAccountRow(
             Text("Nominated", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         } else {
             TextButton(onClick = onNominate) {
-                Text("SET", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                Text("Set", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
             }
         }
     }

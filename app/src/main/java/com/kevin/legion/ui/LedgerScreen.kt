@@ -196,6 +196,7 @@ data class LedgerUiState(
 @Composable
 fun LedgerScreen(
     onOpenGroceries: () -> Unit,
+    onBack: () -> Unit = {},
     // Today's category drill-down link (Kevin, 2026-08-07): [MainActivity]'s `LegionShell` holds a
     // pending category + nonce ABOVE the NavHost, the same "state lives above the destination that
     // needs to survive a fresh mount" shape [openItemId]/[openItemNonce] use to deliver a
@@ -838,6 +839,7 @@ fun LedgerScreen(
             // The SPEND toggle itself (Kevin, 2026-08-18) - a plain assignment into the `var` above,
             // which the reload effects keyed on `moneyAccountFilterId` above pick up.
             onSelectAccountFilter = { accountId -> moneyAccountFilterId = accountId },
+            onBack = onBack,
         )
     }
 }
@@ -867,6 +869,9 @@ fun LedgerContent(
     onOpenCategory: (String?) -> Unit = {},
     // The SPEND surface's per-account toggle (Kevin, 2026-08-18) - `null` selects ALL.
     onSelectAccountFilter: (String?) -> Unit = {},
+    // This page is a drill-down off the Money page (statements, budgets, accounts), so it carries
+    // the same back-arrow header as every other soft drill-down. Defaulted for the previews.
+    onBack: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     // 2026-08-18 regression fix: this used to be a plain `Column(fillMaxSize())` holding the title
@@ -880,11 +885,15 @@ fun LedgerContent(
     // everything below the MONEY title now lives as items in a SINGLE LazyColumn, this one, so growth
     // in any section (this one, or the next) degrades into "scroll further", never "stop scrolling".
     Surface(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize()) {
-            item(key = "money-title-row") {
-                val toCategorizeCount = state.pending.size + LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses).size
-                MoneyTitleRow(toCategorizeCount, onOpenGroceries, onOpenCategorize)
-            }
+      Column(Modifier.fillMaxSize()) {
+        // The title row moved out of the LazyColumn so the header stays put and the list below can
+        // take the 16dp side padding every other soft page has without indenting the header.
+        val toCategorizeCount = state.pending.size + LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses).size
+        MoneyTitleRow(toCategorizeCount, onOpenGroceries, onOpenCategorize, onBack)
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+        ) {
 
             // Backend-erp phase 3: a stale/failed-read notice, placed right under the title, never
             // below the fold - see readStateLine's own doc for why silence is correct otherwise.
@@ -937,6 +946,7 @@ fun LedgerContent(
                 )
             }
         }
+      }
     }
 }
 
@@ -1110,13 +1120,9 @@ private fun SpendPane(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onPrevMonth, enabled = canGoPrevMonth) {
-                    Text("<", style = LegionType.stamp, color = if (canGoPrevMonth) MaterialTheme.colorScheme.primary else sem.ghost)
-                }
+                com.kevin.legion.ui.common.MonthStepButton(forward = false, enabled = canGoPrevMonth, onClick = onPrevMonth)
                 Text(monthLabel(month), style = LegionType.stamp, color = sem.faint)
-                TextButton(onClick = onNextMonth, enabled = canGoNextMonth) {
-                    Text(">", style = LegionType.stamp, color = if (canGoNextMonth) MaterialTheme.colorScheme.primary else sem.ghost)
-                }
+                com.kevin.legion.ui.common.MonthStepButton(forward = true, enabled = canGoNextMonth, onClick = onNextMonth)
             }
         }
         // The per-account toggle (Kevin, 2026-08-18: "spending... toggleable between the credit
@@ -1138,7 +1144,7 @@ private fun SpendPane(
             )
         }
         Text(
-            credTile.hero,
+            com.kevin.legion.ui.fleet.softHero(credTile.hero),
             style = MaterialTheme.typography.displayLarge,
             // A month's own spend is a VALUE, mint like every other reading in the app (ticket 01's
             // "mint is every value, amber is every highlight") - the same `sem.data` HOME's CRED

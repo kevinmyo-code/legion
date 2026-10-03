@@ -110,7 +110,7 @@ fun GoalsPanel(aspect: String, modifier: Modifier = Modifier) {
 
     DeckPane(
         header = "Goals",
-        headerAccent = if (goals.isNotEmpty()) "${goals.size} ACTIVE" else null,
+        headerAccent = if (goals.isNotEmpty()) "${goals.size} active" else null,
         modifier = modifier,
     ) {
         if (loaded && goals.isEmpty()) {
@@ -131,7 +131,7 @@ fun GoalsPanel(aspect: String, modifier: Modifier = Modifier) {
                 GoalPlanButton(modifier = Modifier.padding(end = 16.dp))
             }
             Text(
-                "+ ADD GOAL",
+                "Add goal",
                 style = LegionType.stamp,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable { showAddDialog = true },
@@ -241,7 +241,7 @@ private fun GoalRow(goal: Goal, resolution: MetricResolution? = null, modifier: 
         DeckRow(
             label = goal.statement,
             value = valueText,
-            tag = { DeckTag(if (measurable) "TARGET" else "PROSE", DeckTagStyle.OUTLINE_MUTED) },
+            tag = { DeckTag(if (measurable) "Target" else "Prose", DeckTagStyle.OUTLINE_MUTED) },
         )
         if (resolution != null) {
             val nowText = when (resolution) {

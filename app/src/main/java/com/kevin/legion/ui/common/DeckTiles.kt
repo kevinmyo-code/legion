@@ -188,7 +188,9 @@ private fun HalfTileCaption(text: String) {
         text.deckCase(),
         style = LegionType.stamp,
         color = sem.faint,
-        maxLines = 1,
+        // Two lines: a one-line caption ellipsised "no maintenance schedule" to "no maintenance sc...",
+        // cutting a trust-bearing sentence (device walk 2026-10-03).
+        maxLines = 2,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
     )

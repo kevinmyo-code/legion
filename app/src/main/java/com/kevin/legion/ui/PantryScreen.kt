@@ -1,5 +1,6 @@
 package com.kevin.legion.ui
 
+import com.kevin.legion.ui.common.DeckScreenHeader
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -82,7 +83,7 @@ data class PantryUiState(
 )
 
 @Composable
-fun PantryScreen(onOpenImport: () -> Unit) {
+fun PantryScreen(onOpenImport: () -> Unit, onBack: () -> Unit = {}) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(PantryUiState()) }
     // Backend-erp phase 3, item 5: this screen had NO reload path at all before this - the single
@@ -123,33 +124,25 @@ fun PantryScreen(onOpenImport: () -> Unit) {
 
     // Soft Material (ADR 0051): wrapped here, not inside PantryContent, because that function reads
     // LocalLegionSemantics before its first Surface.
-    SoftTheme { PantryContent(state = state, onOpenImport = onOpenImport) }
+    SoftTheme { PantryContent(state = state, onOpenImport = onOpenImport, onBack = onBack) }
 }
 
 /** Plain UI: [state] plus callbacks, no controller reference - see the file doc comment. */
 @Composable
-fun PantryContent(state: PantryUiState, onOpenImport: () -> Unit) {
+fun PantryContent(state: PantryUiState, onOpenImport: () -> Unit, onBack: () -> Unit = {}) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AreaChip(AreaAccent.MONEY, size = 32.dp, iconSize = 18.dp)
-                    Text(
-                        "Pantry",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(start = 10.dp),
-                    )
-                }
+            // Back arrow + chip + title like every soft drill-down; Import (the hands path to
+            // adding a receipt) keeps its place on its own row beneath.
+            DeckScreenHeader(title = "Pantry", onBack = onBack, accent = AreaAccent.MONEY)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onOpenImport) {
                     Text("Import", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
             }
+          // Side padding: the panels below were flush with the screen edge.
+          Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             // Backend-erp phase 3: stale/failed-read notice, right under the title, never below
             // the fold.
             ReadStateBanner(state.read, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
@@ -184,6 +177,7 @@ fun PantryContent(state: PantryUiState, onOpenImport: () -> Unit) {
                     }
                 }
             }
+          }
         }
     }
 }

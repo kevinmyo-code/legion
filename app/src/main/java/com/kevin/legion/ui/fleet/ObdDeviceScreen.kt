@@ -449,16 +449,16 @@ private fun LinkPane(state: ObdDeviceUiState) {
     DeckPane(header = "Link", headerAccent = if (connected) "Connected" else null) {
         Text(
             when (state.connectionState) {
-                ObdBluetoothManager.ConnectionState.CONNECTED -> "// CONNECTED"
-                ObdBluetoothManager.ConnectionState.CONNECTING -> "// CONNECTING"
-                ObdBluetoothManager.ConnectionState.ERROR -> "// LAST ATTEMPT FAILED"
-                ObdBluetoothManager.ConnectionState.DISCONNECTED -> "// NO LINK"
+                ObdBluetoothManager.ConnectionState.CONNECTED -> "Connected"
+                ObdBluetoothManager.ConnectionState.CONNECTING -> "Connecting"
+                ObdBluetoothManager.ConnectionState.ERROR -> "Last attempt failed"
+                ObdBluetoothManager.ConnectionState.DISCONNECTED -> "No link"
             },
             style = LegionType.stamp,
             color = if (connected) sem.credit else sem.faint,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
-        DeckRow(label = "Active adapter", value = state.activeMac ?: "NONE SELECTED")
+        DeckRow(label = "Active adapter", value = state.activeMac ?: "None selected")
         if (connected && state.adapterIdString != null) {
             DeckRow(label = "Reported as", value = state.adapterIdString)
         }

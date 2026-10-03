@@ -17,6 +17,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -161,6 +162,23 @@ internal fun SoftScreenTopBar(
             style = MaterialTheme.typography.titleLarge,
             color = SoftColors.text,
             modifier = Modifier.weight(1f).padding(start = if (accent != null) 10.dp else 4.dp),
+        )
+    }
+}
+
+/**
+ * The month pager's arrow: the same glyph the Calendar header uses, turned half a revolution for
+ * "next" (no forward arrow is vendored). Replaces the bare "<" / ">" text buttons on the soft
+ * money pages. [enabled] false greys it; the label is spoken ("Previous month" / "Next month").
+ */
+@Composable
+internal fun MonthStepButton(forward: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        MsIcon(
+            res = R.drawable.ms_arrow_back,
+            contentDescription = if (forward) "Next month" else "Previous month",
+            tint = if (enabled) SoftColors.text else SoftColors.text2.copy(alpha = 0.4f),
+            modifier = if (forward) Modifier.rotate(180f) else Modifier,
         )
     }
 }

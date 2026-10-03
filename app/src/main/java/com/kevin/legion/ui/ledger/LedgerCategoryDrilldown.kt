@@ -301,7 +301,7 @@ internal fun SetTargetRow(
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = { if (text.isNotBlank()) onSet(text) }) {
-                Text("SET", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                Text("Set", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
             }
         }
         if (errorText != null) {

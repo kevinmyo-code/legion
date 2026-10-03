@@ -897,6 +897,7 @@ private fun LegionShell(
                 FleetScreen(
                     onOpenPlaces = { navController.navigate(LegionRoute.FLEET_PLACES) },
                     onOpenCars = { navController.navigate(LegionRoute.FLEET_CARS) },
+                    onBack = { navController.popBackStack() },
                     // Ticket 20: the UPLINK panel's DRIVE MODE row, inert since ticket 18,
                     // gets its click wired here - ticket 11 answer §1's OFFER, never auto.
                     onOpenDrivingMode = { navController.navigate(LegionRoute.DRIVING) { launchSingleTop = true } },
@@ -943,6 +944,7 @@ private fun LegionShell(
                     // pantry read screen moved under Money as a reachable
                     // sub-route rather than staying its own tab.
                     onOpenGroceries = { navController.navigate(LegionRoute.MONEY_PANTRY) },
+                    onBack = { navController.popBackStack() },
                     openCategory = pendingMoneyCategory,
                     openCategoryNonce = pendingMoneyCategoryNonce,
                     onCategoryDrilldownConsumed = { pendingMoneyCategoryNonce = 0 },
@@ -953,7 +955,10 @@ private fun LegionShell(
             // now; the phone only ever shows `ledger_transactions`, never writes to it from a file.
 
             composable(LegionRoute.MONEY_PANTRY) {
-                PantryScreen(onOpenImport = { navController.navigate(LegionRoute.MONEY_PANTRY_IMPORT) })
+                PantryScreen(
+                    onOpenImport = { navController.navigate(LegionRoute.MONEY_PANTRY_IMPORT) },
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable(LegionRoute.MONEY_PANTRY_IMPORT) {
                 PantryImportScreen(onBack = { navController.popBackStack() })
