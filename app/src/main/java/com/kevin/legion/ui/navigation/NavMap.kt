@@ -20,7 +20,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.location.LocationController
+import com.kevin.legion.navigation.CameraAction
 import com.kevin.legion.navigation.NavCameraMode
+import com.kevin.legion.navigation.NavCameraPlan
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.NavMapFeed
 import com.kevin.legion.navigation.RouteFailure
@@ -292,12 +294,15 @@ fun NavMap(
         viewport.onLocationChanged(l)
         viewport.evaluate()
     }
-    LaunchedEffect(camera, phase, routes.isNotEmpty()) {
-        if (phase != NavPhase.GUIDING) return@LaunchedEffect
-        when (camera) {
-            NavCameraMode.FOLLOWING -> navCamera.requestNavigationCameraToFollowing()
-            NavCameraMode.OVERVIEW -> navCamera.requestNavigationCameraToOverview()
-            NavCameraMode.FREE -> Unit
+    // The SDK camera is engaged only while guiding; every other phase releases it (phone run 4: it stayed
+    // in FOLLOWING after End and beat the next preview's fit). The decision is NavCameraPlan's.
+    val action = NavCameraPlan.decide(phase, camera, routes.isNotEmpty())
+    LaunchedEffect(action) {
+        when (action) {
+            CameraAction.SDK_FOLLOW -> navCamera.requestNavigationCameraToFollowing()
+            CameraAction.SDK_OVERVIEW -> navCamera.requestNavigationCameraToOverview()
+            CameraAction.FIT_ROUTE, CameraAction.RELEASE -> navCamera.requestNavigationCameraToIdle()
+            CameraAction.LEAVE_ALONE -> Unit
         }
     }
     // Preview fit and preview overview are one framing: the whole selected route, inside the measured
@@ -306,8 +311,8 @@ fun NavMap(
     // The fit includes the user's puck as well as the route (second device run: the origin was clipped
     // under the sheet). Keyed on whether a fix exists, not on every fix, so the camera is not chased.
     val hasFix = deviceFix != null
-    LaunchedEffect(phase, routes, selectedRoute, camera, insets, hasFix) {
-        if (phase == NavPhase.PREVIEW && routes.isNotEmpty()) {
+    LaunchedEffect(action, routes, selectedRoute, camera, insets, hasFix) {
+        if (action == CameraAction.FIT_ROUTE) {
             delay(FRAME_SETTLE_MS)
             val fix = deviceFix?.let { Point.fromLngLat(it.longitude, it.latitude) }
             frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), listOfNotNull(fix), edge())
