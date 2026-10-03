@@ -39,7 +39,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.db import connection, transaction
-from django.db.models import BooleanField, Case, Exists, F, OuterRef, Subquery, TextField, Value, When
+from django.db.models import (
+    BooleanField,
+    Case,
+    Exists,
+    F,
+    OuterRef,
+    Subquery,
+    TextField,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 
 from ingest.category_rules import first_match, household_rules

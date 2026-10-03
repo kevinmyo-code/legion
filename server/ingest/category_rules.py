@@ -59,7 +59,10 @@ def household_rules(household) -> list[Rule]:
         .order_by("created_at_client", "id")
         .values_list("substring", "category")
     )
-    return [Rule(substring_upper=substring.upper(), category=category) for substring, category in rows]
+    return [
+        Rule(substring_upper=substring.upper(), category=category)
+        for substring, category in rows
+    ]
 
 
 def first_match(description: str, rules: Sequence[Rule]) -> str | None:

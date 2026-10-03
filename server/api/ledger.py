@@ -9,7 +9,7 @@ left to be inferred from which base class each viewset happens to extend:
 | `categories` | full CRUD | authored config, `LedgerConfigBackend` already writes it |
 | `category_rules` | full CRUD | same |
 | `budget_targets` | full CRUD | same |
-| `ledger_transaction_categories` | full CRUD, keyed by transaction | authored: a category laid OVER a gated row |
+| `ledger_transaction_categories` | full CRUD, by transaction | a category laid OVER a gated row |
 | `statements` | **GET only** | the section 4 gate's own output |
 | `ledger_transactions` | **GET only** | the section 4 gate's own output |
 

@@ -100,7 +100,9 @@ def test_one_override_per_transaction(household_a, rows):
 def test_a_blank_category_and_an_unknown_source_are_refused_by_sql(household_a, rows):
     txn = rows["UBER *TRIP"]
     assert "category_not_blank" in refused(lambda: an_override(household_a, txn, "  "))
-    assert "source_valid" in refused(lambda: an_override(household_a, txn, "Transport", source="ai"))
+    assert "source_valid" in refused(
+        lambda: an_override(household_a, txn, "Transport", source="ai")
+    )
 
 
 def test_an_override_cannot_sit_in_another_household_than_its_transaction(
@@ -395,7 +397,9 @@ CATEGORIES = "/api/ledger/categories/"
 
 def test_a_category_is_spending_unless_flagged(auth_client):
     made = auth_client.put(
-        f"{CATEGORIES}guid-shopping/", {"name": "Shopping", "is_food_category": False}, format="json"
+        f"{CATEGORIES}guid-shopping/",
+        {"name": "Shopping", "is_food_category": False},
+        format="json",
     )
     assert made.status_code == 200, made.data
     assert made.data["excluded_from_spend"] is False
@@ -413,7 +417,9 @@ def test_transfers_carries_the_flag_and_a_put_without_it_keeps_it(auth_client):
     # An older phone that has never heard of the flag clears nothing: an
     # omitted field is unchanged on an update.
     again = auth_client.put(
-        f"{CATEGORIES}guid-transfers/", {"name": "Transfers", "is_food_category": False}, format="json"
+        f"{CATEGORIES}guid-transfers/",
+        {"name": "Transfers", "is_food_category": False},
+        format="json",
     )
     assert again.data["excluded_from_spend"] is True
 
