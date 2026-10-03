@@ -4,7 +4,7 @@ ticket: 15
 title: Push notifications
 type: build
 status: open
-status-detail: ""
+status-detail: "server half built; client half owed"
 blockers: ["05", "08", "14"]
 blocked-by: ["[[05-join-signup-and-settings]]", "[[08-repeat-exceptions-on-the-engine]]", "[[14-reminder-lead-time-on-events]]"]
 open-blockers: 3
@@ -28,12 +28,12 @@ See `.scratch/web-revamp/spec.md` D7.
 
 ## Verification
 
-- [ ] pytest with a fake sender and frozen clock: list batch after 2 min, grouped per list per
+- [x] pytest with a fake sender and frozen clock: list batch after 2 min, grouped per list per
       creator, never sent to the creator; a reminder fires once per occurrence incl. repeats and
       skips; private events remind only their owner; the morning message once per local day and
       nothing when nothing is due; 410 deletes the subscription; 5 failures delete it; one-tap off
       stops that kind.
-- [ ] pytest: `copy.py` strings contain none of "haven't", "miss", "streak", "days since", "come back".
+- [x] pytest: `copy.py` strings contain none of "haven't", "miss", "streak", "days since", "come back".
 - [ ] vitest: iOS non-standalone shows the install card; subscribe POSTs the subscription.
 - [ ] Owed on live (Kevin): VAPID keys in env, `install_schedule.py` run for the new line, Mia
       subscribes, a Groceries add and a 30-minute reminder both reach her phone.

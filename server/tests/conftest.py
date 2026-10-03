@@ -295,6 +295,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_event_columns(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0014`: the owner key becomes ON DELETE RESTRICT.
+            from household.visibility_sql import restrict_event_owner
+
+            skipped = restrict_event_owner(cursor)
+            assert skipped is None, skipped
             # `ingest/migrations/0013` (web-revamp ticket 08), the same way.
             from api.event_columns import add_event_skip_sync_columns
 

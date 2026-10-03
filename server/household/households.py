@@ -397,6 +397,10 @@ class MemberDetailView(APIView):
                 revoked_at=now
             )
             tombstone_private_rows(household, membership.user)
+            # web-revamp ticket 15: their browsers stop hearing this household.
+            from push.models import PushSubscription
+
+            PushSubscription.objects.filter(household=household, user=membership.user).delete()
             membership.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

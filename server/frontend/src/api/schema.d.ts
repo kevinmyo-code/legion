@@ -188,6 +188,38 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * @description web-revamp ticket 05 (spec D12): a member renames themself. Writes
+         *     `first_name`, the field `GET /api/households/me` reads members' names
+         *     from. Only your own account: there is no user id in the path.
+         */
+        patch: operations["api_auth_me_partial_update"];
+        trace?: never;
+    };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/auth/password` (web-revamp ticket 05, spec D12).
+         *
+         *     The current password is required even from a signed-in session: a
+         *     browser left open is not the person. Throttled on the `login` scope,
+         *     because checking a current password is a password guess like any other.
+         *     The new one runs Django's `AUTH_PASSWORD_VALIDATORS`, and each refusal
+         *     is said in words. A browser session survives the change
+         *     (`update_session_auth_hash`); device tokens are untouched, since a token
+         *     is not derived from the password.
+         */
+        post: operations["api_auth_password_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -2624,6 +2656,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/push/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_push_preferences_retrieve"];
+        put: operations["api_push_preferences_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/preferences/off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/push/preferences/off {kind}` - the one-tap silence (spec D7,
+         *     compulsion test (d)).
+         */
+        post: operations["api_push_preferences_off_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_push_subscriptions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["api_push_subscriptions_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/vapid-public-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_push_vapid_public_key_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice_notes/": {
         parameters: {
             query?: never;
@@ -3669,6 +3785,7 @@ export interface components {
             /** Format: email */
             email: string;
             device_name: string;
+            name: string;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -3931,6 +4048,18 @@ export interface components {
             lat?: number | null;
             /** Format: double */
             lng?: number | null;
+        };
+        OffRequest: {
+            /** @description list_changes, event_reminders or task_due_morning. */
+            kind: string;
+        };
+        OffResponse: {
+            list_changes: boolean;
+            event_reminders: boolean;
+            task_due_morning: boolean;
+            /** Format: time */
+            morning_time: string;
+            detail: string;
         };
         /**
          * @description Field-for-field `RemoteOilAnalysis` / `OilAnalysisUpload`: a used-oil lab
@@ -4357,6 +4486,11 @@ export interface components {
             /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
             next_after: string | null;
         };
+        /** @description `POST /api/auth/password` (web-revamp ticket 05, spec D12). */
+        PasswordChange: {
+            current_password: string;
+            new_password: string;
+        };
         PatchedChecklist: {
             /** Format: uuid */
             readonly id?: string;
@@ -4457,6 +4591,10 @@ export interface components {
         PatchedHouseholdPatchRequest: {
             name?: string;
         };
+        /** @description `PATCH /api/auth/me` (web-revamp ticket 05, spec D12). */
+        PatchedMeUpdate: {
+            name?: string;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -4492,6 +4630,13 @@ export interface components {
             readonly updated_at: string;
             /** Format: date-time */
             readonly deleted_at: string | null;
+        };
+        Preference: {
+            list_changes: boolean;
+            event_reminders: boolean;
+            task_due_morning: boolean;
+            /** Format: time */
+            morning_time: string;
         };
         /**
          * @description * `DETERMINISTIC` - Deterministic
@@ -4813,9 +4958,10 @@ export interface components {
          *     * `backup` - Backup
          *     * `obd_rollup` - OBD roll-up
          *     * `heartbeat` - Heartbeat
+         *     * `push` - Notifications
          * @enum {string}
          */
-        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat";
+        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push";
         Spend: {
             /** @description YYYY-MM, the budget month these figures are for. */
             month: string;
@@ -4931,6 +5077,33 @@ export interface components {
             provisional_superseded: number;
             anchors: components["schemas"]["StatementAnchors"];
         };
+        /** @description What a member sees of a subscription: never the keys. */
+        Subscription: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly user_agent: string;
+            readonly tz: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly last_ok_at: string | null;
+        };
+        SubscriptionKeys: {
+            p256dh: string;
+            auth: string;
+        };
+        /** @description `PushSubscription.toJSON()` as a browser gives it, plus the device's zone. */
+        SubscriptionRequest: {
+            endpoint: string;
+            keys: components["schemas"]["SubscriptionKeys"];
+            /** @default  */
+            user_agent: string;
+            /**
+             * @description The browser's IANA zone. It decides which local day 'this morning' is.
+             * @default UTC
+             */
+            tz: string;
+        };
         /**
          * @description `POST /api/checklists/<id>/items/<item>/tick` body - `{day, value?,
          *     source?}`. Deliberately a plain `Serializer`, not a `ModelSerializer`
@@ -4946,6 +5119,12 @@ export interface components {
             value?: number | null;
             /** @default USER_REPORTED */
             source: string;
+        };
+        VapidKey: {
+            enabled: boolean;
+            public_key: string | null;
+            /** @description When push is off, the sentence to show: notifications are not set up here. */
+            detail: string | null;
         };
         /**
          * @description Field-for-field `RemoteVehicle` / `VehicleUpload` (`FleetBackend.kt`).
@@ -5397,6 +5576,103 @@ export interface operations {
             };
             /** @description The credential is live but its user is not a household member. A `User` row alone is not enough - see `manage.py add_household_member`. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_me_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedMeUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedMeUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedMeUpdate"];
+            };
+        };
+        responses: {
+            /** @description The name is changed. The body is the account as it now is. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description The name is blank or too long. Nothing was changed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No live credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_password_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+                "application/x-www-form-urlencoded": components["schemas"]["PasswordChange"];
+                "multipart/form-data": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Changed. This session stays signed in; devices stay signed in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Nothing was changed: the current password is wrong, or the new one fails a password rule. `detail` says which, in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No live credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many attempts this minute. Nothing was changed. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9739,6 +10015,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_push_preferences_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preference"];
+                };
+            };
+        };
+    };
+    api_push_preferences_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Preference"];
+                "application/x-www-form-urlencoded": components["schemas"]["Preference"];
+                "multipart/form-data": components["schemas"]["Preference"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preference"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_push_preferences_off_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OffRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["OffRequest"];
+                "multipart/form-data": components["schemas"]["OffRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_push_subscriptions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["SubscriptionRequest"];
+                "multipart/form-data": components["schemas"]["SubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description This browser was already subscribed; its keys and zone are updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscription"];
+                };
+            };
+            /** @description Subscribed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscription"];
+                };
+            };
+            /** @description Nothing was saved. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Notifications are not set up on this server. Nothing was saved. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_push_subscriptions_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unsubscribed. This browser gets nothing more. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No subscription of yours has that id. Nothing was removed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_push_vapid_public_key_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VapidKey"];
                 };
             };
         };

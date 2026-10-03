@@ -414,6 +414,73 @@ def test_removing_a_member_tombstones_their_private_rows_and_keeps_them_private(
     _assert_redacted(_rows_by_id(feed["checklists"])[ids["checklist"]], ids["checklist"])
     assert "mia-event" not in str(feed) and "mia-list" not in str(feed)
     assert _rows_by_id(feed["events"])[str(shared["id"])]["title"] == "mia-shared"
+    # The other member's pulls, through both list routes, also see only redacted rows.
+    for path, key in (("/api/events", "event"), ("/api/checklists/", "checklist")):
+        listed = _rows_by_id(kevin_client.get(path, {"since": EPOCH}).data["results"])
+        _assert_redacted(listed[ids[key]], ids[key])
+    for table in ("checklist_items", "checklist_ticks"):
+        for row in feed[table]:
+            assert set(row) == {"id", "deleted_at", "updated_at", "redacted"}, (table, row)
+
+
+# =============================================================================
+# A user who owns private rows cannot be hard-deleted (spec D3, corrected)
+# =============================================================================
+
+
+def _refused_delete(user):
+    from django.db.models import ProtectedError, RestrictedError
+
+    with pytest.raises((IntegrityError, ProtectedError, RestrictedError)), transaction.atomic():
+        user.delete()
+
+
+def test_a_user_who_owns_a_private_event_cannot_be_hard_deleted(mia_client, mia):
+    """SET NULL would have turned the event shared, title and all, in the
+    statement that deleted its owner. RESTRICT refuses instead, in Django and
+    again in SQL."""
+    event = mia_client.post(
+        "/api/events", {"title": "mia-secret", "visibility": "private"}, format="json"
+    ).data
+    _refused_delete(mia)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("delete from household_user where id = %s", [mia.pk])
+    assert Event.objects.get(pk=event["id"]).owner_user_id == mia.pk
+
+
+def test_a_user_who_owns_a_private_checklist_cannot_be_hard_deleted(mia_client, mia):
+    checklist = mia_client.post(
+        "/api/checklists/", {"name": "mia-secret", "visibility": "private"}, format="json"
+    ).data
+    _refused_delete(mia)
+    assert Checklist.objects.get(pk=checklist["id"]).owner_user_id == mia.pk
+
+
+def test_a_removed_member_still_cannot_be_hard_deleted_while_their_tombstones_are_private(
+    kevin_client, mia_client, mia
+):
+    ids = _private_world(mia_client, tag="mia")
+    assert kevin_client.delete(f"/api/households/me/members/{mia.pk}").status_code == 204
+    _refused_delete(mia)
+    assert Event.objects.get(pk=ids["event"]).owner_user_id == mia.pk
+
+
+def test_a_user_who_only_created_shared_rows_can_be_deleted_and_attribution_goes(
+    mia_client, mia
+):
+    """`created_by_id` is attribution only, so it stays ON DELETE SET NULL."""
+    event = mia_client.post("/api/events", {"title": "mia-shared"}, format="json").data
+    checklist = mia_client.post("/api/checklists/", {"name": "mia-shared"}, format="json").data
+    item = mia_client.post(
+        f"/api/checklists/{checklist['id']}/items", {"text": "eggs"}, format="json"
+    ).data
+    mia.delete()
+    assert Event.objects.get(pk=event["id"]).created_by_id is None
+    assert Checklist.objects.get(pk=checklist["id"]).created_by_id is None
+    assert ChecklistItem.objects.get(pk=item["id"]).created_by_id is None
 
 
 # =============================================================================

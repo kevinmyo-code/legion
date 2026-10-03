@@ -42,6 +42,8 @@ STALE_AFTER: dict[str, datetime.timedelta] = {
     Source.BACKUP: datetime.timedelta(hours=36),
     Source.OBD_ROLLUP: datetime.timedelta(hours=36),
     Source.HEARTBEAT: datetime.timedelta(hours=1),
+    # Every five minutes, so three missed runs is the line.
+    Source.PUSH: datetime.timedelta(minutes=15),
 }
 
 
@@ -66,6 +68,7 @@ WORDS: dict[str, _Words] = {
     Source.BACKUP: _Words("The backup", "last ran", "has never run"),
     Source.OBD_ROLLUP: _Words("The drive roll-up", "last ran", "has never run"),
     Source.HEARTBEAT: _Words("The scheduler", "last ran", "has never run"),
+    Source.PUSH: _Words("Notifications", "were last checked", "have never been checked"),
 }
 
 

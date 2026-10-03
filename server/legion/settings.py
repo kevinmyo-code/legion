@@ -129,6 +129,9 @@ INSTALLED_APPS = [
     # engine-mcp ticket 10: the `/mcp` endpoint, and `public.mcp_calls`, its
     # audit trail. Named `engine_mcp` so it cannot shadow the `mcp` SDK.
     "engine_mcp",
+    # web-revamp ticket 15: Web Push subscriptions, preferences and the
+    # dedupe ledger (`public.push_*`), and `manage.py push_dispatch`.
+    "push",
 ]
 
 MIDDLEWARE = [

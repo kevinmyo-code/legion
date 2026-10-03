@@ -24,9 +24,17 @@ checks membership at the moment an owner is SET (insert, or an update that
 changes the owner or the household), which is the moment the rule is about,
 and leaves a removed member's tombstones alone.
 
-`owner_user_id` and `created_by_id` reference `household_user (id)` with
-`ON DELETE SET NULL`, as spec D3 rules. On `events` that is SQL; on the
-Django-managed `checklists` tables it is Django's `on_delete=SET_NULL`.
+**`owner_user_id` is `ON DELETE RESTRICT`; `created_by_id` is `ON DELETE SET
+NULL`** (spec D3 as corrected 2026-10-03). A user who still owns private rows
+cannot be hard-deleted: SET NULL there would turn every one of them shared,
+titles and all, in the same statement that removed the person they were
+private to. `created_by_id` is attribution only, so losing it loses nothing
+private. Removing a MEMBER is a different act and is unaffected: it
+tombstones their private rows and leaves `owner_user_id` set
+(`household/households.tombstone_private_rows`). `ingest/migrations/0010`
+first created the owner key as SET NULL; `0014` changes it, through
+`restrict_event_owner` below. On the Django-managed `checklists` it is
+Django's `on_delete=RESTRICT`.
 
 `events` is a Supabase-era table (`managed = False`), so its columns are
 added here, guarded on the table existing, the same shape as
@@ -133,4 +141,36 @@ def add_event_columns(cursor) -> str | None:
     cursor.execute(event_columns_sql(_schema_of(cursor, USER_TABLE)))
     create_guard_function(cursor)
     attach_guard(cursor, "events")
+    return None
+
+
+OWNER_FK_NAME = "events_owner_user_id_fkey"
+
+
+def restrict_event_owner_sql(user_schema: str) -> str:
+    return f"""
+alter table public.events drop constraint if exists {OWNER_FK_NAME};
+alter table public.events add constraint {OWNER_FK_NAME}
+    foreign key (owner_user_id) references {user_schema}.{USER_TABLE} (id) on delete restrict;
+"""
+
+
+def unrestrict_event_owner_sql(user_schema: str) -> str:
+    return f"""
+alter table public.events drop constraint if exists {OWNER_FK_NAME};
+alter table public.events add constraint {OWNER_FK_NAME}
+    foreign key (owner_user_id) references {user_schema}.{USER_TABLE} (id) on delete set null;
+"""
+
+
+def restrict_event_owner(cursor, *, restrict: bool = True) -> str | None:
+    """`events.owner_user_id` -> `household_user` becomes ON DELETE RESTRICT
+    (or back to SET NULL for the reverse), if `events` is there."""
+    cursor.execute("select to_regclass('public.events')")
+    if cursor.fetchone()[0] is None:
+        return "events: public.events does not exist here; nothing changed."
+    schema = _schema_of(cursor, USER_TABLE)
+    cursor.execute(
+        restrict_event_owner_sql(schema) if restrict else unrestrict_event_owner_sql(schema)
+    )
     return None
