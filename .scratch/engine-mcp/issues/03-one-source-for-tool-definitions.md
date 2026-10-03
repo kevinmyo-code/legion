@@ -3,12 +3,12 @@ map: engine-mcp
 ticket: "03"
 title: "One source of truth for tool definitions"
 type: decision
-status: open
+status: resolved
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -44,3 +44,5 @@ only in a tool is a defect, same as a rule only in Kotlin). Its descriptions car
 ## Resolution
 
 Kevin picks. If B, 06 decides the first tool list.
+
+**Ruled 2026-10-02 (Kevin): a curated Python tool registry on the server**, each tool calling existing service code. `openapi.yaml` stays the REST contract and is not the MCP source. Not one tool per REST operation (about 70 CRUD-shaped tools).

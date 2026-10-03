@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01", "05"]
 blocked-by: ["[[01-where-the-mcp-server-lives]]", "[[05-auth-per-caller]]"]
-open-blockers: 2
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 

@@ -3,12 +3,12 @@ map: engine-mcp
 ticket: "01"
 title: "Where the MCP server lives: inside Django, a sidecar, or a stdio adapter"
 type: decision
-status: open
+status: resolved
 status-detail: ""
 blockers: ["02"]
 blocked-by: ["[[02-sdk-django-and-client-support]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -46,3 +46,5 @@ stateless MCP POST is a JSON-RPC request and a JSON response.
 ## Resolution
 
 Kevin picks A, B or C after 02 lands.
+
+**Ruled 2026-10-02 (Kevin): inside Django, a `/mcp` view in the engine process.** Same household choke point, same deploy. Ticket 02 confirmed MCP SDK 2.2.0 runs per-request from sync Django; `django-mcp-server` is out (its unbounded `mcp` pin breaks on install). The SDK's host check needs `transport_security` set for the public hostname, and each tool must receive the Django request so `household_of` can run. The stdio adapter (09) stays as the dev path until 10 lands.

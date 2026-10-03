@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["05", "08", "10"]
 blocked-by: ["[[05-auth-per-caller]]", "[[08-public-exposure-and-clone-and-run]]", "[[10-the-engine-mcp-endpoint]]"]
-open-blockers: 3
+open-blockers: 2
 ready: false
 tags: [ticket]
 ---

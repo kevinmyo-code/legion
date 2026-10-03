@@ -3,12 +3,12 @@ map: engine-mcp
 ticket: "05"
 title: "Auth per caller, and what a token is allowed to do"
 type: decision
-status: open
+status: resolved
 status-detail: ""
 blockers: ["02"]
 blocked-by: ["[[02-sdk-django-and-client-support]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -52,3 +52,5 @@ do everything its user can. No OAuth anywhere.
 ## Resolution
 
 Kevin rules on 2, 3 and 4.
+
+**Ruled 2026-10-02 (Kevin): device tokens now, OAuth later.** The phone and Claude Code authenticate with device tokens, which gain a read/write scope. claude.ai, ChatGPT and the Gemini app wait for ticket 12. The privacy question is answered: Claude Code may read the live household during development (Kevin: *"in the dev side also you could query it while were building together"*).

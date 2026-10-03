@@ -5975,3 +5975,19 @@ figures from Artificial Analysis, none measured here). Kevin's rulings:
   building together."* Charted as `.scratch/engine-mcp/`.
 - **Picovoice is out** (free tier ended 2026-06-30, keys call home). Kevin reports the Vosk wake
   word drains battery; openWakeWord and keyless alternatives are under evaluation before he decides.
+
+## 2026-10-02 - engine-mcp: inside Django, a Python registry, device tokens, read and write
+
+Kevin ruled on four of the map's decision tickets the same afternoon:
+
+- **01:** the MCP server is a `/mcp` view inside the Django engine (SDK 2.2.0; `django-mcp-server` is
+  broken on install).
+- **03:** tools are a curated Python registry calling existing service code, not one per OpenAPI
+  operation.
+- **05:** device tokens now, with a read/write scope; OAuth for third-party clients waits. Claude
+  Code may read the live household during development.
+- **06:** **read and write in v1**, against the read-only recommendation. Writes ride the REST
+  views' serializers on a write-scoped token; gated tables stay unwritable; memory tables are
+  excluded by default because that sub-question was not ruled.
+
+Still open: 04 (how the phone consumes it), 07 (ingestion over MCP), 08 (public exposure).

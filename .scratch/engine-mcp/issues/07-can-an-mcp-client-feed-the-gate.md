@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["06"]
 blocked-by: ["[[06-which-tools-and-the-honesty-contract]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 
