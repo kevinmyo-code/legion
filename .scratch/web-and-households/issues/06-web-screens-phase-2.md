@@ -3,10 +3,11 @@ map: web-and-households
 ticket: "06"
 title: "Web screens, phase 2: Ledger, Pantry, Body, Fleet, Places, Voice notes, and a glanceable home"
 type: build
-status: open
+status: resolved
+status-detail: "Superseded 2026-10-03 by .scratch/web-revamp/ (spec 'Supersedes' table); built there."
 blockers: ["05", "11"]
 blocked-by: ["[[05-web-screens-phase-1]]", "[[11-report-endpoints]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
@@ -30,3 +31,8 @@ tags: [ticket]
       that includes it.
 - [ ] A parent's household with no data: every screen renders its empty state in words, no chart
       with an empty axis.
+
+
+## Answer
+
+Superseded 2026-10-03 by .scratch/web-revamp/ (spec 'Supersedes' table); built there. Its trust rules carried over verbatim into web-revamp tickets 12, 16 and 17.

@@ -73,6 +73,29 @@ Made in the 2026-10-03 interview, all recorded in the spec:
 - Dark mode following the system (D2). No offline writes.
 - Workbench order: Money, Calendar, Pantry and body, Fleet places and notes.
 
+## Status - 2026-10-03 evening
+
+**All 17 build tickets built and on `dev` (`db73b6e`).** 491 vitest / 0 failed; server CI on dev
+green (1391 passed, 44 skipped), its first green run since 2026-09-29. Ticket 18 is a handoff list
+for the Android side and stays open.
+
+**Owed by Kevin, in order, none of it done by an agent:**
+1. Deploy (manual `workflow_dispatch`); seven new migrations apply on live (ingest 0009-0015,
+   checklists 0003-0004, push 0001).
+2. `manage.py make_private` twice: `--origin-prefix canvas:` and `--structured-meta-key course`.
+3. Push: VAPID keys, and `deploy/cloudrun/_common.py` must pass `VAPID_*` to the service and job
+   (it does not yet; push stays off in words until it does), then install the new scheduler line.
+4. Invite Mia from `/settings/household`; she installs the PWA on her iPhone and subscribes.
+5. Check her spend card against the phone's Money figure to the cent (known parity risk: the phone
+   keys accounts on nickname, the server on last4).
+
+**Open questions for Kevin** (defaults built, each a small change): rail 232 px vs C's 96 px;
+Canvas tasks tickable but not editable; tasks in the week view's all-day lane; weeks start Sunday;
+adding a vehicle (needs the origin_guid ruling); place rename and radius; voice-note delete on web;
+grocery plural rule on the server; weekly spend bars (needs a server field); a 4th pin refused;
+owners minting `creates_household` invites; codeless signup on the web; account routes also accept
+device tokens; `preferences/off` without CSRF (can only turn a kind off).
+
 ## Flagged for Kevin
 
 - Spend endpoint skips web-and-households 11's RLS blocker: **approved** by Kevin 2026-10-03.

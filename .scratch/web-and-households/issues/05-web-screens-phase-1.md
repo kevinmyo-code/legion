@@ -3,7 +3,8 @@ map: web-and-households
 ticket: "05"
 title: "Web screens, phase 1: sign in, sign up, household, Today, Lists, Settings; installed on an iPhone"
 type: build
-status: open
+status: resolved
+status-detail: "Superseded 2026-10-03 by .scratch/web-revamp/ (spec 'Supersedes' table); built there."
 blockers: ["03", "04"]
 blocked-by: ["[[03-accounts-signup-invites]]", "[[04-web-client-stack]]"]
 open-blockers: 1
@@ -43,3 +44,8 @@ persona. No jargon: "unverified", not "UNRECONCILED", on any surface that reache
 - [ ] Lighthouse PWA installability passes.
 - [ ] `app/`: one link on `KeyScreen`'s engine sign-in: "No account? Create one on the web at
       <engine URL>". The only phone change in this map.
+
+
+## Answer
+
+Superseded 2026-10-03 by .scratch/web-revamp/ (spec 'Supersedes' table); built there. Its trust rules carried over verbatim into web-revamp tickets 12, 16 and 17.

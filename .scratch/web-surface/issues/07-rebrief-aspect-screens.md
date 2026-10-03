@@ -3,8 +3,8 @@ map: web-surface
 ticket: "07"
 title: "Re-brief web-and-households 06 with what the real data turned out to look like"
 type: task
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Superseded 2026-10-03 by .scratch/web-revamp/ (spec 'Supersedes' table); built there."
 blockers: ["01", "03"]
 blocked-by: ["[[01-the-horizon]]", "[[03-desktop-is-not-the-phone]]"]
 open-blockers: 2
@@ -31,3 +31,8 @@ true, and it closes when 06 reads correctly.
 
 **Do not renumber or re-map 06.** It stays on `web-and-households`; this is an amendment, the same
 shape as `one-home` 04's build-time correction.
+
+
+## Answer
+
+Superseded 2026-10-03 by .scratch/web-revamp/ (spec 'Supersedes' table); built there. Its trust rules carried over verbatim into web-revamp tickets 12, 16 and 17.

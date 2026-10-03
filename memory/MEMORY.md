@@ -22,6 +22,18 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Web revamp - 2026-10-03 (session legion-26)
+
+- **`.scratch/web-revamp/` is built end to end and on `dev` (`db73b6e`)**: soft Material light web
+  (ADR 0053), family view below 1024 px for Mia's iPhone PWA, workbench above it for Kevin, private
+  rows (ADR 0052, CLAUDE.md section 1 amended), spend computed on the engine, repeat skips, push.
+  491 vitest / 0; server CI green (1391 passed) for the first time since 2026-09-29.
+- **Nothing is deployed and nobody has used it on a real device or against live data.** Every web
+  test ran against a fake engine. The owed-by-Kevin list (deploy, `make_private` x2, VAPID wiring,
+  invite Mia, spend parity check) is in the map's Status section; read it there.
+- **ADR numbers 0052/0053 are taken.** A session in the main checkout was writing
+  `0050-mapbox-native-navigation.md` on a stale tree; it needs 0054.
+
 ## Overnight merges - 2026-09-28 ~01:30 (merge session, while Kevin slept)
 
 - **`dev` = `main` = this commit.** Merged, each only after a green run on the exact tree merged:
