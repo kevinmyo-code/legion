@@ -437,6 +437,8 @@ fun KeyScreen(onBack: () -> Unit) {
 
                 // --- Mapbox token (mapbox-nav ticket 09) - the row lives in MapboxTokenSection.kt ---
                 MapboxTokenSection((context.applicationContext as MidnightApplication).mapboxTokens)
+                Spacer(Modifier.height(8.dp))
+                MapboxTelemetrySection()
 
                 Spacer(Modifier.height(24.dp))
 

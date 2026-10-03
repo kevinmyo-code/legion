@@ -281,6 +281,8 @@ internal fun ChooseSheet(ui: NavUiState, actions: NavActions, modifier: Modifier
                 )
             }
         }
+        // Shown before any trip can start from here (research 01 section 6): where the location goes.
+        Text(LOCATION_DISCLOSURE, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
         val failure = ui.problem ?: ui.nav.message.takeIf { ui.nav.phase == NavPhase.FAILED }
         failure?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = SoftColors.caution) }
         val choice = ui.choice
@@ -304,3 +306,7 @@ internal fun ChooseSheet(ui: NavUiState, actions: NavActions, modifier: Modifier
         }
     }
 }
+
+/** Said on the "Where to?" sheet, before a first route is asked for. Mapbox's data use is in Setup. */
+internal const val LOCATION_DISCLOSURE =
+    "Routes come from Mapbox, which receives your location to find them. Usage data is optional, in Setup."
