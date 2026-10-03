@@ -6073,3 +6073,11 @@ Kevin on `.scratch/mapbox-nav/` tickets 04, 03 and 07: four wide tools (`navigat
 `trip_status`, `end_trip`), each reporting success only from SDK state after the call; a destination
 is read back only when the match is ambiguous; a trip started by voice while LEGION is in the
 background brings the nav screen to the front.
+
+## 2026-10-03 - Nav screen A; destination lookup order; guidance survives the screen going off
+
+Kevin on `.scratch/mapbox-nav/`: the nav screen is prototype A (turn banner plus bottom sheet,
+ticket 06). A spoken destination resolves through saved places, then calendar event locations,
+then contact addresses, then Mapbox search via the Search SDK (ticket 03). Guidance keeps running
+with the screen off or the app backgrounded; a trip ends on arrival, End, or process death, never
+on leaving the nav screen (ticket 07).

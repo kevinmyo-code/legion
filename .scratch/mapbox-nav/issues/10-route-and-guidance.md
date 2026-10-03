@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["03", "06", "07", "09"]
 blocked-by: ["[[03-resolving-a-spoken-destination]]", "[[06-the-nav-screen]]", "[[07-trip-lifecycle]]", "[[09-sdk-in-the-build]]"]
-open-blockers: 4
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

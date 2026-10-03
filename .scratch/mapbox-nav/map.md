@@ -5,7 +5,7 @@ charted: 2026-10-03
 charted-by: "Kevin + Opus"
 effort: "`.scratch/mapbox-nav/`"
 tickets: 13
-open: 7
+open: 5
 status: open
 tags: [map]
 ---
@@ -91,6 +91,10 @@ Then 05 (who speaks the turns) and 04; 03 and 07 after.
   is its own answer.
 - [The nav screen](issues/06-the-nav-screen.md) - A: turn banner on top, bottom sheet with time left, End and four
   tiles (stop, tolls, routes, mute); prototypes kept in `research/`.
+- [Resolving a spoken destination](issues/03-resolving-a-spoken-destination.md) - saved places, then calendar, then
+  contacts, then Mapbox search through the Search SDK; read back only when unsure; nothing from Mapbox stored.
+- [Trip lifecycle: screen off, backgrounded, billed](issues/07-trip-lifecycle.md) - guidance keeps going with the
+  screen off; a trip ends on arrival, End, or process death, not on leaving the screen.
 
 ## Not yet specified
 
