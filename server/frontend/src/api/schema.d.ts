@@ -1711,6 +1711,10 @@ export interface paths {
          *     authenticates a user who is in no household, so `IsHouseholdMember`
          *     refuses every request it makes.
          *
+         *     **And a fourth, since ADR 0052:** the events and checklists that were
+         *     private to them are tombstoned in the same transaction
+         *     (`tombstone_private_rows`). What they shared stays shared.
+         *
          *     **The `User` row itself is NOT deleted**, deliberately: their rows in the
          *     household's data carry `household_id`, not a user id that would dangle,
          *     and deleting an account is a different decision from removing it from a
@@ -2933,6 +2937,13 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             sync_id?: string | null;
+            /**
+             * @description `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+             *
+             *     * `shared` - shared
+             *     * `private` - private
+             */
+            visibility?: components["schemas"]["VisibilityEnum"];
         };
         ChecklistItem: {
             /** Format: uuid */
@@ -3211,6 +3222,13 @@ export interface components {
             structured_meta?: unknown;
             kind?: string;
             remind_minutes_before?: number | null;
+            /**
+             * @description `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+             *
+             *     * `shared` - shared
+             *     * `private` - private
+             */
+            visibility?: components["schemas"]["VisibilityEnum"];
         };
         Freshness: {
             sources: components["schemas"]["FreshnessSource"][];
@@ -4289,6 +4307,13 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at?: string | null;
             sync_id?: string | null;
+            /**
+             * @description `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+             *
+             *     * `shared` - shared
+             *     * `private` - private
+             */
+            visibility?: components["schemas"]["VisibilityEnum"];
         };
         PatchedChecklistItem: {
             /** Format: uuid */
@@ -4355,6 +4380,13 @@ export interface components {
             structured_meta?: unknown;
             kind?: string;
             remind_minutes_before?: number | null;
+            /**
+             * @description `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+             *
+             *     * `shared` - shared
+             *     * `private` - private
+             */
+            visibility?: components["schemas"]["VisibilityEnum"];
         };
         PatchedHouseholdPatchRequest: {
             name?: string;
@@ -4893,6 +4925,12 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
         };
+        /**
+         * @description * `shared` - shared
+         *     * `private` - private
+         * @enum {string}
+         */
+        VisibilityEnum: "shared" | "private";
         /**
          * @description Field-for-field `RemoteVoiceNote`. See this module's doc comment for
          *     the audio column that is absent from both.
@@ -6136,7 +6174,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One key per TABLE, named for the table, each holding every row changed at or after `since` with tombstones included, oldest first. **Not paged**: a large first pull should use the per-table `?since=` routes, which are. */
+            /** @description One key per TABLE, named for the table, each holding every row changed at or after `since` with tombstones included, oldest first. **Not paged**: a large first pull should use the per-table `?since=` routes, which are. In `events`, `checklists`, `checklist_items` and `checklist_ticks`, a row private to another member (or under a parent that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at` and `redacted: true`, nothing else (ADR 0052). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6168,7 +6206,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Checklists changed at or after `since`, tombstones included, oldest first, 500 to a page. Items and ticks are their own routes; GET /api/changes returns all three together. */
+            /** @description Checklists changed at or after `since`, tombstones included, oldest first, 500 to a page. Items and ticks are their own routes; GET /api/changes returns all three together. **A checklist private to another member arrives only as a redacted tombstone**: `id`, `deleted_at`, `updated_at` and `redacted: true`, nothing else (ADR 0052). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6318,6 +6356,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Nothing was changed: this member may not make the checklist private. `detail` is the sentence to show. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
             /** @description No such row. Nothing was changed. */
@@ -6624,7 +6671,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Rows changed at or after `since`, tombstones included, oldest first, 500 to a page. This route does NOT accept `?active=1` - the synced routes do; here a client filters `deleted_at` itself. */
+            /** @description Rows changed at or after `since`, tombstones included, oldest first, 500 to a page. This route does NOT accept `?active=1` - the synced routes do; here a client filters `deleted_at` itself. **A row private to another member arrives only as a redacted tombstone**: `id`, `deleted_at` and `updated_at` (both the instant it last changed) and `redacted: true`, and no other field (ADR 0052). Drop it like any other tombstone. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6745,6 +6792,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Nothing was changed: this member may not make the event private. `detail` is the sentence to show: "Only the person who added this can make it private." */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
             /** @description No such row. Nothing was changed. */
@@ -8067,7 +8123,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Removed. Their device tokens are revoked and the invites they minted are revoked. Their account still exists and belongs to no household. */
+            /** @description Removed. Their device tokens are revoked, the invites they minted are revoked, and the events and checklists that were private to them are deleted. What they shared stays. Their account still exists and belongs to no household. */
             204: {
                 headers: {
                     [name: string]: unknown;

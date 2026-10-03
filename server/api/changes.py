@@ -83,7 +83,7 @@ from checklists.serializers import (
     ChecklistSerializer,
     ChecklistTickSerializer,
 )
-from household.tenancy import scoped
+from household.tenancy import feed_rows, render_feed, scoped
 from legacy.models.dates import Event
 
 # The two hand-written aspects (Phase 2), then everything on the generic
@@ -158,7 +158,10 @@ class ChangesView(APIView):
                     "One key per TABLE, named for the table, each holding every row changed "
                     "at or after `since` with tombstones included, oldest first. **Not "
                     "paged**: a large first pull should use the per-table `?since=` routes, "
-                    "which are."
+                    "which are. In `events`, `checklists`, `checklist_items` and "
+                    "`checklist_ticks`, a row private to another member (or under a parent "
+                    "that is) arrives only as a redacted tombstone: `id`, `deleted_at`, "
+                    "`updated_at` and `redacted: true`, nothing else (ADR 0052)."
                 ),
             ),
             400: OpenApiResponse(
@@ -270,22 +273,26 @@ class ChangesView(APIView):
         # database in a single response - which is why `scoped()` is spelled
         # out on each of the four below rather than applied once somewhere a
         # later reader would have to go and find.
+        #
+        # ADR 0052 narrows the hand-written keys further, to what THIS member
+        # may see: `feed_rows` is `scoped()` plus the member filter, and a row
+        # private to someone else comes back only as a redacted tombstone
+        # (`id`, `deleted_at`, `updated_at`, `redacted`). For items and ticks
+        # the tombstone also fires when the PARENT turned private since the
+        # watermark, because that moves the parent's `updated_at` and not
+        # theirs; it carries the later of the two instants.
         if "events" in requested:
-            events = scoped(Event, request).filter(updated_at__gte=since).order_by("updated_at")
-            body["events"] = EventSerializer(events, many=True).data
+            body["events"] = render_feed(feed_rows(Event, request, since), EventSerializer, request)
         if "checklists" in requested:
-            checklists = (
-                scoped(Checklist, request).filter(updated_at__gte=since).order_by("updated_at")
+            body["checklists"] = render_feed(
+                feed_rows(Checklist, request, since), ChecklistSerializer, request
             )
-            items = (
-                scoped(ChecklistItem, request).filter(updated_at__gte=since).order_by("updated_at")
+            body["checklist_items"] = render_feed(
+                feed_rows(ChecklistItem, request, since), ChecklistItemSerializer, request
             )
-            ticks = (
-                scoped(ChecklistTick, request).filter(updated_at__gte=since).order_by("updated_at")
+            body["checklist_ticks"] = render_feed(
+                feed_rows(ChecklistTick, request, since), ChecklistTickSerializer, request
             )
-            body["checklists"] = ChecklistSerializer(checklists, many=True).data
-            body["checklist_items"] = ChecklistItemSerializer(items, many=True).data
-            body["checklist_ticks"] = ChecklistTickSerializer(ticks, many=True).data
 
         # Everything on the generic shape. One key per TABLE, named for the
         # table (`bodyweight_logs`, `memories`, ...), never for the aspect -

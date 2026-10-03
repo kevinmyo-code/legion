@@ -33,10 +33,19 @@ from api.schema import (
     NOT_FOUND,
     SINCE_PARAMETER,
     WRITE_REFUSED,
+    DetailSerializer,
     paged_serializer,
 )
 from api.sync import paginate_since, parse_since, save_or_400
-from household.tenancy import household_of, scoped
+from api.visibility import VisibilityField
+from household.tenancy import (
+    VISIBILITY_PRIVATE,
+    household_of,
+    owner_after_change,
+    render_rows,
+    scoped,
+    visible,
+)
 from legacy.enums import Provenance
 from legacy.models.dates import Event
 
@@ -81,6 +90,9 @@ def _choice_error(field: str, value, allowed: tuple[str, ...]) -> serializers.Va
 
 
 class EventSerializer(serializers.ModelSerializer):
+    # ADR 0052. Rendered from `owner_user_id`, which never goes on the wire.
+    visibility = VisibilityField()
+
     class Meta:
         model = Event
         fields = [
@@ -118,6 +130,7 @@ class EventSerializer(serializers.ModelSerializer):
             "structured_meta",
             "kind",
             "remind_minutes_before",
+            "visibility",
         ]
         # provenance/created_at/updated_at/deleted_at are server facts, not
         # caller intent (matching EventFields's own doc comment: "these
@@ -236,6 +249,17 @@ class EventSerializer(serializers.ModelSerializer):
                 "its context, so there is no household to write this event into."
             )
         validated_data["household"] = household
+        # ADR 0052. Who added it, from the request and never the body; and a
+        # row is shared unless the caller asked for it to be theirs alone.
+        user = self.context.get("user")
+        if user is None:
+            raise RuntimeError(
+                "Nothing was written. EventSerializer was built without a `user` in its "
+                "context, so there is nobody to record as having added this event."
+            )
+        wanted = validated_data.pop("visibility", None)
+        validated_data["created_by_id"] = user.pk
+        validated_data["owner_user_id"] = user.pk if wanted == VISIBILITY_PRIVATE else None
         instance = Event.objects.create(**validated_data)
         # `Now()` is an unevaluated SQL expression until Postgres runs it;
         # the in-memory instance still holds the expression object, not a
@@ -244,6 +268,9 @@ class EventSerializer(serializers.ModelSerializer):
         return instance
 
     def update(self, instance: Event, validated_data: dict) -> Event:
+        # `EventDetailView.patch` has already turned any `visibility` into an
+        # `owner_user_id` (or refused it); the word itself is not a column.
+        validated_data.pop("visibility", None)
         instance = super().update(instance, validated_data)
         # The `touch_updated_at` trigger has just overwritten `updated_at`
         # with the database's own clock, and a `done_at` derived by
@@ -270,16 +297,27 @@ class EventListCreateView(APIView):
                 description=(
                     "Rows changed at or after `since`, tombstones included, oldest first, "
                     "500 to a page. This route does NOT accept `?active=1` - the synced "
-                    "routes do; here a client filters `deleted_at` itself."
+                    "routes do; here a client filters `deleted_at` itself. **A row private "
+                    "to another member arrives only as a redacted tombstone**: `id`, "
+                    "`deleted_at` and `updated_at` (both the instant it last changed) and "
+                    "`redacted: true`, and no other field (ADR 0052). Drop it like any "
+                    "other tombstone."
                 ),
             )
         },
     )
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
+        # ADR 0052. The whole household's rows are paged, so the cursor is the
+        # same with or without private rows in it, and each row is then
+        # rendered for THIS member: in full, or as a redacted tombstone when
+        # it is private to someone else. That tombstone is how a replica that
+        # held the row while it was shared learns it is gone.
         queryset = scoped(Event, request).filter(updated_at__gte=since).order_by("updated_at")
         page, next_since = paginate_since(queryset)
-        return Response({"results": EventSerializer(page, many=True).data, "next": next_since})
+        return Response(
+            {"results": render_rows(page, EventSerializer, request), "next": next_since}
+        )
 
     @extend_schema(
         operation_id="api_events_create",
@@ -317,12 +355,17 @@ class EventListCreateView(APIView):
             # unscoped, household B's retry of ITS origin_guid would find
             # household A's row and be answered with A's event as though it
             # were the one B just created.
-            existing = scoped(Event, request).filter(origin_guid=origin_guid).first()
+            #
+            # `visible`, not `scoped` (ADR 0052): another member's private row
+            # with this origin_guid is never handed back. The insert then
+            # collides with the unique key and is refused as a 400.
+            existing = visible(Event, request).filter(origin_guid=origin_guid).first()
             if existing is not None:
                 return Response(EventSerializer(existing).data, status=status.HTTP_200_OK)
 
         serializer = EventSerializer(
-            data=request.data, context={"household": household_of(request)}
+            data=request.data,
+            context={"household": household_of(request), "user": request.user},
         )
         serializer.is_valid(raise_exception=True)
         instance, error = save_or_400(lambda: serializer.save())
@@ -335,7 +378,9 @@ class EventDetailView(APIView):
     """`PATCH`/`DELETE /api/events/<id>`."""
 
     def _get_object(self, pk, request):
-        return scoped(Event, request).filter(pk=pk).first()
+        # ADR 0052: another member's private event is a 404 here, the same
+        # shape as another household's.
+        return visible(Event, request).filter(pk=pk).first()
 
     @extend_schema(
         operation_id="api_events_partial_update",
@@ -351,6 +396,14 @@ class EventDetailView(APIView):
                 ),
             ),
             400: WRITE_REFUSED,
+            403: OpenApiResponse(
+                response=DetailSerializer,
+                description=(
+                    "Nothing was changed: this member may not make the event private. "
+                    "`detail` is the sentence to show: \"Only the person who added this can "
+                    "make it private.\""
+                ),
+            ),
             404: NOT_FOUND,
         },
     )
@@ -383,6 +436,14 @@ class EventDetailView(APIView):
 
         serializer = EventSerializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
+        # ADR 0052: the who-may-change rule, after validation (a malformed
+        # body is a 400 first) and before anything is saved.
+        wanted = serializer.validated_data.pop("visibility", None)
+        if wanted is not None:
+            owner, refusal = owner_after_change(instance, wanted, request.user)
+            if refusal is not None:
+                return Response({"detail": refusal}, status=status.HTTP_403_FORBIDDEN)
+            derived["owner_user_id"] = owner
         _saved, error = save_or_400(lambda: serializer.save(**derived))
         if error is not None:
             return error

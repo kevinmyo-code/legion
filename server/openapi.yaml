@@ -1549,7 +1549,10 @@ paths:
           description: 'One key per TABLE, named for the table, each holding every
             row changed at or after `since` with tombstones included, oldest first.
             **Not paged**: a large first pull should use the per-table `?since=` routes,
-            which are.'
+            which are. In `events`, `checklists`, `checklist_items` and `checklist_ticks`,
+            a row private to another member (or under a parent that is) arrives only
+            as a redacted tombstone: `id`, `deleted_at`, `updated_at` and `redacted:
+            true`, nothing else (ADR 0052).'
         '400':
           content:
             application/json:
@@ -1584,9 +1587,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PagedChecklist'
-          description: Checklists changed at or after `since`, tombstones included,
+          description: 'Checklists changed at or after `since`, tombstones included,
             oldest first, 500 to a page. Items and ticks are their own routes; GET
-            /api/changes returns all three together.
+            /api/changes returns all three together. **A checklist private to another
+            member arrives only as a redacted tombstone**: `id`, `deleted_at`, `updated_at`
+            and `redacted: true`, nothing else (ADR 0052).'
     post:
       operationId: api_checklists_create
       description: '`GET /api/checklists?since=<iso>` and `POST /api/checklists`.'
@@ -1706,6 +1711,13 @@ paths:
             a database refusal or a hand-written check, and `{"<field>": ["..."]}`
             for a field-level validation error. Both carry text meant to be shown
             to a person.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this member may not make the checklist
+            private. `detail` is the sentence to show.'
         '404':
           content:
             application/json:
@@ -2095,9 +2107,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PagedEvent'
-          description: Rows changed at or after `since`, tombstones included, oldest
+          description: 'Rows changed at or after `since`, tombstones included, oldest
             first, 500 to a page. This route does NOT accept `?active=1` - the synced
-            routes do; here a client filters `deleted_at` itself.
+            routes do; here a client filters `deleted_at` itself. **A row private
+            to another member arrives only as a redacted tombstone**: `id`, `deleted_at`
+            and `updated_at` (both the instant it last changed) and `redacted: true`,
+            and no other field (ADR 0052). Drop it like any other tombstone.'
     post:
       operationId: api_events_create
       description: '`GET /api/events?since=<iso>` and `POST /api/events`.'
@@ -2193,6 +2208,14 @@ paths:
             a database refusal or a hand-written check, and `{"<field>": ["..."]}`
             for a field-level validation error. Both carry text meant to be shown
             to a person.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this member may not make the event private.
+            `detail` is the sentence to show: "Only the person who added this can
+            make it private."'
         '404':
           content:
             application/json:
@@ -4082,6 +4105,10 @@ paths:
         authenticates a user who is in no household, so `IsHouseholdMember`
         refuses every request it makes.
 
+        **And a fourth, since ADR 0052:** the events and checklists that were
+        private to them are tombstoned in the same transaction
+        (`tombstone_private_rows`). What they shared stays shared.
+
         **The `User` row itself is NOT deleted**, deliberately: their rows in the
         household's data carry `household_id`, not a user id that would dangle,
         and deleting an account is a different decision from removing it from a
@@ -4106,8 +4133,10 @@ paths:
       - cookieAuth: []
       responses:
         '204':
-          description: Removed. Their device tokens are revoked and the invites they
-            minted are revoked. Their account still exists and belongs to no household.
+          description: Removed. Their device tokens are revoked, the invites they
+            minted are revoked, and the events and checklists that were private to
+            them are deleted. What they shared stays. Their account still exists and
+            belongs to no household.
         '400':
           content:
             application/json:
@@ -6809,6 +6838,14 @@ components:
           type: string
           nullable: true
           maxLength: 64
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
       required:
       - created_at
       - deleted_at
@@ -7414,6 +7451,14 @@ components:
           maximum: 2147483647
           minimum: -2147483648
           nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
       required:
       - created_at
       - deleted_at
@@ -9590,6 +9635,14 @@ components:
           type: string
           nullable: true
           maxLength: 64
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
     PatchedChecklistItem:
       type: object
       properties:
@@ -9757,6 +9810,14 @@ components:
           maximum: 2147483647
           minimum: -2147483648
           nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
     PatchedHouseholdPatchRequest:
       type: object
       properties:
@@ -10819,6 +10880,14 @@ components:
       - provenance
       - updated_at
       - vehicle_id
+    VisibilityEnum:
+      enum:
+      - shared
+      - private
+      type: string
+      description: |-
+        * `shared` - shared
+        * `private` - private
     VoiceNote:
       type: object
       description: |-

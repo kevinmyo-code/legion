@@ -16,6 +16,7 @@ must hold even if Django has a bug is SQL shipped by a migration (CLAUDE.md
 section 7), and push dispatch (spec D7) will read the value without the
 serializer in the way.
 """
+
 from __future__ import annotations
 
 # Spec D7: at start, 5, 10, 15, 30 minutes, 1 h, 2 h, 1 day. The serializer

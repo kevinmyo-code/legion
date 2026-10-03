@@ -83,6 +83,17 @@ class Checklist(models.Model):
     household = models.ForeignKey(
         "household.Household", on_delete=models.PROTECT, related_name="+"
     )
+    # ADR 0052 (web-revamp ticket 06). Null is shared; set is private to that
+    # member, and items and ticks inherit it. `created_by` is set from the
+    # request on create, never from a body. Neither is on the wire; the
+    # serializer renders `visibility`. The database refuses an owner who is
+    # not a member of the row's household (`household/visibility_sql.py`).
+    owner_user = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_by = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
 
     class Meta:
         db_table = "checklists"
@@ -143,6 +154,11 @@ class ChecklistItem(models.Model):
     # "AT_LEAST" or "AT_MOST" - stored as TEXT with no CHECK constraint,
     # same posture as measure_unit's own vocabulary-not-enum choice.
     measure_direction = models.CharField(max_length=16, null=True, blank=True)
+    # ADR 0052: who added this item, for push attribution ("Kevin added oat
+    # milk"). Set from the request, never from a body, never on the wire.
+    created_by = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
 
     class Meta:
         db_table = "checklist_items"

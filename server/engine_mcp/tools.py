@@ -57,7 +57,7 @@ from api.registry import SYNCED_VIEWSETS
 from engine_mcp.dispatch import RouteNotFound, call_route
 from engine_mcp.models import Outcome
 from household.permissions import READ_SCOPE_REFUSAL, token_may_write
-from household.tenancy import scoped
+from household.tenancy import visible
 
 # =============================================================================
 # Results
@@ -378,7 +378,7 @@ def _list_events(request, args) -> ToolResult:
     if end <= start:
         return refused("Nothing was read. `to` must be after `from`.")
 
-    live = scoped(Event, request).filter(deleted_at__isnull=True)
+    live = visible(Event, request).filter(deleted_at__isnull=True)
     if not args.get("include_done", False):
         live = live.filter(done=False)
     one_off = live.filter(
@@ -426,7 +426,7 @@ def _list_checklists(request, args) -> ToolResult:
             on_day = _parse_day(args["date"], "date")
         except BadArgument as exc:
             return refused(f"Nothing was read. {exc}.")
-    checklists = scoped(Checklist, request).filter(deleted_at__isnull=True)
+    checklists = visible(Checklist, request).filter(deleted_at__isnull=True)
     if not args.get("include_archived", False):
         checklists = checklists.filter(archived=False)
     checklists = list(checklists.order_by("sort_order", "name")[:READ_LIMIT_MAX])
@@ -437,7 +437,7 @@ def _list_checklists(request, args) -> ToolResult:
             structured={"checklists": []},
         )
     items = (
-        scoped(ChecklistItem, request)
+        visible(ChecklistItem, request)
         .filter(deleted_at__isnull=True, checklist__in=checklists)
         .order_by("sort_order", "created_at")
     )
@@ -445,7 +445,7 @@ def _list_checklists(request, args) -> ToolResult:
     if on_day is not None:
         epoch_day = (on_day - date(1970, 1, 1)).days
         ticked = set(
-            scoped(ChecklistTick, request)
+            visible(ChecklistTick, request)
             .filter(deleted_at__isnull=True, day=epoch_day, item__in=items)
             .values_list("item_id", flat=True)
         )
@@ -722,7 +722,9 @@ TOOLS: tuple[EngineTool, ...] = (
         description=(
             "Creates an event or task. `fields` takes the REST event fields: title (required), "
             "starts_at, ends_at, all_day, location, notes, origin_guid (pass one so a retry "
-            "cannot create a duplicate)." + _WRITE_NOTE
+            "cannot create a duplicate), remind_minutes_before, and visibility: \"shared\" "
+            "(the default; every member of the household sees it) or \"private\" (only the "
+            "member this token belongs to)." + _WRITE_NOTE
         ),
         input_schema=_object({"fields": {"type": "object"}}, ("fields",)),
         handler=_add_event,

@@ -3,12 +3,12 @@ map: web-revamp
 ticket: 06
 title: Private rows on the engine
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Private rows enforced at visible(); 375 related server tests green. Skip routes and their privacy land with ticket 08. make_private on live owed (Kevin)."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Private rows on the engine
@@ -34,11 +34,11 @@ See `.scratch/web-revamp/spec.md` D3. Writes **ADR 0052** "A row may be private 
 
 ## Verification
 
-- [ ] `tests/test_visibility.py`: two members of one household, every route and MCP tool for events,
+- [x] `tests/test_visibility.py`: two members of one household, every route and MCP tool for events,
       checklists, items, ticks, skips: list hides, detail/PATCH/DELETE 404, changes feed carries only
       the redacted tombstone, POST defaults shared, who-may-change 403, removal tombstones.
-- [ ] No `owner_user_id` / `created_by_id` in any response or OpenAPI component.
-- [ ] `test_tenancy.py` and `test_engine_mcp.py` still green.
-- [ ] Canvas poll test: new rows private to the credential's user.
-- [ ] `make_private --dry-run` on a fixture prints the count; a second real run changes 0.
+- [x] No `owner_user_id` / `created_by_id` in any response or OpenAPI component.
+- [x] `test_tenancy.py` and `test_engine_mcp.py` still green.
+- [x] Canvas poll test: new rows private to the credential's user.
+- [x] `make_private --dry-run` on a fixture prints the count; a second real run changes 0.
 - [ ] Owed on live (Kevin): run `make_private` for `canvas:` and for `course`.

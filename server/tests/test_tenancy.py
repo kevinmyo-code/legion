@@ -678,6 +678,13 @@ def test_two_households_cannot_hold_the_same_chassis_quirk_id(token_a, token_b):
 # =============================================================================
 
 
+# ADR 0052 extends the rule: who owns a private row and who created a row are
+# server facts too. The wire says `visibility` and nothing with a user id in it.
+SERVER_ONLY_FIELDS = frozenset(
+    {"household", "household_id", "owner_user", "owner_user_id", "created_by", "created_by_id"}
+)
+
+
 def test_no_openapi_component_declares_household_id():
     """`household_id` is a server fact, like `provenance` and the timestamps.
 
@@ -699,7 +706,7 @@ def test_no_openapi_component_declares_household_id():
         f"{name}.{field}"
         for name, component in schema["components"]["schemas"].items()
         for field in (component.get("properties") or {})
-        if field in {"household", "household_id"}
+        if field in SERVER_ONLY_FIELDS
     ]
     assert not offenders, offenders
 
@@ -711,8 +718,26 @@ def test_no_response_body_carries_household_id(token_a):
     body = token_a.get(f"/api/places/?since={EPOCH}").data
     assert body["results"], body
     for row in body["results"]:
-        assert "household" not in row
-        assert "household_id" not in row
+        assert not SERVER_ONLY_FIELDS & set(row), row
+    # ADR 0052's tables, private and shared, on their own routes and the feed.
+    for visibility in ("shared", "private"):
+        event = token_a.post(
+            "/api/events", {"title": f"wire-{visibility}", "visibility": visibility}, format="json"
+        )
+        checklist = token_a.post(
+            "/api/checklists/", {"name": f"wire-{visibility}", "visibility": visibility},
+            format="json",
+        )
+        item = token_a.post(
+            f"/api/checklists/{checklist.data['id']}/items", {"text": "wire"}, format="json"
+        )
+        for response in (event, checklist, item):
+            assert response.status_code == 201, response.data
+            assert not SERVER_ONLY_FIELDS & set(response.data), response.data
+    feed = token_a.get("/api/changes").data
+    for table in ("events", "checklists", "checklist_items", "checklist_ticks"):
+        for row in feed[table]:
+            assert not SERVER_ONLY_FIELDS & set(row), (table, row)
 
 
 def test_household_is_refused_on_the_way_in(token_a, household_b):

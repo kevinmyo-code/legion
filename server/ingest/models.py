@@ -184,6 +184,14 @@ class SourceCredential(models.Model):
     # Set when an upstream refused this session (401/403 or a login
     # redirect); cleared when a person hands over a fresh one.
     invalid_since = models.DateTimeField(null=True, blank=True)
+    # ADR 0052 (web-revamp ticket 06): the member who handed this session
+    # over. Canvas rows the poller inserts are private to them. Backfilled to
+    # the household's one owner by `0011_source_credentials_user`; null when
+    # that was ambiguous, and then the poller inserts shared rows. Never
+    # served (`ingest/sessions.py` builds its body by hand).
+    user = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     config = models.JSONField(default=dict, blank=True)
 
     class Meta:

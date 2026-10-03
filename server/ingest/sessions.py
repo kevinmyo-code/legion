@@ -168,6 +168,7 @@ class SessionDetailView(APIView):
                 data["secret"],
                 config=data.get("config"),
                 expires_hint=data.get("expires_hint"),
+                user=request.user,
             )
         except vault.SecretRejected as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

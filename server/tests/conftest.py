@@ -289,6 +289,12 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_remind_minutes_before(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0010` (web-revamp ticket 06, ADR 0052). AFTER
+            # tenancy: the owner guard reads `events.household_id`.
+            from household.visibility_sql import add_event_columns
+
+            skipped = add_event_columns(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

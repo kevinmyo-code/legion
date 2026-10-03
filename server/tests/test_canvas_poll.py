@@ -1117,3 +1117,58 @@ def test_migration_0006_tidies_only_poller_titles_and_bumps_updated_at(household
 def test_the_crontab_runs_canvas_poll_every_half_hour():
     crontab = Path(__file__).resolve().parents[2] / "deploy" / "crontab"
     assert "*/30 * * * * python manage.py canvas_poll" in crontab.read_text().splitlines()
+
+
+# =============================================================================
+# ADR 0052: Canvas rows are private to the member whose login was read
+# =============================================================================
+
+
+@pytest.mark.django_db
+def test_new_rows_are_private_to_the_member_whose_canvas_login_was_read(
+    fake, vault_key, household_a, household_user
+):
+    vault.store(
+        household_a, "canvas", cookie_jar(), config={"base_url": BASE}, user=household_user
+    )
+    seeded = seed(
+        household_a,
+        title="matched by hand",
+        origin_guid="semester:canvas:math-3391-quiz-2",
+        structured_meta={"canvas_assignment_id": 5001, "canvas_course": "MATH 3391"},
+    )
+    poll()
+    assert last_run(household_a).outcome == Outcome.OK
+    inserted = Event.objects.filter(household=household_a).exclude(pk=seeded.pk)
+    assert inserted.count() == 6, list(inserted.values_list("title", flat=True))
+    # Assignments and the discussion's sub-deadline alike.
+    for row in inserted:
+        assert row.owner_user_id == household_user.pk, row.title
+        assert row.created_by_id == household_user.pk, row.title
+    # A row that already existed keeps the visibility it had: shared.
+    assert Event.objects.get(pk=seeded.pk).owner_user_id is None
+
+
+@pytest.mark.django_db
+def test_an_unattributed_canvas_login_inserts_shared_rows(fake, connected, household_a):
+    """A credential nobody is recorded as having stored (a two-owner household
+    at backfill time) inserts shared rows, as before ADR 0052."""
+    assert connected.user_id is None
+    poll()
+    rows = Event.objects.filter(household=household_a)
+    assert rows.count() == 7
+    assert not rows.exclude(owner_user__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_handing_over_a_session_records_who_did(vault_key, auth_client, household_user):
+    from ingest.models import SourceCredential
+
+    response = auth_client.put(
+        "/api/ingest/sessions/canvas",
+        {"secret": cookie_jar(), "config": {"base_url": BASE}},
+        format="json",
+    )
+    assert response.status_code in (200, 201), response.data
+    assert "user" not in response.data and "user_id" not in response.data
+    assert SourceCredential.objects.get(source="canvas").user_id == household_user.pk

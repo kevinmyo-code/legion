@@ -4,6 +4,7 @@ Accepted values round-trip, others are refused naming the allowed set, null
 clears, and the CHECK in SQL refuses an out-of-set value even from a writer
 that skips the serializer.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -59,9 +60,7 @@ def test_patch_changes_and_null_clears(auth_client):
     assert refused.status_code == 400
     assert Event.objects.get(pk=pk).remind_minutes_before == 60
 
-    cleared = auth_client.patch(
-        f"/api/events/{pk}", {"remind_minutes_before": None}, format="json"
-    )
+    cleared = auth_client.patch(f"/api/events/{pk}", {"remind_minutes_before": None}, format="json")
     assert cleared.status_code == 200
     assert cleared.data["remind_minutes_before"] is None
     assert Event.objects.get(pk=pk).remind_minutes_before is None
