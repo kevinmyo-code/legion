@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>201 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 32 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 51 are waiting on another ticket first. <b>91 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 32 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 51 are waiting on another ticket first. <b>94 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">201</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">49</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">91</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n mint">46</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n mint">94</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">51</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">90</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">87</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">10</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -138,17 +138,17 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>web-revamp</h2>
-<span class="counts"><span class="k">17</span> open<span class="sep">&middot;</span><span class="k mint">4</span> ready<span class="sep">&middot;</span><span class="k mint">5</span> built<span class="sep">&middot;</span><span class="k amber">8</span> blocked<span class="sep">&middot;</span><span class="dim">of 18 tickets</span></span>
+<span class="counts"><span class="k">17</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k mint">8</span> built<span class="sep">&middot;</span><span class="k amber">8</span> blocked<span class="sep">&middot;</span><span class="dim">of 18 tickets</span></span>
 <span class="bar"><i style="flex:9"></i><b style="flex:8"></b></span>
 </header>
 <ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">06</span><span class="body"><span class="tt">Private rows on the engine</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Repeat exceptions on the engine</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">11</span><span class="body"><span class="tt">Spend on the engine: one figure, computed once</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">14</span><span class="body"><span class="tt">Reminder lead time on events</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Repeat exceptions on the engine</span><span class="det">Server half built and green (skip routes, event_skips in the feed, api/recurrence.py, 26 phone-drawn vectors). Web half owed: lib/recurrence.ts reading the same vectors.</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Design tokens, light and dark, manifest and icons</span><span class="det">Tokens, Roboto Flex, theme toggle, manifest, icons and restyled primitives are in and seen in a browser; owed: a run on a real iPhone and a real dark device.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">The shell split by viewport</span><span class="det">Two shells, NAV table, bigger-screen card, fake engine and shots are in; only Home and Lists exist as tabs or rail items today. Owed: a run on a real iPhone.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Live refresh while the page is visible</span><span class="det">Home and Lists refetch every 30 s while visible and on return; a failed refresh keeps rows and says they are old. Owed: watching it across a real phone sleep and wake.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">Private rows on the engine</span><span class="det">Private rows enforced at visible(); 375 related server tests green. Skip routes and their privacy land with ticket 08. make_private on live owed (Kevin).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">11</span><span class="body"><span class="tt">Spend on the engine: one figure, computed once</span><span class="det">GET /api/ledger/spend ported from LedgerBudget/LedgerTransfers/BudgetMonth/MoneyMonth; 60 phone tests transcribed and green. Owed on live: Mia&#x27;s card equals the phone to the cent.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">14</span><span class="body"><span class="tt">Reminder lead time on events</span><span class="det">events.remind_minutes_before on the engine with CHECK and 400; related tests green. Web sheet and push consume it later.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">16</span><span class="body"><span class="tt">Pantry and body workbench</span><span class="det">Built on feat/web-aspects: /pantry and /body, 53 tests in 4 files, shots in research/shots/16. Needs Kevin on live data.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">17</span><span class="body"><span class="tt">Fleet, places and notes workbench</span><span class="det">Built on feat/web-aspects: /fleet, /places, /notes, shots in research/shots/17. Needs Kevin on live data.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Join, signup and settings</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>

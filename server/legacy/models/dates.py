@@ -4,6 +4,7 @@ end, precisely because it already has a well-tested merge on the phone to
 compare a Django implementation against."""
 from __future__ import annotations
 
+from django.conf import settings
 from django.db import models
 
 from legacy.enums import Provenance
@@ -53,6 +54,30 @@ class Event(models.Model):
         Vehicle, db_column="vehicle_id", null=True, on_delete=models.DO_NOTHING, related_name="+"
     )
     kind = models.TextField()  # CHECK: reminder | event | task; DB default 'reminder'
+    # web-revamp ticket 14. Added by `ingest/migrations/0009` (SQL in
+    # `api/event_columns.py`), not by Supabase. CHECK in (0, 5, 10, 15, 30,
+    # 60, 120, 1440); null is no reminder.
+    remind_minutes_before = models.IntegerField(null=True)
+    # ADR 0052 (web-revamp ticket 06). Added by `ingest/migrations/0010`
+    # (SQL in `household/visibility_sql.py`), not by Supabase. Null owner is
+    # shared; set is private to that member. `created_by` is set from the
+    # request on create and never accepted from a body. Neither is ever on
+    # the wire: the serializer renders `visibility` instead. ON DELETE SET
+    # NULL lives in the SQL, so Django is told DO_NOTHING.
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        db_column="owner_user_id",
+        null=True,
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        db_column="created_by_id",
+        null=True,
+        on_delete=models.DO_NOTHING,
+        related_name="+",
+    )
 
     household = household_field()
 
@@ -72,6 +97,11 @@ class EventSkip(models.Model):
     )
     skip_date = models.DateField()
     created_at = models.DateTimeField()
+    # web-revamp ticket 08. Added by `ingest/migrations/0013` (SQL in
+    # `api/event_columns.py`), so a skip travels `/api/changes` and DELETE
+    # tombstones it. `updated_at` is stamped by the touch trigger on UPDATE.
+    updated_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(null=True)
 
     household = household_field()
 

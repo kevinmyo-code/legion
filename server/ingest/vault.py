@@ -198,12 +198,15 @@ def store(
     *,
     config: dict | None = None,
     expires_hint: datetime.datetime | None = None,
+    user=None,
 ) -> SourceCredential:
     """Seal `secret` and save it as `household`'s session for `source`,
     replacing any earlier one and clearing `invalid_since`.
 
     `config` is MERGED into what is already stored, so a re-login never wipes
-    a setting a later ticket put there (the Drive folder id). Raises
+    a setting a later ticket put there (the Drive folder id). `user` is the
+    member handing the session over (ADR 0052: Canvas rows the poller inserts
+    are private to them); None keeps whoever stored it before. Raises
     `SecretRejected` or `VaultUnavailable` before anything is written.
     """
     source = session_source(source)
@@ -225,6 +228,7 @@ def store(
             "expires_hint": expires_hint,
             "invalid_since": None,
             "config": merged,
+            **({"user": user} if user is not None else {}),
         },
     )
     return credential

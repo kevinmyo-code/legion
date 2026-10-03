@@ -1514,14 +1514,14 @@ paths:
             - places
             - voice_notes
         description: 'Comma-separated aspect names. Selects which top-level keys get
-          populated: `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`;
-          `body` fills all eight of its tables; `memory` all three. **Omitted or blank
-          means every known aspect.** An unknown name is a 400 naming it - never a
-          silently smaller response. **`fleet` fills eleven of its twelve tables and
-          never `obd_samples`**: this endpoint is not paged and that table held 20,796
-          rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at
-          GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here
-          is a design, not an empty table.'
+          populated: `events` fills `events` AND `event_skips`; `checklists` fills
+          `checklists`, `checklist_items` AND `checklist_ticks`; `body` fills all
+          eight of its tables; `memory` all three. **Omitted or blank means every
+          known aspect.** An unknown name is a 400 naming it - never a silently smaller
+          response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**:
+          this endpoint is not paged and that table held 20,796 rows on 2026-09-07,
+          so telemetry has its own paged, per-vehicle route at GET /api/fleet/obd_samples/?vehicle=<uuid>&since=
+          instead. Its absence here is a design, not an empty table.'
         explode: false
         style: form
       - in: query
@@ -1549,7 +1549,10 @@ paths:
           description: 'One key per TABLE, named for the table, each holding every
             row changed at or after `since` with tombstones included, oldest first.
             **Not paged**: a large first pull should use the per-table `?since=` routes,
-            which are.'
+            which are. In `events`, `event_skips`, `checklists`, `checklist_items`
+            and `checklist_ticks`, a row private to another member (or under a parent
+            that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at`
+            and `redacted: true`, nothing else (ADR 0052).'
         '400':
           content:
             application/json:
@@ -1584,9 +1587,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PagedChecklist'
-          description: Checklists changed at or after `since`, tombstones included,
+          description: 'Checklists changed at or after `since`, tombstones included,
             oldest first, 500 to a page. Items and ticks are their own routes; GET
-            /api/changes returns all three together.
+            /api/changes returns all three together. **A checklist private to another
+            member arrives only as a redacted tombstone**: `id`, `deleted_at`, `updated_at`
+            and `redacted: true`, nothing else (ADR 0052).'
     post:
       operationId: api_checklists_create
       description: '`GET /api/checklists?since=<iso>` and `POST /api/checklists`.'
@@ -1706,6 +1711,13 @@ paths:
             a database refusal or a hand-written check, and `{"<field>": ["..."]}`
             for a field-level validation error. Both carry text meant to be shown
             to a person.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this member may not make the checklist
+            private. `detail` is the sentence to show.'
         '404':
           content:
             application/json:
@@ -2095,9 +2107,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PagedEvent'
-          description: Rows changed at or after `since`, tombstones included, oldest
+          description: 'Rows changed at or after `since`, tombstones included, oldest
             first, 500 to a page. This route does NOT accept `?active=1` - the synced
-            routes do; here a client filters `deleted_at` itself.
+            routes do; here a client filters `deleted_at` itself. **A row private
+            to another member arrives only as a redacted tombstone**: `id`, `deleted_at`
+            and `updated_at` (both the instant it last changed) and `redacted: true`,
+            and no other field (ADR 0052). Drop it like any other tombstone.'
     post:
       operationId: api_events_create
       description: '`GET /api/events?since=<iso>` and `POST /api/events`.'
@@ -2193,6 +2208,14 @@ paths:
             a database refusal or a hand-written check, and `{"<field>": ["..."]}`
             for a field-level validation error. Both carry text meant to be shown
             to a person.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this member may not make the event private.
+            `detail` is the sentence to show: "Only the person who added this can
+            make it private."'
         '404':
           content:
             application/json:
@@ -2218,6 +2241,134 @@ paths:
         '204':
           description: Done. Soft-deleted (the tombstone row stays so an unsynced
             client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/events/{id}/skips:
+    get:
+      operationId: api_events_skips_list
+      description: '`GET`/`POST /api/events/<id>/skips`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - events
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventSkip'
+          description: 'Every skip of this event, tombstones included (a client filters
+            `deleted_at` itself), by date. Not paged: a series has few.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+    post:
+      operationId: api_events_skips_create
+      description: '`GET`/`POST /api/events/<id>/skips`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - events
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkipRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SkipRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SkipRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSkip'
+          description: Skipped. A new skip for that date.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSkip'
+          description: 'That date was already skipped, and the skip is returned unchanged;
+            or it had been un-skipped and the same row is a skip again. Idempotent
+            on (event, skip_date): a retry never makes a second row.'
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/events/{id}/skips/{skip_date}:
+    delete:
+      operationId: api_events_skips_destroy
+      description: '`DELETE /api/events/<id>/skips/<YYYY-MM-DD>`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: skip_date
+        schema:
+          type: string
+        required: true
+      tags:
+      - events
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: 'Un-skipped: the skip is tombstoned, so the occurrence comes
+            back on every replica. Idempotent: no skip on that date is still a 204.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The date in the path is not YYYY-MM-DD. Nothing was changed.
         '404':
           content:
             application/json:
@@ -4082,6 +4233,10 @@ paths:
         authenticates a user who is in no household, so `IsHouseholdMember`
         refuses every request it makes.
 
+        **And a fourth, since ADR 0052:** the events and checklists that were
+        private to them are tombstoned in the same transaction
+        (`tombstone_private_rows`). What they shared stays shared.
+
         **The `User` row itself is NOT deleted**, deliberately: their rows in the
         household's data carry `household_id`, not a user id that would dangle,
         and deleting an account is a different decision from removing it from a
@@ -4106,8 +4261,10 @@ paths:
       - cookieAuth: []
       responses:
         '204':
-          description: Removed. Their device tokens are revoked and the invites they
-            minted are revoked. Their account still exists and belongs to no household.
+          description: Removed. Their device tokens are revoked, the invites they
+            minted are revoked, and the events and checklists that were private to
+            them are deleted. What they shared stays. Their account still exists and
+            belongs to no household.
         '400':
           content:
             application/json:
@@ -4811,6 +4968,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/ledger/spend:
+    get:
+      operationId: api_ledger_spend_retrieve
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO code. Defaults to USD.
+      - in: query
+        name: month
+        schema:
+          type: string
+        description: YYYY-MM. Defaults to the current month in `tz`.
+      - in: query
+        name: tz
+        schema:
+          type: string
+        description: The browser's IANA zone, used only to pick the default month.
+          Unknown or absent means UTC.
+      tags:
+      - ledger
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Spend'
+          description: One budget month's spend, per account and per category, computed
+            by the same rules as the phone's Money screen.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`month` or `currency` is malformed. Nothing was computed.'
   /api/ledger/statements/:
     get:
       operationId: api_ledger_statements_list
@@ -6533,6 +6729,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Event'
+        event_skips:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventSkip'
         checklists:
           type: array
           items:
@@ -6809,6 +7009,14 @@ components:
           type: string
           nullable: true
           maxLength: 64
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
       required:
       - created_at
       - deleted_at
@@ -7409,12 +7617,59 @@ components:
           nullable: true
         kind:
           type: string
+        remind_minutes_before:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
       required:
       - created_at
       - deleted_at
       - id
       - provenance
       - title
+      - updated_at
+    EventSkip:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        event:
+          type: string
+          format: uuid
+          readOnly: true
+        skip_date:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - event
+      - id
+      - skip_date
       - updated_at
     Freshness:
       type: object
@@ -9585,6 +9840,14 @@ components:
           type: string
           nullable: true
           maxLength: 64
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
     PatchedChecklistItem:
       type: object
       properties:
@@ -9747,6 +10010,19 @@ components:
           nullable: true
         kind:
           type: string
+        remind_minutes_before:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
     PatchedHouseholdPatchRequest:
       type: object
       properties:
@@ -10303,6 +10579,16 @@ components:
       - device_name
       - email
       - password
+    SkipRequest:
+      type: object
+      properties:
+        skip_date:
+          type: string
+          format: date
+          description: The occurrence's LOCAL date, YYYY-MM-DD, in the zone the series
+            is read in.
+      required:
+      - skip_date
     SleepLog:
       type: object
       description: |-
@@ -10456,6 +10742,124 @@ components:
         * `backup` - Backup
         * `obd_rollup` - OBD roll-up
         * `heartbeat` - Heartbeat
+    Spend:
+      type: object
+      properties:
+        month:
+          type: string
+          description: YYYY-MM, the budget month these figures are for.
+        currency:
+          type: string
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpendAccount'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpendCategory'
+        uncategorised_cents:
+          type: integer
+          description: Outflows nobody has categorised. NOT counted in any spend figure;
+            say so beside it.
+        uncategorised_unverified:
+          type: boolean
+        excluded:
+          $ref: '#/components/schemas/SpendExcluded'
+        complete:
+          type: boolean
+          description: True only when every account active this month has gated statements
+            covering every day of it. The current month, read from provisional activity,
+            is never complete.
+      required:
+      - accounts
+      - categories
+      - complete
+      - currency
+      - excluded
+      - month
+      - uncategorised_cents
+      - uncategorised_unverified
+    SpendAccount:
+      type: object
+      properties:
+        account_last4:
+          type: string
+        label:
+          type: string
+          description: The card's most recent bank-file name, else "Card ending 7823".
+        spend_cents:
+          type: integer
+          description: Categorised outflows this budget month, after transfers and
+            not-spending categories are taken out. Uncategorised money is not in it.
+        unverified:
+          type: boolean
+          description: True when any row counted in spend_cents is unverified (no
+            gate ever checked it). Say the word beside the figure.
+        unverified_cents:
+          type: integer
+        latest_row_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the newest row for this card reached the engine.
+      required:
+      - account_last4
+      - label
+      - latest_row_at
+      - spend_cents
+      - unverified
+      - unverified_cents
+    SpendCategory:
+      type: object
+      properties:
+        category:
+          type: string
+        spend_cents:
+          type: integer
+        target_cents:
+          type: integer
+          nullable: true
+          description: This month's budget target, or null when none is set.
+        unverified:
+          type: boolean
+      required:
+      - category
+      - spend_cents
+      - target_cents
+      - unverified
+    SpendExcluded:
+      type: object
+      properties:
+        not_spending_cents:
+          type: integer
+          description: Outflows filed under a category marked not spending (e.g. Transfers).
+        not_spending_categories:
+          type: array
+          items:
+            type: string
+        own_account_moves_cents:
+          type: integer
+          description: Outflows whose description names one of the household's own
+            accounts.
+        early_charges_moved_cents:
+          type: integer
+          description: Housing charges in a month's last 3 days moved across this
+            month's edges, both directions together; the two fields after this split
+            them.
+        early_charges_counted_here_cents:
+          type: integer
+          description: Dated last month, counted in this one.
+        early_charges_counted_next_month_cents:
+          type: integer
+          description: Dated this month, counted in the next one.
+      required:
+      - early_charges_counted_here_cents
+      - early_charges_counted_next_month_cents
+      - early_charges_moved_cents
+      - not_spending_categories
+      - not_spending_cents
+      - own_account_moves_cents
     Statement:
       type: object
       description: |-
@@ -10809,6 +11213,14 @@ components:
       - provenance
       - updated_at
       - vehicle_id
+    VisibilityEnum:
+      enum:
+      - shared
+      - private
+      type: string
+      description: |-
+        * `shared` - shared
+        * `private` - private
     VoiceNote:
       type: object
       description: |-

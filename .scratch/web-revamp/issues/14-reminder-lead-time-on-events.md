@@ -3,12 +3,12 @@ map: web-revamp
 ticket: 14
 title: Reminder lead time on events
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "events.remind_minutes_before on the engine with CHECK and 400; related tests green. Web sheet and push consume it later."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Reminder lead time on events
@@ -24,5 +24,5 @@ See `.scratch/web-revamp/spec.md` D7 (the column).
 
 ## Verification
 
-- [ ] pytest: accepted values round-trip; others 400; null clears. Phone untouched (it ignores
+- [x] pytest: accepted values round-trip; others 400; null clears. Phone untouched (it ignores
       unknown keys: `DjangoEventsBackend.kt:19`).

@@ -12,7 +12,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.schema import NOT_FOUND, SINCE_PARAMETER, WRITE_REFUSED, paged_serializer
+from api.schema import (
+    NOT_FOUND,
+    SINCE_PARAMETER,
+    WRITE_REFUSED,
+    DetailSerializer,
+    paged_serializer,
+)
 from api.sync import paginate_since, parse_since, save_or_400
 from checklists.models import Checklist, ChecklistItem, ChecklistTick
 from checklists.serializers import (
@@ -21,7 +27,14 @@ from checklists.serializers import (
     ChecklistTickSerializer,
     TickRequestSerializer,
 )
-from household.tenancy import household_of, scoped
+from household.tenancy import (
+    VISIBILITY_PRIVATE,
+    household_of,
+    owner_after_change,
+    render_rows,
+    scoped,
+    visible,
+)
 
 CHECKLIST_TAGS = ["checklists"]
 
@@ -50,7 +63,10 @@ def _idempotent_or_none(model, sync_id, request):
     # `sync_id` would find household A's row and be answered with A's data as
     # though it were the row B had just created - the same trap
     # `api/events.py`'s POST idempotency has, closed the same way.
-    return scoped(model, request).filter(sync_id=sync_id).first()
+    #
+    # `visible`, not `scoped` (ADR 0052): another member's private row with
+    # this sync_id is never handed back; the insert collides and is a 400.
+    return visible(model, request).filter(sync_id=sync_id).first()
 
 
 class ChecklistListCreateView(APIView):
@@ -66,18 +82,25 @@ class ChecklistListCreateView(APIView):
                 description=(
                     "Checklists changed at or after `since`, tombstones included, oldest "
                     "first, 500 to a page. Items and ticks are their own routes; "
-                    "GET /api/changes returns all three together."
+                    "GET /api/changes returns all three together. **A checklist private to "
+                    "another member arrives only as a redacted tombstone**: `id`, "
+                    "`deleted_at`, `updated_at` and `redacted: true`, nothing else "
+                    "(ADR 0052)."
                 ),
             )
         },
     )
     def get(self, request):
         since = parse_since(request.query_params.get("since"))
+        # ADR 0052: the household's rows are paged, each rendered for this
+        # member - in full, or as a redacted tombstone when private to another.
         queryset = (
             scoped(Checklist, request).filter(updated_at__gte=since).order_by("updated_at")
         )
         page, next_since = paginate_since(queryset)
-        return Response({"results": ChecklistSerializer(page, many=True).data, "next": next_since})
+        return Response(
+            {"results": render_rows(page, ChecklistSerializer, request), "next": next_since}
+        )
 
     @extend_schema(
         operation_id="api_checklists_create",
@@ -105,8 +128,16 @@ class ChecklistListCreateView(APIView):
         # derive it from their parent in `save()`, because an item's household
         # IS its checklist's and two places to set it is two places to get it
         # wrong.
+        #
+        # ADR 0052: shared unless the caller asked for it to be theirs alone,
+        # and the creator from the request, never the body.
+        wanted = serializer.validated_data.pop("visibility", None)
         instance, error = save_or_400(
-            lambda: serializer.save(household=household_of(request))
+            lambda: serializer.save(
+                household=household_of(request),
+                created_by=request.user,
+                owner_user=request.user if wanted == VISIBILITY_PRIVATE else None,
+            )
         )
         if error is not None:
             return error
@@ -117,7 +148,8 @@ class ChecklistDetailView(APIView):
     """`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>`."""
 
     def _get(self, checklist_id, request):
-        return scoped(Checklist, request).filter(pk=checklist_id).first()
+        # ADR 0052: another member's private checklist is a 404 here.
+        return visible(Checklist, request).filter(pk=checklist_id).first()
 
     @extend_schema(
         operation_id="api_checklists_retrieve",
@@ -137,7 +169,18 @@ class ChecklistDetailView(APIView):
         operation_id="api_checklists_partial_update",
         tags=CHECKLIST_TAGS,
         request=ChecklistSerializer,
-        responses={200: ChecklistSerializer, 400: WRITE_REFUSED, 404: NOT_FOUND},
+        responses={
+            200: ChecklistSerializer,
+            400: WRITE_REFUSED,
+            403: OpenApiResponse(
+                response=DetailSerializer,
+                description=(
+                    "Nothing was changed: this member may not make the checklist private. "
+                    "`detail` is the sentence to show."
+                ),
+            ),
+            404: NOT_FOUND,
+        },
     )
     def patch(self, request, checklist_id):
         instance = self._get(checklist_id, request)
@@ -148,7 +191,15 @@ class ChecklistDetailView(APIView):
             )
         serializer = ChecklistSerializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        _saved, error = save_or_400(lambda: serializer.save())
+        # ADR 0052: the who-may-change rule, after validation, before saving.
+        derived: dict = {}
+        wanted = serializer.validated_data.pop("visibility", None)
+        if wanted is not None:
+            owner, refusal = owner_after_change(instance, wanted, request.user)
+            if refusal is not None:
+                return Response({"detail": refusal}, status=status.HTTP_403_FORBIDDEN)
+            derived["owner_user_id"] = owner
+        _saved, error = save_or_400(lambda: serializer.save(**derived))
         if error is not None:
             return error
         return Response(ChecklistSerializer(instance).data)
@@ -217,7 +268,7 @@ class ChecklistItemListCreateView(APIView):
     def get(self, request, checklist_id):
         since = parse_since(request.query_params.get("since"))
         queryset = (
-            scoped(ChecklistItem, request)
+            visible(ChecklistItem, request)
             .filter(checklist_id=checklist_id, updated_at__gte=since)
             .order_by("updated_at")
         )
@@ -243,7 +294,7 @@ class ChecklistItemListCreateView(APIView):
         },
     )
     def post(self, request, checklist_id):
-        if not scoped(Checklist, request).filter(pk=checklist_id).exists():
+        if not visible(Checklist, request).filter(pk=checklist_id).exists():
             return Response(
                 {"detail": f"No checklist with id {checklist_id}."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -260,7 +311,8 @@ class ChecklistItemListCreateView(APIView):
         data["checklist"] = checklist_id
         serializer = ChecklistItemSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        instance, error = save_or_400(lambda: serializer.save())
+        # ADR 0052: who added it, for push attribution. From the request only.
+        instance, error = save_or_400(lambda: serializer.save(created_by=request.user))
         if error is not None:
             return error
         return Response(ChecklistItemSerializer(instance).data, status=status.HTTP_201_CREATED)
@@ -271,7 +323,7 @@ class ChecklistItemDetailView(APIView):
 
     def _get(self, checklist_id, item_id, request):
         return (
-            scoped(ChecklistItem, request)
+            visible(ChecklistItem, request)
             .filter(pk=item_id, checklist_id=checklist_id)
             .first()
         )
@@ -393,7 +445,7 @@ class ChecklistItemTickView(APIView):
     )
     def post(self, request, checklist_id, item_id):
         item = (
-            scoped(ChecklistItem, request)
+            visible(ChecklistItem, request)
             .filter(pk=item_id, checklist_id=checklist_id)
             .first()
         )
@@ -410,7 +462,7 @@ class ChecklistItemTickView(APIView):
         source = request_serializer.validated_data.get("source", "USER_REPORTED")
 
         # Not `scoped(...)`, and that is deliberate rather than a miss: `item`
-        # was resolved through `scoped(ChecklistItem, request)` above, and a
+        # was resolved through `visible(ChecklistItem, request)` above, and a
         # tick's household is its item's by construction
         # (`ChecklistTick.save`). Filtering on the item IS the household
         # filter here. The same is true of the `delete` handler below and of
@@ -485,7 +537,7 @@ class ChecklistItemUntickView(APIView):
     )
     def delete(self, request, checklist_id, item_id, day):
         item = (
-            scoped(ChecklistItem, request)
+            visible(ChecklistItem, request)
             .filter(pk=item_id, checklist_id=checklist_id)
             .first()
         )

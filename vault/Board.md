@@ -65,10 +65,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[01-the-calendar-widget\|01]] | build | The calendar widget on the web home - month grid plus day view |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[02-delete-a-finished-list\|02]] | build | Delete a list, from Lists and from Home, and offer it when everything is ticked |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[04-when-did-i-last-buy-x\|04]] | build | When did I last buy X, from tick history, saying only what a tick can say |
-| [[.scratch/web-revamp/map\|web-revamp]] | [[06-private-rows-on-the-engine\|06]] | build | Private rows on the engine |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[08-repeat-exceptions-on-the-engine\|08]] | build | Repeat exceptions on the engine |
-| [[.scratch/web-revamp/map\|web-revamp]] | [[11-spend-on-the-engine\|11]] | build | Spend on the engine: one figure, computed once |
-| [[.scratch/web-revamp/map\|web-revamp]] | [[14-reminder-lead-time-on-events\|14]] | build | Reminder lead time on events |
 | [[.scratch/web-surface/map\|web-surface]] | [[01-the-horizon\|01]] | decision | The horizon: what Today shows beyond tomorrow, and how a cliff reads as a cliff |
 | [[.scratch/web-surface/map\|web-surface]] | [[02-today-rebuilt\|02]] | build | Today, rebuilt |
 | [[.scratch/web-surface/map\|web-surface]] | [[03-desktop-is-not-the-phone\|03]] | decision | Desktop is not the phone reflowed: what the workbench shows that the PWA never does |
@@ -148,6 +145,9 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[09-static-domain-dockerfile\|09]] | build | Whitenoise, a multi-stage arm64 image with the Vite build, migrate-on-start, and Caddy on the domain |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[02-design-tokens-light-dark-manifest-icons\|02]] | build | Design tokens, light and dark, manifest and icons |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[04-live-refresh-while-visible\|04]] | build | Live refresh while the page is visible |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[06-private-rows-on-the-engine\|06]] | build | Private rows on the engine |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[11-spend-on-the-engine\|11]] | build | Spend on the engine: one figure, computed once |
+| [[.scratch/web-revamp/map\|web-revamp]] | [[14-reminder-lead-time-on-events\|14]] | build | Reminder lead time on events |
 
 ## Blocked
 

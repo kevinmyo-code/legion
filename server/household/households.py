@@ -22,7 +22,9 @@ exactly these four verbs and must never spread to a data route.
 """
 from __future__ import annotations
 
+from django.db import transaction
 from django.db.models import F
+from django.db.models.functions import Now
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
@@ -317,6 +319,10 @@ class MemberDetailView(APIView):
     authenticates a user who is in no household, so `IsHouseholdMember`
     refuses every request it makes.
 
+    **And a fourth, since ADR 0052:** the events and checklists that were
+    private to them are tombstoned in the same transaction
+    (`tombstone_private_rows`). What they shared stays shared.
+
     **The `User` row itself is NOT deleted**, deliberately: their rows in the
     household's data carry `household_id`, not a user id that would dangle,
     and deleting an account is a different decision from removing it from a
@@ -337,8 +343,10 @@ class MemberDetailView(APIView):
         responses={
             204: OpenApiResponse(
                 description=(
-                    "Removed. Their device tokens are revoked and the invites they minted "
-                    "are revoked. Their account still exists and belongs to no household."
+                    "Removed. Their device tokens are revoked, the invites they minted "
+                    "are revoked, and the events and checklists that were private to them "
+                    "are deleted. What they shared stays. Their account still exists and "
+                    "belongs to no household."
                 )
             ),
             400: OpenApiResponse(
@@ -379,13 +387,39 @@ class MemberDetailView(APIView):
             )
 
         now = timezone.now()
-        DeviceToken.objects.filter(user=membership.user, revoked_at__isnull=True).update(
-            revoked_at=now
-        )
-        # By creator, not through `invites_of` - the same set for this user,
-        # and an `update()` needs no join to reason about.
-        Invite.objects.filter(created_by=membership.user, revoked_at__isnull=True).update(
-            revoked_at=now
-        )
-        membership.delete()
+        with transaction.atomic():
+            DeviceToken.objects.filter(user=membership.user, revoked_at__isnull=True).update(
+                revoked_at=now
+            )
+            # By creator, not through `invites_of` - the same set for this user,
+            # and an `update()` needs no join to reason about.
+            Invite.objects.filter(created_by=membership.user, revoked_at__isnull=True).update(
+                revoked_at=now
+            )
+            tombstone_private_rows(household, membership.user)
+            membership.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def tombstone_private_rows(household, user) -> dict[str, int]:
+    """ADR 0052: a member removed from a household takes their private rows
+    with them. Their private events and checklists are tombstoned (on the
+    database clock, like every tombstone), in the caller's transaction.
+
+    **Tombstoned, and kept private.** `owner_user_id` stays set, so the
+    tombstone is still theirs: everyone else's feed carries it only as a
+    redacted tombstone, never as a full row with a title in it. Items, ticks
+    and skips under them inherit that and need no write of their own. A
+    shared row they created stays shared, untouched.
+    """
+    from checklists.models import Checklist
+    from legacy.models.dates import Event
+
+    return {
+        "events": Event.objects.filter(
+            household=household, owner_user=user, deleted_at__isnull=True
+        ).update(deleted_at=Now()),
+        "checklists": Checklist.objects.filter(
+            household=household, owner_user=user, deleted_at__isnull=True
+        ).update(deleted_at=Now()),
+    }

@@ -3,12 +3,12 @@ map: web-revamp
 ticket: 11
 title: "Spend on the engine: one figure, computed once"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "GET /api/ledger/spend ported from LedgerBudget/LedgerTransfers/BudgetMonth/MoneyMonth; 60 phone tests transcribed and green. Owed on live: Mia's card equals the phone to the cent."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Spend on the engine: one figure, computed once
@@ -27,7 +27,7 @@ See `.scratch/web-revamp/spec.md` D5. Overrides web-and-households 11's RLS bloc
 
 ## Verification
 
-- [ ] pytest parity: every transcribed case equals the phone's cents.
-- [ ] pytest: unverified true iff a contributing row is UNRECONCILED; nickname drift on one last4
+- [x] pytest parity: every transcribed case equals the phone's cents.
+- [x] pytest: unverified true iff a contributing row is UNRECONCILED; nickname drift on one last4
       yields one account; Housing on the 29th moves to next month; Transfers excluded and disclosed.
-- [ ] Leak test row for the new route.
+- [x] Leak test row for the new route.

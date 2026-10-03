@@ -49,8 +49,9 @@ references and no way to see a quarantine.
 
 `aspects` selects which top-level keys get populated - `checklists` pulls
 in `checklists`, `checklist_items`, AND `checklist_ticks` together (they
-are one aspect's three tables, not three aspects), `events` pulls in just
-`events`, `body` pulls in all eight of its tables, `memory` all three,
+are one aspect's three tables, not three aspects), `events` pulls in
+`events` and `event_skips` (web-revamp ticket 08), `body` pulls in all
+eight of its tables, `memory` all three,
 `ledger` its five (three config tables plus `statements` and
 `ledger_transactions`), `pantry` its three, `ingest` its one, and `fleet`
 eleven of its twelve - every one but `obd_samples`, for the reason above.
@@ -73,6 +74,7 @@ from rest_framework.fields import DateTimeField
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.event_skips import EventSkipSerializer
 from api.events import EventSerializer
 from api.registry import SYNCED_ASPECTS, SYNCED_VIEWSETS
 from api.schema import SINCE_PARAMETER, DetailSerializer
@@ -83,8 +85,8 @@ from checklists.serializers import (
     ChecklistSerializer,
     ChecklistTickSerializer,
 )
-from household.tenancy import scoped
-from legacy.models.dates import Event
+from household.tenancy import feed_rows, render_feed, scoped
+from legacy.models.dates import Event, EventSkip
 
 # The two hand-written aspects (Phase 2), then everything on the generic
 # shape (Phase 5). Order matters only for the message a 400 prints.
@@ -114,6 +116,7 @@ def _build_changes_serializer() -> type[serializers.Serializer]:
             )
         ),
         "events": EventSerializer(many=True, required=False),
+        "event_skips": EventSkipSerializer(many=True, required=False),
         "checklists": ChecklistSerializer(many=True, required=False),
         "checklist_items": ChecklistItemSerializer(many=True, required=False),
         "checklist_ticks": ChecklistTickSerializer(many=True, required=False),
@@ -134,6 +137,7 @@ ASPECTS_PARAMETER = OpenApiParameter(
     type={"type": "array", "items": {"type": "string", "enum": list(KNOWN_ASPECTS)}},
     description=(
         "Comma-separated aspect names. Selects which top-level keys get populated: "
+        "`events` fills `events` AND `event_skips`; "
         "`checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` "
         "fills all eight of its tables; `memory` all three. **Omitted or blank means every "
         "known aspect.** An unknown name is a 400 naming it - never a silently smaller "
@@ -158,7 +162,10 @@ class ChangesView(APIView):
                     "One key per TABLE, named for the table, each holding every row changed "
                     "at or after `since` with tombstones included, oldest first. **Not "
                     "paged**: a large first pull should use the per-table `?since=` routes, "
-                    "which are."
+                    "which are. In `events`, `event_skips`, `checklists`, `checklist_items` "
+                    "and `checklist_ticks`, a row private to another member (or under a parent "
+                    "that is) arrives only as a redacted tombstone: `id`, `deleted_at`, "
+                    "`updated_at` and `redacted: true`, nothing else (ADR 0052)."
                 ),
             ),
             400: OpenApiResponse(
@@ -270,22 +277,31 @@ class ChangesView(APIView):
         # database in a single response - which is why `scoped()` is spelled
         # out on each of the four below rather than applied once somewhere a
         # later reader would have to go and find.
+        #
+        # ADR 0052 narrows the hand-written keys further, to what THIS member
+        # may see: `feed_rows` is `scoped()` plus the member filter, and a row
+        # private to someone else comes back only as a redacted tombstone
+        # (`id`, `deleted_at`, `updated_at`, `redacted`). For items and ticks
+        # the tombstone also fires when the PARENT turned private since the
+        # watermark, because that moves the parent's `updated_at` and not
+        # theirs; it carries the later of the two instants.
         if "events" in requested:
-            events = scoped(Event, request).filter(updated_at__gte=since).order_by("updated_at")
-            body["events"] = EventSerializer(events, many=True).data
+            body["events"] = render_feed(feed_rows(Event, request, since), EventSerializer, request)
+            # web-revamp ticket 08: a repeating event's skips travel with it,
+            # tombstones included, and inherit its visibility.
+            body["event_skips"] = render_feed(
+                feed_rows(EventSkip, request, since), EventSkipSerializer, request
+            )
         if "checklists" in requested:
-            checklists = (
-                scoped(Checklist, request).filter(updated_at__gte=since).order_by("updated_at")
+            body["checklists"] = render_feed(
+                feed_rows(Checklist, request, since), ChecklistSerializer, request
             )
-            items = (
-                scoped(ChecklistItem, request).filter(updated_at__gte=since).order_by("updated_at")
+            body["checklist_items"] = render_feed(
+                feed_rows(ChecklistItem, request, since), ChecklistItemSerializer, request
             )
-            ticks = (
-                scoped(ChecklistTick, request).filter(updated_at__gte=since).order_by("updated_at")
+            body["checklist_ticks"] = render_feed(
+                feed_rows(ChecklistTick, request, since), ChecklistTickSerializer, request
             )
-            body["checklists"] = ChecklistSerializer(checklists, many=True).data
-            body["checklist_items"] = ChecklistItemSerializer(items, many=True).data
-            body["checklist_ticks"] = ChecklistTickSerializer(ticks, many=True).data
 
         # Everything on the generic shape. One key per TABLE, named for the
         # table (`bodyweight_logs`, `memories`, ...), never for the aspect -

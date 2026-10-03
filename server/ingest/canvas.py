@@ -642,11 +642,15 @@ def read_canvas(client: CanvasClient, household, *, fallback_zone: str | None) -
     return plan
 
 
-def upsert(household, task: dict, read_at: datetime.datetime) -> dict:
+def upsert(household, task: dict, read_at: datetime.datetime, owner_user_id=None) -> dict:
+    """One task through `public.upsert_canvas_task`. `owner_user_id` is the
+    member whose Canvas login was read (ADR 0052): a row this INSERTS is
+    private to them. None inserts it shared. An existing row's visibility is
+    never changed here; that is the person's, or `manage.py make_private`'s."""
     with connection.cursor() as cursor:
         cursor.execute(
-            "select public.upsert_canvas_task(%s, %s::jsonb, %s)",
-            [household.pk, json.dumps(task), read_at],
+            "select public.upsert_canvas_task(%s, %s::jsonb, %s, %s)",
+            [household.pk, json.dumps(task), read_at, owner_user_id],
         )
         result = cursor.fetchone()[0]
     return json.loads(result) if isinstance(result, str) else result
@@ -676,10 +680,12 @@ def tombstones(household, plan: Plan, read_at: datetime.datetime) -> list[dict]:
     return out
 
 
-def apply_plan(household, plan: Plan, read_at: datetime.datetime) -> list[dict]:
+def apply_plan(
+    household, plan: Plan, read_at: datetime.datetime, owner_user_id=None
+) -> list[dict]:
     """Every write, in one transaction: a run lands whole or not at all."""
     with transaction.atomic():
-        results = [upsert(household, task, read_at) for task in plan.tasks]
+        results = [upsert(household, task, read_at, owner_user_id) for task in plan.tasks]
         results.extend(tombstones(household, plan, read_at))
     return results
 
@@ -716,7 +722,10 @@ def poll(
     except CanvasRefused as exc:
         raise vault.refuse_session(credential, str(exc)) from exc
     read_at = (now or (lambda: datetime.datetime.now(datetime.UTC)))()
-    results = apply_plan(household, plan, read_at)
+    # ADR 0052: coursework is the member's whose Canvas login this is. A
+    # credential stored before `source_credentials.user` existed and left
+    # unattributed by the backfill inserts shared rows, as before.
+    results = apply_plan(household, plan, read_at, credential.user_id)
     run.rows_written = sum(1 for r in results if r.get("action") in WRITES)
     run.rows_unchanged = len(results) - run.rows_written
     run.watermark = plan.watermark

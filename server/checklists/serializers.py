@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from api.visibility import VisibilityField
 from checklists.models import Checklist, ChecklistItem, ChecklistTick
 
 MEASURE_DIRECTION_CHOICES = ("AT_LEAST", "AT_MOST")
@@ -27,6 +28,10 @@ def _choice_error(field: str, value, allowed: tuple[str, ...]) -> serializers.Va
 
 
 class ChecklistSerializer(serializers.ModelSerializer):
+    # ADR 0052. Rendered from `owner_user_id`, which never goes on the wire;
+    # the views turn a written value into an owner (or a 403).
+    visibility = VisibilityField()
+
     class Meta:
         model = Checklist
         fields = [
@@ -41,6 +46,7 @@ class ChecklistSerializer(serializers.ModelSerializer):
             "updated_at",
             "deleted_at",
             "sync_id",
+            "visibility",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "deleted_at"]
 

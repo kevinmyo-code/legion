@@ -246,3 +246,191 @@ def resolve_default_household():
     if Household.objects.count() == 1:
         return Household.objects.first()
     return None
+
+
+# =============================================================================
+# ADR 0052: a row may be private to one member
+# =============================================================================
+#
+# Tenancy is still by household (`scoped` above). Inside one household,
+# `events` and `checklists` carry `owner_user_id`: null is shared, set is
+# private to that member, and `event_skips`, `checklist_items` and
+# `checklist_ticks` inherit their parent's. `visible()` is the filter every
+# read and write path for those five tables goes through, MCP included,
+# because `engine_mcp/dispatch.py` runs the routed views. Another member's
+# private row is then a 404, the same shape as another household's row.
+#
+# The database refuses an owner who is not a member of the row's household
+# (`household/visibility_sql.py`); `tests/test_visibility.py` proves member
+# isolation inside one household the way `tests/test_tenancy.py` proves
+# household isolation. Neither substitutes for the other.
+
+VISIBILITY_SHARED = "shared"
+VISIBILITY_PRIVATE = "private"
+VISIBILITY_CHOICES: tuple[str, ...] = (VISIBILITY_SHARED, VISIBILITY_PRIVATE)
+
+# Spec D3, verbatim: the 403 when a member who did not add a shared row tries
+# to make it private.
+MAKE_PRIVATE_REFUSAL = "Only the person who added this can make it private."
+# Unreachable through the routed API (another member's private row is a 404
+# before any change is considered), and written down anyway so the rule is
+# stated in words rather than implied by a lookup.
+MAKE_SHARED_REFUSAL = "Only the person this is private to can share it."
+
+# The lookup from each privacy-bearing table to the column that decides it.
+# Keyed by table, so a model added to this list is one line, and a model
+# missing from it fails loudly in `_owner_path` rather than reading unfiltered.
+OWNER_PATHS: dict[str, str] = {
+    "events": "owner_user",
+    "event_skips": "event__owner_user",
+    "checklists": "owner_user",
+    "checklist_items": "checklist__owner_user",
+    "checklist_ticks": "item__checklist__owner_user",
+}
+
+# For an inheriting table, the parent's `updated_at`. Turning a parent private
+# moves the parent's `updated_at` and not the child's, so a feed that only
+# compared the child's own timestamp would never tell a replica holding the
+# child that it is gone. `feed_rows` compares the later of the two.
+PARENT_UPDATED_AT: dict[str, str] = {
+    "event_skips": "event__updated_at",
+    "checklist_items": "checklist__updated_at",
+    "checklist_ticks": "item__checklist__updated_at",
+}
+
+
+def _owner_path(model) -> str:
+    table = model._meta.db_table
+    try:
+        return OWNER_PATHS[table]
+    except KeyError as exc:
+        raise RuntimeError(
+            f"Nothing was read. {table} carries no member privacy, so visible() has no rule "
+            f"for it; use scoped() for a table every member sees in full."
+        ) from exc
+
+
+def _user_pk(request):
+    user = getattr(request, "user", None)
+    pk = getattr(user, "pk", None)
+    if pk is None:
+        from rest_framework.exceptions import PermissionDenied
+
+        raise PermissionDenied(
+            "Nothing was read or written. There is no signed-in member, so there is no way to "
+            "tell which private rows are theirs."
+        )
+    return pk
+
+
+def visible(model, request):
+    """`scoped(model, request)` narrowed to what this member may see: every
+    shared row, and their own private ones. The ADR 0052 choke point."""
+    from django.db.models import Q
+
+    path = _owner_path(model)
+    return scoped(model, request).filter(
+        Q(**{f"{path}__isnull": True}) | Q(**{path: _user_pk(request)})
+    )
+
+
+def private_to_someone_else(model, request):
+    """The complement of `visible` inside the household: rows private to
+    another member. Read only to emit redacted tombstones, never served."""
+    path = _owner_path(model)
+    return (
+        scoped(model, request)
+        .filter(**{f"{path}__isnull": False})
+        .exclude(**{path: _user_pk(request)})
+    )
+
+
+def visibility_of(row) -> str:
+    return VISIBILITY_PRIVATE if row.owner_user_id is not None else VISIBILITY_SHARED
+
+
+def owner_after_change(row, wanted: str, user) -> tuple[object, str | None]:
+    """The `owner_user_id` a change to `wanted` leaves, or a refusal sentence.
+
+    Spec D3: the owner may make a private row shared. A shared row may be made
+    private by its creator, or by any member when the creator is unknown
+    (legacy rows, `created_by_id` null). Anything else is refused in words.
+    Asking for what the row already is changes nothing and is never refused.
+    """
+    current = row.owner_user_id
+    if wanted == VISIBILITY_SHARED:
+        if current is None or current == user.pk:
+            return None, None
+        return current, MAKE_SHARED_REFUSAL
+    if current is not None:
+        return (current, None) if current == user.pk else (current, MAKE_SHARED_REFUSAL)
+    if row.created_by_id is None or row.created_by_id == user.pk:
+        return user.pk, None
+    return None, MAKE_PRIVATE_REFUSAL
+
+
+def redacted_tombstone(row_id, at) -> dict:
+    """What a replica is told about a row it may no longer see: that the id
+    is gone, and when. Nothing else, by construction: the dict is built here
+    from two values, never by stripping fields off a serialized row."""
+    from rest_framework.fields import DateTimeField
+
+    stamp = DateTimeField().to_representation(at)
+    return {"id": str(row_id), "deleted_at": stamp, "updated_at": stamp, "redacted": True}
+
+
+def render_rows(rows, serializer_cls, request, *, owner_of=None, changed_at_of=None) -> list:
+    """Serialize `rows` in order: a row this member may see in full, a row
+    private to someone else as a redacted tombstone.
+
+    `owner_of(row)` is the deciding owner id (the row's own by default);
+    `changed_at_of(row)` the instant the tombstone carries (`updated_at` by
+    default). The caller passes rows from `scoped()`, never from outside the
+    household.
+    """
+    me = _user_pk(request)
+    owner_of = owner_of or (lambda row: row.owner_user_id)
+    changed_at_of = changed_at_of or (lambda row: row.updated_at)
+    rows = list(rows)
+    shown = [row for row in rows if owner_of(row) in (None, me)]
+    full = iter(serializer_cls(shown, many=True).data)
+    out = []
+    for row in rows:
+        if owner_of(row) in (None, me):
+            out.append(next(full))
+        else:
+            out.append(redacted_tombstone(row.pk, changed_at_of(row)))
+    return out
+
+
+def feed_rows(model, request, since):
+    """Rows of a privacy-bearing table for an unpaged `?since=` feed
+    (`api/changes.py`): every visible row changed at or after `since`, plus
+    every row private to someone else whose own change OR whose parent's
+    change is at or after it. Annotated with `_owner` and `_changed_at` for
+    `render_feed`. Ordered by `updated_at`, then id."""
+    from django.db.models import F, Q
+    from django.db.models.functions import Greatest
+
+    path = _owner_path(model)
+    parent = PARENT_UPDATED_AT.get(model._meta.db_table)
+    changed = Greatest(F("updated_at"), F(parent)) if parent else F("updated_at")
+    me = _user_pk(request)
+    shown = Q(**{f"{path}__isnull": True}) | Q(**{path: me})
+    return (
+        scoped(model, request)
+        .annotate(_owner=F(path), _changed_at=changed)
+        .filter((shown & Q(updated_at__gte=since)) | (~shown & Q(_changed_at__gte=since)))
+        .order_by("updated_at", "pk")
+    )
+
+
+def render_feed(rows, serializer_cls, request) -> list:
+    """`render_rows` over `feed_rows`' annotations."""
+    return render_rows(
+        rows,
+        serializer_cls,
+        request,
+        owner_of=lambda row: row._owner,
+        changed_at_of=lambda row: row._changed_at,
+    )
