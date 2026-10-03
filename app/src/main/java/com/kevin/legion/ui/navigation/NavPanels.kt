@@ -83,20 +83,31 @@ private fun StopsPanel(ui: NavUiState, actions: NavActions) {
         if (ui.nav.stops.isEmpty()) {
             Text("No stops yet.", style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
         }
-        OutlinedTextField(
-            value = ui.stopInput,
-            onValueChange = actions.onStopInput,
-            label = { Text("Add a stop, e.g. gas station") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { actions.onAddStop() }),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        // The button sits BESIDE the field, not under it (device-run defect 6): whatever the window
+        // does with the keyboard it keeps the focused field in view, and the button rides with it. The
+        // keyboard's Go key does the same job (it always did).
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = ui.stopInput,
+                onValueChange = actions.onStopInput,
+                label = { Text("Add a stop, e.g. gas station") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { actions.onAddStop() }),
+                modifier = Modifier.weight(1f),
+            )
+            Button(onClick = actions.onAddStop, enabled = ui.stopInput.isNotBlank() && !ui.resolving) {
+                Text("Add")
+            }
+        }
         Text("Searches along your route.", style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
         if (ui.resolving) {
             Text("Looking for it.", style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
         }
-        Button(onClick = actions.onAddStop, enabled = ui.stopInput.isNotBlank() && !ui.resolving) { Text("Add stop") }
     }
 }
 
@@ -182,7 +193,7 @@ internal fun ChoiceCard(choice: ChoiceUi, actions: NavActions) {
                     color = SoftColors.text,
                 )
                 val away = c.distanceM?.let { "${NavFormat.distance(it)} away" }
-                val line = listOfNotNull(c.detail, away).joinToString(" · ")
+                val line = listOfNotNull(c.subtitle(), away).joinToString(" · ")
                 if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
             }
         }

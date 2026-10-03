@@ -84,7 +84,7 @@ class NavScreenScreenshotTest {
 
     private fun shot(name: String, ui: NavUiState) {
         composeTestRule.setContent {
-            NavContent(ui, actions) { modifier -> Box(modifier.background(SoftColors.barLow)) }
+            NavContent(ui, actions) { modifier, _ -> Box(modifier.background(SoftColors.barLow)) }
         }
         composeTestRule.onRoot().captureRoboImage(name)
     }
@@ -215,7 +215,7 @@ class NavScreenScreenshotTest {
     @Test fun `trip ended`() = shot(
         "nav-ended.png",
         NavUiState(
-            NavState(NavPhase.ENDED, "Trip ended 2.1 mi short. ${NavFormat.NOTHING_NAVIGATING}", destination = home),
+            NavState(NavPhase.ENDED, "Trip ended with 2.1 mi to go. ${NavFormat.NOTHING_NAVIGATING}", destination = home),
         ),
     )
 

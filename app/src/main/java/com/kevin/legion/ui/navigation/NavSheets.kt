@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,12 +45,18 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 
 private val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 
+/**
+ * The sheet. **Scrolls** when its content is taller than the room it is given (device-run defect 6:
+ * with the keyboard up, the stops panel's own button was off the bottom of the screen); the caller
+ * wraps it in `imePadding()` so the room shrinks by the keyboard.
+ */
 @Composable
 private fun SheetColumn(modifier: Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
             .background(SoftColors.card, SheetShape)
+            .verticalScroll(rememberScrollState())
             .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -98,6 +106,7 @@ internal fun GuidingSheet(ui: NavUiState, actions: NavActions, modifier: Modifie
         ).joinToString(" · ")
         if (onRoad.isNotEmpty()) Text(onRoad, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
         g?.traffic?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2) }
+        nav.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
         nav.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
         ui.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
         PanelContent(ui, actions)
@@ -189,12 +198,17 @@ internal fun PreviewSheet(ui: NavUiState, actions: NavActions, modifier: Modifie
                 style = MaterialTheme.typography.headlineMedium,
                 color = SoftColors.text,
             )
+            // What the destination IS (its category and address), so a search hit can be told apart.
+            nav.destination?.detail?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
+            }
             nav.stops.takeIf { it.isNotEmpty() }?.let {
                 val via = "via ${it.joinToString { s -> s.name }}"
                 Text(via, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
             }
         }
         RouteRows(nav, actions.onPickRoute)
+        nav.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
         ui.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
         PanelContent(ui, actions)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -254,7 +268,14 @@ internal fun ChooseSheet(ui: NavUiState, actions: NavActions, modifier: Modifier
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = SoftColors.text2)
                 Text(
-                    if (requesting) ui.nav.message else "Looking for \"${ui.input}\".",
+                    listOfNotNull(
+                        if (requesting) ui.nav.message else "Looking for \"${ui.input}\".",
+                        // Directions does not wait on the map silently: a map that cannot reach Mapbox
+                        // means this lookup may be slow or fail for the same reason.
+                        "The map could not be reached, so this may be slow.".takeIf {
+                            ui.mapStatus == MapStatus.UNREACHABLE
+                        },
+                    ).joinToString(" "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = SoftColors.text2,
                 )

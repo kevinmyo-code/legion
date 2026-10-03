@@ -46,6 +46,8 @@ data class NavUiState(
     val savedPlaceLabels: List<String> = emptyList(),
     val panel: NavPanel = NavPanel.NONE,
     val stopInput: String = "",
+    /** The map's own load state, so the screen can say "loading" / "could not be reached" in words. */
+    val mapStatus: MapStatus = MapStatus.READY,
 )
 
 private data class LocalState(
@@ -56,6 +58,7 @@ private data class LocalState(
     val labels: List<String> = emptyList(),
     val panel: NavPanel = NavPanel.NONE,
     val stopInput: String = "",
+    val mapStatus: MapStatus = MapStatus.LOADING,
 )
 
 /**
@@ -79,7 +82,7 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val local = MutableStateFlow(LocalState())
 
     val state: StateFlow<NavUiState> = combine(controller.state, local) { nav, l ->
-        NavUiState(nav, l.input, l.resolving, l.choice, l.problem, l.labels, l.panel, l.stopInput)
+        NavUiState(nav, l.input, l.resolving, l.choice, l.problem, l.labels, l.panel, l.stopInput, l.mapStatus)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, NavUiState(controller.state.value))
 
     init {
@@ -241,6 +244,8 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     fun onMapAuthFailure() = controller.onTokenRefused()
 
     fun onCameraDetached() = controller.cameraDetached()
+
+    fun onMapStatus(status: MapStatus) = local.update { it.copy(mapStatus = status) }
 
     /** Screen entered: refresh what the idle screen lists, and take the camera back onto a trip already running. */
     fun onScreenEntered() {

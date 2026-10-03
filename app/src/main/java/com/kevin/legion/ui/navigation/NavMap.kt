@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -22,6 +23,8 @@ import com.kevin.legion.location.LocationController
 import com.kevin.legion.navigation.NavCameraMode
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.NavMapFeed
+import com.kevin.legion.navigation.RouteFailure
+import kotlinx.coroutines.delay
 import com.kevin.legion.navigation.NavPhase
 import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.SoftColors
@@ -40,6 +43,10 @@ import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
 import com.mapbox.maps.extension.style.sources.addSource
 import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
 import com.mapbox.maps.plugin.animation.camera
+import com.mapbox.maps.plugin.attribution.attribution
+import com.mapbox.maps.plugin.compass.compass
+import com.mapbox.maps.plugin.logo.logo
+import com.mapbox.maps.plugin.scalebar.scalebar
 import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.navigation.base.route.NavigationRoute
@@ -50,8 +57,18 @@ import com.mapbox.navigation.ui.maps.camera.state.NavigationCameraState
 import com.mapbox.navigation.ui.maps.camera.state.NavigationCameraStateChangedObserver
 import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineApi
 import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineApiOptions
+import com.mapbox.navigation.ui.maps.route.line.model.RouteLineColorResources
 import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineViewOptions
 import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineView
+
+/** Where the map's own view of the world is, for the words over it (device-run defect 1). */
+enum class MapStatus { LOADING, UNREACHABLE, READY }
+
+/**
+ * How much of the map the screen's own chrome covers, measured in pixels (device-run defect 3): the
+ * top overlay (back button or turn banner) and the bottom sheet. Every camera mode pads by these.
+ */
+data class NavMapInsets(val topPx: Int = 0, val bottomPx: Int = 0)
 
 /**
  * The nav screen's map: a Maps SDK [MapView] in [AndroidView] (the Nav UI widgets are Views; no
@@ -68,6 +85,13 @@ import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineView
  *  - **The MapView is built with an AppCompat-themed context**: the compass, logo and attribution
  *    views inflate AppCompat widgets and logged `ThemeUtils` errors under the activity's theme.
  *
+ * **Device-run fixes (2026-10-03):** the camera pads by the MEASURED banner and sheet ([insets]) in
+ * preview fit, overview and follow; the scale bar and compass are off (they drew over the back
+ * button, the banner and the overview button); the logo and attribution sit above the sheet instead
+ * of under it; a style that fails to load reports [MapStatus] so the screen can say so, and a
+ * network-shaped failure is retried; preview alternatives are dashed with butt caps (round caps
+ * closed the gaps) and the guided route line's alternatives are grey.
+ *
  * Preview draws its own lines (primary solid, alternatives dashed, per the design of record);
  * guiding hands the routes to the SDK's route line, which draws traffic. The two never draw at once.
  */
@@ -79,8 +103,10 @@ fun NavMap(
     phase: NavPhase,
     selectedRoute: Int,
     camera: NavCameraMode,
+    insets: NavMapInsets,
     onAuthFailure: () -> Unit,
     onCameraDetached: () -> Unit,
+    onStatus: (MapStatus) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -90,7 +116,25 @@ fun NavMap(
     }
     val mapView = remember { MapView(themed) }
     val routeLineApi = remember { MapboxRouteLineApi(MapboxRouteLineApiOptions.Builder().build()) }
-    val routeLineView = remember { MapboxRouteLineView(MapboxRouteLineViewOptions.Builder(themed).build()) }
+    val routeLineView = remember {
+        MapboxRouteLineView(
+            MapboxRouteLineViewOptions.Builder(themed)
+                .routeLineColorResources(
+                    // The SDK's route line cannot dash; a low-contrast grey keeps the alternative clearly
+                    // secondary to the blue primary (layout A).
+                    RouteLineColorResources.Builder()
+                        .alternativeRouteDefaultColor(SoftColors.text3.toArgb())
+                        .alternativeRouteUnknownCongestionColor(SoftColors.text3.toArgb())
+                        .alternativeRouteLowCongestionColor(SoftColors.text3.toArgb())
+                        .alternativeRouteModerateCongestionColor(SoftColors.text3.toArgb())
+                        .alternativeRouteHeavyCongestionColor(SoftColors.text3.toArgb())
+                        .alternativeRouteSevereCongestionColor(SoftColors.text3.toArgb())
+                        .alternativeRouteCasingColor(SoftColors.ground.toArgb())
+                        .build(),
+                )
+                .build(),
+        )
+    }
     val viewport = remember { MapboxNavigationViewportDataSource(mapView.mapboxMap) }
     val navCamera = remember { NavigationCamera(mapView.mapboxMap, mapView.camera, viewport) }
 
@@ -101,9 +145,21 @@ fun NavMap(
     var styleGen by remember { mutableIntStateOf(0) }
     var positioned by remember { mutableIntStateOf(0) }
 
-    val sheetPx = with(density) { SHEET_PADDING.toPx().toDouble() }
-    val bannerPx = with(density) { BANNER_PADDING.toPx().toDouble() }
+    var styleFailGen by remember { mutableIntStateOf(0) }
+    val report by rememberUpdatedState(onStatus)
+
+    val marginPx = with(density) { CHROME_MARGIN.toPx().toDouble() }
     val sidePx = with(density) { SIDE_PADDING.toPx().toDouble() }
+    val currentInsets by rememberUpdatedState(insets)
+
+    // The camera's padding: what the chrome measured, plus a margin, never more than 60 percent of the
+    // map's height from the bottom (a sheet grown by a panel must not squeeze the route to nothing).
+    fun edge(): EdgeInsets {
+        val maxBottom = if (mapView.height > 0) mapView.height * MAX_BOTTOM_SHARE else Double.MAX_VALUE
+        val top = currentInsets.topPx + marginPx
+        val bottom = minOf(currentInsets.bottomPx.toDouble(), maxBottom) + marginPx
+        return EdgeInsets(top, sidePx, bottom, sidePx)
+    }
 
     DisposableEffect(mapView) {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -115,14 +171,31 @@ fun NavMap(
                 locationPuck = createDefault2DPuck(withBearing = true)
             }
         }
-        viewport.followingPadding = EdgeInsets(bannerPx, sidePx, sheetPx, sidePx)
-        viewport.overviewPadding = EdgeInsets(bannerPx, sidePx, sheetPx, sidePx)
+        // Nothing of the map's own chrome may draw over ours (device-run defect 2): the scale bar sat on
+        // the back button and the banner, the compass under the overview button.
+        mapView.scalebar.updateSettings { enabled = false }
+        mapView.compass.updateSettings { enabled = false }
         mapView.camera.addCameraAnimationsLifecycleListener(NavigationBasicGesturesHandler(navCamera))
-        val styleLoaded = mapView.mapboxMap.subscribeStyleLoaded { styleGen++ }
-        // Mapbox answers a bad token with a style/tile load error; say so in words, never a blank map.
-        val loadErrors = mapView.mapboxMap.subscribeMapLoadingError { error ->
-            if (NavFormat.isAuthFailure(error.message)) onAuthFailure()
+        var styleReady = false
+        val styleLoaded = mapView.mapboxMap.subscribeStyleLoaded {
+            styleReady = true
+            styleGen++
+            report(MapStatus.READY)
         }
+        // Mapbox answers a bad token with a style/tile load error; say so in words, never a blank map.
+        // Before the style has loaded, a network-shaped error is the "could not be reached" state and
+        // earns a retry (the A25 sat on a black map for 25 s with ERR_NAME_NOT_RESOLVED and no words).
+        val loadErrors = mapView.mapboxMap.subscribeMapLoadingError { error ->
+            if (NavFormat.isAuthFailure(error.message)) {
+                onAuthFailure()
+            } else if (!styleReady) {
+                if (NavFormat.classifyFailure(null, error.message, null) == RouteFailure.OFFLINE) {
+                    report(MapStatus.UNREACHABLE)
+                }
+                styleFailGen++
+            }
+        }
+        report(MapStatus.LOADING)
         // IDLE is also the camera's state before anything has asked it to follow, so a detach is only
         // reported once it has been engaged (following or overview) and then fell back to IDLE.
         var engaged = false
@@ -144,6 +217,26 @@ fun NavMap(
             viewport.onDestroy()
             mapView.onDestroy()
         }
+    }
+
+    // Retry a failed style load after a pause. Event-driven (one retry per reported failure) so it
+    // never cancels a load that is still in flight.
+    LaunchedEffect(styleFailGen) {
+        if (styleFailGen == 0) return@LaunchedEffect
+        delay(STYLE_RETRY_MS)
+        if (mapView.mapboxMap.style == null) mapView.mapboxMap.loadStyle(Style.DARK)
+    }
+
+    // Camera padding and the map's own attribution follow the measured chrome (device-run defect 3).
+    LaunchedEffect(insets) {
+        val e = edge()
+        viewport.followingPadding = e
+        viewport.overviewPadding = e
+        viewport.evaluate()
+        // Mapbox's logo and attribution must stay visible (their terms): above the sheet, not under it.
+        val lift = (insets.bottomPx + marginPx).toFloat()
+        mapView.logo.updateSettings { marginBottom = lift }
+        mapView.attribution.updateSettings { marginBottom = lift }
     }
 
     // Put the idle camera on the user once a fix exists; never downtown Houston, never every fix.
@@ -171,7 +264,6 @@ fun NavMap(
             phase == NavPhase.PREVIEW && routes.isNotEmpty() -> {
                 routeLineApi.clearRouteLine { routeLineView.renderClearRouteLineValue(style, it) }
                 drawPreview(style, routes, selectedRoute)
-                frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), bannerPx, sheetPx, sidePx)
             }
             phase == NavPhase.GUIDING && routes.isNotEmpty() ->
                 routeLineApi.setNavigationRoutes(routes) { routeLineView.renderRouteDrawData(style, it) }
@@ -208,10 +300,13 @@ fun NavMap(
             NavCameraMode.FREE -> Unit
         }
     }
-    // Overview in preview: the user asked for the whole route, which is the preview's own framing.
-    LaunchedEffect(camera, phase) {
-        if (phase == NavPhase.PREVIEW && camera == NavCameraMode.OVERVIEW && routes.isNotEmpty()) {
-            frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), bannerPx, sheetPx, sidePx)
+    // Preview fit and preview overview are one framing: the whole selected route, inside the measured
+    // chrome. Re-run when the chrome's size changes (its first measurement lands after the first frame)
+    // after a short pause so a sheet growing a row does not chase the camera.
+    LaunchedEffect(phase, routes, selectedRoute, camera, insets) {
+        if (phase == NavPhase.PREVIEW && routes.isNotEmpty()) {
+            delay(FRAME_SETTLE_MS)
+            frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), edge())
         }
     }
 
@@ -257,9 +352,10 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
             style.addLayer(
                 lineLayer("$PREVIEW_LINE_ID$i", "$PREVIEW_SOURCE_ID$i") {
                     lineColor(SoftColors.text3.toArgb())
-                    lineWidth(LINE_WIDTH)
+                    lineWidth(ALT_LINE_WIDTH)
                     lineDasharray(listOf(DASH, DASH_GAP))
-                    lineCap(LineCap.ROUND)
+                    // Butt, not round: a round cap grows each dash by half the width and closes the gap.
+                    lineCap(LineCap.BUTT)
                     lineJoin(LineJoin.ROUND)
                 },
             )
@@ -281,7 +377,7 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
 }
 
 /** Fit the camera to [route] with room for the banner and the bottom sheet. */
-private fun frame(mapView: MapView, route: NavigationRoute, top: Double, bottom: Double, side: Double) {
+private fun frame(mapView: MapView, route: NavigationRoute, padding: EdgeInsets) {
     val geometry = route.directionsRoute.geometry() ?: return
     val points = PolylineUtils.decode(geometry, POLYLINE_PRECISION)
     if (points.size < 2) return
@@ -289,7 +385,7 @@ private fun frame(mapView: MapView, route: NavigationRoute, top: Double, bottom:
     mapView.mapboxMap.cameraForCoordinates(
         points,
         CameraOptions.Builder().build(),
-        EdgeInsets(top, side, bottom, side),
+        padding,
         null,
         null,
     ) { camera -> mapView.mapboxMap.setCamera(camera) }
@@ -303,14 +399,19 @@ private const val PREVIEW_DEST_ID = "nav-preview-dest"
 private const val POLYLINE_PRECISION = 6
 private const val LINE_WIDTH = 7.0
 private const val CASING_WIDTH = 13.0
+private const val ALT_LINE_WIDTH = 6.0
 private const val DASH = 2.0
-private const val DASH_GAP = 2.0
+private const val DASH_GAP = 1.5
+private const val STYLE_RETRY_MS = 5_000L
+private const val FRAME_SETTLE_MS = 150L
+private const val MAX_BOTTOM_SHARE = 0.6
 private const val DEST_RADIUS = 9.0
 private const val DEST_STROKE = 3.0
 private const val IDLE_ZOOM = 13.0
 private const val NO_FIX_ZOOM = 3.0
 private const val US_LNG = -98.5
 private const val US_LAT = 39.8
-private val SHEET_PADDING = 360.dp
-private val BANNER_PADDING = 150.dp
-private val SIDE_PADDING = 40.dp
+private val CHROME_MARGIN = 16.dp
+
+/** Wide enough to clear the round buttons down the right edge. */
+private val SIDE_PADDING = 64.dp

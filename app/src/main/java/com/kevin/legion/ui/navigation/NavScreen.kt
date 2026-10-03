@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -19,12 +20,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -91,14 +96,16 @@ fun NavScreen(
         onAddStop = viewModel::addStop,
         onDropStop = viewModel::dropStop,
     )
-    NavContent(ui, actions) { modifier ->
+    NavContent(ui, actions) { modifier, insets ->
         NavMap(
             feed = feed,
             phase = ui.nav.phase,
             selectedRoute = ui.nav.selectedRoute,
             camera = ui.nav.camera,
+            insets = insets,
             onAuthFailure = viewModel::onMapAuthFailure,
             onCameraDetached = viewModel::onCameraDetached,
+            onStatus = viewModel::onMapStatus,
             modifier = modifier,
         )
     }
@@ -106,11 +113,12 @@ fun NavScreen(
 
 /**
  * The stateless render. [map] is a slot so a test or preview can draw without the native Maps
- * library. With no Mapbox token the map is NOT created at all (a MapView with no token draws a
+ * library (the slot is handed the MEASURED height of the top overlay and the bottom sheet so the camera
+ * can pad by them, device-run defect 3). With no Mapbox token the map is NOT created at all (a MapView with no token draws a
  * blank surface): the screen says what is missing, in words, with a way to Setup.
  */
 @Composable
-fun NavContent(ui: NavUiState, actions: NavActions, map: @Composable (Modifier) -> Unit) {
+fun NavContent(ui: NavUiState, actions: NavActions, map: @Composable (Modifier, NavMapInsets) -> Unit) {
     SoftTheme {
         Box(Modifier.fillMaxSize().background(SoftColors.ground)) {
             val phase = ui.nav.phase
@@ -118,25 +126,60 @@ fun NavContent(ui: NavUiState, actions: NavActions, map: @Composable (Modifier) 
                 NotSetUp(ui.nav.message, actions)
                 return@Box
             }
-            map(Modifier.fillMaxSize())
+            var topPx by remember { mutableIntStateOf(0) }
+            var bottomPx by remember { mutableIntStateOf(0) }
+            // Measured on the OUTSIDE of each piece of chrome, so its own padding counts. The sheet is
+            // measured inside its imePadding wrapper: a keyboard must not read as a taller sheet.
+            val topMeasure = Modifier.onSizeChanged { topPx = it.height }
+            val bottomMeasure = Modifier.onSizeChanged { bottomPx = it.height }
+            map(Modifier.fillMaxSize(), NavMapInsets(topPx, bottomPx))
+            MapStatusNote(ui.mapStatus, Modifier.align(Alignment.Center))
             when (phase) {
-                NavPhase.GUIDING -> GuidingOverlay(ui, actions)
+                NavPhase.GUIDING -> GuidingOverlay(ui, actions, topMeasure, bottomMeasure, topPx)
                 NavPhase.PREVIEW -> {
-                    BackButton(actions.onCancelPreview, Modifier.align(Alignment.TopStart))
+                    BackButton(actions.onCancelPreview, Modifier.align(Alignment.TopStart).then(topMeasure))
                     MapFab(ui, actions, Modifier.align(Alignment.TopEnd))
-                    PreviewSheet(ui, actions, Modifier.align(Alignment.BottomCenter))
+                    Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
+                        PreviewSheet(ui, actions, bottomMeasure)
+                    }
                 }
                 NavPhase.ARRIVED, NavPhase.ENDED -> {
-                    BackButton(actions.onBack, Modifier.align(Alignment.TopStart))
-                    EndedSheet(ui, actions, Modifier.align(Alignment.BottomCenter))
+                    BackButton(actions.onBack, Modifier.align(Alignment.TopStart).then(topMeasure))
+                    Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
+                        EndedSheet(ui, actions, bottomMeasure)
+                    }
                 }
                 else -> {
-                    BackButton(actions.onBack, Modifier.align(Alignment.TopStart))
-                    ChooseSheet(ui, actions, Modifier.align(Alignment.BottomCenter))
+                    BackButton(actions.onBack, Modifier.align(Alignment.TopStart).then(topMeasure))
+                    Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
+                        ChooseSheet(ui, actions, bottomMeasure)
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * The map's own state in words (device-run defect 1: a black map for 25 s and no explanation).
+ * Nothing when the map is ready.
+ */
+@Composable
+private fun MapStatusNote(status: MapStatus, modifier: Modifier = Modifier) {
+    if (status == MapStatus.READY) return
+    Text(
+        if (status == MapStatus.LOADING) {
+            "Loading the map"
+        } else {
+            "The map could not be reached. Check the connection; it will keep trying."
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = SoftColors.text,
+        modifier = modifier
+            .padding(horizontal = 32.dp)
+            .background(SoftColors.card, RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
 }
 
 @Composable
@@ -224,21 +267,30 @@ private fun MapFab(
 }
 
 @Composable
-private fun GuidingOverlay(ui: NavUiState, actions: NavActions) {
+private fun GuidingOverlay(
+    ui: NavUiState,
+    actions: NavActions,
+    topMeasure: Modifier,
+    bottomMeasure: Modifier,
+    topPx: Int,
+) {
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp)) {
+        Column(Modifier.align(Alignment.TopStart).then(topMeasure).statusBarsPadding().padding(12.dp)) {
             TurnBanner(ui.nav)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                ThenStrip(ui.nav.guidance?.then)
-                if (ui.nav.muted) MutedTag()
-            }
+            ThenStrip(ui.nav.guidance?.then)
+            // Its own line under the banner, not beside the Then strip: a long Then strip took the whole
+            // row and pushed this tag out of view (device-run defect 7).
+            if (ui.nav.muted) MutedTag()
         }
-        // Under the banner, on the right: the overview / recenter button, then a way off the screen
-        // (the trip keeps going; the SDK's notification is the sign it is running).
-        Column(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 128.dp)) {
+        // Under the measured top chrome, on the right: the overview / recenter button, then a way off the
+        // screen (the trip keeps going; the SDK's notification is the sign it is running).
+        val belowChrome = with(LocalDensity.current) { topPx.toDp() }
+        Column(Modifier.align(Alignment.TopEnd).padding(top = belowChrome)) {
             MapFab(ui, actions, withStatusBarPadding = false)
             RoundMapButton(R.drawable.ms_arrow_back, "Leave the map; the trip keeps going", actions.onBack)
         }
-        GuidingSheet(ui, actions, Modifier.align(Alignment.BottomCenter))
+        Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
+            GuidingSheet(ui, actions, bottomMeasure)
+        }
     }
 }

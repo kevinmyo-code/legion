@@ -81,6 +81,7 @@ internal fun ThenStrip(then: String?) {
     )
 }
 
+/** "Turn cues muted" while muted (layout A). A full pill of its own under the banner. */
 @Composable
 internal fun MutedTag() {
     Text(
@@ -88,7 +89,8 @@ internal fun MutedTag() {
         style = MaterialTheme.typography.bodyMedium,
         color = SoftColors.onAlert,
         modifier = Modifier
-            .background(SoftColors.alertContainer, RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .padding(top = 6.dp)
+            .background(SoftColors.alertContainer, RoundedCornerShape(14.dp))
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
