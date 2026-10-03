@@ -49,8 +49,10 @@ import com.kevin.legion.ui.common.DeckBarChart
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.bucketDailySumCents
 import com.kevin.legion.ui.common.dailyBuckets
-import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.common.DrilldownHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.documentDateCompact
 import java.time.Instant
@@ -157,20 +159,7 @@ fun CategoryDrilldownScreen(
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                categoryDrilldownTitle(category),
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DrilldownHeader(categoryDrilldownTitle(category), onBack = onBack, accent = AreaAccent.MONEY)
             if (category == null) {
                 Text(
                     "not assigned to any category",
@@ -534,7 +523,7 @@ private fun CategoryDrilldownRow(
             )
             TextButton(onClick = onToggleExpanded) {
                 Text(
-                    if (expanded) "CANCEL" else "MOVE",
+                    if (expanded) "Cancel" else "Move",
                     style = LegionType.stamp,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -671,9 +660,9 @@ private fun RecategorizePanel(
                         if (result.rowsTouched > 0) onDone()
                     }
                 },
-            ) { Text("APPLY", style = LegionType.stamp) }
+            ) { Text("Apply", style = LegionType.stamp) }
             TextButton(onClick = onDone, enabled = !applying) {
-                Text("CANCEL", style = LegionType.stamp, color = sem.faint)
+                Text("Cancel", style = LegionType.stamp, color = sem.faint)
             }
         }
     }
@@ -770,7 +759,7 @@ private val previewBudgetForUncategorizedBucket = BudgetVsActual(
 
 @Preview(name = "Category drilldown: a normal category", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewCategoryDrilldown() = LegionTheme {
+private fun PreviewCategoryDrilldown() = SoftTheme {
     CategoryDrilldownScreen(
         category = "Travel",
         entity = LedgerEntity.US,
@@ -811,7 +800,7 @@ private fun PreviewCategoryDrilldown() = LegionTheme {
 
 @Preview(name = "Category drilldown: uncategorised bucket, empty", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewCategoryDrilldownUncategorizedEmpty() = LegionTheme {
+private fun PreviewCategoryDrilldownUncategorizedEmpty() = SoftTheme {
     CategoryDrilldownScreen(
         category = null,
         entity = LedgerEntity.US,
@@ -838,7 +827,7 @@ private fun PreviewCategoryDrilldownUncategorizedEmpty() = LegionTheme {
 
 @Preview(name = "Category drilldown: uncategorised bucket, real-category chart (2026-08-18 fix)", widthDp = 360, heightDp = 720)
 @Composable
-private fun PreviewCategoryDrilldownUncategorizedWithChart() = LegionTheme {
+private fun PreviewCategoryDrilldownUncategorizedWithChart() = SoftTheme {
     CategoryDrilldownScreen(
         category = null,
         entity = LedgerEntity.US,
@@ -864,7 +853,7 @@ private fun PreviewCategoryDrilldownUncategorizedWithChart() = LegionTheme {
 
 @Preview(name = "Category drilldown: loading", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewCategoryDrilldownLoading() = LegionTheme {
+private fun PreviewCategoryDrilldownLoading() = SoftTheme {
     CategoryDrilldownScreen(
         category = "Groceries",
         entity = LedgerEntity.US,
@@ -887,7 +876,7 @@ private fun PreviewCategoryDrilldownLoading() = LegionTheme {
 
 @Preview(name = "Category drilldown: SET TARGET rejected, reason shown in words", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewCategoryDrilldownSetTargetRejected() = LegionTheme {
+private fun PreviewCategoryDrilldownSetTargetRejected() = SoftTheme {
     Column {
         SetTargetRow(
             currentTargetCents = 0L,
@@ -902,7 +891,7 @@ private fun PreviewCategoryDrilldownSetTargetRejected() = LegionTheme {
 
 @Preview(name = "Category drilldown: MOVE panel open on the Petco row, two rows matched", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewCategoryDrilldownRecategorizing() = LegionTheme {
+private fun PreviewCategoryDrilldownRecategorizing() = SoftTheme {
     Column {
         CategoryDrilldownRow(
             txn = previewCategorized.copy(

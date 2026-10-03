@@ -179,8 +179,10 @@ internal fun signedPendingCents(magnitudeCents: Long, direction: String): Long =
 private fun DirectionChoice(label: String, selected: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val sem = LocalLegionSemantics.current
     Text(
-        label.uppercase(),
-        style = LegionType.stamp,
+        label,
+        style = LegionType.stamp.copy(
+            fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.SemiBold else null,
+        ),
         color = if (selected) sem.data else sem.faint,
         modifier = modifier.clickable(enabled = enabled) { onClick() },
     )

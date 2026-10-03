@@ -43,8 +43,10 @@ import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
-import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.common.DrilldownHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.documentDateCompact
 import java.time.YearMonth
@@ -166,23 +168,18 @@ fun CategorizeDrilldownScreen(
     )
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
+            DrilldownHeader("Categorize", onBack = onBack, accent = AreaAccent.MONEY)
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Categorize", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                 // Always visible, unlike the PENDING section itself below - the section can be
                 // entirely absent from the LazyColumn when the empty-state sentence short-circuits
                 // it (see `emptySentence`'s own branch just below), and ADD must not disappear
                 // along with it.
                 TextButton(onClick = { showAddPending = true }) {
-                    Text("ADD PENDING", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                    Text("Add pending", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
             }
             Text(
@@ -199,7 +196,7 @@ fun CategorizeDrilldownScreen(
             Spacer(Modifier.height(8.dp))
             // Step 1: rules, free, no confirmation - fires immediately.
             DeckButton(
-                text = "RUN CATEGORIZATION",
+                text = "Run categorization",
                 onClick = onRunRules,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
@@ -222,7 +219,7 @@ fun CategorizeDrilldownScreen(
                 )
                 if (guessPool.keys.isNotEmpty() && hasGeminiKey) {
                     DeckButton(
-                        text = if (guessArmed) "YES, GUESS WITH GEMINI" else "GUESS CATEGORIES",
+                        text = if (guessArmed) "Yes, guess with Gemini" else "Guess categories",
                         onClick = { if (guessArmed) { onConfirmGuesses(); guessArmed = false } else guessArmed = true },
                         confirming = guessArmed,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -257,19 +254,27 @@ fun CategorizeDrilldownScreen(
                         }
                     }
                     if (pending.isNotEmpty()) {
-                        item(key = "pending-header") { SectionHeader("PENDING (LOGGED BY VOICE)", pending.size.toString()) }
+                        item(key = "pending-header") {
+                            SectionHeader("Pending (logged by voice)", pending.size.toString())
+                        }
                         item(key = "pending") { PendingTransactionsSection(pending, onClearPending) }
                     }
                     if (categoryGuesses.isNotEmpty()) {
-                        item(key = "guesses-header") { SectionHeader("CATEGORY GUESSES, NOT CONFIRMED", categoryGuesses.size.toString()) }
+                        item(key = "guesses-header") {
+                            SectionHeader("Category guesses, not confirmed", categoryGuesses.size.toString())
+                        }
                         item(key = "guesses") { CategoryGuessesSection(categoryGuesses, onConfirmCategory) }
                     }
                     if (uncategorized.isNotEmpty()) {
-                        item(key = "uncategorized-header") { SectionHeader("UNCATEGORISED", uncategorized.size.toString()) }
+                        item(key = "uncategorized-header") {
+                            SectionHeader("Uncategorised", uncategorized.size.toString())
+                        }
                         item(key = "uncategorized") { UncategorizedSection(uncategorized, categoryNames, onSetRowCategory) }
                     }
                     if (uncategorizedTransfers.isNotEmpty()) {
-                        item(key = "transfers-header") { SectionHeader("TRANSFERS (EXCLUDED FROM SPEND)", uncategorizedTransfers.size.toString()) }
+                        item(key = "transfers-header") {
+                            SectionHeader("Transfers (excluded from spend)", uncategorizedTransfers.size.toString())
+                        }
                         item(key = "transfers") { UncategorizedTransfersSection(uncategorizedTransfers) }
                     }
                     item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
@@ -332,7 +337,11 @@ private fun UncategorizedRow(
                 modifier = Modifier.padding(start = 8.dp),
             )
             TextButton(onClick = onToggleExpanded) {
-                Text(if (expanded) "CANCEL" else "SET CATEGORY", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    if (expanded) "Cancel" else "Set category",
+                    style = LegionType.stamp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
         val note = LedgerCategoryResolver.rowNote(txn)
@@ -415,12 +424,7 @@ fun QuarantineDrilldownScreen(
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text("Quarantine", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            DrilldownHeader("Quarantine", onBack = onBack, accent = AreaAccent.MONEY)
             Text(
                 if (quarantined.isEmpty()) {
                     "Nothing quarantined."
@@ -476,12 +480,7 @@ fun BudgetDrilldownScreen(
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text("Budget", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            DrilldownHeader("Budget", onBack = onBack, accent = AreaAccent.MONEY)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 BudgetSection(
                     month = month,
@@ -515,12 +514,7 @@ fun BudgetDrilldownScreen(
 fun BalancesDrilldownScreen(balances: List<AccountBalance>, onBack: () -> Unit) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text("Balances", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            DrilldownHeader("Balances", onBack = onBack, accent = AreaAccent.MONEY)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 BalancesSection(balances)
                 Spacer(Modifier.height(24.dp))
@@ -556,7 +550,7 @@ private fun AdvisorProposalsSection(
     var busyId by remember { mutableStateOf<Long?>(null) }
     var lastResult by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-        SectionHeader("FROM YOUR MONEY ADVISOR", proposals.size.toString())
+        SectionHeader("From your money advisor", proposals.size.toString())
         for (advice in proposals) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(advice.gist, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
@@ -572,7 +566,7 @@ private fun AdvisorProposalsSection(
                                 onActed()
                             }
                         },
-                    ) { Text("ACCEPT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary) }
+                    ) { Text("Accept", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary) }
                     TextButton(
                         enabled = busyId == null,
                         onClick = {
@@ -584,7 +578,7 @@ private fun AdvisorProposalsSection(
                             }
                         },
                         modifier = Modifier.padding(start = 8.dp),
-                    ) { Text("DISMISS", style = LegionType.stamp, color = sem.faint) }
+                    ) { Text("Dismiss", style = LegionType.stamp, color = sem.faint) }
                 }
             }
         }
@@ -600,7 +594,7 @@ private fun AdvisorProposalsSection(
 
 @Preview(name = "Categorize: pending + guesses + uncategorised + transfers", widthDp = 360, heightDp = 900)
 @Composable
-private fun PreviewCategorizeMixed() = LegionTheme {
+private fun PreviewCategorizeMixed() = SoftTheme {
     CategorizeDrilldownScreen(
         pending = listOf(
             LedgerTransaction(
@@ -638,7 +632,7 @@ private fun PreviewCategorizeMixed() = LegionTheme {
 
 @Preview(name = "Categorize: nothing to do", widthDp = 360, heightDp = 480)
 @Composable
-private fun PreviewCategorizeEmpty() = LegionTheme {
+private fun PreviewCategorizeEmpty() = SoftTheme {
     CategorizeDrilldownScreen(
         pending = emptyList(), categoryGuesses = emptyList(),
         uncategorized = emptyList(), uncategorizedTransfers = emptyList(),
@@ -652,7 +646,7 @@ private fun PreviewCategorizeEmpty() = LegionTheme {
 
 @Preview(name = "Categorize: nothing needs a category, transfers only", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewCategorizeTransfersOnly() = LegionTheme {
+private fun PreviewCategorizeTransfersOnly() = SoftTheme {
     CategorizeDrilldownScreen(
         pending = emptyList(), categoryGuesses = emptyList(), uncategorized = emptyList(),
         uncategorizedTransfers = listOf(
@@ -672,7 +666,7 @@ private fun PreviewCategorizeTransfersOnly() = LegionTheme {
 
 @Preview(name = "Quarantine: two files", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewQuarantineTwo() = LegionTheme {
+private fun PreviewQuarantineTwo() = SoftTheme {
     QuarantineDrilldownScreen(
         quarantined = listOf(
             IngestedFile(
@@ -688,13 +682,13 @@ private fun PreviewQuarantineTwo() = LegionTheme {
 
 @Preview(name = "Quarantine: none", widthDp = 360, heightDp = 480)
 @Composable
-private fun PreviewQuarantineEmpty() = LegionTheme {
+private fun PreviewQuarantineEmpty() = SoftTheme {
     QuarantineDrilldownScreen(quarantined = emptyList(), onRetry = {}, onRetryAll = {}, onBack = {})
 }
 
 @Preview(name = "Balances: two accounts", widthDp = 360, heightDp = 480)
 @Composable
-private fun PreviewBalancesTwo() = LegionTheme {
+private fun PreviewBalancesTwo() = SoftTheme {
     BalancesDrilldownScreen(
         balances = listOf(
             AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80),

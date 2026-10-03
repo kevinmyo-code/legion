@@ -28,8 +28,8 @@ import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.displayDescription
 import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.ui.common.Hairline
-import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.documentDateCompact
 import com.kevin.legion.ledger.maskedAccountLabel
@@ -271,7 +271,7 @@ private fun PendingTransactionRow(row: LedgerTransaction, onClear: (id: Long) ->
             }
         }
         TextButton(onClick = { onClear(row.id) }) {
-            Text("REMOVE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            Text("Remove", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -314,7 +314,7 @@ private fun CategoryGuessRow(guess: LedgerCategoryResolver.MerchantGuess, onConf
             )
         }
         TextButton(onClick = { onConfirm(guess.merchantKey, guess.category) }) {
-            Text("CONFIRM", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            Text("Confirm", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -349,7 +349,7 @@ fun QuarantineRow(file: IngestedFile, onRetry: (driveFileId: String) -> Unit) {
         }
         Spacer(Modifier.width(8.dp))
         TextButton(onClick = { onRetry(file.driveFileId) }) {
-            Text("RETRY", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            Text("Retry", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -380,7 +380,7 @@ fun RetryAllQuarantineRow(count: Int, onRetryAll: () -> Unit) {
         )
         Spacer(Modifier.width(8.dp))
         TextButton(onClick = onRetryAll) {
-            Text("RETRY ALL", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            Text("Retry all", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -444,13 +444,13 @@ private val previewTxn = LedgerTransaction(
 
 @Preview(name = "Ledger row: deterministic debit", widthDp = 360)
 @Composable
-private fun PreviewTransactionRowDeterministic() = LegionTheme {
+private fun PreviewTransactionRowDeterministic() = SoftTheme {
     Surface { LedgerTransactionRow(previewTxn) }
 }
 
 @Preview(name = "Ledger row: LLM-reconciled credit", widthDp = 360)
 @Composable
-private fun PreviewTransactionRowLlm() = LegionTheme {
+private fun PreviewTransactionRowLlm() = SoftTheme {
     Surface {
         LedgerTransactionRow(
             previewTxn.copy(
@@ -464,7 +464,7 @@ private fun PreviewTransactionRowLlm() = LegionTheme {
 
 @Preview(name = "Ledger row: card CSV, pending and not verified", widthDp = 360)
 @Composable
-private fun PreviewTransactionRowUnreconciled() = LegionTheme {
+private fun PreviewTransactionRowUnreconciled() = SoftTheme {
     Surface {
         LedgerTransactionRow(
             previewTxn.copy(
@@ -480,7 +480,7 @@ private fun PreviewTransactionRowUnreconciled() = LegionTheme {
 
 @Preview(name = "Balances: SGD + USD, no FX", widthDp = 360)
 @Composable
-private fun PreviewBalances() = LegionTheme {
+private fun PreviewBalances() = SoftTheme {
     Surface {
         BalancesSection(
             listOf(
@@ -499,7 +499,7 @@ private fun PreviewBalances() = LegionTheme {
  */
 @Preview(name = "Balances: as-of date on a real printed balance", widthDp = 360)
 @Composable
-private fun PreviewBalanceAsOfDated() = LegionTheme {
+private fun PreviewBalanceAsOfDated() = SoftTheme {
     Surface {
         BalancesSection(listOf(AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80, asOfMs = PREVIEW_AS_OF_MS)))
     }
@@ -507,13 +507,13 @@ private fun PreviewBalanceAsOfDated() = LegionTheme {
 
 @Preview(name = "Balances: as-of - no balance ever printed", widthDp = 360)
 @Composable
-private fun PreviewBalanceAsOfUndated() = LegionTheme {
+private fun PreviewBalanceAsOfUndated() = SoftTheme {
     Surface { BalancesSection(listOf(AccountBalance("BOFA ****4471", LedgerCurrency.USD, null, asOfMs = null))) }
 }
 
 @Preview(name = "Balances: provisional card CSV rows included, marked unverified", widthDp = 360)
 @Composable
-private fun PreviewBalancesProvisional() = LegionTheme {
+private fun PreviewBalancesProvisional() = SoftTheme {
     Surface {
         BalancesSection(
             listOf(
@@ -550,7 +550,7 @@ private fun PreviewBalancesProvisional() = LegionTheme {
  */
 @Preview(name = "Balances: card CSV pending, but the account HAS been reconciled before", widthDp = 360)
 @Composable
-private fun PreviewBalancesProvisionalReconciledCard() = LegionTheme {
+private fun PreviewBalancesProvisionalReconciledCard() = SoftTheme {
     Surface {
         BalancesSection(
             listOf(
@@ -569,13 +569,13 @@ private fun PreviewBalancesProvisionalReconciledCard() = LegionTheme {
 
 @Preview(name = "Balances: a format that never prints one", widthDp = 360)
 @Composable
-private fun PreviewBalancesUnstated() = LegionTheme {
+private fun PreviewBalancesUnstated() = SoftTheme {
     Surface { BalancesSection(listOf(AccountBalance("BOFA ****4471", LedgerCurrency.USD, null))) }
 }
 
 @Preview(name = "Quarantine row", widthDp = 360)
 @Composable
-private fun PreviewQuarantineRow() = LegionTheme {
+private fun PreviewQuarantineRow() = SoftTheme {
     Surface {
         QuarantineRow(
             IngestedFile(
@@ -597,6 +597,6 @@ private fun PreviewQuarantineRow() = LegionTheme {
 
 @Preview(name = "Empty: no statements yet", widthDp = 360)
 @Composable
-private fun PreviewEmptyNoStatements() = LegionTheme {
+private fun PreviewEmptyNoStatements() = SoftTheme {
     Surface { LedgerEmptyState(LedgerEmptyCopy.NO_STATEMENTS_TITLE, LedgerEmptyCopy.NO_STATEMENTS_BODY) }
 }

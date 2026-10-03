@@ -41,7 +41,10 @@ import com.kevin.legion.pantry.PantryController
 import com.kevin.legion.ui.pantry.PantryOpsStatusRow
 import com.kevin.legion.ui.pantry.PantryReceiptSection
 import com.kevin.legion.ui.pantry.PantrySpendPanel
-import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.common.DrilldownHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
+import com.kevin.legion.ui.theme.soft.AreaChip
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 
@@ -118,7 +121,9 @@ fun PantryScreen(onOpenImport: () -> Unit) {
         }
     }
 
-    PantryContent(state = state, onOpenImport = onOpenImport)
+    // Soft Material (ADR 0051): wrapped here, not inside PantryContent, because that function reads
+    // LocalLegionSemantics before its first Surface.
+    SoftTheme { PantryContent(state = state, onOpenImport = onOpenImport) }
 }
 
 /** Plain UI: [state] plus callbacks, no controller reference - see the file doc comment. */
@@ -132,9 +137,17 @@ fun PantryContent(state: PantryUiState, onOpenImport: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("PANTRY", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AreaChip(AreaAccent.MONEY, size = 32.dp, iconSize = 18.dp)
+                    Text(
+                        "Pantry",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(start = 10.dp),
+                    )
+                }
                 TextButton(onClick = onOpenImport) {
-                    Text("IMPORT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                    Text("Import", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
             }
             // Backend-erp phase 3: stale/failed-read notice, right under the title, never below
@@ -203,19 +216,19 @@ fun PantryImportScreen(onBack: () -> Unit) {
         pendingBitmap = null
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Button(onClick = onBack) {
-                Text("< Back")
-            }
-            Text(status)
-            if (hasCamera(context)) {
-                Button(onClick = cameraLauncher) {
-                    Text("Take photo")
+    SoftTheme {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                DrilldownHeader("Import receipt", onBack = onBack, accent = AreaAccent.MONEY)
+                Text(status, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 12.dp))
+                if (hasCamera(context)) {
+                    Button(onClick = cameraLauncher) {
+                        Text("Take photo")
+                    }
                 }
-            }
-            Button(onClick = { pickImage.launch("image/*") }) {
-                Text("Pick from gallery")
+                Button(onClick = { pickImage.launch("image/*") }) {
+                    Text("Pick from gallery")
+                }
             }
         }
     }
@@ -231,19 +244,19 @@ private fun decodePantryUri(context: android.content.Context, uri: Uri): Bitmap?
 
 @Preview(name = "Pantry: loading", widthDp = 360, heightDp = 720)
 @Composable
-private fun PreviewPantryLoading() = LegionTheme {
+private fun PreviewPantryLoading() = SoftTheme {
     PantryContent(PantryUiState(loading = true), onOpenImport = {})
 }
 
 @Preview(name = "Pantry: empty, no receipts yet", widthDp = 360, heightDp = 720)
 @Composable
-private fun PreviewPantryEmpty() = LegionTheme {
+private fun PreviewPantryEmpty() = SoftTheme {
     PantryContent(PantryUiState(loading = false), onOpenImport = {})
 }
 
 @Preview(name = "Pantry: one receipt, segregated macros", widthDp = 360, heightDp = 1200)
 @Composable
-private fun PreviewPantryPopulated() = LegionTheme {
+private fun PreviewPantryPopulated() = SoftTheme {
     val receipt = PantryReceipt(
         id = 1,
         store = "TRADER JOES",

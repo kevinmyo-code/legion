@@ -54,6 +54,7 @@ import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
+import com.kevin.legion.ui.ledger.MoneyTitleRow
 import com.kevin.legion.ui.ledger.NominatedAccountSection
 import com.kevin.legion.ui.ledger.BalancesDrilldownScreen
 import com.kevin.legion.ui.ledger.BudgetDrilldownScreen
@@ -71,7 +72,7 @@ import com.kevin.legion.ui.ledger.LedgerEmptyCopy
 import com.kevin.legion.ui.ledger.LedgerEmptyState
 import com.kevin.legion.ui.ledger.LedgerTransactionRow
 import com.kevin.legion.ui.ledger.QuarantineDrilldownScreen
-import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import java.time.YearMonth
@@ -523,97 +524,103 @@ fun LedgerScreen(
 
     val currentDrilldown = drilldownCategory
     if (currentDrilldown != null) {
-        CategoryDrilldownScreen(
-            category = currentDrilldown.category,
-            entity = LedgerEntity.US,
-            transactions = drilldownTransactions,
-            loading = drilldownLoading,
-            categoryNames = drilldownCategoryNames,
-            // ticket 03 (quant-viz): the daily-spend bars read `pnlMonth`/`state.budgetVsActual.coverage` -
-            // the SAME month and coverage the budget section above already loaded, no new DB read.
-            // `pnlMonth` cannot be null here: opening a drill-down (`onOpenCategory`) is only ever
-            // wired from a row BudgetSection rendered, which itself only renders once `pnlMonth` is
-            // non-null - falling back to `YearMonth.now()` is a defensive no-op, never actually hit.
-            month = pnlMonth ?: YearMonth.now(),
-            coverage = state.budgetVsActual?.coverage ?: emptyList(),
-            // 2026-08-18 fix: the uncategorised bucket's own chart is the REAL-category breakdown
-            // now, not a per-day total of the bucket alone - see CategoryDrilldownScreen's own doc
-            // comment. Same `state.budgetVsActual` the BUDGET drilldown already reads, no new load.
-            budget = state.budgetVsActual,
-            currentTargetCents = drilldownTargetCents,
-            setTargetErrorText = setTargetErrorText,
-            setTargetSuccessNonce = setTargetSuccessNonce,
-            // ticket 09: parses the typed dollars text (no controller reference inside the content
-            // composable, matching onSetCategory below) and writes via LedgerController.setBudget for
-            // the drilldown's OWN open month - "copy forward from where you're looking", per the
-            // ticket's own resolution. `reloadNonce++` refreshes `state.budgetVsActual` so the meter
-            // this write unlocks (BudgetLineRow's `target > 0L` guard) appears without leaving the
-            // screen; `setTargetSuccessNonce++` both clears SetTargetRow's typed text (its own
-            // LaunchedEffect) AND re-fires the drill-down load effect above to pick up the new
-            // `drilldownTargetCents` for the words line.
-            onSetTarget = { text ->
-                val category = currentDrilldown.category
-                if (category != null) {
-                    val cents = parseDollarsToCents(text)
-                    if (cents == null) {
-                        setTargetErrorText = dollarsParseErrorMessage()
-                    } else {
-                        val month = pnlMonth ?: YearMonth.now()
-                        scope.launch {
-                            LedgerController.setBudget(context, LedgerEntity.US, category, month, cents)
-                            setTargetErrorText = null
-                            setTargetSuccessNonce++
-                            reloadNonce++
+        SoftTheme {
+            CategoryDrilldownScreen(
+                category = currentDrilldown.category,
+                entity = LedgerEntity.US,
+                transactions = drilldownTransactions,
+                loading = drilldownLoading,
+                categoryNames = drilldownCategoryNames,
+                // ticket 03 (quant-viz): the daily-spend bars read `pnlMonth`/`state.budgetVsActual.coverage` -
+                // the SAME month and coverage the budget section above already loaded, no new DB read.
+                // `pnlMonth` cannot be null here: opening a drill-down (`onOpenCategory`) is only ever
+                // wired from a row BudgetSection rendered, which itself only renders once `pnlMonth` is
+                // non-null - falling back to `YearMonth.now()` is a defensive no-op, never actually hit.
+                month = pnlMonth ?: YearMonth.now(),
+                coverage = state.budgetVsActual?.coverage ?: emptyList(),
+                // 2026-08-18 fix: the uncategorised bucket's own chart is the REAL-category breakdown
+                // now, not a per-day total of the bucket alone - see CategoryDrilldownScreen's own doc
+                // comment. Same `state.budgetVsActual` the BUDGET drilldown already reads, no new load.
+                budget = state.budgetVsActual,
+                currentTargetCents = drilldownTargetCents,
+                setTargetErrorText = setTargetErrorText,
+                setTargetSuccessNonce = setTargetSuccessNonce,
+                // ticket 09: parses the typed dollars text (no controller reference inside the content
+                // composable, matching onSetCategory below) and writes via LedgerController.setBudget for
+                // the drilldown's OWN open month - "copy forward from where you're looking", per the
+                // ticket's own resolution. `reloadNonce++` refreshes `state.budgetVsActual` so the meter
+                // this write unlocks (BudgetLineRow's `target > 0L` guard) appears without leaving the
+                // screen; `setTargetSuccessNonce++` both clears SetTargetRow's typed text (its own
+                // LaunchedEffect) AND re-fires the drill-down load effect above to pick up the new
+                // `drilldownTargetCents` for the words line.
+                onSetTarget = { text ->
+                    val category = currentDrilldown.category
+                    if (category != null) {
+                        val cents = parseDollarsToCents(text)
+                        if (cents == null) {
+                            setTargetErrorText = dollarsParseErrorMessage()
+                        } else {
+                            val month = pnlMonth ?: YearMonth.now()
+                            scope.launch {
+                                LedgerController.setBudget(context, LedgerEntity.US, category, month, cents)
+                                setTargetErrorText = null
+                                setTargetSuccessNonce++
+                                reloadNonce++
+                            }
                         }
                     }
-                }
-            },
-            onPreviewRecategorizeCount = { merchantKey -> LedgerController.previewRecategorizeCount(context, merchantKey) },
-            onSetCategory = { merchantKey, category ->
-                val result = LedgerController.setCategory(context, merchantKey, category)
-                // Refresh BOTH the open drill-down (so a row that moved out of this category
-                // stops sitting here looking unchanged) and the rest of the screen (budget lines,
-                // the uncategorised bucket, pending-guess counts - all of which can shift under a
-                // recategorise the same way a voice `set_category` call already does via its own
-                // `reloadNonce++`).
-                if (result.rowsTouched > 0) {
-                    drilldownReloadNonce++
-                    reloadNonce++
-                }
-                result
-            },
-            // A bar tapped on the uncategorised bucket's own category chart (2026-08-18) - swap
-            // this drilldown for that category's, rather than stacking a second screen, so BACK
-            // still returns to Money in one press.
-            onOpenCategory = { category ->
-                drilldownCategory = CategoryDrilldownSelection(category)
-                setTargetErrorText = null
-            },
-            // ticket 09: clears a lingering SET TARGET rejection so leaving this category and
-            // opening a different one never shows category B underneath category A's stale parse
-            // error - `setTargetSuccessNonce` is deliberately NOT bumped here (that signal means "a
-            // write just landed", which did not happen on a plain back-out).
-            onBack = { drilldownCategory = null; setTargetErrorText = null },
-        )
+                },
+                onPreviewRecategorizeCount = { merchantKey -> LedgerController.previewRecategorizeCount(context, merchantKey) },
+                onSetCategory = { merchantKey, category ->
+                    val result = LedgerController.setCategory(context, merchantKey, category)
+                    // Refresh BOTH the open drill-down (so a row that moved out of this category
+                    // stops sitting here looking unchanged) and the rest of the screen (budget lines,
+                    // the uncategorised bucket, pending-guess counts - all of which can shift under a
+                    // recategorise the same way a voice `set_category` call already does via its own
+                    // `reloadNonce++`).
+                    if (result.rowsTouched > 0) {
+                        drilldownReloadNonce++
+                        reloadNonce++
+                    }
+                    result
+                },
+                // A bar tapped on the uncategorised bucket's own category chart (2026-08-18) - swap
+                // this drilldown for that category's, rather than stacking a second screen, so BACK
+                // still returns to Money in one press.
+                onOpenCategory = { category ->
+                    drilldownCategory = CategoryDrilldownSelection(category)
+                    setTargetErrorText = null
+                },
+                // ticket 09: clears a lingering SET TARGET rejection so leaving this category and
+                // opening a different one never shows category B underneath category A's stale parse
+                // error - `setTargetSuccessNonce` is deliberately NOT bumped here (that signal means "a
+                // write just landed", which did not happen on a plain back-out).
+                onBack = { drilldownCategory = null; setTargetErrorText = null },
+            )
+        }
         return
     }
 
     if (showExcludedOwnAccountMovements) {
         val budget = state.budgetVsActual
-        ExcludedOwnAccountMovementsScreen(
-            entity = LedgerEntity.US,
-            excluded = budget?.excludedOwnAccountMovements ?: com.kevin.legion.ledger.ExcludedOwnAccountMovements(0, 0L, emptyList()),
-            onBack = { showExcludedOwnAccountMovements = false },
-        )
+        SoftTheme {
+            ExcludedOwnAccountMovementsScreen(
+                entity = LedgerEntity.US,
+                excluded = budget?.excludedOwnAccountMovements ?: com.kevin.legion.ledger.ExcludedOwnAccountMovements(0, 0L, emptyList()),
+                onBack = { showExcludedOwnAccountMovements = false },
+            )
+        }
         return
     }
 
     if (showSpendTrend) {
-        com.kevin.legion.ui.ledger.SpendTrendDrilldown(
-            entity = LedgerEntity.US,
-            trend = state.spendTrend,
-            onBack = { showSpendTrend = false },
-        )
+        SoftTheme {
+            com.kevin.legion.ui.ledger.SpendTrendDrilldown(
+                entity = LedgerEntity.US,
+                trend = state.spendTrend,
+                onBack = { showSpendTrend = false },
+            )
+        }
         return
     }
 
@@ -633,72 +640,74 @@ fun LedgerScreen(
             categorizeGuessPool = null
             categorizeGuessResult = null
         }
-        CategorizeDrilldownScreen(
-            pending = state.pending,
-            categoryGuesses = LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses),
-            uncategorized = state.uncategorized,
-            uncategorizedTransfers = state.uncategorizedTransfers,
-            categoryNames = state.categoryNames,
-            hasGeminiKey = hasGeminiKey,
-            rulesFixedCount = categorizeRulesFixedCount,
-            guessPool = categorizeGuessPool,
-            guessResult = categorizeGuessResult,
-            onClearPending = { id ->
-                scope.launch {
-                    LedgerController.clearPendingTransaction(context, id)
-                    reloadNonce++
-                }
-            },
-            onConfirmCategory = { merchant, category ->
-                scope.launch {
-                    LedgerController.setCategory(context, merchant, category)
-                    reloadNonce++
-                }
-            },
-            onSetRowCategory = { transactionId, category ->
-                scope.launch {
-                    LedgerController.recategorize(context, transactionId, category)
-                    reloadNonce++
-                }
-            },
-            // Step 1: free, local, no confirmation - CLAUDE.md §7's "Gemini call? cheap one-shot
-            // sub-agent where possible" cuts the other way here too: a rule match is a plain SQL
-            // UPDATE, so there is nothing to gate.
-            onRunRules = {
-                scope.launch {
-                    val fixed = LedgerController.applyCategoryRules(context)
-                    categorizeRulesFixedCount = fixed
-                    reloadNonce++
-                    // Loaded from the FRESH pool (after rules just ran, and after reloadNonce's
-                    // uncategorizedTransactionsSplit reload lands) - showing a pre-rules pool size
-                    // here would double-count rows the rules step just fixed.
-                    categorizeGuessPool = LedgerController.uncategorizedMerchants(context)
-                }
-            },
-            onConfirmGuesses = {
-                val pool = categorizeGuessPool
-                if (pool != null && pool.keys.isNotEmpty()) {
+        SoftTheme {
+            CategorizeDrilldownScreen(
+                pending = state.pending,
+                categoryGuesses = LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses),
+                uncategorized = state.uncategorized,
+                uncategorizedTransfers = state.uncategorizedTransfers,
+                categoryNames = state.categoryNames,
+                hasGeminiKey = hasGeminiKey,
+                rulesFixedCount = categorizeRulesFixedCount,
+                guessPool = categorizeGuessPool,
+                guessResult = categorizeGuessResult,
+                onClearPending = { id ->
                     scope.launch {
-                        categorizeGuessResult = LedgerController.applyCategoryGuesses(context, pool.keys)
+                        LedgerController.clearPendingTransaction(context, id)
                         reloadNonce++
-                        // The pool is now stale (every key it named either got a guess or the model
-                        // skipped it) - re-check what's ACTUALLY left rather than leave the old
-                        // count's GUESS CATEGORIES button sitting there re-armable on spent keys.
+                    }
+                },
+                onConfirmCategory = { merchant, category ->
+                    scope.launch {
+                        LedgerController.setCategory(context, merchant, category)
+                        reloadNonce++
+                    }
+                },
+                onSetRowCategory = { transactionId, category ->
+                    scope.launch {
+                        LedgerController.recategorize(context, transactionId, category)
+                        reloadNonce++
+                    }
+                },
+                // Step 1: free, local, no confirmation - CLAUDE.md §7's "Gemini call? cheap one-shot
+                // sub-agent where possible" cuts the other way here too: a rule match is a plain SQL
+                // UPDATE, so there is nothing to gate.
+                onRunRules = {
+                    scope.launch {
+                        val fixed = LedgerController.applyCategoryRules(context)
+                        categorizeRulesFixedCount = fixed
+                        reloadNonce++
+                        // Loaded from the FRESH pool (after rules just ran, and after reloadNonce's
+                        // uncategorizedTransactionsSplit reload lands) - showing a pre-rules pool size
+                        // here would double-count rows the rules step just fixed.
                         categorizeGuessPool = LedgerController.uncategorizedMerchants(context)
                     }
-                }
-            },
-            onBack = { showCategorize = false },
-            // Command-center ticket 11: `log_pending_transaction` by hand. `state.balances` is the
-            // SAME list already loaded for BALANCES above - never a second fetch.
-            accounts = state.balances,
-            onPendingAdded = { reloadNonce++ },
-            // Command-center ticket 11: `accept_proposal` by hand, CRED aspect.
-            proposals = state.pendingProposals,
-            onAcceptProposal = { id -> com.kevin.legion.advisor.AdvisorProposalHandPath.acceptPendingProposal(context, id) },
-            onDismissProposal = { id -> com.kevin.legion.advisor.AdvisorProposalHandPath.dismissPendingProposal(context, id) },
-            onProposalActed = { reloadNonce++ },
-        )
+                },
+                onConfirmGuesses = {
+                    val pool = categorizeGuessPool
+                    if (pool != null && pool.keys.isNotEmpty()) {
+                        scope.launch {
+                            categorizeGuessResult = LedgerController.applyCategoryGuesses(context, pool.keys)
+                            reloadNonce++
+                            // The pool is now stale (every key it named either got a guess or the model
+                            // skipped it) - re-check what's ACTUALLY left rather than leave the old
+                            // count's GUESS CATEGORIES button sitting there re-armable on spent keys.
+                            categorizeGuessPool = LedgerController.uncategorizedMerchants(context)
+                        }
+                    }
+                },
+                onBack = { showCategorize = false },
+                // Command-center ticket 11: `log_pending_transaction` by hand. `state.balances` is the
+                // SAME list already loaded for BALANCES above - never a second fetch.
+                accounts = state.balances,
+                onPendingAdded = { reloadNonce++ },
+                // Command-center ticket 11: `accept_proposal` by hand, CRED aspect.
+                proposals = state.pendingProposals,
+                onAcceptProposal = { id -> com.kevin.legion.advisor.AdvisorProposalHandPath.acceptPendingProposal(context, id) },
+                onDismissProposal = { id -> com.kevin.legion.advisor.AdvisorProposalHandPath.dismissPendingProposal(context, id) },
+                onProposalActed = { reloadNonce++ },
+            )
+        }
         return
     }
 
@@ -706,22 +715,24 @@ fun LedgerScreen(
     // drilldown (ticket 12's own CRED drilldown table names it) reached from the SPEND hero's own
     // worded notice rather than a standing section - see `SpendPane`'s doc comment below.
     if (showQuarantine) {
-        QuarantineDrilldownScreen(
-            quarantined = state.quarantined,
-            onRetry = { driveFileId ->
-                scope.launch {
-                    LedgerController.retryQuarantined(context, driveFileId)
-                    reloadNonce++
-                }
-            },
-            onRetryAll = {
-                scope.launch {
-                    LedgerController.retryAllQuarantined(context)
-                    reloadNonce++
-                }
-            },
-            onBack = { showQuarantine = false },
-        )
+        SoftTheme {
+            QuarantineDrilldownScreen(
+                quarantined = state.quarantined,
+                onRetry = { driveFileId ->
+                    scope.launch {
+                        LedgerController.retryQuarantined(context, driveFileId)
+                        reloadNonce++
+                    }
+                },
+                onRetryAll = {
+                    scope.launch {
+                        LedgerController.retryAllQuarantined(context)
+                        reloadNonce++
+                    }
+                },
+                onBack = { showQuarantine = false },
+            )
+        }
         return
     }
 
@@ -731,35 +742,38 @@ fun LedgerScreen(
         val month = pnlMonth
         if (month != null) {
             val index = state.pnlMonthsWithData.indexOf(month)
-            BudgetDrilldownScreen(
-                month = month,
-                budget = state.budgetVsActual,
-                dailyTransactions = state.monthDailyExpenses,
-                canGoPrevMonth = index > 0,
-                canGoNextMonth = index in 0 until state.pnlMonthsWithData.lastIndex,
-                onPrevMonth = onPrevPnlMonth,
-                onNextMonth = onNextPnlMonth,
-                onOpenCategory = { category ->
-                    showBudget = false
-                    drilldownCategory = CategoryDrilldownSelection(category)
-                },
-                onOpenExcludedOwnAccountMovements = { showExcludedOwnAccountMovements = true },
-                onOpenTrend = { showSpendTrend = true },
-                addCategoryError = addCategoryError,
-                addCategorySuccessNonce = addCategorySuccessNonce,
-                onAddCategory = { name ->
-                    scope.launch {
-                        when (val result = LedgerController.addCategory(context, name)) {
-                            is com.kevin.legion.ledger.NewCategoryValidation.Valid -> {
-                                addCategoryError = null
-                                addCategorySuccessNonce++
+            SoftTheme {
+                BudgetDrilldownScreen(
+                    month = month,
+                    budget = state.budgetVsActual,
+                    dailyTransactions = state.monthDailyExpenses,
+                    canGoPrevMonth = index > 0,
+                    canGoNextMonth = index in 0 until state.pnlMonthsWithData.lastIndex,
+                    onPrevMonth = onPrevPnlMonth,
+                    onNextMonth = onNextPnlMonth,
+                    onOpenCategory = { category ->
+                        showBudget = false
+                        drilldownCategory = CategoryDrilldownSelection(category)
+                    },
+                    onOpenExcludedOwnAccountMovements = { showExcludedOwnAccountMovements = true },
+                    onOpenTrend = { showSpendTrend = true },
+                    addCategoryError = addCategoryError,
+                    addCategorySuccessNonce = addCategorySuccessNonce,
+                    onAddCategory = { name ->
+                        scope.launch {
+                            when (val result = LedgerController.addCategory(context, name)) {
+                                is com.kevin.legion.ledger.NewCategoryValidation.Valid -> {
+                                    addCategoryError = null
+                                    addCategorySuccessNonce++
+                                }
+                                is com.kevin.legion.ledger.NewCategoryValidation.Invalid ->
+                                    addCategoryError = result.reason
                             }
-                            is com.kevin.legion.ledger.NewCategoryValidation.Invalid -> addCategoryError = result.reason
                         }
-                    }
-                },
-                onBack = { showBudget = false },
-            )
+                    },
+                    onBack = { showBudget = false },
+                )
+            }
         }
         return
     }
@@ -771,10 +785,12 @@ fun LedgerScreen(
     // any OTHER reader of it (the AccountMappingSection `knownAccountIds` above) still sees every
     // real accountId, including ones this grouping would cluster together for display only.
     if (showBalances) {
-        BalancesDrilldownScreen(
-            balances = groupAccountBalances(state.balances),
-            onBack = { showBalances = false },
-        )
+        SoftTheme {
+            BalancesDrilldownScreen(
+                balances = groupAccountBalances(state.balances),
+                onBack = { showBalances = false },
+            )
+        }
         return
     }
 
@@ -789,39 +805,41 @@ fun LedgerScreen(
         moneyAccountFilterId = moneyAccountFilterId,
     )
 
-    LedgerContent(
-        state = fullState,
-        onOpenGroceries = onOpenGroceries,
-        // Never let the picker step past what `pnlMonthsWithData` actually
-        // bounds (ticket resolution §5: "never let the user page into months
-        // that cannot have data") - a null current month or an index at
-        // either end makes both a safe no-op rather than paging off the list.
-        onPrevPnlMonth = onPrevPnlMonth,
-        onNextPnlMonth = onNextPnlMonth,
-        onNominateAccount = { accountId ->
-            LedgerNominatedAccountPreferences.setNominated(context, accountId)
-        },
-        // Mission-control ticket 16's CRED rebuild - the four new nav targets the shed sections
-        // moved into. See the `showCategorize`/`showQuarantine`/`showBudget`/`showBalances` blocks
-        // above for what each actually renders.
-        onOpenCategorize = { showCategorize = true },
-        onOpenQuarantine = { showQuarantine = true },
-        onOpenBudget = { showBudget = true },
-        onOpenBalances = { showBalances = true },
-        onOpenTrend = { showSpendTrend = true },
-        // The SPEND pane's uncategorised-excluded disclosure taps straight into the uncategorised
-        // bucket's own drilldown - the SAME CategoryDrilldownSelection(null) the BUDGET drilldown's
-        // uncategorised row already opens (see that wrapper class's own doc comment for why `null`
-        // here is a real request, not "nothing requested").
-        onOpenUncategorized = { drilldownCategory = CategoryDrilldownSelection(null) },
-        // A tap on a SPEND-chart bar (2026-08-18) - same CategoryDrilldownSelection the BUDGET
-        // drilldown's own rows open, so the chart and the list reach one destination rather than
-        // two that can drift.
-        onOpenCategory = { category -> drilldownCategory = CategoryDrilldownSelection(category) },
-        // The SPEND toggle itself (Kevin, 2026-08-18) - a plain assignment into the `var` above,
-        // which the reload effects keyed on `moneyAccountFilterId` above pick up.
-        onSelectAccountFilter = { accountId -> moneyAccountFilterId = accountId },
-    )
+    SoftTheme {
+        LedgerContent(
+            state = fullState,
+            onOpenGroceries = onOpenGroceries,
+            // Never let the picker step past what `pnlMonthsWithData` actually
+            // bounds (ticket resolution §5: "never let the user page into months
+            // that cannot have data") - a null current month or an index at
+            // either end makes both a safe no-op rather than paging off the list.
+            onPrevPnlMonth = onPrevPnlMonth,
+            onNextPnlMonth = onNextPnlMonth,
+            onNominateAccount = { accountId ->
+                LedgerNominatedAccountPreferences.setNominated(context, accountId)
+            },
+            // Mission-control ticket 16's CRED rebuild - the four new nav targets the shed sections
+            // moved into. See the `showCategorize`/`showQuarantine`/`showBudget`/`showBalances` blocks
+            // above for what each actually renders.
+            onOpenCategorize = { showCategorize = true },
+            onOpenQuarantine = { showQuarantine = true },
+            onOpenBudget = { showBudget = true },
+            onOpenBalances = { showBalances = true },
+            onOpenTrend = { showSpendTrend = true },
+            // The SPEND pane's uncategorised-excluded disclosure taps straight into the uncategorised
+            // bucket's own drilldown - the SAME CategoryDrilldownSelection(null) the BUDGET drilldown's
+            // uncategorised row already opens (see that wrapper class's own doc comment for why `null`
+            // here is a real request, not "nothing requested").
+            onOpenUncategorized = { drilldownCategory = CategoryDrilldownSelection(null) },
+            // A tap on a SPEND-chart bar (2026-08-18) - same CategoryDrilldownSelection the BUDGET
+            // drilldown's own rows open, so the chart and the list reach one destination rather than
+            // two that can drift.
+            onOpenCategory = { category -> drilldownCategory = CategoryDrilldownSelection(category) },
+            // The SPEND toggle itself (Kevin, 2026-08-18) - a plain assignment into the `var` above,
+            // which the reload effects keyed on `moneyAccountFilterId` above pick up.
+            onSelectAccountFilter = { accountId -> moneyAccountFilterId = accountId },
+        )
+    }
 }
 
 /** Plain UI: [state] plus callbacks, no controller/service reference - see the file doc comment. */
@@ -864,34 +882,8 @@ fun LedgerContent(
     Surface(modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize()) {
             item(key = "money-title-row") {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("MONEY", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // A grocery receipt is a purchase (2026-08-07 brief) -
-                        // pantry's read screen lives under Money now, reached
-                        // from here rather than its own tab.
-                        TextButton(onClick = onOpenGroceries) {
-                            Text("GROCERIES", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                        }
-                        // Mission-control ticket 16: now opens the CATEGORIZE drilldown rather than
-                        // instant-firing the categorise action - that action lives INSIDE the drilldown
-                        // now (an explicit RUN CATEGORIZATION button), because this screen is where its
-                        // own results land. The count said in words, not a bare badge (CLAUDE.md §4) -
-                        // same convention SectionHeader's own right-hand count already used pre-ticket-16.
-                        val toCategorizeCount = state.pending.size + LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses).size
-                        TextButton(onClick = onOpenCategorize) {
-                            Text(
-                                if (toCategorizeCount > 0) "CATEGORIZE ($toCategorizeCount)" else "CATEGORIZE",
-                                style = LegionType.stamp,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
+                val toCategorizeCount = state.pending.size + LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses).size
+                MoneyTitleRow(toCategorizeCount, onOpenGroceries, onOpenCategorize)
             }
 
             // Backend-erp phase 3: a stale/failed-read notice, placed right under the title, never
@@ -1054,7 +1046,7 @@ private fun LazyListScope.ledgerListingItems(
 
     // ------------------------------------------------------------ RECENT ACTIVITY (FULL, list)
     if (state.transactions.isNotEmpty()) {
-        item(key = "activity-header") { SectionHeader("RECENT ACTIVITY") }
+        item(key = "activity-header") { SectionHeader("Recent activity") }
         items(state.transactions, key = { "t-${it.id}" }) { txn ->
             LedgerTransactionRow(txn)
             Hairline()
@@ -1264,13 +1256,13 @@ private fun buildBudgetTile(budget: BudgetVsActual?, monthLoading: Boolean = fal
         return if (monthLoading) {
             BudgetTileData(hero = "...", caption = "loading")
         } else {
-            BudgetTileData(hero = "NO DATA", caption = "nothing to show yet")
+            BudgetTileData(hero = "No data", caption = "nothing to show yet")
         }
     }
-    if (budget.lines.isEmpty()) return BudgetTileData(hero = "NONE", caption = "no categories yet - see budget")
+    if (budget.lines.isEmpty()) return BudgetTileData(hero = "None", caption = "no categories yet - see budget")
     val overCount = budget.lines.count { it.gap.target > 0L && it.gap.gap < 0L }
     return if (overCount > 0) {
-        BudgetTileData(hero = "$overCount OVER", caption = "${budget.lines.size} categories - see budget")
+        BudgetTileData(hero = "$overCount over", caption = "${budget.lines.size} categories - see budget")
     } else {
         BudgetTileData(hero = "OK", caption = "${budget.lines.size} categories, on track")
     }
@@ -1285,7 +1277,7 @@ private fun buildBudgetTile(budget: BudgetVsActual?, monthLoading: Boolean = fal
 private data class BalancesTileData(val hero: String, val caption: String)
 
 private fun buildBalancesTile(grouped: List<AccountBalance>): BalancesTileData {
-    if (grouped.isEmpty()) return BalancesTileData(hero = "NONE", caption = "no accounts yet")
+    if (grouped.isEmpty()) return BalancesTileData(hero = "None", caption = "no accounts yet")
     val primary = grouped.first()
     val hero = if (primary.hasAnyFigure) compactMoneyHero(primary.availableCents, primary.currency) else "N/A"
     val extra = grouped.size - 1
@@ -1299,7 +1291,7 @@ private fun buildBalancesTile(grouped: List<AccountBalance>): BalancesTileData {
 
 @Preview(name = "Ledger: loading", widthDp = 360, heightDp = 720)
 @Composable
-private fun PreviewLedgerLoading() = LegionTheme {
+private fun PreviewLedgerLoading() = SoftTheme {
     LedgerContent(
         LedgerUiState(loading = true),
         onOpenGroceries = {}, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
@@ -1309,7 +1301,7 @@ private fun PreviewLedgerLoading() = LegionTheme {
 
 @Preview(name = "Ledger empty: no statements yet", widthDp = 360, heightDp = 720)
 @Composable
-private fun PreviewLedgerEmptyNoStatements() = LegionTheme {
+private fun PreviewLedgerEmptyNoStatements() = SoftTheme {
     LedgerContent(
         LedgerUiState(loading = false),
         onOpenGroceries = {}, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
@@ -1319,7 +1311,7 @@ private fun PreviewLedgerEmptyNoStatements() = LegionTheme {
 
 @Preview(name = "Ledger: balances + quarantine + stream", widthDp = 360, heightDp = 900)
 @Composable
-private fun PreviewLedgerPopulated() = LegionTheme {
+private fun PreviewLedgerPopulated() = SoftTheme {
     LedgerContent(
         state = LedgerUiState(
             loading = false,

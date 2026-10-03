@@ -48,8 +48,10 @@ import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.deckWholeDollarLabel
 import com.kevin.legion.util.documentDateCompact
 import com.kevin.legion.plan.TrustTier
-import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.common.DrilldownHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import java.time.Instant
 import java.time.LocalDate
@@ -615,20 +617,7 @@ fun ExcludedOwnAccountMovementsScreen(
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Text(
-                "Excluded from spend",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            DrilldownHeader("Excluded from spend", onBack = onBack, accent = AreaAccent.MONEY)
             Text(
                 com.kevin.legion.ledger.excludedOwnAccountMovementsSentence(excluded, entity.currency),
                 style = LegionType.stamp,
@@ -708,7 +697,7 @@ private fun previewDailyTransactions() = listOf(
 
 @Preview(name = "Budget: two categories, under and over", widthDp = 360)
 @Composable
-private fun PreviewBudgetBasic() = LegionTheme {
+private fun PreviewBudgetBasic() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
@@ -750,7 +739,7 @@ private fun PreviewBudgetBasic() = LegionTheme {
 
 @Preview(name = "Budget: own-account movements excluded, disclosed in words", widthDp = 360)
 @Composable
-private fun PreviewBudgetExcludedOwnAccountMovements() = LegionTheme {
+private fun PreviewBudgetExcludedOwnAccountMovements() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
@@ -789,7 +778,7 @@ private fun PreviewBudgetExcludedOwnAccountMovements() = LegionTheme {
 
 @Preview(name = "Budget: uncategorised bucket loud even at a small amount", widthDp = 360)
 @Composable
-private fun PreviewBudgetUncategorized() = LegionTheme {
+private fun PreviewBudgetUncategorized() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
@@ -817,7 +806,7 @@ private fun PreviewBudgetUncategorized() = LegionTheme {
 
 @Preview(name = "Budget: pending bank data and an unconfirmed AI guess", widthDp = 360)
 @Composable
-private fun PreviewBudgetReported() = LegionTheme {
+private fun PreviewBudgetReported() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
@@ -845,7 +834,7 @@ private fun PreviewBudgetReported() = LegionTheme {
 
 @Preview(name = "Budget: incomplete coverage, one account missing its tail", widthDp = 360)
 @Composable
-private fun PreviewBudgetIncompleteCoverage() = LegionTheme {
+private fun PreviewBudgetIncompleteCoverage() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
@@ -868,7 +857,7 @@ private fun PreviewBudgetIncompleteCoverage() = LegionTheme {
 
 @Preview(name = "Budget: no coverage at all - the empty-list-is-not-complete case", widthDp = 360)
 @Composable
-private fun PreviewBudgetNoCoverage() = LegionTheme {
+private fun PreviewBudgetNoCoverage() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
@@ -889,7 +878,7 @@ private fun PreviewBudgetNoCoverage() = LegionTheme {
 
 @Preview(name = "Budget: no spending this month", widthDp = 360)
 @Composable
-private fun PreviewBudgetEmptyMonth() = LegionTheme {
+private fun PreviewBudgetEmptyMonth() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
@@ -910,7 +899,7 @@ private fun PreviewBudgetEmptyMonth() = LegionTheme {
 
 @Preview(name = "Budget: loading", widthDp = 360)
 @Composable
-private fun PreviewBudgetLoading() = LegionTheme {
+private fun PreviewBudgetLoading() = SoftTheme {
     Surface {
         BudgetSection(
             month = previewMonth, budget = null,
@@ -923,7 +912,7 @@ private fun PreviewBudgetLoading() = LegionTheme {
 
 @Preview(name = "Excluded own-account movements: two rows", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewExcludedOwnAccountMovements() = LegionTheme {
+private fun PreviewExcludedOwnAccountMovements() = SoftTheme {
     ExcludedOwnAccountMovementsScreen(
         entity = LedgerEntity.US,
         excluded = ExcludedOwnAccountMovements(
@@ -950,7 +939,7 @@ private fun PreviewExcludedOwnAccountMovements() = LegionTheme {
 
 @Preview(name = "Excluded own-account movements: empty", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewExcludedOwnAccountMovementsEmpty() = LegionTheme {
+private fun PreviewExcludedOwnAccountMovementsEmpty() = SoftTheme {
     ExcludedOwnAccountMovementsScreen(
         entity = LedgerEntity.US,
         excluded = ExcludedOwnAccountMovements(0, 0L, emptyList()),
@@ -965,7 +954,7 @@ private fun PreviewExcludedOwnAccountMovementsEmpty() = LegionTheme {
 
 @Preview(name = "Spend hero: four categories, biggest labelled", widthDp = 360)
 @Composable
-private fun PreviewCategorySpendChart() = LegionTheme {
+private fun PreviewCategorySpendChart() = SoftTheme {
     Surface {
         CategorySpendChart(
             categorySpendBars(
@@ -989,7 +978,7 @@ private fun PreviewCategorySpendChart() = LegionTheme {
 
 @Preview(name = "Spend hero: nine categories, the tail folded into OTHER", widthDp = 360)
 @Composable
-private fun PreviewCategorySpendChartFolded() = LegionTheme {
+private fun PreviewCategorySpendChartFolded() = SoftTheme {
     Surface {
         CategorySpendChart(
             categorySpendBars(
@@ -1015,12 +1004,12 @@ private fun PreviewCategorySpendChartFolded() = LegionTheme {
 
 @Preview(name = "Add category: empty, no error", widthDp = 360)
 @Composable
-private fun PreviewAddCategoryEmpty() = LegionTheme {
+private fun PreviewAddCategoryEmpty() = SoftTheme {
     Surface { AddCategoryRow(errorText = null, successNonce = 0, onAdd = {}) }
 }
 
 @Preview(name = "Add category: rejected, reason shown in words", widthDp = 360)
 @Composable
-private fun PreviewAddCategoryRejected() = LegionTheme {
+private fun PreviewAddCategoryRejected() = SoftTheme {
     Surface { AddCategoryRow(errorText = "\"Pets\" already exists.", successNonce = 0, onAdd = {}) }
 }
