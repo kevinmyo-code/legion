@@ -58,6 +58,9 @@ export interface Engine {
   /** True makes only `GET /api/changes` answer 503, leaving auth working: the
    * "engine is up but the data read failed" case. */
   changesFailing: boolean
+  /** True makes only `GET /api/households/me` answer 503: the shell cannot name
+   * the household but the rest of the page may still load. */
+  householdFailing: boolean
   /** How many times each `METHOD /path` was asked for, for refetch assertions. */
   calls: Record<string, number>
   /** Requests no handler claimed. A test can assert this stays empty. */
@@ -231,6 +234,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     ticks: options.ticks ?? [],
     down: false,
     changesFailing: false,
+    householdFailing: false,
     calls: {},
     unhandled: [],
 
@@ -253,6 +257,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
         return { status: 204 }
       }
       if (method === 'GET' && pathname === '/api/households/me') {
+        if (engine.householdFailing) {
+          return { status: 503, body: { detail: 'The engine could not read the household.' } }
+        }
         return { status: 200, body: { id: 'h1', name: engine.householdName, members: [] } }
       }
       if (method === 'GET' && pathname === '/api/changes') {

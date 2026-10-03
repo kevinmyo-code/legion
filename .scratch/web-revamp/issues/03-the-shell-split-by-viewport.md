@@ -3,8 +3,8 @@ map: web-revamp
 ticket: 03
 title: The shell split by viewport
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Two shells, NAV table, bigger-screen card, fake engine and shots are in; only Home and Lists exist as tabs or rail items today. Owed: a run on a real iPhone."
 blockers: ["02"]
 blocked-by: ["[[02-design-tokens-light-dark-manifest-icons]]"]
 open-blockers: 1
@@ -34,7 +34,7 @@ See `.scratch/web-revamp/spec.md` D1.
 
 ## Verification
 
-- [ ] vitest: family width renders tabs and no rail; workbench renders rail and no tab bar (absence
+- [x] vitest: family width renders tabs and no rail; workbench renders rail and no tab bar (absence
       asserted with `queryBy*`); an unbuilt rail item never renders; a workbench-only route at family
       width shows the bigger-screen card.
-- [ ] `npm run shots` produces 4 images per route; kept in `research/shots/03/`.
+- [x] `npm run shots` produces 4 images per route; kept in `research/shots/03/`.
