@@ -6016,3 +6016,46 @@ Kevin, interviewed for `.scratch/web-revamp/spec.md`: *"revamp it. both desktop 
   reminders, morning tasks; no spend alerts. **No offline writes** on the web.
 - **Workbench order:** Money, Calendar, Pantry and body, Fleet places and notes.
 - **Server work rides in this map** although the server terminal owns `server/` (Kevin: "yes ok").
+
+## 2026-10-03 - Mapbox returns: full native navigation, Mapbox only, for maximum voice control
+
+Kevin reopened the §3 drop. Asked how far voice navigation could go on the existing Google Maps
+hand-off (`open_navigation`, built and verified on the phone 2026-08-19), he was shown the ceiling:
+once Google Maps is open, LEGION cannot touch it. No public API reroutes, adds a stop, cancels, or
+reports the next turn or ETA. Kevin: *"how about mapbox? me as a single user should be free"*, then
+*"full mapbox native. i want max voice functionality"*.
+
+- **Cost is not an objection, as already found 2026-07-08.** Free tier (mapbox.com/pricing, read
+  2026-10-03): Nav SDK 100 MAU + 1,000 trips/month, Directions and Geocoding 100,000 requests/month
+  each. Two users. Free-drive mode also counts as trips (1 h cap each), so the app must never leave a
+  trip session running in the background.
+- **Embedded Nav SDK, not the Directions-API-only option.** The Directions-only option was offered
+  (answers ETA questions and leaves Google driving) and declined. The point is voice control DURING
+  a trip, which needs LEGION to own the route.
+- **Mapbox only, no Google fallback.** Asked directly whether the Google intent survives as a
+  fallback when there is no token, Kevin ruled it does not. No token means no navigation, said in
+  words and pointed at Setup. Same shape as Midnight AI's 2026-07-25 call. **The Google hand-off is
+  removed when Mapbox navigation ships, not before**: a working capability is not deleted ahead of
+  its replacement.
+- **Phone only.** Android Auto stays on the fog list, tied to `.scratch/android-auto/`.
+- **BYO token per household**, the same shape as the Gemini key. Nothing Kevin-hosted.
+
+Charted as `.scratch/mapbox-nav/`. ADR 0054.
+
+## 2026-10-03 - Mapbox research: buildable without a secret, one licence question open
+
+`.scratch/mapbox-nav/research/01-sdk-facts.md`. Nav SDK v3 and Maps, Search and maps-compose now
+download anonymously (tested with curl, Gradle not run), so clone-and-run needs no stub build.
++56 MB uncompressed for arm64. Every voice intent has a public API; adding a stop mid-trip rebuilds
+the route and starts a new billed trip. With no card on the account the caps are 20 Nav users and 100 guided trips,
+and hitting one cuts off every Mapbox API. Product Terms 1.2.2 "vehicle usage" may require a paid
+licence; Kevin to ask Mapbox in writing (ticket 13). 2.9.1 forbids raw REST from the phone alongside
+the SDK, and 2.7.2 / 2.10.1 forbid storing Mapbox results.
+
+## 2026-10-03 - Mapbox licence risk accepted; the token lives per phone
+
+Kevin on Product Terms 1.2.2: *"covers a phone app. im not gonna email mapbox man its just a hobby
+app for my self."* The clause stays ambiguous; the risk is accepted knowingly
+(`.scratch/mapbox-nav/issues/13-*.md`). Token placement delegated to Opus: per phone in `KeyVault`
+via Setup, plus a dev token baked from the `MAPBOX_ACCESS_TOKEN` Gradle property, `-Pnokey` baking an
+empty one (`issues/08-*.md`).
