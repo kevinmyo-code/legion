@@ -64,9 +64,9 @@ export const NAV: readonly NavItem[] = [
   { to: '/money', label: 'Money', icon: Wallet, surfaces: DESK, built: false },
   { to: '/pantry', label: 'Pantry', icon: ShoppingBasket, surfaces: DESK, built: true },
   { to: '/body', label: 'Body', icon: HeartPulse, surfaces: DESK, built: true },
-  { to: '/fleet', label: 'Fleet', icon: Car, surfaces: DESK, built: false },
-  { to: '/places', label: 'Places', icon: MapPin, surfaces: DESK, built: false },
-  { to: '/notes', label: 'Notes', icon: NotebookText, surfaces: DESK, built: false },
+  { to: '/fleet', label: 'Fleet', icon: Car, surfaces: DESK, built: true },
+  { to: '/places', label: 'Places', icon: MapPin, surfaces: DESK, built: true },
+  { to: '/notes', label: 'Notes', icon: NotebookText, surfaces: DESK, built: true },
   {
     to: '/settings',
     label: 'Settings',
