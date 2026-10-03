@@ -931,6 +931,13 @@ private fun LegionShell(
             }
 
             composable(LegionRoute.MONEY) {
+                com.kevin.legion.ui.money.MoneyMonthScreen(
+                    onOpenDetails = { navController.navigate(LegionRoute.MONEY_DETAILS) },
+                )
+            }
+            // The previous Money screen, whole: statements, budgets, accounts, and the groceries
+            // entry (onOpenGroceries) all stay reachable from the Money page's bottom row.
+            composable(LegionRoute.MONEY_DETAILS) {
                 LedgerScreen(
                     // A grocery receipt is a purchase (2026-08-07 brief) - the
                     // pantry read screen moved under Money as a reachable
