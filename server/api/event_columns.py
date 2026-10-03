@@ -58,8 +58,7 @@ def add_remind_minutes_before(cursor) -> str | None:
 # one") has to travel `/api/changes` like any other row, which needs a cursor
 # and a tombstone. Existing skips get `updated_at = created_at`, so a client
 # pulling from the beginning sees them in the order they were made. The touch
-# trigger is the same one `events` uses; it is created only where it is
-# missing, so a database that already has it (every live one) keeps its own.
+# trigger has its own function in `public` (see TOUCH_FUNCTION_SQL).
 SKIPS_ADD_SQL = """
 alter table public.event_skips
     add column updated_at timestamptz not null default now(),
@@ -69,9 +68,12 @@ create index if not exists event_skips_household_updated_idx
     on public.event_skips (household_id, updated_at);
 """
 
+# Its own function in `public`, not `private.touch_updated_at()`: the live database role has no
+# USAGE on schema `private` (Supabase made it), so even probing that function raised "permission
+# denied for schema private" and failed the 2026-10-03 deploy. Same fix as commit 8e697bea
+# (category overrides). `create or replace` is idempotent, so there is no existence probe.
 TOUCH_FUNCTION_SQL = """
-create schema if not exists private;
-create or replace function private.touch_updated_at()
+create or replace function public.event_skips_touch_updated_at()
     returns trigger
     language plpgsql
     set search_path = ''
@@ -87,7 +89,7 @@ SKIPS_TRIGGER_SQL = """
 drop trigger if exists touch_updated_at on public.event_skips;
 create trigger touch_updated_at
     before update on public.event_skips
-    for each row execute function private.touch_updated_at();
+    for each row execute function public.event_skips_touch_updated_at();
 """
 
 SKIPS_DROP_SQL = """
@@ -95,6 +97,7 @@ drop trigger if exists touch_updated_at on public.event_skips;
 drop index if exists public.event_skips_household_updated_idx;
 alter table if exists public.event_skips drop column if exists updated_at;
 alter table if exists public.event_skips drop column if exists deleted_at;
+drop function if exists public.event_skips_touch_updated_at();
 """
 
 
@@ -112,8 +115,6 @@ def add_event_skip_sync_columns(cursor) -> str | None:
     )
     if cursor.fetchone() is None:
         cursor.execute(SKIPS_ADD_SQL)
-    cursor.execute("select to_regprocedure('private.touch_updated_at()')")
-    if cursor.fetchone()[0] is None:
-        cursor.execute(TOUCH_FUNCTION_SQL)
+    cursor.execute(TOUCH_FUNCTION_SQL)
     cursor.execute(SKIPS_TRIGGER_SQL)
     return None
