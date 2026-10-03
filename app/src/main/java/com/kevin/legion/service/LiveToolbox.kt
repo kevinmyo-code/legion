@@ -11,6 +11,9 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
+import com.kevin.legion.backend.engine.EngineConfig
+import com.kevin.legion.backend.engine.EngineHttp
+import com.kevin.legion.backend.engine.EngineMcpClient
 import com.kevin.legion.advisor.AdvisorAspect
 import com.kevin.legion.advisor.AdvisorBriefs
 import com.kevin.legion.advisor.AdvisorAgent
@@ -2313,6 +2316,19 @@ object LiveToolbox {
             required = listOf("question"),
         ))
 
+        // engine-mcp ticket 11 (ruling 04, option C): the ONE declaration through which the
+        // household engine's own tools (`/mcp`) reach the live session. Constant cost however many
+        // tools the engine grows; see [AskEngine].
+        fns.put(fn(
+            name = "ask_engine",
+            description = AskEngine.DESCRIPTION,
+            params = obj(
+                "question" to schema("string", "The user's question or instruction, in their own words."),
+                "intent" to schema("string", AskEngine.INTENT_DESCRIPTION, enum = listOf("record", "ask")),
+            ),
+            required = listOf("question"),
+        ))
+
         // The nine aspect-engine meta-tools (ticket 17, `EngineToolbox`) - declared directly,
         // never hidden behind DISPATCHED, since ticket 06's answer is that this surface is meant
         // to be seen by the live session itself, not routed through a domain dispatcher.
@@ -2580,6 +2596,7 @@ object LiveToolbox {
                     mutatingToolNames = mutatingToolsFor("mail"),
                 )
             }
+            "ask_engine" -> askEngine(context, args, touchedReadThroughToolThisTurn)
             "get_health" -> getHealth(context)
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
@@ -6093,6 +6110,52 @@ object LiveToolbox {
                 result(false, "No data signal out here - ask me again when we're back in coverage.")
             AgentResult.Failed, AgentResult.Overloaded -> result(false, failMessage)
         }
+    }
+
+    /** One client for the process so its short `tools/list` cache survives between utterances;
+     * it reads the engine address and token live from [EngineConfig] on every call. */
+    private var engineMcpClient: EngineMcpClient? = null
+
+    /**
+     * `ask_engine` (engine-mcp ticket 11). Same Gemini-key guard and key-health bookkeeping as
+     * [agentResult]; everything about WHAT may cross to the engine lives in [AskEngine].
+     */
+    private suspend fun askEngine(
+        context: Context,
+        args: JSONObject,
+        touchedReadThroughTool: Boolean,
+    ): JSONObject {
+        if (!GeminiKeyProvider.hasKey()) {
+            return result(
+                false,
+                "I need a Gemini key to do that - add your own in Setup to keep going. Nothing was read or written.",
+            )
+        }
+        val client = engineMcpClient ?: EngineConfig(context.applicationContext).let { config ->
+            EngineMcpClient(EngineHttp(config), config::baseUrl).also { engineMcpClient = it }
+        }
+        return AskEngine(
+            client = client,
+            runAgent = { instruction, question, tools ->
+                SubAgent(systemInstruction = instruction, useSearch = false).investigate(
+                    context = "",
+                    question = question,
+                    tools = tools,
+                    maxModelCalls = 4,
+                    budgetMs = 40_000,
+                )
+            },
+            identityClause = { AssistantIdentity.shortClause(context) },
+            nowText = { java.time.OffsetDateTime.now().toString() },
+            onAgentResult = { r ->
+                when (r) {
+                    is AgentResult.Success -> KeyHealth.noteOk()
+                    AgentResult.RateLimited -> KeyHealth.noteRateLimited()
+                    AgentResult.KeyInvalid -> KeyHealth.noteInvalid()
+                    else -> Unit
+                }
+            },
+        ).ask(args.optString("question"), wantsWrite(args), touchedReadThroughTool).toJson()
     }
 
     /**

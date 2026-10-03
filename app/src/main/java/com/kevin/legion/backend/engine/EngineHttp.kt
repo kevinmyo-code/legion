@@ -136,10 +136,20 @@ class EngineHttp(
             }
         }
 
-    suspend fun post(path: String, jsonBody: String): Result<EngineOk> =
+    /**
+     * [extraHeaders] (engine-mcp ticket 11) exist because `/mcp` routes on `Accept` and the MCP
+     * routing headers, which no REST caller needs; every pre-existing caller passes none and is
+     * byte-identical to before. Never used to carry `Authorization` - [authorize] owns that.
+     */
+    suspend fun post(
+        path: String,
+        jsonBody: String,
+        extraHeaders: Map<String, String> = emptyMap(),
+    ): Result<EngineOk> =
         send(path) { url ->
             client.post(url) {
                 authorize()
+                extraHeaders.forEach { (name, value) -> header(name, value) }
                 contentType(ContentType.Application.Json)
                 setBody(jsonBody)
             }

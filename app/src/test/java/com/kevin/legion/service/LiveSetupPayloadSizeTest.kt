@@ -95,8 +95,17 @@ class LiveSetupPayloadSizeTest {
      * raise, the same order the 2026-08-17 `manage_item` trim went in; trimming it further would
      * cost the schedule/measured-item rules an `action`-dispatched tool like this genuinely needs,
      * not decoration. Exactly the "next tool addition trips this test" the prior entry predicted.
+     *
+     * **Raised to 22,250 on 2026-10-02 (engine-mcp ticket 11, `ask_engine`).** Measured that day:
+     * 86 declarations, 80,567 chars of tools JSON plus 7,879 chars of system instruction = 88,446
+     * chars, ~22,111 estimated tokens, against ~21,950 before it (about 160 tokens). It is the ONE
+     * declaration ticket 04 ruled for the whole engine tool registry (option C), so its cost is
+     * constant however many tools the engine grows; the alternative was one declaration per
+     * engine tool. Already trimmed to a two-sentence description and a one-line `intent`; the
+     * rules it carries (engine-unreachable wording, record-versus-ask) cannot move out because
+     * the model only ever sees this block.
      */
-    private val ceilingTokens = 22_000
+    private val ceilingTokens = 22_250
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {
