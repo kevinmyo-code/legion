@@ -110,3 +110,35 @@ context.
   recenter; screen off mid-trip; leave the screen and come back mid-trip; arrival; End; the Mapbox
   dashboard's trip count after a few runs (no session left running); the route line, puck and camera
   follow on the real map; the `ThemeUtils` log noise gone; the along-route category search.
+
+## Device-run fixes (2026-10-03)
+
+A run on the Galaxy A25 found 14 defects. Tags: built (compiles), tested (a unit or screenshot test
+exercises it), reasoned (inferred, owes the phone). Gates were run in the worktree; see the commit
+messages `Fix nav logic defects...`, `Fix nav screen chrome defects...`, `Bring a running trip back...`.
+
+| # | Defect | Status | What and where |
+|---|---|---|---|
+| 1 | Black map 25 s, no words | fixed (built, reasoned) | `NavMap` reports `MapStatus`; the screen shows "Loading the map" or "The map could not be reached. Check the connection; it will keep trying." and retries a failed style load 5 s after each failure. `NavFormat` now reads `net::ERR_NAME_NOT_RESOLVED` as network-shaped (tested). The route request still runs on its own; the choose sheet adds "The map could not be reached, so this may be slow." No controller timeout was added (it would fight `runTest` virtual time). |
+| 2 | Scale bar overlaps UI | fixed (built, reasoned) | Scale bar and compass disabled in `NavMap` (the compass was the black circle under the overview button). Logo and attribution lifted above the sheet so they stay visible. |
+| 3 | Camera ignores chrome | fixed (built, reasoned) | `NavContent` measures the top overlay and the sheet (`onSizeChanged`); `NavMap` pads follow, overview and preview-fit by the measured heights plus 16 dp, clamped to 60 percent of the map. Preview re-frames when the measurement changes. |
+| 4 | Route labels wrong after a pick | fixed (tested) | `NavFormat.routeLabels` computes Fastest (least duration), Shortest (least distance) and No tolls (known none while another route has tolls) from each route's own numbers; several claims read "Fastest and shortest". `NavFormatTest`. |
+| 5 | Add stop drops a picked alternative | fixed by saying so (tested) | The SDK cannot keep an alternative across a re-request. The controller tracks a picked alternative; a change that replaces it says so in the result and in `NavState.note` (shown on the preview and guiding sheets), once. |
+| 6 | Keyboard hides Add stop | fixed (built, screenshot; reasoned on device) | The Add button is now beside its field, so it rides with the focused field in any window mode; the sheet scrolls and is wrapped in `imePadding()`. Go still works. |
+| 7 | No "Turn cues muted" | fixed (screenshot) | The Then strip took the whole row and pushed the tag out. It is now its own pill under the banner (`nav-guiding-muted.png`). |
+| 8 | Launcher return lands on home | fixed, approach below (built, reasoned) | LEGION is the home app, so a Home press goes to HOME by design (ADR 0050) and stays that way. The SDK's trip notification uses the package launch intent (MAIN + LAUNCHER, read from `MapboxTripNotification`); a launcher-category fresh start with a trip GUIDING now opens the nav screen (`TripResumeEffect`, nonce via `LocalTripResumeNonce`). Everywhere else a "Navigating to X, tap to return" bar sits under the status line while a trip runs (`TripReturnBar`). Least invasive: no redirect on Home, none on rotation. |
+| 9 | Units mix | fixed (tested) | `UnitSystem` from the device locale (US, Liberia, Myanmar imperial). `NavFormat.distance` is feet then miles (or metres then km). SDK `DistanceFormatterOptions` and the route options' `voiceUnits` use the same choice, so ticket 11's cues inherit it. |
+| 10 | "116 mi short" | fixed (tested) | "Trip ended with 116 mi to go. Nothing is navigating." |
+| 11 | "nearest gas station" gave Zain Corporation, no category | partly fixed, SDK finding open (tested for the request, not the result) | Category phrases already went through `engine.search(categoryId, CategorySearchOptions)` with canonical ids (`gas_station`, `coffee`, `pharmacy`, `grocery`, `atm`, `bank`, `hospital`, `ev_charging_station`...); more plurals added and a test pins phrase to id. A hit's category and address now show on the preview and the choice card. The category path logging its outcome (never result names) tells a phone run whether the category search answered or the text fallback did. If a category search still returns a non-gas-station, that is an SDK/data finding, not LEGION's. Not confirmable here. |
+| 12 | Address produced a POI ambiguity card | fixed (tested) | Candidates carry a `PlaceKind`; an address-shaped query whose top hit is an ADDRESS keeps only ADDRESS hits for the ambiguity test; two same-named addresses in different cities still ask. |
+| 13 | Possible router leak | explained, not reproduced (tested on our side) | Our teardown creates the SDK once and destroys it once per trip on every way out (end, arrival, back-out of a preview, screen left, token change, failed start), now a test (`everyTripCreatesTheSdkOnceAndDestroysItOnce`), and `MapboxNavSdk.destroy` is idempotent. The warning counts routers the SDK builds inside each `MapboxNavigation` (more than one per instance) and is a notice that it shares a thread pool, not an error. Not proven the SDK frees the dedicated thread on destroy. `MapboxNavSdk` now logs live instances at create and destroy (tag `MapboxNavSdk`); zero between trips on the phone closes it. |
+| 14 | Alternative not visibly dashed | fixed in preview, could not confirm on device | Preview alternatives are 6 px dashed with butt caps (round caps closed the gaps). The SDK's guiding route line cannot dash, so its alternatives are low-contrast grey instead. |
+
+### Owed on the phone
+
+First open on a slow or offline network (words, retry); scale bar and compass gone; preview fit, overview
+and follow clear of the sheet and banner; pick an alternative, add a stop (the replaced sentence); the
+stops panel with the keyboard up; mute; Home press mid-trip then the notification tap and the return bar;
+units on the banner, sheet and the SDK's maneuver text; "nearest gas station" result and its category; a full
+address; `adb logcat -s MapboxNavSdk` for live instances after several trips; alternatives in preview and
+guidance.
