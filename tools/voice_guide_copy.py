@@ -69,6 +69,7 @@ COPY = {
     "get_last_ticked": ("When did I last buy toothpaste?", "Looks back through your checklist tick history for a matching line, across every checklist you've ever made - even one you've since deleted. It only knows what you TICKED, never what you bought: no price, nothing verified, and no record just means nothing was ticked, not that you never bought it.", "Checklists screen, tap a line to see when it was last ticked."),
     "read_list": ("What have I got coming up?", "Reads back your open reminders, soonest due first, each with its date, place or repeat.", "Calendar tab, tap a day to see that day's reminders."),
     "set_reminder": ("Remind me to grab my gym bag when I get to the gym", "Sets a reminder tied to a saved place, so it comes up when you next arrive there.", "Partial - Calendar's day view shows and edits a place-triggered reminder, but there is no add-a-new-reminder dialog by hand."),
+    "complete_task": ("Mark my math assignments done", "Marks calendar tasks (assignments, quizzes, homework) done, or un-marks them. If more than one task fits it changes nothing and asks which, unless you said all of them. It reports only what it actually changed, and says so when a change is saved on the phone waiting for the server.", "Calendar tab, tap a task's tick box."),
     "read_calendar": ("What's on today?", "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", "Calendar tab's month grid and day view, and Home's next-event tile."),
     "tag_place": ("Save this as work", "Saves where you are now under a name, so reminders can trigger there.", "Fleet > Saved places screen."),
     "forget_place": ("Forget the old gym", "Removes a saved place.", "Fleet > Saved places screen, delete behind a confirm."),
@@ -205,7 +206,7 @@ COPY = {
 
 GROUPS = {
     "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation", "switch_companion"],
-    "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_generated_view", "ask_engine"],
+    "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "complete_task", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_generated_view", "ask_engine"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["activate_garage", "control_volume"],
     "Money": ["get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],

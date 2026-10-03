@@ -12,7 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedIndexRouteImport } from './routes/_authed.index'
+import { Route as AuthedBodyRouteImport } from './routes/_authed.body'
+import { Route as AuthedFleetRouteImport } from './routes/_authed.fleet'
 import { Route as AuthedListsRouteImport } from './routes/_authed.lists'
+import { Route as AuthedNotesRouteImport } from './routes/_authed.notes'
+import { Route as AuthedPantryRouteImport } from './routes/_authed.pantry'
+import { Route as AuthedPlacesRouteImport } from './routes/_authed.places'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -28,35 +33,101 @@ const AuthedIndexRoute = AuthedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedBodyRoute = AuthedBodyRouteImport.update({
+  id: '/body',
+  path: '/body',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedFleetRoute = AuthedFleetRouteImport.update({
+  id: '/fleet',
+  path: '/fleet',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedListsRoute = AuthedListsRouteImport.update({
   id: '/lists',
   path: '/lists',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedNotesRoute = AuthedNotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedPantryRoute = AuthedPantryRouteImport.update({
+  id: '/pantry',
+  path: '/pantry',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedPlacesRoute = AuthedPlacesRouteImport.update({
+  id: '/places',
+  path: '/places',
   getParentRoute: () => AuthedRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
+  '/body': typeof AuthedBodyRoute
+  '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
+  '/notes': typeof AuthedNotesRoute
+  '/pantry': typeof AuthedPantryRoute
+  '/places': typeof AuthedPlacesRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/body': typeof AuthedBodyRoute
+  '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
+  '/notes': typeof AuthedNotesRoute
+  '/pantry': typeof AuthedPantryRoute
+  '/places': typeof AuthedPlacesRoute
   '/': typeof AuthedIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authed/body': typeof AuthedBodyRoute
+  '/_authed/fleet': typeof AuthedFleetRoute
   '/_authed/lists': typeof AuthedListsRoute
+  '/_authed/notes': typeof AuthedNotesRoute
+  '/_authed/pantry': typeof AuthedPantryRoute
+  '/_authed/places': typeof AuthedPlacesRoute
   '/_authed/': typeof AuthedIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/lists'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/body'
+    | '/fleet'
+    | '/lists'
+    | '/notes'
+    | '/pantry'
+    | '/places'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/lists' | '/'
-  id: '__root__' | '/_authed' | '/login' | '/_authed/lists' | '/_authed/'
+  to:
+    | '/login'
+    | '/body'
+    | '/fleet'
+    | '/lists'
+    | '/notes'
+    | '/pantry'
+    | '/places'
+    | '/'
+  id:
+    | '__root__'
+    | '/_authed'
+    | '/login'
+    | '/_authed/body'
+    | '/_authed/fleet'
+    | '/_authed/lists'
+    | '/_authed/notes'
+    | '/_authed/pantry'
+    | '/_authed/places'
+    | '/_authed/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -87,6 +158,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedIndexRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/body': {
+      id: '/_authed/body'
+      path: '/body'
+      fullPath: '/body'
+      preLoaderRoute: typeof AuthedBodyRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/fleet': {
+      id: '/_authed/fleet'
+      path: '/fleet'
+      fullPath: '/fleet'
+      preLoaderRoute: typeof AuthedFleetRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/lists': {
       id: '/_authed/lists'
       path: '/lists'
@@ -94,16 +179,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedListsRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/notes': {
+      id: '/_authed/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof AuthedNotesRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/pantry': {
+      id: '/_authed/pantry'
+      path: '/pantry'
+      fullPath: '/pantry'
+      preLoaderRoute: typeof AuthedPantryRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/places': {
+      id: '/_authed/places'
+      path: '/places'
+      fullPath: '/places'
+      preLoaderRoute: typeof AuthedPlacesRouteImport
+      parentRoute: typeof AuthedRoute
+    }
   }
 }
 
 interface AuthedRouteChildren {
+  AuthedBodyRoute: typeof AuthedBodyRoute
+  AuthedFleetRoute: typeof AuthedFleetRoute
   AuthedListsRoute: typeof AuthedListsRoute
+  AuthedNotesRoute: typeof AuthedNotesRoute
+  AuthedPantryRoute: typeof AuthedPantryRoute
+  AuthedPlacesRoute: typeof AuthedPlacesRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedBodyRoute: AuthedBodyRoute,
+  AuthedFleetRoute: AuthedFleetRoute,
   AuthedListsRoute: AuthedListsRoute,
+  AuthedNotesRoute: AuthedNotesRoute,
+  AuthedPantryRoute: AuthedPantryRoute,
+  AuthedPlacesRoute: AuthedPlacesRoute,
   AuthedIndexRoute: AuthedIndexRoute,
 }
 

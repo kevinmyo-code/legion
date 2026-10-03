@@ -53,10 +53,10 @@ function HomeListCard({
   ).length
 
   return (
-    <li className="flex items-center justify-between gap-3 py-2">
+    <li className="flex min-h-11 items-center justify-between gap-3 rounded-[1.125rem] bg-surface-2 py-2 pr-2 pl-4">
       <div className="min-w-0">
-        <p className="text-sm font-medium">{checklist.name}</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[0.9375rem] font-medium">{checklist.name}</p>
+        <p className="text-[0.8125rem] text-muted-foreground">
           {ownItems.length === 0
             ? 'Nothing on this list yet.'
             : complete
@@ -80,7 +80,7 @@ function GroupedTasks({ tasks }: { tasks: Event[] }) {
   const groups = groupByCourse(tasks)
   if (groups.length <= 1) {
     return (
-      <ul className="divide-y">
+      <ul className="flex flex-col gap-1.5">
         {tasks.map((event) => (
           <EventRow key={event.id} event={event} />
         ))}
@@ -92,9 +92,9 @@ function GroupedTasks({ tasks }: { tasks: Event[] }) {
       {groups.map((group) => (
         <div key={group.course ?? 'none'}>
           {group.course && (
-            <h4 className="mb-0.5 text-xs font-medium text-muted-foreground">{group.course}</h4>
+            <h4 className="mb-1 px-1.5 text-[0.8125rem] font-medium text-muted-foreground">{group.course}</h4>
           )}
-          <ul className="divide-y">
+          <ul className="flex flex-col gap-1.5">
             {group.items.map((event) => (
               <EventRow key={event.id} event={event} showCourse={false} />
             ))}
@@ -114,7 +114,7 @@ function DueItemRow({ due }: { due: DueItem }) {
   const setTick = useSetChecklistTick()
 
   return (
-    <li className="flex items-center gap-3 py-2">
+    <li className="flex min-h-11 items-center gap-3 rounded-[1.125rem] bg-surface-2 py-1.5 pr-3 pl-4">
       <Checkbox
         checked={due.tickedToday}
         disabled={setTick.isPending}
@@ -131,14 +131,16 @@ function DueItemRow({ due }: { due: DueItem }) {
       />
       <span
         className={
-          due.tickedToday ? 'flex-1 text-sm text-muted-foreground line-through' : 'flex-1 text-sm'
+          due.tickedToday
+            ? 'flex-1 text-[0.9375rem] text-muted-foreground line-through'
+            : 'flex-1 text-[0.9375rem] font-medium'
         }
       >
         {due.item.text}
       </span>
-      <span className="shrink-0 text-xs text-muted-foreground">{due.checklist.name}</span>
+      <span className="shrink-0 text-[0.8125rem] text-muted-foreground">{due.checklist.name}</span>
       {setTick.isError && (
-        <span className="text-xs text-destructive">Could not save. {setTick.error.message}</span>
+        <span className="text-[0.8125rem] text-destructive">Could not save. {setTick.error.message}</span>
       )}
     </li>
   )
@@ -154,10 +156,10 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section>
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
-        {aside && <span className="text-xs text-muted-foreground">{aside}</span>}
+    <section className="rounded-sheet bg-card px-4 pt-3.5 pb-4 md:px-5">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <h2 className="text-base font-medium">{title}</h2>
+        {aside && <span className="text-[0.8125rem] text-muted-foreground">{aside}</span>}
       </div>
       {children}
     </section>
@@ -180,10 +182,14 @@ function Today() {
   // CLAUDE.md section 1: unreadable and empty are different sentences. A failed
   // pull with NOTHING cached says so in words rather than rendering as an empty,
   // quiet day. The third case - a failed refetch with data still on screen - is
-  // the `Freshness` line below, not this branch.
-  if (changes.isError) {
+  // the `Freshness` line below, not this branch. It is checked by "is there any
+  // data", never by `isError` alone: TanStack reports `isError` after a failed
+  // BACKGROUND refetch too, with the last good data still attached, and the page
+  // now refetches every 30 s, so `isError` alone would blank a real day behind
+  // an error banner the first time the network blinked.
+  if (changes.isError && changes.data === undefined) {
     return (
-      <div className="mx-auto max-w-lg rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+      <div className="mx-auto max-w-lg rounded-card bg-destructive-container p-4 text-sm text-destructive-container-foreground">
         Could not reach the engine, so this is not today's real list.{' '}
         {changes.error.message}
       </div>
@@ -230,7 +236,7 @@ function Today() {
     <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
       <div className="flex min-w-0 flex-1 flex-col gap-7">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">{dayLabel(0)}</h1>
+          <h1 className="text-[1.75rem] leading-tight tracking-tight">{dayLabel(0)}</h1>
           <Freshness
             updatedAt={changes.dataUpdatedAt}
             isFetching={changes.isFetching}
@@ -257,9 +263,9 @@ function Today() {
           aside={due.length > 0 ? `${due.filter((d) => d.tickedToday).length} of ${due.length} ticked` : null}
         >
           {due.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing due today.</p>
+            <p className="text-[0.9375rem] text-muted-foreground">Nothing due today.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="flex flex-col gap-1.5">
               {due.map((item) => (
                 <DueItemRow key={item.item.id} due={item} />
               ))}
@@ -269,9 +275,9 @@ function Today() {
 
         <Section title="On today">
           {todaysEvents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing on the calendar today.</p>
+            <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar today.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="flex flex-col gap-1.5">
               {todaysEvents.map((event) => (
                 <EventRow key={event.id} event={event} />
               ))}
@@ -281,12 +287,12 @@ function Today() {
 
         <Section title={dayLabel(1)} aside={loadSentence(horizon[1])}>
           {tomorrowsEvents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing on the calendar tomorrow.</p>
+            <p className="text-[0.9375rem] text-muted-foreground">Nothing on the calendar tomorrow.</p>
           ) : (
             <div className="flex flex-col gap-3">
               {tomorrowsTasks.length > 0 && <GroupedTasks tasks={tomorrowsTasks} />}
               {tomorrowsCalendar.length > 0 && (
-                <ul className="divide-y">
+                <ul className="flex flex-col gap-1.5">
                   {tomorrowsCalendar.map((event) => (
                     <EventRow key={event.id} event={event} />
                   ))}
@@ -300,12 +306,12 @@ function Today() {
       <aside className="flex w-full shrink-0 flex-col gap-7 lg:w-80">
         <HorizonStrip cells={horizon} />
 
-        <section>
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Lists</h2>
+        <section className="rounded-sheet bg-card px-4 pt-3.5 pb-4 md:px-5">
+          <h2 className="mb-2 text-base font-medium">Lists</h2>
           {plainChecklists.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No lists yet. Start one on Lists.</p>
+            <p className="text-[0.9375rem] text-muted-foreground">No lists yet. Start one on Lists.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="flex flex-col gap-1.5">
               {plainChecklists.map((checklist) => (
                 <HomeListCard
                   key={checklist.id}
@@ -320,16 +326,16 @@ function Today() {
 
         {/* Today and tomorrow are already rendered in full on the left; repeating
             them here would be the wall of rows the strip exists to avoid. */}
-        <section>
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">After tomorrow</h2>
+        <section className="rounded-sheet bg-card px-4 pt-3.5 pb-4 md:px-5">
+          <h2 className="mb-2 text-base font-medium">After tomorrow</h2>
           {upcoming.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[0.9375rem] text-muted-foreground">
               Nothing else due in the next two weeks.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
               {upcoming.map((cell) => (
-                <li key={cell.day} className="flex items-baseline justify-between gap-3 text-sm">
+                <li key={cell.day} className="flex items-baseline justify-between gap-3 text-[0.9375rem]">
                   <span>
                     {cell.date.toLocaleDateString(undefined, {
                       weekday: 'long',

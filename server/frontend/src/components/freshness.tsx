@@ -54,8 +54,8 @@ export function Freshness({ updatedAt, isFetching, failureCount, error }: Freshn
   // tell that without hunting for it.
   if (failureCount > 0) {
     return (
-      <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">
+      <p className="rounded-control bg-surface-3 px-3.5 py-2.5 text-[0.8125rem] text-muted-foreground">
+        <span className="font-semibold text-foreground">
           This is what was on screen {relativeTime(updatedAt)} - not what is there now.
         </span>{' '}
         The last attempt to refresh it did not reach the engine
@@ -65,10 +65,10 @@ export function Freshness({ updatedAt, isFetching, failureCount, error }: Freshn
   }
 
   if (isFetching) {
-    return <p className="text-xs text-muted-foreground">Checking for changes...</p>
+    return <p className="text-[0.8125rem] text-muted-foreground">Checking for changes...</p>
   }
 
   return (
-    <p className="text-xs text-muted-foreground">Last read {relativeTime(updatedAt)}.</p>
+    <p className="text-[0.8125rem] text-muted-foreground">Last read {relativeTime(updatedAt)}.</p>
   )
 }

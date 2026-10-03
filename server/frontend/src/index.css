@@ -1,130 +1,210 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+/* Bundled, never fetched at runtime (CLAUDE.md section 7, "Assets are
+   bundled"). `wght.css` is the weight axis only: the default entry also ships
+   the width axis for every script, which this app never asks for. */
+@import "@fontsource-variable/roboto-flex/wght.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * The look is ADR 0053, "soft Material", picked by Kevin from prototype C
+ * (`.scratch/web-revamp/research/prototypes/c-soft-material.html`), which is
+ * the source of truth for every value below. Light and dark are two sets of
+ * the SAME names; a component never reads a raw colour, only a token, so the
+ * dark mode is a re-binding and not a second stylesheet.
+ *
+ * The scale is tonal, not outlined. A card is a surface step lighter or
+ * darker than the ground it sits on (`surface-1` / `-2` / `-3`), and a hairline
+ * border is the exception (`outline-variant`).
+ *
+ * Colour never carries meaning alone (ADR 0053). Pink is only ever the
+ * "Shared" marker and always beside the word; amber is only ever the word
+ * "unverified" or "estimate". No component may reuse `--shared` to decorate.
+ */
+
 @theme inline {
+    --font-sans: 'Roboto Flex Variable', 'Roboto Flex', Roboto, system-ui, sans-serif;
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
+
     --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary-container: var(--primary-container);
+    --color-primary-container-foreground: var(--primary-container-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-container: var(--destructive-container);
+    --color-destructive-container-foreground: var(--destructive-container-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-outline: var(--outline);
+    --color-outline-variant: var(--outline-variant);
+    --color-surface-1: var(--surface-1);
+    --color-surface-2: var(--surface-2);
+    --color-surface-3: var(--surface-3);
+    --color-scrim: var(--scrim);
+
+    --color-shared: var(--shared);
+    --color-shared-foreground: var(--shared-foreground);
+    --color-shared-accent: var(--shared-accent);
+    --color-done: var(--done);
+    --color-done-container: var(--done-container);
+    --color-unverified-bg: var(--unverified-bg);
+    --color-unverified-fg: var(--unverified-fg);
+    --color-estimate-fg: var(--estimate-fg);
+
+    /* Shape (ADR 0053): 16 px controls, 20 px cards, 28 px sheets and large
+       cards, pill chips and buttons. */
+    --radius-control: 1rem;
+    --radius-card: 1.25rem;
+    --radius-sheet: 1.75rem;
+    --radius-sm: 0.5rem;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.25rem;
+    --radius-2xl: 1.75rem;
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    color-scheme: light;
+
+    /* Ground and ink: hue 285 neutrals. */
+    --background: oklch(0.98 0.004 285);
+    --foreground: oklch(0.22 0.012 285);
+    --muted-foreground: oklch(0.48 0.016 285);
+
+    /* Tonal surface steps. A card is `surface-1`; a field or a chip resting
+       on a card is `surface-2`; a focused or hovered one is `surface-3`. */
+    --surface-1: oklch(0.958 0.009 285);
+    --surface-2: oklch(0.938 0.012 285);
+    --surface-3: oklch(0.915 0.014 285);
+    --card: var(--surface-1);
+    --card-foreground: var(--foreground);
+    --popover: oklch(0.965 0.009 285);
+    --popover-foreground: var(--foreground);
+    --muted: var(--surface-2);
+    --accent: var(--surface-3);
+    --accent-foreground: var(--foreground);
+
+    /* Primary, hue 275. The filled button is the one main action; the tonal
+       container is every secondary one. */
+    --primary: oklch(0.5 0.15 275);
+    --primary-foreground: oklch(1 0 0);
+    --primary-container: oklch(0.915 0.05 275);
+    --primary-container-foreground: oklch(0.3 0.12 275);
+    --secondary: var(--primary-container);
+    --secondary-foreground: var(--primary-container-foreground);
+
+    --outline: oklch(0.72 0.014 285);
+    --outline-variant: oklch(0.88 0.01 285);
+    --border: var(--outline-variant);
+    --input: var(--outline);
+    --ring: var(--primary);
+    --scrim: oklch(0.2 0.03 285 / 0.4);
+
+    /* Error. ADR 0053 names no error colour; this is the M3 red at the same
+       lightness steps as the rest, so a refusal reads as a refusal in both
+       modes. Tonal container for the destructive button, never a solid fill. */
+    --destructive: oklch(0.55 0.2 27);
+    --destructive-container: oklch(0.93 0.04 25);
+    --destructive-container-foreground: oklch(0.36 0.14 27);
+
+    /* Shared, hue 355. Container + on-container are the marker itself
+       (`bg-shared text-shared-foreground`); the accent is the stronger pink,
+       used only to tint a row that is shared. */
+    --shared: oklch(0.925 0.055 355);
+    --shared-foreground: oklch(0.33 0.13 355);
+    --shared-accent: oklch(0.6 0.19 355);
+
+    /* Unverified, amber. The chip with the word in it. */
+    --unverified-bg: oklch(0.93 0.07 75);
+    --unverified-fg: oklch(0.38 0.09 60);
+    /* "estimate" on the page ground, not on a chip. ADR 0053 gives no value;
+       it reuses the unverified on-colour, which is dark amber on a light
+       ground and pale amber on a dark one, so it reads in both modes. */
+    --estimate-fg: oklch(0.38 0.09 60);
+
+    /* Done, hue 160 (a ticked box, a settled thing). */
+    --done: oklch(0.5 0.12 160);
+    --done-container: oklch(0.92 0.05 160);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    color-scheme: dark;
+
+    --background: oklch(0.17 0.006 285);
+    --foreground: oklch(0.93 0.006 285);
+    --muted-foreground: oklch(0.75 0.012 285);
+
+    --surface-1: oklch(0.215 0.007 285);
+    --surface-2: oklch(0.25 0.008 285);
+    --surface-3: oklch(0.29 0.009 285);
+    --popover: oklch(0.215 0.007 285);
+
+    --primary: oklch(0.78 0.11 275);
+    --primary-foreground: oklch(0.25 0.1 275);
+    --primary-container: oklch(0.34 0.09 275);
+    --primary-container-foreground: oklch(0.92 0.04 275);
+
+    --outline: oklch(0.52 0.012 285);
+    --outline-variant: oklch(0.34 0.01 285);
+    --scrim: oklch(0 0 0 / 0.55);
+
+    --destructive: oklch(0.75 0.14 25);
+    --destructive-container: oklch(0.33 0.08 25);
+    --destructive-container-foreground: oklch(0.92 0.05 25);
+
+    --shared: oklch(0.34 0.09 355);
+    --shared-foreground: oklch(0.92 0.05 355);
+    --shared-accent: oklch(0.74 0.15 355);
+
+    --unverified-bg: oklch(0.36 0.07 70);
+    --unverified-fg: oklch(0.9 0.08 80);
+    --estimate-fg: oklch(0.9 0.08 80);
+
+    --done: oklch(0.78 0.12 160);
+    --done-container: oklch(0.33 0.06 160);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
+  }
   html {
     @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+  }
+  h1, h2, h3 {
+    font-weight: 500;
+  }
+  /* One focus ring for everything focusable, in the primary colour. Components
+     that draw their own ring (the inputs) opt out by `outline-none`. */
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
     }
+  }
 }

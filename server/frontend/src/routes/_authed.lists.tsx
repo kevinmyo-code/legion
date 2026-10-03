@@ -8,6 +8,7 @@ import { useSetChecklistTick } from '@/api/mutations'
 import { CHANGES_KEY, useChanges } from '@/api/queries'
 import { newChecklist, newChecklistItem, type Checklist, type ChecklistItem, type ChecklistTick } from '@/api/types'
 import { DeleteChecklistControl } from '@/components/checklist-delete'
+import { Freshness } from '@/components/freshness'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -49,7 +50,7 @@ function ItemRow({
   })
 
   return (
-    <li className="flex items-center gap-3 py-1.5">
+    <li className="flex min-h-11 items-center gap-3 py-0.5 pl-1">
       <Checkbox
         checked={ticked}
         disabled={setTick.isPending}
@@ -64,20 +65,21 @@ function ItemRow({
         }
         aria-label={`Mark "${item.text}" ${ticked ? 'not done' : 'done'}`}
       />
-      <span className={`flex-1 text-sm ${ticked ? 'text-muted-foreground line-through' : ''}`}>
+      <span className={`flex-1 text-base ${ticked ? 'text-muted-foreground line-through' : ''}`}>
         {item.text}
       </span>
       <Button
         variant="ghost"
         size="icon-sm"
+        className="text-muted-foreground"
         aria-label={`Remove "${item.text}"`}
         disabled={remove.isPending}
         onClick={() => remove.mutate()}
       >
-        <Trash2 className="size-3.5" />
+        <Trash2 />
       </Button>
       {(setTick.isError || remove.isError) && (
-        <span className="text-xs text-destructive">
+        <span className="text-[0.8125rem] text-destructive">
           Could not save. {(setTick.error ?? remove.error)?.message}
         </span>
       )}
@@ -105,23 +107,28 @@ function AddItemForm({ checklistId }: { checklistId: string }) {
 
   return (
     <form
-      className="mt-2 flex gap-2"
+      className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1"
       onSubmit={(event) => {
         event.preventDefault()
         const trimmed = text.trim()
         if (trimmed) add.mutate(trimmed)
       }}
     >
-      <Input
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        placeholder="Add an item"
-        aria-label="Add an item"
-      />
-      <Button type="submit" disabled={add.isPending || text.trim() === ''}>
-        Add
-      </Button>
-      {add.isError && <span className="text-xs text-destructive">{add.error.message}</span>}
+      {/* The add bar of the prototype: one pill, the field and its button inside
+          it, the focus ring on the pill rather than on the bare field. */}
+      <div className="flex h-13 min-w-0 flex-1 items-center gap-2 rounded-full bg-surface-3 pr-1.5 pl-5 focus-within:ring-2 focus-within:ring-primary">
+        <Input
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder="Add an item"
+          aria-label="Add an item"
+          className="h-full flex-1 rounded-none border-0 bg-transparent px-0 focus-visible:bg-transparent"
+        />
+        <Button type="submit" size="lg" disabled={add.isPending || text.trim() === ''}>
+          Add
+        </Button>
+      </div>
+      {add.isError && <span className="text-[0.8125rem] text-destructive">{add.error.message}</span>}
     </form>
   )
 }
@@ -140,21 +147,21 @@ function ChecklistCard({
   const complete = isChecklistComplete(checklist, items, ticks, today)
 
   return (
-    <div className="rounded-md border p-4">
+    <div className="rounded-sheet bg-card p-4 md:p-5">
       <div className="mb-2 flex items-start justify-between gap-3">
-        <h2 className="font-semibold">{checklist.name}</h2>
+        <h2 className="text-lg font-medium">{checklist.name}</h2>
         <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
       </div>
       {complete && (
-        <p className="mb-2 rounded-md bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">
+        <p className="mb-2 rounded-control bg-surface-3 px-3.5 py-2.5 text-[0.8125rem] text-muted-foreground">
           Everything on this list is ticked off. Delete it with the icon above when you are done
           with it - what you ticked is kept either way.
         </p>
       )}
       {ownItems.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing on this list yet.</p>
+        <p className="text-[0.9375rem] text-muted-foreground">Nothing on this list yet.</p>
       ) : (
-        <ul className="divide-y">
+        <ul className="flex flex-col">
           {ownItems.map((item) => (
             <ItemRow key={item.id} checklist={checklist} item={item} ticks={ticks} />
           ))}
@@ -184,7 +191,7 @@ function NewChecklistForm() {
 
   return (
     <form
-      className="flex gap-2"
+      className="flex flex-wrap items-center gap-2"
       onSubmit={(event) => {
         event.preventDefault()
         const trimmed = name.trim()
@@ -196,11 +203,12 @@ function NewChecklistForm() {
         onChange={(event) => setName(event.target.value)}
         placeholder="New list name (e.g. Groceries)"
         aria-label="New list name"
+        className="min-w-0 flex-1"
       />
-      <Button type="submit" disabled={create.isPending || name.trim() === ''}>
+      <Button type="submit" size="lg" variant="secondary" disabled={create.isPending || name.trim() === ''}>
         New list
       </Button>
-      {create.isError && <span className="text-xs text-destructive">{create.error.message}</span>}
+      {create.isError && <span className="text-[0.8125rem] text-destructive">{create.error.message}</span>}
     </form>
   )
 }
@@ -217,9 +225,12 @@ function Lists() {
     )
   }
 
-  if (changes.isError) {
+  // `isError` is also true after a failed background refetch with the last good
+  // data attached (the page refetches every 30 s), so the unreachable banner is for
+  // "nothing to show", and stale data is the `Freshness` line below.
+  if (changes.isError && changes.data === undefined) {
     return (
-      <div className="mx-auto max-w-lg rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+      <div className="mx-auto max-w-lg rounded-card bg-destructive-container p-4 text-sm text-destructive-container-foreground">
         Could not reach the engine, so this is not the real state of your lists.{' '}
         {changes.error.message}
       </div>
@@ -235,8 +246,14 @@ function Lists() {
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4">
+      <Freshness
+        updatedAt={changes.dataUpdatedAt}
+        isFetching={changes.isFetching}
+        failureCount={changes.failureCount}
+        error={changes.error}
+      />
       {checklists.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No lists yet. Start one below.</p>
+        <p className="text-[0.9375rem] text-muted-foreground">No lists yet. Start one below.</p>
       ) : (
         checklists.map((checklist) => (
           <ChecklistCard key={checklist.id} checklist={checklist} items={items} ticks={ticks} />

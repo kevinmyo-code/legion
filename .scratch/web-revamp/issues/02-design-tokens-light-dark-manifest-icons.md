@@ -3,12 +3,12 @@ map: web-revamp
 ticket: 02
 title: "Design tokens, light and dark, manifest and icons"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Tokens, Roboto Flex, theme toggle, manifest, icons and restyled primitives are in and seen in a browser; owed: a run on a real iPhone and a real dark device."
 blockers: ["01"]
 blocked-by: ["[[01-pick-the-web-design-language]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Design tokens, light and dark, manifest and icons
@@ -34,7 +34,7 @@ See `.scratch/web-revamp/spec.md` D2.
 
 ## Verification
 
-- [ ] vitest: `theme.ts` (system follows media query; stored pref wins; unreadable storage = system).
-- [ ] `npm run build && npm test` green, count from the JSON reporter.
-- [ ] Playwright shots of `/login`, `/`, `/lists` at 390x844 and 1440x900, light and dark, kept in
+- [x] vitest: `theme.ts` (system follows media query; stored pref wins; unreadable storage = system).
+- [x] `npm run build && npm test` green, count from the JSON reporter.
+- [x] Playwright shots of `/login`, `/`, `/lists` at 390x844 and 1440x900, light and dark, kept in
       `research/shots/02/`.

@@ -104,8 +104,15 @@ class LiveSetupPayloadSizeTest {
      * engine tool. Already trimmed to a two-sentence description and a one-line `intent`; the
      * rules it carries (engine-unreachable wording, record-versus-ask) cannot move out because
      * the model only ever sees this block.
+     *
+     * **Raised to 22,500 on 2026-10-03 (`complete_task`, voice marking of calendar tasks done).**
+     * Measured that day: ~22,279 estimated tokens with the tool, so it costs ~170 tokens against
+     * ~22,110 before it. Trimmed twice first (a `to` arg dropped, description cut to three
+     * clauses); what is left is the trigger phrases that route "I finished X" here rather than to
+     * `manage_item` (reminders), and the "claim only what the result says changed" clause that
+     * CLAUDE.md section 7's outcome-verb rule needs on a write tool.
      */
-    private val ceilingTokens = 22_250
+    private val ceilingTokens = 22_500
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {

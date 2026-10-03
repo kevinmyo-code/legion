@@ -57,6 +57,9 @@ import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
+import com.kevin.legion.backend.EventsAppointmentWriter
+import com.kevin.legion.calendar.TaskDoneMatcher
+import com.kevin.legion.data.local.OutboxTarget
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
@@ -1924,6 +1927,23 @@ object LiveToolbox {
             required = listOf("from", "to"),
         ))
 
+        // **complete_task, 2026-10-03.** Kevin tried "mark my maths assignments done" by voice and
+        // was told there was no way to; no tool wrote Event.done. Same writer as the calendar UI's
+        // tick (EventsAppointmentWriter.setDone, ADR 0035).
+        fns.put(fn(
+            name = "complete_task",
+            description = "Mark calendar TASKS (assignments, homework) done/not done: 'mark X " +
+                "done', 'I finished X', 'untick X'. Not reminders. Several matches change nothing " +
+                "and return a list - ask which. Claim only what the result says changed.",
+            params = obj(
+                "title" to schema("string", "Title words or course code, e.g. 'MATH 2413'."),
+                "date" to schema("string", "Optional yyyy-MM-dd due day. Default: overdue + 7 days."),
+                "done" to schema("boolean", "False to untick. Default true."),
+                "all_matches" to schema("boolean", "True only if they meant every match."),
+            ),
+            required = listOf("title"),
+        ))
+
         // --- Goals (ticket 19, `.scratch/aspect-advisors/issues/02-goal-store.md`'s Answer) -----
         //
         // Three tools, not one per aspect: a goal is uniformly statement + aspect + optional
@@ -2765,6 +2785,7 @@ object LiveToolbox {
             "track_package" -> trackPackage(context)
             "flight_status" -> flightStatus(context)
             "read_calendar" -> readCalendar(context, args)
+            "complete_task" -> completeTask(context, args)
             "why_did_you_say_that" -> whyDidYouSayThatTool(context)
             "get_sitrep" -> getSitrepTool(context, args)
             "answer_call" -> answerCallTool(context, args)
@@ -2853,6 +2874,8 @@ object LiveToolbox {
         // voice-notes ticket 04: start/stop each write a `voice_notes` row (insert, then update on
         // stop) through VoiceNoteController - see that object's own class doc.
         "start_voice_note", "stop_voice_note",
+        // 2026-10-03: writes Event.done through EventsAppointmentWriter.setDone.
+        "complete_task",
     )
 
     /**
@@ -3415,6 +3438,96 @@ object LiveToolbox {
     private const val CALENDAR_INVALID_WINDOW_MESSAGE =
         "I need a valid date range to read your calendar - from and to as yyyy-MM-dd, with to on " +
             "or after from."
+
+    /**
+     * `complete_task` (2026-10-03). Resolves with [TaskDoneMatcher], writes with
+     * [com.kevin.legion.backend.EventsAppointmentWriter.setDone] per row - the writer the calendar
+     * tick uses, so voice and hands cannot drift. Window: an explicit `date` is that one day (no
+     * `to` arg: it cost ~50 tokens past LiveSetupPayloadSizeTest's ceiling); otherwise anything due
+     * up to 7 days out that is overdue-and-open (unbounded past) or, for an untick or an
+     * already-done row, dated within the last 30 days. Success is reported per row, only for rows
+     * setDone returned from.
+     */
+    private suspend fun completeTask(context: Context, args: JSONObject): JSONObject {
+        val target = args.optBoolean("done", true)
+        val dateArg = args.optString("date").trim()
+        val now = System.currentTimeMillis()
+        var lo: Long? = null
+        var hi = now + TASK_WINDOW_AHEAD_MS
+        if (dateArg.isNotBlank()) {
+            val window = parseCalendarWindow(dateArg, dateArg, java.time.ZoneId.systemDefault())
+                ?: return result(false, "Nothing was changed. $CALENDAR_INVALID_WINDOW_MESSAGE")
+            lo = window.first
+            hi = window.second
+        }
+        val dao = CarDatabase.getDatabase(context).eventDao()
+        val all = dao.getActiveByKind(EventKind.TASK)
+        val scoped = all.filter { e ->
+            val at = e.startsAt
+            when {
+                at == null || at > hi -> false
+                lo != null -> at >= lo
+                // Default window: open overdue work is always in; settled work only if recent.
+                else -> (!e.done && target) || at >= now - TASK_WINDOW_BEHIND_MS
+            }
+        }
+        val dateOf: (Event) -> String? = { e ->
+            e.startsAt?.let { if (e.allDay) documentDate(it) else shortDate(it) }
+        }
+        val resolution = TaskDoneMatcher.resolve(
+            scoped, all, args.optString("title"), target, args.optBoolean("all_matches", false),
+        )
+        return when (resolution) {
+            TaskDoneMatcher.Resolution.EmptyQuery -> result(false, TaskDoneMatcher.EMPTY_QUERY_TEXT)
+            is TaskDoneMatcher.Resolution.NoMatch ->
+                result(false, TaskDoneMatcher.noMatchText(resolution.nearest, dateOf))
+            is TaskDoneMatcher.Resolution.Ambiguous ->
+                result(false, TaskDoneMatcher.ambiguousText(resolution.candidates, dateOf))
+            is TaskDoneMatcher.Resolution.AlreadyThere ->
+                result(false, TaskDoneMatcher.alreadyText(target, resolution.matches, dateOf))
+            is TaskDoneMatcher.Resolution.Apply -> commitTaskDone(context, resolution, target, dateOf)
+        }
+    }
+
+    private const val TASK_WINDOW_AHEAD_MS = 7L * 24 * 60 * 60 * 1000
+    private const val TASK_WINDOW_BEHIND_MS = 30L * 24 * 60 * 60 * 1000
+
+    /** The write half of [completeTask]: one [EventsAppointmentWriter.setDone] per row, each
+     * guarded, and the outbox read afterwards to tell which commits are only queued. */
+    private suspend fun commitTaskDone(
+        context: Context,
+        r: TaskDoneMatcher.Resolution.Apply,
+        target: Boolean,
+        dateOf: (Event) -> String?,
+    ): JSONObject {
+        val dao = CarDatabase.getDatabase(context).eventDao()
+        val committed = mutableListOf<Event>()
+        val failed = mutableListOf<Event>()
+        for (row in r.toChange) {
+            try {
+                // Re-read: the row may have changed or been deleted since the list was read.
+                val fresh = dao.getById(row.id)
+                if (fresh == null || fresh.deleted || fresh.kind != EventKind.TASK) {
+                    failed += row
+                } else {
+                    committed += EventsAppointmentWriter.setDone(context, fresh, target)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("LiveToolbox", "complete_task setDone failed for ${row.id}: ${e.message}")
+                failed += row
+            }
+        }
+        val pendingIds = runCatching {
+            CarDatabase.getDatabase(context).outboxDao()
+                .pendingForTable(OutboxTarget.EVENTS, Int.MAX_VALUE)
+                .map { it.localId }.toSet()
+        }.getOrDefault(emptySet())
+        val queued = committed.map { it.id }.filter { it in pendingIds }.toSet()
+        return result(
+            committed.isNotEmpty(),
+            TaskDoneMatcher.resultText(target, committed, failed, queued, r.alreadyThere, dateOf),
+        )
+    }
 
     /**
      * `read_calendar` (ticket 19). **One-today ticket 01, "cut Google entirely" (2026-09-01):**

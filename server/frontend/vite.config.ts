@@ -8,6 +8,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 // with the `test` block below, so one config file covers build and tests.
 import { defineConfig } from 'vitest/config'
 
+import { THEME_COLOR_LIGHT } from './src/lib/theme-colors.ts'
+
 // Django serves the built bundle from its own origin (ADR 0044: one engine,
 // the web app is a limb of it), so there is no CDN prefix and no second host.
 // Same-origin is also what makes the session cookie work at all - a cross-origin
@@ -36,14 +38,14 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        // Both values are raw tokens from the phone's mission-control palette
-        // (`app/.../ui/theme/Color.kt`), not eyeballed near-matches: the OS
-        // chrome around an installed PWA should be the same two colours the
-        // Android app already uses. `background_color` is DeckGround, the
-        // pure-black OLED ground the whole palette is built on;
-        // `theme_color` is DeckChrome, which is literally the chrome tier.
-        background_color: '#000000',
-        theme_color: '#FF5330',
+        // Both are the light page ground of ADR 0053 (`src/lib/theme-colors.ts`,
+        // derived from the OKLCH token in `index.css`). A manifest has one
+        // colour per field and no dark variant, so the installed app's splash
+        // and title bar are the light ground; `index.html`'s two `theme-color`
+        // metas, keyed by `media`, are what follow a dark device inside the
+        // page. The phone's mission-control palette is not used here any more.
+        background_color: THEME_COLOR_LIGHT,
+        theme_color: THEME_COLOR_LIGHT,
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -116,7 +118,13 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // `e2e/` is Playwright's, run by `npm run shots`; vitest must not try to load it.
+    exclude: ['e2e/**', 'node_modules/**'],
     globals: true,
+    // A route's first render in a file pays for loading its code-split chunk, and
+    // the charted screens pull in Recharts. The 5 s default failed the first test
+    // of a file on a cold transform while every later one passed.
+    testTimeout: 15_000,
     setupFiles: ['./src/test/setup.ts'],
     css: true,
     // Fixed to a real, non-UTC zone (not the host machine's own) so the

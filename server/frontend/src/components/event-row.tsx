@@ -41,10 +41,10 @@ export function EventRow({ event, showCourse = true }: { event: Event; showCours
       : ''
 
   return (
-    <li className="flex items-start gap-3 py-2">
+    <li className="flex min-h-11 items-start gap-3 rounded-[1.125rem] bg-surface-2 py-2 pr-3 pl-4">
       {event.kind === 'task' ? (
         <Checkbox
-          className="mt-0.5"
+          className="mt-1"
           checked={event.done}
           disabled={toggleDone.isPending}
           onCheckedChange={(checked) => toggleDone.mutate(checked === true)}
@@ -54,28 +54,28 @@ export function EventRow({ event, showCourse = true }: { event: Event; showCours
         // An event passes whether or not you engage with it (one-today ticket
         // 08). No checkbox, and the gap where one would be is deliberate - it is
         // what makes the two kinds distinguishable without reading the row.
-        <span className="mt-0.5 w-4 shrink-0" aria-hidden="true" />
+        <span className="mt-1 w-6 shrink-0" aria-hidden="true" />
       )}
       <div className="min-w-0 flex-1">
         <div>
           <span
             className={
               event.kind === 'task' && event.done
-                ? 'text-sm text-muted-foreground line-through'
-                : 'text-sm'
+                ? 'text-[0.9375rem] text-muted-foreground line-through'
+                : 'text-[0.9375rem] font-medium'
             }
           >
             {label}
           </span>
           {showCourse && course && (
-            <span className="ml-2 text-xs text-muted-foreground">{course}</span>
+            <span className="ml-2 text-[0.8125rem] text-muted-foreground">{course}</span>
           )}
         </div>
-        {canvas && <p className="text-xs text-muted-foreground">{canvas}</p>}
+        {canvas && <p className="text-[0.8125rem] text-muted-foreground">{canvas}</p>}
       </div>
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{time}</span>
+      <span className="mt-0.5 shrink-0 text-[0.8125rem] tabular-nums text-muted-foreground">{time}</span>
       {toggleDone.isError && (
-        <span className="text-xs text-destructive">Could not save. {toggleDone.error.message}</span>
+        <span className="text-[0.8125rem] text-destructive">Could not save. {toggleDone.error.message}</span>
       )}
     </li>
   )

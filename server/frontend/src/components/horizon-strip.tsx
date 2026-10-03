@@ -20,8 +20,8 @@ export function HorizonStrip({ cells }: { cells: HorizonCell[] }) {
   return (
     <div>
       <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-muted-foreground">The next two weeks</h2>
-        <span className="text-xs text-muted-foreground">unfinished, by day</span>
+        <h2 className="text-base font-medium">The next two weeks</h2>
+        <span className="text-[0.8125rem] text-muted-foreground">unfinished, by day</span>
       </div>
       <ol className="flex gap-1">
         {cells.map((cell) => {
@@ -32,28 +32,28 @@ export function HorizonStrip({ cells }: { cells: HorizonCell[] }) {
               <span
                 className={
                   cell.offset === 0
-                    ? 'text-[0.6rem] font-semibold uppercase text-foreground'
-                    : 'text-[0.6rem] uppercase text-muted-foreground'
+                    ? 'text-[0.6875rem] font-semibold uppercase text-foreground'
+                    : 'text-[0.6875rem] uppercase text-muted-foreground'
                 }
               >
                 {cell.date.toLocaleDateString(undefined, { weekday: 'narrow' })}
               </span>
               <div
                 className={[
-                  'flex h-9 w-full items-center justify-center rounded-md border text-xs tabular-nums',
-                  cell.offset === 0 ? 'border-foreground/40' : 'border-border',
+                  'flex h-9 w-full items-center justify-center rounded-lg bg-surface-2 text-xs tabular-nums',
+                  cell.offset === 0 ? 'ring-2 ring-primary' : '',
                   outstanding > 0 ? 'font-semibold text-foreground' : 'text-muted-foreground',
                 ].join(' ')}
                 style={
                   outstanding > 0
-                    ? { backgroundColor: `color-mix(in oklab, var(--primary) ${8 + weight * 22}%, transparent)` }
+                    ? { backgroundColor: `color-mix(in oklab, var(--primary) ${10 + weight * 24}%, var(--surface-2))` }
                     : undefined
                 }
                 title={`${cell.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} - ${outstanding} unfinished, ${cell.events} on the calendar`}
               >
                 {outstanding > 0 ? outstanding : cell.events > 0 ? '·' : ''}
               </div>
-              <span className="text-[0.6rem] tabular-nums text-muted-foreground">
+              <span className="text-[0.6875rem] tabular-nums text-muted-foreground">
                 {cell.date.getDate()}
               </span>
             </li>

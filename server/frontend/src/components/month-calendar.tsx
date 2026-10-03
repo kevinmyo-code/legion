@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 
 import { EventRow } from '@/components/event-row'
@@ -49,16 +50,16 @@ export function MonthCalendar({ events }: { events: Event[] }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">{monthLabel}</h2>
+        <h3 className="text-[0.9375rem] font-medium">{monthLabel}</h3>
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="icon-sm" aria-label="Previous month" onClick={() => goToMonth(-1)}>
-            ‹
+          <Button variant="secondary" size="icon-sm" aria-label="Previous month" onClick={() => goToMonth(-1)}>
+            <ChevronLeft />
           </Button>
-          <Button variant="outline" size="sm" onClick={goToToday}>
+          <Button variant="secondary" size="sm" onClick={goToToday}>
             Today
           </Button>
-          <Button variant="outline" size="icon-sm" aria-label="Next month" onClick={() => goToMonth(1)}>
-            ›
+          <Button variant="secondary" size="icon-sm" aria-label="Next month" onClick={() => goToMonth(1)}>
+            <ChevronRight />
           </Button>
         </div>
       </div>
@@ -67,7 +68,7 @@ export function MonthCalendar({ events }: { events: Event[] }) {
         {WEEKDAY_LABELS.map((label, index) => (
           <div
             key={index}
-            className="text-center text-[0.6rem] uppercase text-muted-foreground"
+            className="text-center text-[0.6875rem] uppercase text-muted-foreground"
             aria-hidden="true"
           >
             {label}
@@ -84,12 +85,12 @@ export function MonthCalendar({ events }: { events: Event[] }) {
         ))}
       </div>
 
-      <div className="rounded-md border p-3">
-        <h3 className="mb-1 text-sm font-semibold">{selectedLabel}</h3>
+      <div className="rounded-card bg-surface-1 p-3">
+        <h3 className="mb-2 px-1 text-[0.9375rem] font-medium">{selectedLabel}</h3>
         {selectedEvents.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing on the calendar this day.</p>
+          <p className="px-1 text-[0.9375rem] text-muted-foreground">Nothing on the calendar this day.</p>
         ) : (
-          <ul className="divide-y">
+          <ul className="flex flex-col gap-1.5">
             {selectedTasks.map((event) => (
               <EventRow key={event.id} event={event} />
             ))}
@@ -124,21 +125,21 @@ function MonthDayCell({
       }${cell.events > 0 ? `, ${cell.events} on the calendar` : ''}`}
       aria-current={isSelected ? 'date' : undefined}
       className={[
-        'flex aspect-square min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border text-xs',
+        'flex aspect-square min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl bg-surface-1 text-xs lg:aspect-auto lg:h-14',
         cell.inMonth ? '' : 'opacity-40',
-        isSelected ? 'border-foreground/60 ring-1 ring-foreground/30' : 'border-border',
-        isToday ? 'font-semibold' : '',
+        isSelected ? 'ring-2 ring-primary' : '',
+        isToday ? 'font-bold text-primary' : '',
       ].join(' ')}
       style={
         outstanding > 0
-          ? { backgroundColor: `color-mix(in oklab, var(--primary) ${8 + Math.min(outstanding, 6) * 6}%, transparent)` }
+          ? { backgroundColor: `color-mix(in oklab, var(--primary) ${10 + Math.min(outstanding, 6) * 6}%, var(--surface-1))` }
           : undefined
       }
     >
       <span className="tabular-nums">{cell.date.getDate()}</span>
       <span
         className={[
-          'h-3 text-[0.65rem] tabular-nums',
+          'h-3 text-[0.6875rem] tabular-nums',
           outstanding > 0 ? 'font-semibold text-foreground' : 'text-muted-foreground',
         ].join(' ')}
       >

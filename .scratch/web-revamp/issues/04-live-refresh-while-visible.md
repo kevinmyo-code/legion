@@ -3,12 +3,12 @@ map: web-revamp
 ticket: 04
 title: Live refresh while the page is visible
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Home and Lists refetch every 30 s while visible and on return; a failed refresh keeps rows and says they are old. Owed: watching it across a real phone sleep and wake."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Live refresh while the page is visible
@@ -26,5 +26,5 @@ See `.scratch/web-revamp/spec.md` D13.
 
 ## Verification
 
-- [ ] vitest with fake timers: refetches at 30 s while visible, not while hidden, immediately on
+- [x] vitest with fake timers: refetches at 30 s while visible, not while hidden, immediately on
       becoming visible; a failed refetch leaves rows on screen and the freshness line says so.
