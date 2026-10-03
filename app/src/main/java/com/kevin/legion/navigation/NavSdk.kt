@@ -64,7 +64,8 @@ data class NavProgressInfo(
  * ([isSessionRunning], [activeRoutes]) is how the controller checks an outcome AFTER a call**
  * (ticket 04: a result is derived from SDK state, never from the call having been made).
  *
- * Callbacks arrive on the main thread; so does every call. One instance is one `MapboxNavigation`.
+ * Callbacks arrive on the main thread; so does every call. One instance is one `MapboxNavigation`,
+ * kept for the process.
  */
 // The seam mirrors the SDK's verbs one for one; fewer methods would hide a billing-relevant step.
 @Suppress("TooManyFunctions")
@@ -100,7 +101,11 @@ interface NavSdk {
 
     fun clearRoutes()
 
-    /** Ends billing: destroys the SDK instance. The seam is dead afterwards. */
+    /**
+     * Destroys the SDK instance; the seam is dead afterwards. **Called only when the token changes**
+     * (it is baked into the instance), never per trip: the instance is long-lived and billing is
+     * [startSession] / [stopSession] alone.
+     */
     fun destroy()
 
     fun isSessionRunning(): Boolean

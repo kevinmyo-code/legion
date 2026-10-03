@@ -15,7 +15,13 @@ import org.junit.Test
 
 /** A scripted stand-in for the Mapbox SDK, recording the order of every call that matters to billing. */
 class FakeNavSdk : NavSdk {
+    /** How many times a listener was attached; one per instance, or observers would double. */
+    var listenerSets = 0
     override var listener: NavSdkListener? = null
+        set(value) {
+            if (value != null) listenerSets++
+            field = value
+        }
 
     /** Every call in order; `clear` records whether the session was still running when routes were cleared. */
     val calls = mutableListOf<String>()
@@ -201,7 +207,7 @@ class MapboxNavControllerTest {
         val res = r.controller.start()
         assertFalse("the call was made but no session is running", res.ok)
         assertEquals(NavPhase.FAILED, r.controller.state.value.phase)
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
         assertTrue(res.message.contains("nothing is navigating"))
     }
 
@@ -210,7 +216,7 @@ class MapboxNavControllerTest {
         r.controller.preview(home)
         assertFalse(r.controller.start().ok)
         assertFalse("no session after a failed set", r.sdk.calls.contains("startSession"))
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
     }
 
     @Test fun startWithNothingPreviewedSaysSo() = runBlocking {
@@ -261,7 +267,7 @@ class MapboxNavControllerTest {
         assertFalse(res.ok)
         assertTrue(res.message.startsWith("No connection"))
         assertEquals(NavPhase.FAILED, r.controller.state.value.phase)
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
         assertFalse(r.sdk.sessionRunning)
     }
 
@@ -284,13 +290,13 @@ class MapboxNavControllerTest {
 
     // ------------------------------------------------------------------ billing: end, arrival, screen left
 
-    @Test fun endStopsTheSessionBeforeClearingRoutesThenDestroys() = runBlocking {
+    @Test fun endStopsTheSessionBeforeClearingRoutesAndKeepsTheInstance() = runBlocking {
         val r = rig()
         guiding(r)
         r.sdk.calls.clear()
         val res = r.controller.end()
         assertTrue(res.message, res.ok)
-        assertEquals(listOf("stopSession", "clearRoutes(sessionRunning=false)", "destroy"), r.sdk.calls)
+        assertEquals(listOf("stopSession", "clearRoutes(sessionRunning=false)"), r.sdk.calls)
         assertEquals(NavPhase.ENDED, r.controller.state.value.phase)
         assertFalse(r.sdk.sessionRunning)
         assertTrue(r.controller.state.value.message.contains("Nothing is navigating"))
@@ -303,7 +309,7 @@ class MapboxNavControllerTest {
         val res = r.controller.end()
         assertFalse(res.ok)
         assertTrue(res.message.contains("could not confirm"))
-        assertTrue("the instance is still destroyed, which is what ends billing", r.sdk.destroyed)
+        assertFalse("the instance is kept; the session stop is what ends billing", r.sdk.destroyed)
     }
 
     @Test fun endWithNoTripSaysNothingToEnd() = runBlocking {
@@ -320,7 +326,7 @@ class MapboxNavControllerTest {
         val res = r.controller.end()
         assertTrue(res.message.startsWith("No trip was running; I cleared the route preview"))
         assertEquals(NavPhase.IDLE, r.controller.state.value.phase)
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
         assertFalse(r.sdk.calls.contains("startSession"))
     }
 
@@ -330,10 +336,10 @@ class MapboxNavControllerTest {
         r.sdk.calls.clear()
         r.controller.onArrival()
         assertEquals(NavPhase.ARRIVED, r.controller.state.value.phase)
-        assertEquals(listOf("stopSession", "clearRoutes(sessionRunning=false)", "destroy"), r.sdk.calls)
+        assertEquals(listOf("stopSession", "clearRoutes(sessionRunning=false)"), r.sdk.calls)
         assertTrue(r.controller.state.value.message.contains("arrived at Home"))
         r.controller.onArrival()
-        assertEquals("a second arrival signal does nothing", 3, r.sdk.calls.size)
+        assertEquals("a second arrival signal does nothing", 2, r.sdk.calls.size)
     }
 
     @Test fun aCompleteProgressStateIsArrivalToo() = runBlocking {
@@ -359,7 +365,7 @@ class MapboxNavControllerTest {
         r.controller.preview(home)
         r.controller.onScreenLeft()
         assertEquals(NavPhase.IDLE, r.controller.state.value.phase)
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
         assertFalse(r.sdk.calls.contains("startSession"))
     }
 
@@ -383,7 +389,7 @@ class MapboxNavControllerTest {
         assertTrue(res.message.contains("superseded"))
         assertEquals(NavPhase.IDLE, r.controller.state.value.phase)
         assertFalse(r.sdk.calls.contains("startSession"))
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
     }
 
     @Test fun aCancelledCallerLeavesNoRequestOrSessionBehind() = runBlocking {
@@ -393,7 +399,7 @@ class MapboxNavControllerTest {
         job.cancelAndJoin()
         assertEquals(NavPhase.IDLE, r.controller.state.value.phase)
         assertTrue(r.sdk.calls.contains("cancelRequest"))
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
         assertFalse(r.sdk.sessionRunning)
     }
 
@@ -795,35 +801,103 @@ class MapboxNavControllerTest {
         assertFalse(again.message, again.message.contains("replaced"))
     }
 
-    @Test fun everyTripCreatesTheSdkOnceAndDestroysItOnce() = runBlocking {
-        // Device-run defect 13: "Too many OnboardRouter instances". Our side of it: one create and one destroy.
-        repeat(3) {
-            val sdk = FakeNavSdk().apply { autoReply = FakeNavSdk::honest }
-            var created = 0
-            var destroys = 0
-            val countingSdk = object : NavSdk by sdk {
-                override fun destroy() {
-                    destroys++
-                    sdk.destroy()
-                }
-            }
-            val c = MapboxNavController(FakeTokens(), { created++; countingSdk }, { GeoPoint(29.6, -95.3) })
-            assertTrue(c.navigate(home).ok)
-            c.addStop(shell)
-            c.end()
-            c.end()
-            c.onScreenLeft()
-            assertEquals("created", 1, created)
-            assertEquals("destroyed", 1, destroys)
+    @Test fun theSdkIsCreatedOncePerTokenAndTheSessionIsBoundedByGuidingAcrossManyTrips() = runBlocking {
+        // Device-run defect 13 (second run): a MapboxNavigation per trip leaked a native router each time.
+        val r = rig()
+        repeat(6) {
+            assertTrue(r.controller.navigate(home).ok)
+            assertTrue("a session runs while GUIDING", r.sdk.sessionRunning)
+            r.controller.addStop(shell)
+            assertTrue(r.controller.end().ok)
+            assertFalse("no session once the trip is over", r.sdk.sessionRunning)
+            r.controller.end()
+            r.controller.onScreenLeft()
+            assertEquals(1, r.created)
+            assertFalse(r.sdk.destroyed)
         }
+        // A trip that ends by arrival rather than End takes the same road.
+        assertTrue(r.controller.navigate(home).ok)
+        r.controller.onArrival()
+        assertFalse(r.sdk.sessionRunning)
+        assertEquals(1, r.created)
+        assertFalse(r.sdk.destroyed)
     }
 
-    @Test fun aPreviewThatIsBackedOutOfDestroysItsSdkToo() = runBlocking {
+    @Test fun theSessionNeverRunsOutsideGuidingAndIsStoppedBeforeRoutesClear() = runBlocking {
+        val r = rig()
+        r.controller.preview(home)
+        assertFalse("preview is not a trip", r.sdk.sessionRunning)
+        r.controller.start()
+        r.controller.end()
+        r.controller.preview(home)
+        r.controller.onScreenLeft()
+        assertFalse(r.sdk.sessionRunning)
+        r.sdk.calls.filter { it.startsWith("clearRoutes") }.forEach {
+            assertEquals("routes are never cleared under a live session", "clearRoutes(sessionRunning=false)", it)
+        }
+        assertEquals("one start per trip, never a free drive", 1, r.sdk.calls.count { it == "startSession" })
+    }
+
+    @Test fun aChangedTokenRebuildsTheSdkAndOnlyThen() = runBlocking {
+        val sdks = mutableListOf<FakeNavSdk>()
+        val tokens = FakeTokens("pk.one")
+        val c = MapboxNavController(
+            tokens,
+            { FakeNavSdk().apply { autoReply = FakeNavSdk::honest }.also { sdks += it } },
+            { GeoPoint(29.6, -95.3) },
+        )
+        assertTrue(c.navigate(home).ok)
+        c.end()
+        assertTrue(c.navigate(home).ok)
+        c.end()
+        assertEquals("same token, one instance", 1, sdks.size)
+        tokens.set("pk.two")
+        c.onTokenChanged()
+        assertTrue("the old instance is destroyed on a token change", sdks[0].destroyed)
+        assertTrue(c.navigate(home).ok)
+        assertEquals("a new token builds a new instance", 2, sdks.size)
+        assertFalse(sdks[1].destroyed)
+        assertTrue(sdks[1].sessionRunning)
+    }
+
+    @Test fun aTokenChangeNoScreenNoticedStillRebuildsOnTheNextRequest() = runBlocking {
+        val sdks = mutableListOf<FakeNavSdk>()
+        val tokens = FakeTokens("pk.one")
+        val c = MapboxNavController(
+            tokens,
+            { FakeNavSdk().apply { autoReply = FakeNavSdk::honest }.also { sdks += it } },
+            { GeoPoint(29.6, -95.3) },
+        )
+        assertTrue(c.preview(home).ok)
+        c.end()
+        tokens.set("pk.two") // nobody called onTokenChanged: voice with the screen closed
+        assertTrue(c.preview(home).ok)
+        assertEquals(2, sdks.size)
+        assertTrue(sdks[0].destroyed)
+    }
+
+    @Test fun aSecondTripDoesNotSpeakEachCueTwice() = runBlocking {
+        val r = rig()
+        val spoken = mutableListOf<String>()
+        r.controller.cueSink = { spoken += it }
+        repeat(2) { trip ->
+            assertTrue(r.controller.navigate(home).ok)
+            // The SDK fires one cue to whatever listener it holds: a re-attached or duplicated
+            // listener would show up here as a second delivery.
+            r.sdk.listener?.onVoiceInstruction("Turn left on trip $trip")
+            assertEquals(1, spoken.count { it == "Turn left on trip $trip" })
+            r.controller.end()
+        }
+        assertEquals(2, spoken.size)
+        assertEquals("one listener attach for the whole process", 1, r.sdk.listenerSets)
+    }
+
+    @Test fun aPreviewThatIsBackedOutOfKeepsItsSdk() = runBlocking {
         val r = rig()
         r.controller.preview(home)
         r.controller.preview(home)
         assertEquals("a second preview reuses the one instance", 1, r.created)
         r.controller.end()
-        assertTrue(r.sdk.destroyed)
+        assertFalse("the instance outlives the trip", r.sdk.destroyed)
     }
 }

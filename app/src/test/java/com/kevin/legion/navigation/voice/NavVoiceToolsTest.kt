@@ -421,7 +421,7 @@ class NavVoiceToolsTest {
         assertTrue(r.message, r.success)
         assertTrue(r.message, r.message.startsWith("Trip ended"))
         assertFalse(sdk.sessionRunning)
-        assertTrue(sdk.destroyed)
+        assertFalse("the instance outlives the trip", sdk.destroyed)
         assertTrue(tools.tripStatus("time_left").message.startsWith("Not navigating"))
     }
 

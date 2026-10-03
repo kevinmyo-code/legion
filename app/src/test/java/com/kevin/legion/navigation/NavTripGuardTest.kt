@@ -152,6 +152,25 @@ class NavTripGuardTest {
         assertEquals(NavPhase.IDLE, g.phase)
     }
 
+    @Test fun theSessionShouldRunExactlyWhileGuidingAcrossRepeatedTrips() {
+        // The SDK instance is long-lived now; the guard's one job is that the session is bounded by GUIDING.
+        val g = NavTripGuard()
+        repeat(4) {
+            assertFalse(g.sessionShouldRun)
+            assertTrue(g.requestStarted())
+            assertFalse(g.sessionShouldRun)
+            assertTrue(g.routesReady(2))
+            assertFalse("a preview is not a trip", g.sessionShouldRun)
+            assertTrue(g.startRequested())
+            assertTrue(g.sessionShouldRun)
+            assertFalse(g.screenLeft())
+            assertTrue("leaving the screen keeps the trip", g.sessionShouldRun)
+            if (it % 2 == 0) assertTrue(g.endRequested()) else assertTrue(g.arrived())
+            assertFalse(g.sessionShouldRun)
+            g.dismissed()
+        }
+    }
+
     @Test fun startFailingFallsOutOfGuiding() {
         val g = previewing()
         g.startRequested()

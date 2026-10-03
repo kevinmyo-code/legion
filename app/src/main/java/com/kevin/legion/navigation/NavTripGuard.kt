@@ -17,6 +17,10 @@ package com.kevin.legion.navigation
  * death. [screenLeft] therefore never returns true. What it still does is drop a PREVIEW or an
  * in-flight request (neither is a trip, so nothing is billed) and clear a finished trip's verdict.
  *
+ * **The guard owns the SESSION, not the instance (second device run).** The SDK instance is
+ * long-lived and rebuilt only on a token change; the one rule here is that the trip session is
+ * bounded by GUIDING, whatever the instance does.
+ *
  * A late route response after a cancel lands in IDLE and is refused ([routesReady] returns false),
  * which is what stops "I pressed End while it was thinking" from starting a trip anyway.
  */

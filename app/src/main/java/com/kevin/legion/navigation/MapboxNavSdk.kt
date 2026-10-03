@@ -75,8 +75,11 @@ class NavMapFeed {
 }
 
 /**
- * The one real [NavSdk]: a single `MapboxNavigation` (created here, destroyed in [destroy], which is
- * what ends billing). All the SDK-typed work the controller must not see lives in this file; the
+ * The one real [NavSdk]: a single `MapboxNavigation`, created here and **kept for the process**
+ * (destroyed in [destroy] only when the token changes: the token is baked into the instance).
+ * Billing is the trip session alone, [startSession] to [stopSession]; destroying one per trip
+ * leaked a native `OnboardRouter` each time (second device run, 2026-10-03).
+ * All the SDK-typed work the controller must not see lives in this file; the
  * rules (billing order, honesty, epochs) live in [MapboxNavController] and are tested against a fake.
  *
  * **Nothing here has run against a real SDK in a unit test** (the SDK needs its native library); it
@@ -89,6 +92,8 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
 
     private val units = UnitSystem.device()
 
+    // Observers are registered once in `init` and unregistered once in [destroy], so a second trip
+    // on the same instance can never double them (a doubled voice observer would speak each cue twice).
     // One unit system everywhere (device-run defect 9): the SDK's own distance formatter and, below,
     // the route options' voice units, so ticket 11's spoken cues come out in the same units as the
     // screen. Imperial for a US locale, metric otherwise (see [UnitSystem]).
@@ -238,11 +243,17 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
 
     override fun stopSession() = nav.stopTripSession()
 
-    override fun clearRoutes() = nav.setNavigationRoutes(emptyList())
+    override fun clearRoutes() {
+        nav.setNavigationRoutes(emptyList())
+        // The instance outlives the trip now, so nothing else wipes a PREVIEW's routes off the map:
+        // they were put there by showPreview, not by the navigator, and an already-empty navigator
+        // fires no routes observer. Destroy used to do this through feed.clear().
+        feed.clear()
+    }
 
     override fun destroy() {
-        // Exactly once per instance: a second call must neither unregister twice nor destroy a
-        // NEWER instance the provider may already hold (it is a process-wide singleton).
+        // Exactly once per instance (token change only): a second call must neither unregister twice
+        // nor destroy a NEWER instance the provider may already hold (it is a process-wide singleton).
         if (destroyed) return
         destroyed = true
         nav.unregisterRouteProgressObserver(progressObserver)
@@ -323,9 +334,9 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         const val TAG = "MapboxNavSdk"
 
         /**
-         * Instances created minus destroyed, logged on each so a phone run can SHOW that every trip
-         * tears its instance down (device-run defect 13: the SDK's "Too many OnboardRouter
-         * instances" warning). Zero between trips means the leak is not ours.
+         * Instances created minus destroyed, logged on each. Since the second device run it must read
+         * live 1 for the whole process and move only on a token change (device-run defect 13: the
+         * SDK's "Too many OnboardRouter instances" warning came from creating one per trip).
          */
         val LIVE = java.util.concurrent.atomic.AtomicInteger()
     }

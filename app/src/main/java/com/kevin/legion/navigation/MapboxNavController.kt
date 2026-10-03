@@ -29,11 +29,15 @@ import kotlin.math.abs
  * [status] with no trip is [TripStatus.NotNavigating], never zeros, and an unknown value is null.
  *
  * **Billing (ticket 07), enforced by [NavTripGuard]:** a Mapbox trip is billed from
- * `startTripSession()`, so the SDK instance is created only when a route is requested, the session
- * starts only in [start], the session is stopped BEFORE routes are cleared (clearing under a live
- * session starts a Free Drive trip), and every way out ([end], arrival, a token change, a failed
- * start) tears the instance down. A route request with no session running is billed per request by
- * Mapbox; that one cost outside a trip is unavoidable and well inside the free tier.
+ * `startTripSession()`, so the session starts only in [start] and runs only while GUIDING, and it is
+ * stopped BEFORE routes are cleared (clearing under a live session starts a Free Drive trip) on
+ * every way out ([end], arrival, a failed start, a token change). **The SDK instance is NOT per
+ * trip (second device run, 2026-10-03):** creating and destroying one per trip leaked a native
+ * `OnboardRouter` each time ("5 of 5 max"), so one instance lives for the process, created lazily
+ * on the first route request (which needs a token) and rebuilt only when the token changes, since
+ * the token is baked into the instance. Billing is controlled by the session alone. A route request
+ * with no session running is billed per request by Mapbox; that one cost outside a trip is
+ * unavoidable and well inside the free tier.
  *
  * **Nothing from Mapbox is stored** (ToS 2.7.2 / 2.10.1): routes and destinations live in this
  * object's memory and die with the process.
@@ -51,6 +55,9 @@ class MapboxNavController(
 ) : NavSdkListener {
     private val guard = NavTripGuard()
     private var sdk: NavSdk? = null
+
+    /** The token [sdk] was created under; the token is baked into the instance, so a change rebuilds it. */
+    private var sdkToken: String? = null
     private var requestId: Long? = null
     private var inFlight: CompletableDeferred<RouteRequestResult>? = null
 
@@ -104,7 +111,7 @@ class MapboxNavController(
         handledToken = now
         epoch++
         guard.tokenChanged()
-        teardown()
+        teardown(destroy = true)
         _state.value = initialState(_state.value.muted)
     }
 
@@ -112,7 +119,7 @@ class MapboxNavController(
     fun onTokenRefused() {
         epoch++
         guard.tokenChanged()
-        teardown()
+        teardown(destroy = true)
         tokens.markRejected()
         handledToken = tokens.state.value
         _state.value = NavState(NavPhase.TOKEN_REFUSED, NavFormat.TOKEN_REFUSED, muted = _state.value.muted)
@@ -595,7 +602,8 @@ class MapboxNavController(
     // ------------------------------------------------------------------ ending
 
     /**
-     * Ends the trip: the session is stopped (BEFORE routes are cleared), the SDK instance destroyed.
+     * Ends the trip: the session is stopped (BEFORE routes are cleared) and the routes cleared; the
+     * SDK instance is kept for the next trip.
      * With no trip it says "nothing to end"; a preview is cleared and said to be cleared, not "ended".
      * **Success on a running trip only when the SDK confirms the session stopped.**
      */
@@ -763,9 +771,20 @@ class MapboxNavController(
 
     // ------------------------------------------------------------------ plumbing
 
-    private fun ensureSdk(): NavSdk = sdk ?: sdkFactory().also {
-        it.listener = this
-        sdk = it
+    /**
+     * The one long-lived SDK instance, created on first need. The listener is attached exactly once,
+     * here, so a second trip never registers a second set of observers (no doubled turn cues). A
+     * token that no longer matches the one the instance was built with rebuilds it first; this is
+     * only reached from a fresh request, never while GUIDING.
+     */
+    private fun ensureSdk(): NavSdk {
+        val token = tokens.state.value.token
+        if (sdk != null && sdkToken != token) teardown(destroy = true)
+        return sdk ?: sdkFactory().also {
+            it.listener = this
+            sdk = it
+            sdkToken = token
+        }
     }
 
     private suspend fun awaitRoutes(nav: NavSdk, req: RouteRequest): RouteRequestResult {
@@ -793,14 +812,19 @@ class MapboxNavController(
     }
 
     /**
-     * Stops the session FIRST (clearing routes under a live session would start Free Drive), clears,
-     * destroys. Returns whether the SDK confirmed the session stopped. Safe with no instance.
+     * Stops the session FIRST (clearing routes under a live session would start Free Drive), then
+     * clears. Returns whether the SDK confirmed the session stopped. Safe with no instance.
+     * **The instance survives** unless [destroy] (a token change or refusal): ending billing is the
+     * session stop, and destroying per trip is what leaked native routers.
      */
-    // Every step is best-effort; the destroy in `finally` is what ends billing.
+    // Every step is best-effort; a destroy, when asked for, still runs if an earlier step threw.
     @Suppress("TooGenericExceptionCaught")
-    private fun teardown(): Boolean {
+    private fun teardown(destroy: Boolean = false): Boolean {
         val nav = sdk
-        sdk = null
+        if (destroy) {
+            sdk = null
+            sdkToken = null
+        }
         pendingToken = null
         pickedAlternative = false
         val waiting = inFlight
@@ -810,18 +834,19 @@ class MapboxNavController(
         var stopped = false
         try {
             requestId?.let { nav.cancelRequest(it) }
-            nav.listener = null
             nav.stopSession()
             stopped = !nav.isSessionRunning()
             nav.clearRoutes()
         } catch (t: Throwable) {
-            Log.w(TAG, "teardown step failed; destroying anyway", t)
+            Log.w(TAG, "teardown step failed", t)
         } finally {
             requestId = null
-            try {
-                nav.destroy()
-            } catch (t: Throwable) {
-                Log.w(TAG, "destroy failed", t)
+            if (destroy) {
+                try {
+                    nav.destroy()
+                } catch (t: Throwable) {
+                    Log.w(TAG, "destroy failed", t)
+                }
             }
         }
         return stopped
