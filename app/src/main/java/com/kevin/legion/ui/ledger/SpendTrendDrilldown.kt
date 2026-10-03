@@ -25,8 +25,10 @@ import com.kevin.legion.ui.common.DeckBarLabelRow
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.common.deckWholeDollarLabel
-import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.common.DrilldownHeader
+import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -59,15 +61,8 @@ fun SpendTrendDrilldown(
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            SectionHeader("SPEND BY MONTH", entity.displayName)
+            DrilldownHeader("Spend trend", onBack = onBack, accent = AreaAccent.MONEY)
+            SectionHeader("Spend by month", entity.displayName)
             when {
                 trend == null -> Text(
                     "Loading...", style = LegionType.stamp, color = sem.ghost,
@@ -177,9 +172,9 @@ internal fun monthlySpendBars(trend: List<MonthSpend>): List<DeckBar?> {
     }
 }
 
-/** `"JAN"`.."DEC"` - the chart's per-bar x-axis label. */
+/** `"Jan"`.."Dec"` (soft sentence case; was upper-case under mission control) - the chart's per-bar x-axis label. */
 internal fun monthAbbrevLabel(month: YearMonth): String =
-    month.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase()
+    month.month.getDisplayName(TextStyle.SHORT, Locale.US)
 
 private val MONTH_TREND_LABEL: DateTimeFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
 
@@ -198,18 +193,18 @@ private val previewTrend = listOf(
 
 @Preview(name = "Spend trend: three months, one gap, one incomplete", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewSpendTrendDrilldown() = LegionTheme {
+private fun PreviewSpendTrendDrilldown() = SoftTheme {
     SpendTrendDrilldown(entity = LedgerEntity.US, trend = previewTrend, onBack = {})
 }
 
 @Preview(name = "Spend trend: loading", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewSpendTrendDrilldownLoading() = LegionTheme {
+private fun PreviewSpendTrendDrilldownLoading() = SoftTheme {
     SpendTrendDrilldown(entity = LedgerEntity.US, trend = null, onBack = {})
 }
 
 @Preview(name = "Spend trend: no months yet", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewSpendTrendDrilldownEmpty() = LegionTheme {
+private fun PreviewSpendTrendDrilldownEmpty() = SoftTheme {
     SpendTrendDrilldown(entity = LedgerEntity.US, trend = emptyList(), onBack = {})
 }

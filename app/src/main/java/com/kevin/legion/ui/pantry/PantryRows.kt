@@ -97,7 +97,7 @@ private fun PantryDashedHairline() {
 @Composable
 fun PantryOpsStatusRow(receiptCount: Int?) {
     val sem = LocalLegionSemantics.current
-    DeckRow(label = "RECEIPTS RECONCILED", value = receiptCount?.toString() ?: "-")
+    DeckRow(label = "Receipts reconciled", value = receiptCount?.toString() ?: "-")
     Text(
         "Quarantined attempts are not counted here - a document that fails the gate is written nowhere (CLAUDE.md §4).",
         style = LegionType.stamp,
@@ -107,7 +107,7 @@ fun PantryOpsStatusRow(receiptCount: Int?) {
 }
 
 /**
- * "GROCERY SPEND" panel (quant-viz ticket 07) - [PantryController.totalSpendCents]/
+ * "Grocery spend" panel (quant-viz ticket 07) - [PantryController.totalSpendCents]/
  * `totalSpendCentsByCurrency` were computed and never rendered before this ticket. Two pieces:
  *
  * - Totals: one [DeckRow] per [currencyTotals] entry, `formatMoney` (currency-labelled) rather than
@@ -141,7 +141,7 @@ fun PantrySpendPanel(
 ) {
     val sem = LocalLegionSemantics.current
     Column(modifier.fillMaxWidth()) {
-        SectionHeader("GROCERY SPEND")
+        SectionHeader("Grocery spend")
         if (currencyTotals.isEmpty()) {
             Text(
                 "no receipts ingested",
@@ -254,7 +254,7 @@ fun PantryReceiptSection(receipt: PantryReceipt, items: List<PantryLineItem>) {
             )
         }
 
-        SectionHeader("ON THE RECEIPT")
+        SectionHeader("On the receipt")
         for (item in items) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -271,7 +271,7 @@ fun PantryReceiptSection(receipt: PantryReceipt, items: List<PantryLineItem>) {
             PantryDashedHairline()
         }
 
-        SectionHeader("ESTIMATED, NOT ON THE RECEIPT")
+        SectionHeader("Estimated, not on the receipt")
         Text(
             PANTRY_ESTIMATE_SENTENCE,
             style = MaterialTheme.typography.bodySmall,

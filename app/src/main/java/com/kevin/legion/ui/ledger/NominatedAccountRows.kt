@@ -20,8 +20,8 @@ import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.maskedAccountLabel
 import com.kevin.legion.ui.common.HelpRow
 import com.kevin.legion.ui.common.SectionHeader
-import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 
 /**
@@ -50,14 +50,14 @@ fun NominatedAccountSection(
     if (balances.isEmpty()) return
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxWidth()) {
-        SectionHeader("NOMINATED ACCOUNT")
+        SectionHeader("Nominated account")
         // This explains a RULE (why LEGION asks rather than guessing), it does not disclose the
         // trustworthiness of any figure, so it collapses. The per-account "no balance ever printed
         // for this account" line on each row below is the opposite case and stays permanently visible.
         HelpRow(
             "HOME's CRED tile shows this one account's balance - LEGION can't tell a cash account " +
                 "from a card, so it never guesses which one.",
-            label = "WHY NOMINATE ONE",
+            label = "Why nominate one",
         )
         balances.forEach { balance ->
             NominatedAccountRow(
@@ -70,7 +70,7 @@ fun NominatedAccountSection(
             TextButton(
                 onClick = { onNominate(null) },
                 modifier = Modifier.padding(horizontal = 8.dp),
-            ) { Text("CLEAR NOMINATION", style = LegionType.stamp, color = sem.faint) }
+            ) { Text("Clear nomination", style = LegionType.stamp, color = sem.faint) }
         }
     }
 }
@@ -98,7 +98,7 @@ private fun NominatedAccountRow(
             )
         }
         if (isNominated) {
-            Text("NOMINATED", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            Text("Nominated", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         } else {
             TextButton(onClick = onNominate) {
                 Text("SET", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
@@ -111,7 +111,7 @@ private fun NominatedAccountRow(
 
 @Preview(name = "Nominated account: one printed, one never printed, none picked yet", widthDp = 360)
 @Composable
-private fun PreviewNominatedAccountSectionUnset() = LegionTheme {
+private fun PreviewNominatedAccountSectionUnset() = SoftTheme {
     Surface {
         NominatedAccountSection(
             balances = listOf(
@@ -126,7 +126,7 @@ private fun PreviewNominatedAccountSectionUnset() = LegionTheme {
 
 @Preview(name = "Nominated account: one already picked", widthDp = 360)
 @Composable
-private fun PreviewNominatedAccountSectionSet() = LegionTheme {
+private fun PreviewNominatedAccountSectionSet() = SoftTheme {
     Surface {
         NominatedAccountSection(
             balances = listOf(
