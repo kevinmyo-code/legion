@@ -14,7 +14,8 @@ import org.junit.Test
  * Plain JVM coverage for [SpotifyController]'s pure decision logic (ticket 02,
  * `.scratch/spotify-voice/issues/02-app-remote-spine.md`) - the connect-failure -> [PlayOutcome]
  * mapping and the outcome -> spoken-line mapping, same shape as
- * `com.kevin.legion.location.NavigationControllerTest`. No Context, no App Remote SDK connection,
+ * the navigation tools' result mapping (`NavVoiceToolsTest`; it used to name the retired
+ * `NavigationControllerTest`). No Context, no App Remote SDK connection,
  * no coroutines: [SpotifyController.outcomeForConnectFailure] and [SpotifyController.message] are
  * both plain functions over plain data, and the four exception classes under test
  * ([CouldNotFindSpotifyApp], [NotLoggedInException], [UserNotAuthorizedException],
