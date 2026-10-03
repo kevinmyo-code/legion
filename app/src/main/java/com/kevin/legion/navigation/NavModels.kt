@@ -103,6 +103,8 @@ data class NavState(
     val rerouting: Boolean = false,
     /** A warning about the trip that is not its state (a reroute that found nothing); null when there is none. */
     val notice: String? = null,
+    /** What the last change did to the route that the user should read (e.g. a picked alternative was replaced). */
+    val note: String? = null,
     val guidance: GuidanceSnapshot? = null,
 )
 

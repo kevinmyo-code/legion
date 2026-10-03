@@ -1,5 +1,6 @@
 package com.kevin.legion.navigation.resolve
 
+import android.util.Log
 import com.kevin.legion.navigation.GeoPoint
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.RouteFailure
@@ -14,6 +15,7 @@ import com.mapbox.search.SearchOptions
 import com.mapbox.search.SearchSelectionCallback
 import com.mapbox.search.common.AsyncOperationTask
 import com.mapbox.search.result.SearchResult
+import com.mapbox.search.result.SearchResultType
 import com.mapbox.search.result.SearchSuggestion
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -45,6 +47,9 @@ class MapboxPlaceSearch : PlaceSearch {
                 // a text search of the phrase is the right next step either way.
                 val byCategory = categorySearch(query, tasks)
                 if (byCategory is SearchAnswer.Hits) return byCategory
+                // Never the result names (ToS 2.7.2): only that the category path did not answer, so a
+                // phone run can tell "category search found nothing" from "the text fallback answered".
+                Log.w(TAG, "category search '${query.category}' gave ${byCategory::class.java.simpleName}; trying text")
             }
             return textSearch(query, tasks)
         } catch (e: CancellationException) {
@@ -149,9 +154,17 @@ class MapboxPlaceSearch : PlaceSearch {
                 longitude = p.longitude(),
                 distanceM = r.distanceMeters,
                 source = SourceKind.SEARCH,
+                category = r.categories?.firstOrNull { it.isNotBlank() },
+                kind = kindOf(r),
             )
         }
         return if (candidates.isEmpty()) SearchAnswer.NoMatch else SearchAnswer.Hits(candidates)
+    }
+
+    private fun kindOf(r: SearchResult): PlaceKind = when {
+        SearchResultType.POI in r.types -> PlaceKind.POI
+        SearchResultType.ADDRESS in r.types -> PlaceKind.ADDRESS
+        else -> PlaceKind.OTHER
     }
 
     private fun failed(e: Exception): SearchAnswer.Failed {
@@ -174,6 +187,7 @@ class MapboxPlaceSearch : PlaceSearch {
     private fun GeoPoint.toPoint(): Point = Point.fromLngLat(longitude, latitude)
 
     private companion object {
+        const val TAG = "MapboxPlaceSearch"
         const val MAX_SELECTS = 3
         const val MAX_ROUTE_POINTS = 100
         const val MAX_DETOUR_MIN = 10L

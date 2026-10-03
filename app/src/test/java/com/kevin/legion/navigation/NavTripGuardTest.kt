@@ -185,11 +185,41 @@ class NavFormatTest {
         assertTrue(NavFormat.NOT_SET_UP.contains("isn't set up"))
     }
 
-    @Test fun distanceFormats() {
-        assertEquals("50 m", NavFormat.distance(52.0))
-        assertEquals("1.0 mi", NavFormat.distance(1609.344))
-        assertEquals("12 mi", NavFormat.distance(19312.0))
-        assertEquals("unknown distance", NavFormat.distance(-1.0))
+    @Test fun distanceFormatsImperialInFeetThenMiles() {
+        val us = UnitSystem.IMPERIAL
+        assertEquals("70 ft", NavFormat.distance(20.0, us))
+        assertEquals("1.0 mi", NavFormat.distance(1609.344, us))
+        assertEquals("12 mi", NavFormat.distance(19312.0, us))
+        assertEquals("unknown distance", NavFormat.distance(-1.0, us))
+    }
+
+    @Test fun distanceFormatsMetricInMetresThenKilometres() {
+        val metric = UnitSystem.METRIC
+        assertEquals("50 m", NavFormat.distance(52.0, metric))
+        assertEquals("1.6 km", NavFormat.distance(1609.344, metric))
+        assertEquals("19 km", NavFormat.distance(19312.0, metric))
+    }
+
+    @Test fun oneUnitSystemNoMixedUnitsInAnySentence() {
+        // Device-run defect 9: "20 m" in the banner against "116 mi" in the sheet.
+        val us = UnitSystem.IMPERIAL
+        listOf(20.0, 150.0, 400.0, 1609.0, 186_000.0).forEach {
+            val text = NavFormat.distance(it, us)
+            assertTrue(text, text.endsWith(" ft") || text.endsWith(" mi"))
+        }
+    }
+
+    @Test fun usLocaleIsImperialOthersMetric() {
+        assertEquals(UnitSystem.IMPERIAL, UnitSystem.forLocale(java.util.Locale.US))
+        assertEquals(UnitSystem.IMPERIAL, UnitSystem.forLocale(java.util.Locale("en", "US")))
+        assertEquals(UnitSystem.METRIC, UnitSystem.forLocale(java.util.Locale.UK))
+        assertEquals(UnitSystem.METRIC, UnitSystem.forLocale(java.util.Locale.GERMANY))
+    }
+
+    @Test fun aChromiumNameNotResolvedStyleErrorIsNetworkShaped() {
+        val msg = "Failed to load style 'mapbox://styles/mapbox/dark-v11': net::ERR_NAME_NOT_RESOLVED"
+        assertEquals(RouteFailure.OFFLINE, NavFormat.classifyFailure(null, msg, null))
+        assertFalse(NavFormat.isAuthFailure(msg))
     }
 
     @Test fun durationFormats() {
@@ -258,6 +288,47 @@ class NavFormatTest {
         assertEquals(emptySet<AvoidKind>(), AvoidKind.fromExclude(null))
         assertNotNull(AvoidKind.entries.firstOrNull { it.spoken == "ferries" })
     }
+
+    // ---- route labels come from the routes' own numbers, never from list position (device-run defect 4)
+
+    @Test fun aReorderedListNeverLabelsAFasterRouteBelowASlowerFastest() {
+        // The run: after picking the alternative the list read 2 h 21 min / 145 mi first, then 2 h 5 min / 116 mi.
+        val labels = NavFormat.routeLabels(
+            listOf(route("slow", 8460.0, 233_000.0), route("quick", 7500.0, 186_700.0)),
+        )
+        assertEquals(listOf("Alternative", "Fastest and shortest"), labels)
+    }
+
+    @Test fun fastestAndShortestAreEachFoundByDurationAndDistance() {
+        val labels = NavFormat.routeLabels(
+            listOf(route("a", 900.0, 9000.0), route("b", 800.0, 12_000.0), route("c", 1000.0, 7000.0)),
+        )
+        assertEquals(listOf("Alternative", "Fastest", "Shortest"), labels)
+    }
+
+    @Test fun noTollsNeedsAKnownTollFreeRouteAndAnotherThatHasTolls() {
+        val allFree = NavFormat.routeLabels(listOf(route("a", 600.0, 5000.0, false), route("b", 700.0, 6000.0, false)))
+        assertEquals(listOf("Fastest and shortest", "Alternative"), allFree)
+        val mixed = NavFormat.routeLabels(listOf(route("a", 600.0, 5000.0, true), route("b", 700.0, 6000.0, false)))
+        assertEquals(listOf("Fastest and shortest", "No tolls"), mixed)
+    }
+
+    @Test fun aLoneRouteIsFastestAndNothingElse() {
+        assertEquals(listOf("Fastest"), NavFormat.routeLabels(listOf(route("a", tolls = false))))
+        assertEquals(emptyList<String>(), NavFormat.routeLabels(emptyList()))
+    }
+
+    @Test fun tiesGoToTheFirstRouteSoNoTwoRowsClaimTheSameThing() {
+        val labels = NavFormat.routeLabels(listOf(route("a", 600.0, 5000.0), route("b", 600.0, 5000.0)))
+        assertEquals(listOf("Fastest and shortest", "Alternative"), labels)
+    }
+
+    @Test fun laterAlternativesAreNumbered() {
+        val labels = NavFormat.routeLabels(
+            listOf(route("a", 600.0, 5000.0), route("b", 700.0, 6000.0), route("c", 800.0, 7000.0)),
+        )
+        assertEquals(listOf("Fastest and shortest", "Alternative", "Alternative 2"), labels)
+    }
 }
 
 class TrafficSummaryTest {
@@ -285,4 +356,5 @@ class TrafficSummaryTest {
     @Test fun heavyWithNoDistancesStillSaysSo() {
         assertEquals("Heavy traffic reported on part of the route.", TrafficSummary.of(600.0, null, listOf(75), null))
     }
+
 }

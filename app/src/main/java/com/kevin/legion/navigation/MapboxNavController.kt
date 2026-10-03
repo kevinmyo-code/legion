@@ -65,6 +65,14 @@ class MapboxNavController(
 
     private var handledToken: MapboxTokenState = tokens.state.value
 
+    /**
+     * True while the route in use is one the user PICKED over the SDK's own first choice. A route
+     * change (add or drop a stop, an avoid) is requested fresh and the SDK offers no way to keep an
+     * alternative across it, so the new first choice replaces the pick; when that happens the result
+     * says so in words (device-run defect 5, ticket 04's honesty contract) and this resets.
+     */
+    private var pickedAlternative = false
+
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<NavState> = _state.asStateFlow()
 
@@ -195,6 +203,7 @@ class MapboxNavController(
             return failRequest("Mapbox returned no route to ${req.destination.name}. ${NavFormat.NOTHING_NAVIGATING}")
         }
         pendingToken = ready.token
+        pickedAlternative = false
         sdk?.showPreview(ready.token)
         val sentence = previewSentence(req.destination, ready.routes)
         _state.value = fresh(NavPhase.PREVIEW, sentence).copy(
@@ -276,6 +285,7 @@ class MapboxNavController(
             return NavResult(false, msg)
         }
         pendingToken = null
+        pickedAlternative = s.selectedRoute != 0
         val primary = active.first()
         val arrival = nowMs() + (primary.durationS * MS_PER_S).toLong()
         val sentence = "Navigating to ${dest.name}. ${NavFormat.duration(primary.durationS)}, " +
@@ -446,13 +456,15 @@ class MapboxNavController(
         guard.routesReady(ready.routes.size)
         pendingToken = ready.token
         sdk?.showPreview(ready.token)
-        val sentence = done(ready.routes.first())
+        val replaced = takeReplacedPick()
+        val sentence = done(ready.routes.first()) + replaced.orEmpty()
         _state.value = fresh(NavPhase.PREVIEW, sentence).copy(
             destination = dest,
             stops = newStops,
             routes = ready.routes.take(MAX_PREVIEW_ROUTES),
             selectedRoute = 0,
             avoid = newAvoid,
+            note = replaced?.trim(),
         )
         return NavResult(true, sentence)
     }
@@ -481,15 +493,24 @@ class MapboxNavController(
         if (!confirmed || !verify(active.first())) {
             return NavResult(false, "$kept I could not confirm the new route took effect.")
         }
-        val sentence = done(active.first())
+        val replaced = takeReplacedPick()
+        val sentence = done(active.first()) + replaced.orEmpty()
         _state.value = _state.value.copy(
             message = sentence,
             stops = newStops,
             avoid = newAvoid,
             routes = active,
             selectedRoute = 0,
+            note = replaced?.trim(),
         )
         return NavResult(true, sentence)
+    }
+
+    /** The sentence for a change that replaced the user's picked route, or null when none was picked. */
+    private fun takeReplacedPick(): String? {
+        if (!pickedAlternative) return null
+        pickedAlternative = false
+        return " $REPLACED_PICK"
     }
 
     /**
@@ -517,7 +538,8 @@ class MapboxNavController(
         if (guard.phase == NavPhase.PREVIEW) {
             val r = s.routes[index]
             val sentence = "Using the $label route, ${NavFormat.duration(r.durationS)}. Nothing has started yet."
-            _state.value = s.copy(selectedRoute = index, message = sentence)
+            pickedAlternative = index != 0
+            _state.value = s.copy(selectedRoute = index, message = sentence, note = null)
             return NavResult(true, sentence)
         }
         val nav = sdk ?: return NavResult(false, "The trip is unchanged.")
@@ -528,7 +550,8 @@ class MapboxNavController(
             return NavResult(false, "Trip unchanged, still going to ${s.destination?.name} by the same route.")
         }
         val sentence = "Switched to the $label route. ${tail(active.first())}"
-        _state.value = s.copy(message = sentence, routes = active, selectedRoute = 0)
+        pickedAlternative = true
+        _state.value = s.copy(message = sentence, routes = active, selectedRoute = 0, note = null)
         return NavResult(true, sentence)
     }
 
@@ -587,8 +610,9 @@ class MapboxNavController(
             )
         }
         val stopped = teardown()
-        val short = s.guidance?.distanceLeftM?.takeIf { it > 0 }?.let { " ${NavFormat.distance(it)} short" }.orEmpty()
-        _state.value = fresh(NavPhase.ENDED, "Trip ended$short. ${NavFormat.NOTHING_NAVIGATING}")
+        val toGo = s.guidance?.distanceLeftM?.takeIf { it > 0 }
+        val left = toGo?.let { " with ${NavFormat.distance(it)} to go" }.orEmpty()
+        _state.value = fresh(NavPhase.ENDED, "Trip ended$left. ${NavFormat.NOTHING_NAVIGATING}")
             .copy(destination = s.destination)
         return if (stopped) {
             NavResult(true, "Trip ended. ${NavFormat.NOTHING_NAVIGATING}")
@@ -756,6 +780,7 @@ class MapboxNavController(
         val nav = sdk
         sdk = null
         pendingToken = null
+        pickedAlternative = false
         val waiting = inFlight
         inFlight = null
         waiting?.complete(RouteRequestResult.Canceled)
@@ -785,6 +810,8 @@ class MapboxNavController(
         val CHANGEABLE = setOf(NavPhase.PREVIEW, NavPhase.GUIDING)
         val FINISHED = setOf(NavPhase.ARRIVED, NavPhase.ENDED, NavPhase.FAILED)
         const val MAX_PREVIEW_ROUTES = 3
+        const val REPLACED_PICK = "Changing the trip asked Mapbox for a fresh route, so the alternative you " +
+            "picked was replaced by its fastest route. Pick again if you want a different one."
         const val MS_PER_S = 1000.0
 
         /** About 100 m: a requested stop comes back from Directions at the coordinates it was given. */

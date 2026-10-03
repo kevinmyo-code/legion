@@ -51,7 +51,9 @@ class DestinationResolverTest {
         lng: Double = -95.41,
         detail: String? = "1 Main St",
         distanceM: Double? = null,
-    ) = Candidate(name, detail, lat, lng, distanceM, SourceKind.SEARCH)
+        category: String? = null,
+        kind: PlaceKind = PlaceKind.OTHER,
+    ) = Candidate(name, detail, lat, lng, distanceM, SourceKind.SEARCH, category, kind)
 
     private val places = FakePlaces(
         PlacesRead.Places(
@@ -369,5 +371,86 @@ class DestinationResolverTest {
         val d = Geo.distanceM(GeoPoint(29.7604, -95.3698), GeoPoint(30.2672, -97.7431))
         assertEquals(235_000.0, d, 5_000.0)
         assertEquals(0.0, Geo.distanceM(fix, fix), 0.001)
+    }
+
+    // ---- device-run fixes (2026-10-03)
+
+    @Test fun aFullAddressWhoseTopHitIsAnAddressIsNotAmbiguousBecauseOfBusinessesOnTheStreet() {
+        // The run: "1000 N Navarro St, Victoria, TX" listed HOTWORX and WellMed beside the address itself.
+        search.reply = {
+            SearchAnswer.Hits(
+                listOf(
+                    hit("1000 N Navarro St", detail = "Victoria, TX", kind = PlaceKind.ADDRESS),
+                    hit("HOTWORX", kind = PlaceKind.POI, category = "gym"),
+                    hit("WellMed", kind = PlaceKind.POI, category = "clinic"),
+                ),
+            )
+        }
+        val r = resolve("1000 N Navarro St, Victoria, TX") as Resolution.Resolved
+        assertFalse(r.ambiguous)
+        assertEquals(listOf("1000 N Navarro St"), r.candidates.map { it.name })
+    }
+
+    @Test fun ambiguityAmongAddressesOfTheSameKindStillAsks() {
+        search.reply = {
+            SearchAnswer.Hits(
+                listOf(
+                    hit("1000 N Navarro St", detail = "Victoria, TX", kind = PlaceKind.ADDRESS),
+                    hit("1000 N Navarro St", detail = "Victoria, BC", lat = 48.4, kind = PlaceKind.ADDRESS),
+                    hit("HOTWORX", kind = PlaceKind.POI),
+                ),
+            )
+        }
+        val r = resolve("1000 N Navarro St") as Resolution.Resolved
+        assertTrue(r.ambiguous)
+        assertEquals(2, r.candidates.size)
+    }
+
+    @Test fun aBusinessNameIsStillAmbiguousAcrossPoiHits() {
+        search.reply = {
+            SearchAnswer.Hits(listOf(hit("Pearl Cafe", kind = PlaceKind.POI), hit("Pearl Diner", kind = PlaceKind.POI)))
+        }
+        assertTrue((resolve("pearl") as Resolution.Resolved).ambiguous)
+    }
+
+    @Test fun addressPhraseNeedsAHouseNumberThenAStreet() {
+        assertTrue(AddressPhrase.looksLikeAddress("1000 N Navarro St, Victoria, TX"))
+        assertTrue(AddressPhrase.looksLikeAddress("  12 Main Street"))
+        assertFalse(AddressPhrase.looksLikeAddress("nearest gas station"))
+        assertFalse(AddressPhrase.looksLikeAddress("1000"))
+        assertFalse(AddressPhrase.looksLikeAddress("Navarro St"))
+    }
+
+    @Test fun categoryPhrasesGoThroughTheCategorySearchWithTheCanonicalId() {
+        val cases = mapOf(
+            "nearest gas station" to "gas_station",
+            "closest coffee" to "coffee",
+            "nearest pharmacy" to "pharmacy",
+            "nearby grocery store" to "grocery",
+            "nearest atm" to "atm",
+            "closest hospital" to "hospital",
+            "nearest ev charger" to "ev_charging_station",
+        )
+        cases.forEach { (phrase, id) ->
+            search.queries.clear()
+            search.reply = { SearchAnswer.Hits(listOf(hit("Somewhere"))) }
+            resolve(phrase)
+            assertEquals(phrase, id, search.queries.single().category)
+        }
+    }
+
+    @Test fun aResultsCategoryAndAddressShowOnTheDestinationSoItCanBeToldApart() {
+        search.reply = {
+            SearchAnswer.Hits(listOf(hit("Shell", detail = "12 Main St", category = "gas station", kind = PlaceKind.POI)))
+        }
+        val r = resolve("nearest gas station") as Resolution.Resolved
+        assertEquals("Gas station · 12 Main St", r.destination.detail)
+        assertEquals("Gas station · 12 Main St", r.candidates.first().subtitle())
+    }
+
+    @Test fun aResultWithNoCategoryShowsJustItsAddress() {
+        search.reply = { SearchAnswer.Hits(listOf(hit("Zain Corporation", detail = "9 Oak Ave"))) }
+        val r = resolve("nearest gas station") as Resolution.Resolved
+        assertEquals("9 Oak Ave", r.destination.detail)
     }
 }

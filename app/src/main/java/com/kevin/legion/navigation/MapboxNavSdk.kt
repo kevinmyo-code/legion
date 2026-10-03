@@ -1,10 +1,14 @@
 package com.kevin.legion.navigation
 
 import android.content.Context
+import android.util.Log
+import com.mapbox.api.directions.v5.DirectionsCriteria
 import com.mapbox.api.directions.v5.models.RouteOptions
 import com.mapbox.geojson.Point
 import com.mapbox.geojson.utils.PolylineUtils
 import com.mapbox.navigation.base.extensions.applyDefaultNavigationOptions
+import com.mapbox.navigation.base.formatter.DistanceFormatterOptions
+import com.mapbox.navigation.base.formatter.UnitType
 import com.mapbox.navigation.base.options.NavigationOptions
 import com.mapbox.navigation.base.route.NavigationRoute
 import com.mapbox.navigation.base.route.NavigationRouterCallback
@@ -82,8 +86,22 @@ class NavMapFeed {
 class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
     override var listener: NavSdkListener? = null
 
-    private val nav: MapboxNavigation =
-        MapboxNavigationProvider.create(NavigationOptions.Builder(appContext).build())
+    private val units = UnitSystem.device()
+
+    // One unit system everywhere (device-run defect 9): the SDK's own distance formatter and, below,
+    // the route options' voice units, so ticket 11's spoken cues come out in the same units as the
+    // screen. Imperial for a US locale, metric otherwise (see [UnitSystem]).
+    private val nav: MapboxNavigation = MapboxNavigationProvider.create(
+        NavigationOptions.Builder(appContext)
+            .distanceFormatterOptions(
+                DistanceFormatterOptions.Builder(appContext)
+                    .unitType(if (units == UnitSystem.IMPERIAL) UnitType.IMPERIAL else UnitType.METRIC)
+                    .build(),
+            )
+            .build(),
+    ).also { Log.d(TAG, "MapboxNavigation created; live instances ${LIVE.incrementAndGet()}") }
+
+    private var destroyed = false
 
     private val progressObserver = RouteProgressObserver { progress ->
         feed.setProgress(progress)
@@ -155,6 +173,7 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         val builder = RouteOptions.builder()
             .applyDefaultNavigationOptions()
             .alternatives(true)
+            .voiceUnits(if (units == UnitSystem.IMPERIAL) DirectionsCriteria.IMPERIAL else DirectionsCriteria.METRIC)
             .coordinatesList(coordinates)
             .waypointNamesList(names)
         if (request.avoid.isNotEmpty()) builder.exclude(request.avoid.joinToString(",") { it.excludeValue })
@@ -213,6 +232,10 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
     override fun clearRoutes() = nav.setNavigationRoutes(emptyList())
 
     override fun destroy() {
+        // Exactly once per instance: a second call must neither unregister twice nor destroy a
+        // NEWER instance the provider may already hold (it is a process-wide singleton).
+        if (destroyed) return
+        destroyed = true
         nav.unregisterRouteProgressObserver(progressObserver)
         nav.unregisterLocationObserver(locationObserver)
         nav.unregisterRoutesObserver(routesObserver)
@@ -221,6 +244,7 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         feed.clear()
         listener = null
         MapboxNavigationProvider.destroy()
+        Log.d(TAG, "MapboxNavigation destroyed; live instances ${LIVE.decrementAndGet()}")
     }
 
     override fun isSessionRunning(): Boolean = nav.getTripSessionState() == TripSessionState.STARTED
@@ -286,5 +310,13 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
 
     private companion object {
         const val POLYLINE_PRECISION = 6
+        const val TAG = "MapboxNavSdk"
+
+        /**
+         * Instances created minus destroyed, logged on each so a phone run can SHOW that every trip
+         * tears its instance down (device-run defect 13: the SDK's "Too many OnboardRouter
+         * instances" warning). Zero between trips means the leak is not ours.
+         */
+        val LIVE = java.util.concurrent.atomic.AtomicInteger()
     }
 }

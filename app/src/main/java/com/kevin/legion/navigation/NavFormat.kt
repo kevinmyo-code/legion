@@ -7,6 +7,28 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+/**
+ * One unit system for every distance the user reads or hears (device-run defect 9, 2026-10-03: the
+ * banner said "20 m" while the sheet said "116 mi"). Derived from the device locale, **US is
+ * imperial** (and the other two countries that still drive in miles, Liberia and Myanmar); the same
+ * choice is handed to the SDK's own formatter and route options so ticket 11's spoken cues inherit it.
+ */
+enum class UnitSystem {
+    IMPERIAL,
+    METRIC,
+    ;
+
+    companion object {
+        private val IMPERIAL_COUNTRIES = setOf("US", "LR", "MM")
+
+        fun forLocale(locale: Locale): UnitSystem =
+            if (locale.country.uppercase(Locale.ROOT) in IMPERIAL_COUNTRIES) IMPERIAL else METRIC
+
+        /** The device's own choice, read at call time so a locale change is honoured. */
+        fun device(): UnitSystem = forLocale(Locale.getDefault())
+    }
+}
+
 /** Why a route request came back empty-handed, as far as the SDK's wording lets us tell. */
 enum class RouteFailure { AUTH, OFFLINE, NO_ROUTE, OTHER }
 
@@ -47,6 +69,9 @@ object NavFormat {
     private val OFFLINE_MARKERS = listOf(
         "unknownhost", "unable to resolve", "no address associated", "network", "timeout", "timed out",
         "failed to connect", "connection", "offline", "unreachable", "ssl", "socket",
+        // Chromium-style names the Maps SDK passes through in a style load error
+        // ("Failed to load style ...: net::ERR_NAME_NOT_RESOLVED", seen on the A25 2026-10-03).
+        "not_resolved", "not resolved", "net::err", "err_internet",
     )
 
     private val NO_ROUTE_MARKERS = listOf("noroute", "no route", "no_route", "nosegment", "profilenotfound")
@@ -80,17 +105,26 @@ object NavFormat {
     /** A blank or whitespace-only token is "not set up", never a token to try. */
     fun hasToken(token: String?): Boolean = !token.isNullOrBlank()
 
-    fun distance(meters: Double): String = when {
+    /** [units] defaults to the device's; a test pins it. One system everywhere, see [UnitSystem]. */
+    fun distance(meters: Double, units: UnitSystem = UnitSystem.device()): String = when {
         meters < 0 -> "unknown distance"
-        meters < SHORT_HOP_M -> "${(meters / ROUND_TO_M).roundToInt() * ROUND_TO_M.toInt()} m"
-        else -> {
-            val miles = meters / METERS_PER_MILE
-            if (miles < DECIMAL_MILES_BELOW) {
-                "%.1f mi".format(Locale.US, miles)
-            } else {
-                "${miles.roundToInt()} mi"
-            }
+        units == UnitSystem.METRIC -> metricDistance(meters)
+        else -> imperialDistance(meters)
+    }
+
+    private fun imperialDistance(meters: Double): String {
+        val miles = meters / METERS_PER_MILE
+        return when {
+            meters < SHORT_HOP_M -> "${(meters * FEET_PER_METER / ROUND_TO_FT).roundToInt() * ROUND_TO_FT.toInt()} ft"
+            miles < DECIMAL_MILES_BELOW -> "%.1f mi".format(Locale.US, miles)
+            else -> "${miles.roundToInt()} mi"
         }
+    }
+
+    private fun metricDistance(meters: Double): String = when {
+        meters < METERS_PER_KM -> "${(meters / ROUND_TO_M).roundToInt() * ROUND_TO_M.toInt()} m"
+        meters < DECIMAL_MILES_BELOW * METERS_PER_KM -> "%.1f km".format(Locale.US, meters / METERS_PER_KM)
+        else -> "${(meters / METERS_PER_KM).roundToInt()} km"
     }
 
     fun duration(seconds: Double): String {
@@ -114,20 +148,30 @@ object NavFormat {
     }
 
     /**
-     * Names for a preview's routes: the first is "Fastest"; a later one that avoids tolls the first
-     * does not is "No tolls"; the shortest remaining is "Shortest"; anything else "Alternative".
-     * Unknown toll status (null) never earns "No tolls": an unknown is not a claim.
+     * Names for a route list, **computed from each route's own numbers, never from its position**
+     * (device-run defect 4: after picking an alternative the list was reordered and the row at index
+     * 0 kept saying "Fastest" while a row below it was 16 minutes quicker).
+     *  - "Fastest": the least duration (the first of a tie);
+     *  - "Shortest": the least distance (the first of a tie);
+     *  - "No tolls": the route is KNOWN to have none (`hasTolls == false`) while another route in the
+     *    list has them. Unknown (null) never earns it: an unknown is not a claim.
+     * A route that earns several says so ("Fastest and shortest"); one that earns none is
+     * "Alternative" (numbered from the second). A lone route is simply "Fastest": it is the only one.
      */
     fun routeLabels(routes: List<NavRouteInfo>): List<String> {
         if (routes.isEmpty()) return emptyList()
-        val primary = routes.first()
-        val shortest = routes.drop(1).minByOrNull { it.distanceM }
+        val fastest = routes.indices.minBy { routes[it].durationS }
+        val shortest = routes.indices.minBy { routes[it].distanceM }
         var alternativeCount = 0
         return routes.mapIndexed { i, r ->
+            val claims = buildList {
+                if (i == fastest) add("Fastest")
+                if (i == shortest && routes.size > 1) add("Shortest")
+                if (r.hasTolls == false && routes.any { it.hasTolls == true }) add("No tolls")
+            }
             when {
-                i == 0 -> "Fastest"
-                primary.hasTolls == true && r.hasTolls == false -> "No tolls"
-                r === shortest && r.distanceM < primary.distanceM -> "Shortest"
+                claims.isNotEmpty() ->
+                    (listOf(claims.first()) + claims.drop(1).map { it.lowercase() }).joinToString(" and ")
                 else -> {
                     alternativeCount++
                     if (alternativeCount > 1) "Alternative $alternativeCount" else "Alternative"
@@ -159,8 +203,11 @@ object NavFormat {
     }
 
     private const val METERS_PER_MILE = 1609.344
+    private const val METERS_PER_KM = 1000.0
+    private const val FEET_PER_METER = 3.28084
+    private const val ROUND_TO_FT = 10.0
 
-    /** Under this, say metres rounded to [ROUND_TO_M]; a quarter-mile figure at 80 m is silly. */
+    /** Under this, say feet (imperial) rounded to [ROUND_TO_FT]; a quarter-mile figure at 80 m is silly. */
     private const val SHORT_HOP_M = 160.0
     private const val ROUND_TO_M = 10.0
     private const val DECIMAL_MILES_BELOW = 10

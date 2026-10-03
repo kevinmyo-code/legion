@@ -745,4 +745,85 @@ class MapboxNavControllerTest {
         r.controller.dismiss()
         assertEquals(NavPhase.IDLE, r.controller.state.value.phase)
     }
+
+    // ---- device-run fixes (2026-10-03)
+
+    @Test fun endedTripSaysHowFarWasLeftInWords() = runBlocking {
+        val r = rig()
+        guiding(r)
+        r.controller.onProgress(NavProgressInfo(500.0, 186_700.0, null, null, 1, false))
+        r.controller.end()
+        val m = r.controller.state.value.message
+        assertEquals("Trip ended with ${NavFormat.distance(186_700.0)} to go. Nothing is navigating.", m)
+        assertFalse(m, m.contains("short"))
+    }
+
+    @Test fun addingAStopAfterPickingAnAlternativeSaysTheAlternativeWasReplaced() = runBlocking {
+        val r = rig()
+        guiding(r)
+        assertTrue(r.controller.takeAlternative(1).ok)
+        val res = r.controller.addStop(shell)
+        assertTrue(res.message, res.ok)
+        assertTrue(res.message, res.message.contains("alternative you picked was replaced"))
+        assertTrue(r.controller.state.value.note.orEmpty().contains("replaced"))
+    }
+
+    @Test fun addingAStopWithTheDefaultRouteInUseSaysNothingAboutAReplacement() = runBlocking {
+        val r = rig()
+        guiding(r)
+        val res = r.controller.addStop(shell)
+        assertTrue(res.message, res.ok)
+        assertFalse(res.message.contains("replaced"))
+        assertNull(r.controller.state.value.note)
+    }
+
+    @Test fun anAlternativePickedInPreviewAndCarriedIntoGuidingIsStillReportedWhenReplaced() = runBlocking {
+        val r = rig()
+        r.controller.preview(home)
+        r.controller.takeAlternative(1)
+        assertTrue(r.controller.start().ok)
+        val res = r.controller.addStop(shell)
+        assertTrue(res.message, res.message.contains("replaced"))
+    }
+
+    @Test fun theReplacementIsSaidOnceNotOnEveryLaterChange() = runBlocking {
+        val r = rig()
+        guiding(r)
+        r.controller.takeAlternative(1)
+        r.controller.addStop(shell)
+        val again = r.controller.removeStop()
+        assertFalse(again.message, again.message.contains("replaced"))
+    }
+
+    @Test fun everyTripCreatesTheSdkOnceAndDestroysItOnce() = runBlocking {
+        // Device-run defect 13: "Too many OnboardRouter instances". Our side of it: one create and one destroy.
+        repeat(3) {
+            val sdk = FakeNavSdk().apply { autoReply = FakeNavSdk::honest }
+            var created = 0
+            var destroys = 0
+            val countingSdk = object : NavSdk by sdk {
+                override fun destroy() {
+                    destroys++
+                    sdk.destroy()
+                }
+            }
+            val c = MapboxNavController(FakeTokens(), { created++; countingSdk }, { GeoPoint(29.6, -95.3) })
+            assertTrue(c.navigate(home).ok)
+            c.addStop(shell)
+            c.end()
+            c.end()
+            c.onScreenLeft()
+            assertEquals("created", 1, created)
+            assertEquals("destroyed", 1, destroys)
+        }
+    }
+
+    @Test fun aPreviewThatIsBackedOutOfDestroysItsSdkToo() = runBlocking {
+        val r = rig()
+        r.controller.preview(home)
+        r.controller.preview(home)
+        assertEquals("a second preview reuses the one instance", 1, r.created)
+        r.controller.end()
+        assertTrue(r.sdk.destroyed)
+    }
 }

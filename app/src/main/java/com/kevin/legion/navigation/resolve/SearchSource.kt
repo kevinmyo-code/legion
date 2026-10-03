@@ -42,23 +42,31 @@ object SearchPhrase {
     /** The handful of categories worth mapping; anything else falls to a plain text search, which handles it fine. */
     private val CATEGORIES = mapOf(
         "gas station" to "gas_station",
+        "gas stations" to "gas_station",
         "gas" to "gas_station",
+        "fuel" to "gas_station",
         "petrol station" to "gas_station",
         "coffee shop" to "coffee",
+        "coffee shops" to "coffee",
         "coffee" to "coffee",
         "cafe" to "coffee",
         "pharmacy" to "pharmacy",
+        "pharmacies" to "pharmacy",
         "drug store" to "pharmacy",
         "grocery store" to "grocery",
         "grocery" to "grocery",
         "supermarket" to "grocery",
         "atm" to "atm",
         "bank" to "bank",
+        "banks" to "bank",
         "hospital" to "hospital",
+        "emergency room" to "hospital",
         "parking" to "parking",
         "parking lot" to "parking",
         "restaurant" to "restaurant",
+        "restaurants" to "restaurant",
         "hotel" to "hotel",
+        "hotels" to "hotel",
         "ev charger" to "ev_charging_station",
         "charging station" to "ev_charging_station",
     )
@@ -69,6 +77,13 @@ object SearchPhrase {
         val term = normalized.replace(NEAREST, " ").replace(Regex("\\s+"), " ").trim().ifEmpty { normalized }
         return ParsedSearch(term, nearest, CATEGORIES[term])
     }
+}
+
+/** True when a phrase reads as a street address: a house number, then a street, e.g. "1000 N Navarro St, Victoria, TX". */
+object AddressPhrase {
+    private val STREET_ADDRESS = Regex("^\\s*\\d{1,6}\\s+[A-Za-z].*")
+
+    fun looksLikeAddress(text: String): Boolean = STREET_ADDRESS.matches(text)
 }
 
 /** Decides whether a set of search hits is one clear answer or several plausible ones (ticket 03's read-back rule). */
@@ -82,12 +97,29 @@ object SearchAmbiguity {
      * "Starbucks" means the nearest one). Everything else is several plausible places. A heuristic,
      * reasoned rather than observed.
      */
+    /**
+     * **Ambiguity is only among results of the same kind** (device-run defect 12). A full street
+     * address whose top hit is an ADDRESS is answered by that address: a restaurant or clinic that
+     * happens to share the street is not "another place you might have meant". Applied only then, so
+     * a business name's other branches still ask.
+     */
+    fun comparable(query: String, hits: List<Candidate>): List<Candidate> {
+        val top = hits.firstOrNull() ?: return hits
+        return if (AddressPhrase.looksLikeAddress(query) && top.kind == PlaceKind.ADDRESS) {
+            hits.filter { it.kind == PlaceKind.ADDRESS }
+        } else {
+            hits
+        }
+    }
+
     fun isAmbiguous(parsed: ParsedSearch, alongRoute: Boolean, hits: List<Candidate>): Boolean {
         val names = hits.map { QueryText.normalize(it.name) }
         val top = names.firstOrNull()
         return when {
             hits.size <= 1 || parsed.nearest || alongRoute -> false
-            names.take(SAME_NAME_RUN).all { it == top } -> false
+            // A chain's branches share a name; one street address in two cities does too, but those are
+            // different places, so the chain rule never applies to ADDRESS hits.
+            hits.first().kind != PlaceKind.ADDRESS && names.take(SAME_NAME_RUN).all { it == top } -> false
             else -> !(top == parsed.term && names.drop(1).none { it == top })
         }
     }
@@ -118,7 +150,8 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
                         c.copy(distanceM = c.distanceM ?: Geo.distanceM(fix, GeoPoint(c.latitude, c.longitude)))
                     }
                 } ?: answer.candidates
-                SourceAnswer.Hits(hits, SearchAmbiguity.isAmbiguous(parsed, along != null, hits))
+                val comparable = SearchAmbiguity.comparable(query, hits)
+                SourceAnswer.Hits(comparable, SearchAmbiguity.isAmbiguous(parsed, along != null, comparable))
             }
         }
     }

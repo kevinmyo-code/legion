@@ -16,6 +16,9 @@ enum class SourceKind(val label: String) {
     SEARCH("Mapbox search"),
 }
 
+/** What kind of thing a search hit is; the ambiguity rule compares like with like (device-run defect 12). */
+enum class PlaceKind { ADDRESS, POI, OTHER }
+
 /**
  * One place a lookup could mean. **Held in memory only**: a search hit is a temporary geocode (ToS
  * 2.7.2 / 2.10.1) and is never written to Room, prefs or a log. [detail] is the address text, shown
@@ -28,8 +31,16 @@ data class Candidate(
     val longitude: Double,
     val distanceM: Double?,
     val source: SourceKind,
+    /** The result's own category ("gas station"), when the search gave one. Null is unknown. */
+    val category: String? = null,
+    val kind: PlaceKind = PlaceKind.OTHER,
 ) {
-    fun toDestination() = NavDestination(name, latitude, longitude)
+    /** The line under the name: its category (when known) and its address, so a hit can be told apart. */
+    fun subtitle(): String? =
+        listOfNotNull(category?.replaceFirstChar { it.uppercase() }, detail?.takeIf { it.isNotBlank() })
+            .joinToString(" · ").ifEmpty { null }
+
+    fun toDestination() = NavDestination(name, latitude, longitude, subtitle())
 }
 
 /** What a lookup knows about the world: the live fix (for proximity) and, for a via, the route so far. */
