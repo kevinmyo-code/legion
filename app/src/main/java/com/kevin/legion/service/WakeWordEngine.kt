@@ -13,6 +13,7 @@ import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.util.Log
+import com.kevin.legion.MidnightEvents
 import kotlin.math.abs
 import com.kevin.legion.ai.CompanionProfile
 import kotlinx.coroutines.CoroutineScope
@@ -34,18 +35,25 @@ import org.vosk.Recognizer
 import java.io.File
 
 /**
- * The shipping wake phrase: **"excelsior"** (Kevin, 2026-09-10), with "hey <companion name>"
- * retained behind it (`.scratch/custom-wake-word/`, `memory/library/decisions.md` 2026-07-19).
- * Vosk with a runtime-reconfigurable grammar, which is what let the phrase be an arbitrary
- * user-chosen name in the first place and is what now lets it be a fixed word instead, with no
- * per-phrase training at build time either way. [WakePhrases] owns both phrases and the reasoning;
- * this engine owns the microphone.
+ * The one wake phrase: **"hey <companion name>"** (`.scratch/custom-wake-word/`,
+ * `memory/library/decisions.md` 2026-07-19; the fixed "excelsior" experiment was dropped
+ * 2026-10-03). Vosk with a runtime-reconfigurable grammar, which is what lets the phrase be an
+ * arbitrary user-chosen name with no per-phrase training at build time. [WakePhrases] owns the
+ * phrases and the reasoning; this engine owns the microphone.
  *
  * **This engine is the WAKE half only.** The matching "that will be all" sleep phrase is not and
  * cannot be a grammar entry here: [MicArbiter] hands the microphone to `LIVE_TURN` the moment a
  * conversation starts, so during the only window in which a sleep phrase means anything, this
  * engine has already been preempted and released its capture. Sleep runs on the Live transcript
  * instead - see [WakePhrases].
+ *
+ * **Two stages, then Vosk (ticket 18, Kevin 2026-10-03: "how siri does it").** By default Vosk no
+ * longer runs on every frame. A Silero VAD gates a sherpa-onnx keyword spotter (so silence costs
+ * almost nothing), and only a spotter hit is re-checked by the Vosk grammar over the buffered ~2 s;
+ * a hit Vosk rejects is logged and never opens Gemini. See [WakeTwoStageDetector] and
+ * [WakeStageMachine]. The Vosk-only path above is kept behind a Settings switch
+ * ([WakeWordPreferences.useTwoStage]) until the A25 run proves the new pipeline, and is also the
+ * fallback when the native pipeline cannot start.
  *
  * Opt-in, off by default, supplements push-to-talk rather than replacing it: [start]
  * no-ops unless the driver has flipped the [WakeWordPreferences] Setup toggle on.
@@ -109,6 +117,9 @@ object WakeWordEngine {
     private var captureJob: Job? = null
     @Volatile private var record: AudioRecord? = null
     private var recognizer: Recognizer? = null
+    // Ticket 18: stage 0 (VAD) and stage 1 (keyword spotter). Null means the Vosk-only path, either
+    // because Settings chose it or because the native pipeline could not start (said in words).
+    private var detector: WakeTwoStageDetector? = null
     private var effects: List<AudioEffect> = emptyList()
     private var recordingCallback: AudioManager.AudioRecordingCallback? = null
 
@@ -265,17 +276,14 @@ object WakeWordEngine {
     }
 
     /**
-     * The grammar phrases, now owned by [WakePhrases.grammar] (Kevin, 2026-09-10): the fixed
-     * "excelsior" wake phrase, with "hey <name>" retained behind it until the phone confirms the
-     * new one fires. Read [WakePhrases]' doc for why the wake half is a Vosk phrase and the sleep
-     * half provably cannot be one, and for the single-word exemption to ticket 07's rule below.
+     * The grammar phrases, owned by [WakePhrases.grammar]: just "hey <name>" (Kevin, 2026-10-03).
+     * Read [WakePhrases]' doc for why the wake half is a Vosk phrase and the sleep half provably
+     * cannot be one.
      *
-     * **A blank name no longer yields an empty list.** [WakePhrases.WAKE] does not depend on a
-     * companion name, so the paragraph below describing an empty grammar now only applies if
-     * someone deletes that constant. [start]'s refusal is kept exactly as it is - a guard that
-     * cannot currently trigger is the cheap half of this; removing it and being wrong is not.
+     * **A blank name yields an empty list and [start] refuses** (ticket 09, restored 2026-10-03
+     * when "excelsior" was dropped; for a while a name-free phrase made this guard unreachable).
      *
-     * The original reasoning, still binding on the "hey <name>" entry:
+     * The original reasoning, still binding:
      *
      * "Hey <name>" - a two-word phrase, not a bare word (custom-wake-word ticket 07,
      * 2026-07-19 field data). A bare single word false-triggers too easily on ordinary
@@ -323,6 +331,7 @@ object WakeWordEngine {
         val grammar = JSONArray(targetWords + listOf("[unk]")).toString()
         val rec = Recognizer(loadedModel, SAMPLE_RATE, grammar)
         recognizer = rec
+        detector = createDetector(context)
 
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE.toInt(), AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
@@ -375,6 +384,7 @@ object WakeWordEngine {
         _running.value = true
         captureJob = scope?.launch(Dispatchers.IO) {
             val buf = ShortArray(chunk)
+            val twoStage = detector
             try {
                 while (isActive) {
                     val n = r.read(buf, 0, buf.size)
@@ -386,22 +396,80 @@ object WakeWordEngine {
                         break
                     }
                     if (n == 0) continue
-                    var peak = 0
-                    for (i in 0 until n) {
-                        val v = abs(buf[i].toInt())
-                        if (v > peak) peak = v
-                    }
-                    _peakLevel.value = peak
-                    if (rec.acceptWaveForm(buf, n)) {
-                        handleResult(rec.result, isFinal = true, context)
-                    } else {
-                        handleResult(rec.partialResult, isFinal = false, context)
-                    }
+                    handleChunk(buf, n, rec, twoStage, context)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "capture loop ended: " + e.message)
             }
         }
+    }
+
+    /**
+     * One captured chunk: the level (tickets 07/12, always, whichever pipeline), then either the
+     * ticket 18 pipeline (VAD gate -> keyword spotter -> Vosk confirm) or the original Vosk-only
+     * recognizer. Split out of the capture loop so that loop stays readable.
+     */
+    private fun handleChunk(
+        buf: ShortArray,
+        n: Int,
+        rec: Recognizer,
+        twoStage: WakeTwoStageDetector?,
+        context: Context,
+    ) {
+        var peak = 0
+        for (i in 0 until n) {
+            val v = abs(buf[i].toInt())
+            if (v > peak) peak = v
+        }
+        _peakLevel.value = peak
+        when {
+            twoStage != null -> {
+                if (twoStage.process(buf, n) { pcm -> confirmWithVosk(rec, pcm) }) triggerConversation(context)
+            }
+            rec.acceptWaveForm(buf, n) -> handleResult(rec.result, isFinal = true, context)
+            else -> handleResult(rec.partialResult, isFinal = false, context)
+        }
+    }
+
+    /**
+     * Ticket 18: builds the two-stage pipeline for the current companion name, or returns null and
+     * says why. Null is the original Vosk-only path, so a missing native lib, a model that will not
+     * load or a phrase the keyword model cannot encode degrades to the old behaviour in words
+     * instead of leaving the engine running and deaf.
+     */
+    private fun createDetector(context: Context): WakeTwoStageDetector? {
+        if (!WakeWordPreferences.useTwoStage(context)) {
+            stageLog("two-stage off in Settings - Vosk-only")
+            return null
+        }
+        return when (val c = WakeTwoStageDetector.create(context, CompanionProfile.name(context), ::stageLog)) {
+            is WakeTwoStageDetector.Companion.Created.Ready -> c.detector
+            is WakeTwoStageDetector.Companion.Created.Unavailable -> {
+                stageLog("two-stage unavailable (" + c.reason + ") - falling back to Vosk-only")
+                null
+            }
+        }
+    }
+
+    /** Stage transitions go to logcat through MidnightEvents and to the debug ring in words. */
+    private fun stageLog(detail: String) {
+        MidnightEvents.wakeStage(detail)
+        recordEvent("($detail)", isFinal = true, hit = false)
+    }
+
+    /**
+     * Stage 2: does the Vosk grammar hear the wake phrase in the buffered audio? Same match rule as
+     * the Vosk-only path ([handleResult]). The recognizer is reset before and after so a confirm
+     * never inherits a half-heard utterance, and the transcript goes to the debug ring only.
+     */
+    private fun confirmWithVosk(rec: Recognizer, pcm: ShortArray): Boolean {
+        rec.reset()
+        rec.acceptWaveForm(pcm, pcm.size)
+        val raw = rec.finalResult
+        rec.reset()
+        val text = runCatching { JSONObject(raw).optString("text", "") }.getOrDefault("").trim()
+        recordEvent("(confirm heard: \"$text\")", isFinal = true, hit = false)
+        return targetWords.any { w -> w.isNotBlank() && text.contains(w) }
     }
 
     /** Hardware echo cancellation, noise suppression and gain, where the device has them. */
@@ -552,6 +620,8 @@ object WakeWordEngine {
         effects.forEach { runCatching { it.release() } }
         effects = emptyList()
 
+        detector?.release()
+        detector = null
         recognizer?.let { runCatching { it.close() } }
         recognizer = null
 

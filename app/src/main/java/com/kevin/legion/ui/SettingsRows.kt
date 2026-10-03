@@ -565,10 +565,10 @@ fun WakeWordRow(enabled: Boolean, companionName: String?, onToggle: (Boolean) ->
                                 "Off - press to talk. Turning this on listens for a wake phrase " +
                                     "continuously while the assistant is running."
                             companionName.isNullOrBlank() ->
-                                "On - say \"Excelsior\" to start a turn, \"that will be all\" to " +
-                                    "end one. Press to talk still works."
+                                "On, but not listening: no companion name is set, so there is no " +
+                                    "\"hey <name>\" phrase to hear. Name your companion, or press to talk."
                             else ->
-                                "On - say \"Excelsior\" (or \"hey ${companionName.lowercase()}\") " +
+                                "On - say \"hey ${companionName.lowercase()}\" " +
                                     "to start a turn, \"that will be all\" to end one. Press to " +
                                     "talk still works."
                         },
@@ -578,6 +578,46 @@ fun WakeWordRow(enabled: Boolean, companionName: String?, onToggle: (Boolean) ->
                 }
                 DeckSwitch(checked = enabled, onCheckedChange = onToggle)
             }
+        }
+    }
+}
+
+/**
+ * Ticket 18 (`.scratch/wake-word/issues/18-two-stage-detector.md`): switch between the two-stage
+ * wake detector (VAD, keyword spotter, Vosk confirm) and the original Vosk-only path. A dev switch
+ * kept until the A25 run proves the new pipeline; it only matters while the wake word is on.
+ */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+fun WakePipelineRow(twoStage: Boolean, tripped: Boolean, onToggle: (Boolean) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Wake word: two-stage detector",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    if (tripped && !twoStage) {
+                        "Two-stage detector turned off after a crash. The speech recognizer is " +
+                            "listening instead; switch this on to try again."
+                    } else if (twoStage) {
+                        "On - a voice-activity gate and keyword spotter listen first, and the " +
+                            "speech recognizer only double-checks a candidate. Untested on battery."
+                    } else {
+                        "Off - the speech recognizer listens to every sound (the original path)."
+                    },
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            DeckSwitch(checked = twoStage, onCheckedChange = onToggle)
         }
     }
 }

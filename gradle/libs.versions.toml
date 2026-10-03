@@ -32,6 +32,9 @@ playServicesLocation = "21.3.0"
 # Vosk (custom wake word, ported from Midnight AI's 2026-07-19 reopen):
 # published directly to Maven Central, no JitPack needed.
 vosk = "0.3.47"
+# sherpa-onnx (wake-word ticket 18): VAD + keyword spotting stages ahead of Vosk. Apache-2.0.
+# AAR resolved from the k2-fsa GitHub release via the ivy repo in settings.gradle.kts.
+sherpaOnnx = "1.13.8"
 # PdfBox-Android (ledger bank-statement parsing, .claude/plans/wiggly-beaming-quasar.md):
 # Android port of Apache PDFBox, needed for per-word coordinate extraction
 # (DBS statement column classification) that Android has no built-in equivalent
@@ -167,6 +170,7 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 # depending on a GPS poll happening to land near the place.
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 # Custom wake word ("hey <name>"), ported from Midnight AI.
+sherpa-onnx = { group = "com.k2fsa.github", name = "sherpa-onnx", version.ref = "sherpaOnnx" }
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }

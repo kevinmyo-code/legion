@@ -960,6 +960,14 @@ object MidnightEvents {
     /** Which branch the turn-complete state machine took, and the flags it decided from. */
     fun voiceTurnDecision(detail: String) = safe { Log.d(TAG, "voice_turn_decision: $detail") }
 
+    /**
+     * Wake-word ticket 18: a two-stage detector transition (`VAD on`, `VAD off`, `KWS hit`,
+     * `confirm accept - opening`, `confirm reject - not opening`, or a fallback notice), so an A25
+     * run can be read from logcat. Words only; never audio, never a transcript beyond what Vosk
+     * already hands the debug panel.
+     */
+    fun wakeStage(detail: String) = safe { Log.d(TAG, "wake_stage: $detail") }
+
     /** The mic was opened for the driver, or closed. */
     fun micState(open: Boolean, why: String) = safe { Log.d(TAG, "mic_${if (open) "open" else "closed"}: $why") }
 

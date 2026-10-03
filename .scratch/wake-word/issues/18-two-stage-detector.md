@@ -3,12 +3,12 @@ map: wake-word
 ticket: 18
 title: "A two-stage wake detector, the way Siri does it"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-10-03, suite green, owing the A25 run: trigger rate over 20 tries quiet and with music, false opens over 30 min of TV, overnight battery vs the 21 mA baseline. VAD and KWS thresholds are guesses; excelsior tokenises to six BPE pieces and may spot poorly."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # A two-stage wake detector, the way Siri does it
@@ -52,3 +52,10 @@ the CPU:
 - On the A25: trigger rate on the real phrase across 20 tries in a quiet room and with music; false
   opens over 30 minutes of TV; battery overnight with it on versus the 2026-10-03 baseline of about
   21 mA idle with the wake word off (ticket 03's measurement).
+
+## Changed 2026-10-03
+
+"Excelsior" was dropped as a wake phrase (Kevin: "just keep hey alfred"). On the A25 it never fired
+under Vosk-only or the two-stage spotter, while "hey alfred" fired first try (12:34:13: KWS hit,
+confirm accept, Gemini opened). The keywords file is now the single line "hey <name>"; a blank
+name is refused in words (ticket 09's rule restored).
