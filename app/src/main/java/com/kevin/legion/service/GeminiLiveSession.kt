@@ -129,6 +129,12 @@ sealed interface LiveEvent {
      * therefore be TOLD about (Kevin, 2026-08-18: on screen, not spoken).
      */
     data class Idle(val backstop: Boolean) : LiveEvent
+    /**
+     * Ticket 17: the 8 s follow-up window ([FollowUpWindow]) passed with no speech and no running
+     * tool. Emitted immediately BEFORE the [Closed]("stopped") that ends the session, so the owner
+     * can play the closing tone and say "Conversation closed" in words.
+     */
+    data object FollowUpExpired : LiveEvent
     /** The session ended (closed, timed out, or errored). */
     data class Closed(val reason: String) : LiveEvent
     /**
@@ -253,6 +259,13 @@ class GeminiLiveSession(
 
     private var micJob: Job? = null
     private var idleJob: Job? = null
+
+    // Ticket 17 (`.scratch/wake-word/issues/17-follow-up-window.md`): the follow-up window's state
+    // and the count of tool calls the model asked for that have not been answered yet. The decision
+    // itself is [FollowUpWindow.step]; the timer is [idleJob], shared with the backstop and the
+    // speak-only idle close so there is still exactly one pending-close job per session.
+    private var followUp = FollowUpWindow.State()
+    private val toolCallsInFlight = java.util.concurrent.atomic.AtomicInteger(0)
     private var audioTrack: AudioTrack? = null
 
     /**
@@ -785,6 +798,8 @@ class GeminiLiveSession(
      * user-visible failure instead of a false success.
      */
     fun sendToolResponse(id: String, name: String, response: JSONObject): Boolean {
+        // Released before the send, so a dropped send cannot leave the count stuck above zero.
+        toolCallsInFlight.updateAndGet { (it - 1).coerceAtLeast(0) }
         val msg = JSONObject().put("toolResponse", JSONObject().apply {
             put("functionResponses", JSONArray().put(JSONObject().apply {
                 put("id", id)
@@ -1348,6 +1363,12 @@ class GeminiLiveSession(
         content.optJSONObject("inputTranscription")?.optString("text")?.let {
             if (it.isNotEmpty()) {
                 idleJob?.cancel() // driver is talking - cancel any pending auto-close
+                // Ticket 17: also drops the follow-up window's state. This is the earliest
+                // "user started speaking" signal the Live API gives this client: the first
+                // inputTranscription text. There is no explicit VAD start-of-speech message
+                // handled here, and with startOfSpeechSensitivity LOW the transcript is what
+                // arrives once the server has committed to hearing speech.
+                followUpEvent(FollowUpWindow.Event.UserSpeech)
                 userTurnText.append(it)
                 checkForCrisis()
             }
@@ -1529,6 +1550,12 @@ class GeminiLiveSession(
                 // comment); no caller ever passed one, so every conversation still ran on
                 // 10 seconds.
                 //
+                // **Superseded 2026-10-03 (Kevin, wake-word ticket 16/17): "8 sec sounds right."**
+                // A conversation now closes after [FollowUpWindow.WINDOW_MS] of silence following an
+                // answer (see [followUpEvent]); the paragraph above is why the old 10 s version
+                // failed and is kept for that history. The backstop below remains for the case the
+                // window never starts (a bare tap-to-listen that nobody speaks into).
+                //
                 // What is armed instead is [armConversationBackstop] - thirty minutes,
                 // which is a forgotten-conversation cap rather than a timeout, and which
                 // announces itself. A conversation otherwise ends only when the driver
@@ -1538,6 +1565,10 @@ class GeminiLiveSession(
                 vadMode -> {
                     openMicForUser()
                     armConversationBackstop()
+                    // Ticket 17: the 8 s follow-up window. Starts when the mic is physically open
+                    // (MicOpened), replacing the backstop job, so the clock never runs while the
+                    // assistant's own tail is still playing.
+                    followUpEvent(FollowUpWindow.Event.TurnComplete)
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
                 else -> {
@@ -1562,6 +1593,10 @@ class GeminiLiveSession(
 
     private fun handleToolCall(toolCall: JSONObject) {
         val calls = toolCall.optJSONArray("functionCalls") ?: return
+        // Ticket 17: a running tool is not silence. Counted per call, released in
+        // [sendToolResponse]; the window is dropped here and re-armed by the next turnComplete.
+        toolCallsInFlight.addAndGet(calls.length())
+        followUpEvent(FollowUpWindow.Event.ToolCall)
         for (i in 0 until calls.length()) {
             val call = calls.optJSONObject(i) ?: continue
             val name = call.optString("name")
@@ -1891,6 +1926,7 @@ class GeminiLiveSession(
                         // flip by however long the awaitPlaybackDrained() wait above just took.
                         // See [LiveEvent.MicOpened]'s doc.
                         emit(LiveEvent.MicOpened)
+                        followUpEvent(FollowUpWindow.Event.MicOpened)
                     } catch (e: Exception) {
                         Log.w(TAG, "Capture start/flush failed: ${e.message}")
                         delay(20)
@@ -2388,6 +2424,36 @@ class GeminiLiveSession(
             if (!running.get()) return@launch
             Log.d(TAG, "conversation backstop reached after ${CONVERSATION_BACKSTOP_MS}ms of no input")
             parkWarm(backstop = true)
+        }
+    }
+
+    /**
+     * Ticket 17: feeds one event to [FollowUpWindow.step] and acts on the answer. ARM reuses
+     * [idleJob] (cancelling whatever close was pending, including the 30 minute backstop, which the
+     * 8 s window always beats); CLOSE ends the session as `"stopped"` - the same reason a
+     * deliberate stop uses, so the owner raises no error notice and carries no resume handle -
+     * after telling the owner why via [LiveEvent.FollowUpExpired].
+     */
+    @Synchronized
+    private fun followUpEvent(event: FollowUpWindow.Event) {
+        val decision = FollowUpWindow.step(followUp, event)
+        followUp = decision.state
+        when (decision.action) {
+            FollowUpWindow.Action.NONE -> {}
+            FollowUpWindow.Action.CANCEL -> idleJob?.cancel()
+            FollowUpWindow.Action.ARM -> {
+                idleJob?.cancel()
+                idleJob = io.launch {
+                    delay(FollowUpWindow.WINDOW_MS)
+                    if (!running.get()) return@launch
+                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get()))
+                }
+            }
+            FollowUpWindow.Action.CLOSE -> {
+                Log.d(TAG, "follow-up window expired after ${FollowUpWindow.WINDOW_MS}ms of silence")
+                emit(LiveEvent.FollowUpExpired)
+                closeSession("stopped")
+            }
         }
     }
 
