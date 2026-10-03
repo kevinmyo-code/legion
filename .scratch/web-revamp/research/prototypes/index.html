@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LEGION web revamp: three visual directions</title>
+<link rel="icon" href="data:,">
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#f4f3f1,#17171a);--ink:light-dark(#1d1c1a,#eeeeee);--mut:light-dark(#6b6862,#9a9aa2);--line:light-dark(#dcdad5,#34343a);--card:light-dark(#fff,#222226);--on:light-dark(#1d1c1a,#f2f2f2);--onink:light-dark(#fff,#111)}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;min-width:900px}
+header{display:flex;align-items:center;gap:20px;padding:10px 22px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:15px;font-weight:600;white-space:nowrap}
+[role=tablist]{display:flex;gap:6px}
+[role=tab]{font:inherit;font-size:14px;height:36px;padding:0 16px;border-radius:18px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+[role=tab] b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--line);font-size:12px}
+[role=tab][aria-selected=true]{background:var(--on);color:var(--onink);border-color:transparent}
+[role=tab][aria-selected=true] b{background:rgba(128,128,128,.35)}
+p{font-size:13px;color:var(--mut);margin-left:auto;max-width:520px;text-align:right}
+a{color:inherit;font-size:13px;white-space:nowrap}
+iframe{flex:1;border:0;width:100%;background:var(--bg)}
+</style>
+</head>
+<body>
+<header>
+  <h1>LEGION web revamp</h1>
+  <div role="tablist" aria-label="Visual direction">
+    <button role="tab" aria-selected="true" data-src="a-family-warm.html"><b>A</b>Family warm</button>
+    <button role="tab" aria-selected="false" data-src="b-calm-apple.html"><b>B</b>Calm Apple</button>
+    <button role="tab" aria-selected="false" data-src="c-soft-material.html"><b>C</b>Soft Material</button>
+  </div>
+  <p>Each direction has the same five artboards. Use the light/dark toggle inside the page (it starts from your system setting). Throwaway prototypes, sample data only.</p>
+  <a id="open" href="a-family-warm.html" target="_blank" rel="noopener">Open on its own page</a>
+</header>
+<iframe id="f" src="a-family-warm.html" title="Direction prototype"></iframe>
+<script>
+const f=document.getElementById('f'),o=document.getElementById('open');
+document.querySelectorAll('[role=tab]').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('[role=tab]').forEach(x=>x.setAttribute('aria-selected',String(x===t)));
+  f.src=t.dataset.src;o.href=t.dataset.src;location.hash=t.textContent.trim().charAt(0).toLowerCase();
+}));
+const h=location.hash.slice(1);const m={a:0,b:1,c:2}[h];if(m!==undefined)document.querySelectorAll('[role=tab]')[m].click();
+</script>
+</body>
+</html>

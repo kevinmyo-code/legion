@@ -1,0 +1,361 @@
+{
+  "nodes": [
+    {
+      "id": "ed73120676d73f6a",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/01-pick-the-web-design-language.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1089dd67ae290e93",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/04-live-refresh-while-visible.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f14dcfbde41f9606",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/06-private-rows-on-the-engine.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5ad87a8fea599c3d",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/08-repeat-exceptions-on-the-engine.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7be50bb5706fc97c",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/11-spend-on-the-engine.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ba8ddb1478a20e0b",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/14-reminder-lead-time-on-events.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "510bed2b9e1c815e",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/02-design-tokens-light-dark-manifest-icons.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ea419a0a9f2f9c18",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/18-phone-follow-ups-for-the-android-agent.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "fb16c9b613b5ef2f",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/03-the-shell-split-by-viewport.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b912d310a3ef3e9a",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/05-join-signup-and-settings.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "26bd14523e104c4f",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/07-shared-and-private-on-the-web.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0ff115fc382c4f50",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/12-money-workbench.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6567c245289830ce",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/16-pantry-and-body-workbench.md",
+      "x": 1560,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7da722c5c8790aa2",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/17-fleet-places-and-notes-workbench.md",
+      "x": 1560,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4afab976bc9b8c0c",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/09-the-event-sheet.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f886967fb1ff64cf",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/15-push-notifications.md",
+      "x": 2080,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2eeba7b9d252b9da",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/10-family-home-lists-and-calendar.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1a3173a29c74dfc6",
+      "type": "file",
+      "file": ".scratch/web-revamp/issues/13-calendar-workbench.md",
+      "x": 2600,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "9feab733718ec1c4",
+      "fromNode": "ed73120676d73f6a",
+      "fromSide": "right",
+      "toNode": "510bed2b9e1c815e",
+      "toSide": "left"
+    },
+    {
+      "id": "34bc33f223179a3b",
+      "fromNode": "510bed2b9e1c815e",
+      "fromSide": "right",
+      "toNode": "fb16c9b613b5ef2f",
+      "toSide": "left"
+    },
+    {
+      "id": "79ee3ad9eea4e699",
+      "fromNode": "fb16c9b613b5ef2f",
+      "fromSide": "right",
+      "toNode": "b912d310a3ef3e9a",
+      "toSide": "left"
+    },
+    {
+      "id": "5944d64b9a878ad5",
+      "fromNode": "fb16c9b613b5ef2f",
+      "fromSide": "right",
+      "toNode": "26bd14523e104c4f",
+      "toSide": "left"
+    },
+    {
+      "id": "ff519868e4f1fb36",
+      "fromNode": "f14dcfbde41f9606",
+      "fromSide": "right",
+      "toNode": "26bd14523e104c4f",
+      "toSide": "left"
+    },
+    {
+      "id": "13eba656a9b36889",
+      "fromNode": "fb16c9b613b5ef2f",
+      "fromSide": "right",
+      "toNode": "4afab976bc9b8c0c",
+      "toSide": "left"
+    },
+    {
+      "id": "b5e8a70163675485",
+      "fromNode": "26bd14523e104c4f",
+      "fromSide": "right",
+      "toNode": "4afab976bc9b8c0c",
+      "toSide": "left"
+    },
+    {
+      "id": "a1b17c2dfba53996",
+      "fromNode": "5ad87a8fea599c3d",
+      "fromSide": "right",
+      "toNode": "4afab976bc9b8c0c",
+      "toSide": "left"
+    },
+    {
+      "id": "fe87c5cd37560657",
+      "fromNode": "ba8ddb1478a20e0b",
+      "fromSide": "right",
+      "toNode": "4afab976bc9b8c0c",
+      "toSide": "left"
+    },
+    {
+      "id": "9703284b9feb425c",
+      "fromNode": "fb16c9b613b5ef2f",
+      "fromSide": "right",
+      "toNode": "2eeba7b9d252b9da",
+      "toSide": "left"
+    },
+    {
+      "id": "114c2039efcda1bd",
+      "fromNode": "26bd14523e104c4f",
+      "fromSide": "right",
+      "toNode": "2eeba7b9d252b9da",
+      "toSide": "left"
+    },
+    {
+      "id": "62c98e51c53683c1",
+      "fromNode": "4afab976bc9b8c0c",
+      "fromSide": "right",
+      "toNode": "2eeba7b9d252b9da",
+      "toSide": "left"
+    },
+    {
+      "id": "ad93a5f4487a44ba",
+      "fromNode": "7be50bb5706fc97c",
+      "fromSide": "right",
+      "toNode": "2eeba7b9d252b9da",
+      "toSide": "left"
+    },
+    {
+      "id": "377ed8ee3446b054",
+      "fromNode": "fb16c9b613b5ef2f",
+      "fromSide": "right",
+      "toNode": "0ff115fc382c4f50",
+      "toSide": "left"
+    },
+    {
+      "id": "db93d2f1420a8c78",
+      "fromNode": "1089dd67ae290e93",
+      "fromSide": "right",
+      "toNode": "0ff115fc382c4f50",
+      "toSide": "left"
+    },
+    {
+      "id": "78e89170ecb260c7",
+      "fromNode": "7be50bb5706fc97c",
+      "fromSide": "right",
+      "toNode": "0ff115fc382c4f50",
+      "toSide": "left"
+    },
+    {
+      "id": "5f17816a91d4b856",
+      "fromNode": "4afab976bc9b8c0c",
+      "fromSide": "right",
+      "toNode": "1a3173a29c74dfc6",
+      "toSide": "left"
+    },
+    {
+      "id": "ef0f206d86bf7544",
+      "fromNode": "b912d310a3ef3e9a",
+      "fromSide": "right",
+      "toNode": "f886967fb1ff64cf",
+      "toSide": "left"
+    },
+    {
+      "id": "bbe3b8f3435c47f4",
+      "fromNode": "5ad87a8fea599c3d",
+      "fromSide": "right",
+      "toNode": "f886967fb1ff64cf",
+      "toSide": "left"
+    },
+    {
+      "id": "1cfc16e04d445cd8",
+      "fromNode": "ba8ddb1478a20e0b",
+      "fromSide": "right",
+      "toNode": "f886967fb1ff64cf",
+      "toSide": "left"
+    },
+    {
+      "id": "b9e903f88ccf25f9",
+      "fromNode": "fb16c9b613b5ef2f",
+      "fromSide": "right",
+      "toNode": "6567c245289830ce",
+      "toSide": "left"
+    },
+    {
+      "id": "147772b90e1c2990",
+      "fromNode": "fb16c9b613b5ef2f",
+      "fromSide": "right",
+      "toNode": "7da722c5c8790aa2",
+      "toSide": "left"
+    },
+    {
+      "id": "2c477484907515b3",
+      "fromNode": "f14dcfbde41f9606",
+      "fromSide": "right",
+      "toNode": "ea419a0a9f2f9c18",
+      "toSide": "left"
+    },
+    {
+      "id": "50336130bba3cf40",
+      "fromNode": "7be50bb5706fc97c",
+      "fromSide": "right",
+      "toNode": "ea419a0a9f2f9c18",
+      "toSide": "left"
+    },
+    {
+      "id": "52756bd7f416f22a",
+      "fromNode": "ba8ddb1478a20e0b",
+      "fromSide": "right",
+      "toNode": "ea419a0a9f2f9c18",
+      "toSide": "left"
+    }
+  ]
+}
