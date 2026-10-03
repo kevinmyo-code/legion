@@ -91,6 +91,36 @@
       "color": "1"
     },
     {
+      "id": "0f65a84c2d7caf74",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/16-how-long-a-conversation-stays-open.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8b834b0ab63ea82b",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/18-two-stage-detector.md",
+      "x": 0,
+      "y": 1500,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "aa71350703397355",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/19-dsp-hotword-spike.md",
+      "x": 0,
+      "y": 1650,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
       "id": "a8179692d607a640",
       "type": "file",
       "file": ".scratch/wake-word/issues/03-measure-the-battery-cost.md",
@@ -119,6 +149,16 @@
       "width": 320,
       "height": 110,
       "color": "4"
+    },
+    {
+      "id": "3f51912ec5f61251",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/17-follow-up-window.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     },
     {
       "id": "7a3c9183aaf64e84",
@@ -206,6 +246,13 @@
       "fromNode": "cc43aa2746f47f5a",
       "fromSide": "right",
       "toNode": "4dd57d5aa9688889",
+      "toSide": "left"
+    },
+    {
+      "id": "283c03f0cf4bc963",
+      "fromNode": "0f65a84c2d7caf74",
+      "fromSide": "right",
+      "toNode": "3f51912ec5f61251",
       "toSide": "left"
     }
   ]
