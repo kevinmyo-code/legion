@@ -54,6 +54,12 @@ def _list(client, name="Groceries", **extra):
     return response.data["id"]
 
 
+def _groceries(client):
+    """The household's built-in Groceries list, found by its system key."""
+    rows = client.get("/api/checklists/").data["results"]
+    return next(row["id"] for row in rows if row["system_key"] == "groceries")
+
+
 def _item(client, checklist_id, text):
     response = client.post(
         f"/api/checklists/{checklist_id}/items", {"text": text}, format="json"
@@ -273,7 +279,7 @@ def test_private_is_set_on_create_and_changed_by_the_rule(auth_client, mia_clien
 
 
 def test_a_groceries_tick_logs_one_shared_entry_by_the_ticker(auth_client, household_user):
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     milk = _item(auth_client, groceries_id, "Oat milk")
     tick = _tick(auth_client, groceries_id, milk)
     assert tick.status_code == 201
@@ -295,7 +301,7 @@ def test_a_groceries_tick_logs_one_shared_entry_by_the_ticker(auth_client, house
 
 
 def test_the_ticker_is_whoever_made_the_request(auth_client, mia_client, mia):
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     eggs = _item(auth_client, groceries_id, "eggs")
     _tick(mia_client, groceries_id, eggs)
     assert Purchase.objects.get().created_by_id == mia.pk
@@ -311,33 +317,30 @@ def test_a_tick_on_another_list_logs_nothing(auth_client):
     assert not Purchase.objects.exists()
 
 
-def test_a_private_groceries_list_is_not_the_households(auth_client):
-    mine = _list(auth_client, "Groceries", visibility="private")
-    gum = _item(auth_client, mine, "gum")
-    _tick(auth_client, mine, gum)
+def test_a_list_merely_named_groceries_is_just_a_list(auth_client):
+    """The hook keys on the built-in list's system key, never on a name: a
+    private one, a shared one, any spelling, all log nothing."""
+    for name, extra in (
+        ("Groceries", {"visibility": "private"}),
+        ("Groceries", {}),
+        ("  GROCERIES ", {}),
+    ):
+        mine = _list(auth_client, name, **extra)
+        gum = _item(auth_client, mine, "gum")
+        _tick(auth_client, mine, gum)
     assert not Purchase.objects.exists()
 
 
-def test_the_name_is_trimmed_and_case_free_and_the_oldest_wins(auth_client):
-    first = _list(auth_client, "  GROCERIES ")
-    second = _list(auth_client, "groceries")
-    # One test is one transaction, so both rows carry the same `Now()`. Give
-    # the first an earlier birth, as two real requests would.
-    Checklist.objects.filter(pk=first).update(created_at="2025-01-01T00:00:00Z")
-    on_second = _item(auth_client, second, "bread")
-    _tick(auth_client, second, on_second)
-    assert not Purchase.objects.exists()
-    on_first = _item(auth_client, first, "bread")
-    _tick(auth_client, first, on_first)
+def test_the_built_in_list_logs_even_beside_a_same_named_user_list(auth_client):
+    _list(auth_client, "Groceries")
+    builtin = _groceries(auth_client)
+    bread = _item(auth_client, builtin, "bread")
+    _tick(auth_client, builtin, bread)
     assert Purchase.objects.count() == 1
-    # Delete the oldest, and the next one becomes the household's list.
-    auth_client.delete(f"/api/checklists/{first}")
-    _tick(auth_client, second, on_second, DAY + 1)
-    assert Purchase.objects.count() == 2
 
 
 def test_a_same_day_untick_takes_the_entry_back_and_a_retick_revives_it(auth_client):
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     soap = _item(auth_client, groceries_id, "soap")
     _tick(auth_client, groceries_id, soap)
     entry_id = Purchase.objects.get().pk
@@ -351,7 +354,7 @@ def test_a_same_day_untick_takes_the_entry_back_and_a_retick_revives_it(auth_cli
 
 
 def test_a_later_untick_leaves_the_purchase(auth_client):
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     soap = _item(auth_client, groceries_id, "soap")
     _tick(auth_client, groceries_id, soap)
     assert _untick(auth_client, groceries_id, soap, today=DAY + 1).status_code == 204
@@ -360,7 +363,7 @@ def test_a_later_untick_leaves_the_purchase(auth_client):
 
 
 def test_without_today_the_untick_falls_back_to_the_utc_date(auth_client, monkeypatch):
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     soap = _item(auth_client, groceries_id, "soap")
     rice = _item(auth_client, groceries_id, "rice")
     _tick(auth_client, groceries_id, soap)
@@ -374,7 +377,7 @@ def test_without_today_the_untick_falls_back_to_the_utc_date(auth_client, monkey
 
 
 def test_a_garbled_today_unticks_nothing(auth_client):
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     soap = _item(auth_client, groceries_id, "soap")
     _tick(auth_client, groceries_id, soap)
     response = auth_client.delete(
@@ -387,7 +390,7 @@ def test_a_garbled_today_unticks_nothing(auth_client):
 
 
 def test_a_backfilled_entry_is_not_taken_back_by_an_untick(auth_client, household_a):
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     tea = _item(auth_client, groceries_id, "tea")
     tick = ChecklistTick.objects.create(item_id=tea, day=DAY)
     Purchase.objects.create(
@@ -403,25 +406,40 @@ def test_a_backfilled_entry_is_not_taken_back_by_an_untick(auth_client, househol
 
 
 def _backfill():
-    module = importlib.import_module("purchases.migrations.0002_backfill_groceries_ticks")
+    module = importlib.import_module("purchases.migrations.0003_backfill_all_groceries_ticks")
     module.backfill(django_apps, None)
 
 
-def test_the_backfill_imports_live_groceries_ticks_once(household_a, household_user):
-    groceries_list = Checklist.objects.create(household=household_a, name="Groceries")
+def test_the_backfill_imports_every_groceries_tick_wherever_it_sits(household_a, household_user):
+    """The live engine had six hand-made lists called Groceries (four deleted,
+    two archived) and none live; the old rule picked one archived list holding
+    no ticks and imported nothing. Every shared list by that name counts now,
+    deleted or archived, and the built-in one."""
+    builtin = Checklist.objects.get(household=household_a, system_key="groceries")
+    live_named = Checklist.objects.create(household=household_a, name="Groceries")
+    deleted = Checklist.objects.create(
+        household=household_a, name=" groceries ", deleted_at="2025-10-03T00:00:00Z"
+    )
+    archived = Checklist.objects.create(household=household_a, name="Groceries", archived=True)
     other = Checklist.objects.create(household=household_a, name="Garage")
     private = Checklist.objects.create(
         household=household_a, name="Groceries", owner_user=household_user
     )
-    milk = ChecklistItem.objects.create(checklist=groceries_list, text="milk")
-    bread = ChecklistItem.objects.create(checklist=groceries_list, text="bread")
-    gone = ChecklistItem.objects.create(checklist=groceries_list, text="jam")
+    milk = ChecklistItem.objects.create(checklist=builtin, text="milk")
+    bread = ChecklistItem.objects.create(checklist=live_named, text="bread")
+    gone = ChecklistItem.objects.create(checklist=deleted, text="jam")
+    tea = ChecklistItem.objects.create(checklist=archived, text="tea")
+    blank = ChecklistItem.objects.create(checklist=archived, text="x")
+    ChecklistItem.objects.filter(pk=blank.pk).update(text="   ")
     oil = ChecklistItem.objects.create(checklist=other, text="oil")
     gum = ChecklistItem.objects.create(checklist=private, text="gum")
     live = ChecklistTick.objects.create(item=milk, day=DAY)
     ChecklistTick.objects.create(item=milk, day=DAY + 3)
     ChecklistTick.objects.create(item=bread, day=DAY, deleted_at="2025-10-05T00:00:00Z")
+    ChecklistTick.objects.create(item=bread, day=DAY + 1)
     ChecklistTick.objects.create(item=gone, day=DAY - 1)
+    ChecklistTick.objects.create(item=tea, day=DAY - 2)
+    ChecklistTick.objects.create(item=blank, day=DAY)
     ChecklistItem.objects.filter(pk=gone.pk).update(deleted_at="2025-10-06T00:00:00Z")
     ChecklistTick.objects.create(item=oil, day=DAY)
     ChecklistTick.objects.create(item=gum, day=DAY)
@@ -432,8 +450,10 @@ def test_the_backfill_imports_live_groceries_ticks_once(household_a, household_u
     _backfill()
     rows = list(Purchase.objects.order_by("bought_on", "item"))
     assert [(r.item, r.bought_on) for r in rows] == [
+        ("tea", DAY - 2),
         ("jam", DAY - 1),
         ("oat milk", DAY),
+        ("bread", DAY + 1),
         ("oat milk", DAY + 3),
     ]
     assert {r.source for r in rows} == {"GROCERIES_BACKFILL"}
@@ -444,11 +464,11 @@ def test_the_backfill_imports_live_groceries_ticks_once(household_a, household_u
     assert first.logged_at == live.ticked_at
 
     _backfill()
-    assert Purchase.objects.count() == 3
+    assert Purchase.objects.count() == 5
 
 
 def test_a_backfilled_entry_reads_as_not_recorded(auth_client, household_a):
-    groceries_list = Checklist.objects.create(household=household_a, name="Groceries")
+    groceries_list = Checklist.objects.get(household=household_a, system_key="groceries")
     tea = ChecklistItem.objects.create(checklist=groceries_list, text="tea")
     ChecklistTick.objects.create(item=tea, day=DAY)
     _backfill()
@@ -543,7 +563,7 @@ def test_delete_purchase_reports_only_what_happened(mcp, auth_client):
 def test_an_mcp_tick_on_groceries_logs_it_for_the_token_user(mcp, auth_client, household_user):
     from tests.test_engine_mcp import call
 
-    groceries_id = _list(auth_client, "Groceries")
+    groceries_id = _groceries(auth_client)
     eggs = _item(auth_client, groceries_id, "eggs")
     is_error, text, _ = call(
         mcp,

@@ -47,8 +47,11 @@ class ChecklistSerializer(serializers.ModelSerializer):
             "deleted_at",
             "sync_id",
             "visibility",
+            "system_key",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "deleted_at"]
+        # `system_key` marks a built-in list ("groceries"); only the engine
+        # sets it, so a body that sends one is ignored.
+        read_only_fields = ["id", "created_at", "updated_at", "deleted_at", "system_key"]
 
     def validate_name(self, value: str) -> str:
         if not value or not value.strip():

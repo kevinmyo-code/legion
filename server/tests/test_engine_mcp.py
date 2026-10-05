@@ -400,7 +400,8 @@ def test_checklists_round_trip(mcp_write, seeded):
     assert not is_error, text
     is_error, text, structured = call(mcp_write, "list_checklists", {"date": "2026-10-02"})
     assert not is_error, text
-    items = {row["text"]: row["ticked_on_date"] for row in structured["checklists"][0]["items"]}
+    gym = next(row for row in structured["checklists"] if row["name"] == "gym")
+    items = {row["text"]: row["ticked_on_date"] for row in gym["items"]}
     assert items == {"bench": False, "squats": True}
 
 

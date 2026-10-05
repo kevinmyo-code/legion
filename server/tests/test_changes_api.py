@@ -22,7 +22,8 @@ def test_no_since_returns_everything(auth_client):
     body = response.data
     assert "server_time" in body
     assert len(body["events"]) == 1
-    assert len(body["checklists"]) == 1
+    # The household's built-in Groceries list is always there; count the one made here.
+    assert len([row for row in body["checklists"] if row["system_key"] is None]) == 1
     assert body["checklist_items"] == []
     assert body["checklist_ticks"] == []
 

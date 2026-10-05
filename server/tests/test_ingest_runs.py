@@ -186,8 +186,11 @@ def test_a_household_without_the_source_configured_records_skipped(household_a, 
 
 @pytest.mark.django_db
 def test_no_household_at_all_is_a_quiet_no_op():
+    from checklists.models import Checklist
     from household.models import Household
 
+    # Each household owns its built-in Groceries list, and a checklist PROTECTs its household.
+    Checklist.objects.all().delete()
     Household.objects.all().delete()
     lines = []
 

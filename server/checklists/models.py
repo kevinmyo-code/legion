@@ -40,6 +40,8 @@ from django.db.models.functions import Now
 
 from household.tenancy_sql import household_unique_name
 
+SYSTEM_KEY_GROCERIES = "groceries"
+
 
 class Checklist(models.Model):
     """A named, reusable checklist - "bio", "morning routine". See this
@@ -72,6 +74,16 @@ class Checklist(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(null=True, blank=True)
     sync_id = models.CharField(max_length=64, null=True, blank=True)
+    # Marks a BUILT-IN list (Kevin, 2026-10-05: Groceries is permanent, not
+    # hand-made). Null on every list a person made. Today the only value is
+    # `"groceries"` (`SYSTEM_KEY_GROCERIES`). It is set only by the data
+    # migration and by `checklists.builtin.ensure_builtin_lists`, never from a
+    # request body (read-only on the serializer), and a list that carries one
+    # cannot be deleted, archived, renamed or made private
+    # (`checklists/builtin.py`). The purchase-log hook keys on it, not on the
+    # list's name, so a user list that happens to be called "Groceries" is just
+    # a list.
+    system_key = models.CharField(max_length=32, null=True, blank=True)
 
     # ADR 0045: every data row belongs to exactly one household. Unlike the
     # forty `managed = False` legacy mirrors, Django owns this table's DDL, so
@@ -110,6 +122,14 @@ class Checklist(models.Model):
             models.UniqueConstraint(
                 fields=["household", "sync_id"],
                 name=household_unique_name("checklists", ["sync_id"]),
+            ),
+            # One built-in list of each kind per household. Partial on the
+            # tombstone so a (hand-)deleted row never blocks re-creating it,
+            # though nothing in the app deletes one.
+            models.UniqueConstraint(
+                fields=["household", "system_key"],
+                condition=models.Q(system_key__isnull=False, deleted_at__isnull=True),
+                name="checklists_household_system_key_uniq",
             ),
         ]
 

@@ -326,7 +326,11 @@ def test_checklists_are_scoped_by_household(token_a, token_b):
     assert token_b.post(
         f"/api/checklists/{checklist_id}/items", {"text": "squats"}, format="json"
     ).status_code == 404
-    assert len(token_a.get("/api/checklists/").data["results"]) == 1
+    # A sees its own list plus its own built-in Groceries list, never B's.
+    a_rows = token_a.get("/api/checklists/").data["results"]
+    assert sorted(row["name"] for row in a_rows) == ["Groceries", "bio"]
+    b_rows = token_b.get("/api/checklists/").data["results"]
+    assert {row["id"] for row in a_rows}.isdisjoint({row["id"] for row in b_rows})
 
 
 def test_a_checklist_item_and_tick_inherit_their_checklists_household(token_a, household_a):
@@ -543,7 +547,11 @@ def test_purchases_are_scoped_by_household(token_a, token_b):
     assert a_row.item == "alpha shampoo" and a_row.deleted_at is None
 
     # B's Groceries tick logs into B, never A.
-    groceries = token_b.post("/api/checklists/", {"name": "Groceries"}, format="json").data
+    groceries = next(
+        row
+        for row in token_b.get("/api/checklists/").data["results"]
+        if row["system_key"] == "groceries"
+    )
     eggs = token_b.post(
         f"/api/checklists/{groceries['id']}/items", {"text": "eggs"}, format="json"
     ).data
@@ -641,11 +649,15 @@ def test_the_changes_feed_never_carries_another_households_rows(token_a, token_b
     for key, rows in body.items():
         if key == "server_time":
             continue
+        if key == "checklists":
+            # B's own built-in Groceries list is B's; nothing of A's.
+            assert [row["system_key"] for row in rows] == ["groceries"], (key, rows)
+            continue
         assert rows == [], (key, rows)
 
     a_body = token_a.get(f"/api/changes?since={EPOCH}").data
     assert len(a_body["events"]) == 1
-    assert len(a_body["checklists"]) == 1
+    assert sorted(row["name"] for row in a_body["checklists"]) == ["A's checklist", "Groceries"]
     assert len(a_body["places"]) == 1
     assert len(a_body["memories"]) == 1
 
