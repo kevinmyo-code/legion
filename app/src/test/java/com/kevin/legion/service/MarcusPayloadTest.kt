@@ -77,6 +77,8 @@ class MarcusPayloadTest {
         // be trimmed again rather than the bound moved.
         assertTrue("the consult_meditations declaration grew to $toolDelta chars", toolDelta <= 900)
         // The clause carries manner, philosophy, the quotation rule and the distress rule - four jobs.
-        assertTrue("MARCUS clause is ${MARCUS.clause.length} chars", MARCUS.clause.length <= 3_500)
+        // 2026-10-05: 3,500 -> 3,700 for the contiguous-span quotation rule (+~250 chars, ~60 tokens,
+        // measured below the 23,800 ceiling in the println above and the assertion before it).
+        assertTrue("MARCUS clause is ${MARCUS.clause.length} chars", MARCUS.clause.length <= 3_700)
     }
 }

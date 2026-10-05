@@ -34,8 +34,9 @@ class MarcusPersonaTest {
     fun `the clause stays within its size budget`() {
         // 3,379 chars measured 2026-10-04 (~845 estimated tokens); Kratos, the longest precedent, is
         // 2,759. Marcus carries four jobs the others do not (see MarcusPayloadTest), so the budget is
-        // 3,500, not Kratos's. Raise it only with the new measured figure written here.
-        assertTrue("clause is ${clause.length} chars", clause.length <= 3_500)
+        // not Kratos's. 2026-10-05: the contiguous-span quotation rule added ~290 chars; budget now
+        // 3,700. Raise it only with the new measured figure written here.
+        assertTrue("clause is ${clause.length} chars", clause.length <= 3_700)
         assertTrue("shortClause is ${MARCUS.shortClause.length} chars", MARCUS.shortClause.length <= 400)
     }
 
@@ -45,6 +46,19 @@ class MarcusPersonaTest {
         assertTrue(clause.contains("Quote ONLY words it returned in that same turn"))
         assertTrue(clause.contains("Never invent a quotation"))
         assertTrue(clause.contains("If it finds nothing, say you do not find it written"))
+    }
+
+    /**
+     * 2026-10-05, on the phone: Marcus quoted Book V, 28 by joining sentences that were not adjacent,
+     * with no ellipsis. A quotation is one contiguous span as returned; an omission is marked or the
+     * passage is paraphrased and called paraphrase.
+     */
+    @Test
+    fun `a quotation is one contiguous span, omissions marked or paraphrased as such`() {
+        assertTrue(clause.contains("ONE unbroken span exactly as it came back"))
+        assertTrue(clause.contains("never join sentences that were not side by side"))
+        assertTrue(clause.contains("mark every omission inside it with an ellipsis"))
+        assertTrue(clause.contains("or paraphrase and say it is paraphrase"))
     }
 
     /** CLAUDE.md section 7: distress breaks character, and Stoic talk of death must not become encouragement. */
