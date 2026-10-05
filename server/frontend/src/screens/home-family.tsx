@@ -8,6 +8,7 @@ import { PinnedListCard } from '@/components/family/pinned-list-card'
 import { SpendCard } from '@/components/family/spend-card'
 import { relativeTime } from '@/components/freshness'
 import { NewEventButton } from '@/components/new-event-button'
+import { BoughtPill } from '@/components/purchases/pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
 import { HOME_COPY, NOTHING_TO_SHOW_PINNED, greeting, type HomeSection } from '@/lib/home-copy'
@@ -141,17 +142,20 @@ export function FamilyHome() {
   const myName = household.data?.members.find((member) => member.user_id === myId)?.name.trim()
 
   const header = (
-    <header className="flex items-start justify-between gap-3 pt-1">
-      <div className="min-w-0">
-        <h1 className="text-[1.75rem] leading-tight tracking-tight">
-          {greeting()}
-          {myName ? `, ${myName}` : ''}
-        </h1>
-        <p className="text-[0.9375rem] text-muted-foreground">
-          {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
-      </div>
-    </header>
+    <>
+      <header className="flex items-start justify-between gap-3 pt-1">
+        <div className="min-w-0">
+          <h1 className="text-[1.75rem] leading-tight tracking-tight">
+            {greeting()}
+            {myName ? `, ${myName}` : ''}
+          </h1>
+          <p className="text-[0.9375rem] text-muted-foreground">
+            {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+        </div>
+      </header>
+      <BoughtPill />
+    </>
   )
 
   if (readiness === 'pending') {

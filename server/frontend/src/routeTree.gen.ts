@@ -23,6 +23,8 @@ import { Route as AuthedPantryRouteImport } from './routes/_authed.pantry'
 import { Route as AuthedPlacesRouteImport } from './routes/_authed.places'
 import { Route as AuthedSettingsRouteImport } from './routes/_authed.settings'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
+import { Route as AuthedBoughtIndexRouteImport } from './routes/_authed.bought.index'
+import { Route as AuthedBoughtLogRouteImport } from './routes/_authed.bought.log'
 import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed.settings.index'
 import { Route as AuthedSettingsAccountRouteImport } from './routes/_authed.settings.account'
 import { Route as AuthedSettingsAppearanceRouteImport } from './routes/_authed.settings.appearance'
@@ -99,6 +101,16 @@ const JoinCodeRoute = JoinCodeRouteImport.update({
   path: '/join/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthedBoughtIndexRoute = AuthedBoughtIndexRouteImport.update({
+  id: '/bought/',
+  path: '/bought/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedBoughtLogRoute = AuthedBoughtLogRouteImport.update({
+  id: '/bought/log',
+  path: '/bought/log',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedSettingsIndexRoute = AuthedSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -146,11 +158,13 @@ export interface FileRoutesByFullPath {
   '/places': typeof AuthedPlacesRoute
   '/settings': typeof AuthedSettingsRouteWithChildren
   '/join/$code': typeof JoinCodeRoute
+  '/bought/log': typeof AuthedBoughtLogRoute
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
+  '/bought/': typeof AuthedBoughtIndexRoute
   '/settings/': typeof AuthedSettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -166,11 +180,13 @@ export interface FileRoutesByTo {
   '/places': typeof AuthedPlacesRoute
   '/join/$code': typeof JoinCodeRoute
   '/': typeof AuthedIndexRoute
+  '/bought/log': typeof AuthedBoughtLogRoute
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
+  '/bought': typeof AuthedBoughtIndexRoute
   '/settings': typeof AuthedSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -189,11 +205,13 @@ export interface FileRoutesById {
   '/_authed/settings': typeof AuthedSettingsRouteWithChildren
   '/join/$code': typeof JoinCodeRoute
   '/_authed/': typeof AuthedIndexRoute
+  '/_authed/bought/log': typeof AuthedBoughtLogRoute
   '/_authed/settings/account': typeof AuthedSettingsAccountRoute
   '/_authed/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/_authed/settings/devices': typeof AuthedSettingsDevicesRoute
   '/_authed/settings/household': typeof AuthedSettingsHouseholdRoute
   '/_authed/settings/notifications': typeof AuthedSettingsNotificationsRoute
+  '/_authed/bought/': typeof AuthedBoughtIndexRoute
   '/_authed/settings/': typeof AuthedSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -212,11 +230,13 @@ export interface FileRouteTypes {
     | '/places'
     | '/settings'
     | '/join/$code'
+    | '/bought/log'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/devices'
     | '/settings/household'
     | '/settings/notifications'
+    | '/bought/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -232,11 +252,13 @@ export interface FileRouteTypes {
     | '/places'
     | '/join/$code'
     | '/'
+    | '/bought/log'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/devices'
     | '/settings/household'
     | '/settings/notifications'
+    | '/bought'
     | '/settings'
   id:
     | '__root__'
@@ -254,11 +276,13 @@ export interface FileRouteTypes {
     | '/_authed/settings'
     | '/join/$code'
     | '/_authed/'
+    | '/_authed/bought/log'
     | '/_authed/settings/account'
     | '/_authed/settings/appearance'
     | '/_authed/settings/devices'
     | '/_authed/settings/household'
     | '/_authed/settings/notifications'
+    | '/_authed/bought/'
     | '/_authed/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -369,6 +393,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authed/bought/': {
+      id: '/_authed/bought/'
+      path: '/bought'
+      fullPath: '/bought/'
+      preLoaderRoute: typeof AuthedBoughtIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/bought/log': {
+      id: '/_authed/bought/log'
+      path: '/bought/log'
+      fullPath: '/bought/log'
+      preLoaderRoute: typeof AuthedBoughtLogRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/settings/': {
       id: '/_authed/settings/'
       path: '/'
@@ -447,6 +485,8 @@ interface AuthedRouteChildren {
   AuthedPlacesRoute: typeof AuthedPlacesRoute
   AuthedSettingsRoute: typeof AuthedSettingsRouteWithChildren
   AuthedIndexRoute: typeof AuthedIndexRoute
+  AuthedBoughtLogRoute: typeof AuthedBoughtLogRoute
+  AuthedBoughtIndexRoute: typeof AuthedBoughtIndexRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
@@ -460,6 +500,8 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedPlacesRoute: AuthedPlacesRoute,
   AuthedSettingsRoute: AuthedSettingsRouteWithChildren,
   AuthedIndexRoute: AuthedIndexRoute,
+  AuthedBoughtLogRoute: AuthedBoughtLogRoute,
+  AuthedBoughtIndexRoute: AuthedBoughtIndexRoute,
 }
 
 const AuthedRouteWithChildren =
