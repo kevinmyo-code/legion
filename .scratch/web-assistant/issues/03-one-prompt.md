@@ -3,12 +3,12 @@ map: web-assistant
 ticket: "03"
 title: "One prompt for every client: the persona, the frame, the honesty clause"
 type: decision
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Opus proposal on Kevin's rulings: one source file, generated for both clients"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -31,3 +31,21 @@ profile on Kevin's phone (`CompanionProfile`; see `CompanionSwitchTest`). On the
 assistant is Dorothy and Kevin's is his own active companion. So companion definitions (name,
 persona, voice) must be available to the engine per member, not only in the phone's local profile
 store. How they get there is part of this ticket.
+
+## Answer (2026-10-04)
+
+Kevin ruled Mia talks to **Dorothy** and Kevin to his own active companion. Opus's proposal, built
+unless vetoed:
+
+- **One source of truth for the shared clauses** (`ASSISTANT_FRAME`, `CANNOT_CLAUSE`, the
+  tool-use and unreadable-vs-empty rules): a text file in the repo that a generator turns into the
+  Kotlin constants AND a TypeScript module, with a drift check that fails the build, the same posture
+  as `tools/voice_guide.py`. No hand-maintained second copy.
+- **The web prompt is assembled by the engine**, not the browser, and baked into the locked token's
+  setup, so a browser cannot alter it.
+- **Companions per member live on the engine:** name, persona fragment, voice, owner. Kevin's phone
+  pushes its companion roster up (Dorothy assigned to Mia); the web reads the signed-in member's
+  companion. The phone keeps its local profiles as today.
+- The web gets its own `PromptRoleNamingTest` equivalent: no hardcoded assistant name in shared copy.
+- The web frame adds one honest line the phone does not need: what this client cannot do (phone-only
+  capabilities, ticket 04).

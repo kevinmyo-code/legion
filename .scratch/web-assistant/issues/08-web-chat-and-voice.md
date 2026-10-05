@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["03", "05", "07"]
 blocked-by: ["[[03-one-prompt]]", "[[05-chat-and-voice-ui]]", "[[07-engine-endpoints]]"]
-open-blockers: 3
+open-blockers: 2
 ready: false
 tags: [ticket]
 ---

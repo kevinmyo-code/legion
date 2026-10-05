@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["05", "06"]
 blocked-by: ["[[05-chat-and-voice-ui]]", "[[06-android-typed-chat]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
