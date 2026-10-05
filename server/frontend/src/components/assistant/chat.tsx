@@ -87,12 +87,6 @@ export function AssistantChat({
           <p className="truncate leading-tight font-semibold">{name}</p>
           <p className="text-[0.8125rem] text-muted-foreground">Household assistant</p>
         </div>
-        {state.lines.length > 0 && (
-          <Button type="button" variant="secondary" size="sm" onClick={reset}>
-            <RefreshCw />
-            New conversation
-          </Button>
-        )}
         {onMinimise && (
           <Button
             type="button"
@@ -114,6 +108,15 @@ export function AssistantChat({
           <X className="size-5" />
         </Button>
       </header>
+
+      {state.lines.length > 0 && (
+        <div className="flex flex-none px-4 pb-1 pl-16">
+          <Button type="button" variant="secondary" size="sm" onClick={reset}>
+            <RefreshCw />
+            New conversation
+          </Button>
+        </div>
+      )}
 
       {state.notice && (
         <div
