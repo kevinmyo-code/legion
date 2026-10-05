@@ -6068,3 +6068,13 @@ recorded"; lookups search loosely and always name the entry they matched; **the 
 bought log online only** (Kevin's deliberate exception to the Room-replica rule, server down said in
 words). Opus proposed the table and hook details in ticket 01 for Kevin to veto. On the web, Mia's
 assistant is **Dorothy**, the existing companion (Kevin: *"give that to her"*).
+
+## 2026-10-04 - Web assistant: browser runs tools via the engine, build first, screen lock ends it
+
+Kevin on `.scratch/web-assistant/`: live voice on an iPhone PWA is viable with caveats (research 01);
+Mia is on iOS 27; **no device spike first, build it all and test after**; screen lock or app switch
+ends the conversation; **the browser executes tool calls by calling a session-authenticated engine
+endpoint** (never `/mcp`). Opus proposed, for veto: shared prompt clauses generated from one file for
+Kotlin and TypeScript, the engine assembling the web prompt into the locked token, companions per
+member on the engine; tick history moves server-side; Android typed chat sends text turns into the
+same Live session and shows the transcription.

@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bought log: A, B or C</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ---------- page ---------- */
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:oklch(0.935 0.008 285);color:oklch(0.22 0.012 285);font-family:'Roboto Flex',Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.4}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+.intro{max-width:1320px;margin:0 auto;padding:28px 24px 8px}
+.intro h1{margin:0 0 6px;font-size:28px;font-weight:600}
+.intro p{margin:0 0 6px;color:oklch(0.42 0.016 285);font-size:15px;max-width:980px}
+.group{max-width:1400px;margin:0 auto;padding:20px 16px 44px}
+.group>h2{font-size:20px;font-weight:600;margin:0 0 4px;text-align:center}
+.group>p.gsub{margin:0 auto 22px;text-align:center;color:oklch(0.42 0.016 285);font-size:14px;max-width:900px}
+.row{display:flex;flex-wrap:wrap;gap:44px;justify-content:center;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:10px;align-items:center;width:400px}
+.col.wide{width:auto}
+.vname{font-size:20px;font-weight:700}
+.vdesc{font-size:14px;color:oklch(0.42 0.016 285);text-align:center;margin:0;min-height:40px;max-width:390px}
+.col.wide .vdesc{max-width:900px;min-height:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-content:flex-start;max-width:400px;margin-bottom:8px;min-height:150px}
+.col.wide .chips{max-width:1000px;min-height:0}
+#row-droid .chips{min-height:0}
+.chips button{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid oklch(0.72 0.014 285);background:oklch(0.98 0.004 285);color:oklch(0.3 0.012 285);font-size:14px;font-weight:500}
+.chips button.on{background:oklch(0.5 0.15 275);border-color:oklch(0.5 0.15 275);color:#fff}
+.chips button:focus-visible{outline:2px solid oklch(0.5 0.15 275);outline-offset:2px}
+footer{max-width:1320px;margin:0 auto;padding:0 24px 48px;color:oklch(0.42 0.016 285);font-size:13px}
+
+/* ---------- themes: same token names, two bindings ---------- */
+.t-web{
+  --font:'Roboto Flex',Roboto,system-ui,sans-serif;
+  --bg:oklch(0.98 0.004 285);--s1:oklch(0.958 0.009 285);--s2:oklch(0.938 0.012 285);--s3:oklch(0.915 0.014 285);--pop:oklch(0.965 0.009 285);
+  --ink:oklch(0.22 0.012 285);--muted:oklch(0.48 0.016 285);--outline:oklch(0.72 0.014 285);--hair:oklch(0.88 0.01 285);
+  --fill:oklch(0.5 0.15 275);--on-fill:#fff;--tonal:oklch(0.915 0.05 275);--on-tonal:oklch(0.3 0.12 275);--accent:oklch(0.5 0.15 275);
+  --sel:oklch(0.915 0.05 275);--on-sel:oklch(0.3 0.12 275);
+  --shared:oklch(0.925 0.055 355);--on-shared:oklch(0.33 0.13 355);
+  --done:oklch(0.5 0.12 160);--done-c:oklch(0.92 0.05 160);--on-done-c:oklch(0.3 0.08 160);
+  --err-c:oklch(0.93 0.04 25);--on-err-c:oklch(0.36 0.14 27);
+  --warn-c:oklch(0.93 0.07 75);--on-warn:oklch(0.38 0.09 60);
+  --scrim:oklch(0.2 0.03 285 / 0.4);--toast:oklch(0.3 0.012 285);--on-toast:oklch(0.97 0.004 285);
+  --r-ctl:16px;--r-card:20px;--r-sheet:28px;
+  --tabbar:oklch(0.938 0.012 285);
+}
+.t-droid{
+  /* ui/theme/soft/SoftColors.kt + SoftTheme.kt (soft Material DARK, Figtree) */
+  --font:'Figtree',system-ui,sans-serif;
+  --bg:#121317;--s1:#1C1E24;--s2:#24272E;--s3:#2A2D34;--pop:#1C1E24;
+  --ink:#E6E7EC;--muted:#A9ADB8;--outline:#3A3E47;--hair:#23262D;
+  --fill:#733423;--on-fill:#FFDBD1;--tonal:#24272E;--on-tonal:#E6E7EC;--accent:#FFB4A1;
+  --sel:#733423;--on-sel:#FFDBD1;
+  --shared:#24272E;--on-shared:#E6E7EC;
+  --done:#7EDBA5;--done-c:#173D2B;--on-done-c:#7EDBA5;
+  --err-c:#4A1F24;--on-err-c:#FFB4AB;
+  --warn-c:#3A2E12;--on-warn:#FFC857;
+  --scrim:rgba(0,0,0,.55);--toast:#E6E7EC;--on-toast:#121317;
+  --r-ctl:16px;--r-card:20px;--r-sheet:24px;
+  --tabbar:#16181D;
+}
+
+/* ---------- device frames ---------- */
+.ios{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font-family:var(--font);
+  box-shadow:0 0 0 9px #1d1d22,0 0 0 10px rgba(0,0,0,.18),0 30px 60px -24px rgba(0,0,0,.4)}
+.ios::after{content:"";position:absolute;left:50%;bottom:8px;width:134px;height:5px;border-radius:3px;background:var(--ink);opacity:.85;transform:translateX(-50%);z-index:60;pointer-events:none}
+.ios .sb{height:47px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 6px 38px;font-size:15px;font-weight:600}
+.droid{width:384px;height:832px;border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font-family:var(--font);border:1px solid #2a2d34;box-shadow:0 30px 60px -24px rgba(0,0,0,.5)}
+.droid .sb{height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:13px;font-weight:500;color:var(--muted)}
+.droid .gest{height:20px;flex:none;background:var(--tabbar);display:flex;align-items:center;justify-content:center}
+.droid .gest i{width:108px;height:4px;border-radius:2px;background:var(--muted);opacity:.7}
+.desk{width:1280px;height:800px;border-radius:14px;overflow:hidden;display:flex;background:var(--bg);color:var(--ink);font-family:var(--font);box-shadow:0 0 0 1px rgba(0,0,0,.08),0 30px 60px -24px rgba(0,0,0,.35);position:relative}
+.sbi{display:flex;gap:6px;align-items:center}
+
+/* ---------- shared components (all read tokens) ---------- */
+.ic{flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.scr{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.main{flex:1;min-height:0;overflow-y:auto;padding:4px 16px 24px;scrollbar-width:none}
+.main::-webkit-scrollbar{display:none}
+.ftop{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px 8px}
+.hh{margin:0;font-size:18px;font-weight:500}
+.ptop{flex:none;display:flex;align-items:center;gap:4px;padding:4px 8px 6px}
+.ptop h1{margin:0;font-size:22px;font-weight:500;flex:1}
+.t-droid .ptop h1{font-weight:600}
+.tabbar{flex:none;display:flex;background:var(--tabbar);padding:8px 8px 26px}
+.tab{flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:500;border-radius:16px}
+.tab .pill{display:grid;place-items:center;height:32px;width:64px;border-radius:999px}
+.tab[aria-current=page]{color:var(--ink);font-weight:600}
+.tab[aria-current=page] .pill{background:var(--sel);color:var(--on-sel)}
+.btn{min-height:44px;border-radius:999px;padding:0 20px;font-weight:500;font-size:15px;border:0;display:inline-flex;align-items:center;gap:8px;justify-content:center;white-space:nowrap}
+.btn.fill{background:var(--fill);color:var(--on-fill)}
+.btn.tonal{background:var(--tonal);color:var(--on-tonal)}
+.btn.text{background:transparent;color:var(--accent);padding:0 12px}
+.btn.icon{width:44px;padding:0;background:transparent;color:var(--ink)}
+.btn.full{width:100%}
+.btn.danger{background:var(--err-c);color:var(--on-err-c)}
+.btn:focus-visible,.tab:focus-visible,.cbx:focus-visible,.ebtn:focus-visible,.sw:focus-visible,.seg button:focus-visible,.linkish:focus-visible,.icard button:focus-visible,.searchpill:focus-visible,.talk:focus-visible,.fchip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.field{height:52px;border-radius:999px;background:var(--s3);display:flex;align-items:center;gap:8px;padding:0 6px 0 16px;color:var(--muted)}
+.field input{flex:1;border:0;background:transparent;color:var(--ink);font-size:16px;outline:none;min-width:0;height:100%}
+.field input::placeholder{color:var(--muted)}
+.field:focus-within{box-shadow:0 0 0 2px var(--accent)}
+.card{background:var(--s1);border-radius:var(--r-sheet);padding:14px 16px 16px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.note{font-size:13px;color:var(--muted);margin:8px 2px 10px}
+.greet{font-size:28px;font-weight:400;margin:6px 0 0;letter-spacing:-.01em}
+.sec-label{font-size:13px;font-weight:500;color:var(--muted);margin:14px 4px 6px}
+.ev{display:flex;align-items:center;gap:12px;background:var(--s1);border-radius:var(--r-card);padding:12px 14px;margin-bottom:8px}
+.ev .tm{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;width:64px}
+.ev .nm{flex:1;font-size:16px}
+.mark-shared{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 10px 0 8px;border-radius:999px;background:var(--shared);color:var(--on-shared);font-size:13px;font-weight:500;white-space:nowrap}
+.mark-private{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:13px;white-space:nowrap}
+.mark-private.strong{color:var(--ink);font-weight:500}
+.src{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 9px 0 7px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap}
+.src.tick{background:var(--done-c);color:var(--on-done-c)}
+.src.hand{background:var(--tonal);color:var(--on-tonal)}
+.t-droid .src.hand{background:#33265A;color:#CDBDFF}
+.src.old{background:var(--s3);color:var(--ink)}
+.errbox{background:var(--err-c);color:var(--on-err-c);border-radius:var(--r-card);padding:12px 14px;font-size:15px;display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+.errbox p{margin:0}
+.seg{display:flex;background:var(--s2);border-radius:999px;padding:4px;gap:4px;margin:4px 0 10px}
+.seg button{flex:1;min-height:44px;border-radius:999px;border:0;background:transparent;color:var(--muted);font-weight:500;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.seg button[aria-selected=true]{background:var(--sel);color:var(--on-sel);font-weight:600}
+/* lists */
+.list{margin-bottom:14px}
+.lhead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px}
+.lhead h2{margin:0;font-size:22px;font-weight:500;line-height:1.2}
+.t-droid .lhead h2{font-weight:600;font-size:20px}
+.lmeta{display:flex;gap:10px;align-items:center;margin-top:6px;font-size:13px;color:var(--muted)}
+.lnote{font-size:13px;color:var(--muted);margin:6px 0 4px;display:flex;gap:6px;align-items:flex-start}
+.irows{list-style:none;margin:0;padding:0}
+.irow{display:flex;align-items:center;gap:6px;min-height:56px;border-top:1px solid var(--hair)}
+.irow:first-child{border-top:0}
+.cbx{width:44px;height:44px;border:0;background:transparent;display:grid;place-items:center;flex:none;padding:0}
+.cbx .box{width:24px;height:24px;border-radius:8px;border:2px solid var(--outline);display:grid;place-items:center;color:var(--on-fill)}
+.cbx[aria-checked=true] .box{background:var(--fill);border-color:var(--fill)}
+.t-droid .cbx[aria-checked=true] .box{background:#5E636E;border-color:#5E636E;color:#E6E7EC}
+.itext{flex:1;min-width:0;display:flex;flex-direction:column;padding:6px 0}
+.itext .t{font-size:16px}
+.irow.done .itext .t{color:var(--muted);text-decoration:line-through}
+.sub{font-size:13px;color:var(--muted)}
+.sub.bought{color:var(--on-done-c)}
+.t-web .sub.bought{color:oklch(0.4 0.1 160)}
+.linkish{border:0;background:transparent;padding:0;text-align:left;font-size:13px;color:var(--accent);min-height:44px;display:inline-flex;align-items:center;gap:4px;text-decoration:underline;text-underline-offset:3px}
+.tickedhd{min-height:44px;display:flex;align-items:center;gap:6px;font-size:15px;font-weight:500;color:var(--muted);margin-top:4px}
+.addbar{display:flex;align-items:center;gap:8px;height:52px;border-radius:999px;background:var(--s3);padding:0 6px 0 18px;margin-top:8px}
+.addbar input{flex:1;border:0;background:transparent;outline:none;font-size:16px;min-width:0;height:100%}
+.addbar input::placeholder{color:var(--muted)}
+/* entries */
+.elist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.entry{background:var(--s1);border-radius:var(--r-card)}
+.ebtn{width:100%;border:0;background:transparent;text-align:left;display:flex;gap:12px;padding:12px 14px;align-items:flex-start;border-radius:var(--r-card);min-height:44px}
+.edate{flex:none;width:44px;height:48px;border-radius:14px;background:var(--s3);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05}
+.edate b{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.edate small{font-size:11.5px;color:var(--muted);font-weight:500}
+.ebody{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.eitem{font-size:16px;font-weight:500}
+.emeta{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:13.5px;color:var(--muted)}
+.emeta .who{display:inline-flex;align-items:center;gap:4px;color:var(--ink)}
+.price{font-variant-numeric:tabular-nums;color:var(--ink)}
+.price em{font-style:normal;color:var(--muted)}
+.edet{padding:0 14px 12px 70px;font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.edet p{margin:0}
+.mhead{font-size:13px;font-weight:600;color:var(--muted);margin:16px 4px 8px;text-transform:none}
+.mhead:first-child{margin-top:4px}
+.reshead{font-size:14px;color:var(--muted);margin:10px 4px 8px}
+.answer{background:var(--s1);border-radius:var(--r-sheet);padding:16px;margin:10px 0 6px}
+.answer .lbl{font-size:13px;color:var(--muted);margin:0 0 4px;font-weight:500}
+.answer .txt{font-size:19px;margin:0 0 8px;line-height:1.3}
+.answer .chipsrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nomatch{background:var(--s1);border-radius:var(--r-sheet);padding:18px 16px;margin:10px 0}
+.nomatch .big{font-size:19px;margin:0 0 6px}
+.nomatch p{margin:0 0 12px}
+.searchpill{width:100%;height:56px;border-radius:999px;border:0;background:var(--s3);display:flex;align-items:center;gap:10px;padding:0 18px;color:var(--muted);font-size:16px;margin:12px 0 4px;text-align:left}
+.srow{display:flex;gap:8px;align-items:center}
+.srow .field{flex:1;min-width:0}
+.srow .btn{padding:0 16px}
+/* item cards (B) */
+.icards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.icard button{width:100%;border:0;background:var(--s1);border-radius:var(--r-card);text-align:left;padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-height:44px}
+.icard .nm{font-size:17px;font-weight:500;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.icard .cnt{font-size:13px;color:var(--muted);font-weight:400}
+/* sheet + toast */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:20;border:0;width:100%}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--pop);border-radius:var(--r-sheet) var(--r-sheet) 0 0;max-height:90%;overflow-y:auto;padding:8px 16px 30px;box-shadow:0 -8px 30px -12px rgba(0,0,0,.3)}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--outline);margin:4px auto 10px}
+.shead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.shead h2{margin:0;font-size:22px;font-weight:500}
+.toast{position:absolute;left:16px;right:16px;bottom:96px;z-index:40;background:var(--toast);color:var(--on-toast);border-radius:14px;padding:12px 14px;font-size:14.5px;display:flex;gap:8px;align-items:flex-start;box-shadow:0 8px 24px -8px rgba(0,0,0,.4)}
+.toast.err{background:var(--err-c);color:var(--on-err-c)}
+/* form */
+.form{display:flex;flex-direction:column;gap:12px}
+.ff label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin:0 0 4px 4px}
+.ff input{width:100%;height:48px;border:0;border-bottom:2px solid var(--outline);border-radius:var(--r-ctl) var(--r-ctl) 10px 10px;background:var(--s2);padding:0 14px;font-size:16px;color:var(--ink);outline:none}
+.t-droid .ff input{border-bottom:0;border:1px solid var(--outline);border-radius:var(--r-ctl);background:var(--s2)}
+.ff input:focus{border-color:var(--accent);background:var(--s3)}
+.ff .help{font-size:12.5px;color:var(--muted);margin:4px 4px 0}
+.ff2{display:flex;gap:10px}.ff2>.ff{flex:1;min-width:0}
+.opt{font-weight:400}
+.privrow{display:flex;align-items:center;gap:12px;background:var(--s2);border-radius:var(--r-card);padding:10px 14px}
+.privrow .pt{flex:1;font-size:15px}
+.privrow .pt small{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+.sw{width:52px;height:32px;border-radius:999px;border:2px solid var(--outline);background:var(--s3);position:relative;flex:none;padding:0}
+.sw::after{content:"";position:absolute;top:50%;left:6px;width:16px;height:16px;border-radius:50%;background:var(--outline);transform:translateY(-50%);transition:all .15s}
+.sw[aria-checked=true]{background:var(--fill);border-color:var(--fill)}
+.sw[aria-checked=true]::after{left:22px;width:24px;height:24px;background:var(--on-fill)}
+.sw::before{content:"";position:absolute;inset:-8px}
+.factions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.ferr{font-size:14px;color:var(--on-err-c);background:var(--err-c);border-radius:14px;padding:10px 12px;margin:0}
+/* desk */
+.rail{width:232px;flex:none;background:var(--s1);padding:20px 12px;display:flex;flex-direction:column;gap:4px}
+.rail .hh{padding:0 12px 18px}
+.ritem{display:flex;align-items:center;gap:12px;height:48px;border-radius:999px;padding:0 16px;font-size:15px;font-weight:500;color:var(--muted);border:0;background:transparent;text-align:left}
+.ritem[aria-current=page]{background:var(--tonal);color:var(--on-tonal);font-weight:600}
+.ritem:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rail hr{border:0;border-top:1px solid var(--hair);margin:6px 12px}
+.dmain{flex:1;min-width:0;overflow-y:auto;padding:24px 24px}
+.dmain h1{margin:0 0 4px;font-size:28px;font-weight:500}
+.dgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.dtable{width:100%;border-collapse:separate;border-spacing:0;font-size:14px;background:var(--s1);border-radius:var(--r-card);overflow:hidden}
+.dtable th{text-align:left;font-weight:500;color:var(--muted);font-size:13px;padding:12px 8px;border-bottom:1px solid var(--hair);background:var(--s1)}
+.dtable td{padding:9px 8px;border-bottom:1px solid var(--hair);vertical-align:middle}
+.dtable tr:last-child td{border-bottom:0}
+.dtable td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.dtable td:nth-child(2){min-width:130px}
+.dtable .src{font-size:12px}
+.fchips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px}
+.fchip{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--outline);background:transparent;color:var(--ink);font-size:13.5px;font-weight:500}
+.fchip[aria-pressed=true]{background:var(--tonal);border-color:var(--tonal);color:var(--on-tonal)}
+.desk .fchip{min-height:44px}
+.desk .toast{left:auto;right:28px;bottom:24px;width:480px}
+.lgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+/* droid */
+.strip{flex:none;background:var(--tabbar);border-top:1px solid var(--hair);padding:9px 16px}
+.talk{width:100%;height:52px;border-radius:999px;border:0;background:#733423;color:#FFDBD1;display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600}
+.t-droid .greet{font-weight:600}
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Bought log: pick A, B or C</h1>
+  <p>Purchase-log ticket 05. Mia's iPhone family view first (390 x 844, soft Material light, the real web tokens). Then Kevin's workbench (variant A) and Kevin's Android phone (variant C, 384 dp, soft Material dark). Everything is clickable: search, tick a Groceries line, untick it, log something by hand, open an entry. The chips above each device jump to a state.</p>
+  <p>Mia's iPhone mocks are signed in as Mia, so she sees her own private entry and not Kevin's. The workbench and Android are Kevin, so the reverse. Prices are what someone typed and every one says so.</p>
+</div>
+
+<section class="group">
+  <h2>Mia's iPhone: family view (under 1024 px)</h2>
+  <p class="gsub">Four tabs stay four tabs (Home, Lists, Calendar, Settings). The variants differ in where the log lives and what it is organised around.</p>
+  <div class="row" id="row-ios"></div>
+</section>
+
+<section class="group">
+  <h2>Kevin's workbench (1024 px and up)</h2>
+  <p class="gsub">Variant A fits the desk best: a timeline is a table at this width, and the "Log it" form can stay open beside it.</p>
+  <div class="row" id="row-desk"></div>
+</section>
+
+<section class="group">
+  <h2>Kevin's Android phone (A25, 384 dp)</h2>
+  <p class="gsub">Variant C fits the phone best: the question is usually "when did we last buy X", the same one push-to-talk answers. Online only (ticket 04), so a down engine is said in words, never an empty log.</p>
+  <div class="row" id="row-droid"></div>
+</section>
+
+<footer>Prototype only. Data is made up but shaped like the ticket 01 schema. Source: .scratch/purchase-log/research/05-prototypes/bought-log-prototypes.html</footer>
+
+<script>
+/* ================= icons (lucide shapes, inline) ================= */
+const P = {
+  house:'<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  lists:'<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8M13 12h8M13 18h8"/>',
+  cal:'<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  lock:'<rect width="16" height="11" x="4" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  back:'<path d="m12 19-7-7 7-7M19 12H5"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  pencil:'<path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/>',
+  history:'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/>',
+  alert:'<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  cloudoff:'<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2"/><path d="M21.53 15.03A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 9.2 5.1"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>',
+  chev:'<path d="m6 9 6 6 6-6"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  trash:'<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  bag:'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/>',
+  undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  money:'<rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/>',
+  pantry:'<path d="m15 11-1 9M19 11l-4-7M2 11h20M3.5 11l1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4M4.5 15.5h15M5 11l4-7M9 11l1 9"/>',
+  body:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  car:'<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+  pin:'<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  notes:'<path d="M2 6h4M2 10h4M2 14h4M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9.5 8h5M9.5 12H16M9.5 16H14"/>'
+};
+function ic(n, s){ s = s || 20; return '<svg class="ic" width="'+s+'" height="'+s+'" viewBox="0 0 24 24" aria-hidden="true">'+P[n]+'</svg>'; }
+
+/* ================= data ================= */
+const TODAY = '2026-10-04';
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function pr(iso){ const a = iso.split('-').map(Number); return {y:a[0], m:a[1], d:a[2]}; }
+function fmt(iso){ const p = pr(iso); return MON[p.m-1]+' '+p.d; }
+function wd(iso){ const p = pr(iso); return WD[new Date(Date.UTC(p.y,p.m-1,p.d)).getUTCDay()]; }
+function fmtDay(iso){ return iso === TODAY ? 'today' : fmt(iso); }
+function money(c){ return '$'+(c/100).toFixed(2); }
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// Ticket 01 columns: item, bought_on, logged_at, created_by (null = not recorded), store, price_cents
+// (entered by hand), quantity_note, owner_user (null = shared), source.
+const BASE = [
+  {id:'e1', item:'Paper towels', day:'2026-10-02', who:'Mia', src:'tick', at:'Oct 2, 5:48 PM'},
+  {id:'e2', item:'Contact lens solution', day:'2026-09-30', who:'Mia', src:'hand', store:'Target', price:949, owner:'Mia', at:'Sep 30, 7:02 PM'},
+  {id:'e3', item:'Toothpaste', day:'2026-09-28', who:'Kevin', src:'tick', at:'Sep 28, 11:20 AM'},
+  {id:'e4', item:'Eggs', day:'2026-09-27', who:'Kevin', src:'tick', at:'Sep 27, 10:05 AM'},
+  {id:'e5', item:'Dish soap', day:'2026-09-25', who:'Kevin', src:'hand', store:'HEB', note:'Dawn, the big bottle', at:'Sep 25, 6:31 PM'},
+  {id:'e6', item:'Shampoo', day:'2026-09-20', who:'Mia', src:'tick', at:'Sep 20, 4:12 PM'},
+  {id:'e7', item:'Razor blades', day:'2026-09-18', who:'Kevin', src:'hand', store:'Target', price:1899, owner:'Kevin', at:'Sep 18, 8:44 PM'},
+  {id:'e8', item:'Laundry detergent', day:'2026-09-12', who:'Mia', src:'hand', store:'Target', price:1499, note:'Tide pods, 42 count', at:'Sep 12, 1:15 PM'},
+  {id:'e9', item:'Colgate toothpaste', day:'2026-08-30', who:'Mia', src:'hand', store:'HEB', price:349, note:'2-pack', at:'Aug 30, 3:40 PM'},
+  {id:'e10', item:'Head & Shoulders shampoo', day:'2026-08-09', who:'Kevin', src:'hand', store:'HEB', price:899, at:'Aug 9, 12:02 PM'},
+  {id:'e11', item:'Dish soap', day:'2026-08-02', who:null, src:'old', at:'imported Oct 4'},
+  {id:'e12', item:'Toilet paper', day:'2026-07-19', who:null, src:'old', at:'imported Oct 4'},
+  {id:'e13', item:'Dove shampoo', day:'2026-06-14', who:null, src:'old', at:'imported Oct 4'}
+];
+const GROC = [{id:'g1', text:'Shampoo'},{id:'g2', text:'Toothpaste'},{id:'g3', text:'Eggs'},{id:'g4', text:'Bananas'},{id:'g5', text:'Paper towels'}];
+const TARGET = [{id:'t1', text:'Lint rollers', last:'2026-09-27'},{id:'t2', text:'Command hooks', last:null}];
+
+/* matching, ticket 02: TickMatch's floor (case, trim, whitespace), then every query word appears, plurals folded */
+function norm(s){ return s.toLowerCase().trim().replace(/\s+/g,' '); }
+function fold(w){ if (w.length > 4 && /(sh|ch|ss|x|z)es$/.test(w)) return w.slice(0,-2); if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0,-1); return w; }
+function words(s){ return norm(s).split(/[^a-z0-9']+/).filter(Boolean).map(fold); }
+function byNew(a,b){ return a.day < b.day ? 1 : a.day > b.day ? -1 : 0; }
+function vis(s){ return s.entries.filter(e => !e.gone && (!e.owner || e.owner === s.viewer)).sort(byNew); }
+function search(s, q){ const qw = words(q); if (!qw.length) return []; return vis(s).filter(e => { const ew = words(e.item); return qw.every(w => ew.includes(w)); }); }
+function lastExact(s, text){ return vis(s).find(e => norm(e.item) === norm(text)); }
+
+/* ================= small renderers ================= */
+function srcChip(e){
+  if (e.src === 'tick') return '<span class="src tick">'+ic('lists',14)+'Groceries tick</span>';
+  if (e.src === 'hand') return '<span class="src hand">'+ic('pencil',13)+'Logged by hand</span>';
+  return '<span class="src old">'+ic('history',13)+'Old Groceries tick</span>';
+}
+function whoHtml(e){ return e.who ? '<span class="who">'+ic('user',14)+esc(e.who)+'</span>' : '<span>Logged by: not recorded</span>'; }
+function priceHtml(e){ return e.price != null ? '<span class="price">'+money(e.price)+' <em>entered by hand</em></span>' : ''; }
+function privHtml(e, strong){ return e.owner ? '<span class="mark-private'+(strong?' strong':'')+'">'+ic('lock',14)+'Only you can see this</span>' : ''; }
+function sharedMark(){ return '<span class="mark-shared">'+ic('users',14)+'Shared</span>'; }
+
+function entryRow(s, e, opts){
+  opts = opts || {};
+  const open = s.open === e.id;
+  const p = pr(e.day);
+  const date = opts.inlineDate ? '' : '<span class="edate" aria-hidden="true"><b>'+p.d+'</b><small>'+MON[p.m-1]+'</small></span>';
+  const line2 = [e.store ? esc(e.store) : '', priceHtml(e)].filter(Boolean).join(' · ');
+  return '<li class="entry">'
+    + '<button class="ebtn" data-a="expand" data-v="'+e.id+'" aria-expanded="'+open+'">'
+    + date
+    + '<span class="ebody"><span class="eitem">'+esc(e.item)+(opts.inlineDate ? ' <span class="muted" style="font-weight:400">· '+fmt(e.day)+'</span>' : '')+'</span>'
+    + '<span class="emeta"><span class="sr" style="position:absolute;left:-9999px">Bought '+fmt(e.day)+'. </span>'+whoHtml(e)+srcChip(e)+'</span>'
+    + (line2 ? '<span class="emeta">'+line2+'</span>' : '')
+    + (e.owner ? '<span class="emeta">'+privHtml(e)+'</span>' : '')
+    + '</span></button>'
+    + (open ? '<div class="edet">'
+        + (e.note ? '<p>Quantity / note: <span style="color:var(--ink)">'+esc(e.note)+'</span></p>' : '')
+        + '<p>Bought '+wd(e.day)+', '+fmt(e.day)+'. '+(e.src === 'old' ? 'Imported from a Groceries tick made before the log existed; who ticked it was never recorded.' : 'Logged '+esc(e.at)+'.')+'</p>'
+        + (e.price != null ? '<p>The price is what was typed. It is not checked against the bank and is never added to Money.</p>' : '')
+        + '<div><button class="btn text" data-a="del" data-v="'+e.id+'" style="padding-left:0">'+ic('trash',16)+'Delete this entry</button></div>'
+        + '</div>' : '')
+    + '</li>';
+}
+function downBox(what){
+  return '<div class="errbox" role="alert">'+ic('cloudoff',20)+'<p>'+what+'</p></div>';
+}
+function toastHtml(s){
+  if (!s.toast) return '';
+  return '<div class="toast'+(s.toast.err?' err':'')+'" role="status">'+ic(s.toast.err?'alert':'check',18)+'<span>'+esc(s.toast.text)+'</span></div>';
+}
+function matchHead(q, list){
+  return '<p class="reshead">'+(list.length === 1 ? '1 entry matches' : list.length+' entries match')+' "'+esc(q.trim())+'"'+(list.length > 1 ? ', newest first' : '')+'. Each one is named as it was logged.</p>';
+}
+function noMatch(q, extra){
+  return '<div class="nomatch" role="status"><p class="big">No record of buying '+esc(q.trim())+'</p>'
+    + '<p class="muted">That only means nobody logged it. It may still have been bought.</p>'
+    + '<button class="btn fill" data-a="log-open" data-v="'+esc(q.trim())+'">'+ic('plus',18)+'Log '+esc(q.trim())+'</button>'+(extra||'')+'</div>';
+}
+function answerCard(s, q, list){
+  const top = list[0];
+  const others = list.slice(1);
+  const names = new Set(list.map(e => norm(e.item)));
+  return '<div class="answer" role="status"><p class="lbl">Latest match for "'+esc(q.trim())+'"</p>'
+    + '<p class="txt"><b style="font-weight:600">'+esc(top.item)+'</b>, bought '+fmt(top.day)+(top.who ? ' by '+esc(top.who) : ' (who: not recorded)')+'</p>'
+    + '<div class="chipsrow">'+srcChip(top)+(top.store ? '<span class="small muted">'+esc(top.store)+'</span>' : '')+priceHtml(top)+privHtml(top)+'</div>'
+    + (others.length ? '<p class="small muted" style="margin:10px 0 0">'+others.length+' more '+(others.length === 1 ? 'entry matches' : 'entries match')+(names.size > 1 ? ', not all named the same' : '')+'. Listed below, newest first.</p>' : '')
+    + '</div>';
+}
+
+/* the log-it form, shared by sheet, page and desk panel */
+function blankForm(item){ return {item:item||'', day:TODAY, store:'', price:'', note:'', priv:false}; }
+function logForm(s, mode){
+  const f = s.form;
+  const other = s.viewer === 'Mia' ? 'Kevin' : 'Mia';
+  const err = s.formErr === 'down' ? '<p class="ferr" role="alert">Can\'t reach the bought log right now. Nothing was logged. What you typed is still here.</p>'
+    : s.formErr === 'item' ? '<p class="ferr" role="alert">Say what was bought.</p>'
+    : s.formErr === 'price' ? '<p class="ferr" role="alert">Price should look like 8.99, or leave it empty.</p>' : '';
+  return '<div class="form">'
+    + err
+    + '<div class="ff"><label for="'+s.uid+'-item">What was bought</label><input id="'+s.uid+'-item" data-f="item" value="'+esc(f.item)+'" placeholder="e.g. Shampoo" autocomplete="off"></div>'
+    + '<div class="ff"><label for="'+s.uid+'-day">Bought on</label><input id="'+s.uid+'-day" type="date" data-f="day" value="'+f.day+'" max="'+TODAY+'"><p class="help">Today unless you change it.</p></div>'
+    + '<div class="ff2"><div class="ff"><label for="'+s.uid+'-store">Store <span class="opt">(optional)</span></label><input id="'+s.uid+'-store" data-f="store" value="'+esc(f.store)+'" placeholder="HEB"></div>'
+    + '<div class="ff"><label for="'+s.uid+'-price">Price <span class="opt">(optional)</span></label><input id="'+s.uid+'-price" data-f="price" inputmode="decimal" value="'+esc(f.price)+'" placeholder="8.99"></div></div>'
+    + '<p class="ff" style="margin:-6px 4px 0"><span class="help" style="margin:0">A price is entered by hand. It is not checked against the bank and never counts in Money.</span></p>'
+    + '<div class="ff"><label for="'+s.uid+'-note">Quantity or note <span class="opt">(optional)</span></label><input id="'+s.uid+'-note" data-f="note" value="'+esc(f.note)+'" placeholder="2 bottles"></div>'
+    + '<div class="privrow"><span class="pt">'+(f.priv ? ic('lock',16)+' Private' : ic('users',16)+' Shared with the household')
+    + '<small>'+(f.priv ? 'Only you can see this. '+other+' won\'t see it in the log or from the assistant.' : 'Anyone in the household can see it and ask about it.')+'</small></span>'
+    + '<button class="sw" role="switch" aria-checked="'+f.priv+'" aria-label="Only me" data-a="priv"></button></div>'
+    + '<div class="factions">'+(mode === 'panel' ? '' : '<button class="btn text" data-a="cancel">Cancel</button>')+'<button class="btn fill" data-a="save">'+ic('check',18)+'Log it</button></div>'
+    + '</div>';
+}
+function sheet(s, title, body){
+  return '<button class="scrim" data-a="close" aria-label="Close" tabindex="-1"></button>'
+    + '<div class="sheet" role="dialog" aria-label="'+esc(title)+'"><div class="grab"></div>'
+    + '<div class="shead"><h2>'+esc(title)+'</h2><button class="btn icon" data-a="close" aria-label="Close">'+ic('x',22)+'</button></div>'
+    + body + '</div>';
+}
+
+/* lists (Groceries + another list) */
+function groceriesCard(s, opts){
+  opts = opts || {};
+  const left = s.groc.filter(i => !s.ticks[i.id]).length;
+  const row = (i) => {
+    const t = s.ticks[i.id];
+    let sub = '';
+    if (t) sub = '<span class="sub bought">bought today · '+esc(s.viewer)+'</span>';
+    else if (s.down) sub = '<span class="sub">last bought: can\'t check right now</span>';
+    else {
+      const e = lastExact(s, i.text);
+      if (e) {
+        const label = 'last bought '+fmt(e.day)+' · '+(e.who ? esc(e.who) : 'not recorded');
+        sub = opts.historyLinks ? '<button class="linkish" data-a="hist" data-v="'+esc(norm(i.text))+'">'+label+'</button>' : '<span class="sub">'+label+'</span>';
+      } else sub = '<span class="sub">no bought record yet</span>';
+    }
+    return '<li class="irow'+(t?' done':'')+'"><button class="cbx" role="checkbox" aria-checked="'+(!!t)+'" data-a="tick" data-v="'+i.id+'" aria-label="Mark &quot;'+esc(i.text)+'&quot; '+(t?'not done':'done')+'"><span class="box">'+(t?ic('check',16):'')+'</span></button>'
+      + '<div class="itext"><span class="t">'+esc(i.text)+'</span>'+sub+'</div></li>';
+  };
+  const open = s.groc.filter(i => !s.ticks[i.id]);
+  const done = s.groc.filter(i => s.ticks[i.id]);
+  return '<div class="card list"><div class="lhead"><div><h2>Groceries</h2><div class="lmeta">'+sharedMark()+'<span>'+left+' left</span></div></div></div>'
+    + '<p class="lnote">'+ic('bag',15)+'<span>A tick on this list logs the item as bought, by whoever ticks it, today.</span></p>'
+    + '<ul class="irows">'+open.map(row).join('')+'</ul>'
+    + (done.length ? '<p class="tickedhd">Ticked '+done.length+'</p><ul class="irows">'+done.map(row).join('')+'</ul>' : '')
+    + '<div class="addbar"><input data-f="add" aria-label="Add an item to Groceries" placeholder="Add an item" value="'+esc(s.addText)+'"><button class="btn fill" data-a="add">Add</button></div>'
+    + '</div>';
+}
+function targetCard(s){
+  const row = (i) => {
+    const t = s.tticks[i.id];
+    const sub = t ? '<span class="sub">ticked today</span>' : i.last ? '<span class="sub">last ticked '+fmt(i.last)+'</span>' : '<span class="sub">never ticked</span>';
+    return '<li class="irow'+(t?' done':'')+'"><button class="cbx" role="checkbox" aria-checked="'+(!!t)+'" data-a="ttick" data-v="'+i.id+'" aria-label="Mark &quot;'+esc(i.text)+'&quot; '+(t?'not done':'done')+'"><span class="box">'+(t?ic('check',16):'')+'</span></button>'
+      + '<div class="itext"><span class="t">'+esc(i.text)+'</span>'+sub+'</div></li>';
+  };
+  return '<div class="card list"><div class="lhead"><div><h2>Target run</h2><div class="lmeta">'+sharedMark()+'<span>'+s.target.filter(i => !s.tticks[i.id]).length+' left</span></div></div></div>'
+    + '<p class="lnote">'+ic('alert',15)+'<span>Ticks here are not logged as bought. Only Groceries ticks are.</span></p>'
+    + '<ul class="irows">'+s.target.map(row).join('')+'</ul></div>';
+}
+function listsFreshness(s){
+  return s.down ? '<p class="note" role="status">'+'Showing your lists as they were 2 minutes ago. Can\'t reach the engine, so ticks won\'t save.'+'</p>' : '';
+}
+
+/* family chrome */
+const TABS = [['home','Home','house'],['lists','Lists','lists'],['calendar','Calendar','cal'],['settings','Settings','gear']];
+function iosStatus(){ return '<div class="sb"><span>9:41</span><span class="sbi"><svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true"><rect x="0" y="7" width="3" height="4" rx="1" fill="currentColor"/><rect x="4.5" y="5" width="3" height="6" rx="1" fill="currentColor"/><rect x="9" y="2.5" width="3" height="8.5" rx="1" fill="currentColor"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="currentColor"/></svg><svg width="25" height="12" viewBox="0 0 25 12" aria-hidden="true"><rect x=".75" y=".75" width="21" height="10.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.6" height="4" rx=".8" fill="currentColor"/></svg></span></div>'; }
+function famShell(s, active, header, body, overlay){
+  const tabs = TABS.map(t => '<button class="tab" data-a="nav" data-v="'+t[0]+'"'+(active === t[0] ? ' aria-current="page"' : '')+'><span class="pill">'+ic(t[2],24)+'</span>'+t[1]+'</button>').join('');
+  return iosStatus() + '<div class="scr">' + (header || '<header class="ftop"><p class="hh">Win household</p></header>')
+    + '<div class="main">'+body+'</div><nav class="tabbar" aria-label="Tabs">'+tabs+'</nav>'+(overlay||'')+toastHtml(s)+'</div>';
+}
+function pageHeader(title, backTo, right){
+  return '<header class="ptop">'+(backTo ? '<button class="btn icon" data-a="go" data-v="'+backTo+'" aria-label="Back">'+ic('back',22)+'</button>' : '<span style="width:8px"></span>')+'<h1>'+esc(title)+'</h1>'+(right||'')+'</header>';
+}
+function homeBody(s, extraTop){
+  return '<h1 class="greet">Good afternoon, '+esc(s.viewer)+'</h1><p class="muted" style="margin:2px 0 0">Sunday, 4 October</p>'
+    + (extraTop||'')
+    + '<p class="sec-label">On today</p>'
+    + '<div class="ev"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span>'+sharedMark()+'</div>'
+    + '<div class="ev"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span>'+sharedMark()+'</div>'
+    + '<div class="card" style="margin-top:12px"><div class="lhead"><h2 style="font-size:16px">Groceries</h2>'+sharedMark()+'</div>'
+    + s.groc.filter(i => !s.ticks[i.id]).slice(0,3).map(i => '<p style="margin:6px 0;display:flex;gap:10px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:2px solid var(--outline);border-radius:5px"></span>'+esc(i.text)+'</p>').join('')
+    + '<p class="small muted" style="margin:4px 0 0 26px">and '+Math.max(0, s.groc.filter(i => !s.ticks[i.id]).length - 3)+' more</p></div>';
+}
+function placeholder(name){ return '<p class="muted" style="margin:30px 6px">'+name+' is unchanged in this prototype.</p>'; }
+
+/* ================= variant A: a timeline tab inside Lists ================= */
+function renderA(s){
+  if (s.screen === 'home') return famShell(s, 'home', null, homeBody(s), sheetFor(s));
+  if (s.screen !== 'lists') return famShell(s, s.screen, null, placeholder(s.screen === 'calendar' ? 'Calendar' : 'Settings'));
+  const seg = '<div class="seg" role="tablist" aria-label="Lists or bought log"><button role="tab" aria-selected="'+(s.seg==='lists')+'" data-a="seg" data-v="lists">'+ic('lists',18)+'Lists</button><button role="tab" aria-selected="'+(s.seg==='bought')+'" data-a="seg" data-v="bought">'+ic('bag',18)+'Bought</button></div>';
+  let body = seg;
+  if (s.seg === 'lists') body += listsFreshness(s) + groceriesCard(s) + targetCard(s);
+  else {
+    body += '<div class="srow"><label class="field">'+ic('search',20)+'<input data-f="q" value="'+esc(s.query)+'" placeholder="Search what was bought" aria-label="Search what was bought">'+(s.query ? '<button class="btn icon" data-a="clearq" aria-label="Clear search">'+ic('x',18)+'</button>' : '')+'</label>'
+      + '<button class="btn fill" data-a="log-open" style="height:52px">'+ic('plus',18)+'Log it</button></div>'
+      + '<p class="note">Shared with the household unless it shows a lock. Groceries ticks land here by themselves.</p>';
+    body += boughtResults(s, 'timeline');
+  }
+  return famShell(s, 'lists', null, body, sheetFor(s));
+}
+function boughtResults(s, style){
+  if (s.down) return downBox('Can\'t reach the bought log right now. This is not an empty log; it just can\'t be read.');
+  const q = s.query.trim();
+  if (q) {
+    const list = search(s, q);
+    if (!list.length) return noMatch(q);
+    if (style === 'answer') return answerCard(s, q, list) + '<ul class="elist">'+list.slice(1).map(e => entryRow(s, e)).join('')+'</ul>';
+    return matchHead(q, list) + '<ul class="elist">'+list.map(e => entryRow(s, e)).join('')+'</ul>';
+  }
+  const all = vis(s);
+  if (style === 'recent') return '<p class="sec-label">Recently bought</p><ul class="elist">'+all.slice(0,5).map(e => entryRow(s, e)).join('')+'</ul>';
+  let out = '', cur = '';
+  all.forEach(e => {
+    const p = pr(e.day), k = p.y+'-'+p.m;
+    if (k !== cur) { if (cur) out += '</ul>'; cur = k; out += '<h3 class="mhead">'+MONL[p.m-1]+' '+p.y+'</h3><ul class="elist">'; }
+    out += entryRow(s, e);
+  });
+  return out + (cur ? '</ul>' : '');
+}
+function sheetFor(s){
+  if (s.sheet === 'log') return sheet(s, 'Log something bought', logForm(s, 'sheet'));
+  if (s.sheet === 'hist') return sheet(s, histTitle(s), histBody(s));
+  return '';
+}
+
+/* ================= variant B: per-item cards with history ================= */
+function groups(s, q){
+  const map = new Map();
+  vis(s).forEach(e => { const k = norm(e.item); if (!map.has(k)) map.set(k, []); map.get(k).push(e); });
+  let arr = [...map.entries()].map(([k, list]) => ({k, list}));
+  if (q && q.trim()) { const qw = words(q); arr = arr.filter(g => qw.every(w => words(g.list[0].item).includes(w))); }
+  return arr.sort((a,b) => byNew(a.list[0], b.list[0]));
+}
+function histTitle(s){ const g = groups(s).find(g => g.k === s.hist); return g ? g.list[0].item : 'History'; }
+function histBody(s){
+  if (s.down) return downBox('Can\'t reach the bought log right now, so this item\'s history can\'t be shown.');
+  const g = groups(s).find(g => g.k === s.hist);
+  if (!g) return '<p class="muted">No record of buying this yet.</p>';
+  const exactIds = new Set(g.list.map(e => e.id));
+  const loose = search(s, g.list[0].item).filter(e => !exactIds.has(e.id));
+  return '<p class="small muted" style="margin:0 0 8px">Logged '+g.list.length+(g.list.length === 1 ? ' time' : ' times')+' under exactly this name.</p>'
+    + '<ul class="elist">'+g.list.map(e => entryRow(s, e)).join('')+'</ul>'
+    + (loose.length ? '<p class="sec-label" style="margin-top:16px">Also mention "'+esc(g.list[0].item.toLowerCase())+'"</p><p class="small muted" style="margin:-2px 4px 8px">Different names, shown as logged. Not counted above.</p><ul class="elist">'+loose.map(e => entryRow(s, e)).join('')+'</ul>' : '')
+    + '<div style="margin-top:14px"><button class="btn tonal full" data-a="log-open" data-v="'+esc(g.list[0].item)+'">'+ic('plus',18)+'Log '+esc(g.list[0].item)+' bought today</button></div>';
+}
+function renderB(s){
+  if (s.screen === 'home') return famShell(s, 'home', null, homeBody(s), sheetFor(s));
+  if (s.screen === 'calendar' || s.screen === 'settings') return famShell(s, s.screen, null, placeholder(s.screen === 'calendar' ? 'Calendar' : 'Settings'));
+  if (s.screen === 'items') {
+    const head = pageHeader('Bought log', 'lists', '<button class="btn fill" data-a="log-open" style="margin-right:6px">'+ic('plus',18)+'Log it</button>');
+    let body = '<label class="field" style="margin:4px 0 4px">'+ic('search',20)+'<input data-f="q" value="'+esc(s.query)+'" placeholder="Find an item" aria-label="Find an item">'+(s.query ? '<button class="btn icon" data-a="clearq" aria-label="Clear search">'+ic('x',18)+'</button>' : '')+'</label>'
+      + '<p class="note">One card per name as it was logged. Open a card for every time it was bought.</p>';
+    if (s.down) body += downBox('Can\'t reach the bought log right now. This is not an empty log; it just can\'t be read.');
+    else {
+      const gs = groups(s, s.query);
+      if (s.query.trim() && !gs.length) body += noMatch(s.query);
+      else {
+        if (s.query.trim()) body += '<p class="reshead">'+gs.length+(gs.length === 1 ? ' item matches' : ' items match')+' "'+esc(s.query.trim())+'", newest first.</p>';
+        body += '<ul class="icards">'+gs.map(g => { const e = g.list[0]; return '<li class="icard"><button data-a="hist" data-v="'+esc(g.k)+'"><span class="nm">'+esc(e.item)+'<span class="cnt">'+g.list.length+(g.list.length === 1 ? ' time' : ' times')+'</span></span>'
+          + '<span class="emeta">Last bought '+fmt(e.day)+' · '+whoHtml(e)+srcChip(e)+'</span>'
+          + (e.store || e.price != null ? '<span class="emeta">'+[e.store ? esc(e.store) : '', priceHtml(e)].filter(Boolean).join(' · ')+'</span>' : '')
+          + (e.owner ? '<span class="emeta">'+privHtml(e)+'</span>' : '') + '</button></li>'; }).join('')+'</ul>';
+      }
+    }
+    return famShell(s, 'lists', head, body, sheetFor(s));
+  }
+  const head = '<header class="ftop"><p class="hh">Win household</p></header>';
+  const body = '<div style="display:flex;align-items:center;justify-content:space-between;margin:2px 0 10px"><h1 class="greet" style="margin:0;font-size:26px">Lists</h1><button class="btn tonal" data-a="go" data-v="items">'+ic('history',18)+'Bought log</button></div>'
+    + listsFreshness(s) + groceriesCard(s, {historyLinks:true}) + targetCard(s);
+  return famShell(s, 'lists', head, body, sheetFor(s));
+}
+
+/* ================= variant C: search first ================= */
+function renderC(s){
+  if (s.screen === 'home') {
+    const pill = '<button class="searchpill" data-a="go" data-v="search">'+ic('search',22)+'When did we last buy...?</button>';
+    return famShell(s, 'home', null, homeBody(s, pill), '');
+  }
+  if (s.screen === 'search') {
+    const head = pageHeader('Bought', 'home');
+    let body = '<label class="field" style="height:56px;margin-top:2px">'+ic('search',22)+'<input data-f="q" value="'+esc(s.query)+'" placeholder="When did we last buy...?" aria-label="When did we last buy">'+(s.query ? '<button class="btn icon" data-a="clearq" aria-label="Clear search">'+ic('x',18)+'</button>' : '')+'</label>';
+    if (!s.query.trim()) body += '<div style="margin:12px 0 4px"><button class="btn tonal full" data-a="log-open">'+ic('pencil',18)+'Log something by hand</button></div>';
+    body += boughtResults(s, s.query.trim() ? 'answer' : 'recent');
+    return famShell(s, 'home', head, body, '');
+  }
+  if (s.screen === 'log') {
+    const head = pageHeader('Log something bought', s.prev || 'search');
+    return famShell(s, 'home', head, logForm(s, 'page'), '');
+  }
+  if (s.screen === 'lists') return famShell(s, 'lists', null, listsFreshness(s) + groceriesCard(s) + targetCard(s), '');
+  return famShell(s, s.screen, null, placeholder(s.screen === 'calendar' ? 'Calendar' : 'Settings'));
+}
+
+/* ================= workbench (variant A at desk width) ================= */
+const RAIL = [['home','Home','house'],['calendar','Calendar','cal'],['lists','Lists','lists'],['money','Money','money'],['pantry','Pantry','pantry'],['body','Body','body'],['fleet','Fleet','car'],['places','Places','pin'],['notes','Notes','notes']];
+function renderDesk(s){
+  const rail = '<aside class="rail"><p class="hh">Win household</p><nav aria-label="Sections" style="display:flex;flex-direction:column;gap:4px">'
+    + RAIL.map(r => '<button class="ritem" data-a="'+(r[0]==='lists'?'nav':'noop')+'" data-v="lists"'+(r[0]==='lists'?' aria-current="page"':'')+'>'+ic(r[2],20)+r[1]+'</button>').join('')
+    + '<hr><button class="ritem" data-a="noop">'+ic('gear',20)+'Settings</button></nav></aside>';
+  const seg = '<div class="seg" role="tablist" aria-label="Lists or bought log" style="width:320px"><button role="tab" aria-selected="'+(s.seg==='lists')+'" data-a="seg" data-v="lists">'+ic('lists',18)+'Lists</button><button role="tab" aria-selected="'+(s.seg==='bought')+'" data-a="seg" data-v="bought">'+ic('bag',18)+'Bought</button></div>';
+  let main = '<h1>Lists</h1>' + seg;
+  if (s.seg === 'lists') main += listsFreshness(s) + '<div class="lgrid">'+groceriesCard(s)+targetCard(s)+'</div>';
+  else {
+    const F = [['all','All'],['tick','Groceries ticks'],['hand','Logged by hand'],['old','Old Groceries ticks']];
+    let left = '<div class="srow" style="max-width:520px"><label class="field">'+ic('search',20)+'<input data-f="q" value="'+esc(s.query)+'" placeholder="Search what was bought" aria-label="Search what was bought">'+(s.query ? '<button class="btn icon" data-a="clearq" aria-label="Clear search">'+ic('x',18)+'</button>' : '')+'</label></div>'
+      + '<div class="fchips" role="group" aria-label="Filter by source">'+F.map(f => '<button class="fchip" aria-pressed="'+(s.filter===f[0])+'" data-a="filter" data-v="'+f[0]+'">'+f[1]+'</button>').join('')+'</div>';
+    if (s.down) left += downBox('Can\'t reach the bought log right now. This is not an empty log; it just can\'t be read.');
+    else {
+      const q = s.query.trim();
+      let list = q ? search(s, q) : vis(s);
+      if (s.filter !== 'all') list = list.filter(e => e.src === s.filter);
+      if (q && !list.length) left += noMatch(q);
+      else {
+        if (q) left += matchHead(q, list);
+        left += '<div style="overflow-x:auto;border-radius:var(--r-card)"><table class="dtable"><thead><tr><th>Bought on</th><th>Item, as logged</th><th>Logged by</th><th>Source</th><th>Store, price</th><th>Who sees it</th></tr></thead><tbody>'
+          + list.map(e => '<tr><td class="num" title="'+wd(e.day)+'">'+fmt(e.day)+'</td><td style="font-weight:500">'+esc(e.item)+(e.note ? '<div class="small muted" style="font-weight:400">'+esc(e.note)+'</div>' : '')+'</td><td>'+(e.who ? esc(e.who) : '<span class="muted">not recorded</span>')+'</td><td>'+srcChip(e)+'</td><td class="num">'+(e.store || e.price != null ? [e.store ? esc(e.store) : '', e.price != null ? money(e.price) : ''].filter(Boolean).join(', ')+(e.price != null ? '<div class="small muted">price entered by hand</div>' : '') : '<span class="muted">-</span>')+'</td><td>'+(e.owner ? '<span class="mark-private strong">'+ic('lock',14)+'Only you</span>' : sharedMark())+'</td></tr>').join('')
+          + '</tbody></table></div><p class="note">Prices are typed by hand. They are never checked against the bank and never counted in Money. Mia\'s private entries are not in this list; yours are marked "Only you".</p>';
+      }
+    }
+    main += '<div class="dgrid"><div>'+left+'</div><div class="card" style="position:sticky;top:0"><h2 style="margin:0 0 10px;font-size:20px;font-weight:500">Log something bought</h2>'+logForm(s, 'panel')+'</div></div>';
+  }
+  return rail + '<main class="dmain">'+main+'</main>' + toastHtml(s);
+}
+
+/* ================= Android (variant C, soft Material dark) ================= */
+function renderDroid(s){
+  const sb = '<div class="sb"><span>9:41</span><span class="sbi">'+'<svg width="15" height="11" viewBox="0 0 15 11" aria-hidden="true"><path d="M7.5 11 0 3.2a10.7 10.7 0 0 1 15 0z" fill="currentColor"/></svg><svg width="10" height="15" viewBox="0 0 10 15" aria-hidden="true"><rect x="0" y="1.5" width="10" height="13.5" rx="2" fill="currentColor"/><rect x="3" y="0" width="4" height="2" rx="1" fill="currentColor"/></svg>'+'<span>82%</span></span></div>';
+  let head, body;
+  if (s.screen === 'lists') {
+    head = pageHeader('Lists', null, '<button class="btn tonal" data-a="go" data-v="search" style="margin-right:8px">'+ic('history',18)+'Bought log</button>');
+    body = (s.down ? '<p class="note" role="status">Lists are on this phone. Last-bought dates come from the engine, which can\'t be reached right now.</p>' : '') + groceriesCard(Object.assign({}, s, {down:s.down})) + targetCard(s);
+  } else if (s.screen === 'log') {
+    head = pageHeader('Log something bought', 'search');
+    body = logForm(s, 'page');
+  } else {
+    head = pageHeader('Bought log', 'lists');
+    body = '<label class="field" style="height:56px;margin-top:2px">'+ic('search',22)+'<input data-f="q" value="'+esc(s.query)+'" placeholder="When did we last buy...?" aria-label="When did we last buy">'+(s.query ? '<button class="btn icon" data-a="clearq" aria-label="Clear search">'+ic('x',18)+'</button>' : '')+'</label>';
+    if (!s.query.trim()) body += '<div style="margin:12px 0 4px"><button class="btn tonal full" data-a="log-open">'+ic('pencil',18)+'Log something by hand</button></div>';
+    body += boughtResults(s, s.query.trim() ? 'answer' : 'recent');
+  }
+  // Lists on the phone are Room-backed and still tick offline; the bought log is engine-only.
+  const strip = '<div class="strip"><button class="talk" data-a="talk">'+ic('mic',20)+'Tap to talk</button></div>';
+  return sb + '<div class="scr">'+head+'<div class="main">'+body+'</div>'+strip+'<div class="gest"><i></i></div>'+toastHtml(s)+'</div>';
+}
+
+/* ================= state + presets ================= */
+function fresh(viewer, extra){
+  return Object.assign({viewer, screen:'lists', seg:'lists', query:'', sheet:null, hist:null, open:null, form:blankForm(), formErr:null,
+    down:false, toast:null, filter:'all', addText:'', prev:null,
+    entries: BASE.map(e => Object.assign({}, e)), groc: GROC.map(x => Object.assign({}, x)), target: TARGET.map(x => Object.assign({}, x)), ticks:{}, tticks:{}}, extra||{});
+}
+const MOCKS = [
+  {id:'A', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'A. A Bought tab inside Lists',
+   desc:'Lists gets two tabs: Lists and Bought. Bought is a timeline by month with a search box and a "Log it" button that opens a sheet. Nothing new on Home or the tab bar.',
+   render:renderA, formMode:'sheet',
+   presets:{
+     'Lists': s => { s.screen='lists'; s.seg='lists'; },
+     'Bought tab': s => { s.screen='lists'; s.seg='bought'; },
+     'Search "shampoo"': s => { s.screen='lists'; s.seg='bought'; s.query='shampoo'; },
+     'No match': s => { s.screen='lists'; s.seg='bought'; s.query='conditioner'; },
+     'Log it': s => { s.screen='lists'; s.seg='bought'; s.sheet='log'; },
+     'Private entry': s => { s.screen='lists'; s.seg='bought'; s.sheet='log'; s.form = Object.assign(blankForm('Contact lens solution'), {store:'Target', price:'9.49', priv:true}); },
+     'Engine down': s => { s.screen='lists'; s.seg='bought'; s.down=true; }
+   }},
+  {id:'B', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'B. Per-item cards with history',
+   desc:'Organised around the thing, not the date. Each Groceries line\'s "last bought" opens that item\'s history; a Bought log button on Lists shows one card per item name.',
+   render:renderB, formMode:'sheet',
+   presets:{
+     'Lists': s => { s.screen='lists'; },
+     'Item history': s => { s.screen='lists'; s.sheet='hist'; s.hist='shampoo'; },
+     'All items': s => { s.screen='items'; },
+     'Search "shampoo"': s => { s.screen='items'; s.query='shampoo'; },
+     'No match': s => { s.screen='items'; s.query='conditioner'; },
+     'Log it': s => { s.screen='items'; s.sheet='log'; },
+     'Private entry': s => { s.screen='items'; s.sheet='log'; s.form = Object.assign(blankForm('Contact lens solution'), {store:'Target', price:'9.49', priv:true}); },
+     'Engine down': s => { s.screen='items'; s.down=true; }
+   }},
+  {id:'C', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'C. Search first, from Home',
+   desc:'Home gets one search pill: "When did we last buy...?" It opens a search screen that answers with the latest match in a sentence, lists the rest, and logs by hand on its own page.',
+   render:renderC, formMode:'page',
+   presets:{
+     'Home': s => { s.screen='home'; },
+     'Search': s => { s.screen='search'; },
+     'Search "shampoo"': s => { s.screen='search'; s.query='shampoo'; },
+     'No match': s => { s.screen='search'; s.query='conditioner'; },
+     'Log it': s => { s.screen='log'; s.prev='search'; },
+     'Private entry': s => { s.screen='log'; s.prev='search'; s.form = Object.assign(blankForm('Contact lens solution'), {store:'Target', price:'9.49', priv:true}); },
+     'Lists': s => { s.screen='lists'; },
+     'Engine down': s => { s.screen='search'; s.down=true; }
+   }},
+  {id:'D', row:'row-desk', frame:'desk t-web', viewer:'Kevin', name:'Workbench: variant A at 1280 px (Kevin)', wide:true,
+   desc:'Lists | Bought tabs as on the phone. At this width the timeline is a table with a source filter, and the "Log it" form stays open on the right. Kevin sees his private razor blades entry and not Mia\'s contact lens solution.',
+   render:renderDesk, formMode:'panel',
+   presets:{
+     'Bought log': s => { s.seg='bought'; },
+     'Search "shampoo"': s => { s.seg='bought'; s.query='shampoo'; },
+     'No match': s => { s.seg='bought'; s.query='conditioner'; },
+     'Private entry': s => { s.seg='bought'; s.form = Object.assign(blankForm('Vitamin D'), {store:'HEB', price:'11.49', note:'90 count', priv:true}); },
+     'Lists': s => { s.seg='lists'; },
+     'Engine down': s => { s.seg='bought'; s.down=true; }
+   }},
+  {id:'E', row:'row-droid', frame:'droid t-droid', viewer:'Kevin', name:'Android: variant C at 384 dp (Kevin)',
+   desc:'A Bought log screen reached from Lists, search first, above the push-to-talk strip. The same latest-match sentence the voice answer gives.',
+   render:renderDroid, formMode:'page',
+   presets:{
+     'Bought log': s => { s.screen='search'; },
+     'Search "shampoo"': s => { s.screen='search'; s.query='shampoo'; },
+     'No match': s => { s.screen='search'; s.query='conditioner'; },
+     'Log it': s => { s.screen='log'; },
+     'Private entry': s => { s.screen='log'; s.form = Object.assign(blankForm('Vitamin D'), {store:'HEB', price:'11.49', priv:true}); },
+     'Lists': s => { s.screen='lists'; },
+     'Engine down': s => { s.screen='search'; s.down=true; }
+   }}
+];
+
+/* ================= mount + events ================= */
+MOCKS.forEach(m => {
+  const col = document.createElement('div');
+  col.className = 'col' + (m.wide ? ' wide' : '');
+  col.innerHTML = '<div class="vname">'+esc(m.name)+'</div><p class="vdesc">'+esc(m.desc)+'</p>'
+    + '<div class="chips" role="group" aria-label="Jump to a state in '+esc(m.name)+'">'+Object.keys(m.presets).map(k => '<button data-p="'+esc(k)+'">'+esc(k)+'</button>').join('')+'</div>'
+    + '<div class="'+m.frame+'" id="f-'+m.id+'"></div>';
+  document.getElementById(m.row).appendChild(col);
+  m.col = col; m.el = col.querySelector('#f-'+m.id);
+  const first = Object.keys(m.presets)[0];
+  applyPreset(m, first);
+  col.querySelector('.chips').addEventListener('click', e => { const b = e.target.closest('button[data-p]'); if (b) applyPreset(m, b.dataset.p); });
+  m.el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) { e.preventDefault(); act(m, b.dataset.a, b.dataset.v); } });
+  m.el.addEventListener('input', e => {
+    const f = e.target.dataset.f; if (!f) return;
+    if (f === 'q') { m.s.query = e.target.value; m.s.open = null; clearPreset(m); render(m); }
+    else if (f === 'add') m.s.addText = e.target.value;
+    else { m.s.form[f] = e.target.value; }
+  });
+  m.el.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.dataset.f === 'add') { e.preventDefault(); act(m, 'add'); }
+    if (e.key === 'Escape' && m.s.sheet) act(m, 'close');
+  });
+});
+function applyPreset(m, k){
+  m.s = fresh(m.viewer); m.s.uid = 'u'+m.id; m.presets[k](m.s); m.preset = k; render(m);
+  m.col.querySelectorAll('.chips button').forEach(b => b.classList.toggle('on', b.dataset.p === k));
+}
+function clearPreset(m){ m.preset = null; m.col.querySelectorAll('.chips button').forEach(b => b.classList.remove('on')); }
+function render(m){
+  const a = document.activeElement;
+  const keep = a && m.el.contains(a) && a.dataset && a.dataset.f ? {f:a.dataset.f, pos:a.selectionStart} : null;
+  const scroller = m.el.querySelector('.main, .dmain'); const top = scroller ? scroller.scrollTop : 0;
+  m.el.innerHTML = m.render(m.s);
+  const sc = m.el.querySelector('.main, .dmain'); if (sc) sc.scrollTop = top;
+  if (keep) { const n = m.el.querySelector('[data-f="'+keep.f+'"]'); if (n) { n.focus(); try { n.setSelectionRange(keep.pos, keep.pos); } catch (err) {} } }
+}
+function toast(m, text, err){
+  const t = {text, err:!!err}; m.s.toast = t; render(m);
+  setTimeout(() => { if (m.s.toast === t) { m.s.toast = null; render(m); } }, 3600);
+}
+function openForm(m, item){
+  const s = m.s; s.form = blankForm(item || ''); s.formErr = null;
+  if (m.formMode === 'sheet') s.sheet = 'log';
+  else if (m.formMode === 'page') { s.prev = s.screen === 'log' ? s.prev : s.screen; s.screen = 'log'; }
+}
+function closeForm(m){
+  const s = m.s;
+  if (m.formMode === 'sheet') s.sheet = null;
+  else if (m.formMode === 'page') s.screen = s.prev && s.prev !== 'log' ? s.prev : 'search';
+  else s.form = blankForm();
+}
+function act(m, a, v){
+  const s = m.s; clearPreset(m);
+  switch (a) {
+    case 'nav': s.screen = v; s.sheet = null; if (m.id === 'D') s.seg = 'lists'; break;
+    case 'go': s.screen = v; s.sheet = null; s.open = null; break;
+    case 'seg': s.seg = v; s.open = null; break;
+    case 'clearq': s.query = ''; break;
+    case 'expand': s.open = s.open === v ? null : v; break;
+    case 'hist': s.hist = v; s.sheet = 'hist'; s.open = null; break;
+    case 'close': s.sheet = null; break;
+    case 'cancel': closeForm(m); break;
+    case 'log-open': openForm(m, v); break;
+    case 'priv': s.form.priv = !s.form.priv; break;
+    case 'filter': s.filter = v; break;
+    case 'noop': toast(m, 'Only Lists is drawn in this prototype.'); return;
+    case 'talk': toast(m, 'Push-to-talk is the existing strip. Ask "when did we last buy shampoo?" and it answers with the same sentence as this screen.'); return;
+    case 'save': {
+      const f = s.form;
+      if (!f.item.trim()) { s.formErr = 'item'; break; }
+      let cents = null;
+      if (f.price.trim()) { const n = Number(f.price.replace(/[$,]/g,'')); if (!isFinite(n) || n < 0) { s.formErr = 'price'; break; } cents = Math.round(n * 100); }
+      if (s.down) { s.formErr = 'down'; break; }
+      const day = f.day || TODAY;
+      s.entries.push({id:'n'+Date.now(), item:f.item.trim(), day, who:s.viewer, src:'hand', store:f.store.trim() || null, price:cents, note:f.note.trim() || null, owner:f.priv ? s.viewer : null, at:'Oct 4, 2:14 PM'});
+      const label = f.item.trim();
+      closeForm(m); s.formErr = null; s.query = '';
+      if (m.id === 'A' || m.id === 'D') s.seg = 'bought';
+      if (m.id === 'B') { s.screen = 'items'; s.sheet = null; }
+      if (m.id === 'C' || m.id === 'E') s.screen = 'search';
+      toast(m, 'Logged '+label+' as bought '+fmtDay(day)+(f.priv ? '. Only you can see it.' : '.'));
+      return;
+    }
+    case 'del': {
+      if (s.down) { toast(m, 'Can\'t reach the bought log right now. Nothing was deleted.', true); return; }
+      const e = s.entries.find(x => x.id === v); if (e) e.gone = true; s.open = null;
+      toast(m, 'Deleted '+e.item+', '+fmt(e.day)+'. It is no longer in the bought log.'); return;
+    }
+    case 'tick': {
+      const item = s.groc.find(i => i.id === v);
+      const engineOnly = m.id !== 'E'; // the phone ticks into Room; only the bought entry needs the engine
+      if (s.down && engineOnly) { toast(m, 'Can\'t reach the engine. '+item.text+' was not ticked and nothing was logged.', true); return; }
+      if (s.ticks[v]) {
+        const e = s.entries.find(x => x.id === s.ticks[v]); if (e) e.gone = true; delete s.ticks[v];
+        toast(m, s.down ? 'Unticked on this phone. The bought entry from today will be removed when the engine is back.' : 'Unticked. Today\'s bought entry for '+item.text+' was removed.'); return;
+      }
+      const id = 't'+Date.now();
+      s.entries.push({id, item:item.text, day:TODAY, who:s.viewer, src:'tick', at:'Oct 4, 2:14 PM'});
+      s.ticks[v] = id;
+      toast(m, s.down ? 'Ticked on this phone. Not logged as bought yet: the engine can\'t be reached, and it will log it when it is back.' : 'Ticked. Logged '+item.text+' as bought today, by '+s.viewer+'.'); return;
+    }
+    case 'ttick': {
+      const item = s.target.find(i => i.id === v);
+      if (s.down && m.id !== 'E') { toast(m, 'Can\'t reach the engine. '+item.text+' was not ticked.', true); return; }
+      s.tticks[v] = !s.tticks[v];
+      if (s.tticks[v]) { toast(m, 'Ticked '+item.text+'. Not logged as bought: only Groceries ticks are.'); return; }
+      break;
+    }
+    case 'add': {
+      const t = s.addText.trim(); if (!t) break;
+      if (s.down && m.id !== 'E') { toast(m, 'Can\'t reach the engine. '+t+' was not added.', true); return; }
+      s.groc.push({id:'g'+Date.now(), text:t}); s.addText = ''; break;
+    }
+  }
+  render(m);
+}
+</script>
+</body>
+</html>

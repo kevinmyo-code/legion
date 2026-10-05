@@ -7,7 +7,7 @@ status: built
 status-detail: "Built, suite green; owes a run on the phone (log by voice and by hand, ask, Groceries tick then same-day untick, server down)"
 blockers: ["04", "05", "06"]
 blocked-by: ["[[04-the-phones-half]]", "[[05-where-it-lives-on-screen]]", "[[06-server]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

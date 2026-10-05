@@ -133,9 +133,18 @@ class LiveSessionController(context: Context) {
     // What to do once the socket finishes connecting (the setup handshake is
     // async). A warm/prewarmed socket is already connected, so these only matter
     // for a cold connect.
-    private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM }
+    private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM, TYPED }
     private var pendingAction = Pending.NONE
     private var pendingPrompt: String? = null
+
+    // Pending.TYPED only: live context to put in FRONT of the typed text on the wire, kept apart
+    // from [pendingPrompt] (the raw typed text) so the stored driver line never carries it.
+    private var pendingTypedContext: String? = null
+
+    // True from a typed message being sent until its turn completes (or voice takes over, or the
+    // socket closes). Read by the tool-call phase restore (a typed turn is still THINKING when its
+    // tool returns, not idle) and by [onTap] (push-to-talk over a typed reply).
+    private var typedTurnPending = false
 
     // True while a hands-free conversation (server VAD) is running, vs. a
     // speak-only proactive session. Drives whether a completed turn returns to
@@ -350,6 +359,12 @@ class LiveSessionController(context: Context) {
         if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
         if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
 
+        // Push-to-talk over a typed reply still arriving: voice wins (TypedTurnPolicy's rules).
+        // GeminiLiveSession.beginConversation ends the playback mute; this is the panel's half.
+        if (typedTurnPending) {
+            typedTurnPending = false
+            AssistantChatStore.update { it.voiceTookOver() }
+        }
         if (s != null && s.isWarm()) {
             resumeWarm(s, fromWakeWord)
             return
@@ -366,6 +381,155 @@ class LiveSessionController(context: Context) {
             session = null
         }
         startConversation(fromWakeWord)
+    }
+
+    /**
+     * A TYPED message from the assistant strip (web-assistant tickets 06 and 09). It goes into the
+     * same Live session as a text turn, so the tools, the honesty clause and what memory keeps are
+     * identical to voice; the reply is muted and shown as text. What happens for each state the
+     * session can be in - including every overlap with push-to-talk - is decided by the pure
+     * [TypedTurnPolicy]; this function only maps the session onto its [TypedTurnPolicy.Shape] and
+     * carries the decision out.
+     *
+     * **There is deliberately no microphone check here.** Typing works with RECORD_AUDIO revoked,
+     * on a phone that is not allowed to listen, and a session opened for it never opens the mic.
+     * Every message that is not sent says so in the panel, in words ([AssistantChatStore]).
+     */
+    fun onTyped(text: String) {
+        // A typed message is a genuine signal for [shouldAutoReconnectAfterClose], like a tap.
+        lastRealInteractionMs = System.currentTimeMillis()
+        val typed = text.trim()
+        val s = session
+        val decision = TypedTurnPolicy.decide(
+            hasText = typed.isNotEmpty(),
+            hasKey = GeminiKeyProvider.hasKey(),
+            online = isOnline(),
+            shape = typedShape(s),
+            assistantSpeaking = _phase.value == Phase.SPEAKING,
+        )
+        when (decision) {
+            TypedTurnPolicy.Decision.Ignore -> Unit
+            is TypedTurnPolicy.Decision.Refuse -> AssistantChatStore.update { it.notSent(typed, decision.reason.words) }
+            TypedTurnPolicy.Decision.OpenSession -> startTypedSession(typed)
+            TypedTurnPolicy.Decision.ReplaceAndOpen -> {
+                s?.silentDestroy()
+                session = null
+                startTypedSession(typed)
+            }
+            TypedTurnPolicy.Decision.QueueUntilConnected -> {
+                pendingAction = Pending.TYPED
+                pendingPrompt = typed
+                pendingTypedContext = null
+                markTypedSent(typed)
+            }
+            is TypedTurnPolicy.Decision.SendOnWarm ->
+                if (s != null) sendTypedNow(s, typed, micClosed = true, interrupts = decision.interrupts)
+            is TypedTurnPolicy.Decision.SendInConversation ->
+                if (s != null) sendTypedNow(s, typed, micClosed = false, interrupts = decision.interrupts)
+        }
+    }
+
+    /** "New conversation": clears the panel and ends the session so the model's context is fresh too. */
+    fun newConversation() {
+        AssistantChatStore.clear()
+        typedTurnPending = false
+        sessionResumeHandle = null
+        pendingThreadLossNotice = false
+        // A fresh socket for a fresh conversation. silentDestroy skips Closed, so the controller
+        // state a Closed would reset is reset here; prewarm() brings the idle socket back.
+        if (session != null && !destroyed) {
+            session?.silentDestroy()
+            session = null
+            pendingAction = Pending.NONE
+            pendingPrompt = null
+            conversationMode = false
+            connectedThisSession = false
+            set(Phase.IDLE, IDLE_STATUS)
+            prewarm()
+        }
+    }
+
+    private fun typedShape(s: GeminiLiveSession?): TypedTurnPolicy.Shape = when {
+        s == null -> TypedTurnPolicy.Shape.NO_SESSION
+        activeToolCalls > 0 -> TypedTurnPolicy.Shape.TOOL_RUNNING
+        s.inConversation -> TypedTurnPolicy.Shape.IN_CONVERSATION
+        s.isWarm() -> TypedTurnPolicy.Shape.WARM
+        pendingAction != Pending.NONE -> TypedTurnPolicy.Shape.CONNECTING_BUSY
+        !connectedThisSession -> TypedTurnPolicy.Shape.CONNECTING_IDLE
+        else -> TypedTurnPolicy.Shape.PROACTIVE_LINE
+    }
+
+    /** Records a typed message as sent and shows the assistant working on it. */
+    private fun markTypedSent(typed: String) {
+        typedTurnPending = true
+        AssistantChatStore.update { it.typedSent(typed) }
+        set(Phase.THINKING, "...")
+    }
+
+    private fun sendTypedNow(s: GeminiLiveSession, typed: String, micClosed: Boolean, interrupts: Boolean) {
+        when (s.sendTypedTurn(typed, micClosed = micClosed)) {
+            TypedSendResult.SENT -> {
+                // Said after the send landed, so a socket that was already gone never claims a line
+                // about speech it stopped. "Stopped speaking" only when speech was playing.
+                if (interrupts) AssistantChatStore.update { it.interruptedByTyping() }
+                markTypedSent(typed)
+            }
+            // The crisis card (CompanionPhase.crisis) is the whole response; the message was not
+            // sent to the model and is not recorded as a sent message.
+            TypedSendResult.CRISIS -> Unit
+            TypedSendResult.SOCKET_GONE ->
+                AssistantChatStore.update { it.notSent(typed, TypedTurnPolicy.Refusal.SOCKET_GONE.words) }
+        }
+    }
+
+    /**
+     * No session to type into: connect one with the mic CLOSED (`vad = true, keepWarm = true` as
+     * [startConversation], but nothing here ever calls beginConversation, so no capture starts) and
+     * send on connect. The first turn on the socket carries the same live context a greeting does.
+     */
+    private fun startTypedSession(typed: String) {
+        val s = newSession()
+        session = s
+        pendingAction = Pending.TYPED
+        pendingPrompt = typed
+        pendingTypedContext = null
+        conversationMode = false
+        connectedThisSession = false
+        coldRetry = null
+        typedTurnPending = true
+        AssistantChatStore.update { it.typedSent(typed) }
+        set(Phase.CONNECTING, "Connecting...")
+        scope.launch {
+            val connectionMode = resolveLiveConnectionMode()
+            if (connectionMode == null) {
+                s.silentDestroy(); session = null
+                pendingAction = Pending.NONE; pendingPrompt = null
+                typedTurnPending = false
+                set(Phase.IDLE, IDLE_STATUS)
+                AssistantChatStore.update { it.notSent("", TypedTurnPolicy.Refusal.NO_KEY.words, clearPending = true) }
+                return@launch
+            }
+            val base = brain.buildBaseInstruction()
+            val live = brain.buildLiveContext()
+            pendingTypedContext = live.takeIf { it.isNotBlank() }
+            s.start(
+                base, LiveToolbox.declarations(),
+                vad = true, voiceName = CompanionProfile.voice(appContext),
+                keepWarm = true, connectionMode = connectionMode,
+                resumeHandle = sessionResumeHandle,
+            )
+        }
+    }
+
+    /** What the model receives for a queued typed turn: live context first on a cold socket, else the text alone. */
+    private fun typedWireText(typed: String): String =
+        pendingTypedContext?.let { "(Current context, use naturally if relevant:\n$it)\n\n$typed" } ?: typed
+
+    /** A typed message that had been shown as sent could not go out at connect. */
+    private fun failQueuedTyped(reason: TypedTurnPolicy.Refusal) {
+        typedTurnPending = false
+        set(Phase.IDLE, IDLE_STATUS)
+        AssistantChatStore.update { it.notSent("", reason.words, clearPending = true) }
     }
 
     /**
@@ -775,6 +939,26 @@ class LiveSessionController(context: Context) {
         }
     }
 
+    /**
+     * The panel's half of a socket closing. A typed message still queued for a socket that never
+     * connected says it was NOT sent, with the reason Gemini gave when there is one; any other
+     * close marks the panel's conversation ended (what was said stays readable).
+     */
+    private fun closeOutTypedChat(event: LiveEvent.Closed) {
+        val neverConnected = pendingAction == Pending.TYPED && !connectedThisSession
+        typedTurnPending = false
+        if (neverConnected) {
+            val reason = when (event.reason) {
+                "key rejected" -> "Not sent: Gemini rejected the key. Check it in Setup."
+                "quota" -> "Not sent: Gemini quota or rate limit reached. See Setup."
+                else -> TypedTurnPolicy.Refusal.COULD_NOT_CONNECT.words
+            }
+            AssistantChatStore.update { it.notSent("", reason, clearPending = true) }
+        } else {
+            AssistantChatStore.update { it.sessionEnded() }
+        }
+    }
+
     private fun handleEvent(event: LiveEvent) {
         when (event) {
             is LiveEvent.Connected -> {
@@ -802,10 +986,24 @@ class LiveSessionController(context: Context) {
                         pendingPrompt?.let { session?.speakOnWarm(it) }
                         set(Phase.IDLE, IDLE_STATUS)
                     }
+                    Pending.TYPED -> {
+                        val typed = pendingPrompt
+                        val sent = typed?.let {
+                            session?.sendTypedTurn(it, typedWireText(it), micClosed = true)
+                        }
+                        when (sent) {
+                            TypedSendResult.SENT, TypedSendResult.CRISIS -> Unit
+                            else -> failQueuedTyped(TypedTurnPolicy.Refusal.SOCKET_GONE)
+                        }
+                        // Already marked THINKING/CONNECTING by the queueing call; a crisis is
+                        // handled by its own event, which resets the phase.
+                        if (sent == TypedSendResult.SENT) set(Phase.THINKING, "...")
+                    }
                     Pending.NONE -> set(Phase.IDLE, IDLE_STATUS) // warm, ready to tap
                 }
                 pendingAction = Pending.NONE
                 pendingPrompt = null
+                pendingTypedContext = null
             }
             // Ticket 17: the 8 s follow-up window lapsed. A Closed("stopped") follows at once, which
             // raises no error notice and drops the resume handle; this is the part the person sees
@@ -837,6 +1035,10 @@ class LiveSessionController(context: Context) {
                 // should start clean, not carry the interrupted turn's context forward.
                 sessionResumeHandle = null
                 pendingThreadLossNotice = false
+                // The panel keeps what was said (the person can still read it) but is marked ended
+                // and any half-arrived typed reply is closed out; the crisis card is the response.
+                typedTurnPending = false
+                AssistantChatStore.update { it.sessionEnded() }
                 CompanionPhase.setCaption("")
                 CompanionPhase.setCrisis()
                 set(Phase.IDLE, IDLE_STATUS)
@@ -943,8 +1145,14 @@ class LiveSessionController(context: Context) {
                 // a tail by captionTail, so this event is right for a caption and wrong for a
                 // record. GeminiLiveSession.auditSpokenTurn writes the whole line at turn end.
             }
+            is LiveEvent.TypedReplyProgress -> AssistantChatStore.update { it.typedReplyProgress(event.text) }
+            is LiveEvent.TurnTranscript -> {
+                if (event.typed) typedTurnPending = false
+                AssistantChatStore.update { it.turnComplete(event.heard, event.said, event.typed) }
+            }
             is LiveEvent.ToolCall -> handleToolCall(event)
             is LiveEvent.Closed -> {
+                closeOutTypedChat(event)
                 val userInitiated = conversationMode
                 val everConnected = connectedThisSession
                 // Ticket 02: a real conversation just ended for a reason the driver did not
@@ -1034,6 +1242,7 @@ class LiveSessionController(context: Context) {
                 session = null
                 pendingAction = Pending.NONE
                 pendingPrompt = null
+                pendingTypedContext = null
                 pendingSpeakUserInitiated = false
                 conversationMode = false
                 connectedThisSession = false
@@ -1402,6 +1611,14 @@ class LiveSessionController(context: Context) {
                 } catch (e: Exception) {
                     JSONObject().put("success", false).put("message", "Something went wrong running that.")
                 }
+                // The panel's tool line: only for a tool that came back with an explicit `success`
+                // (see [ChatTranscript.tool]) - a result that says nothing about success gets no
+                // line rather than a "done" nobody checked. Failure detail is the tool's own words.
+                if (response.has("success")) {
+                    val ok = response.optBoolean("success", false)
+                    val detail = if (ok) null else response.optString("message").takeIf { it.isNotBlank() }
+                    AssistantChatStore.update { it.tool(call.name, ok, detail) }
+                }
                 // Ticket 23 (hands-and-senses, "an audit trail of every conversation and every
                 // tool call"): every tool call gets its own [ConversationAudit] row - name,
                 // arguments, and the result that actually came back, tagged with THIS turn's
@@ -1480,7 +1697,10 @@ class LiveSessionController(context: Context) {
                 // restore here would stomp a state a raced event already set.
                 activeToolCalls--
                 if (shouldRestoreAfterToolCall(activeToolCalls, _phase.value)) {
-                    if (conversationMode) {
+                    if (typedTurnPending) {
+                        // A typed turn's reply is still being written: not idle, not listening.
+                        set(Phase.THINKING, "...")
+                    } else if (conversationMode) {
                         set(Phase.LISTENING, "Listening...")
                     } else {
                         set(Phase.IDLE, IDLE_STATUS)

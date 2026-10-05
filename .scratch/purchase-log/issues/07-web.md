@@ -7,7 +7,7 @@ status: built
 status-detail: "Web built, Vitest 535 passed and Playwright 19 passed; owes a run on Mia's iPhone and the deploy"
 blockers: ["05", "06"]
 blocked-by: ["[[05-where-it-lives-on-screen]]", "[[06-server]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

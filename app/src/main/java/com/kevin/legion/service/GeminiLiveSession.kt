@@ -99,6 +99,19 @@ sealed interface LiveEvent {
     /** Live transcript of what Zero is saying this turn (debug subtitle), accumulated. */
     data class Subtitle(val text: String) : LiveEvent
     /**
+     * A TYPED turn's reply so far: the full accumulated output transcription (not the caption
+     * tail), emitted instead of [Subtitle] while a typed turn is in flight so the assistant panel
+     * can show the reply as it arrives without the strip's caption repeating it.
+     */
+    data class TypedReplyProgress(val text: String) : LiveEvent
+    /**
+     * A finished turn's full text, emitted immediately BEFORE [TurnComplete]. [heard] is what the
+     * person said (transcribed) or typed; [said] is the assistant's whole reply from output
+     * transcription; [typed] is true when the turn was typed and its reply was muted. Feeds the
+     * assistant panel only - persistence is unchanged and happens in the session itself.
+     */
+    data class TurnTranscript(val heard: String, val said: String, val typed: Boolean) : LiveEvent
+    /**
      * [CrisisDetector] matched the driver's transcript (CLAUDE.md sec 9.1). Queued
      * model audio has already been flushed. The owner must surface real crisis
      * resources plainly and OUT of character - never route this back through Zero's
@@ -185,6 +198,9 @@ sealed class ConnectionMode {
     data class Direct(val rawKey: String) : ConnectionMode()
 }
 
+/** What [GeminiLiveSession.sendTypedTurn] did with a typed message. */
+enum class TypedSendResult { SENT, SOCKET_GONE, CRISIS }
+
 class GeminiLiveSession(
     context: Context,
     private val onEvent: (LiveEvent) -> Unit,
@@ -256,6 +272,17 @@ class GeminiLiveSession(
     // Set when a proactive line is spoken on a warm socket, so the opener/alert is
     // voiced without turning into a listening conversation.
     @Volatile private var suppressMicNextTurn = false
+
+    // True from [sendTypedTurn] until that turn's turnComplete (or until the person SPEAKS, or
+    // [beginConversation] takes over). While set, model audio for the turn is dropped instead of
+    // played - a typed turn's reply is shown, not spoken (web-assistant ticket 06) - and the reply
+    // transcript goes out as [LiveEvent.TypedReplyProgress] instead of a caption.
+    //
+    // Cleared on inputTranscription text because a spoken word means the turn has become a voice
+    // one and the person wants to HEAR the answer. Known edge, said plainly: on a still-open mic
+    // (typing during a voice conversation) ambient speech that the server transcribes un-mutes the
+    // reply, which is the safe direction to be wrong in - it speaks rather than going silent.
+    @Volatile private var typedTurnInFlight = false
 
     private var micJob: Job? = null
     private var idleJob: Job? = null
@@ -662,6 +689,9 @@ class GeminiLiveSession(
         if (!running.get() || closed.get() || webSocket == null) return false
         warmHoldJob?.cancel()
         warm.set(false)
+        // Push-to-talk wins over a typed turn still in flight: the person who starts talking wants
+        // to hear the answer, so the mute ends here (see [typedTurnInFlight]).
+        typedTurnInFlight = false
         // A tap can land while Zero is still finishing a proactive line (or
         // the tail of a prior turn) - openMicForUser() below would otherwise
         // open the mic on top of his own still-playing audio, since half-
@@ -783,6 +813,68 @@ class GeminiLiveSession(
             put("turnComplete", true)
         })
         return webSocket?.send(msg.toString()) ?: false
+    }
+
+    /**
+     * Sends a TYPED user turn into this session (web-assistant ticket 06/09). The text goes out as
+     * the same `clientContent` text turn [sendText] uses, so tools, the honesty clause and memory
+     * behave exactly as for voice; what differs is that the reply is muted ([typedTurnInFlight]) and
+     * shown as text.
+     *
+     * [text] is what the person typed and is what gets recorded as the turn's driver line (so
+     * episodic memory and the audit trail see it the way they see a voice transcript, mail
+     * exclusion included). [wireText] is what the model receives - [text] unless the caller adds
+     * context in front of it, which must not end up in the stored line.
+     *
+     * [micClosed] true is the warm / fresh socket case: the turn parks the socket warm afterwards
+     * instead of opening the mic ([suppressMicNextTurn], as [speakOnWarm]). False is a running voice
+     * conversation: the mic's own state is left alone.
+     *
+     * A crisis phrase is checked BEFORE anything is sent ([CrisisDetector], CLAUDE.md sec 9.1): it
+     * raises [LiveEvent.CrisisDetected] and the typed text never reaches the model, so the character
+     * is not asked to answer it ([TypedSendResult.CRISIS]: handled, not dropped, and not to be
+     * recorded as a sent message).
+     *
+     * @return [TypedSendResult.SOCKET_GONE] if the socket is gone, so the caller can say the message
+     * was NOT sent.
+     */
+    fun sendTypedTurn(text: String, wireText: String = text, micClosed: Boolean): TypedSendResult = when {
+        !running.get() || closed.get() || webSocket == null -> TypedSendResult.SOCKET_GONE
+        CrisisDetector.detect(text) -> {
+            Log.w(TAG, "Crisis phrase detected in typed text - not sending, notifying owner")
+            flushAudio()
+            speakingThisTurn = false
+            emit(LiveEvent.CrisisDetected)
+            TypedSendResult.CRISIS
+        }
+        else -> dispatchTypedTurn(text, wireText, micClosed)
+    }
+
+    /** The send half of [sendTypedTurn], split out so each stays inside detekt's return-count rule. */
+    private fun dispatchTypedTurn(text: String, wireText: String, micClosed: Boolean): TypedSendResult {
+        warmHoldJob?.cancel()
+        idleJob?.cancel()
+        // Typing over the assistant's speech stops it, same as speaking over it.
+        if (speakingThisTurn) {
+            flushAudio()
+            speakingThisTurn = false
+        }
+        userTurnText.setLength(0)
+        userTurnText.append(text)
+        companionTurnText.setLength(0)
+        if (micClosed) {
+            suppressMicNextTurn = true
+            ConversationState.setBusy(true)
+            MicArbiter.request(micClaimant, micPreemptionListener)
+        }
+        typedTurnInFlight = true
+        val sent = sendText(wireText)
+        if (!sent) {
+            typedTurnInFlight = false
+            userTurnText.setLength(0)
+            if (micClosed) parkWarm()
+        }
+        return if (sent) TypedSendResult.SENT else TypedSendResult.SOCKET_GONE
     }
 
     /**
@@ -1362,6 +1454,8 @@ class GeminiLiveSession(
     private fun handleServerContent(content: JSONObject) {
         content.optJSONObject("inputTranscription")?.optString("text")?.let {
             if (it.isNotEmpty()) {
+                // Speech means a voice turn now: stop muting (see [typedTurnInFlight]).
+                typedTurnInFlight = false
                 idleJob?.cancel() // driver is talking - cancel any pending auto-close
                 // Ticket 17: also drops the follow-up window's state. This is the earliest
                 // "user started speaking" signal the Live API gives this client: the first
@@ -1385,7 +1479,11 @@ class GeminiLiveSession(
             content.optJSONObject("outputTranscription")?.optString("text")?.let {
                 if (it.isNotEmpty()) {
                     companionTurnText.append(it)
-                    emit(LiveEvent.Subtitle(captionTail(companionTurnText)))
+                    if (typedTurnInFlight) {
+                        emit(LiveEvent.TypedReplyProgress(companionTurnText.toString()))
+                    } else {
+                        emit(LiveEvent.Subtitle(captionTail(companionTurnText)))
+                    }
                 }
             }
         }
@@ -1402,7 +1500,11 @@ class GeminiLiveSession(
             for (i in 0 until parts.length()) {
                 val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data")
                 if (!data.isNullOrEmpty()) {
-                    if (myTurnGeneration != turnGeneration.get()) {
+                    // `|| typedTurnInFlight` is web-assistant ticket 09's: a typed turn's reply is
+                    // shown, not spoken, so its audio is dropped HERE - before it can flip
+                    // speakingThisTurn, mute the mic half-duplex, duck music or reach the track. It
+                    // shares this branch only to keep the loop to one `continue`.
+                    if (myTurnGeneration != turnGeneration.get() || typedTurnInFlight) {
                         // Superseded: a barge-in/interrupt/crisis flush landed between this
                         // message being sent by the server and being processed here. Drop
                         // the chunk outright - do not flip speakingThisTurn or capturing
@@ -1451,6 +1553,7 @@ class GeminiLiveSession(
             // computing it three times from a StringBuilder that is cleared a few lines later is
             // how one of them would eventually get the wrong value.
             val said = companionTurnText.toString().trim()
+            val wasTyped = typedTurnInFlight
             Log.d(TAG, "Turn transcript: \"$heard\" (forwarded $bytesThisTurn bytes)")
             // Also a Crashlytics breadcrumb: logcat is blocked on the head unit
             // (§14), so a logcat-only diagnostic is invisible in the one place
@@ -1461,7 +1564,9 @@ class GeminiLiveSession(
             // onboarding line) but almost nothing was forwarded - a plain breadcrumb alone never
             // gets pulled without a triggering event (see silentMicTurn's own doc for why the
             // previous breadcrumb-only version left the last two field reports with zero data).
-            if (vadMode && bytesThisTurn < SILENT_TURN_BYTES_THRESHOLD) {
+            // Not for a typed turn: nobody was meant to speak into the mic, so a near-empty capture
+            // is the expected shape and reporting it as a silent-mic failure would be a false alarm.
+            if (vadMode && !wasTyped && bytesThisTurn < SILENT_TURN_BYTES_THRESHOLD) {
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
             }
             // Mark this socket as one that CARRIED A TURN (2026-09-06; the heading read "one a
@@ -1519,6 +1624,8 @@ class GeminiLiveSession(
                 Log.d(TAG, "Sleep phrase heard - arming dismissal")
                 emit(LiveEvent.SleepPhraseHeard)
             }
+            typedTurnInFlight = false
+            emit(LiveEvent.TurnTranscript(heard, said, wasTyped))
             emit(LiveEvent.TurnComplete)
 
             // DIAGNOSTIC (B9/B10/B12, remove once root-caused): the exact flags this

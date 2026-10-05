@@ -406,6 +406,15 @@ class AriaForegroundService : Service() {
             sessionController.onTap(fromWakeWord = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false))
         }
 
+        // The assistant strip's typed box (web-assistant ticket 09): a typed turn into the same
+        // Live session, reply shown as text. Never touches the microphone.
+        if (intent?.action == ACTION_TYPE) {
+            sessionController.onTyped(intent.getStringExtra(EXTRA_TYPED_TEXT).orEmpty())
+        }
+        if (intent?.action == ACTION_NEW_CHAT) {
+            sessionController.newConversation()
+        }
+
         // The side key / system assist gesture: one question, one answer, then stop listening.
         if (intent?.action == ACTION_ASSIST_ONE_SHOT) {
             sessionController.onAssistRequest()
@@ -1113,6 +1122,13 @@ class AriaForegroundService : Service() {
 
         // Start-intent action: Cruise screen's tap-avatar-to-talk.
         const val ACTION_TALK = "com.kevin.legion.TALK"
+
+        /** Start-intent action: a message typed into the assistant strip. Text rides in [EXTRA_TYPED_TEXT]. */
+        const val ACTION_TYPE = "com.kevin.legion.TYPE"
+        const val EXTRA_TYPED_TEXT = "com.kevin.legion.TYPED_TEXT"
+
+        /** Start-intent action: the strip's "New conversation" - clears the panel and the session. */
+        const val ACTION_NEW_CHAT = "com.kevin.legion.NEW_CHAT"
 
         /** Sent by [com.kevin.legion.ui.AssistActivity] when Android hands it an ACTION_ASSIST (the
          * side key held down, with LEGION as the digital assistant app), after any unlock. See
