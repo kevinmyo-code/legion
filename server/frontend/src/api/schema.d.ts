@@ -4,6 +4,62 @@
  */
 
 export interface paths {
+    "/api/assistant/companion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who the signed-in member talks to
+         * @description Read only. Device tokens may read it too (the API default), so the
+         *     phone can show which companion a member has on the web. Setting one is
+         *     the admin's or `manage.py set_companion`'s; the REST write is not built.
+         */
+        get: operations["api_assistant_companion_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a live conversation: mint a locked Gemini Live token */
+        post: operations["api_assistant_session_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/tool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run one tool call from a live conversation, as the signed-in member */
+        post: operations["api_assistant_tool_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/csrf": {
         parameters: {
             query?: never;
@@ -2904,6 +2960,70 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AssistantCompanion: {
+            /** @description What the companion is called. */
+            name: string;
+            /** @description The built-in register it wears. */
+            persona: string;
+            /** @description The Gemini voice it speaks in. */
+            voice_name: string;
+            /** @description True when the household wrote its own register for it. */
+            custom_register: boolean;
+            /** @description False when no companion has been set for this member and this is the default the engine assigns. */
+            stored: boolean;
+        };
+        AssistantSession: {
+            /** @description The ephemeral token's full name (`auth_tokens/...`). Pass it as the `access_token` query parameter on `ws_url`. One conversation; the setup it carries is locked, so the browser's own `setup` message is ignored. */
+            token: string;
+            model: string;
+            /** @description Append `?access_token=<token, URL-encoded>` and open a WebSocket. */
+            ws_url: string;
+            /**
+             * Format: date-time
+             * @description The conversation cannot outlive this (about 30 minutes).
+             */
+            expires_at: string;
+            /**
+             * Format: date-time
+             * @description The WebSocket must be opened before this (about 60 seconds).
+             */
+            connect_by: string;
+            companion_name: string;
+            voice_name: string;
+            /** @description What `realtimeInput.audio.mimeType` must say: 16-bit PCM, 16 kHz, mono. */
+            input_audio_mime: string;
+            /** @description Sample rate of the 16-bit PCM Gemini sends back. */
+            output_audio_rate: number;
+        };
+        AssistantSessionRequest: {
+            /** @description Minutes EAST of UTC on the person's own clock: `-new Date().getTimezoneOffset()` in a browser (Houston in summer is -300). Omit it and the assistant is told the offset is unknown. Never an IANA zone id. */
+            utc_offset_minutes?: number | null;
+        };
+        AssistantToolForward: {
+            success: boolean;
+            message: string;
+        };
+        AssistantToolRefusal: {
+            response: components["schemas"]["AssistantToolForward"];
+            detail: string;
+        };
+        AssistantToolRequest: {
+            /** @description `functionCalls[].name`, as Gemini sent it. */
+            name: string;
+            /** @description `functionCalls[].args`, as Gemini sent it. Omitted means `{}`. */
+            args?: {
+                [key: string]: unknown;
+            };
+        };
+        AssistantToolResult: {
+            response: components["schemas"]["AssistantToolForward"];
+            name: string;
+            /** @description True when the tool was refused or failed. `text` says what did not happen. */
+            is_error: boolean;
+            outcome: components["schemas"]["OutcomeEnum"];
+            /** @description The result in words, for the model. */
+            text: string;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -4181,6 +4301,14 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        /**
+         * @description * `ok` - OK
+         *     * `refused` - Refused
+         *     * `failed` - Failed
+         *     * `throttled` - Throttled
+         * @enum {string}
+         */
+        OutcomeEnum: "ok" | "refused" | "failed" | "throttled";
         PagedBodyweightLog: {
             results: components["schemas"]["BodyweightLog"][];
             /**
@@ -5515,6 +5643,129 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    api_assistant_companion_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantCompanion"];
+                };
+            };
+        };
+    };
+    api_assistant_session_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AssistantSessionRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantSessionRequest"];
+                "multipart/form-data": components["schemas"]["AssistantSessionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantSession"];
+                };
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many starts; nothing started. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Google refused the key or the session, in words. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No `LEGION_GEMINI_KEY` on this server ("The assistant isn't set up on this server."), or Google did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_tool_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantToolRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantToolRequest"];
+                "multipart/form-data": components["schemas"]["AssistantToolRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantToolResult"];
+                };
+            };
+            /** @description Not a tool the web assistant has, or a body that did not fit. Nothing ran. `response` is ready to forward to Gemini. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantToolRefusal"];
+                };
+            };
+            /** @description Too many calls; nothing ran. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_auth_csrf_retrieve: {
         parameters: {
             query?: never;
