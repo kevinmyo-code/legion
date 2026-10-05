@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01", "02", "03"]
 blocked-by: ["[[01-the-bought-entry]]", "[[02-matching]]", "[[03-backfill]]"]
-open-blockers: 3
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 

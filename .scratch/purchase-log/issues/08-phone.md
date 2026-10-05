@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["04", "05", "06"]
 blocked-by: ["[[04-the-phones-half]]", "[[05-where-it-lives-on-screen]]", "[[06-server]]"]
-open-blockers: 3
+open-blockers: 2
 ready: false
 tags: [ticket]
 ---

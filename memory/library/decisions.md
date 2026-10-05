@@ -6060,3 +6060,11 @@ the same day; Mia is on an iPhone and uses the web app only.
   Reaches everything the engine holds, with private rows staying private. Runs on the household key
   held by the engine, which mints short-lived tokens; no key ever reaches a browser (ADR 0056).
   History is session-only.
+
+## 2026-10-04 - Bought log details, and Mia's companion is Dorothy
+
+`.scratch/purchase-log/`: past Groceries ticks are imported as bought entries with "logged by: not
+recorded"; lookups search loosely and always name the entry they matched; **the phone reaches the
+bought log online only** (Kevin's deliberate exception to the Room-replica rule, server down said in
+words). Opus proposed the table and hook details in ticket 01 for Kevin to veto. On the web, Mia's
+assistant is **Dorothy**, the existing companion (Kevin: *"give that to her"*).

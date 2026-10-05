@@ -3,12 +3,12 @@ map: purchase-log
 ticket: "01"
 title: "The bought entry: schema, tenancy, privacy, and the Groceries tick hook"
 type: decision
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Kevin's rulings plus Opus's proposals, Kevin may veto"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -32,3 +32,28 @@ Settle the record before anyone builds it.
   within the same day deletes the entry it created; an untick later does not** (an old tick being
   cleared is not "I did not buy it"). Confirm or change.
 - What "the Groceries list" means if it is renamed or there are two.
+
+## Answer (2026-10-04)
+
+Kevin ruled the shape (fields, shared with optional private, Groceries tick = bought, ADR 0055).
+The rest is Opus's proposal on the same day, built unless Kevin vetoes:
+
+- **A typed Django table `purchases`**, not an aspect-engine record type: the engine has no server
+  half, and Mia's PWA must see it.
+- **Columns:** `item` (text as written), `bought_on` (local epoch day), `logged_at` (instant),
+  `created_by` (nullable: null = "not recorded", only for backfilled rows), `store` (nullable text),
+  `price_cents` (nullable `Long`, entered by hand), `quantity_note` (nullable text), `owner_user`
+  (null = shared, set = private to that member), `source` (`MANUAL` | `GROCERIES_TICK` |
+  `GROCERIES_BACKFILL`), `tick` (nullable FK to `checklist_ticks`), `deleted_at`, `sync_id`,
+  `household`.
+- **Tenancy:** in `TENANT_TABLES`, read through `visible()` (owner rule as ADR 0052), leak-tested,
+  `/mcp` included. A private entry is invisible to the other member on every surface.
+- **The Groceries hook:** server-side, when a tick is created on the household's Groceries list
+  (from phone sync or the web), create one `GROCERIES_TICK` entry: item = the item's text at that
+  moment, `bought_on` = the tick's `day`, `created_by` = the request's user, shared. **Untick on the
+  same local day soft-deletes the entry the tick created; a later untick leaves it.** Re-tick the
+  same day revives it rather than duplicating.
+- **"The Groceries list"** = the household's checklist whose name is "Groceries" (case-insensitive,
+  trimmed), shared, not deleted. If there are several, the oldest. Renaming it ends the hook, said in
+  the list's settings.
+- **Price** is shown everywhere as "entered by hand" and is never summed into ledger figures.

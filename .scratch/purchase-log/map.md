@@ -5,7 +5,7 @@ charted: 2026-10-04
 charted-by: "Kevin + Opus"
 effort: "`.scratch/purchase-log/`"
 tickets: 9
-open: 9
+open: 5
 status: open
 tags: [map]
 ---
@@ -75,6 +75,12 @@ answers from real purchase entries on the phone, the web, and the web assistant
 | 09 | test | Mia logs and asks, on her iPhone | 07 |
 
 ## Decisions so far
+
+- [The bought entry](issues/01-the-bought-entry.md) - a typed `purchases` table; Groceries tick hook on the engine,
+  same-day untick removes it; private entries via `owner_user`.
+- [Matching](issues/02-matching.md) - loose search, always name the entry matched; never "never bought".
+- [Backfill](issues/03-backfill.md) - past Groceries ticks imported, "logged by: not recorded".
+- [The phone's half](issues/04-the-phones-half.md) - online only, by Kevin's ruling; server down said in words.
 
 ## Not yet specified
 
