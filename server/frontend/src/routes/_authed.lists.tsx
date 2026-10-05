@@ -40,7 +40,7 @@ function isLive<T extends { deleted_at: string | null }>(row: T): boolean {
  * could not be read. `null` for every other list, which says nothing new. */
 type BoughtLog = { entries: Purchase[] } | { unreadable: true } | null
 
-/** "last bought Sep 20 · Mia" under a Groceries line (ADR 0055: on this one list
+/** "last bought Sep 20 Â· Mia" under a Groceries line (ADR 0055: on this one list
  * a tick is a purchase, and the log is where "bought" comes from). No record
  * says nothing at all, never "never bought"; an unreadable log says so. */
 function LastBought({ item, log }: { item: ChecklistItem; log: BoughtLog }) {
