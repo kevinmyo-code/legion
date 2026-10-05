@@ -19,6 +19,11 @@ here.
 owner-only routes below mint invites, revoke them, and remove members.
 Nothing an owner can see that a member cannot; `IsHouseholdOwner` guards
 exactly these four verbs and must never spread to a data route.
+
+**A fifth, 2026-10-05 (Kevin): setting the household's timezone**, through
+the same PATCH as the rename. Every member reads it; the owner changes it. It
+decides which calendar day "today" is for the whole household, which is the
+household's to set once, not each member's to move.
 """
 from __future__ import annotations
 
@@ -67,6 +72,7 @@ def household_body(household: Household) -> dict:
         {
             "id": household.id,
             "name": household.name,
+            "timezone": household.timezone,
             "created_at": household.created_at,
             "members": [
                 {
@@ -107,19 +113,62 @@ def live_invites_of(household: Household):
     )
 
 
+TIMEZONE_OWNER_ONLY = "Only the household owner can change the timezone. Nothing was changed."
+RENAME_AND_TIMEZONE_OWNER_ONLY = (
+    "Only the household owner can rename the household or change its timezone. Nothing was "
+    "changed."
+)
+
+
+def _first_sentence(errors) -> str:
+    """One person-facing sentence from a serializer's errors, opening with
+    what did not happen, so a client can show it as it stands."""
+    for field, messages in errors.items():
+        message = str(messages[0]) if isinstance(messages, list) and messages else str(messages)
+        if message.startswith("Nothing was changed."):
+            return message
+        label = "" if field == "non_field_errors" else f"{field}: "
+        return f"Nothing was changed. {label}{message}"
+    return "Nothing was changed. The request did not fit."
+
+
+class IsOwnerForHouseholdPatch(IsHouseholdOwner):
+    """`IsHouseholdOwner`, with a refusal that names what was asked for.
+
+    A member who tries to change the timezone is told the timezone is the
+    owner's, not handed the generic sentence about renaming and invites,
+    which would describe something they did not try to do."""
+
+    def has_permission(self, request, view) -> bool:
+        if super().has_permission(request, view):
+            return True
+        data = request.data if isinstance(request.data, dict) else {}
+        if "timezone" in data and "name" in data:
+            self.message = RENAME_AND_TIMEZONE_OWNER_ONLY
+        elif "timezone" in data:
+            self.message = TIMEZONE_OWNER_ONLY
+        return False
+
+
 class HouseholdMeView(APIView):
     """`GET`/`PATCH /api/households/me` - the caller's household.
 
     GET is open to any member: the roster is not owner-only information, and
     a member who could not see who else is in their household would have no
-    way to check they joined the right one. PATCH (rename) is owner-only,
+    way to check they joined the right one. The same goes for the timezone:
+    every member reads it. PATCH (rename, set the timezone) is owner-only,
     which is why `get_permissions` splits by method rather than the class
     carrying one permission for both.
+
+    **The timezone lives here rather than at a separate settings route**
+    (Kevin, 2026-10-05). It is a property of the household, read by every
+    member and written by the owner - exactly this endpoint's existing split -
+    and a second resource would be a second place the same row is described.
     """
 
     def get_permissions(self):
         if self.request.method == "PATCH":
-            return [IsHouseholdOwner()]
+            return [IsOwnerForHouseholdPatch()]
         return super().get_permissions()
 
     @extend_schema(
@@ -150,7 +199,14 @@ class HouseholdMeView(APIView):
         responses={
             200: OpenApiResponse(
                 response=HouseholdSerializer,
-                description="Renamed. The body is the household as stored.",
+                description="Saved. The body is the household as stored.",
+            ),
+            400: OpenApiResponse(
+                response=DetailSerializer,
+                description=(
+                    "Nothing was changed: no field was sent, or `timezone` is not an IANA "
+                    "name this server knows."
+                ),
             ),
             403: OWNER_ONLY,
         },
@@ -158,9 +214,19 @@ class HouseholdMeView(APIView):
     def patch(self, request):
         household = household_of(request)
         serializer = HouseholdPatchRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        household.name = serializer.validated_data["name"].strip()
-        household.save(update_fields=["name"])
+        if not serializer.is_valid():
+            return Response(
+                {"detail": _first_sentence(serializer.errors)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        fields = []
+        if "name" in serializer.validated_data:
+            household.name = serializer.validated_data["name"].strip()
+            fields.append("name")
+        if "timezone" in serializer.validated_data:
+            household.timezone = serializer.validated_data["timezone"]
+            fields.append("timezone")
+        household.save(update_fields=fields)
         return Response(household_body(household), status=status.HTTP_200_OK)
 
 

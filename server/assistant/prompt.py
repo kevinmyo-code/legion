@@ -78,7 +78,13 @@ def _clock_words(when: datetime) -> str:
     return f"{when:%A, %B} {when.day}, {when.year} at {hour}:{when.minute:02d} {when:%p}"
 
 
-def time_fact(now: datetime, utc_offset_minutes: int | None) -> str:
+def time_fact(
+    now: datetime, utc_offset_minutes: int | None, *, from_household: bool = False
+) -> str:
+    """The clock sentence. `from_household` is True when the offset is the
+    household's (its owner set a timezone and the browser sent no offset of
+    its own), so the sentence says whose clock it is rather than claiming the
+    person's. Either way it is an OFFSET: a zone's name never reaches here."""
     if utc_offset_minutes is None:
         start = now.astimezone(UTC)
         return (
@@ -87,8 +93,9 @@ def time_fact(now: datetime, utc_offset_minutes: int | None) -> str:
             f"are; if their local time matters, ask."
         )
     local = now.astimezone(timezone(timedelta(minutes=utc_offset_minutes)))
+    whose = "the household's clock" if from_household else "the person's clock"
     return (
-        f"This conversation started on {_clock_words(local)} on the person's clock, which "
+        f"This conversation started on {_clock_words(local)} on {whose}, which "
         f"reads {utc_offset_words(utc_offset_minutes)}. You have no clock of your own: the time "
         f"now is up to half an hour later than that, so give any time as approximate and never "
         f"invent one. You do not know where they are; do not guess a city."
@@ -112,9 +119,11 @@ def build_system_prompt(
     first_name: str,
     now: datetime,
     utc_offset_minutes: int | None,
+    offset_from_household: bool = False,
 ) -> str:
     who = companion.clause
     if companion.delivery:
         who += " " + companion.delivery
     body = f"{who}\n\n{WEB_FRAME}{web_shared_clauses()}".rstrip()
-    return f"{body}\n\n{time_fact(now, utc_offset_minutes)} {member_fact(first_name)}"
+    clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
+    return f"{body}\n\n{clock} {member_fact(first_name)}"

@@ -541,11 +541,13 @@ class ChecklistItemUntickView(APIView):
                 OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "The caller's own local epoch day. Send it. On the Groceries list a tick "
-                    "is a purchase (ADR 0055): an untick on the tick's own day removes the "
-                    "bought entry the tick made, an untick on a later day leaves it. Without "
-                    "this the engine uses today's UTC date, which west of UTC can keep an "
-                    "entry a late-evening untick meant to remove."
+                    "The caller's own local epoch day. On the Groceries list a tick is a "
+                    "purchase (ADR 0055): an untick on the tick's own day removes the bought "
+                    "entry the tick made, an untick on a later day leaves it. Which day is "
+                    "'today': the household's timezone when its owner has set one (this "
+                    "parameter is then ignored), else this parameter, else today's UTC date, "
+                    "which west of UTC can keep an entry a late-evening untick meant to remove. "
+                    "Send it anyway: it is the fallback for a household with no timezone."
                 ),
             )
         ],

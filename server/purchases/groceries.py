@@ -29,15 +29,26 @@ so a tick and its purchase commit together or not at all.
 
 ## What "the same local day" means here
 
-The server keeps no household timezone (`TIME_ZONE = "UTC"`, and CLAUDE.md
-section 1 keeps zone ids away from anything that guesses with them). So the
-untick route takes the caller's own local day as `?today=<epoch day>`; the web
-and the phone know it. **When a caller does not send it** (an installed phone
-that predates this), the server falls back to today's UTC date. For a household
-west of UTC, like Kevin's, that fallback can only err one way: an untick late
-in the evening, local time, reads as a later day and the entry is kept. It can
-never remove a purchase on a later local day. East of UTC the error would run
-the other way, which is why clients should send `today`.
+**Kevin, 2026-10-05: the household has a timezone, and the server uses it.**
+"Today" for the same-day check is decided in this order:
+
+1. **The household's timezone** (`Household.timezone`, set once by the owner):
+   the server's own clock at the moment the untick ARRIVES, read in that
+   zone. It wins over anything a client sends, so a device with a wrong clock
+   cannot move the day. One consequence, accepted with it: a phone untick
+   queued offline before midnight and delivered after it is judged a later
+   day and keeps the entry. That is the safe direction - a purchase is kept,
+   never removed - and the entry can still be deleted by hand.
+2. **The caller's `?today=<epoch day>`**, when the household has no zone set.
+   Kept for compatibility and as the fallback; the web and the phone send it.
+3. **Today's UTC date**, when neither is known (an installed phone that
+   predates `today`, in a household that never set a zone). West of UTC, like
+   Kevin's household, that can only err one way: a late-evening untick reads
+   as a later day and the entry is kept. It never removes a purchase on a
+   later local day.
+
+The zone is server-side date math only. CLAUDE.md section 1 keeps zone ids
+away from anything that talks to a model; nothing here does.
 """
 
 from __future__ import annotations
@@ -46,6 +57,7 @@ from datetime import UTC, datetime
 
 from django.db.models.functions import Lower, Now, Trim
 
+from household.timezones import household_zone_name, local_date, zone_named
 from purchases.matching import date_to_day
 from purchases.models import SOURCE_GROCERIES_TICK, Purchase
 
@@ -74,8 +86,35 @@ def is_groceries_list(checklist) -> bool:
     return groceries_list_id(checklist.household_id) == checklist.id
 
 
+def now_utc() -> datetime:
+    """The server's clock. One function so a test can stand at 23:30 in
+    Chicago without touching the real clock."""
+    return datetime.now(UTC)
+
+
 def utc_today() -> int:
-    return date_to_day(datetime.now(UTC).date())
+    return date_to_day(now_utc().date())
+
+
+def household_today(household_id) -> int | None:
+    """Today's epoch day in the household's own timezone, or None when the
+    household has not set one."""
+    zone = zone_named(household_zone_name(household_id))
+    if zone is None:
+        return None
+    return date_to_day(local_date(zone, now_utc()))
+
+
+def untick_today(household_id, client_today: int | None) -> int:
+    """Which day the same-day rule treats as today. Precedence, as the module
+    docstring sets out: household timezone, then the client's `today`, then
+    UTC."""
+    from_household = household_today(household_id)
+    if from_household is not None:
+        return from_household
+    if client_today is not None:
+        return client_today
+    return utc_today()
 
 
 def on_tick(tick, item, user) -> Purchase | None:
@@ -110,13 +149,17 @@ def on_tick(tick, item, user) -> Purchase | None:
 
 def on_untick(tick, today: int | None) -> bool:
     """`tick` was just soft-deleted. Soft-deletes the entry it made when the
-    untick is on the tick's own local day. True when an entry was removed."""
-    current = today if today is not None else utc_today()
-    if current > tick.day:
-        return False
-    return (
-        Purchase.objects.filter(
-            tick=tick, source=SOURCE_GROCERIES_TICK, deleted_at__isnull=True
-        ).update(deleted_at=Now())
-        > 0
+    untick is on the tick's own local day. True when an entry was removed.
+
+    `today` is the caller's own local epoch day, or None when it sent none; it
+    counts only when the household has no timezone (`untick_today`)."""
+    live = Purchase.objects.filter(
+        tick=tick, source=SOURCE_GROCERIES_TICK, deleted_at__isnull=True
     )
+    # Most unticks are on lists that are not Groceries: skip the household
+    # read when there is no entry to take back.
+    if not live.exists():
+        return False
+    if untick_today(tick.household_id, today) > tick.day:
+        return False
+    return live.update(deleted_at=Now()) > 0

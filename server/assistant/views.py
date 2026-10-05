@@ -115,8 +115,10 @@ class AssistantSessionRequestSerializer(serializers.Serializer):
         max_value=MAX_OFFSET_MINUTES,
         help_text=(
             "Minutes EAST of UTC on the person's own clock: `-new Date().getTimezoneOffset()` "
-            "in a browser (Houston in summer is -300). Omit it and the assistant is told the "
-            "offset is unknown. Never an IANA zone id."
+            "in a browser (Houston in summer is -300). Omit it and the engine uses the "
+            "household's timezone, as a current offset, when its owner has set one; "
+            "otherwise the assistant is told the offset is unknown. Never an IANA zone id: "
+            "the zone's name never reaches the prompt."
         ),
     )
 
