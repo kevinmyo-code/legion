@@ -132,6 +132,13 @@ INSTALLED_APPS = [
     # web-revamp ticket 15: Web Push subscriptions, preferences and the
     # dedupe ledger (`public.push_*`), and `manage.py push_dispatch`.
     "push",
+    # purchase-log ticket 06: the household bought log (`public.purchases`) and
+    # the Groceries tick hook (ADR 0055).
+    "purchases",
+    # web-assistant ticket 07: the web assistant's engine half - the Gemini Live
+    # token mint, the session-authenticated tool door, each member's companion
+    # (`public.assistant_companions`) and the audit (`public.assistant_calls`).
+    "assistant",
 ]
 
 MIDDLEWARE = [
@@ -382,6 +389,14 @@ REST_FRAMEWORK = {
         # cache is Django's default per-process LocMemCache, so with gunicorn's
         # two workers the effective ceiling is up to twice this.
         "mcp": os.environ.get("LEGION_MCP_RATE", "").strip() or "60/min",
+        # web-assistant ticket 07, per signed-in MEMBER (`assistant/views.py`).
+        # A mint starts one conversation of up to 30 minutes on the household's
+        # key, so it is the expensive door; a tool call is one engine read or
+        # write. Same per-process LocMemCache caveat as `mcp` above.
+        "assistant_session": (
+            os.environ.get("LEGION_ASSISTANT_SESSION_RATE", "").strip() or "30/hour"
+        ),
+        "assistant_tool": os.environ.get("LEGION_ASSISTANT_TOOL_RATE", "").strip() or "60/min",
     },
 }
 

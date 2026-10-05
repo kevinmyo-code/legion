@@ -46,10 +46,10 @@ CURRENT_REQUEST: contextvars.ContextVar = contextvars.ContextVar("engine_mcp_req
 CALL_STATE: contextvars.ContextVar = contextvars.ContextVar("engine_mcp_call_state")
 
 INSTRUCTIONS = (
-    "LEGION's engine: one household's own records - events, checklists, places, body, "
-    "ledger, pantry, fleet. Every result says in words what happened; repeat it, and never "
-    "report a write as done unless its result says it was committed. Rows marked UNVERIFIED "
-    "and values marked ESTIMATES must be said as such."
+    "LEGION's engine: one household's own records - events, checklists, the bought log, "
+    "places, body, ledger, pantry, fleet. Every result says in words what happened; repeat "
+    "it, and never report a write as done unless its result says it was committed. Rows "
+    "marked UNVERIFIED and values marked ESTIMATES must be said as such."
 )
 
 

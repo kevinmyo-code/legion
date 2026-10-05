@@ -265,7 +265,7 @@ def test_delete_record_tombstones(mcp_write, auth_client):
 
 
 # One valid call per write tool, so the read-scope test reaches every one.
-def _write_calls(checklist_id, item_id, event_id):
+def _write_calls(checklist_id, item_id, event_id, purchase_id):
     return {
         "write_record": {"table": "places", "identity": "gym", "fields": {"latitude": 1.0}},
         "delete_record": {"table": "places", "identity": "home"},
@@ -278,6 +278,8 @@ def _write_calls(checklist_id, item_id, event_id):
             "item_id": item_id,
             "date": "2026-10-02",
         },
+        "log_purchase": {"item": "shampoo", "date": "2026-10-02"},
+        "delete_purchase": {"id": purchase_id},
     }
 
 
@@ -291,16 +293,28 @@ def seeded(auth_client):
     item = auth_client.post(
         f"/api/checklists/{checklist['id']}/items", {"text": "bench"}, format="json"
     ).data
-    return {"event": event["id"], "checklist": checklist["id"], "item": item["id"]}
+    purchase = auth_client.post(
+        "/api/purchases/", {"item": "soap", "bought_on": 20365}, format="json"
+    ).data
+    return {
+        "event": event["id"],
+        "checklist": checklist["id"],
+        "item": item["id"],
+        "purchase": purchase["id"],
+    }
 
 
 def test_every_write_tool_refuses_a_read_token_and_writes_nothing(mcp_read, auth_client, seeded):
-    calls = _write_calls(seeded["checklist"], seeded["item"], seeded["event"])
+    calls = _write_calls(
+        seeded["checklist"], seeded["item"], seeded["event"], seeded["purchase"]
+    )
     assert set(calls) == {tool.name for tool in TOOLS if tool.writes}
 
     def everything():
         feed = dict(auth_client.get("/api/changes").data)
         feed.pop("server_time", None)
+        # The bought log is not in the changes feed (online only, ticket 04).
+        feed["purchases"] = auth_client.get("/api/purchases/").data["results"]
         return feed
 
     before = everything()

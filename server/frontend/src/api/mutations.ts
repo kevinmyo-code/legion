@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/api/client'
 import { CHANGES_KEY } from '@/api/queries'
+import { PURCHASES_KEY } from '@/api/purchases'
 import { WriteRefused, runWrite, type WriteVerb } from '@/api/refusal'
 import { wire } from '@/api/synced'
 import type { Changes, ChecklistTick, Event } from '@/api/types'
@@ -57,7 +58,14 @@ export function useSetChecklistTick() {
         const { error, response } = await api.DELETE(
           '/api/checklists/{checklist_id}/items/{item_id}/tick/{day}',
           {
-            params: { path: { checklist_id: checklistId, item_id: itemId, day: dayToClear } },
+            params: {
+              path: { checklist_id: checklistId, item_id: itemId, day: dayToClear },
+              // The caller's own local day. On the Groceries list a tick is a
+              // purchase (ADR 0055) and an untick on the tick's own day removes
+              // the bought entry; the engine cannot know this household's local
+              // day, so it is told (it would otherwise guess the UTC date).
+              query: { today },
+            },
           },
         )
         if (error) throw new Error(`DELETE tick answered ${response.status}`)
@@ -103,6 +111,8 @@ export function useSetChecklistTick() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: CHANGES_KEY })
+      // A Groceries tick or untick makes or removes a bought entry on the engine.
+      void queryClient.invalidateQueries({ queryKey: PURCHASES_KEY })
     },
   })
 }

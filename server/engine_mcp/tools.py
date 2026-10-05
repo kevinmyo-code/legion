@@ -46,6 +46,7 @@ only lever. So every result here:
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
@@ -316,8 +317,8 @@ def _list_tables(request, args) -> ToolResult:
         "Tables this engine's MCP tools can reach, for this household:\n"
         + "\n".join(lines)
         + "\nMemory tables (memories, companion_memories, memory_audit) are excluded by the "
-        "household's ruling. Events and checklists have their own tools. Money is integer "
-        "cents."
+        "household's ruling. Events, checklists and the bought log have their own tools. "
+        "Money is integer cents."
     )
 
 
@@ -567,6 +568,251 @@ def _tick_checklist_item(request, args) -> ToolResult:
 
 
 # =============================================================================
+# The bought log (purchase-log ticket 06, ADR 0055). Reads go through
+# `purchases/queries.py`, the same functions REST reads with; writes call the
+# routed `/api/purchases` view, like every other write here.
+# =============================================================================
+
+
+def _cents_words(cents: int) -> str:
+    return f"{cents // 100}.{cents % 100:02d}"
+
+
+def _say_purchase(row: dict) -> str:
+    """One entry in words. Names the entry's own text, its date, who logged
+    it (or that nobody was recorded), and says a price was entered by hand."""
+    from purchases.matching import say_date
+
+    who = row.get("logged_by") or "who logged it was not recorded"
+    line = f"{row['item']} on {say_date(row['bought_on'])} ({who})"
+    if row.get("source") != "MANUAL":
+        line += ", ticked off the Groceries list"
+    if row.get("store"):
+        line += f", at {row['store']}"
+    if row.get("price_cents") is not None:
+        line += f", price {_cents_words(row['price_cents'])} (entered by hand, never checked)"
+    if row.get("quantity_note"):
+        line += f", note: {row['quantity_note']}"
+    if row.get("visibility") == "private":
+        line += ", private to you"
+    return line
+
+
+def _day_arg(args, name):
+    from purchases.matching import date_to_day
+
+    return date_to_day(_parse_day(args[name], name)) if args.get(name) else None
+
+
+def _log_purchase(request, args) -> ToolResult:
+    from purchases.matching import say_date
+
+    try:
+        bought_on = _day_arg(args, "date")
+    except BadArgument as exc:
+        return refused(f"Nothing was logged. {exc}.")
+    body = {
+        "item": args["item"],
+        "bought_on": bought_on,
+        "visibility": "private" if args.get("private") else "shared",
+    }
+    for key in ("store", "price_cents", "quantity_note", "sync_id"):
+        if key in args:
+            body[key] = args[key]
+    response = call_route(request, "POST", "/api/purchases/", body)
+    status = response.status_code
+    if status == 200:
+        return ok(
+            f"Nothing was logged: an entry with sync_id {args.get('sync_id')!r} already "
+            f"exists, and it was left as it was: {_say_purchase(response.data)}.",
+            structured={"row": response.data},
+        )
+    if status == 201:
+        row = response.data
+        who = "private to you" if row["visibility"] == "private" else "shared with the household"
+        return ok(
+            f"Logged {row['item']} as bought on {say_date(row['bought_on'])}, {who}. The "
+            f"engine committed it; the entry as stored: {_json(row)}",
+            structured={"row": row},
+        )
+    text = f"Nothing was logged. The engine refused it (HTTP {status}): {_detail(response)}"
+    return refused(text) if status in (403, 405) else failed(text)
+
+
+def _last_bought(request, args) -> ToolResult:
+    from purchases.matching import is_searchable, say_last_bought
+    from purchases.queries import last_bought
+    from purchases.serializers import PurchaseSerializer
+
+    item = args["item"].strip()
+    if not is_searchable(item):
+        return refused("Nothing was read. Say what was bought, in letters or numbers.")
+    found = last_bought(request, item)
+    matches = [
+        {
+            "entry": PurchaseSerializer(m.entry, context={"request": request}).data,
+            "exact": m.exact,
+            "times_logged": m.times_logged,
+        }
+        for m in found
+    ]
+    text = say_last_bought(item, found)
+    if not found:
+        text += (
+            " The engine read this household's bought log; that is the absence of a record, "
+            "not proof it was never bought."
+        )
+    elif any(not m.exact for m in found):
+        text += " Say the entry's own words, not the question's: some are loose matches."
+    return ok(text, structured={"query": item, "matches": matches})
+
+
+def _list_purchases(request, args) -> ToolResult:
+    from purchases.queries import LIST_LIMIT_DEFAULT, list_entries
+    from purchases.serializers import PurchaseSerializer
+
+    try:
+        from_day = _day_arg(args, "from")
+        to_day = _day_arg(args, "to")
+    except BadArgument as exc:
+        return refused(f"Nothing was read. {exc}.")
+    query = (args.get("query") or "").strip() or None
+    listing = list_entries(
+        request,
+        query=query,
+        from_day=from_day,
+        to_day=to_day,
+        source=args.get("source"),
+        limit=args.get("limit", LIST_LIMIT_DEFAULT),
+    )
+    rows = PurchaseSerializer(listing.rows, many=True, context={"request": request}).data
+    window = ""
+    if args.get("from") or args.get("to"):
+        window = f" between {args.get('from') or 'the start'} and {args.get('to') or 'now'}"
+    if not rows:
+        if query:
+            text = (
+                f"I have no record of buying {query}{window}. The engine read this "
+                f"household's bought log; that is the absence of a record, not proof it was "
+                f"never bought."
+            )
+        else:
+            text = (
+                f"The engine read this household's bought log and found no entries{window}. "
+                f"That is a real empty result, not a failure to read."
+            )
+        return ok(text, structured={"rows": []})
+    head = f"{len(rows)} bought entries{window}, newest first"
+    if query:
+        head += f", matching {query!r} loosely (say each entry's own words)"
+    if listing.truncated:
+        head += f"; there are more, and only the newest {len(rows)} are shown"
+    lines = "\n".join(f"- {_say_purchase(row)} [id {row['id']}]" for row in rows)
+    return ok(f"{head}:\n{lines}", structured={"rows": rows})
+
+
+def _delete_purchase(request, args) -> ToolResult:
+    from purchases.matching import say_date
+    from purchases.models import Purchase
+
+    try:
+        uuid.UUID(str(args["id"]))
+    except ValueError:
+        return refused(f"Nothing was deleted. {args['id']!r} is not an entry id.")
+    entry = visible(Purchase, request).filter(pk=args["id"]).first()
+    if entry is None:
+        return refused(
+            f"Nothing was deleted. There is no bought entry {args['id']} in this household's "
+            f"log that you can see."
+        )
+    if entry.deleted_at is not None:
+        return ok(f"Nothing was deleted: the entry for {entry.item} was already deleted.")
+    response = call_route(request, "DELETE", f"/api/purchases/{args['id']}")
+    if response.status_code == 204:
+        return ok(
+            f"Deleted the bought entry for {entry.item} on {say_date(entry.bought_on)}. The "
+            f"engine committed it; it no longer answers when it was last bought."
+        )
+    return _write_result(response, f"bought entry {args['id']}", "deleted")
+
+
+# =============================================================================
+# Tick history (web-assistant ticket 04, ADR 0049). The phone's
+# `get_last_ticked` (`TickHistoryController` + `TickMatch.kt`), moved to the
+# engine so a browser can ask it. Same narrow rule: exact text after
+# `normalise` (lower-case, trim, collapse whitespace), read THROUGH tombstones
+# on the item and the checklist, only ticks that still stand.
+# =============================================================================
+
+LAST_TICKED_HISTORY = 10
+
+
+def _last_ticked(request, args) -> ToolResult:
+    from django.db.models import F, Func, TextField, Value
+    from django.db.models.functions import Lower, Trim
+
+    from checklists.models import ChecklistTick
+    from purchases.matching import normalise, say_date
+
+    query = args["item"]
+    target = normalise(query)
+    if not target:
+        return refused("Nothing was read. Say which line to look for.")
+    # The database narrows; `normalise` below is the authority. Postgres's
+    # `\s` and Python's agree on every whitespace a typed line can hold.
+    normalised = Trim(
+        Func(
+            Lower(F("item__text")),
+            Value(r"\s+"),
+            Value(" "),
+            Value("g"),
+            function="regexp_replace",
+            output_field=TextField(),
+        )
+    )
+    ticks = (
+        visible(ChecklistTick, request)
+        .filter(deleted_at__isnull=True)
+        .annotate(normalised_text=normalised)
+        .filter(normalised_text=target)
+        .select_related("item", "item__checklist")
+        .order_by("-ticked_at", "-day", "-pk")
+    )
+    matches = [
+        tick for tick in ticks[:LAST_TICKED_HISTORY] if normalise(tick.item.text) == target
+    ]
+    if not matches:
+        return ok(
+            f"I have no record of {query.strip()!r} being ticked off any list. That is an "
+            f"absent record, not proof of anything about whether it was got - plenty never "
+            f"touches a list.",
+            structured={"item": query, "history": []},
+        )
+    history = [
+        {
+            "checklist": tick.item.checklist.name,
+            "line": tick.item.text,
+            # The local day the tick counts for, as the client stamped it.
+            # Words use it because the engine knows no member's time zone;
+            # `ticked_at` is the tap's instant in UTC.
+            "day": say_date(tick.day),
+            "ticked_at": tick.ticked_at.isoformat(),
+        }
+        for tick in matches[:LAST_TICKED_HISTORY]
+    ]
+    latest = history[0]
+    text = (
+        f"{latest['line']!r} was last ticked off {latest['checklist']!r} on {latest['day']}. "
+        f"That is the last time the line was ticked - a tap on a list, not a purchase record; "
+        f"say \"ticked\", never \"bought\"."
+    )
+    if len(history) > 1:
+        earlier = "; ".join(f"{h['day']} ({h['checklist']})" for h in history[1:])
+        text += f" Earlier ticks, newest first: {earlier}."
+    return ok(text, structured={"item": query, "history": history})
+
+
+# =============================================================================
 # The registry
 # =============================================================================
 
@@ -605,9 +851,15 @@ def _object(properties: dict, required: tuple[str, ...] = ()) -> dict:
 
 
 _UUID = {"type": "string", "format": "uuid"}
+# The scope half is true of a device token only; the web door
+# (`assistant/surface.py`) drops it from what a browser session's model is told.
+WRITE_SCOPE_SENTENCE = (
+    "Needs a device token with write scope; a read-only token is refused and nothing is "
+    "written. "
+)
 _WRITE_NOTE = (
-    " Needs a device token with write scope; a read-only token is refused and nothing is "
-    "written. Report it done only when this tool's result says it was committed."
+    " " + WRITE_SCOPE_SENTENCE + "Report it done only when this tool's result says it was "
+    "committed."
 )
 
 TOOLS: tuple[EngineTool, ...] = (
@@ -674,6 +926,20 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"date": {"type": "string"}, "include_archived": {"type": "boolean"}}),
         handler=_list_checklists,
+    ),
+    EngineTool(
+        name="last_ticked",
+        title="When was a line last ticked",
+        description=(
+            "When a checklist line was last TICKED, from tick history across every checklist, "
+            "including ones since deleted. A tick is only evidence of a tap: it carries no price "
+            "and nothing checked it against anything. Always say \"ticked\", and never claim it "
+            "was bought or done. No match is an absent RECORD, not proof it was never got: say "
+            "there is no record of it being ticked, and leave it there. Matches the exact line "
+            "text (case and spacing only): 'toothpaste' does not match 'Colgate toothpaste'."
+        ),
+        input_schema=_object({"item": {"type": "string", "minLength": 1}}, ("item",)),
+        handler=_last_ticked,
     ),
     EngineTool(
         name="write_record",
@@ -789,15 +1055,92 @@ TOOLS: tuple[EngineTool, ...] = (
         handler=_tick_checklist_item,
         writes=True,
     ),
+    EngineTool(
+        name="log_purchase",
+        title="Log something as bought",
+        description=(
+            "Logs that the household bought something on a date (YYYY-MM-DD, the household's "
+            "local date: today's date when they say today). Shared with the household unless "
+            "`private` is true. Optional store, price_cents (whole cents, entered by hand and "
+            "never checked against the bank) and quantity_note. Pass sync_id so a retry cannot "
+            "log it twice. A tick on the Groceries list already logs itself; do not log it "
+            "again." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "item": {"type": "string", "minLength": 1},
+                "date": {"type": "string"},
+                "store": {"type": "string"},
+                "price_cents": {"type": "integer", "minimum": 0},
+                "quantity_note": {"type": "string"},
+                "private": {"type": "boolean"},
+                "sync_id": {"type": "string", "minLength": 1, "maxLength": 64},
+            },
+            ("item", "date"),
+        ),
+        handler=_log_purchase,
+        writes=True,
+    ),
+    EngineTool(
+        name="last_bought",
+        title="When was it last bought",
+        description=(
+            "When the household last bought something, from the bought log. Matching is loose "
+            "(every word asked for appears in the entry), so repeat the entry's own words and "
+            "date from the result, never the question's. Several different matches are all "
+            "returned: say them, never pick one. No match means there is no record, never "
+            "that it was never bought."
+        ),
+        input_schema=_object({"item": {"type": "string", "minLength": 1}}, ("item",)),
+        handler=_last_bought,
+    ),
+    EngineTool(
+        name="list_purchases",
+        title="The bought log",
+        description=(
+            "Entries in the household's bought log, newest first. Optional `query` (loose "
+            "match, as last_bought), `from` and `to` (YYYY-MM-DD, inclusive), `source` "
+            "(MANUAL, GROCERIES_TICK, GROCERIES_BACKFILL) and `limit`. Prices were entered by "
+            "hand; say so."
+        ),
+        input_schema=_object(
+            {
+                "query": {"type": "string"},
+                "from": {"type": "string"},
+                "to": {"type": "string"},
+                "source": {
+                    "type": "string",
+                    "enum": ["MANUAL", "GROCERIES_TICK", "GROCERIES_BACKFILL"],
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": READ_LIMIT_MAX},
+            }
+        ),
+        handler=_list_purchases,
+    ),
+    EngineTool(
+        name="delete_purchase",
+        title="Delete a bought entry",
+        description=(
+            "Deletes one entry from the bought log, by the id list_purchases or last_bought "
+            "returned (a tombstone)." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID}, ("id",)),
+        handler=_delete_purchase,
+        writes=True,
+        destructive=True,
+    ),
 )
 
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
 def run_tool(request, name: str, arguments: dict) -> ToolResult:
-    """The one entry point `/mcp`'s `tools/call` uses. Synchronous, and run on
-    the request's own thread (`engine_mcp/server.py`), so the ORM sees the
-    request's connection."""
+    """The one entry point every door into the registry uses: `/mcp`'s
+    `tools/call` (a device token) and `/api/assistant/tool` (a signed-in
+    member's browser, web-assistant ticket 07). One registry, two doors: the
+    same code reads and writes, under the caller's own `visible()`.
+    Synchronous, and run on the request's own thread (`engine_mcp/server.py`),
+    so the ORM sees the request's connection."""
     tool = TOOLS_BY_NAME.get(name)
     if tool is None:
         return refused(

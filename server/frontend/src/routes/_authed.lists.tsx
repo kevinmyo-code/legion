@@ -5,8 +5,16 @@ import { useState } from 'react'
 
 import { api } from '@/api/client'
 import { useSetChecklistTick } from '@/api/mutations'
+import { PURCHASES_LIMIT, usePurchases } from '@/api/purchases'
 import { CHANGES_KEY, useChanges } from '@/api/queries'
-import { newChecklist, newChecklistItem, type Checklist, type ChecklistItem, type ChecklistTick } from '@/api/types'
+import {
+  newChecklist,
+  newChecklistItem,
+  type Checklist,
+  type ChecklistItem,
+  type ChecklistTick,
+  type Purchase,
+} from '@/api/types'
 import { DeleteChecklistControl } from '@/components/checklist-delete'
 import { Freshness } from '@/components/freshness'
 import { ListVisibilityToggle } from '@/components/list-visibility-toggle'
@@ -17,6 +25,8 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
+import { isGroceriesList, lastBoughtLine, lastExactFor } from '@/lib/purchases'
+import { visibilityOf } from '@/lib/visibility'
 
 export const Route = createFileRoute('/_authed/lists')({
   component: Lists,
@@ -26,14 +36,33 @@ function isLive<T extends { deleted_at: string | null }>(row: T): boolean {
   return row.deleted_at === null
 }
 
+/** What the bought log knows about the Groceries list: its entries, or that it
+ * could not be read. `null` for every other list, which says nothing new. */
+type BoughtLog = { entries: Purchase[] } | { unreadable: true } | null
+
+/** "last bought Sep 20 · Mia" under a Groceries line (ADR 0055: on this one list
+ * a tick is a purchase, and the log is where "bought" comes from). No record
+ * says nothing at all, never "never bought"; an unreadable log says so. */
+function LastBought({ item, log }: { item: ChecklistItem; log: BoughtLog }) {
+  if (log === null) return null
+  if ('unreadable' in log) {
+    return <span className="text-[0.8125rem] text-muted-foreground">last bought: can&apos;t check right now</span>
+  }
+  const entry = lastExactFor(item.text, log.entries)
+  if (entry === null) return null
+  return <span className="text-[0.8125rem] text-muted-foreground">{lastBoughtLine(entry, todayEpochDay())}</span>
+}
+
 function ItemRow({
   checklist,
   item,
   ticks,
+  log,
 }: {
   checklist: Checklist
   item: ChecklistItem
   ticks: ChecklistTick[]
+  log: BoughtLog
 }) {
   const queryClient = useQueryClient()
   const today = todayEpochDay()
@@ -67,8 +96,11 @@ function ItemRow({
         }
         aria-label={`Mark "${item.text}" ${ticked ? 'not done' : 'done'}`}
       />
-      <span className={`flex-1 text-base ${ticked ? 'text-muted-foreground line-through' : ''}`}>
-        {item.text}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={`text-base ${ticked ? 'text-muted-foreground line-through' : ''}`}>
+          {item.text}
+        </span>
+        <LastBought item={item} log={log} />
       </span>
       <Button
         variant="ghost"
@@ -139,10 +171,12 @@ function ChecklistCard({
   checklist,
   items,
   ticks,
+  log,
 }: {
   checklist: Checklist
   items: ChecklistItem[]
   ticks: ChecklistTick[]
+  log: BoughtLog
 }) {
   const [showTicked, setShowTicked] = useState(false)
   const ownItems = items.filter((item) => item.checklist === checklist.id)
@@ -186,7 +220,7 @@ function ChecklistCard({
       ) : (
         <ul className="flex flex-col divide-y divide-outline-variant">
           {open.map((item) => (
-            <ItemRow key={item.id} checklist={checklist} item={item} ticks={ticks} />
+            <ItemRow key={item.id} checklist={checklist} item={item} ticks={ticks} log={log} />
           ))}
         </ul>
       )}
@@ -208,7 +242,7 @@ function ChecklistCard({
           {showTicked && (
             <ul id={tickedId} className="flex flex-col divide-y divide-outline-variant">
               {ticked.map((item) => (
-                <ItemRow key={item.id} checklist={checklist} item={item} ticks={ticks} />
+                <ItemRow key={item.id} checklist={checklist} item={item} ticks={ticks} log={log} />
               ))}
             </ul>
           )}
@@ -262,6 +296,13 @@ function NewChecklistForm() {
 
 function Lists() {
   const changes = useChanges(true)
+  const hasGroceries = (changes.data?.checklists ?? []).some(
+    (list) =>
+      list.deleted_at === null && isGroceriesList(list.name) && visibilityOf(list) === 'shared',
+  )
+  // One read of the log for the whole page: every Groceries line compares itself
+  // against it, instead of asking the engine once per line.
+  const purchases = usePurchases({ limit: PURCHASES_LIMIT, enabled: hasGroceries })
 
   if (changes.isPending) {
     return (
@@ -291,6 +332,14 @@ function Lists() {
   const items = (changes.data.checklist_items ?? []).filter(isLive)
   const ticks = (changes.data.checklist_ticks ?? []).filter(isLive)
 
+  /** The household's Groceries list is a shared list by that name; a private one
+   * called Groceries is somebody's own and the engine does not log its ticks. */
+  const logFor = (checklist: Checklist): BoughtLog => {
+    if (!isGroceriesList(checklist.name) || visibilityOf(checklist) !== 'shared') return null
+    if (purchases.data === undefined) return purchases.isError ? { unreadable: true } : null
+    return { entries: purchases.data.results }
+  }
+
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4">
       <Freshness
@@ -303,7 +352,13 @@ function Lists() {
         <p className="text-[0.9375rem] text-muted-foreground">No lists yet. Start one below.</p>
       ) : (
         checklists.map((checklist) => (
-          <ChecklistCard key={checklist.id} checklist={checklist} items={items} ticks={ticks} />
+          <ChecklistCard
+            key={checklist.id}
+            checklist={checklist}
+            items={items}
+            ticks={ticks}
+            log={logFor(checklist)}
+          />
         ))
       )}
       <NewChecklistForm />

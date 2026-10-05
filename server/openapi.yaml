@@ -4,6 +4,117 @@ info:
   version: 0.1.0
   description: The engine. One Django server, every limb a client of it.
 paths:
+  /api/assistant/companion:
+    get:
+      operationId: api_assistant_companion_retrieve
+      description: |-
+        Read only. Device tokens may read it too (the API default), so the
+        phone can show which companion a member has on the web. Setting one is
+        the admin's or `manage.py set_companion`'s; the REST write is not built.
+      summary: Who the signed-in member talks to
+      tags:
+      - assistant
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantCompanion'
+          description: ''
+  /api/assistant/session:
+    post:
+      operationId: api_assistant_session_create
+      summary: 'Start a live conversation: mint a locked Gemini Live token'
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantSessionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantSessionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantSessionRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantSession'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many starts; nothing started.
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Google refused the key or the session, in words.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No `LEGION_GEMINI_KEY` on this server ("The assistant isn't
+            set up on this server."), or Google did not answer.
+  /api/assistant/tool:
+    post:
+      operationId: api_assistant_tool_create
+      summary: Run one tool call from a live conversation, as the signed-in member
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantToolRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantToolRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantToolRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantToolResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantToolRefusal'
+          description: Not a tool the web assistant has, or a body that did not fit.
+            Nothing ran. `response` is ready to forward to Gemini.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many calls; nothing ran.
   /api/auth/csrf:
     get:
       operationId: api_auth_csrf_retrieve
@@ -2111,7 +2222,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChecklistTick'
-          description: A first tick for that day.
+          description: A first tick for that day. On the household's Groceries list
+            it also logs a bought entry (`/api/purchases`, ADR 0055), in the same
+            transaction.
         '200':
           content:
             application/json:
@@ -2162,6 +2275,15 @@ paths:
           type: string
           format: uuid
         required: true
+      - in: query
+        name: today
+        schema:
+          type: integer
+        description: 'The caller''s own local epoch day. Send it. On the Groceries
+          list a tick is a purchase (ADR 0055): an untick on the tick''s own day removes
+          the bought entry the tick made, an untick on a later day leaves it. Without
+          this the engine uses today''s UTC date, which west of UTC can keep an entry
+          a late-evening untick meant to remove.'
       tags:
       - checklists
       security:
@@ -2172,6 +2294,12 @@ paths:
           description: 'Done. Idempotent: no tick on that day is still a 204, not
             a 404 - ''already untouched'' and ''just unticked'' read the same to a
             caller that does not care which happened.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was unticked: `today` is not a whole number of days.'
         '404':
           content:
             application/json:
@@ -6265,6 +6393,253 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/purchases/:
+    get:
+      operationId: api_purchases_list
+      description: '`GET /api/purchases/` and `POST /api/purchases/`.'
+      parameters:
+      - in: query
+        name: from
+        schema:
+          type: integer
+        description: First local epoch day.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: At most this many (default 100, max 500).
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: 'Text search with the same matching as `last-bought`: every word
+          of `q` appears in the entry, plurals folded.'
+      - in: query
+        name: source
+        schema:
+          type: string
+          enum:
+          - GROCERIES_BACKFILL
+          - GROCERIES_TICK
+          - MANUAL
+      - in: query
+        name: to
+        schema:
+          type: integer
+        description: Last local epoch day.
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseList'
+          description: Live entries this member may see, newest first (`bought_on`,
+            then `logged_at`). Deleted entries are never listed. Another member's
+            private entries are not here at all.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nothing was read.
+    post:
+      operationId: api_purchases_create
+      description: '`GET /api/purchases/` and `POST /api/purchases/`.'
+      tags:
+      - purchases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Purchase'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Purchase'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Purchase'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: Logged. Source MANUAL, logged by the member making the request.
+            Shared unless `visibility` is `private`.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: '**Not created - this `sync_id` already exists**, and the body
+            is the entry that was already there, unchanged. A client tells the two
+            apart by the status code, never by the body.'
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+  /api/purchases/{purchase_id}:
+    get:
+      operationId: api_purchases_retrieve
+      description: '`GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`.'
+      parameters:
+      - in: path
+        name: purchase_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+    patch:
+      operationId: api_purchases_partial_update
+      description: '`GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`.'
+      parameters:
+      - in: path
+        name: purchase_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - purchases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPurchase'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPurchase'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPurchase'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this member may not make the entry private.
+            `detail` is the sentence to show.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+    delete:
+      operationId: api_purchases_destroy
+      description: '`GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`.'
+      parameters:
+      - in: path
+        name: purchase_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (`deleted_at` set); already deleted is also
+            a 204. A deleted entry no longer answers `last-bought` or the list.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/purchases/last-bought:
+    get:
+      operationId: api_purchases_last_bought
+      description: '`GET /api/purchases/last-bought?q=shampoo` (purchase-log ticket
+        02).'
+      parameters:
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: What was bought, in the asker's words ("shampoo").
+        required: true
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LastBought'
+          description: 'Every distinct item text that matches, each as its newest
+            entry, newest first. Matching is loose (every word of `q` in the entry,
+            plurals folded), so an answer must name the entry''s own text and date,
+            as `message` does. Several matches: say them all, never pick one. No match
+            is an empty `matches` and "I have no record of buying ...": absence of
+            a record, never "never bought".'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nothing was searched.
   /api/push/preferences:
     get:
       operationId: api_push_preferences_retrieve
@@ -6673,6 +7048,138 @@ paths:
             message.
 components:
   schemas:
+    AssistantCompanion:
+      type: object
+      properties:
+        name:
+          type: string
+          description: What the companion is called.
+        persona:
+          type: string
+          description: The built-in register it wears.
+        voice_name:
+          type: string
+          description: The Gemini voice it speaks in.
+        custom_register:
+          type: boolean
+          description: True when the household wrote its own register for it.
+        stored:
+          type: boolean
+          description: False when no companion has been set for this member and this
+            is the default the engine assigns.
+      required:
+      - custom_register
+      - name
+      - persona
+      - stored
+      - voice_name
+    AssistantSession:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The ephemeral token's full name (`auth_tokens/...`). Pass it
+            as the `access_token` query parameter on `ws_url`. One conversation; the
+            setup it carries is locked, so the browser's own `setup` message is ignored.
+        model:
+          type: string
+        ws_url:
+          type: string
+          description: Append `?access_token=<token, URL-encoded>` and open a WebSocket.
+        expires_at:
+          type: string
+          format: date-time
+          description: The conversation cannot outlive this (about 30 minutes).
+        connect_by:
+          type: string
+          format: date-time
+          description: The WebSocket must be opened before this (about 60 seconds).
+        companion_name:
+          type: string
+        voice_name:
+          type: string
+        input_audio_mime:
+          type: string
+          description: 'What `realtimeInput.audio.mimeType` must say: 16-bit PCM,
+            16 kHz, mono.'
+        output_audio_rate:
+          type: integer
+          description: Sample rate of the 16-bit PCM Gemini sends back.
+      required:
+      - companion_name
+      - connect_by
+      - expires_at
+      - input_audio_mime
+      - model
+      - output_audio_rate
+      - token
+      - voice_name
+      - ws_url
+    AssistantSessionRequest:
+      type: object
+      properties:
+        utc_offset_minutes:
+          type: integer
+          maximum: 840
+          minimum: -720
+          nullable: true
+          description: 'Minutes EAST of UTC on the person''s own clock: `-new Date().getTimezoneOffset()`
+            in a browser (Houston in summer is -300). Omit it and the assistant is
+            told the offset is unknown. Never an IANA zone id.'
+    AssistantToolForward:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+      - message
+      - success
+    AssistantToolRefusal:
+      type: object
+      properties:
+        response:
+          $ref: '#/components/schemas/AssistantToolForward'
+        detail:
+          type: string
+      required:
+      - detail
+      - response
+    AssistantToolRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: '`functionCalls[].name`, as Gemini sent it.'
+        args:
+          type: object
+          additionalProperties: {}
+          description: '`functionCalls[].args`, as Gemini sent it. Omitted means `{}`.'
+      required:
+      - name
+    AssistantToolResult:
+      type: object
+      properties:
+        response:
+          $ref: '#/components/schemas/AssistantToolForward'
+        name:
+          type: string
+        is_error:
+          type: boolean
+          description: True when the tool was refused or failed. `text` says what
+            did not happen.
+        outcome:
+          $ref: '#/components/schemas/OutcomeEnum'
+        text:
+          type: string
+          description: The result in words, for the model.
+      required:
+      - is_error
+      - name
+      - outcome
+      - response
+      - text
     BodyweightLog:
       type: object
       description: |-
@@ -8341,6 +8848,40 @@ components:
       - live
       - reason
       - uses_left
+    LastBought:
+      type: object
+      properties:
+        query:
+          type: string
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/LastBoughtMatch'
+        message:
+          type: string
+          description: The sentence to show or say. It always names the entries it
+            matched.
+      required:
+      - matches
+      - message
+      - query
+    LastBoughtMatch:
+      type: object
+      properties:
+        entry:
+          $ref: '#/components/schemas/Purchase'
+        exact:
+          type: boolean
+          description: 'True when the entry''s text IS the query (case and spacing
+            aside). False for a loose match: say the entry''s own text, never the
+            query''s.'
+        times_logged:
+          type: integer
+          description: How many live entries carry this same item text.
+      required:
+      - entry
+      - exact
+      - times_logged
     LastOutcomeEnum:
       enum:
       - ok
@@ -9282,6 +9823,18 @@ components:
       - sync_id
       - updated_at
       - vehicle_id
+    OutcomeEnum:
+      enum:
+      - ok
+      - refused
+      - failed
+      - throttled
+      type: string
+      description: |-
+        * `ok` - OK
+        * `refused` - Refused
+        * `failed` - Failed
+        * `throttled` - Throttled
     PagedBodyweightLog:
       type: object
       properties:
@@ -10346,6 +10899,84 @@ components:
         name:
           type: string
           maxLength: 150
+    PatchedPurchase:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        item:
+          type: string
+          description: What was bought, as written.
+        bought_on:
+          type: integer
+          minimum: 0
+          description: The local day it was bought, as an epoch day (`LocalDate.toEpochDay()`).
+        bought_on_date:
+          type: string
+          readOnly: true
+          description: '`bought_on` as an ISO date (YYYY-MM-DD), for display.'
+        logged_at:
+          type: string
+          format: date-time
+          readOnly: true
+        logged_by:
+          type: string
+          nullable: true
+          readOnly: true
+          description: The first name of the member who logged it. Null means NOT
+            RECORDED (an entry imported from past Groceries ticks, which never stored
+            who ticked them); say "not recorded", never guess.
+        logged_by_me:
+          type: boolean
+          readOnly: true
+          description: True when the member making this request logged it.
+        store:
+          type: string
+          nullable: true
+        price_cents:
+          type: integer
+          nullable: true
+          description: Whole cents, entered by hand (499 is 4.99), or null when nobody
+            said. Never reconciled against a bank statement and never summed into
+            a ledger figure; every surface that shows it says it was entered by hand.
+        price_note:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Words to show beside the price, or null when there is no price.
+        quantity_note:
+          type: string
+          nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
+        source:
+          type: string
+          readOnly: true
+          description: MANUAL (logged by a member), GROCERIES_TICK (a tick on the
+            Groceries list, ADR 0055) or GROCERIES_BACKFILL (a Groceries tick from
+            before the log existed; who ticked it was not recorded).
+        tick:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
     Place:
       type: object
       description: |-
@@ -10435,6 +11066,116 @@ components:
         * `LLM_RECONCILED` - Llm Reconciled
         * `UNRECONCILED` - Unreconciled
         * `USER` - User
+    Purchase:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        item:
+          type: string
+          description: What was bought, as written.
+        bought_on:
+          type: integer
+          minimum: 0
+          description: The local day it was bought, as an epoch day (`LocalDate.toEpochDay()`).
+        bought_on_date:
+          type: string
+          readOnly: true
+          description: '`bought_on` as an ISO date (YYYY-MM-DD), for display.'
+        logged_at:
+          type: string
+          format: date-time
+          readOnly: true
+        logged_by:
+          type: string
+          nullable: true
+          readOnly: true
+          description: The first name of the member who logged it. Null means NOT
+            RECORDED (an entry imported from past Groceries ticks, which never stored
+            who ticked them); say "not recorded", never guess.
+        logged_by_me:
+          type: boolean
+          readOnly: true
+          description: True when the member making this request logged it.
+        store:
+          type: string
+          nullable: true
+        price_cents:
+          type: integer
+          nullable: true
+          description: Whole cents, entered by hand (499 is 4.99), or null when nobody
+            said. Never reconciled against a bank statement and never summed into
+            a ledger figure; every surface that shows it says it was entered by hand.
+        price_note:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Words to show beside the price, or null when there is no price.
+        quantity_note:
+          type: string
+          nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
+        source:
+          type: string
+          readOnly: true
+          description: MANUAL (logged by a member), GROCERIES_TICK (a tick on the
+            Groceries list, ADR 0055) or GROCERIES_BACKFILL (a Groceries tick from
+            before the log existed; who ticked it was not recorded).
+        tick:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
+      required:
+      - bought_on
+      - bought_on_date
+      - deleted_at
+      - id
+      - item
+      - logged_at
+      - logged_by
+      - logged_by_me
+      - price_note
+      - source
+      - tick
+    PurchaseList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Purchase'
+        truncated:
+          type: boolean
+          description: True when more entries matched than `limit`; only the newest
+            are here.
+        message:
+          type: string
+          nullable: true
+          description: A sentence to show when `results` is empty, else null. With
+            `q` it is "I have no record of buying ...", never "never bought".
+      required:
+      - message
+      - results
+      - truncated
     Receipt:
       type: object
       description: |-

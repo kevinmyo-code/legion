@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant chat and voice: A, B or C</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ---------- page ---------- */
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:oklch(0.935 0.008 285);color:oklch(0.22 0.012 285);font-family:'Roboto Flex',Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.4}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+.intro{max-width:1320px;margin:0 auto;padding:28px 24px 8px}
+.intro h1{margin:0 0 6px;font-size:28px;font-weight:600}
+.intro p{margin:0 0 6px;color:oklch(0.42 0.016 285);font-size:15px;max-width:1000px}
+.who{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.who span{font-size:14px;color:oklch(0.42 0.016 285)}
+.group{max-width:1400px;margin:0 auto;padding:20px 16px 44px}
+.group>h2{font-size:20px;font-weight:600;margin:0 0 4px;text-align:center}
+.group>p.gsub{margin:0 auto 22px;text-align:center;color:oklch(0.42 0.016 285);font-size:14px;max-width:920px}
+.row{display:flex;flex-wrap:wrap;gap:44px;justify-content:center;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:10px;align-items:center;width:400px}
+.col.wide{width:auto}
+.vname{font-size:20px;font-weight:700}
+.vdesc{font-size:14px;color:oklch(0.42 0.016 285);text-align:center;margin:0;min-height:60px;max-width:390px}
+.col.wide .vdesc{max-width:900px;min-height:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-content:flex-start;max-width:400px;margin-bottom:8px;min-height:250px}
+.col.wide .chips{max-width:1100px;min-height:0}
+#row-droid .chips{min-height:0}
+.chips button,.who button{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid oklch(0.72 0.014 285);background:oklch(0.98 0.004 285);color:oklch(0.3 0.012 285);font-size:14px;font-weight:500}
+.chips button.on,.who button.on{background:oklch(0.5 0.15 275);border-color:oklch(0.5 0.15 275);color:#fff}
+.chips button:focus-visible,.who button:focus-visible{outline:2px solid oklch(0.5 0.15 275);outline-offset:2px}
+.chips .sep{flex-basis:100%;height:0}
+.chips .lbl{flex-basis:100%;text-align:center;font-size:12.5px;color:oklch(0.42 0.016 285);margin-top:4px}
+footer{max-width:1320px;margin:0 auto;padding:0 24px 48px;color:oklch(0.42 0.016 285);font-size:13px}
+
+/* ---------- themes ---------- */
+.t-web{
+  --font:'Roboto Flex',Roboto,system-ui,sans-serif;
+  --bg:oklch(0.98 0.004 285);--s1:oklch(0.958 0.009 285);--s2:oklch(0.938 0.012 285);--s3:oklch(0.915 0.014 285);--pop:oklch(0.965 0.009 285);
+  --ink:oklch(0.22 0.012 285);--muted:oklch(0.48 0.016 285);--outline:oklch(0.72 0.014 285);--hair:oklch(0.88 0.01 285);
+  --fill:oklch(0.5 0.15 275);--on-fill:#fff;--tonal:oklch(0.915 0.05 275);--on-tonal:oklch(0.3 0.12 275);--accent:oklch(0.5 0.15 275);
+  --sel:oklch(0.915 0.05 275);--on-sel:oklch(0.3 0.12 275);
+  --shared:oklch(0.925 0.055 355);--on-shared:oklch(0.33 0.13 355);
+  --done:oklch(0.5 0.12 160);--done-c:oklch(0.92 0.05 160);--on-done-c:oklch(0.3 0.08 160);
+  --err-c:oklch(0.93 0.04 25);--on-err-c:oklch(0.36 0.14 27);
+  --warn-c:oklch(0.93 0.07 75);--on-warn:oklch(0.38 0.09 60);
+  --scrim:oklch(0.2 0.03 285 / 0.4);--toast:oklch(0.3 0.012 285);--on-toast:oklch(0.97 0.004 285);
+  --me:oklch(0.5 0.15 275);--on-me:#fff;
+  --r-ctl:16px;--r-card:20px;--r-sheet:28px;--tabbar:oklch(0.938 0.012 285);
+}
+.t-droid{
+  --font:'Figtree',system-ui,sans-serif;
+  --bg:#121317;--s1:#1C1E24;--s2:#24272E;--s3:#2A2D34;--pop:#1C1E24;
+  --ink:#E6E7EC;--muted:#A9ADB8;--outline:#3A3E47;--hair:#23262D;
+  --fill:#733423;--on-fill:#FFDBD1;--tonal:#24272E;--on-tonal:#E6E7EC;--accent:#FFB4A1;
+  --sel:#733423;--on-sel:#FFDBD1;
+  --shared:#24272E;--on-shared:#E6E7EC;
+  --done:#7EDBA5;--done-c:#173D2B;--on-done-c:#7EDBA5;
+  --err-c:#4A1F24;--on-err-c:#FFB4AB;
+  --warn-c:#3A2E12;--on-warn:#FFC857;
+  --scrim:rgba(0,0,0,.55);--toast:#E6E7EC;--on-toast:#121317;
+  --me:#733423;--on-me:#FFDBD1;
+  --r-ctl:16px;--r-card:20px;--r-sheet:24px;--tabbar:#16181D;
+}
+
+/* ---------- frames ---------- */
+.ios{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font-family:var(--font);
+  box-shadow:0 0 0 9px #1d1d22,0 0 0 10px rgba(0,0,0,.18),0 30px 60px -24px rgba(0,0,0,.4)}
+.ios::after{content:"";position:absolute;left:50%;bottom:8px;width:134px;height:5px;border-radius:3px;background:var(--ink);opacity:.85;transform:translateX(-50%);z-index:60;pointer-events:none}
+.ios .sb{height:47px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 6px 38px;font-size:15px;font-weight:600}
+.droid{width:384px;height:832px;border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font-family:var(--font);border:1px solid #2a2d34;box-shadow:0 30px 60px -24px rgba(0,0,0,.5)}
+.droid .sb{height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:13px;font-weight:500;color:var(--muted)}
+.droid .gest{height:20px;flex:none;background:var(--tabbar);display:flex;align-items:center;justify-content:center}
+.droid .gest i{width:108px;height:4px;border-radius:2px;background:var(--muted);opacity:.7}
+.desk{width:1280px;height:800px;border-radius:14px;overflow:hidden;display:flex;background:var(--bg);color:var(--ink);font-family:var(--font);box-shadow:0 0 0 1px rgba(0,0,0,.08),0 30px 60px -24px rgba(0,0,0,.35);position:relative}
+.sbi{display:flex;gap:6px;align-items:center}
+
+/* ---------- components ---------- */
+.ic{flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.scr{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.main{flex:1;min-height:0;overflow-y:auto;padding:4px 16px 20px;scrollbar-width:none}
+.main::-webkit-scrollbar,.tx::-webkit-scrollbar{display:none}
+.ftop{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px 8px}
+.hh{margin:0;font-size:18px;font-weight:500}
+.tabbar{flex:none;display:flex;background:var(--tabbar);padding:8px 6px 26px;position:relative;z-index:5}
+.tab{flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:500;border-radius:16px;min-width:0}
+.tab .pill{display:grid;place-items:center;height:32px;width:56px;border-radius:999px}
+.tab[aria-current=page]{color:var(--ink);font-weight:600}
+.tab[aria-current=page] .pill{background:var(--sel);color:var(--on-sel)}
+.btn{min-height:44px;border-radius:999px;padding:0 18px;font-weight:500;font-size:15px;border:0;display:inline-flex;align-items:center;gap:8px;justify-content:center;white-space:nowrap}
+.btn.fill{background:var(--fill);color:var(--on-fill)}
+.btn.tonal{background:var(--tonal);color:var(--on-tonal)}
+.btn.text{background:transparent;color:var(--accent);padding:0 10px}
+.btn.icon{width:44px;padding:0;background:transparent;color:var(--ink)}
+.btn.round{width:44px;padding:0}
+.btn.danger{background:var(--err-c);color:var(--on-err-c)}
+.btn.small{font-size:14px;padding:0 14px}
+.chathead .btn.small{padding:0 12px;font-size:13.5px;gap:6px}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.muted{color:var(--muted)}
+.greet{font-size:28px;font-weight:400;margin:6px 0 0;letter-spacing:-.01em}
+.t-droid .greet{font-weight:600}
+.sec-label{font-size:13px;font-weight:500;color:var(--muted);margin:14px 4px 6px}
+.ev{display:flex;align-items:center;gap:12px;background:var(--s1);border-radius:var(--r-card);padding:12px 14px;margin-bottom:8px}
+.ev .tm{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;width:64px}
+.ev .nm{flex:1;font-size:16px}
+.card{background:var(--s1);border-radius:var(--r-sheet);padding:14px 16px 16px}
+.mark-shared{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 10px 0 8px;border-radius:999px;background:var(--shared);color:var(--on-shared);font-size:13px;font-weight:500;white-space:nowrap}
+/* chat */
+.chathead{flex:none;display:flex;align-items:center;gap:10px;padding:6px 10px 8px 16px}
+.av{width:36px;height:36px;border-radius:50%;background:var(--tonal);color:var(--on-tonal);display:grid;place-items:center;font-weight:600;font-size:16px;flex:none}
+.chathead .nm{flex:1;min-width:0}
+.chathead .nm b{display:block;font-size:17px;font-weight:600}
+.chathead .nm small{display:block;font-size:12.5px;color:var(--muted)}
+.tx{flex:1;min-height:0;overflow-y:auto;padding:4px 14px 10px;display:flex;flex-direction:column;gap:8px;scrollbar-width:none}
+.session{font-size:12.5px;color:var(--muted);text-align:center;margin:2px 12px 6px;display:flex;gap:6px;justify-content:center;align-items:center}
+.bub{max-width:84%;padding:10px 14px;border-radius:20px;font-size:15px;line-height:1.4}
+.bub.me{align-self:flex-end;background:var(--me);color:var(--on-me);border-bottom-right-radius:6px}
+.bub.ai{align-self:flex-start;background:var(--s2);color:var(--ink);border-bottom-left-radius:6px}
+.bub .via{display:flex;align-items:center;gap:4px;font-size:11.5px;margin-top:4px;opacity:.85}
+.bub.me .via{justify-content:flex-end}
+.bub .cut{font-style:italic;color:var(--muted)}
+.tool{align-self:flex-start;display:flex;gap:8px;align-items:flex-start;font-size:13.5px;padding:8px 12px;border-radius:14px;max-width:90%}
+.tool.ok{background:var(--done-c);color:var(--on-done-c)}
+.tool.fail{background:var(--err-c);color:var(--on-err-c)}
+.sys{align-self:center;font-size:13px;color:var(--muted);text-align:center;padding:2px 10px}
+.typing{align-self:flex-start;font-size:13.5px;color:var(--muted);padding:4px 6px}
+.sugg{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.sugg button{min-height:44px;border-radius:999px;border:1px solid var(--outline);background:transparent;color:var(--ink);padding:0 14px;font-size:14px;text-align:left}
+.empty{padding:16px 6px 4px}
+.empty h2{font-size:22px;font-weight:500;margin:0 0 4px}
+.composer{flex:none;display:flex;gap:8px;align-items:center;padding:8px 12px 10px;background:var(--bg)}
+.composer .fld{flex:1;min-width:0;height:48px;border-radius:999px;background:var(--s3);display:flex;align-items:center;padding:0 4px 0 16px}
+.composer .fld:focus-within{box-shadow:0 0 0 2px var(--accent)}
+.composer input{flex:1;min-width:0;border:0;background:transparent;outline:none;font-size:16px;color:var(--ink);height:100%}
+.composer input::placeholder{color:var(--muted)}
+.mic{width:48px;height:48px;border-radius:50%;border:0;background:var(--fill);color:var(--on-fill);display:grid;place-items:center;flex:none}
+.errbanner{flex:none;margin:0 12px 8px;background:var(--err-c);color:var(--on-err-c);border-radius:16px;padding:10px 12px;font-size:14px;display:flex;gap:8px;align-items:flex-start}
+.errbanner p{margin:0}
+/* voice */
+.vstage{flex:none;margin:4px 12px 8px;background:var(--s1);border-radius:var(--r-sheet);padding:16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.vstage.big{flex:1;justify-content:center;margin:4px 12px 10px}
+.vstage .st{font-size:15px;font-weight:600;display:flex;gap:6px;align-items:center}
+.vstage .cap{font-size:17px;line-height:1.4;min-height:48px;max-width:330px}
+.vstage .cap.me{color:var(--muted)}
+.vstage .hint{font-size:13px;color:var(--muted);max-width:320px;margin:0}
+.vstage .ctr{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.orb{width:104px;height:104px;border-radius:50%;background:var(--fill);color:var(--on-fill);display:grid;place-items:center;border:0;position:relative}
+.orb.small{width:64px;height:64px}
+.orb.idle{background:var(--tonal);color:var(--on-tonal)}
+.orb.listening::before,.orb.speaking::before{content:"";position:absolute;inset:-10px;border-radius:50%;border:3px solid var(--fill);opacity:.5;animation:ring 1.4s ease-out infinite}
+.orb.blocked{background:var(--warn-c);color:var(--on-warn)}
+.orb.err{background:var(--err-c);color:var(--on-err-c)}
+@keyframes ring{from{transform:scale(.9);opacity:.6}to{transform:scale(1.25);opacity:0}}
+.bars{display:flex;gap:4px;align-items:center;height:28px}
+.bars i{width:5px;border-radius:3px;background:currentColor;animation:bar 0.9s ease-in-out infinite}
+.bars i:nth-child(2){animation-delay:.15s}.bars i:nth-child(3){animation-delay:.3s}.bars i:nth-child(4){animation-delay:.45s}
+@keyframes bar{0%,100%{height:6px}50%{height:26px}}
+@media (prefers-reduced-motion:reduce){.bars i,.orb::before{animation:none}.bars i{height:14px}}
+/* variant B: ask bar + sheet */
+.askbar{flex:none;display:flex;gap:8px;padding:8px 12px;background:var(--bg);border-top:1px solid var(--hair)}
+.askbtn{flex:1;min-width:0;height:48px;border-radius:999px;border:0;background:var(--s3);color:var(--muted);display:flex;align-items:center;gap:10px;padding:0 16px;font-size:16px;text-align:left}
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:20;border:0;width:100%}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--pop);border-radius:var(--r-sheet) var(--r-sheet) 0 0;height:90%;display:flex;flex-direction:column;box-shadow:0 -8px 30px -12px rgba(0,0,0,.3);padding-bottom:22px}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--outline);margin:8px auto 4px;flex:none}
+/* variant C: orb + overlay */
+.fab{position:absolute;right:16px;bottom:118px;z-index:15;width:60px;height:60px;border-radius:50%;border:0;background:var(--fill);color:var(--on-fill);display:grid;place-items:center;box-shadow:0 8px 20px -6px rgba(0,0,0,.35)}
+.fab.live::before{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid var(--fill);animation:ring 1.4s ease-out infinite}
+.fabtag{position:absolute;right:86px;bottom:130px;z-index:15;background:var(--toast);color:var(--on-toast);font-size:13.5px;padding:8px 12px;border-radius:14px;max-width:230px}
+.coach{position:absolute;right:16px;bottom:190px;z-index:15;background:var(--toast);color:var(--on-toast);font-size:14px;padding:10px 12px;border-radius:14px;max-width:250px}
+.overlay{position:absolute;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;padding-top:4px}
+/* desk */
+.rail{width:232px;flex:none;background:var(--s1);padding:20px 12px;display:flex;flex-direction:column;gap:4px}
+.rail .hh{padding:0 12px 18px}
+.ritem{display:flex;align-items:center;gap:12px;height:48px;border-radius:999px;padding:0 16px;font-size:15px;font-weight:500;color:var(--muted);border:0;background:transparent;text-align:left;width:100%}
+.ritem[aria-current=page]{background:var(--tonal);color:var(--on-tonal);font-weight:600}
+.ritem.ask{color:var(--ink);background:var(--s3)}
+.rail hr{border:0;border-top:1px solid var(--hair);margin:6px 12px}
+.dmain{flex:1;min-width:0;overflow-y:auto;padding:28px 32px}
+.dmain h1{margin:0 0 4px;font-size:28px;font-weight:500}
+.panel{width:400px;flex:none;border-left:1px solid var(--hair);background:var(--pop);display:flex;flex-direction:column}
+/* droid */
+.strip{flex:none;background:var(--tabbar);border-top:1px solid var(--hair);padding:9px 16px}
+.striprow{display:flex;gap:8px;align-items:center}
+.tfld{flex:1;min-width:0;height:52px;border-radius:999px;background:var(--s2);display:flex;align-items:center;padding:0 4px 0 18px}
+.tfld:focus-within{box-shadow:0 0 0 2px var(--accent)}
+.tfld input{flex:1;min-width:0;border:0;background:transparent;outline:none;font-size:16px;color:var(--ink);height:100%}
+.tfld input::placeholder{color:#8A8F9B}
+.talk{height:52px;min-width:52px;border-radius:999px;border:0;background:#733423;color:#FFDBD1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:15px;font-weight:600;padding:0 16px}
+.talk.blocked{background:#3A2E12;color:#FFC857}
+.talk .pulse{animation:pulse 1.2s ease-in-out infinite alternate}
+@keyframes pulse{from{opacity:.35}to{opacity:1}}
+.striprow:focus-within .talk .lbl{display:none}
+.stripsub{font-size:13px;color:var(--muted);margin:6px 4px 0;line-height:1.35}
+.stripsub.warn{color:#FFC857}
+.dpanel{position:absolute;left:12px;right:12px;bottom:0;z-index:10;background:var(--s1);border-radius:24px 24px 0 0;max-height:62%;display:flex;flex-direction:column;box-shadow:0 -10px 30px -10px rgba(0,0,0,.6);border:1px solid var(--outline);border-bottom:0}
+.dhost{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.toast{position:absolute;left:16px;right:16px;bottom:100px;z-index:40;background:var(--toast);color:var(--on-toast);border-radius:14px;padding:12px 14px;font-size:14.5px}
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Assistant chat and voice: pick A, B or C</h1>
+  <p>Web-assistant ticket 05. Mia's iPhone family view first (390 x 844, soft Material light from the real web tokens), then Kevin's workbench and Kevin's Android typed chatbox beside the existing push-to-talk strip (384 dp, soft Material dark).</p>
+  <p>Everything is clickable: type a message (try "when did we last buy shampoo", "I bought shampoo at Target, log it", "play some music"), tap the mic, interrupt, end. The chips above each device jump to a state. Tool lines appear only after the engine answered; a failure says what did not happen.</p>
+  <div class="who" role="group" aria-label="Who is signed in on the iPhone mocks"><span>The companion's name is data from the signed-in member. iPhone mocks signed in as:</span><button data-viewer="Mia" class="on">Mia (talks to Dorothy)</button><button data-viewer="Kevin">Kevin (talks to Alfred)</button></div>
+</div>
+
+<section class="group">
+  <h2>Mia's iPhone: family view</h2>
+  <p class="gsub">iOS needs a tap before the mic opens, and a screen lock ends the conversation (ticket 02). Chats are session only: nothing is saved.</p>
+  <div class="row" id="row-ios"></div>
+</section>
+<section class="group">
+  <h2>Kevin's workbench (1024 px and up)</h2>
+  <p class="gsub">Variant B's shape fits the desk: the conversation docks as a side panel beside whatever page is open, instead of covering it.</p>
+  <div class="row" id="row-desk"></div>
+</section>
+<section class="group">
+  <h2>Kevin's Android phone: typed chatbox beside push-to-talk</h2>
+  <p class="gsub">Ticket 06: a typed turn goes into the same Live session, its reply is shown as text and not spoken. Push-to-talk is unchanged and still speaks. Typing over a spoken reply stops it.</p>
+  <div class="row" id="row-droid"></div>
+</section>
+<footer>Prototype only. Replies are scripted, but every tool line follows the rule: success only after the engine said so. Source: .scratch/web-assistant/research/05-prototypes/assistant-prototypes.html</footer>
+
+<script>
+const P = {
+  house:'<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  lists:'<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8M13 12h8M13 18h8"/>',
+  cal:'<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  alert:'<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  cloudoff:'<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2"/><path d="M21.53 15.03A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 9.2 5.1"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>',
+  micoff:'<path d="m2 2 20 20"/><path d="M18.89 13.23A7 7 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 12 5M15 9.34V5a3 3 0 0 0-5.68-1.33M9 9v3a3 3 0 0 0 5.12 2.12M12 19v3"/>',
+  send:'<path d="m5 12 7-7 7 7M12 19V5"/>',
+  keyboard:'<rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M8 17h8M10 13h4"/>',
+  spark:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 3v4M17 5h4"/>',
+  vol:'<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
+  voloff:'<path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  minus:'<path d="m6 9 6 6 6-6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  lock:'<rect width="16" height="11" x="4" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  phone:'<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/>',
+  refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>',
+  money:'<rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/>',
+  car:'<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+  notes:'<path d="M2 6h4M2 10h4M2 14h4M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9.5 8h5M9.5 12H16M9.5 16H14"/>'
+};
+function ic(n, s){ s = s || 20; return '<svg class="ic" width="'+s+'" height="'+s+'" viewBox="0 0 24 24" aria-hidden="true">'+P[n]+'</svg>'; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+/* ===== members: the companion name is data, read from here and nowhere else ===== */
+const MEMBERS = { Mia:{companion:'Dorothy'}, Kevin:{companion:'Alfred'} };
+
+/* ===== scripted engine: a tool line exists only when the "engine" returned ===== */
+const ITEMS = ['paper towels','laundry detergent','dish soap','shampoo','toothpaste','conditioner','eggs','bananas'];
+const FOUND = {
+  shampoo:{n:3, say:'The latest is Shampoo on Sep 20, ticked off Groceries by Mia. Before that, Head & Shoulders shampoo on Aug 9, logged by Kevin, and Dove shampoo on Jun 14, who logged it isn\'t recorded.'},
+  toothpaste:{n:2, say:'You logged Toothpaste on Sep 28, ticked off Groceries by Kevin. Before that, Colgate toothpaste on Aug 30, logged by Mia.'},
+  'paper towels':{n:1, say:'Paper towels on Oct 2, ticked off Groceries by Mia.'}
+};
+function route(s, raw){
+  const t = ' '+raw.toLowerCase()+' ';
+  const it = ITEMS.find(i => t.includes(i)) || null;
+  const store = /target/.test(t) ? 'Target' : /\bheb\b/.test(t) ? 'HEB' : null;
+  if (s.droid && /(music|spotify| play )/.test(t)) return {tool:{ok:true, text:'Spotify started: Kitchen playlist'}, reply:'Playing your Kitchen playlist.'};
+  if (/(music|spotify| play |navigat|directions|oil|my car|email|gmail|alarm| call )/.test(t))
+    return {reply: (s.viewer === 'Mia' ? 'That\'s only on Kevin\'s phone, so I can\'t do it from here.' : 'That\'s only on your Android phone, so I can\'t do it from the web.') + ' I can check the calendar, the lists or the bought log.', phoneOnly:true};
+  if (/(when|last).*(buy|bought)/.test(t)) {
+    const what = it || 'that';
+    if (s.down) return {tool:{ok:false, text:'Couldn\'t reach the engine. The bought log was not searched.'}, reply:'I can\'t reach the bought log right now, so I can\'t say. That isn\'t the same as having no record.'};
+    const f = FOUND[it];
+    if (!f) return {tool:{ok:true, text:'Searched the bought log for '+what+': no matches'}, reply:'I have no record of buying '+what+'. That only means nobody logged it.'};
+    return {tool:{ok:true, text:'Searched the bought log for '+what+': '+f.n+(f.n === 1 ? ' match' : ' matches')}, reply:f.say};
+  }
+  if (/(log |logged|bought|got |picked up)/.test(t) && it) {
+    if (s.down) return {tool:{ok:false, text:'Couldn\'t reach the engine. '+cap(it)+' was not logged.'}, reply:'I couldn\'t reach the engine, so '+it+' is not logged. Nothing changed. Try again in a minute, or log it on the Lists screen later.'};
+    return {tool:{ok:true, text:'Logged '+it+' as bought today'+(store ? ' at '+store : '')}, reply:'Logged: '+it+', bought today'+(store ? ' at '+store : '')+', shared with the household.'};
+  }
+  if (/\badd\b/.test(t) && it) {
+    if (s.down) return {tool:{ok:false, text:'Couldn\'t reach the engine. '+cap(it)+' was not added to Groceries.'}, reply:'I couldn\'t reach the engine, so '+it+' is not on Groceries yet.'};
+    return {tool:{ok:true, text:'Added '+it+' to Groceries'}, reply:'Added '+it+' to Groceries.'};
+  }
+  if (/(today|calendar|schedule|on tonight)/.test(t)) {
+    if (s.down) return {tool:{ok:false, text:'Couldn\'t reach the engine. The calendar was not read.'}, reply:'I can\'t reach the calendar right now, so I don\'t know what\'s on today. That doesn\'t mean the day is clear.'};
+    return {tool:{ok:true, text:'Read today\'s calendar: 2 events'}, reply:'Two things today: soccer practice at 5:00 PM and the HEB pickup at 6:30 PM.'};
+  }
+  return {reply:'I\'m not sure what you meant. I can check the calendar, the lists and the bought log, or log something you bought.'};
+}
+const SUGG = ['When did we last buy shampoo?','I bought shampoo at Target, log it','What\'s on today?','Play some music in the kitchen'];
+/* the live-voice script: what the person "says" each time the mic opens */
+const VOICE = ['When did we last buy toothpaste?','Actually, I just bought shampoo at Target. Log it.','Can you play some music?'];
+
+/* ===== shared chat pieces ===== */
+function comp(s){ return MEMBERS[s.viewer].companion; }
+function turnHtml(s, t){
+  if (t.k === 'me') return '<div class="bub me">'+esc(t.text)+'<span class="via">'+(t.via === 'spoken' ? ic('mic',12)+'said' : 'typed')+'</span></div>';
+  if (t.k === 'ai') {
+    const via = s.droid ? (t.via === 'spoken' ? ic('vol',12)+'spoken' : ic('voloff',12)+'shown, not spoken') : (t.via === 'spoken' ? ic('vol',12)+'spoken' : '');
+    return '<div class="bub ai">'+esc(t.text)+(t.cut ? ' <span class="cut">(cut off)</span>' : '')+(via ? '<span class="via">'+via+'</span>' : '')+'</div>';
+  }
+  if (t.k === 'tool') return '<div class="tool '+(t.ok ? 'ok' : 'fail')+'" role="status">'+ic(t.ok ? 'check' : 'alert',16)+'<span>'+esc(t.text)+'</span></div>';
+  return '<div class="sys" role="status">'+esc(t.text)+'</div>';
+}
+function sessionLine(){ return '<p class="session">'+ic('lock',13)+'Not saved. Closing this, or a screen lock, clears it.</p>'; }
+function transcript(s, opts){
+  opts = opts || {};
+  let h = '<div class="tx" data-tx>';
+  if (!s.turns.length && !opts.noEmpty) {
+    h += '<div class="empty"><h2>Ask '+esc(comp(s))+'</h2><p class="muted" style="margin:0 0 6px;font-size:14px">About the calendar, the lists, or what was bought. Type, or tap the mic to talk.</p>'+sessionLine()+'<div class="sugg">'+SUGG.map(q => '<button data-a="ask" data-v="'+esc(q)+'">'+esc(q)+'</button>').join('')+'</div></div>';
+  } else {
+    h += sessionLine();
+    h += s.turns.map(t => turnHtml(s, t)).join('');
+    if (s.busy) h += '<div class="typing" role="status">'+esc(comp(s))+' is checking...</div>';
+  }
+  return h + '</div>';
+}
+function composer(s, opts){
+  opts = opts || {};
+  return '<div class="composer"><label class="fld"><input data-f="draft" value="'+esc(s.draft)+'" placeholder="Message '+esc(comp(s))+'" aria-label="Message '+esc(comp(s))+'" enterkeyhint="send">'
+    + (s.draft.trim() ? '<button class="btn icon" data-a="send" aria-label="Send">'+ic('send',20)+'</button>' : '')+'</label>'
+    + (opts.noMic ? '' : '<button class="mic" data-a="voice" aria-label="Talk to '+esc(comp(s))+'">'+ic('mic',22)+'</button>')+'</div>';
+}
+function engineBanner(s){
+  return s.down ? '<div class="errbanner" role="alert">'+ic('cloudoff',18)+'<p>Can\'t reach the engine. '+esc(comp(s))+' can\'t read or change anything until it\'s back. Anything you ask to change will not happen.</p></div>' : '';
+}
+function chatHead(s, right, newBelow){
+  const nb = '<button class="btn tonal small" data-a="new">'+ic('refresh',16)+'New conversation</button>';
+  return '<div class="chathead"><span class="av" aria-hidden="true">'+esc(comp(s)[0])+'</span><span class="nm"><b>'+esc(comp(s))+'</b><small>Household assistant</small></span>'
+    + (newBelow ? '' : nb)+(right||'')+'</div>'+(newBelow ? '<div style="flex:none;display:flex;justify-content:flex-start;padding:0 16px 6px 62px">'+nb+'</div>' : '');
+}
+/* voice stage: one renderer, two sizes */
+function voiceStage(s, size){
+  const c = esc(comp(s)), v = s.v, big = size === 'big';
+  const orb = (cls, inner, act, label) => act ? '<button class="orb'+(big?'':' small')+' '+cls+'" data-a="'+act+'" aria-label="'+label+'">'+inner+'</button>' : '<div class="orb'+(big?'':' small')+' '+cls+'" aria-hidden="true">'+inner+'</div>';
+  const bars = '<span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>';
+  const end = '<button class="btn danger small" data-a="end">'+ic('stop',16)+'End</button>';
+  const type = '<button class="btn tonal small" data-a="typemode">'+ic('keyboard',16)+'Type instead</button>';
+  let st, capt = '', hint = '', ctr = '', o;
+  switch (v) {
+    case 'tap': o = orb('idle', ic('mic', big?40:28), 'start', 'Tap to start talking'); st = 'Tap to start talking'; hint = 'Your iPhone needs a tap before the microphone can open. Talk over '+c+' any time to interrupt.'; ctr = type; break;
+    case 'listening': o = orb('listening', bars); st = ic('mic',16)+'Listening'; capt = '<p class="cap me" data-live>'+esc(s.live || 'Go ahead.')+'</p>'; ctr = end+type; break;
+    case 'thinking': o = orb('listening', ic('spark', big?36:24)); st = c+' is checking'; capt = '<p class="cap me">'+esc(s.lastSaid || '')+'</p>'; ctr = end; break;
+    case 'speaking': o = orb('speaking', ic('vol', big?36:24)); st = ic('vol',16)+c+' is speaking'; capt = '<p class="cap" data-live>'+esc(s.live || '')+'</p>'; hint = 'Live transcription. Talk over '+c+', or tap Interrupt.'; ctr = '<button class="btn tonal small" data-a="interrupt">'+ic('mic',16)+'Interrupt</button>'+end; break;
+    case 'interrupted': o = orb('listening', bars); st = 'Interrupted. Listening'; capt = '<p class="cap me" data-live>'+esc(s.live || '')+'</p>'; hint = c+' stopped talking. What was cut off is marked in the chat.'; ctr = end; break;
+    case 'ended': o = orb('idle', ic('mic', big?40:28), 'start', 'Start a new voice conversation'); st = 'Conversation ended'; hint = 'What was said stays on screen until you close this. It is not saved.'; ctr = '<button class="btn fill small" data-a="start">'+ic('mic',16)+'Talk again</button>'+type; break;
+    case 'locked': o = orb('idle', ic('lock', big?36:26), 'start', 'Start a new conversation'); st = 'Conversation ended when the screen locked.'; hint = 'Nothing from it was kept. Tap to start a new one.'; ctr = '<button class="btn fill small" data-a="start">'+ic('mic',16)+'Start again</button>'+type; break;
+    case 'denied': o = orb('blocked', ic('micoff', big?36:26)); st = 'Microphone is blocked for this app'; hint = 'To talk, allow the microphone for LEGION in your iPhone\'s Settings, then try again. Typing still works.'; ctr = '<button class="btn tonal small" data-a="start">Try again</button>'+type; break;
+    case 'down': o = orb('err', ic('cloudoff', big?36:26)); st = 'Can\'t reach the engine'; hint = c+' can\'t start, so nothing was sent. Try again in a minute.'; ctr = '<button class="btn tonal small" data-a="start">Try again</button>'+type; break;
+  }
+  return '<div class="vstage'+(big?' big':'')+'" role="region" aria-label="Voice conversation" aria-live="polite">'+o+'<div class="st">'+st+'</div>'+capt+(hint ? '<p class="hint">'+hint+'</p>' : '')+'<div class="ctr">'+ctr+'</div></div>';
+}
+
+/* ===== frames ===== */
+function iosStatus(){ return '<div class="sb"><span>9:41</span><span class="sbi"><svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true"><rect x="0" y="7" width="3" height="4" rx="1" fill="currentColor"/><rect x="4.5" y="5" width="3" height="6" rx="1" fill="currentColor"/><rect x="9" y="2.5" width="3" height="8.5" rx="1" fill="currentColor"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="currentColor"/></svg><svg width="25" height="12" viewBox="0 0 25 12" aria-hidden="true"><rect x=".75" y=".75" width="21" height="10.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.6" height="4" rx=".8" fill="currentColor"/></svg></span></div>'; }
+function tabbar(s, active, extra){
+  const tabs = [['home','Home','house'],['lists','Lists','lists']].concat(extra ? [extra] : []).concat([['calendar','Calendar','cal'],['settings','Settings','gear']]);
+  return '<nav class="tabbar" aria-label="Tabs">'+tabs.map(t => '<button class="tab" data-a="nav" data-v="'+t[0]+'"'+(active === t[0] ? ' aria-current="page"' : '')+'><span class="pill">'+ic(t[2],24)+'</span>'+esc(t[1])+'</button>').join('')+'</nav>';
+}
+function homeBody(s){
+  return '<h1 class="greet">Good afternoon, '+esc(s.viewer)+'</h1><p class="muted" style="margin:2px 0 0">Sunday, 4 October</p>'
+    + '<p class="sec-label">On today</p>'
+    + '<div class="ev"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span><span class="mark-shared">'+ic('users',14)+'Shared</span></div>'
+    + '<div class="ev"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span><span class="mark-shared">'+ic('users',14)+'Shared</span></div>'
+    + '<div class="card" style="margin-top:12px"><p style="margin:0 0 8px;font-weight:500">Groceries</p>'
+    + ['Shampoo','Toothpaste','Eggs'].map(i => '<p style="margin:6px 0;display:flex;gap:10px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:2px solid var(--outline);border-radius:5px"></span>'+i+'</p>').join('')
+    + '<p class="muted" style="margin:4px 0 0 26px;font-size:13px">and 2 more</p></div>';
+}
+function placeholder(s){ return '<p class="muted" style="margin:30px 6px">'+cap(s.screen)+' is unchanged in this prototype.</p>'; }
+
+/* ===== variant A: a tab of its own ===== */
+function renderA(s){
+  const tabC = ['chat', comp(s), 'spark'];
+  if (s.screen !== 'chat') {
+    const body = s.screen === 'home' ? homeBody(s) : placeholder(s);
+    return iosStatus()+'<div class="scr"><header class="ftop"><p class="hh">Win household</p></header><div class="main">'+body+'</div>'+tabbar(s, s.screen, tabC)+'</div>';
+  }
+  let inner = chatHead(s) + engineBanner(s);
+  if (s.mode === 'voice') inner += voiceStage(s, s.turns.length ? 'small' : 'big') + (s.turns.length ? transcript(s) : '');
+  else inner += transcript(s) + composer(s);
+  return iosStatus()+'<div class="scr">'+inner+tabbar(s, 'chat', tabC)+'</div>';
+}
+
+/* ===== variant B: an ask bar on every screen, the chat in a sheet ===== */
+function renderB(s){
+  const body = s.screen === 'home' ? homeBody(s) : placeholder(s);
+  let h = iosStatus()+'<div class="scr"><header class="ftop"><p class="hh">Win household</p></header><div class="main">'+body+'</div>'
+    + '<div class="askbar"><button class="askbtn" data-a="open">'+ic('spark',20)+'Ask '+esc(comp(s))+'</button><button class="mic" data-a="openvoice" aria-label="Talk to '+esc(comp(s))+'">'+ic('mic',22)+'</button></div>'
+    + tabbar(s, s.screen);
+  if (s.open) {
+    h += '<button class="scrim" data-a="close" aria-label="Close and clear the conversation" tabindex="-1"></button><div class="sheet" role="dialog" aria-label="Conversation with '+esc(comp(s))+'"><div class="grab"></div>'
+      + chatHead(s, '<button class="btn icon" data-a="close" aria-label="Close. This clears the conversation.">'+ic('x',22)+'</button>') + engineBanner(s);
+    if (s.mode === 'voice') h += voiceStage(s, s.turns.length ? 'small' : 'big') + (s.turns.length ? transcript(s) : '');
+    else h += transcript(s) + composer(s);
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+
+/* ===== variant C: a floating orb that expands, voice first ===== */
+function renderC(s){
+  const body = s.screen === 'home' ? homeBody(s) : placeholder(s);
+  let h = iosStatus()+'<div class="scr"><header class="ftop"><p class="hh">Win household</p></header><div class="main">'+body+'</div>'+tabbar(s, s.screen);
+  const live = ['listening','speaking','thinking','interrupted'].includes(s.v) && s.mode === 'voice';
+  if (!s.open) {
+    h += '<button class="fab'+(live ? ' live' : '')+'" data-a="'+(s.coach ? 'orbstart' : 'open')+'" aria-label="'+(live ? 'Open the conversation with ' : 'Talk to ')+esc(comp(s))+'">'+ic(live ? (s.v === 'speaking' ? 'vol' : 'mic') : 'spark',26)+'</button>';
+    if (live) h += '<div class="fabtag" role="status">'+(s.v === 'speaking' ? esc(comp(s))+' is speaking. Tap to see.' : esc(comp(s))+' is listening. Tap to see.')+'</div>';
+    if (s.coach) h += '<div class="coach">Tap the orb to start talking. On an iPhone that tap is what lets the microphone open.</div>';
+  } else {
+    h += '<div class="overlay" role="dialog" aria-label="Conversation with '+esc(comp(s))+'">'
+      + chatHead(s, '<button class="btn icon" data-a="minimize" aria-label="Minimise. The conversation keeps going.">'+ic('minus',22)+'</button><button class="btn icon" data-a="close" aria-label="Close. This clears the conversation.">'+ic('x',22)+'</button>', true)
+      + engineBanner(s);
+    if (s.mode === 'voice') h += voiceStage(s, 'big') + (s.turns.length ? '<div style="flex:none;max-height:220px;display:flex;flex-direction:column">'+transcript(s)+'</div>' : '');
+    else h += transcript(s) + composer(s);
+    h += '<div style="height:26px;flex:none"></div></div>';
+  }
+  return h + '</div>';
+}
+
+/* ===== workbench: B's shape, docked ===== */
+const RAIL = [['home','Home','house'],['calendar','Calendar','cal'],['lists','Lists','lists'],['money','Money','money'],['fleet','Fleet','car'],['notes','Notes','notes']];
+function renderDesk(s){
+  let h = '<aside class="rail"><p class="hh">Win household</p><nav aria-label="Sections" style="display:flex;flex-direction:column;gap:4px">'
+    + RAIL.map(r => '<button class="ritem" data-a="noop"'+(r[0]==='home' ? ' aria-current="page"' : '')+'>'+ic(r[2],20)+r[1]+'</button>').join('')
+    + '<hr><button class="ritem ask" data-a="'+(s.open ? 'close' : 'open')+'" aria-expanded="'+s.open+'">'+ic('spark',20)+esc(comp(s))+'</button>'
+    + '<button class="ritem" data-a="noop">'+ic('gear',20)+'Settings</button></nav></aside>';
+  h += '<main class="dmain"><h1>Good afternoon, '+esc(s.viewer)+'</h1><p class="muted" style="margin:0 0 18px">Sunday, 4 October</p>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:760px"><div class="card"><p style="margin:0 0 10px;font-weight:500">On today</p>'
+    + '<div class="ev" style="background:var(--s2)"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span></div><div class="ev" style="background:var(--s2)"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span></div></div>'
+    + '<div class="card"><p style="margin:0 0 10px;font-weight:500">Groceries</p>'+['Shampoo','Toothpaste','Eggs','Bananas'].map(i => '<p style="margin:6px 0;display:flex;gap:10px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:2px solid var(--outline);border-radius:5px"></span>'+i+'</p>').join('')+'</div></div>'
+    + '<p class="muted" style="margin-top:18px;font-size:14px">The conversation docks on the right of any page and leaves it usable. Shortcut: press / to focus the message box.</p></main>';
+  if (s.open) {
+    h += '<aside class="panel" aria-label="Conversation with '+esc(comp(s))+'">'+chatHead(s, '<button class="btn icon" data-a="close" aria-label="Close. This clears the conversation.">'+ic('x',22)+'</button>')+engineBanner(s);
+    if (s.mode === 'voice') h += voiceStage(s, s.turns.length ? 'small' : 'big').replace('Your iPhone needs a tap before the microphone can open.', 'The browser asks once for the microphone.').replace('in your iPhone\'s Settings', 'in the browser\'s site settings') + (s.turns.length ? transcript(s) : '');
+    else h += transcript(s) + composer(s);
+    h += '</aside>';
+  }
+  return h;
+}
+
+/* ===== Android: typed box beside push-to-talk ===== */
+function renderDroid(s){
+  const sb = '<div class="sb"><span>9:41</span><span class="sbi"><svg width="15" height="11" viewBox="0 0 15 11" aria-hidden="true"><path d="M7.5 11 0 3.2a10.7 10.7 0 0 1 15 0z" fill="currentColor"/></svg><svg width="10" height="15" viewBox="0 0 10 15" aria-hidden="true"><rect x="0" y="1.5" width="10" height="13.5" rx="2" fill="currentColor"/><rect x="3" y="0" width="4" height="2" rx="1" fill="currentColor"/></svg><span>82%</span></span></div>';
+  const home = '<div class="main"><h1 class="greet" style="font-size:26px">Sunday, Oct 4</h1><p class="sec-label">Today</p>'
+    + '<div class="ev"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span></div><div class="ev"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span></div>'
+    + '<div class="card" style="margin-top:12px"><p style="margin:0 0 8px;font-weight:600">Groceries</p><p class="muted" style="margin:0">Shampoo, Toothpaste, Eggs and 2 more</p></div></div>';
+  let panel = '';
+  if (s.turns.length || s.busy) {
+    panel = '<div class="dpanel"><div class="chathead" style="padding-top:10px"><span class="nm"><b style="font-size:16px">This conversation</b><small>Not saved. Typed replies are shown, not spoken.</small></span>'
+      + '<button class="btn tonal small" data-a="new">New conversation</button></div>'
+      + transcript(s, {noEmpty:true}).replace(sessionLine(), '') + '</div>';
+  }
+  const blocked = s.v === 'denied';
+  const live = ['listening','speaking','thinking','interrupted'].includes(s.v);
+  const label = blocked ? '' : s.v === 'listening' || s.v === 'interrupted' ? 'Listening…' : s.v === 'thinking' ? 'Thinking…' : s.v === 'speaking' ? 'Speaking…' : s.v === 'connecting' ? 'Connecting…' : 'Talk';
+  const talk = '<button class="talk'+(blocked ? ' blocked' : '')+'" data-a="'+(blocked ? 'settings' : live ? 'end' : 'start')+'" aria-label="'+(blocked ? 'Microphone permission needed. Open Settings' : live ? 'Stop the voice conversation' : 'Tap to talk')+'">'
+    + '<span'+(live ? ' class="pulse"' : '')+'>'+ic(blocked ? 'micoff' : 'mic',20)+'</span>'+(s.draft.trim() ? '' : '<span class="lbl">'+label+'</span>')+'</button>';
+  let sub = '';
+  if (blocked) sub = '<p class="stripsub warn">Microphone permission needed. Tap the mic to open Settings. Typing still works.</p>';
+  else if (s.v === 'listening' || s.v === 'interrupted') sub = '<p class="stripsub" data-live>'+esc(s.live || 'Go ahead.')+'</p>';
+  else if (s.v === 'speaking') sub = '<p class="stripsub" data-live>'+esc(s.live || '')+'</p>';
+  else if (s.notice) sub = '<p class="stripsub warn">'+esc(s.notice)+'</p>';
+  const strip = '<div class="strip"><div class="striprow"><label class="tfld"><input data-f="draft" value="'+esc(s.draft)+'" placeholder="Type to '+esc(comp(s))+'" aria-label="Type to '+esc(comp(s))+'" enterkeyhint="send">'
+    + (s.draft.trim() ? '<button class="btn icon" data-a="send" aria-label="Send">'+ic('send',20)+'</button>' : '')+'</label>'+talk+'</div>'+sub+'</div>';
+  return sb + '<div class="scr"><div class="dhost">'+home+panel+'</div>'+strip+'<div class="gest"><i></i></div>'+(s.toast ? '<div class="toast" role="status">'+esc(s.toast)+'</div>' : '')+'</div>';
+}
+
+/* ===== state ===== */
+function fresh(viewer, extra){
+  return Object.assign({viewer, screen:'home', open:false, mode:'chat', v:'tap', turns:[], draft:'', busy:false, down:false, live:'', lastSaid:'', voiceIx:0, coach:false, notice:'', focus:false}, extra||{});
+}
+function seedChat(s){
+  s.turns.push({k:'me', text:'When did we last buy shampoo?', via:'typed'});
+  const a = route(s, 'When did we last buy shampoo?'); s.turns.push({k:'tool', ok:a.tool.ok, text:a.tool.text}); s.turns.push({k:'ai', text:a.reply, via:'typed'});
+  s.turns.push({k:'me', text:'I bought shampoo at Target, log it', via:'typed'});
+  const b = route(s, 'I bought shampoo at Target, log it'); s.turns.push({k:'tool', ok:b.tool.ok, text:b.tool.text}); s.turns.push({k:'ai', text:b.reply, via:'typed'});
+}
+function seedSpeaking(s){
+  s.mode = 'voice'; s.v = 'speaking';
+  s.turns.push({k:'me', text:VOICE[0], via:'spoken'});
+  s.turns.push({k:'tool', ok:true, text:'Searched the bought log for toothpaste: 2 matches'});
+  s.live = 'You logged Toothpaste on Sep 28, ticked off Groceries by Kevin. Before that,'; s.voiceIx = 1;
+}
+function seedInterrupted(s){
+  s.mode = 'voice'; s.v = 'interrupted';
+  s.turns.push({k:'me', text:VOICE[0], via:'spoken'});
+  s.turns.push({k:'tool', ok:true, text:'Searched the bought log for toothpaste: 2 matches'});
+  s.turns.push({k:'ai', text:'You logged Toothpaste on Sep 28, ticked off Groceries by Kevin. Before', via:'spoken', cut:true});
+  s.live = 'Actually, I just bought shampoo at'; s.voiceIx = 1;
+}
+function seedEnded(s){
+  s.mode = 'voice'; s.v = 'ended';
+  s.turns.push({k:'me', text:VOICE[0], via:'spoken'});
+  s.turns.push({k:'tool', ok:true, text:'Searched the bought log for toothpaste: 2 matches'});
+  s.turns.push({k:'ai', text:FOUND.toothpaste.say, via:'spoken'});
+  s.turns.push({k:'sys', text:'Voice conversation ended.'});
+}
+function seedDown(s){ s.down = true; s.turns.push({k:'me', text:'I bought shampoo at Target, log it', via:'typed'}); const r = route(s, 'I bought shampoo at Target, log it'); s.turns.push({k:'tool', ok:false, text:r.tool.text}); s.turns.push({k:'ai', text:r.reply, via:'typed'}); }
+function seedPhoneOnly(s){ s.turns.push({k:'me', text:'Play some music in the kitchen', via:'typed'}); s.turns.push({k:'ai', text:route(s, 'play some music').reply, via:'typed'}); }
+
+function phonePresets(where){
+  // where: how each variant opens. A navigates to its tab; B and C open a layer; desk opens the panel.
+  const openIt = s => { if (where === 'tab') s.screen = 'chat'; else s.open = true; };
+  return {
+    'Closed': s => { },
+    'Chat open, empty': s => { openIt(s); },
+    'Typed chat': s => { openIt(s); seedChat(s); },
+    'Voice: tap to start': s => { openIt(s); s.mode = 'voice'; s.v = 'tap'; if (where === 'orb') { s.open = false; s.coach = true; } },
+    'Listening': s => { openIt(s); s.mode = 'voice'; s.v = 'listening'; s.live = 'When did we last buy tooth'; },
+    'Speaking': s => { openIt(s); seedSpeaking(s); },
+    'Interrupted': s => { openIt(s); seedInterrupted(s); },
+    'Ended': s => { openIt(s); seedEnded(s); },
+    '|Errors': null,
+    'Mic denied': s => { openIt(s); s.mode = 'voice'; s.v = 'denied'; },
+    'Engine down': s => { openIt(s); seedDown(s); },
+    'Phone-only ask': s => { openIt(s); seedPhoneOnly(s); },
+    'Screen locked': s => { openIt(s); s.mode = 'voice'; s.v = 'locked'; },
+    'Can\'t start: engine down': s => { openIt(s); s.mode = 'voice'; s.v = 'down'; s.down = true; }
+  };
+}
+const MOCKS = [
+  {id:'A', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'A. A tab of its own', where:'tab', render:renderA,
+   desc:'A fifth tab, labelled with the companion\'s name, between Lists and Calendar. Full-screen chat with a mic in the composer; voice takes the top of the screen and the chat runs underneath.'},
+  {id:'B', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'B. Ask bar and a sheet, over any screen', where:'sheet', render:renderB,
+   desc:'A slim "Ask Dorothy" bar sits above the tabs on every screen, like the Android strip. Tap the bar to type, the mic to talk; both open the same sheet over the page you were on.'},
+  {id:'C', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'C. A floating orb that expands', where:'orb', render:renderC,
+   desc:'Voice first. One orb floats above the tabs; tapping it is the tap iOS needs, so talking starts at once. It expands full screen; the keyboard button switches to typing; minimise keeps talking.'},
+  {id:'D', row:'row-desk', frame:'desk t-web', viewer:'Kevin', name:'Workbench: a docked panel (Kevin, talks to Alfred)', where:'panel', render:renderDesk, wide:true,
+   desc:'The rail gets one entry named for Kevin\'s companion; it opens a 400 px panel on the right of any page. Same chat, same voice states, same honesty lines as the phone.'},
+  {id:'E', row:'row-droid', frame:'droid t-droid', viewer:'Kevin', name:'Android: typed box beside push-to-talk', where:'droid', render:renderDroid, droid:true,
+   desc:'The strip becomes a text field plus a narrower talk pill. Typed replies appear as text in a panel above the strip; spoken turns still speak, with the caption under the strip as today.'}
+];
+MOCKS.forEach(m => {
+  if (m.droid) m.presets = {
+    'Idle': s => { },
+    'Typed turn (silent)': s => { s.turns.push({k:'me', text:'When did we last buy shampoo?', via:'typed'}); const r = route(s,'When did we last buy shampoo?'); s.turns.push({k:'tool', ok:true, text:r.tool.text}); s.turns.push({k:'ai', text:r.reply, via:'typed'}); },
+    'Spoken turn': s => { seedSpeaking(s); },
+    'Typing over speech': s => { seedSpeaking(s); s.live = ''; s.v = 'tap'; s.turns.push({k:'ai', text:'You logged Toothpaste on Sep 28, ticked off Groceries by Kevin. Before that,', via:'spoken', cut:true}); s.turns.push({k:'sys', text:'Stopped speaking because you typed.'}); s.turns.push({k:'me', text:'Add eggs to the list', via:'typed'}); s.turns.push({k:'tool', ok:true, text:'Added eggs to Groceries'}); s.turns.push({k:'ai', text:'Added eggs to Groceries.', via:'typed'}); },
+    'Tool failed': s => { seedDown(s); s.notice = 'Can\'t reach the engine. Phone-only things still work.'; },
+    'Mic permission needed': s => { s.v = 'denied'; },
+    'Mixed conversation': s => { seedEnded(s); s.v = 'tap'; s.turns.pop(); s.turns.push({k:'me', text:'Add eggs to the list', via:'typed'}); s.turns.push({k:'tool', ok:true, text:'Added eggs to Groceries'}); s.turns.push({k:'ai', text:'Added eggs to Groceries.', via:'typed'}); }
+  };
+  else m.presets = phonePresets(m.where);
+  if (m.id === 'D') { delete m.presets['Closed']; delete m.presets['Voice: tap to start']; m.presets = Object.assign({'Panel closed': s => {}}, m.presets); }
+});
+
+/* ===== mount ===== */
+let IOS_VIEWER = 'Mia';
+MOCKS.forEach(m => {
+  const col = document.createElement('div');
+  col.className = 'col'+(m.wide ? ' wide' : '');
+  const chipHtml = Object.keys(m.presets).map(k => k.startsWith('|') ? '<span class="lbl">'+esc(k.slice(1))+'</span>' : '<button data-p="'+esc(k)+'">'+esc(k)+'</button>').join('');
+  col.innerHTML = '<div class="vname">'+esc(m.name)+'</div><p class="vdesc">'+esc(m.desc)+'</p><div class="chips" role="group" aria-label="Jump to a state in '+esc(m.name)+'"><span class="lbl">States</span>'+chipHtml+'</div><div class="'+m.frame+'" id="f-'+m.id+'"></div>';
+  document.getElementById(m.row).appendChild(col);
+  m.col = col; m.el = col.querySelector('#f-'+m.id); m.timers = [];
+  applyPreset(m, Object.keys(m.presets).find(k => !k.startsWith('|')));
+  col.querySelector('.chips').addEventListener('click', e => { const b = e.target.closest('button[data-p]'); if (b) applyPreset(m, b.dataset.p); });
+  m.el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) { e.preventDefault(); act(m, b.dataset.a, b.dataset.v); } });
+  m.el.addEventListener('input', e => { if (e.target.dataset.f === 'draft') { const had = !!m.s.draft.trim(); m.s.draft = e.target.value; if (had !== !!m.s.draft.trim()) render(m); } });
+  m.el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset.f === 'draft') { e.preventDefault(); act(m, 'send'); } if (e.key === 'Escape' && m.s.open && m.id !== 'E') act(m, 'close'); });
+});
+document.querySelectorAll('.who button').forEach(b => b.addEventListener('click', () => {
+  IOS_VIEWER = b.dataset.viewer;
+  document.querySelectorAll('.who button').forEach(x => x.classList.toggle('on', x === b));
+  MOCKS.filter(m => m.row === 'row-ios').forEach(m => applyPreset(m, m.preset || Object.keys(m.presets)[0]));
+}));
+function clearTimers(m){ m.timers.forEach(t => { clearTimeout(t); clearInterval(t); }); m.timers = []; }
+function later(m, ms, fn){ m.timers.push(setTimeout(fn, ms)); }
+function applyPreset(m, k){
+  clearTimers(m);
+  m.s = fresh(m.row === 'row-ios' ? IOS_VIEWER : m.viewer); m.s.droid = !!m.droid;
+  m.presets[k](m.s); m.preset = k; render(m);
+  m.col.querySelectorAll('.chips button').forEach(b => b.classList.toggle('on', b.dataset.p === k));
+}
+function clearPreset(m){ m.preset = null; m.col.querySelectorAll('.chips button').forEach(b => b.classList.remove('on')); }
+function render(m){
+  const a = document.activeElement;
+  const keep = a && m.el.contains(a) && a.dataset && a.dataset.f ? {f:a.dataset.f, pos:a.selectionStart} : null;
+  m.el.innerHTML = m.render(m.s);
+  m.el.querySelectorAll('[data-tx]').forEach(tx => { tx.scrollTop = tx.scrollHeight; });
+  if (keep) { const n = m.el.querySelector('[data-f="'+keep.f+'"]'); if (n) { n.focus(); try { n.setSelectionRange(keep.pos, keep.pos); } catch (err) {} } }
+}
+/* typewriter: updates one node so the page is not re-rendered per letter */
+function typeOut(m, text, ms, done){
+  m.s.live = '';
+  let i = 0;
+  const id = setInterval(() => {
+    i = Math.min(text.length, i + 2); m.s.live = text.slice(0, i);
+    const n = m.el.querySelector('[data-live]'); if (n) n.textContent = m.s.live;
+    if (i >= text.length) { clearInterval(id); done && done(); }
+  }, ms);
+  m.timers.push(id);
+}
+/* typed turn */
+function send(m, text){
+  const s = m.s; text = text.trim(); if (!text) return;
+  if (s.v === 'speaking') { // typing over a spoken reply stops it (ticket 06)
+    clearTimers(m);
+    s.turns.push({k:'ai', text:s.live, via:'spoken', cut:true}); s.turns.push({k:'sys', text:'Stopped speaking because you typed.'}); s.live = '';
+    s.v = m.droid ? 'tap' : 'listening';
+  }
+  s.turns.push({k:'me', text, via:'typed'}); s.draft = ''; s.busy = true;
+  if (!m.droid) s.mode = 'chat';
+  render(m);
+  const r = route(s, text);
+  later(m, 700, () => { if (r.tool) s.turns.push({k:'tool', ok:r.tool.ok, text:r.tool.text}); render(m);
+    later(m, 450, () => { s.busy = false; s.turns.push({k:'ai', text:r.reply, via:'typed'}); render(m); }); });
+}
+/* one spoken exchange from the script */
+function listen(m){
+  const s = m.s; clearTimers(m);
+  if (s.down) { s.v = 'down'; render(m); return; }
+  s.mode = 'voice'; s.v = 'listening'; s.live = ''; render(m);
+  const said = VOICE[s.voiceIx % VOICE.length]; s.voiceIx++;
+  later(m, 500, () => typeOut(m, said, 55, () => later(m, 500, () => {
+    s.turns.push({k:'me', text:said, via:'spoken'}); s.lastSaid = said; s.v = 'thinking'; s.live = ''; render(m);
+    const r = route(s, said);
+    later(m, 800, () => { if (r.tool) s.turns.push({k:'tool', ok:r.tool.ok, text:r.tool.text}); s.v = 'speaking'; render(m);
+      typeOut(m, r.reply, 45, () => later(m, 600, () => { s.turns.push({k:'ai', text:r.reply, via:'spoken'}); s.live = ''; s.v = 'listening'; render(m);
+        later(m, 1600, () => { if (s.v === 'listening' && !s.live) listen(m); }); })); });
+  })));
+}
+function act(m, a, v){
+  const s = m.s; clearPreset(m);
+  switch (a) {
+    case 'nav': s.screen = v; if (m.id === 'A' && v === 'chat' && !s.turns.length) s.mode = 'chat'; render(m); return;
+    case 'noop': return;
+    case 'open': {
+      s.open = true; s.coach = false;
+      const isLive = s.mode === 'voice' && ['listening','speaking','thinking','interrupted'].includes(s.v);
+      if (isLive) break;
+      if (m.id === 'C' && !s.turns.length) { render(m); listen(m); return; } // voice first: the orb tap is the tap iOS needs
+      s.mode = 'chat'; break;
+    }
+    case 'orbstart': s.open = true; s.coach = false; render(m); listen(m); return;
+    case 'openvoice': s.open = true; s.mode = 'voice'; s.v = 'tap'; break;
+    case 'close': clearTimers(m); { const keepV = s.viewer; m.s = fresh(keepV); m.s.droid = !!m.droid; if (m.id === 'A') m.s.screen = 'home'; } render(m); return;
+    case 'minimize': s.open = false; break;
+    case 'new': clearTimers(m); s.turns = []; s.busy = false; s.live = ''; s.v = 'tap'; s.mode = m.id === 'C' ? 'voice' : 'chat'; s.notice = ''; break;
+    case 'ask': send(m, v); return;
+    case 'send': send(m, s.draft); return;
+    case 'voice': s.mode = 'voice'; s.v = 'tap'; break;
+    case 'typemode': clearTimers(m); if (['listening','speaking','thinking','interrupted'].includes(s.v)) { if (s.v === 'speaking' && s.live) s.turns.push({k:'ai', text:s.live, via:'spoken', cut:true}); s.turns.push({k:'sys', text:'Voice conversation ended.'}); } s.mode = 'chat'; s.v = 'tap'; s.live = ''; break;
+    case 'start': if (m.droid && s.v === 'denied') return; if (m.droid) { s.notice = ''; } listen(m); return;
+    case 'settings': { const t = 'In the app this opens Settings, where the microphone permission already lives. Nothing else changed.'; s.toast = t; render(m); later(m, 3600, () => { if (s.toast === t) { s.toast = ''; render(m); } }); return; }
+    case 'end': clearTimers(m); if (s.v === 'speaking' && s.live) s.turns.push({k:'ai', text:s.live, via:'spoken', cut:true}); s.live = ''; s.turns.push({k:'sys', text:'Voice conversation ended.'}); s.v = m.droid ? 'tap' : 'ended'; break;
+    case 'interrupt': {
+      clearTimers(m);
+      s.turns.push({k:'ai', text:s.live, via:'spoken', cut:true}); s.v = 'interrupted'; s.live = ''; render(m);
+      const said = VOICE[1]; s.voiceIx = 2;
+      later(m, 300, () => typeOut(m, said, 55, () => later(m, 500, () => {
+        s.turns.push({k:'me', text:said, via:'spoken'}); s.v = 'thinking'; s.lastSaid = said; s.live = ''; render(m);
+        const r = route(s, said);
+        later(m, 800, () => { if (r.tool) s.turns.push({k:'tool', ok:r.tool.ok, text:r.tool.text}); s.v = 'speaking'; render(m);
+          typeOut(m, r.reply, 45, () => later(m, 600, () => { s.turns.push({k:'ai', text:r.reply, via:'spoken'}); s.live = ''; s.v = 'listening'; render(m); })); });
+      })));
+      return;
+    }
+  }
+  render(m);
+}
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && !(document.activeElement && document.activeElement.tagName === 'INPUT')) {
+    const d = MOCKS.find(m => m.id === 'D'); if (!d.s.open) { d.s.open = true; render(d); }
+    const n = d.el.querySelector('[data-f="draft"]'); if (n) { e.preventDefault(); n.focus(); }
+  }
+});
+</script>
+</body>
+</html>

@@ -4,6 +4,62 @@
  */
 
 export interface paths {
+    "/api/assistant/companion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who the signed-in member talks to
+         * @description Read only. Device tokens may read it too (the API default), so the
+         *     phone can show which companion a member has on the web. Setting one is
+         *     the admin's or `manage.py set_companion`'s; the REST write is not built.
+         */
+        get: operations["api_assistant_companion_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a live conversation: mint a locked Gemini Live token */
+        post: operations["api_assistant_session_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/tool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run one tool call from a live conversation, as the signed-in member */
+        post: operations["api_assistant_tool_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/csrf": {
         parameters: {
             query?: never;
@@ -2656,6 +2712,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/purchases/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/purchases/` and `POST /api/purchases/`. */
+        get: operations["api_purchases_list"];
+        put?: never;
+        /** @description `GET /api/purchases/` and `POST /api/purchases/`. */
+        post: operations["api_purchases_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/purchases/{purchase_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`. */
+        get: operations["api_purchases_retrieve"];
+        put?: never;
+        post?: never;
+        /** @description `GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`. */
+        delete: operations["api_purchases_destroy"];
+        options?: never;
+        head?: never;
+        /** @description `GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`. */
+        patch: operations["api_purchases_partial_update"];
+        trace?: never;
+    };
+    "/api/purchases/last-bought": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/purchases/last-bought?q=shampoo` (purchase-log ticket 02). */
+        get: operations["api_purchases_last_bought"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/push/preferences": {
         parameters: {
             query?: never;
@@ -2850,6 +2960,70 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AssistantCompanion: {
+            /** @description What the companion is called. */
+            name: string;
+            /** @description The built-in register it wears. */
+            persona: string;
+            /** @description The Gemini voice it speaks in. */
+            voice_name: string;
+            /** @description True when the household wrote its own register for it. */
+            custom_register: boolean;
+            /** @description False when no companion has been set for this member and this is the default the engine assigns. */
+            stored: boolean;
+        };
+        AssistantSession: {
+            /** @description The ephemeral token's full name (`auth_tokens/...`). Pass it as the `access_token` query parameter on `ws_url`. One conversation; the setup it carries is locked, so the browser's own `setup` message is ignored. */
+            token: string;
+            model: string;
+            /** @description Append `?access_token=<token, URL-encoded>` and open a WebSocket. */
+            ws_url: string;
+            /**
+             * Format: date-time
+             * @description The conversation cannot outlive this (about 30 minutes).
+             */
+            expires_at: string;
+            /**
+             * Format: date-time
+             * @description The WebSocket must be opened before this (about 60 seconds).
+             */
+            connect_by: string;
+            companion_name: string;
+            voice_name: string;
+            /** @description What `realtimeInput.audio.mimeType` must say: 16-bit PCM, 16 kHz, mono. */
+            input_audio_mime: string;
+            /** @description Sample rate of the 16-bit PCM Gemini sends back. */
+            output_audio_rate: number;
+        };
+        AssistantSessionRequest: {
+            /** @description Minutes EAST of UTC on the person's own clock: `-new Date().getTimezoneOffset()` in a browser (Houston in summer is -300). Omit it and the assistant is told the offset is unknown. Never an IANA zone id. */
+            utc_offset_minutes?: number | null;
+        };
+        AssistantToolForward: {
+            success: boolean;
+            message: string;
+        };
+        AssistantToolRefusal: {
+            response: components["schemas"]["AssistantToolForward"];
+            detail: string;
+        };
+        AssistantToolRequest: {
+            /** @description `functionCalls[].name`, as Gemini sent it. */
+            name: string;
+            /** @description `functionCalls[].args`, as Gemini sent it. Omitted means `{}`. */
+            args?: {
+                [key: string]: unknown;
+            };
+        };
+        AssistantToolResult: {
+            response: components["schemas"]["AssistantToolForward"];
+            name: string;
+            /** @description True when the tool was refused or failed. `text` says what did not happen. */
+            is_error: boolean;
+            outcome: components["schemas"]["OutcomeEnum"];
+            /** @description The result in words, for the model. */
+            text: string;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -3635,6 +3809,19 @@ export interface components {
             /** @description Why the code cannot be used, in words, or null when it can. */
             reason: string | null;
         };
+        LastBought: {
+            query: string;
+            matches: components["schemas"]["LastBoughtMatch"][];
+            /** @description The sentence to show or say. It always names the entries it matched. */
+            message: string;
+        };
+        LastBoughtMatch: {
+            entry: components["schemas"]["Purchase"];
+            /** @description True when the entry's text IS the query (case and spacing aside). False for a loose match: say the entry's own text, never the query's. */
+            exact: boolean;
+            /** @description How many live entries carry this same item text. */
+            times_logged: number;
+        };
         /**
          * @description * `ok` - OK
          *     * `failed` - Failed
@@ -4114,6 +4301,14 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        /**
+         * @description * `ok` - OK
+         *     * `refused` - Refused
+         *     * `failed` - Failed
+         *     * `throttled` - Throttled
+         * @enum {string}
+         */
+        OutcomeEnum: "ok" | "refused" | "failed" | "throttled";
         PagedBodyweightLog: {
             results: components["schemas"]["BodyweightLog"][];
             /**
@@ -4595,6 +4790,42 @@ export interface components {
         PatchedMeUpdate: {
             name?: string;
         };
+        PatchedPurchase: {
+            /** Format: uuid */
+            readonly id?: string;
+            /** @description What was bought, as written. */
+            item?: string;
+            /** @description The local day it was bought, as an epoch day (`LocalDate.toEpochDay()`). */
+            bought_on?: number;
+            /** @description `bought_on` as an ISO date (YYYY-MM-DD), for display. */
+            readonly bought_on_date?: string;
+            /** Format: date-time */
+            readonly logged_at?: string;
+            /** @description The first name of the member who logged it. Null means NOT RECORDED (an entry imported from past Groceries ticks, which never stored who ticked them); say "not recorded", never guess. */
+            readonly logged_by?: string | null;
+            /** @description True when the member making this request logged it. */
+            readonly logged_by_me?: boolean;
+            store?: string | null;
+            /** @description Whole cents, entered by hand (499 is 4.99), or null when nobody said. Never reconciled against a bank statement and never summed into a ledger figure; every surface that shows it says it was entered by hand. */
+            price_cents?: number | null;
+            /** @description Words to show beside the price, or null when there is no price. */
+            readonly price_note?: string | null;
+            quantity_note?: string | null;
+            /**
+             * @description `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+             *
+             *     * `shared` - shared
+             *     * `private` - private
+             */
+            visibility?: components["schemas"]["VisibilityEnum"];
+            /** @description MANUAL (logged by a member), GROCERIES_TICK (a tick on the Groceries list, ADR 0055) or GROCERIES_BACKFILL (a Groceries tick from before the log existed; who ticked it was not recorded). */
+            readonly source?: string;
+            /** Format: uuid */
+            readonly tick?: string | null;
+            /** Format: date-time */
+            readonly deleted_at?: string | null;
+            sync_id?: string | null;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -4646,6 +4877,49 @@ export interface components {
          * @enum {string}
          */
         ProvenanceEnum: "DETERMINISTIC" | "LLM_RECONCILED" | "UNRECONCILED" | "USER";
+        Purchase: {
+            /** Format: uuid */
+            readonly id: string;
+            /** @description What was bought, as written. */
+            item: string;
+            /** @description The local day it was bought, as an epoch day (`LocalDate.toEpochDay()`). */
+            bought_on: number;
+            /** @description `bought_on` as an ISO date (YYYY-MM-DD), for display. */
+            readonly bought_on_date: string;
+            /** Format: date-time */
+            readonly logged_at: string;
+            /** @description The first name of the member who logged it. Null means NOT RECORDED (an entry imported from past Groceries ticks, which never stored who ticked them); say "not recorded", never guess. */
+            readonly logged_by: string | null;
+            /** @description True when the member making this request logged it. */
+            readonly logged_by_me: boolean;
+            store?: string | null;
+            /** @description Whole cents, entered by hand (499 is 4.99), or null when nobody said. Never reconciled against a bank statement and never summed into a ledger figure; every surface that shows it says it was entered by hand. */
+            price_cents?: number | null;
+            /** @description Words to show beside the price, or null when there is no price. */
+            readonly price_note: string | null;
+            quantity_note?: string | null;
+            /**
+             * @description `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+             *
+             *     * `shared` - shared
+             *     * `private` - private
+             */
+            visibility?: components["schemas"]["VisibilityEnum"];
+            /** @description MANUAL (logged by a member), GROCERIES_TICK (a tick on the Groceries list, ADR 0055) or GROCERIES_BACKFILL (a Groceries tick from before the log existed; who ticked it was not recorded). */
+            readonly source: string;
+            /** Format: uuid */
+            readonly tick: string | null;
+            /** Format: date-time */
+            readonly deleted_at: string | null;
+            sync_id?: string | null;
+        };
+        PurchaseList: {
+            results: components["schemas"]["Purchase"][];
+            /** @description True when more entries matched than `limit`; only the newest are here. */
+            truncated: boolean;
+            /** @description A sentence to show when `results` is empty, else null. With `q` it is "I have no record of buying ...", never "never bought". */
+            message: string | null;
+        };
         /**
          * @description One `public.receipts` header, with the anchors the gate checked it
          *     against (section 4 rule 8) and the residual it could not explain (rule 7).
@@ -5369,6 +5643,129 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    api_assistant_companion_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantCompanion"];
+                };
+            };
+        };
+    };
+    api_assistant_session_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AssistantSessionRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantSessionRequest"];
+                "multipart/form-data": components["schemas"]["AssistantSessionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantSession"];
+                };
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many starts; nothing started. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Google refused the key or the session, in words. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No `LEGION_GEMINI_KEY` on this server ("The assistant isn't set up on this server."), or Google did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_tool_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantToolRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantToolRequest"];
+                "multipart/form-data": components["schemas"]["AssistantToolRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantToolResult"];
+                };
+            };
+            /** @description Not a tool the web assistant has, or a body that did not fit. Nothing ran. `response` is ready to forward to Gemini. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantToolRefusal"];
+                };
+            };
+            /** @description Too many calls; nothing ran. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_auth_csrf_retrieve: {
         parameters: {
             query?: never;
@@ -6994,7 +7391,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChecklistTick"];
                 };
             };
-            /** @description A first tick for that day. */
+            /** @description A first tick for that day. On the household's Groceries list it also logs a bought entry (`/api/purchases`, ADR 0055), in the same transaction. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -7027,7 +7424,10 @@ export interface operations {
     };
     api_checklists_items_tick_destroy: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The caller's own local epoch day. Send it. On the Groceries list a tick is a purchase (ADR 0055): an untick on the tick's own day removes the bought entry the tick made, an untick on a later day leaves it. Without this the engine uses today's UTC date, which west of UTC can keep an entry a late-evening untick meant to remove. */
+                today?: number;
+            };
             header?: never;
             path: {
                 checklist_id: string;
@@ -7044,6 +7444,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Nothing was unticked: `today` is not a whole number of days. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
             };
             /** @description No such row. Nothing was changed. */
             404: {
@@ -10010,6 +10419,238 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_purchases_list: {
+        parameters: {
+            query?: {
+                /** @description First local epoch day. */
+                from?: number;
+                /** @description At most this many (default 100, max 500). */
+                limit?: number;
+                /** @description Text search with the same matching as `last-bought`: every word of `q` appears in the entry, plurals folded. */
+                q?: string;
+                source?: "GROCERIES_BACKFILL" | "GROCERIES_TICK" | "MANUAL";
+                /** @description Last local epoch day. */
+                to?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live entries this member may see, newest first (`bought_on`, then `logged_at`). Deleted entries are never listed. Another member's private entries are not here at all. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseList"];
+                };
+            };
+            /** @description Nothing was read. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_purchases_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Purchase"];
+                "application/x-www-form-urlencoded": components["schemas"]["Purchase"];
+                "multipart/form-data": components["schemas"]["Purchase"];
+            };
+        };
+        responses: {
+            /** @description **Not created - this `sync_id` already exists**, and the body is the entry that was already there, unchanged. A client tells the two apart by the status code, never by the body. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Purchase"];
+                };
+            };
+            /** @description Logged. Source MANUAL, logged by the member making the request. Shared unless `visibility` is `private`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Purchase"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    api_purchases_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Purchase"];
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_purchases_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done. Soft-deleted (`deleted_at` set); already deleted is also a 204. A deleted entry no longer answers `last-bought` or the list. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_purchases_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedPurchase"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedPurchase"];
+                "multipart/form-data": components["schemas"]["PatchedPurchase"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Purchase"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Nothing was changed: this member may not make the entry private. `detail` is the sentence to show. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_purchases_last_bought: {
+        parameters: {
+            query: {
+                /** @description What was bought, in the asker's words ("shampoo"). */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every distinct item text that matches, each as its newest entry, newest first. Matching is loose (every word of `q` in the entry, plurals folded), so an answer must name the entry's own text and date, as `message` does. Several matches: say them all, never pick one. No match is an empty `matches` and "I have no record of buying ...": absence of a record, never "never bought". */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LastBought"];
+                };
+            };
+            /** @description Nothing was searched. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

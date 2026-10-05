@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Fifty names. The fifty-first `public` table, `household_members`, is
+# Fifty-three names. The fifty-fourth `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -101,6 +101,14 @@ TENANT_TABLES: tuple[str, ...] = (
     "push_subscriptions",
     "push_preferences",
     "push_sent",
+    # purchase-log ticket 06: the household bought log, Django-managed and born
+    # tenanted like `push_*` (`purchases/models.py`). Carries ADR 0052 privacy.
+    "purchases",
+    # web-assistant ticket 07: each member's companion and the web assistant's
+    # audit trail, Django-managed and born tenanted like `mcp_calls`
+    # (`assistant/models.py`).
+    "assistant_companions",
+    "assistant_calls",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -141,6 +149,9 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "push_subscriptions",
         "push_preferences",
         "push_sent",
+        "purchases",
+        "assistant_companions",
+        "assistant_calls",
     }
 )
 
@@ -294,6 +305,9 @@ OWNER_PATHS: dict[str, str] = {
     "checklists": "owner_user",
     "checklist_items": "checklist__owner_user",
     "checklist_ticks": "item__checklist__owner_user",
+    # purchase-log ticket 01: a bought entry may be private to the member who
+    # logged it. Its own column, inherited by nothing.
+    "purchases": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

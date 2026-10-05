@@ -7,7 +7,8 @@ idempotent tick, revive-on-retick, soft-delete-only.
 from __future__ import annotations
 
 from django.db.models.functions import Now
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -35,6 +36,7 @@ from household.tenancy import (
     scoped,
     visible,
 )
+from purchases import groceries
 
 CHECKLIST_TAGS = ["checklists"]
 
@@ -422,7 +424,10 @@ class ChecklistItemTickView(APIView):
         responses={
             201: OpenApiResponse(
                 response=ChecklistTickSerializer,
-                description="A first tick for that day.",
+                description=(
+                    "A first tick for that day. On the household's Groceries list it also logs "
+                    "a bought entry (`/api/purchases`, ADR 0055), in the same transaction."
+                ),
             ),
             200: OpenApiResponse(
                 response=ChecklistTickSerializer,
@@ -485,6 +490,9 @@ class ChecklistItemTickView(APIView):
                 # until Postgres runs it, and this response body renders
                 # `ticked_at`, so the row is read back first.
                 tick.refresh_from_db()
+                # ADR 0055: a tick on the Groceries list is a purchase. Same
+                # savepoint, so the tick and its entry commit together.
+                groceries.on_tick(tick, item, request.user)
                 return tick
             if existing.deleted_at is None:
                 # Idempotent no-op, matching ChecklistController.tick's own
@@ -504,6 +512,8 @@ class ChecklistItemTickView(APIView):
             # Reads back the expression Postgres just evaluated, and the
             # `updated_at` the trigger overwrote on the same statement.
             existing.refresh_from_db()
+            # ADR 0055: a revived Groceries tick revives its one entry.
+            groceries.on_tick(existing, item, request.user)
             return existing
 
         tick, error = save_or_400(_write)
@@ -524,6 +534,21 @@ class ChecklistItemUntickView(APIView):
     @extend_schema(
         operation_id="api_checklists_items_tick_destroy",
         tags=CHECKLIST_TAGS,
+        parameters=[
+            OpenApiParameter(
+                "today",
+                OpenApiTypes.INT,
+                OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "The caller's own local epoch day. Send it. On the Groceries list a tick "
+                    "is a purchase (ADR 0055): an untick on the tick's own day removes the "
+                    "bought entry the tick made, an untick on a later day leaves it. Without "
+                    "this the engine uses today's UTC date, which west of UTC can keep an "
+                    "entry a late-evening untick meant to remove."
+                ),
+            )
+        ],
         responses={
             204: OpenApiResponse(
                 description=(
@@ -532,10 +557,29 @@ class ChecklistItemUntickView(APIView):
                     "does not care which happened."
                 )
             ),
+            400: OpenApiResponse(
+                response=DetailSerializer,
+                description="Nothing was unticked: `today` is not a whole number of days.",
+            ),
             404: NOT_FOUND,
         },
     )
     def delete(self, request, checklist_id, item_id, day):
+        raw_today = request.query_params.get("today")
+        today = None
+        if raw_today not in (None, ""):
+            try:
+                today = int(raw_today)
+            except ValueError:
+                return Response(
+                    {
+                        "detail": (
+                            f"Nothing was unticked. today={raw_today!r} is not a local epoch "
+                            f"day (a whole number of days since 1970-01-01)."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         item = (
             visible(ChecklistItem, request)
             .filter(pk=item_id, checklist_id=checklist_id)
@@ -550,7 +594,16 @@ class ChecklistItemUntickView(APIView):
         # Scoped through `item` - see the note in `ChecklistTickView.post`.
         tick = ChecklistTick.objects.filter(item=item, day=day).first()
         if tick is not None and tick.deleted_at is None:
-            # The database's clock - see ChecklistDetailView.delete above.
-            tick.deleted_at = Now()
-            tick.save(update_fields=["deleted_at"])
+
+            def _untick():
+                # The database's clock - see ChecklistDetailView.delete above.
+                tick.deleted_at = Now()
+                tick.save(update_fields=["deleted_at"])
+                # ADR 0055: a same-day untick on the Groceries list takes back
+                # the bought entry the tick made; a later one leaves it.
+                groceries.on_untick(tick, today)
+
+            _done, error = save_or_400(_untick)
+            if error is not None:
+                return error
         return Response(status=status.HTTP_204_NO_CONTENT)
