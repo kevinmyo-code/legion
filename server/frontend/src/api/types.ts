@@ -28,6 +28,7 @@ export function newChecklist(name: string): Checklist {
     created_at: '',
     updated_at: '',
     deleted_at: null,
+    system_key: null,
   }
 }
 

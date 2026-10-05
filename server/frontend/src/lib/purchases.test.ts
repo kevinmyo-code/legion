@@ -6,6 +6,7 @@ import {
   answerSentence,
   epochDayForIso,
   formatCents,
+  isBuiltInList,
   isGroceriesList,
   isoForEpochDay,
   lastBoughtLine,
@@ -91,9 +92,15 @@ describe('last bought for a list line', () => {
   })
 })
 
-test('which list is Groceries', () => {
-  expect(isGroceriesList(' groceries ')).toBe(true)
-  expect(isGroceriesList('Grocery run')).toBe(false)
+test('which list is Groceries: the built-in one, by system key and never by name', () => {
+  expect(isGroceriesList({ system_key: 'groceries' })).toBe(true)
+  expect(isGroceriesList({ system_key: null })).toBe(false)
+  expect(isGroceriesList({})).toBe(false)
+})
+
+test('a built-in list is any list carrying a system key', () => {
+  expect(isBuiltInList({ system_key: 'groceries' })).toBe(true)
+  expect(isBuiltInList({ system_key: null })).toBe(false)
 })
 
 test('who may change an entry: their own, or one nobody logged', () => {

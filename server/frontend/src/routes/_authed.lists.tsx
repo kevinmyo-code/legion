@@ -18,6 +18,7 @@ import {
 import { DeleteChecklistControl } from '@/components/checklist-delete'
 import { Freshness } from '@/components/freshness'
 import { ListVisibilityToggle } from '@/components/list-visibility-toggle'
+import { VisibilityMark } from '@/components/visibility-mark'
 import { PinButton } from '@/components/pin-button'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -25,7 +26,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
-import { isGroceriesList, lastBoughtLine, lastExactFor } from '@/lib/purchases'
+import { isBuiltInList, isGroceriesList, lastBoughtLine, lastExactFor } from '@/lib/purchases'
 import { visibilityOf } from '@/lib/visibility'
 
 export const Route = createFileRoute('/_authed/lists')({
@@ -196,18 +197,25 @@ function ChecklistCard({
         <div className="flex min-w-0 flex-col items-start gap-1.5">
           <h2 className="text-[1.375rem] leading-tight font-medium">{checklist.name}</h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <ListVisibilityToggle checklist={checklist} />
+            {isBuiltInList(checklist) ? (
+              // Built in: always shared, so the mark is a plain label, not a button.
+              <VisibilityMark visibility={visibilityOf(checklist)} />
+            ) : (
+              <ListVisibilityToggle checklist={checklist} />
+            )}
             {ownItems.length > 0 && (
               <span className="text-[0.8125rem] text-muted-foreground">{open.length} left</span>
             )}
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+          {!isBuiltInList(checklist) && (
+            <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+          )}
           <PinButton checklist={checklist} />
         </div>
       </div>
-      {complete && (
+      {complete && !isBuiltInList(checklist) && (
         <p className="mb-2 rounded-control bg-surface-3 px-3.5 py-2.5 text-[0.8125rem] text-muted-foreground">
           Everything on this list is ticked off. Delete it with the icon above when you are done
           with it - what you ticked is kept either way.
@@ -298,7 +306,7 @@ function Lists() {
   const changes = useChanges(true)
   const hasGroceries = (changes.data?.checklists ?? []).some(
     (list) =>
-      list.deleted_at === null && isGroceriesList(list.name) && visibilityOf(list) === 'shared',
+      list.deleted_at === null && isGroceriesList(list) && visibilityOf(list) === 'shared',
   )
   // One read of the log for the whole page: every Groceries line compares itself
   // against it, instead of asking the engine once per line.
@@ -332,10 +340,11 @@ function Lists() {
   const items = (changes.data.checklist_items ?? []).filter(isLive)
   const ticks = (changes.data.checklist_ticks ?? []).filter(isLive)
 
-  /** The household's Groceries list is a shared list by that name; a private one
-   * called Groceries is somebody's own and the engine does not log its ticks. */
+  /** The household's Groceries list is the built-in one (its `system_key`); a
+   * list a person named Groceries is just a list and the engine logs nothing
+   * for its ticks. */
   const logFor = (checklist: Checklist): BoughtLog => {
-    if (!isGroceriesList(checklist.name) || visibilityOf(checklist) !== 'shared') return null
+    if (!isGroceriesList(checklist) || visibilityOf(checklist) !== 'shared') return null
     if (purchases.data === undefined) return purchases.isError ? { unreadable: true } : null
     return { entries: purchases.data.results }
   }

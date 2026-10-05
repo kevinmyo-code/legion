@@ -160,3 +160,29 @@ describe('pinning', () => {
     )
   })
 })
+
+describe('the built-in Groceries list', () => {
+  test('offers no delete, no privacy toggle, and no delete nudge when everything is ticked; an ordinary list keeps them', async () => {
+    const groceries = makeChecklist({ name: 'Groceries', system_key: 'groceries' })
+    const hardware = makeChecklist({ name: 'Hardware store', sort_order: 1 })
+    const engine = createEngine({
+      checklists: [groceries, hardware],
+      items: [makeItem(groceries, 'Eggs'), makeItem(hardware, 'Nails')],
+    })
+    await lists(engine)
+    const builtIn = card('Groceries')
+    const ordinary = card('Hardware store')
+    expect(within(builtIn).queryByRole('button', { name: /Delete/i })).not.toBeInTheDocument()
+    expect(within(builtIn).queryByRole('button', { name: /Make it only yours/i })).not.toBeInTheDocument()
+    expect(within(builtIn).getByText('Shared')).toBeInTheDocument()
+    expect(within(ordinary).getByRole('button', { name: /Delete/i })).toBeInTheDocument()
+    expect(within(ordinary).getByRole('button', { name: /Make it only yours/i })).toBeInTheDocument()
+  })
+
+  test('a list merely named Groceries is an ordinary list: deletable', async () => {
+    const lookalike = makeChecklist({ name: 'Groceries' })
+    const engine = createEngine({ checklists: [lookalike], items: [makeItem(lookalike, 'Eggs')] })
+    await lists(engine)
+    expect(within(card('Groceries')).getByRole('button', { name: /Delete/i })).toBeInTheDocument()
+  })
+})

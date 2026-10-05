@@ -3286,6 +3286,7 @@ export interface components {
              *     * `private` - private
              */
             visibility?: components["schemas"]["VisibilityEnum"];
+            readonly system_key: string | null;
         };
         ChecklistItem: {
             /** Format: uuid */
@@ -4709,6 +4710,7 @@ export interface components {
              *     * `private` - private
              */
             visibility?: components["schemas"]["VisibilityEnum"];
+            readonly system_key?: string | null;
         };
         PatchedChecklistItem: {
             /** Format: uuid */
@@ -7105,6 +7107,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Nothing was changed: the checklist is built in (Groceries) and cannot be deleted. `detail` is the sentence to show. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
             /** @description No such row. Nothing was changed. */
             404: {
                 headers: {
@@ -7152,7 +7163,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Nothing was changed: this member may not make the checklist private. `detail` is the sentence to show. */
+            /** @description Nothing was changed: this member may not make the checklist private, or the checklist is built in (Groceries) and the change would rename, archive or privatise it. `detail` is the sentence to show. */
             403: {
                 headers: {
                     [name: string]: unknown;

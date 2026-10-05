@@ -119,10 +119,20 @@ export function lastExactFor(item: string, entries: readonly Purchase[]): Purcha
   return best
 }
 
-/** Whether a checklist is the household's Groceries list (the engine's own rule:
- * the name, trimmed, any case). */
-export function isGroceriesList(name: string): boolean {
-  return name.trim().toLowerCase() === 'groceries'
+/** The `system_key` of the household's built-in Groceries list. */
+export const SYSTEM_KEY_GROCERIES = 'groceries'
+
+/** Whether a checklist is the household's built-in Groceries list: the engine's
+ * own rule is its `system_key`, never its name (2026-10-05). A list a person
+ * happened to name Groceries is just a list, and its ticks log nothing. */
+export function isGroceriesList(list: { system_key?: string | null }): boolean {
+  return list.system_key === SYSTEM_KEY_GROCERIES
+}
+
+/** Whether a checklist is built in, and so cannot be deleted, renamed,
+ * archived or made private (the engine refuses all four). */
+export function isBuiltInList(list: { system_key?: string | null }): boolean {
+  return list.system_key != null
 }
 
 /** Whether a signed-in member may edit or delete the entry: their own, or one
