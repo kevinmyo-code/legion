@@ -5,7 +5,7 @@ charted: 2026-10-04
 charted-by: "Kevin + Opus"
 effort: "`.scratch/web-assistant/`"
 tickets: 10
-open: 10
+open: 4
 status: open
 tags: [map]
 ---
@@ -75,6 +75,16 @@ Android app gets a typed chatbox beside push-to-talk. Execution is in scope.
 | 10 | test | Mia talks to it on her iPhone; Kevin on the desktop and the phone | 08, 09 |
 
 ## Decisions so far
+
+- [Gemini Live from an iPhone PWA](issues/01-live-from-an-iphone-pwa.md) - viable with caveats: tokens and locking are solid,
+  iOS audio (mic re-prompt, WebKit playback bugs, screen lock) is the risk.
+- [Who runs the tools](issues/02-who-runs-the-tools.md) - the browser calls a session-authenticated engine endpoint
+  (never `/mcp`); same registry, `visible()`. Mia on iOS 27; build first, test after; screen lock ends it.
+- [One prompt](issues/03-one-prompt.md) - shared clauses generated from one file for Kotlin and TS; the engine
+  assembles the web prompt; companions per member on the engine; Mia gets Dorothy.
+- [Web tool surface](issues/04-web-tool-surface.md) - engine tools + bought log + tick history; phone-only things said so.
+- [Chat and voice UI](issues/05-chat-and-voice-ui.md) - C, the orb, opening to typing; mic switches to live voice.
+- [Android typed chat](issues/06-android-typed-chat.md) - typed turns into the same Live session, reply shown as text.
 
 ## Not yet specified
 

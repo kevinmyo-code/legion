@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["02", "04"]
 blocked-by: ["[[02-who-runs-the-tools]]", "[[04-web-tool-surface]]"]
-open-blockers: 2
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 
