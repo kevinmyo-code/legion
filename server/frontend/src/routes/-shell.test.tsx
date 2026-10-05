@@ -155,6 +155,7 @@ describe('the nav table', () => {
       'Home',
       'Calendar',
       'Lists',
+      'Bought',
       'Money',
       'Pantry',
       'Body',

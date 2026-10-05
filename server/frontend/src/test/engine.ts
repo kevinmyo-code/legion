@@ -1,6 +1,6 @@
 import { todayEpochDay } from '../lib/day'
 import type { components } from '../api/schema'
-import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip } from '../api/types'
+import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip, Purchase } from '../api/types'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
 
@@ -43,6 +43,8 @@ export interface EngineOptions {
   checklists?: Checklist[]
   items?: ChecklistItem[]
   ticks?: ChecklistTick[]
+  /** The household's bought log (`/api/purchases/`). */
+  purchases?: Purchase[]
   /** Synced tables by path after `/api/` (`body/bodyweight_logs`); see `engine-tables.ts`. */
   tables?: Record<string, Row[]>
   /** Rows per page of a synced-table list; the real engine's is 500. */
@@ -72,6 +74,7 @@ export interface Engine {
   checklists: Mutable<Checklist>[]
   items: Mutable<ChecklistItem>[]
   ticks: Mutable<ChecklistTick>[]
+  purchases: Mutable<Purchase>[]
   tables: Record<string, Row[]>
   pageSize: number
   /** The body of `GET /api/ledger/spend`. Its categories' `target_cents` follow
@@ -103,6 +106,8 @@ export interface Engine {
   /** Every write the engine answered, in order, with the body it was sent: what a
    * test reads to say "the skip went first, then the POST". */
   writes: { method: string; pathname: string; body: unknown }[]
+  /** The query string each `METHOD /path` was last sent with (a write's `?today=`). */
+  searches: Record<string, string>
   /** Requests no handler claimed. A test can assert this stays empty. */
   unhandled: string[]
   handle(method: string, pathname: string, search: URLSearchParams, body: unknown): Reply
@@ -162,6 +167,50 @@ export function makeEvent(overrides: Partial<Event> & { title: string }): Event 
     visibility: 'shared',
     ...overrides,
   }
+}
+
+export function makePurchase(overrides: Partial<Purchase> & { item: string }): Purchase {
+  const day = overrides.bought_on ?? todayEpochDay()
+  return {
+    id: uuid(),
+    bought_on: day,
+    bought_on_date: isoForDay(day),
+    logged_at: STAMP,
+    logged_by: 'Mia',
+    logged_by_me: true,
+    store: null,
+    price_cents: null,
+    price_note: null,
+    quantity_note: null,
+    visibility: 'shared',
+    source: 'MANUAL',
+    tick: null,
+    deleted_at: null,
+    sync_id: null,
+    ...overrides,
+  }
+}
+
+function isoForDay(day: number): string {
+  return new Date(day * 86_400_000).toISOString().slice(0, 10)
+}
+
+const PRICE_NOTE = 'entered by hand; never checked against the bank or added into ledger figures'
+
+/** The engine's matcher in miniature: every word of the query appears in the
+ * entry, plurals folded (`purchases/matching.py`). */
+function wordsOf(text: string): string[] {
+  const fold = (word: string) =>
+    word.length > 4 && /(sh|ch|ss|x|z)es$/.test(word)
+      ? word.slice(0, -2)
+      : word.length > 3 && word.endsWith('s') && !word.endsWith('ss')
+        ? word.slice(0, -1)
+        : word
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9']+/)
+    .filter(Boolean)
+    .map(fold)
 }
 
 export function makeChecklist(overrides: Partial<Checklist> & { name: string }): Checklist {
@@ -276,6 +325,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     checklists: options.checklists ?? [],
     items: options.items ?? [],
     ticks: options.ticks ?? [],
+    purchases: options.purchases ?? [],
     tables: options.tables ?? {},
     pageSize: options.pageSize ?? 500,
     spend: options.spend ?? emptySpend(),
@@ -288,6 +338,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     householdFailing: false,
     calls: {},
     writes: [],
+    searches: {},
     unhandled: [],
 
     handle(method, pathname, search, body) {
@@ -296,6 +347,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
       const now = new Date().toISOString()
 
       if (method !== 'GET') engine.writes.push({ method, pathname, body })
+      engine.searches[key] = search.toString()
 
       // An exact `METHOD /path`, or a prefix ending in `*` (`PUT /api/places/*`):
       // a write whose identity the test cannot know ahead of time.
@@ -478,6 +530,21 @@ export function createEngine(options: EngineOptions = {}): Engine {
             source: 'USER_REPORTED',
           })
         }
+        // ADR 0055: a tick on the shared Groceries list is a purchase.
+        const tickedItem = engine.items.find((candidate) => candidate.id === match![2])
+        const tickedList = engine.checklists.find((candidate) => candidate.id === match![1])
+        if (tickedItem && tickedList && tickedList.name.trim().toLowerCase() === 'groceries') {
+          engine.purchases.push(
+            makePurchase({
+              item: tickedItem.text,
+              bought_on: day,
+              source: 'GROCERIES_TICK',
+              tick: match[2],
+              logged_by: ME.name,
+              logged_at: now,
+            }),
+          )
+        }
         return { status: 204 }
       }
 
@@ -487,6 +554,80 @@ export function createEngine(options: EngineOptions = {}): Engine {
         for (const tick of engine.ticks) {
           if (tick.item === match[2] && tick.day === day) tick.deleted_at = now
         }
+        // An untick on the tick's own local day removes the entry it made; the
+        // caller's day arrives as `?today=`, and without it the engine falls
+        // back to the UTC date, as the real one does.
+        const callerToday = search.has('today')
+          ? Number(search.get('today'))
+          : Math.floor(Date.now() / 86_400_000)
+        if (callerToday === day) {
+          for (const entry of engine.purchases) {
+            if (entry.source === 'GROCERIES_TICK' && entry.tick === match[2] && entry.bought_on === day) {
+              entry.deleted_at = now
+            }
+          }
+        }
+        return { status: 204 }
+      }
+
+      if (pathname === '/api/purchases/' && method === 'GET') {
+        const q = (search.get('q') ?? '').trim()
+        const source = search.get('source')
+        const limit = Number(search.get('limit') ?? 100)
+        const wanted = wordsOf(q)
+        const matched = engine.purchases
+          .filter((entry) => entry.deleted_at === null)
+          .filter((entry) => source === null || entry.source === source)
+          .filter((entry) => {
+            if (wanted.length === 0) return true
+            const have = wordsOf(entry.item)
+            return wanted.every((word) => have.includes(word))
+          })
+          .sort((a, b) => b.bought_on - a.bought_on)
+        const results = matched.slice(0, limit)
+        let message: string | null = null
+        if (results.length === 0) {
+          message = q ? `I have no record of buying ${q}.` : 'Nothing has been logged as bought yet.'
+        }
+        return { status: 200, body: { results, truncated: matched.length > limit, message } }
+      }
+      if (pathname === '/api/purchases/' && method === 'POST') {
+        const sent = body as Partial<Purchase>
+        if (!sent.item || sent.item.trim() === '') {
+          return { status: 400, body: { item: ['This field may not be blank.'] } }
+        }
+        const existing = sent.sync_id ? engine.purchases.find((entry) => entry.sync_id === sent.sync_id) : undefined
+        if (existing) return { status: 200, body: existing }
+        const created = makePurchase({
+          item: sent.item.trim(),
+          bought_on: sent.bought_on,
+          store: sent.store ?? null,
+          price_cents: sent.price_cents ?? null,
+          price_note: sent.price_cents == null ? null : PRICE_NOTE,
+          quantity_note: sent.quantity_note ?? null,
+          visibility: sent.visibility === 'private' ? 'private' : 'shared',
+          logged_by: ME.name,
+          logged_at: now,
+          sync_id: sent.sync_id ?? null,
+        })
+        engine.purchases.push(created)
+        return { status: 201, body: created }
+      }
+      const purchaseMatch = pathname.match(/^\/api\/purchases\/([^/]+)$/)
+      if (purchaseMatch && method === 'PATCH') {
+        const entry = engine.purchases.find(
+          (candidate) => candidate.id === purchaseMatch[1] && candidate.deleted_at === null,
+        )
+        if (!entry) return { status: 404, body: { detail: 'No such entry. Nothing was changed.' } }
+        const sent = body as Partial<Purchase>
+        Object.assign(entry, sent, { bought_on_date: isoForDay(sent.bought_on ?? entry.bought_on) })
+        entry.price_note = entry.price_cents == null ? null : PRICE_NOTE
+        return { status: 200, body: entry }
+      }
+      if (purchaseMatch && method === 'DELETE') {
+        const entry = engine.purchases.find((candidate) => candidate.id === purchaseMatch[1])
+        if (!entry) return { status: 404, body: { detail: 'No such entry. Nothing was changed.' } }
+        entry.deleted_at = now
         return { status: 204 }
       }
 
