@@ -2,6 +2,7 @@ package com.kevin.legion.backend.engine
 
 import com.kevin.legion.backend.engine.EngineTestSupport.json
 import com.kevin.legion.purchases.PurchaseDraft
+import com.kevin.legion.purchases.PurchaseEdit
 import com.kevin.legion.purchases.PurchaseOutcome
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.runBlocking
@@ -93,6 +94,38 @@ class DjangoPurchasesBackendTest {
         assertTrue(sent, sent.contains("\"price_cents\":899"))
         assertTrue(sent, sent.contains("\"sync_id\":\"s1\""))
         assertTrue("an absent note is not sent", !sent.contains("quantity_note"))
+    }
+
+    @Test
+    fun `update patches the entry by id and sends nulls so blanks clear`() = runBlocking {
+        val engine = EngineTestSupport.RecordingEngine { json(entry) }
+
+        val outcome = backend(engine).update(PurchaseEdit("p1", "shampoo", 20351, store = null, priceCents = null))
+
+        assertTrue(outcome is PurchaseOutcome.Ok)
+        val request = engine.requests.single()
+        assertEquals("PATCH", request.method.value)
+        assertEquals("/api/purchases/p1", request.url.encodedPath)
+        val sent = (request.body as io.ktor.http.content.TextContent).text
+        assertTrue(sent, sent.contains("\"store\":null"))
+        assertTrue(sent, sent.contains("\"price_cents\":null"))
+        assertTrue(sent, sent.contains("\"visibility\":\"shared\""))
+    }
+
+    @Test
+    fun `delete is Ok only from a 204, and a 404 or unreachable engine is not`() = runBlocking {
+        val ok = EngineTestSupport.RecordingEngine { json("", HttpStatusCode.NoContent) }
+        assertEquals(PurchaseOutcome.Ok(Unit), backend(ok).delete("p1"))
+        assertEquals("DELETE", ok.requests.single().method.value)
+        assertEquals("/api/purchases/p1", ok.requests.single().url.encodedPath)
+
+        val gone = EngineTestSupport.RecordingEngine { json("""{"detail": "No such entry"}""", HttpStatusCode.NotFound) }
+        assertTrue(backend(gone).delete("p1") is PurchaseOutcome.Refused)
+
+        val down = DjangoPurchasesBackend(
+            EngineHttp(EngineTestSupport.signedInConfig(context), EngineTestSupport.unreachableClient()),
+        )
+        assertTrue(down.delete("p1") is PurchaseOutcome.Unreachable)
     }
 
     @Test

@@ -62,6 +62,53 @@ class PurchasesController(
         }
     }
 
+    /**
+     * Saves an edit of [entry]. **A read-only entry (someone else's) is refused here, before
+     * anything is sent**, as are a blank item and a negative price; each sentence says nothing was
+     * changed. The edit carries every field, so a blank [store] or [note] and a null [priceCents]
+     * clear what was there.
+     */
+    suspend fun edit(
+        entry: Purchase,
+        item: String,
+        boughtOn: Int,
+        store: String? = null,
+        priceCents: Long? = null,
+        note: String? = null,
+        isPrivate: Boolean = false,
+    ): PurchaseOutcome<Purchase> {
+        val trimmed = item.trim()
+        val refusal = when {
+            !entry.mayChange -> "That entry was logged by someone else, so it can't be changed. Nothing was changed."
+            trimmed.isEmpty() -> "Which item is it? Nothing was changed."
+            priceCents != null && priceCents < 0 -> "A price can't be negative. Nothing was changed."
+            else -> null
+        }
+        return if (refusal != null) {
+            PurchaseOutcome.Refused(refusal)
+        } else {
+            backend.update(
+                PurchaseEdit(
+                    id = entry.id,
+                    item = trimmed,
+                    boughtOn = boughtOn,
+                    store = store?.trim()?.ifBlank { null },
+                    priceCents = priceCents,
+                    note = note?.trim()?.ifBlank { null },
+                    isPrivate = isPrivate,
+                ),
+            )
+        }
+    }
+
+    /** Deletes [entry]; a read-only one is refused before anything is sent. Ok only from a 2xx. */
+    suspend fun delete(entry: Purchase): PurchaseOutcome<Unit> =
+        if (entry.mayChange) {
+            backend.delete(entry.id)
+        } else {
+            PurchaseOutcome.Refused("That entry was logged by someone else, so it can't be deleted. Nothing was deleted.")
+        }
+
     /** "When did we last buy [query]?" - every distinct matching item text, newest first. */
     suspend fun lastBought(query: String): PurchaseOutcome<List<PurchaseMatch>> {
         val q = query.trim()

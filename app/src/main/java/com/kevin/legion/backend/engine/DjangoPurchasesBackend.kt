@@ -2,6 +2,7 @@ package com.kevin.legion.backend.engine
 
 import com.kevin.legion.purchases.Purchase
 import com.kevin.legion.purchases.PurchaseDraft
+import com.kevin.legion.purchases.PurchaseEdit
 import com.kevin.legion.purchases.PurchaseListing
 import com.kevin.legion.purchases.PurchaseMatch
 import com.kevin.legion.purchases.PurchaseOutcome
@@ -11,6 +12,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 private const val PURCHASES_PATH = "/api/purchases/"
 private const val LAST_BOUGHT_PATH = "/api/purchases/last-bought"
@@ -129,6 +133,27 @@ class DjangoPurchasesBackend(private val http: EngineHttp) : PurchasesBackend {
             purchasesJson.decodeFromString(PurchaseRow.serializer(), it).toPurchase()
         }
     }
+
+    override suspend fun update(edit: PurchaseEdit): PurchaseOutcome<Purchase> {
+        // Built by hand, not from PurchaseWrite: that class drops nulls (right for a create), and an
+        // edit that empties the store or price has to send null for the engine to clear it.
+        val body = JsonObject(
+            mapOf(
+                "item" to JsonPrimitive(edit.item),
+                "bought_on" to JsonPrimitive(edit.boughtOn),
+                "store" to (edit.store?.let(::JsonPrimitive) ?: JsonNull),
+                "price_cents" to (edit.priceCents?.let(::JsonPrimitive) ?: JsonNull),
+                "quantity_note" to (edit.note?.let(::JsonPrimitive) ?: JsonNull),
+                "visibility" to JsonPrimitive(if (edit.isPrivate) "private" else "shared"),
+            ),
+        ).toString()
+        return outcome(http.patch(PURCHASES_PATH + edit.id, body)) {
+            purchasesJson.decodeFromString(PurchaseRow.serializer(), it).toPurchase()
+        }
+    }
+
+    override suspend fun delete(id: String): PurchaseOutcome<Unit> =
+        outcome(http.delete(PURCHASES_PATH + id)) { }
 
     private suspend fun <T> read(
         path: String,

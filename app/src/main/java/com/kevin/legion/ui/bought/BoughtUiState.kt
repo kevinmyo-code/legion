@@ -35,6 +35,8 @@ data class LogFormState(
     val isPrivate: Boolean = false,
     val saving: Boolean = false,
     val error: String? = null,
+    /** The entry being edited; null means this form is logging a new one. */
+    val editing: Purchase? = null,
 )
 
 data class BoughtUiState(
@@ -46,4 +48,8 @@ data class BoughtUiState(
     val today: Int = 0,
     /** The sentence shown after a save that returned 2xx; cleared on the next keystroke. */
     val savedMessage: String? = null,
+    /** The entry the Delete confirm is asking about; null means no confirm is open. */
+    val pendingDelete: Purchase? = null,
+    /** Why an edit or delete did not happen, in words; cleared on the next keystroke or action. */
+    val problem: String? = null,
 )

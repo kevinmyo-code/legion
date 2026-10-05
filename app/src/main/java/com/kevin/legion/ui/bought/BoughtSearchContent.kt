@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -60,6 +61,15 @@ fun BoughtSearchContent(state: BoughtUiState, callbacks: BoughtCallbacks) {
                 modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp),
             )
         }
+        state.problem?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SoftColors.onAlert,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp),
+            )
+        }
+        state.pendingDelete?.let { DeleteConfirm(it, callbacks) }
         val logLabel = if (state.query.isBlank()) "Log something by hand" else "Log \"${state.query.trim()}\" by hand"
         TextButton(
             onClick = { callbacks.onLogIt(state.query.ifBlank { null }) },
@@ -96,7 +106,7 @@ private fun BoughtBody(state: BoughtUiState, callbacks: BoughtCallbacks) {
             if (view.entries.isEmpty()) {
                 Note(view.emptyMessage ?: "Nothing has been logged yet.")
             } else {
-                EntryList(view.entries, state.today, header = "Recent")
+                EntryList(view.entries, state.today, header = "Recent", callbacks = callbacks)
             }
         }
         is BoughtView.Answer -> Column {
@@ -106,8 +116,10 @@ private fun BoughtBody(state: BoughtUiState, callbacks: BoughtCallbacks) {
                 color = SoftColors.text,
                 modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
             )
-            if (view.matches.size > 1) {
-                EntryList(view.matches.map { it.entry }, state.today, header = "Matches, newest first")
+            // Even a single match is listed: its row carries the Edit and Delete buttons.
+            if (view.matches.isNotEmpty()) {
+                val header = if (view.matches.size > 1) "Matches, newest first" else "Match"
+                EntryList(view.matches.map { it.entry }, state.today, header = header, callbacks = callbacks)
             }
         }
     }
@@ -139,7 +151,7 @@ private fun Note(text: String) {
 }
 
 @Composable
-private fun EntryList(entries: List<Purchase>, today: Int, header: String) {
+private fun EntryList(entries: List<Purchase>, today: Int, header: String, callbacks: BoughtCallbacks) {
     LazyColumn(
         Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(16.dp),
@@ -148,12 +160,12 @@ private fun EntryList(entries: List<Purchase>, today: Int, header: String) {
         item(key = "header") {
             Text(header, style = MaterialTheme.typography.titleSmall, color = SoftColors.text2)
         }
-        items(entries, key = { it.id }) { EntryRow(it, today) }
+        items(entries, key = { it.id }) { EntryRow(it, today, callbacks) }
     }
 }
 
 @Composable
-private fun EntryRow(entry: Purchase, today: Int) {
+private fun EntryRow(entry: Purchase, today: Int, callbacks: BoughtCallbacks) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SoftColors.card).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -172,5 +184,25 @@ private fun EntryRow(entry: Purchase, today: Int) {
         if (entry.isPrivate) {
             Text("Only you can see this", style = MaterialTheme.typography.labelMedium, color = SoftColors.text3)
         }
+        if (entry.mayChange) {
+            Row {
+                TextButton(onClick = { callbacks.onEditEntry(entry) }) { Text("Edit") }
+                TextButton(onClick = { callbacks.onDeleteEntry(entry) }) { Text("Delete") }
+            }
+        } else {
+            Text("Logged by someone else, so read-only", style = MaterialTheme.typography.labelMedium, color = SoftColors.text3)
+        }
     }
+}
+
+/** "Delete this?" - the entry named in words, and what Delete does. Nothing is deleted until Delete. */
+@Composable
+private fun DeleteConfirm(entry: Purchase, callbacks: BoughtCallbacks) {
+    AlertDialog(
+        onDismissRequest = callbacks.onCancelDelete,
+        title = { Text("Delete this entry?") },
+        text = { Text("\"${entry.item}\" will be removed from the bought log for everyone who can see it.") },
+        confirmButton = { TextButton(onClick = callbacks.onConfirmDelete) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = callbacks.onCancelDelete) { Text("Keep it") } },
+    )
 }

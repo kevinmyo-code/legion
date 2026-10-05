@@ -41,7 +41,7 @@ import java.time.LocalDate
 @Composable
 fun LogPurchaseContent(form: LogFormState, today: Int, callbacks: LogCallbacks) {
     Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
-        LogTopBar(onBack = callbacks.onBack)
+        LogTopBar(title = if (form.editing != null) "Edit entry" else "Log something bought", onBack = callbacks.onBack)
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -53,13 +53,13 @@ fun LogPurchaseContent(form: LogFormState, today: Int, callbacks: LogCallbacks) 
                 onClick = callbacks.onSave,
                 enabled = !form.saving && form.item.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (form.saving) "Saving..." else "Log it") }
+            ) { Text(if (form.saving) "Saving..." else if (form.editing != null) "Save changes" else "Log it") }
         }
     }
 }
 
 @Composable
-private fun LogTopBar(onBack: () -> Unit) {
+private fun LogTopBar(title: String, onBack: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -68,7 +68,7 @@ private fun LogTopBar(onBack: () -> Unit) {
             MsIcon(res = R.drawable.ms_arrow_back, contentDescription = "Back", tint = SoftColors.text)
         }
         Text(
-            "Log something bought",
+            title,
             style = MaterialTheme.typography.titleLarge,
             color = SoftColors.text,
             modifier = Modifier.padding(start = 4.dp),

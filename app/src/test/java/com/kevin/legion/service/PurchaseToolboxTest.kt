@@ -51,6 +51,8 @@ class PurchaseToolboxTest {
             drafts += draft
             return create
         }
+        override suspend fun update(edit: com.kevin.legion.purchases.PurchaseEdit): PurchaseOutcome<Purchase> = create
+        override suspend fun delete(id: String): PurchaseOutcome<Unit> = PurchaseOutcome.Ok(Unit)
     }
 
     private lateinit var backend: FakeBackend

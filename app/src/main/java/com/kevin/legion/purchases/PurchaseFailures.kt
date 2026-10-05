@@ -29,4 +29,20 @@ object PurchaseFailures {
                 "was logged. Check the bought log before assuming it was."
         is PurchaseOutcome.Ok -> error("logFailed called with an Ok outcome")
     }
+
+    /**
+     * What a failed EDIT or DELETE says. [verb] is "change" or "delete" (the bare form completes
+     * "so I didn't ..."; [past] is "changed" or "deleted"). A refusal that already says nothing
+     * happened (the controller's own) is passed through.
+     */
+    fun changeFailed(outcome: PurchaseOutcome<*>, verb: String, past: String, item: String): String =
+        when (outcome) {
+            is PurchaseOutcome.Unreachable ->
+                "I can't reach the bought log right now, so I didn't $verb $item. Nothing was $past."
+            is PurchaseOutcome.Refused -> "Nothing was $past: ${outcome.sentence}"
+            is PurchaseOutcome.Unconfirmed ->
+                "The bought log answered but I couldn't read its reply, so I can't say whether $item " +
+                    "was $past. Check the bought log before assuming it was."
+            is PurchaseOutcome.Ok -> error("changeFailed called with an Ok outcome")
+        }
 }

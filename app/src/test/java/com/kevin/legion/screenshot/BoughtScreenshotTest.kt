@@ -7,6 +7,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kevin.legion.data.local.Checklist
@@ -27,6 +28,8 @@ import com.kevin.legion.ui.checklists.ListsPageState
 import com.kevin.legion.ui.checklists.listVisual
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import java.time.LocalDate
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,8 +63,9 @@ class BoughtScreenshotTest {
         price: Long? = null,
         store: String? = null,
         priv: Boolean = false,
+        mine: Boolean = false,
     ) = Purchase(
-        id = "$item$day", item = item, boughtOn = day, loggedBy = by, loggedByMe = false, store = store,
+        id = "$item$day", item = item, boughtOn = day, loggedBy = by, loggedByMe = mine, store = store,
         priceCents = price, priceNote = price?.let { "entered by hand" }, quantityNote = null,
         isPrivate = priv, source = "MANUAL",
     )
@@ -132,7 +136,7 @@ class BoughtScreenshotTest {
                 savedMessage = "Logged \"razors\" as bought on Oct 4. Only you can see it.",
                 view = BoughtView.Recent(
                     listOf(
-                        entry("razors", by = "Kevin", day = today, price = 1299, priv = true),
+                        entry("razors", by = "Kevin", day = today, price = 1299, priv = true, mine = true),
                         entry("Shampoo", price = 899, store = "Target"),
                         entry("dish soap", by = null, day = sep20 - 40),
                     ),
@@ -141,6 +145,89 @@ class BoughtScreenshotTest {
                 ),
             ),
         )
+    }
+
+    @Test
+    fun `my own and backfilled rows offer Edit and Delete, someone elses is read-only`() {
+        // "razors" is mine, "dish soap" is a backfill (logger not recorded), "Shampoo" is Mia's.
+        assertTrue(entry("razors", mine = true, by = "Kevin").mayChange)
+        assertTrue(entry("dish soap", by = null).mayChange)
+        assertFalse(entry("Shampoo").mayChange)
+        capture(
+            "bought-search-edit-delete.png",
+            BoughtUiState(
+                today = today,
+                savedMessage = "Deleted \"test conditioner\" from the bought log.",
+                view = BoughtView.Recent(
+                    listOf(
+                        entry("razors", by = "Kevin", day = today, price = 1299, mine = true),
+                        entry("Shampoo", price = 899, store = "Target"),
+                        entry("dish soap", by = null, day = sep20 - 40),
+                    ),
+                    truncated = false,
+                    emptyMessage = null,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a delete that did not happen says nothing was deleted`() {
+        capture(
+            "bought-search-delete-failed.png",
+            BoughtUiState(
+                today = today,
+                problem = "I can't reach the bought log right now, so I didn't delete \"razors\". " +
+                    "Nothing was deleted.",
+                view = BoughtView.Recent(
+                    listOf(entry("razors", by = "Kevin", day = today, mine = true)),
+                    truncated = false,
+                    emptyMessage = null,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `the delete confirm names the entry and offers Keep it`() {
+        val razors = entry("razors", by = "Kevin", day = today, mine = true)
+        composeTestRule.setContent {
+            Framed {
+                BoughtSearchContent(
+                    state = BoughtUiState(
+                        today = today,
+                        pendingDelete = razors,
+                        view = BoughtView.Recent(listOf(razors), truncated = false, emptyMessage = null),
+                    ),
+                    callbacks = callbacks,
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Delete this entry?").assertExists()
+        composeTestRule.onNodeWithText("Keep it").assertExists()
+        composeTestRule.onNodeWithText("\"razors\" will be removed from the bought log for everyone who can see it.")
+            .assertExists()
+    }
+
+    @Test
+    fun `the edit form is filled from the entry and saves as changes`() {
+        composeTestRule.setContent {
+            Framed {
+                LogPurchaseContent(
+                    form = LogFormState(
+                        item = "test conditioner",
+                        dateText = "2026-10-04",
+                        store = "Target",
+                        price = "8.99",
+                        editing = entry("test conditioner", by = "Kevin", day = today, mine = true),
+                    ),
+                    today = today,
+                    callbacks = LogCallbacks(onBack = {}, onEdit = {}, onSave = {}),
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Save changes").assertExists()
+        composeTestRule.onRoot().captureRoboImage("bought-edit-form.png")
     }
 
     @Test

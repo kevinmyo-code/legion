@@ -24,7 +24,14 @@ data class Purchase(
     val quantityNote: String?,
     val isPrivate: Boolean,
     val source: String,
-)
+) {
+    /**
+     * Whether a signed-in member may edit or delete this entry: their own, or one nobody is recorded
+     * as having logged (a Groceries backfill). The web's `mayChange` rule exactly
+     * (`server/frontend/src/lib/purchases.ts`); someone else's entry is read-only here.
+     */
+    val mayChange: Boolean get() = loggedByMe || loggedBy == null
+}
 
 /** One distinct item text that matched a "when did we last buy" question: its newest entry. */
 data class PurchaseMatch(
@@ -45,6 +52,21 @@ data class PurchaseDraft(
     val isPrivate: Boolean = false,
     /** Idempotency key: a retried POST with the same one answers with the entry already there. */
     val syncId: String,
+)
+
+/**
+ * A whole-entry edit from the Edit form. **Every field is sent, null included**: an edit that
+ * blanks the store or the price must CLEAR it on the engine, which a partial body that omits nulls
+ * could not do. [id] is the entry's uuid (`PATCH /api/purchases/<id>`).
+ */
+data class PurchaseEdit(
+    val id: String,
+    val item: String,
+    val boughtOn: Int,
+    val store: String? = null,
+    val priceCents: Long? = null,
+    val note: String? = null,
+    val isPrivate: Boolean = false,
 )
 
 /** A page of entries, newest first. [message] is the engine's sentence for an empty result. */
@@ -83,4 +105,10 @@ interface PurchasesBackend {
 
     /** `POST /api/purchases/`. */
     suspend fun create(draft: PurchaseDraft): PurchaseOutcome<Purchase>
+
+    /** `PATCH /api/purchases/<id>` - the entry as the engine now holds it. */
+    suspend fun update(edit: PurchaseEdit): PurchaseOutcome<Purchase>
+
+    /** `DELETE /api/purchases/<id>` - a 2xx (204) is [PurchaseOutcome.Ok]; the engine soft-deletes. */
+    suspend fun delete(id: String): PurchaseOutcome<Unit>
 }

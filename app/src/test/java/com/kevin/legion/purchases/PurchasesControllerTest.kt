@@ -38,6 +38,18 @@ class PurchasesControllerTest {
             drafts += draft
             return create
         }
+        val edits = mutableListOf<PurchaseEdit>()
+        val deletes = mutableListOf<String>()
+        var change: PurchaseOutcome<Purchase> = create
+        var removal: PurchaseOutcome<Unit> = PurchaseOutcome.Ok(Unit)
+        override suspend fun update(edit: PurchaseEdit): PurchaseOutcome<Purchase> {
+            edits += edit
+            return change
+        }
+        override suspend fun delete(id: String): PurchaseOutcome<Unit> {
+            deletes += id
+            return removal
+        }
     }
 
     private fun controller(backend: FakeBackend) =
@@ -100,5 +112,52 @@ class PurchasesControllerTest {
         assertFalse(PurchasesController.parsePrice("4.999").valid)
         assertFalse(PurchasesController.parsePrice("-3").valid)
         assertFalse(PurchasesController.parsePrice("abc").valid)
+    }
+
+    private fun theirs() = purchase().copy(loggedBy = "Mia", loggedByMe = false)
+
+    @Test
+    fun `edit sends every field, trimmed, with blanks as null so the engine clears them`() = runBlocking {
+        val backend = FakeBackend(PurchaseOutcome.Ok(purchase()))
+
+        val outcome = controller(backend).edit(
+            purchase(), item = " test conditioner ", boughtOn = 5, store = "  ", priceCents = null,
+            note = " 2 pack ", isPrivate = true,
+        )
+
+        assertTrue(outcome is PurchaseOutcome.Ok)
+        val edit = backend.edits.single()
+        assertEquals(PurchaseEdit("p", "test conditioner", 5, null, null, "2 pack", true), edit)
+    }
+
+    @Test
+    fun `a backfilled entry with no logger may be changed, someone elses may not`() = runBlocking {
+        val backend = FakeBackend(PurchaseOutcome.Ok(purchase()))
+        val backfilled = purchase().copy(loggedBy = null, loggedByMe = false)
+
+        assertTrue(controller(backend).delete(backfilled) is PurchaseOutcome.Ok)
+        val refusedEdit = controller(backend).edit(theirs(), "x", 1)
+        val refusedDelete = controller(backend).delete(theirs())
+
+        assertTrue(refusedEdit is PurchaseOutcome.Refused)
+        assertTrue(refusedDelete is PurchaseOutcome.Refused)
+        assertEquals("only the backfilled delete reached the backend", listOf("p"), backend.deletes)
+        assertTrue(backend.edits.isEmpty())
+    }
+
+    @Test
+    fun `edit refuses a blank item or negative price before sending and delete passes states through`() = runBlocking {
+        val backend = FakeBackend(PurchaseOutcome.Ok(purchase()))
+
+        assertTrue(controller(backend).edit(purchase(), "  ", 1) is PurchaseOutcome.Refused)
+        assertTrue(controller(backend).edit(purchase(), "x", 1, priceCents = -5) is PurchaseOutcome.Refused)
+        assertTrue(backend.edits.isEmpty())
+
+        for (state in listOf(PurchaseOutcome.Unreachable("no engine"), PurchaseOutcome.Refused("no"))) {
+            backend.removal = state
+            backend.change = state
+            assertEquals(state, controller(backend).delete(purchase()))
+            assertEquals(state, controller(backend).edit(purchase(), "x", 1))
+        }
     }
 }

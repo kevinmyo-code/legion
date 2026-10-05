@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kevin.legion.purchases.Purchase
 import com.kevin.legion.ui.theme.soft.SoftTheme
 
 /**
@@ -33,6 +34,10 @@ fun BoughtScreen(onBack: () -> Unit) {
                     onQueryChange = viewModel::setQuery,
                     onRetry = viewModel::refresh,
                     onLogIt = { viewModel.openLog(it) },
+                    onEditEntry = viewModel::openEdit,
+                    onDeleteEntry = viewModel::askDelete,
+                    onConfirmDelete = viewModel::confirmDelete,
+                    onCancelDelete = viewModel::cancelDelete,
                 ),
             )
             BoughtMode.LOG -> LogPurchaseContent(
@@ -55,6 +60,11 @@ data class BoughtCallbacks(
     val onQueryChange: (String) -> Unit,
     val onRetry: () -> Unit,
     val onLogIt: (prefill: String?) -> Unit,
+    /** Edit and Delete show only on entries the member may change ([Purchase.mayChange]). */
+    val onEditEntry: (Purchase) -> Unit = {},
+    val onDeleteEntry: (Purchase) -> Unit = {},
+    val onConfirmDelete: () -> Unit = {},
+    val onCancelDelete: () -> Unit = {},
 )
 
 /** What the form can ask for. [onEdit] takes a transform so the form's one state is edited in one place. */

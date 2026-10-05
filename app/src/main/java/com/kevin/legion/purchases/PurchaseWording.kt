@@ -63,6 +63,13 @@ object PurchaseWording {
         return head + price + priv
     }
 
+    /** What a successful edit says: only ever called from a [PurchaseOutcome.Ok] entry. */
+    fun edited(entry: Purchase, today: Int): String =
+        "Saved \"${entry.item}\", bought on ${date(entry.boughtOn, today)}."
+
+    /** What a successful delete says: only ever called from a [PurchaseOutcome.Ok]. */
+    fun deleted(item: String): String = "Deleted \"$item\" from the bought log."
+
     /** The recent-purchases read-back. */
     fun recentAnswer(listing: PurchaseListing, today: Int): String {
         if (listing.entries.isEmpty()) return listing.message ?: "The bought log has no entries yet."
