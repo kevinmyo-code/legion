@@ -1,0 +1,73 @@
+package com.kevin.legion.service
+
+import com.kevin.legion.ai.ALFRED
+import com.kevin.legion.ai.KRATOS
+import com.kevin.legion.ai.MARCUS
+import com.kevin.legion.ai.SHARED_INSTRUCTIONS
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+/**
+ * What the Marcus companion costs in the Live `setup` payload, measured the way
+ * [LiveSetupPayloadSizeTest] measures it (chars/4, the tools array wrapped as `buildSetup` wraps it,
+ * system instruction = persona clause + delivery + [SHARED_INSTRUCTIONS]).
+ *
+ * **Why a second test and not a second ceiling.** [LiveSetupPayloadSizeTest] measures [ALFRED], the
+ * default companion, and its ceiling is deliberately not touched here (CLAUDE.md / the brief: if a
+ * change needs the ceiling moved, measure and report rather than raise it). Every persona has a
+ * different register length, so that test cannot speak for the others: Kratos's clause is already
+ * ~1,400 chars longer than Alfred's. What this pins is Marcus's OWN delta, so growth in his clause or
+ * his tool shows up as a failure with a number on it.
+ *
+ * **The tool is declared only for Marcus**, so Alfred's payload is byte-identical to before this
+ * change - asserted below by comparing the declaration lists.
+ */
+@RunWith(RobolectricTestRunner::class)
+class MarcusPayloadTest {
+
+    private fun tokens(chars: Int) = chars / 4
+
+    private fun toolsChars(fns: JSONArray): Int =
+        JSONArray()
+            .put(JSONObject().put("googleSearch", JSONObject()))
+            .put(JSONObject().put("functionDeclarations", fns))
+            .toString().length
+
+    private fun instructionChars(persona: com.kevin.legion.ai.Persona): Int =
+        (persona.clause.trimIndent() + " " + persona.delivery + " " + SHARED_INSTRUCTIONS).length
+
+    @Test
+    fun `Marcus costs a measured, bounded amount more than Alfred and Alfred is unchanged`() {
+        val alfredFns = LiveToolbox.declarationsFor(ALFRED.key)
+        val plainFns = LiveToolbox.declarations()
+        val marcusFns = LiveToolbox.declarationsFor(MARCUS.key)
+
+        // Alfred (and anyone else) gets exactly the pre-change tool list.
+        assertEquals(plainFns.toString(), alfredFns.toString())
+        assertEquals(plainFns.length() + 1, marcusFns.length())
+
+        val toolDelta = toolsChars(marcusFns) - toolsChars(plainFns)
+        val clauseDelta = instructionChars(MARCUS) - instructionChars(ALFRED)
+        val alfredTotal = toolsChars(alfredFns) + instructionChars(ALFRED)
+        val marcusTotal = toolsChars(marcusFns) + instructionChars(MARCUS)
+        val kratosTotal = toolsChars(alfredFns) + instructionChars(KRATOS)
+
+        println(
+            "marcus payload: tool +$toolDelta chars (~${tokens(toolDelta)} tokens), persona +$clauseDelta chars " +
+                "(~${tokens(clauseDelta)} tokens) over Alfred; totals alfred ~${tokens(alfredTotal)}, " +
+                "kratos ~${tokens(kratosTotal)}, marcus ~${tokens(marcusTotal)} estimated tokens (chars/4)",
+        )
+
+        // ~225 tokens for the one declaration. It is trimmed to the rules that matter (quote only
+        // what it returned, say paraphrase, say when nothing matched); more than this and it should
+        // be trimmed again rather than the bound moved.
+        assertTrue("the consult_meditations declaration grew to $toolDelta chars", toolDelta <= 900)
+        // The clause carries manner, philosophy, the quotation rule and the distress rule - four jobs.
+        assertTrue("MARCUS clause is ${MARCUS.clause.length} chars", MARCUS.clause.length <= 3_500)
+    }
+}

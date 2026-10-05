@@ -6044,3 +6044,23 @@ fired first try (12:34:13: KWS hit, confirm accept, Gemini opened). Supersedes t
 above for the wake half; "that will be all" sleeps unchanged. `WakePhrases.WAKE` is gone;
 `grammar(name)` is `["hey <name>"]`, or EMPTY for a blank name. Wake-word ticket 09's rule is
 live again: `WakeWordEngine.start` and `WakeKeywords.build` refuse a blank name in words.
+
+## 2026-10-04 - Marcus Aurelius companion, grounded in the Meditations by a pull-based tool
+
+Kevin: "i want marcus aurelius. ingest the entirety of meditations and try to make the persona
+answer as close as possible to how real marcus would have." Built as the fourth built-in persona
+(`MARCUS` in `ai/Personas.kt`), not a new mechanism.
+
+- **Text: George Long's 1862 translation, Project Gutenberg #15877** (not #2680, which is Meric
+  Casaubon's 1634; not Gregory Hays, which is copyrighted). 12 books, 487 sections, bundled at
+  `assets/meditations/` with the Gutenberg 1.E.1 notice and the full licence beside it. Never fetched.
+- **The book is not in the prompt** (~63,000 estimated tokens, re-sent every reconnect). The persona
+  clause carries the manner; `consult_meditations` (BM25 over stemmed words plus a hand-written
+  modern-to-Long vocabulary bridge, no network) carries the words.
+- **Quotation rule:** Marcus quotes only text the tool returned that turn, with Book and section;
+  everything else is said as his own thinking. The tool is declared only while Marcus is active.
+- **Safety above character:** the clause forbids offering the Meditations' "the house is smoky, I
+  quit it" strain (V.29, VIII.47) as comfort; the tool refuses a query `CrisisDetector` matches.
+- **Payload:** Alfred's setup is unchanged (~22,279 estimated tokens, ceiling 22,500 untouched).
+  Marcus-active measures ~22,922, over the ceiling number the way Kratos-active (~22,613) already is,
+  because the ceiling test measures Alfred only. Not raised; reported.

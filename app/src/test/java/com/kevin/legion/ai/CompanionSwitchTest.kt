@@ -113,7 +113,7 @@ class CompanionSwitchTest {
         assertTrue(outcome is CompanionSwitch.Outcome.NotFound)
         val notFound = outcome as CompanionSwitch.Outcome.NotFound
         assertEquals("Jarvis", notFound.spoken)
-        assertEquals(listOf("Alfred", "Dorothy", "Kratos"), notFound.available)
+        assertEquals(listOf("Alfred", "Dorothy", "Kratos", "Marcus"), notFound.available)
     }
 
     /**
@@ -146,13 +146,54 @@ class CompanionSwitchTest {
     fun `available names are roster first then unbuilt built-ins`() {
         val renamed = listOf(profile("p-1", "Jeeves", "alfred"), dorothy)
         assertEquals(
-            listOf("Jeeves", "Dorothy", "Alfred", "Kratos"),
+            listOf("Jeeves", "Dorothy", "Alfred", "Kratos", "Marcus"),
             CompanionSwitch.availableNames(renamed),
         )
     }
 
     @Test
     fun `a built-in already in the roster is not listed twice`() {
-        assertEquals(listOf("Alfred", "Dorothy", "Kratos"), CompanionSwitch.availableNames(roster))
+        assertEquals(listOf("Alfred", "Dorothy", "Kratos", "Marcus"), CompanionSwitch.availableNames(roster))
+    }
+
+    // --- Marcus: name, key and the titles people use ----------------------
+
+    @Test
+    fun `Marcus resolves by name, key and each alias to create-and-switch`() {
+        val spokenForms = listOf(
+            "Marcus", "marcus", "Marcus Aurelius", "the emperor", "Emperor Marcus Aurelius", "  The Emperor! ",
+        )
+        for (spoken in spokenForms) {
+            assertEquals(
+                "\"$spoken\"",
+                CompanionSwitch.Outcome.CreateAndSwitch(MARCUS),
+                CompanionSwitch.resolve(roster, spoken, activeProfileId = "p-alfred"),
+            )
+        }
+    }
+
+    /** An alias names a persona, so an existing Marcus row (under any name) is switched to, never duplicated. */
+    @Test
+    fun `an alias finds the existing Marcus row instead of creating a second`() {
+        val marcus = profile("p-marcus", "Marcus", "marcus")
+        val renamed = profile("p-emp", "Boss", "marcus")
+        assertEquals(
+            CompanionSwitch.Outcome.Switch("p-marcus", "Marcus"),
+            CompanionSwitch.resolve(roster + marcus, "the emperor", activeProfileId = "p-alfred"),
+        )
+        assertEquals(
+            CompanionSwitch.Outcome.Switch("p-emp", "Boss"),
+            CompanionSwitch.resolve(roster + renamed, "Marcus Aurelius", activeProfileId = "p-alfred"),
+        )
+        assertEquals(
+            CompanionSwitch.Outcome.AlreadyActive("Boss"),
+            CompanionSwitch.resolve(roster + renamed, "Marcus Aurelius", activeProfileId = "p-emp"),
+        )
+    }
+
+    @Test
+    fun `a near-miss of the emperor is still not found`() {
+        assertTrue(CompanionSwitch.resolve(roster, "the empress", null) is CompanionSwitch.Outcome.NotFound)
+        assertTrue(CompanionSwitch.resolve(roster, "Marcus Antonius", null) is CompanionSwitch.Outcome.NotFound)
     }
 }
