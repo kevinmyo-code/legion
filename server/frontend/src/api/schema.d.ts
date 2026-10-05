@@ -1727,9 +1727,15 @@ export interface paths {
          *
          *     GET is open to any member: the roster is not owner-only information, and
          *     a member who could not see who else is in their household would have no
-         *     way to check they joined the right one. PATCH (rename) is owner-only,
+         *     way to check they joined the right one. The same goes for the timezone:
+         *     every member reads it. PATCH (rename, set the timezone) is owner-only,
          *     which is why `get_permissions` splits by method rather than the class
          *     carrying one permission for both.
+         *
+         *     **The timezone lives here rather than at a separate settings route**
+         *     (Kevin, 2026-10-05). It is a property of the household, read by every
+         *     member and written by the owner - exactly this endpoint's existing split -
+         *     and a second resource would be a second place the same row is described.
          */
         get: operations["api_households_me_retrieve"];
         put?: never;
@@ -1742,9 +1748,15 @@ export interface paths {
          *
          *     GET is open to any member: the roster is not owner-only information, and
          *     a member who could not see who else is in their household would have no
-         *     way to check they joined the right one. PATCH (rename) is owner-only,
+         *     way to check they joined the right one. The same goes for the timezone:
+         *     every member reads it. PATCH (rename, set the timezone) is owner-only,
          *     which is why `get_permissions` splits by method rather than the class
          *     carrying one permission for both.
+         *
+         *     **The timezone lives here rather than at a separate settings route**
+         *     (Kevin, 2026-10-05). It is a property of the household, read by every
+         *     member and written by the owner - exactly this endpoint's existing split -
+         *     and a second resource would be a second place the same row is described.
          */
         patch: operations["api_households_me_partial_update"];
         trace?: never;
@@ -2996,7 +3008,7 @@ export interface components {
             output_audio_rate: number;
         };
         AssistantSessionRequest: {
-            /** @description Minutes EAST of UTC on the person's own clock: `-new Date().getTimezoneOffset()` in a browser (Houston in summer is -300). Omit it and the assistant is told the offset is unknown. Never an IANA zone id. */
+            /** @description Minutes EAST of UTC on the person's own clock: `-new Date().getTimezoneOffset()` in a browser (Houston in summer is -300). Omit it and the engine uses the household's timezone, as a current offset, when its owner has set one; otherwise the assistant is told the offset is unknown. Never an IANA zone id: the zone's name never reaches the prompt. */
             utc_offset_minutes?: number | null;
         };
         AssistantToolForward: {
@@ -3659,6 +3671,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            /** @description The household's IANA timezone (`America/Chicago`), or null when the owner has not set one. The engine uses it to decide which local day 'today' is (the Groceries same-day untick rule). Any member may read it; only the owner may change it. */
+            timezone: string | null;
             /** Format: date-time */
             created_at: string;
             members: components["schemas"]["HouseholdMember"][];
@@ -4783,8 +4797,14 @@ export interface components {
              */
             visibility?: components["schemas"]["VisibilityEnum"];
         };
+        /**
+         * @description Rename the household, set its timezone, or both. Owner-only. At least
+         *     one field; a field left out is left as it is.
+         */
         PatchedHouseholdPatchRequest: {
             name?: string;
+            /** @description An IANA timezone name this server knows (`America/Chicago`), or null to unset it. Unset, the engine falls back to the client's own `today`, then UTC. */
+            timezone?: string | null;
         };
         /** @description `PATCH /api/auth/me` (web-revamp ticket 05, spec D12). */
         PatchedMeUpdate: {
@@ -7425,7 +7445,7 @@ export interface operations {
     api_checklists_items_tick_destroy: {
         parameters: {
             query?: {
-                /** @description The caller's own local epoch day. Send it. On the Groceries list a tick is a purchase (ADR 0055): an untick on the tick's own day removes the bought entry the tick made, an untick on a later day leaves it. Without this the engine uses today's UTC date, which west of UTC can keep an entry a late-evening untick meant to remove. */
+                /** @description The caller's own local epoch day. On the Groceries list a tick is a purchase (ADR 0055): an untick on the tick's own day removes the bought entry the tick made, an untick on a later day leaves it. Which day is 'today': the household's timezone when its owner has set one (this parameter is then ignored), else this parameter, else today's UTC date, which west of UTC can keep an entry a late-evening untick meant to remove. Send it anyway: it is the fallback for a household with no timezone. */
                 today?: number;
             };
             header?: never;
@@ -8923,13 +8943,22 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Renamed. The body is the household as stored. */
+            /** @description Saved. The body is the household as stored. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["Household"];
+                };
+            };
+            /** @description Nothing was changed: no field was sent, or `timezone` is not an IANA name this server knows. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
             /** @description Nothing was changed: this route is owner-only. `owner` is the ONLY role there is and it governs membership alone - an owner and a member see exactly the same data (ADR 0045). */

@@ -32,8 +32,19 @@ import uuid
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.functional import cached_property
+
+from household.timezones import is_known_zone
+
+
+def validate_zone_name(value: str | None) -> None:
+    if value and not is_known_zone(value):
+        raise ValidationError(
+            f"{value!r} is not a timezone this server knows. Use an IANA name such as "
+            f"America/Chicago."
+        )
 
 
 class Household(models.Model):
@@ -55,6 +66,16 @@ class Household(models.Model):
     # of it owns.
     created_by = models.ForeignKey(
         "household.User", null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    # Kevin, 2026-10-05: the household's IANA zone (`America/Chicago`), so the
+    # server can say which local day "today" is without asking the client.
+    # Null until the owner sets it; nothing ever sets it for them. Validated
+    # against the server's tz database at the API edge
+    # (`HouseholdPatchRequestSerializer`) and by `validate_zone_name` here.
+    # **Server-side date math only, never a prompt** (CLAUDE.md section 1):
+    # the assistant gets a UTC offset from `household.timezones`, not this.
+    timezone = models.CharField(
+        max_length=64, null=True, blank=True, validators=[validate_zone_name]
     )
 
     def __str__(self) -> str:

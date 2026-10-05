@@ -37,6 +37,8 @@ export const ME = {
 export interface EngineOptions {
   /** Household name the shell shows. */
   householdName?: string
+  /** The household's IANA timezone (`GET /api/households/me`); unset when absent. */
+  householdTimezone?: string | null
   /** False answers 401 on `/api/auth/me`: the signed-out state. */
   signedIn?: boolean
   events?: Event[]
@@ -72,6 +74,7 @@ export interface Reply {
 export interface Engine {
   signedIn: boolean
   householdName: string
+  householdTimezone: string | null
   events: Mutable<Event>[]
   skips: Mutable<EventSkip>[]
   checklists: Mutable<Checklist>[]
@@ -325,6 +328,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
   const engine: Engine = {
     signedIn: options.signedIn ?? true,
     householdName: options.householdName ?? 'The Test House',
+    householdTimezone: options.householdTimezone ?? null,
     events: options.events ?? [],
     skips: options.skips ?? [],
     checklists: options.checklists ?? [],
@@ -378,7 +382,15 @@ export function createEngine(options: EngineOptions = {}): Engine {
         if (engine.householdFailing) {
           return { status: 503, body: { detail: 'The engine could not read the household.' } }
         }
-        return { status: 200, body: { id: 'h1', name: engine.householdName, members: engine.members } }
+        return {
+          status: 200,
+          body: {
+            id: 'h1',
+            name: engine.householdName,
+            timezone: engine.householdTimezone,
+            members: engine.members,
+          },
+        }
       }
       if (method === 'GET' && pathname === '/api/changes') {
         if (engine.changesFailing) {

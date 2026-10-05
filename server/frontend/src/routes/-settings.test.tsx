@@ -430,3 +430,81 @@ describe('appearance', () => {
     expect(await screen.findByText('Saved on this device only. Each device keeps its own.')).toBeInTheDocument()
   })
 })
+
+describe('the household timezone (Kevin, 2026-10-05)', () => {
+  function engineWithZone(role: 'owner' | 'member', zone: string | null) {
+    return createEngine({ ...seedHousehold(), members: roster(role), householdTimezone: zone })
+  }
+
+  test('unset, the owner is offered this browser zone and it is saved only when the engine says so', async () => {
+    const engine = engineWithZone('owner', null)
+    renderApp('/settings/household', engine, 'family')
+
+    expect(await screen.findByRole('heading', { name: 'Household timezone' })).toBeInTheDocument()
+    // Vitest runs with TZ=America/Chicago (vite.config.ts).
+    expect(screen.getByText(/Not set yet\. This browser is in America\/Chicago/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Household timezone')).toHaveValue('America/Chicago')
+    expect(engine.householdTimezone).toBeNull()
+
+    press('Save timezone')
+    expect(await screen.findByText('The household now keeps time in America/Chicago.')).toBeInTheDocument()
+    expect(engine.householdTimezone).toBe('America/Chicago')
+    expect(engine.writes.at(-1)).toMatchObject({
+      method: 'PATCH',
+      pathname: '/api/households/me',
+      body: { timezone: 'America/Chicago' },
+    })
+  })
+
+  test('the owner finds a zone by searching, and the select narrows to it', async () => {
+    const engine = engineWithZone('owner', 'America/Chicago')
+    renderApp('/settings/household', engine, 'workbench')
+
+    const select = await screen.findByLabelText('Household timezone')
+    expect(select).toHaveValue('America/Chicago')
+    expect(screen.getByRole('button', { name: 'Save timezone' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Find a timezone'), { target: { value: 'tokyo' } })
+    const options = within(select).getAllByRole('option').map((option) => option.getAttribute('value'))
+    expect(options).toContain('Asia/Tokyo')
+    expect(options).not.toContain('Europe/London')
+
+    fireEvent.change(select, { target: { value: 'Asia/Tokyo' } })
+    press('Save timezone')
+    expect(await screen.findByText('The household now keeps time in Asia/Tokyo.')).toBeInTheDocument()
+    expect(engine.householdTimezone).toBe('Asia/Tokyo')
+  })
+
+  test('a refusal is said in the engine words and nothing is shown as saved', async () => {
+    const engine = engineWithZone('owner', null)
+    engine.refusals['PATCH /api/households/me'] = {
+      status: 403,
+      body: { detail: 'Only the household owner can change the timezone. Nothing was changed.' },
+    }
+    renderApp('/settings/household', engine, 'family')
+    await screen.findByLabelText('Household timezone')
+
+    press('Save timezone')
+    expect(
+      await screen.findByText('Only the household owner can change the timezone. Nothing was changed.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/now keeps time in/)).not.toBeInTheDocument()
+    expect(engine.householdTimezone).toBeNull()
+  })
+
+  test('a member sees the zone and who can change it, and no control', async () => {
+    renderApp('/settings/household', engineWithZone('member', 'America/Chicago'), 'family')
+
+    expect(await screen.findByText('America/Chicago')).toBeInTheDocument()
+    expect(screen.getByText('Only the owner can change the household timezone.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Household timezone')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save timezone' })).not.toBeInTheDocument()
+  })
+
+  test('a member of a household with no zone is told it is not set, in words', async () => {
+    renderApp('/settings/household', engineWithZone('member', null), 'workbench')
+    expect(
+      await screen.findByText(/Not set\. Until the owner sets one, each phone and browser says what day it is\./),
+    ).toBeInTheDocument()
+  })
+})

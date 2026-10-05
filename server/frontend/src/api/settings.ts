@@ -220,6 +220,18 @@ export function useRenameHousehold() {
   })
 }
 
+/** `PATCH /api/households/me` with `timezone` (owner only, Kevin 2026-10-05).
+ * Not optimistic: the row shows the stored zone again only after the engine
+ * answers 2xx, and a refusal comes back as the engine's own sentence. */
+export function useSetHouseholdTimezone() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (timezone: string) =>
+      runWrite('saved', () => api.PATCH('/api/households/me', { body: { timezone } })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HOUSEHOLD_KEY }),
+  })
+}
+
 export function useDevices() {
   return useQuery({
     queryKey: DEVICES_KEY,

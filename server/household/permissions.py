@@ -77,6 +77,12 @@ class IsHouseholdOwner(IsHouseholdMember):
     feeds run as, which is who speaks for the household, the same shape as
     who may invite.
 
+    **And one more, 2026-10-05** (Kevin): setting the household's timezone,
+    `PATCH /api/households/me` with `timezone`. Every member reads it; it
+    decides which calendar day "today" is for the whole household, so it is
+    set once by the person who administers the household rather than moved by
+    each member. It gates no row.
+
     Subclasses `IsHouseholdMember` rather than restating it: an owner is a
     member first, and the household-membership check is the one that decides
     whether the caller is inside the tenancy at all.

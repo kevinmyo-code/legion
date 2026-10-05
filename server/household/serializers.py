@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from household.timezones import is_known_zone
+
 
 class LoginRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -210,12 +212,51 @@ class HouseholdSerializer(serializers.Serializer):
 
     id = serializers.UUIDField()
     name = serializers.CharField()
+    timezone = serializers.CharField(
+        allow_null=True,
+        help_text=(
+            "The household's IANA timezone (`America/Chicago`), or null when the owner has "
+            "not set one. The engine uses it to decide which local day 'today' is (the "
+            "Groceries same-day untick rule). Any member may read it; only the owner may "
+            "change it."
+        ),
+    )
     created_at = serializers.DateTimeField()
     members = HouseholdMemberSerializer(many=True)
 
 
 class HouseholdPatchRequestSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=120)
+    """Rename the household, set its timezone, or both. Owner-only. At least
+    one field; a field left out is left as it is."""
+
+    name = serializers.CharField(max_length=120, required=False)
+    timezone = serializers.CharField(
+        max_length=64,
+        required=False,
+        allow_null=True,
+        help_text=(
+            "An IANA timezone name this server knows (`America/Chicago`), or null to unset "
+            "it. Unset, the engine falls back to the client's own `today`, then UTC."
+        ),
+    )
+
+    def validate_timezone(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not is_known_zone(value):
+            raise serializers.ValidationError(
+                f"Nothing was changed. {value!r} is not a timezone this server knows. Use an "
+                f"IANA name such as America/Chicago."
+            )
+        return value
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                "Nothing was changed. Send `name`, `timezone`, or both."
+            )
+        return attrs
 
 
 class DeviceTokenSerializer(serializers.Serializer):

@@ -54,7 +54,7 @@ class HouseholdAdmin(HouseholdScopedAdmin):
     # A household reaches itself by its own primary key - see
     # `HouseholdScopedAdmin.household_lookup`.
     household_lookup = "pk"
-    list_display = ["name", "id", "created_at"]
+    list_display = ["name", "id", "timezone", "created_at"]
     readonly_fields = ["id", "created_at"]
 
 
