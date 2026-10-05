@@ -1,6 +1,7 @@
 import { todayEpochDay } from '../lib/day'
 import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip, Purchase } from '../api/types'
+import { defaultAssistant, handleAssistant, type AssistantState } from './engine-assistant'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
 
@@ -55,6 +56,8 @@ export interface EngineOptions {
   members?: Member[]
   /** Join, signup and settings state (`engine-settings.ts`); defaults when absent. */
   settings?: Partial<SettingsState>
+  /** The web assistant's state (`engine-assistant.ts`); a Dorothy and no failures when absent. */
+  assistant?: Partial<AssistantState>
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -84,6 +87,8 @@ export interface Engine {
   members: Member[]
   /** What the join, signup and settings routes answer from (`engine-settings.ts`). */
   settings: SettingsState
+  /** The web assistant's answers (`engine-assistant.ts`): companion, mint, tools. */
+  assistant: AssistantState
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -331,6 +336,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     spend: options.spend ?? emptySpend(),
     members: options.members ?? [],
     settings: { ...defaultSettings(), ...options.settings },
+    assistant: { ...defaultAssistant(), ...options.assistant },
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -634,6 +640,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
       if (method === 'GET' && pathname === '/api/ledger/spend') {
         return { status: 200, body: spendWithTargets(engine) }
       }
+
+      const assistantReply = handleAssistant(engine, method, pathname, body)
+      if (assistantReply) return assistantReply
 
       const settingsReply = handleSettings(engine, ME.user_id, ME.email, method, pathname, body)
       if (settingsReply) return settingsReply
