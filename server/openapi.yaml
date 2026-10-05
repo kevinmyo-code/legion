@@ -4,6 +4,117 @@ info:
   version: 0.1.0
   description: The engine. One Django server, every limb a client of it.
 paths:
+  /api/assistant/companion:
+    get:
+      operationId: api_assistant_companion_retrieve
+      description: |-
+        Read only. Device tokens may read it too (the API default), so the
+        phone can show which companion a member has on the web. Setting one is
+        the admin's or `manage.py set_companion`'s; the REST write is not built.
+      summary: Who the signed-in member talks to
+      tags:
+      - assistant
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantCompanion'
+          description: ''
+  /api/assistant/session:
+    post:
+      operationId: api_assistant_session_create
+      summary: 'Start a live conversation: mint a locked Gemini Live token'
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantSessionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantSessionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantSessionRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantSession'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many starts; nothing started.
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Google refused the key or the session, in words.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No `LEGION_GEMINI_KEY` on this server ("The assistant isn't
+            set up on this server."), or Google did not answer.
+  /api/assistant/tool:
+    post:
+      operationId: api_assistant_tool_create
+      summary: Run one tool call from a live conversation, as the signed-in member
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantToolRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantToolRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantToolRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantToolResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantToolRefusal'
+          description: Not a tool the web assistant has, or a body that did not fit.
+            Nothing ran. `response` is ready to forward to Gemini.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many calls; nothing ran.
   /api/auth/csrf:
     get:
       operationId: api_auth_csrf_retrieve
@@ -6937,6 +7048,138 @@ paths:
             message.
 components:
   schemas:
+    AssistantCompanion:
+      type: object
+      properties:
+        name:
+          type: string
+          description: What the companion is called.
+        persona:
+          type: string
+          description: The built-in register it wears.
+        voice_name:
+          type: string
+          description: The Gemini voice it speaks in.
+        custom_register:
+          type: boolean
+          description: True when the household wrote its own register for it.
+        stored:
+          type: boolean
+          description: False when no companion has been set for this member and this
+            is the default the engine assigns.
+      required:
+      - custom_register
+      - name
+      - persona
+      - stored
+      - voice_name
+    AssistantSession:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The ephemeral token's full name (`auth_tokens/...`). Pass it
+            as the `access_token` query parameter on `ws_url`. One conversation; the
+            setup it carries is locked, so the browser's own `setup` message is ignored.
+        model:
+          type: string
+        ws_url:
+          type: string
+          description: Append `?access_token=<token, URL-encoded>` and open a WebSocket.
+        expires_at:
+          type: string
+          format: date-time
+          description: The conversation cannot outlive this (about 30 minutes).
+        connect_by:
+          type: string
+          format: date-time
+          description: The WebSocket must be opened before this (about 60 seconds).
+        companion_name:
+          type: string
+        voice_name:
+          type: string
+        input_audio_mime:
+          type: string
+          description: 'What `realtimeInput.audio.mimeType` must say: 16-bit PCM,
+            16 kHz, mono.'
+        output_audio_rate:
+          type: integer
+          description: Sample rate of the 16-bit PCM Gemini sends back.
+      required:
+      - companion_name
+      - connect_by
+      - expires_at
+      - input_audio_mime
+      - model
+      - output_audio_rate
+      - token
+      - voice_name
+      - ws_url
+    AssistantSessionRequest:
+      type: object
+      properties:
+        utc_offset_minutes:
+          type: integer
+          maximum: 840
+          minimum: -720
+          nullable: true
+          description: 'Minutes EAST of UTC on the person''s own clock: `-new Date().getTimezoneOffset()`
+            in a browser (Houston in summer is -300). Omit it and the assistant is
+            told the offset is unknown. Never an IANA zone id.'
+    AssistantToolForward:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+      - message
+      - success
+    AssistantToolRefusal:
+      type: object
+      properties:
+        response:
+          $ref: '#/components/schemas/AssistantToolForward'
+        detail:
+          type: string
+      required:
+      - detail
+      - response
+    AssistantToolRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: '`functionCalls[].name`, as Gemini sent it.'
+        args:
+          type: object
+          additionalProperties: {}
+          description: '`functionCalls[].args`, as Gemini sent it. Omitted means `{}`.'
+      required:
+      - name
+    AssistantToolResult:
+      type: object
+      properties:
+        response:
+          $ref: '#/components/schemas/AssistantToolForward'
+        name:
+          type: string
+        is_error:
+          type: boolean
+          description: True when the tool was refused or failed. `text` says what
+            did not happen.
+        outcome:
+          $ref: '#/components/schemas/OutcomeEnum'
+        text:
+          type: string
+          description: The result in words, for the model.
+      required:
+      - is_error
+      - name
+      - outcome
+      - response
+      - text
     BodyweightLog:
       type: object
       description: |-
@@ -9580,6 +9823,18 @@ components:
       - sync_id
       - updated_at
       - vehicle_id
+    OutcomeEnum:
+      enum:
+      - ok
+      - refused
+      - failed
+      - throttled
+      type: string
+      description: |-
+        * `ok` - OK
+        * `refused` - Refused
+        * `failed` - Failed
+        * `throttled` - Throttled
     PagedBodyweightLog:
       type: object
       properties:

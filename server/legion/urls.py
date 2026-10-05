@@ -53,6 +53,10 @@ urlpatterns = [
     # purchase-log ticket 06: the household bought log, and "when did we last
     # buy shampoo?" (`purchases/views.py`).
     path("api/purchases/", include("purchases.urls")),
+    # web-assistant ticket 07: the web assistant's engine half - a locked Gemini
+    # Live token per conversation, and the session-authenticated door its tool
+    # calls come through (`assistant/views.py`). Session auth only; never `/mcp`.
+    path("api/assistant/", include("assistant.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.
