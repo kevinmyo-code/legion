@@ -23,6 +23,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +54,12 @@ private val SINGLE_SPAN: (androidx.compose.foundation.lazy.grid.LazyGridItemSpan
 @Composable
 fun ListsContent(state: ListsPageState, callbacks: ListsPageCallbacks) {
     Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
-        ListsPageTopBar(showArchived = state.showArchived, onBack = callbacks.onBack, onToggleArchived = callbacks.onToggleArchived)
+        ListsPageTopBar(
+            showArchived = state.showArchived,
+            onBack = callbacks.onBack,
+            onToggleArchived = callbacks.onToggleArchived,
+            onOpenBought = callbacks.onOpenBought,
+        )
 
         if (state.loading) return@Column
 
@@ -102,7 +108,12 @@ fun ListsContent(state: ListsPageState, callbacks: ListsPageCallbacks) {
 }
 
 @Composable
-private fun ListsPageTopBar(showArchived: Boolean, onBack: () -> Unit, onToggleArchived: () -> Unit) {
+private fun ListsPageTopBar(
+    showArchived: Boolean,
+    onBack: () -> Unit,
+    onToggleArchived: () -> Unit,
+    onOpenBought: (() -> Unit)? = null,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
@@ -117,6 +128,13 @@ private fun ListsPageTopBar(showArchived: Boolean, onBack: () -> Unit, onToggleA
             color = SoftColors.text,
             modifier = Modifier.weight(1f).padding(start = 4.dp),
         )
+        // purchase-log ticket 08: the household bought log, "When did we last buy...?".
+        if (onOpenBought != null) {
+            TextButton(onClick = onOpenBought) {
+                MsIcon(res = R.drawable.ms_history, contentDescription = null, tint = SoftColors.primary, size = 18.dp)
+                Text("Bought log", modifier = Modifier.padding(start = 6.dp), color = SoftColors.primary)
+            }
+        }
         Box {
             IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
                 MsIcon(res = R.drawable.ms_more_vert, contentDescription = "More options", tint = SoftColors.text2)

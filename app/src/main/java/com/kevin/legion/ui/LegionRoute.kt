@@ -174,6 +174,14 @@ object LegionRoute {
     const val CHECKLISTS = "checklists"
 
     /**
+     * The household bought log (purchase-log ticket 08): search-first "When did we last buy...?" and
+     * the "Log it" form, [com.kevin.legion.ui.bought.BoughtScreen]. Reached from a "Bought log"
+     * button in the Lists page's top bar (the least invasive existing place: it sits beside the
+     * Groceries list the log is fed from, and adds no tab and nothing to Home). Online only, ticket 04.
+     */
+    const val BOUGHT = "bought"
+
+    /**
      * The `show_generated_view` hands path (ADR 0035), given its own route (one-home ticket 01/02,
      * 2026-09-10, `.scratch/one-home/issues/02-rehome-the-orphans.md`) - see
      * [com.kevin.legion.ui.ask.AskScreen]. Previously a `DeckPane` welded inside `ui/MetersScreen.kt`
