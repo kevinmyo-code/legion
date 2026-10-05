@@ -6045,56 +6045,56 @@ above for the wake half; "that will be all" sleeps unchanged. `WakePhrases.WAKE`
 `grammar(name)` is `["hey <name>"]`, or EMPTY for a blank name. Wake-word ticket 09's rule is
 live again: `WakeWordEngine.start` and `WakeKeywords.build` refuse a blank name in words.
 
-## 2026-10-04 - The household bought log, and the assistant on the web
-
-Kevin: *"wife wants to be able to keep track when we bought certain household items. like shampoo
-etc."* and *"give the web/phone app a chatbox + push to talk same like my android app"*. Interviewed
-the same day; Mia is on an iPhone and uses the web app only.
-
-- **Bought log** (`.scratch/purchase-log/`): a bought entry is its own record (item, date, who;
-  optional store, price as entered, quantity / note), household-shared with an optional private flag
-  (ADR 0052's model). **A tick on the Groceries list logs a purchase by itself** (ADR 0055, narrowing
-  ADR 0049 for that one list); every other list stays "ticked".
-- **Web assistant** (`.scratch/web-assistant/`): a chatbox and a LIVE voice conversation on Mia's
-  PWA and Kevin's web workbench, plus a typed chatbox on Kevin's Android app answering in text only.
-  Reaches everything the engine holds, with private rows staying private. Runs on the household key
-  held by the engine, which mints short-lived tokens; no key ever reaches a browser (ADR 0056).
-  History is session-only.
-
-## 2026-10-04 - Bought log details, and Mia's companion is Dorothy
-
-`.scratch/purchase-log/`: past Groceries ticks are imported as bought entries with "logged by: not
-recorded"; lookups search loosely and always name the entry they matched; **the phone reaches the
-bought log online only** (Kevin's deliberate exception to the Room-replica rule, server down said in
-words). Opus proposed the table and hook details in ticket 01 for Kevin to veto. On the web, Mia's
-assistant is **Dorothy**, the existing companion (Kevin: *"give that to her"*).
-
-## 2026-10-04 - Web assistant: browser runs tools via the engine, build first, screen lock ends it
-
-Kevin on `.scratch/web-assistant/`: live voice on an iPhone PWA is viable with caveats (research 01);
-Mia is on iOS 27; **no device spike first, build it all and test after**; screen lock or app switch
-ends the conversation; **the browser executes tool calls by calling a session-authenticated engine
-endpoint** (never `/mcp`). Opus proposed, for veto: shared prompt clauses generated from one file for
-Kotlin and TypeScript, the engine assembling the web prompt into the locked token, companions per
-member on the engine; tick history moves server-side; Android typed chat sends text turns into the
+## 2026-10-04 - The household bought log, and the assistant on the web
+
+Kevin: *"wife wants to be able to keep track when we bought certain household items. like shampoo
+etc."* and *"give the web/phone app a chatbox + push to talk same like my android app"*. Interviewed
+the same day; Mia is on an iPhone and uses the web app only.
+
+- **Bought log** (`.scratch/purchase-log/`): a bought entry is its own record (item, date, who;
+  optional store, price as entered, quantity / note), household-shared with an optional private flag
+  (ADR 0052's model). **A tick on the Groceries list logs a purchase by itself** (ADR 0055, narrowing
+  ADR 0049 for that one list); every other list stays "ticked".
+- **Web assistant** (`.scratch/web-assistant/`): a chatbox and a LIVE voice conversation on Mia's
+  PWA and Kevin's web workbench, plus a typed chatbox on Kevin's Android app answering in text only.
+  Reaches everything the engine holds, with private rows staying private. Runs on the household key
+  held by the engine, which mints short-lived tokens; no key ever reaches a browser (ADR 0056).
+  History is session-only.
+
+## 2026-10-04 - Bought log details, and Mia's companion is Dorothy
+
+`.scratch/purchase-log/`: past Groceries ticks are imported as bought entries with "logged by: not
+recorded"; lookups search loosely and always name the entry they matched; **the phone reaches the
+bought log online only** (Kevin's deliberate exception to the Room-replica rule, server down said in
+words). Opus proposed the table and hook details in ticket 01 for Kevin to veto. On the web, Mia's
+assistant is **Dorothy**, the existing companion (Kevin: *"give that to her"*).
+
+## 2026-10-04 - Web assistant: browser runs tools via the engine, build first, screen lock ends it
+
+Kevin on `.scratch/web-assistant/`: live voice on an iPhone PWA is viable with caveats (research 01);
+Mia is on iOS 27; **no device spike first, build it all and test after**; screen lock or app switch
+ends the conversation; **the browser executes tool calls by calling a session-authenticated engine
+endpoint** (never `/mcp`). Opus proposed, for veto: shared prompt clauses generated from one file for
+Kotlin and TypeScript, the engine assembling the web prompt into the locked token, companions per
+member on the engine; tick history moves server-side; Android typed chat sends text turns into the
 same Live session and shows the transcription.
 
-## 2026-10-04 - Marcus Aurelius companion, grounded in the Meditations by a pull-based tool
-
-Kevin: "i want marcus aurelius. ingest the entirety of meditations and try to make the persona
-answer as close as possible to how real marcus would have." Built as the fourth built-in persona
-(`MARCUS` in `ai/Personas.kt`), not a new mechanism.
-
-- **Text: George Long's 1862 translation, Project Gutenberg #15877** (not #2680, which is Meric
-  Casaubon's 1634; not Gregory Hays, which is copyrighted). 12 books, 487 sections, bundled at
-  `assets/meditations/` with the Gutenberg 1.E.1 notice and the full licence beside it. Never fetched.
-- **The book is not in the prompt** (~63,000 estimated tokens, re-sent every reconnect). The persona
-  clause carries the manner; `consult_meditations` (BM25 over stemmed words plus a hand-written
-  modern-to-Long vocabulary bridge, no network) carries the words.
-- **Quotation rule:** Marcus quotes only text the tool returned that turn, with Book and section;
-  everything else is said as his own thinking. The tool is declared only while Marcus is active.
-- **Safety above character:** the clause forbids offering the Meditations' "the house is smoky, I
-  quit it" strain (V.29, VIII.47) as comfort; the tool refuses a query `CrisisDetector` matches.
-- **Payload:** Alfred's setup is unchanged (~22,279 estimated tokens, ceiling 22,500 untouched).
-  Marcus-active measures ~22,922, over the ceiling number the way Kratos-active (~22,613) already is,
+## 2026-10-04 - Marcus Aurelius companion, grounded in the Meditations by a pull-based tool
+
+Kevin: "i want marcus aurelius. ingest the entirety of meditations and try to make the persona
+answer as close as possible to how real marcus would have." Built as the fourth built-in persona
+(`MARCUS` in `ai/Personas.kt`), not a new mechanism.
+
+- **Text: George Long's 1862 translation, Project Gutenberg #15877** (not #2680, which is Meric
+  Casaubon's 1634; not Gregory Hays, which is copyrighted). 12 books, 487 sections, bundled at
+  `assets/meditations/` with the Gutenberg 1.E.1 notice and the full licence beside it. Never fetched.
+- **The book is not in the prompt** (~63,000 estimated tokens, re-sent every reconnect). The persona
+  clause carries the manner; `consult_meditations` (BM25 over stemmed words plus a hand-written
+  modern-to-Long vocabulary bridge, no network) carries the words.
+- **Quotation rule:** Marcus quotes only text the tool returned that turn, with Book and section;
+  everything else is said as his own thinking. The tool is declared only while Marcus is active.
+- **Safety above character:** the clause forbids offering the Meditations' "the house is smoky, I
+  quit it" strain (V.29, VIII.47) as comfort; the tool refuses a query `CrisisDetector` matches.
+- **Payload:** Alfred's setup is unchanged (~22,279 estimated tokens, ceiling 22,500 untouched).
+  Marcus-active measures ~22,922, over the ceiling number the way Kratos-active (~22,613) already is,
   because the ceiling test measures Alfred only. Not raised; reported.
