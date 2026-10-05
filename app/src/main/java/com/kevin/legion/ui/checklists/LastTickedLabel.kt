@@ -55,8 +55,8 @@ fun rememberLastTickedLabel(itemText: String): String? {
  * - the line is never simply absent, which would read as "never bought".
  */
 @Composable
-fun rememberLastItemLabel(listName: String?, itemText: String): String? {
-    if (!GroceriesLabel.isGroceriesList(listName)) return rememberLastTickedLabel(itemText)
+fun rememberLastItemLabel(systemKey: String?, itemText: String): String? {
+    if (!GroceriesLabel.isGroceriesList(systemKey)) return rememberLastTickedLabel(itemText)
     val context = LocalContext.current
     var label by remember(itemText) { mutableStateOf<String?>(null) }
     LaunchedEffect(itemText) {

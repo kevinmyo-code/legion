@@ -39,6 +39,9 @@ data class RemoteChecklist(
     val createdAtMs: Long,
     val updatedAtMs: Long,
     val deleted: Boolean,
+    /** The engine's `system_key`: non-null marks a built-in list ("groceries"). Read-only on the
+     * wire - it is never part of [ChecklistFields], so the phone cannot write one. */
+    val systemKey: String? = null,
 )
 
 /** Every writable column on `checklists` except the ones a caller never states

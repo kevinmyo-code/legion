@@ -37,6 +37,13 @@ interface ChecklistSyncDao {
     @Query("SELECT * FROM checklists WHERE id = :id")
     suspend fun getByIdIncludingDeleted(id: Long): Checklist?
 
+    /** The household's built-in list with this [Checklist.systemKey] (today only
+     * [Checklist.SYSTEM_KEY_GROCERIES]), or null when the engine's copy has not synced to this
+     * phone yet. Callers must treat null as "not here yet" and NEVER create one - that would be a
+     * second Groceries list. */
+    @Query("SELECT * FROM checklists WHERE deleted = 0 AND systemKey = :systemKey LIMIT 1")
+    suspend fun getBySystemKey(systemKey: String): Checklist?
+
     @Insert
     suspend fun insert(checklist: Checklist): Long
 

@@ -2,6 +2,7 @@ package com.kevin.legion.grocery
 
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.GroceryItem
 import com.kevin.legion.data.local.GroceryStaple
 import com.kevin.legion.testutil.RoomTestReset
@@ -42,8 +43,14 @@ class GroceryChecklistMigrationTest {
         RoomTestReset.drainArchDiskIoPool()
     }
 
+    /** The household's built-in list as the engine's sync would have delivered it. */
+    private suspend fun syncedBuiltInGroceries(): Long = db.checklistDao().insert(
+        Checklist(name = "Groceries", systemKey = Checklist.SYSTEM_KEY_GROCERIES),
+    )
+
     @Test
-    fun `open items land on a new Groceries checklist, ticked items ticked today`() = runBlocking {
+    fun `open items land on the built-in Groceries checklist, ticked items ticked today`() = runBlocking {
+        syncedBuiltInGroceries()
         val now = System.currentTimeMillis()
         db.groceryItemDao().insert(GroceryItem(text = "Milk", done = false, sortOrder = 0, createdAt = now, updatedAt = now))
         db.groceryItemDao().insert(GroceryItem(text = "Eggs", done = true, sortOrder = 1, createdAt = now, updatedAt = now))
@@ -57,6 +64,7 @@ class GroceryChecklistMigrationTest {
         assertEquals(1, lists.size)
         val checklist = lists.first()
         assertEquals("Groceries", checklist.name)
+        assertEquals(Checklist.SYSTEM_KEY_GROCERIES, checklist.systemKey)
         assertEquals(null, checklist.scheduleKind) // non-recurring
 
         val loaded = ChecklistController.itemsWithTickState(context, checklist.id)
@@ -69,7 +77,40 @@ class GroceryChecklistMigrationTest {
     }
 
     @Test
+    fun `with no built-in list synced yet nothing is created, nothing is lost, and the sweep is not marked done`() =
+        runBlocking {
+            val now = System.currentTimeMillis()
+            db.groceryItemDao().insert(GroceryItem(text = "Milk", done = false, sortOrder = 0, createdAt = now, updatedAt = now))
+
+            val result = GroceryChecklistMigration.migrateIfNeeded(context)
+
+            assertEquals(0, result.migrated)
+            assertFalse(result.alreadyDone)
+            assertTrue(ChecklistController.allChecklists(context, includeArchived = true).isEmpty())
+            assertEquals(1, db.groceryItemDao().count())
+
+            // The engine's list arrives; the next start carries the trip over.
+            syncedBuiltInGroceries()
+            val later = GroceryChecklistMigration.migrateIfNeeded(context)
+            assertEquals(1, later.migrated)
+            assertEquals(0, db.groceryItemDao().count())
+        }
+
+    @Test
+    fun `a hand-made list merely named Groceries is not the target`() = runBlocking {
+        val handMade = ChecklistController.createChecklist(context, name = "Groceries")
+        val now = System.currentTimeMillis()
+        db.groceryItemDao().insert(GroceryItem(text = "Milk", done = false, sortOrder = 0, createdAt = now, updatedAt = now))
+
+        val result = GroceryChecklistMigration.migrateIfNeeded(context)
+
+        assertEquals(0, result.migrated)
+        assertTrue(ChecklistController.itemsFor(context, handMade.id).isEmpty())
+    }
+
+    @Test
     fun `a second run is a no-op`() = runBlocking {
+        syncedBuiltInGroceries()
         val now = System.currentTimeMillis()
         db.groceryItemDao().insert(GroceryItem(text = "Milk", done = false, sortOrder = 0, createdAt = now, updatedAt = now))
 
@@ -94,6 +135,7 @@ class GroceryChecklistMigrationTest {
 
     @Test
     fun `grocery_items is empty afterwards`() = runBlocking {
+        syncedBuiltInGroceries()
         val now = System.currentTimeMillis()
         db.groceryItemDao().insert(GroceryItem(text = "Milk", done = false, createdAt = now, updatedAt = now))
 
@@ -104,6 +146,7 @@ class GroceryChecklistMigrationTest {
 
     @Test
     fun `grocery_staples is untouched by the migration`() = runBlocking {
+        syncedBuiltInGroceries()
         val now = System.currentTimeMillis()
         db.groceryItemDao().insert(GroceryItem(text = "Milk", done = true, createdAt = now, updatedAt = now))
         db.groceryStapleDao().upsert(

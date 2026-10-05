@@ -257,6 +257,7 @@ object ChecklistsSync {
                         scheduleKind = r.scheduleKind,
                         scheduleEvery = r.scheduleEvery,
                         scheduleDaysOfWeek = r.scheduleDaysOfWeek,
+                        systemKey = r.systemKey,
                     )
                 },
                 toMerged = { r, existing ->
@@ -270,6 +271,7 @@ object ChecklistsSync {
                         scheduleKind = r.scheduleKind,
                         scheduleEvery = r.scheduleEvery,
                         scheduleDaysOfWeek = r.scheduleDaysOfWeek,
+                        systemKey = r.systemKey,
                     )
                 },
                 withDeletedFlag = { existing, atMs -> existing.copy(deleted = true, updatedAt = atMs) },

@@ -77,6 +77,7 @@ class ChecklistsSyncTest {
         name: String,
         updatedAtMs: Long,
         deleted: Boolean = false,
+        systemKey: String? = null,
     ) = RemoteChecklist(
         serverId = serverId,
         syncId = syncId,
@@ -89,6 +90,7 @@ class ChecklistsSyncTest {
         createdAtMs = 9_000_000L,
         updatedAtMs = updatedAtMs,
         deleted = deleted,
+        systemKey = systemKey,
     )
 
     @Before
@@ -128,6 +130,20 @@ class ChecklistsSyncTest {
         // Microseconds intact - a watermark round-tripped through epoch millis would truncate, and
         // a truncated watermark either re-fetches harmlessly or skips a row forever.
         assertEquals("2026-09-06T12:47:39.687402Z", next.lastSince)
+    }
+
+    @Test
+    fun `a built-in list arrives with its system key, and a later pull keeps it`() = runBlocking {
+        val builtIn = remoteChecklist("g1", null, "Groceries", 1_000L, systemKey = "groceries")
+        ChecklistsSync.pull(context, StaticBackend(changes(checklists = listOf(builtIn))))
+        val dao = com.kevin.legion.data.local.CarDatabase.getDatabase(context).checklistSyncDao()
+        assertEquals("groceries", dao.getBySystemKey("groceries")?.systemKey)
+
+        ChecklistsSync.pull(
+            context,
+            StaticBackend(changes(checklists = listOf(builtIn.copy(updatedAtMs = 2_000L)))),
+        )
+        assertEquals("groceries", dao.getBySystemKey("groceries")?.systemKey)
     }
 
     @Test

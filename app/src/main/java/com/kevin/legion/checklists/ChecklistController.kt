@@ -228,7 +228,38 @@ object ChecklistController {
         pushLater(context) { checklistChanged(checklistId) }
     }
 
+    /** Thrown when a write would delete, rename or archive a BUILT-IN list (Kevin, 2026-10-05:
+     * Groceries is permanent). The engine refuses the same writes in the same words; this refuses
+     * first, so the phone never applies locally a change the household's copy will never accept.
+     * Callers that already catch and show a write error (the Lists screen's `guardedWrite`) show
+     * this message as it is. */
+    class BuiltInListException(message: String) : IllegalStateException(message)
+
+    /** The household's built-in Groceries list, or null when the engine's copy has not synced to
+     * this phone yet. Callers must say so in words and must NEVER create a Groceries list to fill
+     * the gap: that would be a second one, and the engine's would arrive beside it. */
+    suspend fun builtInGroceries(context: Context): Checklist? =
+        db(context).checklistSyncDao().getBySystemKey(Checklist.SYSTEM_KEY_GROCERIES)
+
+    /** What the phone says in place of the Groceries list while it is missing. */
+    const val GROCERIES_NOT_SYNCED = "Getting the Groceries list from the household..."
+
+    /** The sentence for a refused change to a built-in list; [what] is "deleted", "renamed" or
+     * "archived". Mirrors the engine's wording (`checklists/builtin.py`). */
+    private fun builtInRefusal(checklist: Checklist, what: String) =
+        "The ${checklist.name} list is built in, so it can't be $what"
+
+    private suspend fun refuseIfBuiltIn(context: Context, checklistId: Long, what: String) {
+        val checklist = db(context).checklistDao().getById(checklistId) ?: return
+        if (checklist.isBuiltIn) throw BuiltInListException(builtInRefusal(checklist, what))
+    }
+
     suspend fun renameChecklist(context: Context, checklistId: Long, name: String, at: Long = System.currentTimeMillis()) {
+        // Same name is a no-op the engine accepts; any other name on a built-in list is refused.
+        val current = db(context).checklistDao().getById(checklistId)
+        if (current != null && current.isBuiltIn && current.name != name) {
+            throw BuiltInListException(builtInRefusal(current, "renamed"))
+        }
         db(context).checklistDao().rename(checklistId, name, at)
         pushLater(context) { checklistChanged(checklistId) }
     }
@@ -242,6 +273,7 @@ object ChecklistController {
     }
 
     suspend fun archiveChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
+        refuseIfBuiltIn(context, checklistId, "archived")
         db(context).checklistDao().archive(checklistId, at)
         pushLater(context) { checklistChanged(checklistId) }
     }
@@ -257,6 +289,7 @@ object ChecklistController {
      * (trap 2). Nothing currently reads a deleted checklist's history back, but nothing forbids it
      * either. */
     suspend fun deleteChecklist(context: Context, checklistId: Long, at: Long = System.currentTimeMillis()) {
+        refuseIfBuiltIn(context, checklistId, "deleted")
         db(context).checklistDao().deleteById(checklistId, at)
         pushLater(context) { checklistDeleted(checklistId) }
     }

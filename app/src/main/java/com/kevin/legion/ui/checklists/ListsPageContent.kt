@@ -81,6 +81,15 @@ fun ListsContent(state: ListsPageState, callbacks: ListsPageCallbacks) {
             item(span = FULL_ROW_SPAN) {
                 SectionLabel("Lists")
             }
+            if (state.groceriesPending) {
+                item(span = FULL_ROW_SPAN, key = "groceries-pending") {
+                    Text(
+                        com.kevin.legion.checklists.ChecklistController.GROCERIES_NOT_SYNCED,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SoftColors.text2,
+                    )
+                }
+            }
             items(state.plainLists, key = { "p${it.checklist.id}" }) { card ->
                 ListIconCard(card = card, onClick = { callbacks.onOpenList(card.checklist.id) })
             }

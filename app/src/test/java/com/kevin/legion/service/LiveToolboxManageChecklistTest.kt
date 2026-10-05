@@ -73,22 +73,22 @@ class LiveToolboxManageChecklistTest {
         // an `add`, was refused, called `lists` to re-orient and retried with `text` - three calls
         // for one unambiguous request. The alias is what removes the round trip; the tool
         // description says so in one clause rather than leaving the model to find it by failing.
-        dispatch(args("action" to "create", "list" to "Groceries"))
+        dispatch(args("action" to "create", "list" to "Errands"))
 
-        val result = dispatch(args("action" to "add", "list" to "Groceries", "item" to "oat milk"))
+        val result = dispatch(args("action" to "add", "list" to "Errands", "item" to "oat milk"))
 
         assertTrue(result.getBoolean("success"))
-        assertEquals("Added \"oat milk\" to \"Groceries\".", result.getString("message"))
+        assertEquals("Added \"oat milk\" to \"Errands\".", result.getString("message"))
         val checklist = ChecklistController.allChecklists(context).first()
         assertEquals(listOf("oat milk"), ChecklistController.itemsFor(context, checklist.id).map { it.text })
     }
 
     @Test
     fun `text still wins when both are sent`() = runBlocking {
-        dispatch(args("action" to "create", "list" to "Groceries"))
+        dispatch(args("action" to "create", "list" to "Errands"))
 
         val result = dispatch(
-            args("action" to "add", "list" to "Groceries", "text" to "oat milk", "item" to "whole milk"),
+            args("action" to "add", "list" to "Errands", "text" to "oat milk", "item" to "whole milk"),
         )
 
         assertTrue(result.getBoolean("success"))
@@ -98,13 +98,13 @@ class LiveToolboxManageChecklistTest {
 
     @Test
     fun `add with neither text nor item names the parameter, and adds nothing`() = runBlocking {
-        dispatch(args("action" to "create", "list" to "Groceries"))
+        dispatch(args("action" to "create", "list" to "Errands"))
 
-        val result = dispatch(args("action" to "add", "list" to "Groceries"))
+        val result = dispatch(args("action" to "add", "list" to "Errands"))
 
         assertFalse(result.getBoolean("success"))
         assertEquals(
-            "add needs the line in \"text\"; nothing was added to \"Groceries\".",
+            "add needs the line in \"text\"; nothing was added to \"Errands\".",
             result.getString("message"),
         )
         val checklist = ChecklistController.allChecklists(context).first()
@@ -113,14 +113,14 @@ class LiveToolboxManageChecklistTest {
 
     @Test
     fun `the refusal says you sent item only when item really was sent`() = runBlocking {
-        dispatch(args("action" to "create", "list" to "Groceries"))
+        dispatch(args("action" to "create", "list" to "Errands"))
 
-        val result = dispatch(args("action" to "add", "list" to "Groceries", "item" to "  "))
+        val result = dispatch(args("action" to "add", "list" to "Errands", "item" to "  "))
 
         assertFalse(result.getBoolean("success"))
         assertEquals(
             "add needs the line in \"text\" (you sent \"item\", and it was empty); " +
-                "nothing was added to \"Groceries\".",
+                "nothing was added to \"Errands\".",
             result.getString("message"),
         )
         val checklist = ChecklistController.allChecklists(context).first()
@@ -211,5 +211,49 @@ class LiveToolboxManageChecklistTest {
         val result = dispatch(args("action" to "create", "list" to "bio", "schedule" to "weekly"))
         assertFalse(result.getBoolean("success"))
         assertTrue(result.getString("message").contains("days"))
+    }
+
+    // ------------------------------------------------------------------ the built-in Groceries list
+
+    private suspend fun syncedBuiltInGroceries(): Long =
+        com.kevin.legion.data.local.CarDatabase.getDatabase(context).checklistDao().insert(
+            com.kevin.legion.data.local.Checklist(
+                name = "Groceries",
+                systemKey = com.kevin.legion.data.local.Checklist.SYSTEM_KEY_GROCERIES,
+            ),
+        )
+
+    @Test
+    fun `Groceries resolves to the built-in list even beside a hand-made one of the same name`() = runBlocking {
+        ChecklistController.createChecklist(context, name = "Groceries")
+        val builtIn = syncedBuiltInGroceries()
+
+        val result = dispatch(args("action" to "add", "list" to "groceries", "text" to "oat milk"))
+
+        assertTrue(result.getString("message"), result.getBoolean("success"))
+        assertEquals(listOf("oat milk"), ChecklistController.itemsFor(context, builtIn).map { it.text })
+    }
+
+    @Test
+    fun `with no built-in list yet, add says it is on its way and creates nothing`() = runBlocking {
+        val result = dispatch(args("action" to "add", "list" to "Groceries", "text" to "oat milk"))
+
+        assertFalse(result.getBoolean("success"))
+        val message = result.getString("message")
+        assertTrue(message, message.startsWith("Getting the Groceries list from the household..."))
+        assertTrue(ChecklistController.allChecklists(context, includeArchived = true).isEmpty())
+    }
+
+    @Test
+    fun `create of Groceries never creates one, whether the built-in is here or not`() = runBlocking {
+        val missing = dispatch(args("action" to "create", "list" to "Groceries"))
+        assertFalse(missing.getBoolean("success"))
+        assertTrue(missing.getString("message").startsWith("Getting the Groceries list from the household..."))
+
+        syncedBuiltInGroceries()
+        val present = dispatch(args("action" to "create", "list" to "Groceries"))
+        assertFalse(present.getBoolean("success"))
+        assertTrue(present.getString("message").contains("built-in"))
+        assertEquals(1, ChecklistController.allChecklists(context, includeArchived = true).size)
     }
 }

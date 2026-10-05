@@ -37,11 +37,10 @@ class PurchaseWordingTest {
     }
 
     @Test
-    fun `only the Groceries list reads last bought, case and spacing aside`() {
-        assertTrue(GroceriesLabel.isGroceriesList("Groceries"))
-        assertTrue(GroceriesLabel.isGroceriesList("  groceries "))
+    fun `only the built-in Groceries list reads last bought, by system key and never by name`() {
+        assertTrue(GroceriesLabel.isGroceriesList("groceries"))
+        assertFalse(GroceriesLabel.isGroceriesList("Groceries"))
         assertFalse(GroceriesLabel.isGroceriesList("Todo"))
-        assertFalse(GroceriesLabel.isGroceriesList("Hardware store"))
         assertFalse(GroceriesLabel.isGroceriesList(null))
     }
 

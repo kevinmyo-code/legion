@@ -70,6 +70,7 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
                     routines = live.filter { c -> c.checklist.scheduleKind != null },
                     plainLists = live.filter { c -> c.checklist.scheduleKind == null },
                     archivedLists = cards.filter { c -> c.checklist.archived },
+                    groceriesPending = all.none { c -> c.systemKey == Checklist.SYSTEM_KEY_GROCERIES },
                 ),
             )
         }
@@ -101,6 +102,13 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createList(name: String, scheduleKind: String?, scheduleDaysOfWeek: String?) {
         viewModelScope.launch {
+            // "Groceries" belongs to the household's built-in list (2026-10-05): a second one made
+            // here would sit beside the engine's and split the bought log's history again.
+            if (name.trim().equals("Groceries", ignoreCase = true)) {
+                val present = ChecklistController.builtInGroceries(app) != null
+                _state.update { it.copy(page = it.page.copy(createError = groceriesNameMessage(present))) }
+                return@launch
+            }
             try {
                 val created = ChecklistController.createChecklist(
                     app,
@@ -444,6 +452,14 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+/** What creating a list named Groceries answers: it already exists, or it is still on its way. */
+internal fun groceriesNameMessage(builtInPresent: Boolean): String =
+    if (builtInPresent) {
+        "Groceries is the household's built-in list, so it already exists. Nothing was created."
+    } else {
+        "${ChecklistController.GROCERIES_NOT_SYNCED} Nothing was created."
+    }
 
 /**
  * The one-line sentence a thrown write becomes (audit finding 6) - "Couldn't <verb phrase> -
