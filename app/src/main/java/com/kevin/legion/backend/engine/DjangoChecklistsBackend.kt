@@ -33,6 +33,7 @@ private data class ChecklistRow(
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("deleted_at") val deletedAt: String? = null,
     @SerialName("sync_id") val syncId: String? = null,
+    @SerialName("system_key") val systemKey: String? = null,
 ) {
     fun toRemote() = RemoteChecklist(
         serverId = id,
@@ -46,6 +47,7 @@ private data class ChecklistRow(
         createdAtMs = parseTs(createdAt),
         updatedAtMs = parseTs(updatedAt),
         deleted = deletedAt != null,
+        systemKey = systemKey,
     )
 }
 

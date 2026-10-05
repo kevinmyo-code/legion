@@ -1440,7 +1440,7 @@ object LiveToolbox {
                 "NOT the one persistent list (manage_item) - never route a to-do here, or a " +
                 "checklist line there. The grocery/shopping list is a checklist named " +
                 "\"Groceries\": 'add milk to the grocery list' is action=add, list=Groceries, " +
-                "text=milk (create it first with action=create if it doesn't exist yet). " +
+                "text=milk (it is built in and always exists - never create it). " +
                 "No schedule ('none') means done once ever, the first tick; 'daily' resets each " +
                 "day, 'weekly' only applies on its named days - a list created today has nothing " +
                 "for yesterday, that is expected. A measured line needs a real number to tick - " +
@@ -5829,7 +5829,16 @@ object LiveToolbox {
      * a near-miss name is reported unknown rather than silently guessed at. Archived checklists are
      * excluded, matching [ChecklistController.allChecklists]'s own default. */
     private suspend fun resolveChecklistByName(context: Context, name: String): Checklist? =
-        ChecklistController.allChecklists(context).firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+        // "Groceries" is the household's BUILT-IN list (2026-10-05): resolved by its system key,
+        // never by name, so an old hand-made copy of the name can never be written to instead.
+        if (isGroceriesName(name)) {
+            ChecklistController.builtInGroceries(context)
+        } else {
+            ChecklistController.allChecklists(context)
+                .firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+        }
+
+    private fun isGroceriesName(name: String) = name.trim().equals("Groceries", ignoreCase = true)
 
     /** `today`/`yesterday` (the only two the tool declares) -> a local epoch day, matching
      * [ChecklistController.tick]/[ChecklistController.untick]'s own `day` parameter. Anything
@@ -5870,6 +5879,21 @@ object LiveToolbox {
         if (listArg.isBlank()) return result(false, "Which checklist?")
 
         if (action == "create") {
+            if (isGroceriesName(listArg)) {
+                // Never creates one: the household's engine makes the single built-in list.
+                return if (resolveChecklistByName(context, listArg) != null) {
+                    result(
+                        false,
+                        "Groceries is the household's built-in list, so it already exists - " +
+                            "add to it instead. Nothing was created.",
+                    )
+                } else {
+                    result(
+                        false,
+                        "${ChecklistController.GROCERIES_NOT_SYNCED} Nothing was created; try again in a moment.",
+                    )
+                }
+            }
             val existing = resolveChecklistByName(context, listArg)
             if (existing != null) {
                 return result(
@@ -5913,7 +5937,14 @@ object LiveToolbox {
 
         // Every action from here on addresses an EXISTING checklist by name.
         val checklist = resolveChecklistByName(context, listArg)
-            ?: return result(false, "No checklist named \"$listArg\" - say 'lists' to hear them.")
+            ?: return result(
+                false,
+                if (isGroceriesName(listArg)) {
+                    "${ChecklistController.GROCERIES_NOT_SYNCED} Nothing was changed; try again in a moment."
+                } else {
+                    "No checklist named \"$listArg\" - say 'lists' to hear them."
+                },
+            )
 
         when (action) {
             "add" -> {

@@ -21,6 +21,7 @@ from api.schema import (
     paged_serializer,
 )
 from api.sync import paginate_since, parse_since, save_or_400
+from checklists import builtin
 from checklists.models import Checklist, ChecklistItem, ChecklistTick
 from checklists.serializers import (
     ChecklistItemSerializer,
@@ -177,8 +178,9 @@ class ChecklistDetailView(APIView):
             403: OpenApiResponse(
                 response=DetailSerializer,
                 description=(
-                    "Nothing was changed: this member may not make the checklist private. "
-                    "`detail` is the sentence to show."
+                    "Nothing was changed: this member may not make the checklist private, or "
+                    "the checklist is built in (Groceries) and the change would rename, "
+                    "archive or privatise it. `detail` is the sentence to show."
                 ),
             ),
             404: NOT_FOUND,
@@ -196,6 +198,12 @@ class ChecklistDetailView(APIView):
         # ADR 0052: the who-may-change rule, after validation, before saving.
         derived: dict = {}
         wanted = serializer.validated_data.pop("visibility", None)
+        # A built-in list (Groceries) keeps its name, stays live and shared.
+        built_in_refusal = builtin.refusal_for_change(
+            instance, serializer.validated_data, wanted
+        )
+        if built_in_refusal is not None:
+            return Response({"detail": built_in_refusal}, status=status.HTTP_403_FORBIDDEN)
         if wanted is not None:
             owner, refusal = owner_after_change(instance, wanted, request.user)
             if refusal is not None:
@@ -216,6 +224,13 @@ class ChecklistDetailView(APIView):
                     "history is never rewritten by deleting the checklist."
                 )
             ),
+            403: OpenApiResponse(
+                response=DetailSerializer,
+                description=(
+                    "Nothing was changed: the checklist is built in (Groceries) and cannot "
+                    "be deleted. `detail` is the sentence to show."
+                ),
+            ),
             404: NOT_FOUND,
         },
     )
@@ -226,6 +241,9 @@ class ChecklistDetailView(APIView):
                 {"detail": f"No checklist with id {checklist_id}."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        built_in_refusal = builtin.refusal_for_delete(instance)
+        if built_in_refusal is not None:
+            return Response({"detail": built_in_refusal}, status=status.HTTP_403_FORBIDDEN)
         # Idempotent, matching EventDetailView.delete's own posture -
         # "already gone" and "just removed" read the same to a caller that
         # does not care which happened. Does NOT cascade to items/ticks -

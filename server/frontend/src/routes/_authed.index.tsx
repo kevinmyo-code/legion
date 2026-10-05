@@ -18,6 +18,7 @@ import { buildHorizon, nextUp, overdueOccurrences } from '@/lib/horizon'
 import { useSurface } from '@/lib/surface'
 import { FamilyHome } from '@/screens/home-family'
 import { itemsDueOn } from '@/lib/today'
+import { isBuiltInList } from '@/lib/purchases'
 import { visibilityOf } from '@/lib/visibility'
 
 /** Live (not tombstoned), non-archived rows only, matching every other
@@ -65,7 +66,9 @@ function HomeListCard({
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <VisibilityMark visibility={visibilityOf(checklist)} />
-        <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+        {!isBuiltInList(checklist) && (
+          <DeleteChecklistControl checklistId={checklist.id} checklistName={checklist.name} />
+        )}
       </div>
     </li>
   )

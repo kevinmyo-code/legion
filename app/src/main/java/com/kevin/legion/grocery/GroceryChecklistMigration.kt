@@ -3,12 +3,14 @@ package com.kevin.legion.grocery
 import android.content.Context
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.GroceryItem
 
 /**
  * Ticket 10 slice B's one-time carry: any OPEN grocery trip sitting in `grocery_items` when the
  * trip surface (`ui/notes/GroceryScreen.kt`, `LogMode.GROCERY`, `manage_grocery`,
  * `show_groceries_modal`) retires is moved onto a non-recurring checklist named
- * [CHECKLIST_NAME] rather than silently discarded - `.scratch/one-today/issues/10-*.md` names this
+ * the household's built-in Groceries list ([CHECKLIST_NAME], `system_key = "groceries"`) rather than
+ * silently discarded - `.scratch/one-today/issues/10-*.md` names this
  * as the migration slice B owes.
  *
  * **Data movement, not ingestion and not a Room migration.** No schema changed and no version
@@ -36,8 +38,8 @@ object GroceryChecklistMigration {
     private const val PREFS = "grocery_checklist_migration"
     private const val KEY_COMPLETED = "grocery_to_checklist_completed_v1"
 
-    /** The checklist's name - fixed, not user-chosen, since this is a migration of an existing
-     * concept ("the grocery trip") onto the new one, not a fresh list the user is naming. */
+    /** The built-in list's display name. Kept for callers that print it; the list itself is found
+     * by [com.kevin.legion.data.local.Checklist.SYSTEM_KEY_GROCERIES], never by this name. */
     const val CHECKLIST_NAME = "Groceries"
 
     /** [migrated] is the number of `grocery_items` rows carried over (0 when there was no open
@@ -52,45 +54,49 @@ object GroceryChecklistMigration {
         val db = CarDatabase.getDatabase(context)
         val items = db.groceryItemDao().getAll()
 
-        if (items.isNotEmpty()) {
-            // Reuse an existing "Groceries" checklist if one already exists (a user could have
-            // created their own before this migration ever ran) rather than making a second,
-            // confusingly-identical one - includeArchived so a since-archived "Groceries" still
-            // absorbs these rather than a silent duplicate appearing alongside it.
-            val existing = ChecklistController.allChecklists(context, includeArchived = true)
-                .firstOrNull { it.name.trim().equals(CHECKLIST_NAME, ignoreCase = true) }
-            val checklist = existing ?: ChecklistController.createChecklist(
+        // Not carried (the engine's list is not here yet): the flag stays unset and nothing is
+        // reported as migrated, so the next start tries again.
+        val carried = items.isEmpty() || carryOver(context, db, items)
+        if (carried) prefs.edit().putBoolean(KEY_COMPLETED, true).apply()
+        return Result(migrated = if (carried) items.size else 0, alreadyDone = false)
+    }
+
+    /** Moves [items] onto the built-in list and clears the trip. False, having touched nothing,
+     * when the engine's list has not synced to this phone yet. */
+    private suspend fun carryOver(context: Context, db: CarDatabase, items: List<GroceryItem>): Boolean {
+        // The household's BUILT-IN Groceries list (Kevin, 2026-10-05), found by its system
+        // key. This used to create a "Groceries" checklist when none existed; that is exactly
+        // what produced six hand-made copies on the engine, so it must never create one now.
+        // When the engine's list has not synced to this phone yet, the trip stays in
+        // `grocery_items` (nothing lost, nothing flagged done) and the next app start tries
+        // again - a missing list is "not here yet", never a reason to make a second.
+        val checklist = ChecklistController.builtInGroceries(context) ?: return false
+
+        val startSortOrder = ChecklistController.itemsFor(context, checklist.id).size
+        items.forEachIndexed { index, groceryItem ->
+            val added = ChecklistController.addItem(
                 context,
-                name = CHECKLIST_NAME,
-                scheduleKind = null, // non-recurring, per the ticket's own instruction
+                checklistId = checklist.id,
+                text = groceryItem.text,
+                sortOrder = startSortOrder + index,
             )
-
-            val startSortOrder = ChecklistController.itemsFor(context, checklist.id).size
-            items.forEachIndexed { index, groceryItem ->
-                val added = ChecklistController.addItem(
-                    context,
-                    checklistId = checklist.id,
-                    text = groceryItem.text,
-                    sortOrder = startSortOrder + index,
-                )
-                if (groceryItem.done) {
-                    // Ticked today, USER_REPORTED (ChecklistController.tick's own default source) -
-                    // this is a statement that the item is done, not a claim about WHEN it was
-                    // bought. grocery_items carries [GroceryItem.doneAt] but a checklist's tick is
-                    // keyed to a local epoch DAY (see ChecklistTick's own class doc for why [day] and
-                    // [tickedAt] are different facts), so "today" is the honest day to write, not a
-                    // derived one that could land on the wrong side of a timezone.
-                    ChecklistController.tick(context, added.id)
-                }
+            if (groceryItem.done) {
+                // Ticked today, USER_REPORTED (ChecklistController.tick's own default source) -
+                // this is a statement that the item is done, not a claim about WHEN it was
+                // bought. grocery_items carries [GroceryItem.doneAt] but a checklist's tick is
+                // keyed to a local epoch DAY (see ChecklistTick's own class doc for why [day] and
+                // [tickedAt] are different facts), so "today" is the honest day to write, not a
+                // derived one that could land on the wrong side of a timezone.
+                // (On the built-in Groceries list the engine's hook reads a tick as a purchase, so
+                // a done line carried over here logs as bought today; stated, not hidden.)
+                ChecklistController.tick(context, added.id)
             }
-
-            // The teardown half - matches GroceryController.completeTrip's own clearAll call, minus
-            // the staples fold (see this object's own class doc for why that fold does not belong
-            // here).
-            db.groceryItemDao().clearAll()
         }
 
-        prefs.edit().putBoolean(KEY_COMPLETED, true).apply()
-        return Result(migrated = items.size, alreadyDone = false)
+        // The teardown half - matches GroceryController.completeTrip's own clearAll call, minus
+        // the staples fold (see this object's own class doc for why that fold does not belong
+        // here).
+        db.groceryItemDao().clearAll()
+        return true
     }
 }

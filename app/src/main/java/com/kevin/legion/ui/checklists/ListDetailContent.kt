@@ -38,7 +38,7 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 fun ListDetailContent(state: ListDetailState, callbacks: ListDetailCallbacks) {
     val checklist = state.checklist
     Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
-        DetailTopBar(name = checklist?.name ?: "", callbacks = callbacks)
+        DetailTopBar(name = checklist?.name ?: "", builtIn = checklist?.isBuiltIn == true, callbacks = callbacks)
 
         if (state.loading || checklist == null) return@Column
 
@@ -118,7 +118,9 @@ private fun DetailItemsList(
                 }
             }
         }
-        if (checklist.scheduleKind == null && state.unticked.isEmpty() && state.ticked.isNotEmpty()) {
+        // Never offered on a built-in list, which cannot be deleted.
+        val allDone = checklist.scheduleKind == null && state.unticked.isEmpty() && state.ticked.isNotEmpty()
+        if (allDone && !checklist.isBuiltIn) {
             item(key = "all-done") {
                 AllDoneCard(onDelete = { callbacks.onShowDeleteConfirm(true) })
             }
@@ -140,7 +142,7 @@ private fun DetailDialogs(checklist: com.kevin.legion.data.local.Checklist?, sta
             currentDirection = item.measureDirection,
             onDismiss = callbacks.onDismissEdit,
             onSave = callbacks.onSaveEdit,
-            listName = checklist?.name,
+            systemKey = checklist?.systemKey,
         )
     }
 
@@ -182,7 +184,7 @@ private val todayDayLabel: String
     get() = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))
 
 @Composable
-private fun DetailTopBar(name: String, callbacks: ListDetailCallbacks) {
+private fun DetailTopBar(name: String, builtIn: Boolean, callbacks: ListDetailCallbacks) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = callbacks.onBack, modifier = Modifier.size(48.dp)) {
@@ -204,14 +206,20 @@ private fun DetailTopBar(name: String, callbacks: ListDetailCallbacks) {
                 MsIcon(res = R.drawable.ms_more_vert, contentDescription = "List options", tint = SoftColors.text2)
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false; callbacks.onToggleOverflowMenu(false) }) {
-                DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; callbacks.onShowRenameDialog(true) })
+                // A built-in list (Groceries, 2026-10-05) cannot be renamed, archived or deleted:
+                // the actions are not offered rather than offered and refused.
+                if (!builtIn) {
+                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; callbacks.onShowRenameDialog(true) })
+                }
                 DropdownMenuItem(text = { Text("Schedule") }, onClick = { menuOpen = false; callbacks.onShowSchedulePicker(true) })
                 DropdownMenuItem(text = { Text("History") }, onClick = { menuOpen = false; callbacks.onOpenHistory() })
-                DropdownMenuItem(text = { Text("Archive/Unarchive") }, onClick = { menuOpen = false; callbacks.onArchiveToggle() })
-                DropdownMenuItem(
-                    text = { Text("Delete list", color = SoftColors.onAlert) },
-                    onClick = { menuOpen = false; callbacks.onShowDeleteConfirm(true) },
-                )
+                if (!builtIn) {
+                    DropdownMenuItem(text = { Text("Archive/Unarchive") }, onClick = { menuOpen = false; callbacks.onArchiveToggle() })
+                    DropdownMenuItem(
+                        text = { Text("Delete list", color = SoftColors.onAlert) },
+                        onClick = { menuOpen = false; callbacks.onShowDeleteConfirm(true) },
+                    )
+                }
             }
         }
     }

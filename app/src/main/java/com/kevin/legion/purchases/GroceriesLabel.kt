@@ -13,9 +13,11 @@ object GroceriesLabel {
      * "never bought". */
     const val UNREADABLE = "Can't reach the bought log, so last-bought is unknown right now"
 
-    /** Only the household's list named Groceries reads "last bought"; the server decides the same
-     * way (case-insensitive, trimmed). */
-    fun isGroceriesList(listName: String?): Boolean = listName?.trim().equals("Groceries", ignoreCase = true)
+    /** Only the household's BUILT-IN Groceries list reads "last bought"; the engine decides the
+     * same way, by `system_key` (2026-10-05). It used to be any list NAMED Groceries, which
+     * disagreed with the engine the moment the name stopped being the rule. */
+    fun isGroceriesList(systemKey: String?): Boolean =
+        systemKey == com.kevin.legion.data.local.Checklist.SYSTEM_KEY_GROCERIES
 
     /** "Last bought Sep 20 (dot) Mia"; a loose match names its own text; a backfilled entry says
      * "who not recorded". */

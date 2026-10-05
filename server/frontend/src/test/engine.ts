@@ -234,6 +234,7 @@ export function makeChecklist(overrides: Partial<Checklist> & { name: string }):
     deleted_at: null,
     sync_id: null,
     visibility: 'shared',
+    system_key: null,
     ...overrides,
   }
 }
@@ -265,7 +266,7 @@ export function makeItem(
  * a today to show, whenever it is run.
  */
 export function seedHousehold(): Pick<EngineOptions, 'events' | 'checklists' | 'items' | 'ticks'> {
-  const groceries = makeChecklist({ name: 'Groceries', sort_order: 0 })
+  const groceries = makeChecklist({ name: 'Groceries', sort_order: 0, system_key: 'groceries' })
   const hardware = makeChecklist({ name: 'Hardware store', sort_order: 1 })
   const morning = makeChecklist({
     name: 'Morning',
@@ -551,7 +552,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
         // ADR 0055: a tick on the shared Groceries list is a purchase.
         const tickedItem = engine.items.find((candidate) => candidate.id === match![2])
         const tickedList = engine.checklists.find((candidate) => candidate.id === match![1])
-        if (tickedItem && tickedList && tickedList.name.trim().toLowerCase() === 'groceries') {
+        if (tickedItem && tickedList && tickedList.system_key === 'groceries') {
           engine.purchases.push(
             makePurchase({
               item: tickedItem.text,

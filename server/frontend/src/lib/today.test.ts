@@ -97,6 +97,7 @@ function checklist(overrides: Partial<Checklist>): Checklist {
     updated_at: '2026-01-01T00:00:00Z',
     deleted_at: null,
     sync_id: null,
+    system_key: null,
     ...overrides,
   }
 }

@@ -102,4 +102,20 @@ data class Checklist(
      * identifies OWNERSHIP of the container, not a search term, so there is nothing for a hand-made
      * checklist to carry here. */
     val sourceKey: String? = null,
-)
+    /** **Added v72 (Kevin, 2026-10-05: Groceries is a built-in list).** Mirrors the engine's
+     * `checklists.system_key`: non-null marks a BUILT-IN list, today only [SYSTEM_KEY_GROCERIES].
+     * The phone never sets it on a list it creates - it arrives by sync from the household's
+     * engine, which makes the one list per household - so the phone cannot invent a second
+     * Groceries. A built-in list cannot be deleted, renamed or archived (the engine refuses, and
+     * [com.kevin.legion.checklists.ChecklistController] refuses first, in the same words).
+     * Distinct from [sourceKey], which marks a list a MACHINE WRITER on this phone owns. */
+    val systemKey: String? = null,
+) {
+    /** True for any engine-made built-in list. */
+    val isBuiltIn: Boolean get() = systemKey != null
+
+    companion object {
+        /** The household's built-in Groceries list; the engine's `SYSTEM_KEY_GROCERIES`. */
+        const val SYSTEM_KEY_GROCERIES = "groceries"
+    }
+}

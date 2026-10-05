@@ -257,7 +257,7 @@ describe('Groceries lines', () => {
   }
 
   test('say when and by whom the exact item was last bought, and say nothing for one with no record', async () => {
-    const list = makeChecklist({ name: 'Groceries' })
+    const list = makeChecklist({ name: 'Groceries', system_key: 'groceries' })
     const engine = createEngine({
       checklists: [list],
       items: [makeItem(list, 'Eggs'), makeItem(list, 'Oat milk')],
@@ -271,7 +271,7 @@ describe('Groceries lines', () => {
   })
 
   test('another list keeps no bought line at all', async () => {
-    const groceries = makeChecklist({ name: 'Groceries', sort_order: 0 })
+    const groceries = makeChecklist({ name: 'Groceries', system_key: 'groceries', sort_order: 0 })
     const hardware = makeChecklist({ name: 'Hardware store', sort_order: 1 })
     const engine = createEngine({
       checklists: [groceries, hardware],
@@ -285,7 +285,7 @@ describe('Groceries lines', () => {
   })
 
   test('says it cannot check when the log cannot be read, never that nothing was bought', async () => {
-    const list = makeChecklist({ name: 'Groceries' })
+    const list = makeChecklist({ name: 'Groceries', system_key: 'groceries' })
     const engine = createEngine({ checklists: [list], items: [makeItem(list, 'Eggs')] })
     engine.refusals['GET /api/purchases/'] = { status: 503, body: { detail: 'down' } }
     const card = await lists(engine)
@@ -293,7 +293,7 @@ describe('Groceries lines', () => {
   })
 
   test('a tick is a purchase, and an untick the same day sends the local day and removes it', async () => {
-    const list = makeChecklist({ name: 'Groceries' })
+    const list = makeChecklist({ name: 'Groceries', system_key: 'groceries' })
     const engine = createEngine({ checklists: [list], items: [makeItem(list, 'Shampoo')] })
     const card = await lists(engine)
 

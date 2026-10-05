@@ -12,10 +12,13 @@ so a tick and its purchase commit together or not at all.
 
 ## The rules (purchase-log ticket 01)
 
-- **Which list.** The household's checklist named "Groceries"
-  (case-insensitive, trimmed), shared, not deleted. Several: the oldest. A
-  private list called Groceries is somebody's own list, not the household's
-  shopping list, and does not count. Renaming the list ends the hook.
+- **Which list.** The household's BUILT-IN Groceries list: the checklist with
+  `system_key = "groceries"` (`checklists/builtin.py`), created with the
+  household and unable to be deleted, archived, renamed or made private
+  (Kevin, 2026-10-05). The hook used to key on a list NAMED Groceries, which
+  failed live: six hand-made ones had come and gone, none was live, and the
+  hook fired on nothing. A user list that happens to be called Groceries is
+  now just a list.
 - **Tick.** A live tick created (or revived) on that list makes one
   `GROCERIES_TICK` entry: the item's text at that moment, `bought_on` = the
   tick's `day`, `created_by` = the member whose request made the tick, shared.
@@ -55,35 +58,32 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from django.db.models.functions import Lower, Now, Trim
+from django.db.models.functions import Now
 
 from household.timezones import household_zone_name, local_date, zone_named
 from purchases.matching import date_to_day
 from purchases.models import SOURCE_GROCERIES_TICK, Purchase
 
-GROCERIES_NAME = "groceries"
-
 
 def groceries_list_id(household_id):
-    """The id of the household's Groceries list, or None."""
-    from checklists.models import Checklist
+    """The id of the household's built-in Groceries list, or None."""
+    from checklists.models import SYSTEM_KEY_GROCERIES, Checklist
 
     return (
         Checklist.objects.filter(
-            household_id=household_id, owner_user__isnull=True, deleted_at__isnull=True
+            household_id=household_id,
+            system_key=SYSTEM_KEY_GROCERIES,
+            deleted_at__isnull=True,
         )
-        .annotate(_name=Lower(Trim("name")))
-        .filter(_name=GROCERIES_NAME)
-        .order_by("created_at", "id")
         .values_list("id", flat=True)
         .first()
     )
 
 
 def is_groceries_list(checklist) -> bool:
-    if checklist.owner_user_id is not None or checklist.deleted_at is not None:
-        return False
-    return groceries_list_id(checklist.household_id) == checklist.id
+    from checklists.models import SYSTEM_KEY_GROCERIES
+
+    return checklist.system_key == SYSTEM_KEY_GROCERIES and checklist.deleted_at is None
 
 
 def now_utc() -> datetime:

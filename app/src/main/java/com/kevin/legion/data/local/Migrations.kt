@@ -2929,6 +2929,7 @@ val MIGRATION_69_70 = object : Migration(SCHEMA_V69, SCHEMA_V70) {
 }
 
 private const val SCHEMA_V71 = 71
+private const val SCHEMA_V72 = 72
 
 /**
  * `categories.excludedFromSpend` (Kevin, 2026-09-29: "ignore zelle for spending. its just transfer
@@ -2963,5 +2964,19 @@ val MIGRATION_70_71 = object : Migration(SCHEMA_V70, SCHEMA_V71) {
             )
             db.execSQL("UPDATE `categories` SET `excludedFromSpend` = 1 WHERE `name` = ?", arrayOf<Any>(name))
         }
+    }
+}
+
+/**
+ * `checklists.systemKey` (Kevin, 2026-10-05: Groceries is a built-in list) - see
+ * [Checklist.systemKey]. The column definition is copied verbatim out of the generated `72.json`
+ * (`systemKey TEXT`, nullable, no default), the only edit CLAUDE.md section 5 permits; additive, so
+ * `ALTER TABLE ... ADD COLUMN`. Every existing row gets NULL, which is right: no list on the phone
+ * was built in. The household's built-in Groceries list arrives by the next checklists pull and
+ * carries `"groceries"`; nothing here creates it.
+ */
+val MIGRATION_71_72 = object : Migration(SCHEMA_V71, SCHEMA_V72) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `checklists` ADD COLUMN `systemKey` TEXT")
     }
 }

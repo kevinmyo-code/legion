@@ -32,6 +32,10 @@ data class ListsPageState(
      * what did not happen, rendered inside [CreateChecklistDialog] itself. Cleared the next time
      * the dialog is opened, so a stale error never survives to a fresh attempt. */
     val createError: String? = null,
+    /** True while the household's built-in Groceries list has not synced to this phone. The page
+     * says so in words ([ChecklistController.GROCERIES_NOT_SYNCED]) instead of the list simply
+     * being absent, and nothing creates a Groceries list to fill the gap. */
+    val groceriesPending: Boolean = false,
 )
 
 /** One item row inside an open list - the item plus the day's own tick state
