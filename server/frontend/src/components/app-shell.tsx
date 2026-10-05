@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { AssistantProvider } from '@/assistant/assistant-context'
 import { EventSheetHost } from '@/components/event-sheet-host'
 import { FamilyShell } from '@/components/family-shell'
 import { WorkbenchShell } from '@/components/workbench-shell'
@@ -27,12 +28,14 @@ export function AppShell({
   const items = visibleNav(nav, surface)
 
   return (
-    <EventSheetHost>
-      {surface === 'workbench' ? (
-        <WorkbenchShell items={items}>{children}</WorkbenchShell>
-      ) : (
-        <FamilyShell items={items}>{children}</FamilyShell>
-      )}
-    </EventSheetHost>
+    <AssistantProvider>
+      <EventSheetHost>
+        {surface === 'workbench' ? (
+          <WorkbenchShell items={items}>{children}</WorkbenchShell>
+        ) : (
+          <FamilyShell items={items}>{children}</FamilyShell>
+        )}
+      </EventSheetHost>
+    </AssistantProvider>
   )
 }

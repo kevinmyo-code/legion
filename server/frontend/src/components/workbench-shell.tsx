@@ -1,6 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
+import { AssistantDock, AssistantRailEntry } from '@/components/assistant/workbench-assistant'
 import { HouseholdName } from '@/components/household-name'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { isActive, type NavItem } from '@/lib/nav'
@@ -50,7 +51,8 @@ export function WorkbenchShell({ items, children }: { items: NavItem[]; children
           </ul>
         </nav>
 
-        <div className="flex flex-col items-start gap-1 px-1 pt-3">
+        <div className="flex flex-col items-start gap-2 px-1 pt-3">
+          <AssistantRailEntry />
           <ThemeToggle />
         </div>
       </aside>
@@ -58,6 +60,8 @@ export function WorkbenchShell({ items, children }: { items: NavItem[]; children
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-[1440px] px-8 py-8">{children}</div>
       </main>
+
+      <AssistantDock />
     </div>
   )
 }

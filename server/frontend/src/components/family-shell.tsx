@@ -1,6 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
+import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { HouseholdName } from '@/components/household-name'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { isActive, type NavItem } from '@/lib/nav'
@@ -38,6 +39,8 @@ export function FamilyShell({ items, children }: { items: NavItem[]; children: R
       <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
         {children}
       </main>
+
+      <FamilyAssistant />
 
       <nav
         aria-label="Tabs"
