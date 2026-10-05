@@ -1,0 +1,38 @@
+The Thoughts of the Emperor Marcus Aurelius Antoninus (Meditations)
+Translated by George Long, 1862.
+
+Source: Project Gutenberg eBook #15877, "Thoughts of Marcus Aurelius Antoninus"
+        https://www.gutenberg.org/ebooks/15877
+        (plain-text edition, release date May 22, 2005, last updated December 14, 2020).
+
+Public domain status: Marcus Aurelius died A.D. 180. George Long (1800-1879) published this
+translation in 1862, so it is out of copyright in the United States and in every
+life-plus-70-years jurisdiction. It is NOT the Gregory Hays translation (copyrighted) and it is not
+Gutenberg #2680, which is Meric Casaubon's 1634 translation.
+
+--- Project Gutenberg notice (licence paragraph 1.E.1), kept verbatim ---
+
+This eBook is for the use of anyone anywhere in the United States and most
+other parts of the world at no cost and with almost no restrictions
+whatsoever. You may copy it, give it away or re-use it under the terms
+of the Project Gutenberg License included with this eBook or online
+at www.gutenberg.org. If you are not located in the United States,
+you will have to check the laws of the country where you are located
+before using this eBook.
+
+The full Project Gutenberg License is in GUTENBERG-LICENSE.txt, beside this file (paragraph 1.E.4:
+it must not be detached). The original plain-text file is available at the URL above, which is the
+"means of obtaining a copy" paragraph 1.E.6 asks for, since meditations.txt is a restructured form.
+
+--- What was changed to make meditations.txt ---
+
+Kept:    the twelve books and their 487 numbered sections, in Long's wording, including his square
+         bracketed insertions such as "[the world]".
+Removed: the Gutenberg header and footer; Long's biographical sketch, essay on the philosophy, the
+         translator's footnotes (the [A], [B] ... blocks), both indexes, and the [Illustration]
+         plates. Long's inline cross-reference parentheticals, e.g. "(iii. 7; vi. 23)", were removed
+         because they are his editorial apparatus, not Marcus's words.
+Changed: paragraphs that the original wrapped across lines were joined; underscores marking italics
+         were dropped; the "+" marks Long used to flag a doubtful reading were removed; the transliterated Greek markers "[Greek: melos]" became "melos".
+Added:   the "## BOOK" / "### SECTION" structure, so a passage can be cited as "Book IV, 3".
+Section 1 of each book is unnumbered in the original and is numbered 1 here.
