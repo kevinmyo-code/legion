@@ -2363,6 +2363,23 @@ object LiveToolbox {
     }
 
     /**
+     * [declarations] plus whatever the active companion adds. [personaKey] is the active profile's
+     * persona key ([com.kevin.legion.ai.CompanionProfile.persona]); only Marcus's adds a tool,
+     * `consult_meditations`, declared only while he is active: ~170 estimated tokens on every turn
+     * (676 chars measured) is not worth spending on companions that can never use it. See
+     * [MeditationsToolbox] for the measurement. Every `s.start(...)` in [LiveSessionController]
+     * calls this, not [declarations], so a socket opened after a companion switch carries the right set.
+     */
+    fun declarationsFor(personaKey: String?): JSONArray {
+        val fns = declarations()
+        if (personaKey == MeditationsToolbox.PERSONA_KEY) {
+            val extra = MeditationsToolbox.declarations()
+            for (i in 0 until extra.length()) fns.put(extra.getJSONObject(i))
+        }
+        return fns
+    }
+
+    /**
      * Builds the [AgentTool] list a dispatcher's own [SubAgent.investigate] loop gets for
      * [domain] - the real declarations [DISPATCHED] hides from the live session, handed to a
      * sub-agent instead so it can pull exactly the ones its reasoning needs. Name/description/
@@ -2528,6 +2545,7 @@ object LiveToolbox {
         // this already-7,000-line `when` never has to grow their branches too.
         EngineToolbox.dispatch(context, name, args)?.let { return it }
         PurchaseToolbox.dispatch(context, name, args)?.let { return it }
+        MeditationsToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)

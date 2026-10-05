@@ -248,7 +248,7 @@ class LiveSessionController(context: Context) {
         scope.launch {
             val base = brain.buildBaseInstruction()
             s.start(
-                base, LiveToolbox.declarations(),
+                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, prewarmOnly = true,
                 // Ticket 02: carry forward whatever the last session confirmed - a prewarm
@@ -810,7 +810,7 @@ class LiveSessionController(context: Context) {
                 else -> "(Current context, use naturally if relevant:\n$live)\n\n$opener"
             }
             s.start(
-                base, LiveToolbox.declarations(),
+                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -881,7 +881,7 @@ class LiveSessionController(context: Context) {
             }
             val base = brain.buildBaseInstruction()
             s.start(
-                base, LiveToolbox.declarations(),
+                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -931,7 +931,7 @@ class LiveSessionController(context: Context) {
             }
             val base = brain.buildBaseInstruction()
             s.start(
-                base, LiveToolbox.declarations(),
+                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
                 vad = false, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = false, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -1471,7 +1471,7 @@ class LiveSessionController(context: Context) {
             val base = brain.buildBaseInstruction()
             pendingPrompt = HANDOVER_PROMPT
             s.start(
-                base, LiveToolbox.declarations(),
+                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = null,

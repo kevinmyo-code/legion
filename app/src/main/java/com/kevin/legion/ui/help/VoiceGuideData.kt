@@ -47,6 +47,7 @@ object VoiceGuideData {
                 Entry(name = "finish_intro", say = "I'm done setting up", does = "Finishes first-run setup.", hands = "Onboarding screen's own final step."),
                 Entry(name = "end_conversation", say = "That will be all", does = "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight.", hands = "Voice only - closing the app or its notification is the nearest hands equivalent."),
                 Entry(name = "switch_companion", say = "Can I talk to Dorothy?", does = "Hands the conversation to a different companion. They answer from the next turn on, in their own voice, and they will not know what was said before the handover.", hands = "Companions screen - tap whichever one you want."),
+                Entry(name = "consult_meditations", say = "What did you write about anger?", does = "Only with the Marcus companion. Looks up what the Emperor actually wrote in the Meditations (George Long's translation) and quotes only those words, with the Book and section. Anything else he says is his own reasoning, and he says so.", hands = "Companions screen - on the Marcus row, tap Read the Meditations."),
             ),
         ),
         Group(
@@ -249,6 +250,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 123 as of the last regeneration. */
-    val TOOL_COUNT: Int = 123
+    /** Total entries across every group above - 124 as of the last regeneration. */
+    val TOOL_COUNT: Int = 124
 }

@@ -44,8 +44,10 @@ ROOT = Path(__file__).resolve().parent.parent
 TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/LiveToolbox.kt',
     ROOT / 'app/src/main/java/com/kevin/legion/service/EngineToolbox.kt',
-    # purchase-log ticket 08: the household bought log's one `bought_log` tool.
+    # purchase-log ticket 08: the household bought log's one `bought_log` tool.
     ROOT / 'app/src/main/java/com/kevin/legion/service/PurchaseToolbox.kt',
+    # MeditationsToolbox: `consult_meditations`, declared only while the Marcus companion is active.
+    ROOT / 'app/src/main/java/com/kevin/legion/service/MeditationsToolbox.kt',
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'

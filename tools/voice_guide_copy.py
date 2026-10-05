@@ -61,6 +61,7 @@ COPY = {
     "show_app": ("Open the ledger", "Opens a screen in the app for you.", "Is itself navigation - every screen it can open is also reachable directly from the app's own tabs."),
     "end_conversation": ("That will be all", "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight.", "Voice only - closing the app or its notification is the nearest hands equivalent."),
     "switch_companion": ("Can I talk to Dorothy?", "Hands the conversation to a different companion. They answer from the next turn on, in their own voice, and they will not know what was said before the handover.", "Companions screen - tap whichever one you want."),
+    "consult_meditations": ("What did you write about anger?", "Only with the Marcus companion. Looks up what the Emperor actually wrote in the Meditations (George Long's translation) and quotes only those words, with the Book and section. Anything else he says is his own reasoning, and he says so.", "Companions screen - on the Marcus row, tap Read the Meditations."),
     "finish_intro": ("I'm done setting up", "Finishes first-run setup.", "Onboarding screen's own final step."),
 
     # --- Your day ---
@@ -206,7 +207,7 @@ COPY = {
 }
 
 GROUPS = {
-    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation", "switch_companion"],
+    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation", "switch_companion", "consult_meditations"],
     "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "complete_task", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_generated_view", "ask_engine"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["activate_garage", "control_volume"],

@@ -43,10 +43,13 @@ class VoiceGuideDataTest {
                 ?: java.io.File("app/src/main/java/com/kevin/legion/service/$relative")
             return src.readText()
         }
+        // MeditationsToolbox.kt holds `consult_meditations` (Marcus companion only); tools/voice_guide.py
+        // scans the same files, so this list must stay in step with its TOOLBOXES.
         return (
             nameRe.findAll(read("LiveToolbox.kt")) +
                 nameRe.findAll(read("EngineToolbox.kt")) +
-                nameRe.findAll(read("PurchaseToolbox.kt"))
+                nameRe.findAll(read("PurchaseToolbox.kt")) +
+                nameRe.findAll(read("MeditationsToolbox.kt"))
         )
             .map { it.groupValues[1] }
             .toSet()

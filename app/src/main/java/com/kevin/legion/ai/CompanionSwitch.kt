@@ -63,17 +63,31 @@ object CompanionSwitch {
         // A built-in's own name or key ("kratos" resolves both ways), but only when no roster row
         // already wears that name - `rostered` would have caught it, and falling through to
         // CreateAndSwitch there would build a duplicate profile every time it was asked for.
-        val builtIn = BUILT_IN_PERSONAS.firstOrNull {
-            wanted.isNotEmpty() && rostered == null &&
-                (normalise(it.defaultName) == wanted || normalise(it.key) == wanted)
+        val builtIn = if (rostered != null) null else BUILT_IN_PERSONAS.firstOrNull {
+            wanted.isNotEmpty() && namesPersona(it, wanted)
         }
+        // An ALIAS ("the emperor") names a persona, not a row, so a row of that persona the user
+        // already has - under whatever name - is the one meant. Without this, asking for Marcus
+        // by title would build a second Marcus beside the first. Alias only: the default name and
+        // key keep their earlier behaviour (CreateAndSwitch).
+        val viaAlias = builtIn
+            ?.takeIf { persona -> persona.aliases.any { normalise(it) == wanted } }
+            ?.let { persona -> roster.firstOrNull { it.persona == persona.key } }
         return when {
-            rostered == null && builtIn == null -> Outcome.NotFound(spoken.trim(), availableNames(roster))
-            rostered == null -> Outcome.CreateAndSwitch(builtIn!!)
-            rostered.profileId == activeProfileId -> Outcome.AlreadyActive(rostered.assistantName.trim())
-            else -> Outcome.Switch(rostered.profileId, rostered.assistantName.trim())
+            rostered != null -> switchOrAlready(rostered, activeProfileId)
+            viaAlias != null -> switchOrAlready(viaAlias, activeProfileId)
+            builtIn != null -> Outcome.CreateAndSwitch(builtIn)
+            else -> Outcome.NotFound(spoken.trim(), availableNames(roster))
         }
     }
+
+    private fun namesPersona(persona: Persona, wanted: String): Boolean =
+        normalise(persona.defaultName) == wanted || normalise(persona.key) == wanted ||
+            persona.aliases.any { normalise(it) == wanted }
+
+    private fun switchOrAlready(row: CompanionProfileEntity, activeProfileId: String?): Outcome =
+        if (row.profileId == activeProfileId) Outcome.AlreadyActive(row.assistantName.trim())
+        else Outcome.Switch(row.profileId, row.assistantName.trim())
 
     /**
      * Every name the user could ask for: the roster's own names, plus any built-in persona that has

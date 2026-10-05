@@ -31,6 +31,7 @@ import com.kevin.legion.ai.GeminiVoice
 import com.kevin.legion.ai.Persona
 import com.kevin.legion.ai.personaFor
 import com.kevin.legion.data.local.CompanionProfileEntity
+import com.kevin.legion.service.MeditationsToolbox
 import com.kevin.legion.ui.theme.LegionSemantics
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
@@ -66,6 +67,8 @@ fun CompanionRow(
     onActivate: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    /** Opens the read-only Meditations reader; only offered on a Marcus row (ADR 0035 hands path). */
+    onMeditations: (() -> Unit)? = null,
 ) {
     val sem = LocalLegionSemantics.current
     val persona = personaFor(profile.persona)
@@ -88,6 +91,11 @@ fun CompanionRow(
             if (isActive) {
                 Spacer(Modifier.padding(top = 2.dp))
                 Text("ACTIVE ON THIS PHONE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            }
+            if (onMeditations != null && profile.persona == MeditationsToolbox.PERSONA_KEY) {
+                TextButton(onClick = onMeditations) {
+                    Text("READ THE MEDITATIONS", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
         TextButton(onClick = onEdit) {
