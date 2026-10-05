@@ -41,3 +41,7 @@ export function newChecklistItem(checklistId: string, text: string): ChecklistIt
     deleted_at: null,
   }
 }
+
+/** The household bought log (purchase-log, ADR 0055). */
+export type Purchase = components['schemas']['Purchase']
+export type PurchaseList = components['schemas']['PurchaseList']
