@@ -151,8 +151,12 @@ def test_the_command_sets_it_and_refuses_an_unknown_zone(household_a):
 
 
 def _groceries_with_a_tick(client, text="soap", day=DAY):
-    response = client.post("/api/checklists/", {"name": "Groceries"}, format="json")
-    checklist_id = response.data["id"]
+    # The household's BUILT-IN Groceries list (system_key), the only list the hook
+    # watches since Groceries became built in (2026-10-05). A user list merely named
+    # "Groceries" no longer logs purchases.
+    response = client.get("/api/checklists/")
+    rows = response.data["results"] if isinstance(response.data, dict) else response.data
+    checklist_id = next(row["id"] for row in rows if row.get("system_key") == "groceries")
     response = client.post(f"/api/checklists/{checklist_id}/items", {"text": text}, format="json")
     item_id = response.data["id"]
     response = client.post(
