@@ -62,10 +62,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[01-live-from-an-iphone-pwa\|01]] | research | Gemini Live from an iPhone PWA: ephemeral tokens, mic, playback, lock screen, cost |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[03-one-prompt\|03]] | decision | One prompt for every client: the persona, the frame, the honesty clause |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[05-chat-and-voice-ui\|05]] | prototype | The chat and voice UI: family view, workbench, and the Android chatbox |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[06-android-typed-chat\|06]] | decision | Android typed chat: a text turn into the Live session, or a separate text model |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[09-android-chatbox\|09]] | build | Android: the typed chatbox |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[01-the-calendar-widget\|01]] | build | The calendar widget on the web home - month grid plus day view |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[02-delete-a-finished-list\|02]] | build | Delete a list, from Lists and from Home, and offer it when everything is ticked |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[04-when-did-i-last-buy-x\|04]] | build | When did I last buy X, from tick history, saying only what a tick can say |
@@ -148,6 +145,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[02-household-id-on-every-table\|02]] | build | household_id on every data table, backfilled, and one Django choke point |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[08-ci-cd\|08]] | build | CI for server, Android and frontend; CD to Cloud Run through Workload Identity Federation |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[09-static-domain-dockerfile\|09]] | build | Whitenoise, a multi-stage arm64 image with the Vite build, migrate-on-start, and Caddy on the domain |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[07-engine-endpoints\|07]] | build | Engine: the token-minting endpoint and the session-authenticated tool path |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[02-design-tokens-light-dark-manifest-icons\|02]] | build | Design tokens, light and dark, manifest and icons |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[04-live-refresh-while-visible\|04]] | build | Live refresh while the page is visible |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[06-private-rows-on-the-engine\|06]] | build | Private rows on the engine |
@@ -211,11 +209,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[02b-rls-belt\|02]] | build | Postgres RLS keyed on a session variable Django sets per request  waiting on [[02b-rls-belt\|02]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[03-accounts-signup-invites\|03]] | build | Accounts: signup, create a household, invite codes, join, members; session auth for the browser  waiting on [[02b-rls-belt\|02]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[11-report-endpoints\|11]] | build | Report endpoints: aggregates computed once, described in the contract, unverified carried through  waiting on [[02b-rls-belt\|02]] |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[02-who-runs-the-tools\|02]] | decision | Who runs the tools for a browser session, and how the engine authenticates it  waiting on [[01-live-from-an-iphone-pwa\|01]] |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[04-web-tool-surface\|04]] | decision | The tool surface on the web: engine tools, plus which phone-only ones move  waiting on [[02-who-runs-the-tools\|02]] |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[07-engine-endpoints\|07]] | build | Engine: the token-minting endpoint and the session-authenticated tool path  waiting on [[02-who-runs-the-tools\|02]], [[04-web-tool-surface\|04]] |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[08-web-chat-and-voice\|08]] | build | Web: chatbox and live voice  waiting on [[03-one-prompt\|03]], [[05-chat-and-voice-ui\|05]], [[07-engine-endpoints\|07]] |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[09-android-chatbox\|09]] | build | Android: the typed chatbox  waiting on [[05-chat-and-voice-ui\|05]], [[06-android-typed-chat\|06]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[08-web-chat-and-voice\|08]] | build | Web: chatbox and live voice  waiting on [[07-engine-endpoints\|07]] |
 | [[.scratch/web-assistant/map\|web-assistant]] | [[10-real-devices\|10]] | test | Mia talks to it on her iPhone; Kevin on the desktop and the phone  waiting on [[08-web-chat-and-voice\|08]], [[09-android-chatbox\|09]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[03-the-shell-split-by-viewport\|03]] | build | The shell split by viewport  waiting on [[02-design-tokens-light-dark-manifest-icons\|02]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[05-join-signup-and-settings\|05]] | build | Join, signup and settings  waiting on [[03-the-shell-split-by-viewport\|03]] |
@@ -295,7 +289,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 19 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 7 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
-| [[.scratch/web-assistant/map\|web-assistant]] | 10 | 10 | [[.scratch/web-assistant/web-assistant.canvas\|open]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | 10 | 4 | [[.scratch/web-assistant/web-assistant.canvas\|open]] |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | 18 | 17 | [[.scratch/web-revamp/web-revamp.canvas\|open]] |
 | [[.scratch/web-surface/map\|web-surface]] | 7 | 6 | [[.scratch/web-surface/web-surface.canvas\|open]] |
