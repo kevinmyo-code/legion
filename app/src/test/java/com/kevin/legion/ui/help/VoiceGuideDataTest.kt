@@ -43,7 +43,11 @@ class VoiceGuideDataTest {
                 ?: java.io.File("app/src/main/java/com/kevin/legion/service/$relative")
             return src.readText()
         }
-        return (nameRe.findAll(read("LiveToolbox.kt")) + nameRe.findAll(read("EngineToolbox.kt")))
+        return (
+            nameRe.findAll(read("LiveToolbox.kt")) +
+                nameRe.findAll(read("EngineToolbox.kt")) +
+                nameRe.findAll(read("PurchaseToolbox.kt"))
+        )
             .map { it.groupValues[1] }
             .toSet()
     }

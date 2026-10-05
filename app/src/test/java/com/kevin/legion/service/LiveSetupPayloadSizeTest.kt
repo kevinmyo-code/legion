@@ -111,6 +111,13 @@ class LiveSetupPayloadSizeTest {
      * clauses); what is left is the trigger phrases that route "I finished X" here rather than to
      * `manage_item` (reminders), and the "claim only what the result says changed" clause that
      * CLAUDE.md section 7's outcome-verb rule needs on a write tool.
+     *
+     * **NOT raised on 2026-10-04 (purchase-log ticket 08, `bought_log`).** Measured that day: 88
+     * declarations, 82,089 chars of tools JSON plus 7,879 chars of system instruction = 89,968 chars,
+     * ~22,492 estimated tokens, so the bought log costs ~213 tokens against ~22,279 before it and
+     * leaves 8 tokens of headroom. It is ONE action-dispatched declaration (log / last / recent),
+     * not three, and its description was trimmed three times to fit; the next tool addition trips
+     * this test and needs its own measurement and justification.
      */
     private val ceilingTokens = 22_500
 
