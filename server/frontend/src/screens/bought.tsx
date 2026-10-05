@@ -242,8 +242,7 @@ function EntriesTable({
         <TableRow>
           <TableHead>Bought on</TableHead>
           <TableHead>Item, as logged</TableHead>
-          <TableHead>Logged by</TableHead>
-          <TableHead>Source</TableHead>
+          <TableHead>Logged by, source</TableHead>
           <TableHead>Store, price</TableHead>
           <TableHead>Who sees it</TableHead>
         </TableRow>
@@ -274,14 +273,14 @@ function EntriesTable({
                 )}
               </TableCell>
               <TableCell>
-                {entry.logged_by ? (
-                  entry.logged_by
-                ) : (
-                  <span className="text-muted-foreground">{whoWords(entry)}</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <SourceChip source={entry.source} />
+                <div className="flex flex-col items-start gap-1">
+                  {entry.logged_by ? (
+                    entry.logged_by
+                  ) : (
+                    <span className="text-muted-foreground">{whoWords(entry)}</span>
+                  )}
+                  <SourceChip source={entry.source} />
+                </div>
               </TableCell>
               <TableCell>
                 {entry.store || entry.price_cents != null ? (
@@ -372,7 +371,7 @@ export function WorkbenchBought({ initialQuery = '' }: { initialQuery?: string }
         title="Bought"
         subtitle="When did we last buy it? Ticks on the Groceries list, and whatever either of us logged by hand."
       />
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="max-w-xl">
             <SearchField
