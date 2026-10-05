@@ -1085,6 +1085,15 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
     assert "bravo-item" in b_reads("list_checklists", {"date": "2026-10-05"})
     assert "bravo-soap" in b_reads("list_purchases", {})
     assert "bravo-soap" in b_reads("last_bought", {"item": "soap"})
+    # web-assistant ticket 04: tick history. "Alpha-Item" normalises to A's
+    # line, so a leak would match; the no-record answer echoes the query,
+    # which is why it is spelled so as to contain neither mark.
+    tick = token_a.post(
+        f"/api/checklists/{a['checklist']}/items/{a['item']}/tick", {"day": 20366}, format="json"
+    )
+    assert tick.status_code == 201, tick.data
+    assert "no record" in b_reads("last_ticked", {"item": "Alpha-Item"})
+    assert "alpha-item" in call(mcp_a, "last_ticked", {"item": "alpha-item"})[1]
     assert "alpha-soap" in call(mcp_a, "last_bought", {"item": "soap"})[1]
     assert "alpha-place" in call(mcp_a, "read_records", {"table": "places"})[1]
     assert "alpha-event" in call(mcp_a, "list_events", window)[1]

@@ -737,6 +737,82 @@ def _delete_purchase(request, args) -> ToolResult:
 
 
 # =============================================================================
+# Tick history (web-assistant ticket 04, ADR 0049). The phone's
+# `get_last_ticked` (`TickHistoryController` + `TickMatch.kt`), moved to the
+# engine so a browser can ask it. Same narrow rule: exact text after
+# `normalise` (lower-case, trim, collapse whitespace), read THROUGH tombstones
+# on the item and the checklist, only ticks that still stand.
+# =============================================================================
+
+LAST_TICKED_HISTORY = 10
+
+
+def _last_ticked(request, args) -> ToolResult:
+    from django.db.models import F, Func, TextField, Value
+    from django.db.models.functions import Lower, Trim
+
+    from checklists.models import ChecklistTick
+    from purchases.matching import normalise, say_date
+
+    query = args["item"]
+    target = normalise(query)
+    if not target:
+        return refused("Nothing was read. Say which line to look for.")
+    # The database narrows; `normalise` below is the authority. Postgres's
+    # `\s` and Python's agree on every whitespace a typed line can hold.
+    normalised = Trim(
+        Func(
+            Lower(F("item__text")),
+            Value(r"\s+"),
+            Value(" "),
+            Value("g"),
+            function="regexp_replace",
+            output_field=TextField(),
+        )
+    )
+    ticks = (
+        visible(ChecklistTick, request)
+        .filter(deleted_at__isnull=True)
+        .annotate(normalised_text=normalised)
+        .filter(normalised_text=target)
+        .select_related("item", "item__checklist")
+        .order_by("-ticked_at", "-day", "-pk")
+    )
+    matches = [
+        tick for tick in ticks[:LAST_TICKED_HISTORY] if normalise(tick.item.text) == target
+    ]
+    if not matches:
+        return ok(
+            f"I have no record of {query.strip()!r} being ticked off any list. That is an "
+            f"absent record, not proof of anything about whether it was got - plenty never "
+            f"touches a list.",
+            structured={"item": query, "history": []},
+        )
+    history = [
+        {
+            "checklist": tick.item.checklist.name,
+            "line": tick.item.text,
+            # The local day the tick counts for, as the client stamped it.
+            # Words use it because the engine knows no member's time zone;
+            # `ticked_at` is the tap's instant in UTC.
+            "day": say_date(tick.day),
+            "ticked_at": tick.ticked_at.isoformat(),
+        }
+        for tick in matches[:LAST_TICKED_HISTORY]
+    ]
+    latest = history[0]
+    text = (
+        f"{latest['line']!r} was last ticked off {latest['checklist']!r} on {latest['day']}. "
+        f"That is the last time the line was ticked - a tap on a list, not a purchase record; "
+        f"say \"ticked\", never \"bought\"."
+    )
+    if len(history) > 1:
+        earlier = "; ".join(f"{h['day']} ({h['checklist']})" for h in history[1:])
+        text += f" Earlier ticks, newest first: {earlier}."
+    return ok(text, structured={"item": query, "history": history})
+
+
+# =============================================================================
 # The registry
 # =============================================================================
 
@@ -775,9 +851,15 @@ def _object(properties: dict, required: tuple[str, ...] = ()) -> dict:
 
 
 _UUID = {"type": "string", "format": "uuid"}
+# The scope half is true of a device token only; the web door
+# (`assistant/surface.py`) drops it from what a browser session's model is told.
+WRITE_SCOPE_SENTENCE = (
+    "Needs a device token with write scope; a read-only token is refused and nothing is "
+    "written. "
+)
 _WRITE_NOTE = (
-    " Needs a device token with write scope; a read-only token is refused and nothing is "
-    "written. Report it done only when this tool's result says it was committed."
+    " " + WRITE_SCOPE_SENTENCE + "Report it done only when this tool's result says it was "
+    "committed."
 )
 
 TOOLS: tuple[EngineTool, ...] = (
@@ -844,6 +926,20 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"date": {"type": "string"}, "include_archived": {"type": "boolean"}}),
         handler=_list_checklists,
+    ),
+    EngineTool(
+        name="last_ticked",
+        title="When was a line last ticked",
+        description=(
+            "When a checklist line was last TICKED, from tick history across every checklist, "
+            "including ones since deleted. A tick is only evidence of a tap: it carries no price "
+            "and nothing checked it against anything. Always say \"ticked\", and never claim it "
+            "was bought or done. No match is an absent RECORD, not proof it was never got: say "
+            "there is no record of it being ticked, and leave it there. Matches the exact line "
+            "text (case and spacing only): 'toothpaste' does not match 'Colgate toothpaste'."
+        ),
+        input_schema=_object({"item": {"type": "string", "minLength": 1}}, ("item",)),
+        handler=_last_ticked,
     ),
     EngineTool(
         name="write_record",
@@ -1039,9 +1135,12 @@ TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
 def run_tool(request, name: str, arguments: dict) -> ToolResult:
-    """The one entry point `/mcp`'s `tools/call` uses. Synchronous, and run on
-    the request's own thread (`engine_mcp/server.py`), so the ORM sees the
-    request's connection."""
+    """The one entry point every door into the registry uses: `/mcp`'s
+    `tools/call` (a device token) and `/api/assistant/tool` (a signed-in
+    member's browser, web-assistant ticket 07). One registry, two doors: the
+    same code reads and writes, under the caller's own `visible()`.
+    Synchronous, and run on the request's own thread (`engine_mcp/server.py`),
+    so the ORM sees the request's connection."""
     tool = TOOLS_BY_NAME.get(name)
     if tool is None:
         return refused(
