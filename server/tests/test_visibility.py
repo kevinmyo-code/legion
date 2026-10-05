@@ -618,3 +618,83 @@ def test_make_private_refuses_a_non_member_in_words(household_a, user_b):
             "--origin-prefix",
             "canvas:",
         )
+
+
+# =============================================================================
+# The bought log (purchase-log ticket 06): a private entry is the logger's own
+# =============================================================================
+
+
+def _private_purchase(client, item="secret-razor"):
+    made = client.post(
+        "/api/purchases/",
+        {"item": item, "bought_on": 20365, "visibility": "private"},
+        format="json",
+    )
+    assert made.status_code == 201, made.data
+    return made.data["id"]
+
+
+def test_a_private_purchase_is_invisible_to_the_other_member_everywhere(
+    settings, kevin_client, mia_client, kevin, mia
+):
+    from purchases.models import Purchase
+    from tests.test_engine_mcp import call, client_with
+
+    secret = _private_purchase(kevin_client)
+    assert [r["item"] for r in kevin_client.get("/api/purchases/").data["results"]] == [
+        "secret-razor"
+    ]
+    assert mia_client.get("/api/purchases/").data["results"] == []
+    assert mia_client.get(f"/api/purchases/{secret}").status_code == 404
+    assert mia_client.patch(
+        f"/api/purchases/{secret}", {"item": "x"}, format="json"
+    ).status_code == 404
+    assert mia_client.delete(f"/api/purchases/{secret}").status_code == 404
+    found = mia_client.get("/api/purchases/last-bought?q=razor").data
+    assert found["matches"] == [] and found["message"] == "I have no record of buying razor."
+    assert Purchase.objects.get(pk=secret).deleted_at is None
+
+    settings.LEGION_MCP = True
+    mcp_mia = client_with(mia)
+    for name, arguments in (("list_purchases", {}), ("last_bought", {"item": "razor"})):
+        is_error, text, _ = call(mcp_mia, name, arguments)
+        assert not is_error, text
+        assert "secret" not in text and secret not in text, (name, text)
+    is_error, text, _ = call(mcp_mia, "delete_purchase", {"id": secret})
+    assert is_error and text.startswith("Nothing was deleted.")
+    assert "secret-razor" in call(client_with(kevin), "last_bought", {"item": "razor"})[1]
+
+
+def test_removing_a_member_tombstones_their_private_purchases(kevin_client, mia_client, mia):
+    from purchases.models import Purchase
+
+    secret = _private_purchase(mia_client, "mia-secret")
+    shared = mia_client.post(
+        "/api/purchases/", {"item": "mia-shared", "bought_on": 20365}, format="json"
+    ).data["id"]
+    assert kevin_client.delete(f"/api/households/me/members/{mia.pk}").status_code == 204
+    row = Purchase.objects.get(pk=secret)
+    assert row.deleted_at is not None and row.owner_user_id == mia.pk
+    assert Purchase.objects.get(pk=shared).deleted_at is None
+    assert [r["item"] for r in kevin_client.get("/api/purchases/").data["results"]] == [
+        "mia-shared"
+    ]
+
+
+def test_a_user_who_owns_a_private_purchase_cannot_be_hard_deleted(mia_client, mia):
+    from purchases.models import Purchase
+
+    secret = _private_purchase(mia_client, "mia-secret")
+    _refused_delete(mia)
+    assert Purchase.objects.get(pk=secret).owner_user_id == mia.pk
+
+
+def test_the_database_refuses_a_private_purchase_owned_by_a_non_member(household_a, household_b):
+    from purchases.models import Purchase
+
+    outsider = _member(household_b, "outsider@example.com")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Purchase.objects.create(
+            household=household_a, item="x", bought_on=20365, owner_user=outsider
+        )

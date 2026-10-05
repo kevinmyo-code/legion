@@ -132,6 +132,9 @@ INSTALLED_APPS = [
     # web-revamp ticket 15: Web Push subscriptions, preferences and the
     # dedupe ledger (`public.push_*`), and `manage.py push_dispatch`.
     "push",
+    # purchase-log ticket 06: the household bought log (`public.purchases`) and
+    # the Groceries tick hook (ADR 0055).
+    "purchases",
 ]
 
 MIDDLEWARE = [

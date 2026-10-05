@@ -510,6 +510,55 @@ def test_push_rows_are_scoped_by_household(token_a, token_b, household_a, monkey
     assert reached == ["https://push.example.com/alpha"]
 
 
+def test_purchases_are_scoped_by_household(token_a, token_b):
+    """purchase-log ticket 06. `purchases` has no synced route, so this is its
+    leak test: B's list, detail, edit, delete, "last bought" and Groceries hook
+    never reach A's entries, and the two may use the same sync_id."""
+    from purchases.models import Purchase
+
+    def log(client, item):
+        made = client.post(
+            "/api/purchases/",
+            {"item": item, "bought_on": 20365, "sync_id": "same"},
+            format="json",
+        )
+        assert made.status_code == 201, made.data
+        return made.data["id"]
+
+    a_id = log(token_a, "alpha shampoo")
+    b_id = log(token_b, "bravo shampoo")
+    assert a_id != b_id
+
+    b_list = token_b.get("/api/purchases/").data["results"]
+    assert [row["item"] for row in b_list] == ["bravo shampoo"]
+    assert token_b.get(f"/api/purchases/{a_id}").status_code == 404
+    assert token_b.patch(
+        f"/api/purchases/{a_id}", {"item": "hijacked"}, format="json"
+    ).status_code == 404
+    assert token_b.delete(f"/api/purchases/{a_id}").status_code == 404
+    found = token_b.get("/api/purchases/last-bought?q=shampoo").data
+    assert [m["entry"]["item"] for m in found["matches"]] == ["bravo shampoo"]
+    assert "alpha" not in found["message"]
+    a_row = Purchase.objects.get(pk=a_id)
+    assert a_row.item == "alpha shampoo" and a_row.deleted_at is None
+
+    # B's Groceries tick logs into B, never A.
+    groceries = token_b.post("/api/checklists/", {"name": "Groceries"}, format="json").data
+    eggs = token_b.post(
+        f"/api/checklists/{groceries['id']}/items", {"text": "eggs"}, format="json"
+    ).data
+    token_b.post(
+        f"/api/checklists/{groceries['id']}/items/{eggs['id']}/tick", {"day": 20365},
+        format="json",
+    )
+    assert [row["item"] for row in token_a.get("/api/purchases/").data["results"]] == [
+        "alpha shampoo"
+    ]
+    assert Purchase.objects.get(item="eggs").household_id == Purchase.objects.get(
+        pk=b_id
+    ).household_id
+
+
 def test_freshness_never_shows_another_households_runs(token_a, token_b, household_b):
     """backend-etl ticket 01. `ingest_runs` has no synced route, so this is
     its leak test: B's runs - including an error message that names B's own
@@ -711,6 +760,8 @@ UNTOUCHED = [
     "maintenance_schedules_unique_per_vehicle",
     "statements_one_per_file",
     "checklist_ticks_item_day_uniq",
+    # One entry per tick; scoped through `checklist_ticks`, a tenant table.
+    "purchases_tick_id_key",
 ]
 
 
@@ -833,9 +884,16 @@ def test_no_response_body_carries_household_id(token_a):
         item = token_a.post(
             f"/api/checklists/{checklist.data['id']}/items", {"text": "wire"}, format="json"
         )
-        for response in (event, checklist, item):
+        purchase = token_a.post(
+            "/api/purchases/",
+            {"item": "wire", "bought_on": 20365, "visibility": visibility},
+            format="json",
+        )
+        for response in (event, checklist, item, purchase):
             assert response.status_code == 201, response.data
             assert not SERVER_ONLY_FIELDS & set(response.data), response.data
+    for row in token_a.get("/api/purchases/").data["results"]:
+        assert not SERVER_ONLY_FIELDS & set(row), row
     feed = token_a.get("/api/changes").data
     for table in ("events", "checklists", "checklist_items", "checklist_ticks"):
         for row in feed[table]:
@@ -978,10 +1036,14 @@ def _mcp_seed(client, tag: str) -> dict:
         format="json",
     )
     assert receipt.status_code == 201, receipt.data
+    purchase = client.post(
+        "/api/purchases/", {"item": f"{tag}-soap", "bought_on": 20365}, format="json"
+    ).data
     return {
         "event": str(event["id"]),
         "checklist": str(checklist["id"]),
         "item": str(item["id"]),
+        "purchase": str(purchase["id"]),
     }
 
 
@@ -1021,6 +1083,9 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
     window = {"from": "2026-10-01", "to": "2026-10-10"}
     assert "bravo-event" in b_reads("list_events", window)
     assert "bravo-item" in b_reads("list_checklists", {"date": "2026-10-05"})
+    assert "bravo-soap" in b_reads("list_purchases", {})
+    assert "bravo-soap" in b_reads("last_bought", {"item": "soap"})
+    assert "alpha-soap" in call(mcp_a, "last_bought", {"item": "soap"})[1]
     assert "alpha-place" in call(mcp_a, "read_records", {"table": "places"})[1]
     assert "alpha-event" in call(mcp_a, "list_events", window)[1]
 
@@ -1057,7 +1122,14 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
         {"checklist_id": a["checklist"], "item_id": a["item"], "date": "2026-10-02"},
         lands_in_b=False,
     )
+    b_writes("delete_purchase", {"id": a["purchase"]}, lands_in_b=False)
+    b_writes("log_purchase", {"item": "b-only", "date": "2026-10-04"}, lands_in_b=True)
     assert _feed(token_a) == a_before
+    from purchases.models import Purchase
+
+    a_purchase = Purchase.objects.get(pk=a["purchase"])
+    assert a_purchase.deleted_at is None
+    assert Purchase.objects.get(item="b-only").household_id == user_b.household.id
     b_places = {row["label"]: row for row in token_b.get("/api/places/").data["results"]}
     assert b_places["alpha-place"]["latitude"] == 9.0
 

@@ -50,6 +50,9 @@ urlpatterns = [
     path("api/ingest/", include("ingest.urls")),
     # web-revamp ticket 15: Web Push subscriptions and preferences.
     path("api/push/", include("push.urls")),
+    # purchase-log ticket 06: the household bought log, and "when did we last
+    # buy shampoo?" (`purchases/views.py`).
+    path("api/purchases/", include("purchases.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

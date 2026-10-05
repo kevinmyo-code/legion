@@ -407,7 +407,7 @@ class MemberDetailView(APIView):
 
 def tombstone_private_rows(household, user) -> dict[str, int]:
     """ADR 0052: a member removed from a household takes their private rows
-    with them. Their private events and checklists are tombstoned (on the
+    with them. Their private events, checklists and bought entries are tombstoned (on the
     database clock, like every tombstone), in the caller's transaction.
 
     **Tombstoned, and kept private.** `owner_user_id` stays set, so the
@@ -418,12 +418,17 @@ def tombstone_private_rows(household, user) -> dict[str, int]:
     """
     from checklists.models import Checklist
     from legacy.models.dates import Event
+    from purchases.models import Purchase
 
     return {
         "events": Event.objects.filter(
             household=household, owner_user=user, deleted_at__isnull=True
         ).update(deleted_at=Now()),
         "checklists": Checklist.objects.filter(
+            household=household, owner_user=user, deleted_at__isnull=True
+        ).update(deleted_at=Now()),
+        # purchase-log ticket 01: their private bought entries, the same way.
+        "purchases": Purchase.objects.filter(
             household=household, owner_user=user, deleted_at__isnull=True
         ).update(deleted_at=Now()),
     }

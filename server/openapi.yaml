@@ -2111,7 +2111,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChecklistTick'
-          description: A first tick for that day.
+          description: A first tick for that day. On the household's Groceries list
+            it also logs a bought entry (`/api/purchases`, ADR 0055), in the same
+            transaction.
         '200':
           content:
             application/json:
@@ -2162,6 +2164,15 @@ paths:
           type: string
           format: uuid
         required: true
+      - in: query
+        name: today
+        schema:
+          type: integer
+        description: 'The caller''s own local epoch day. Send it. On the Groceries
+          list a tick is a purchase (ADR 0055): an untick on the tick''s own day removes
+          the bought entry the tick made, an untick on a later day leaves it. Without
+          this the engine uses today''s UTC date, which west of UTC can keep an entry
+          a late-evening untick meant to remove.'
       tags:
       - checklists
       security:
@@ -2172,6 +2183,12 @@ paths:
           description: 'Done. Idempotent: no tick on that day is still a 204, not
             a 404 - ''already untouched'' and ''just unticked'' read the same to a
             caller that does not care which happened.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was unticked: `today` is not a whole number of days.'
         '404':
           content:
             application/json:
@@ -6265,6 +6282,253 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/purchases/:
+    get:
+      operationId: api_purchases_list
+      description: '`GET /api/purchases/` and `POST /api/purchases/`.'
+      parameters:
+      - in: query
+        name: from
+        schema:
+          type: integer
+        description: First local epoch day.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: At most this many (default 100, max 500).
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: 'Text search with the same matching as `last-bought`: every word
+          of `q` appears in the entry, plurals folded.'
+      - in: query
+        name: source
+        schema:
+          type: string
+          enum:
+          - GROCERIES_BACKFILL
+          - GROCERIES_TICK
+          - MANUAL
+      - in: query
+        name: to
+        schema:
+          type: integer
+        description: Last local epoch day.
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseList'
+          description: Live entries this member may see, newest first (`bought_on`,
+            then `logged_at`). Deleted entries are never listed. Another member's
+            private entries are not here at all.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nothing was read.
+    post:
+      operationId: api_purchases_create
+      description: '`GET /api/purchases/` and `POST /api/purchases/`.'
+      tags:
+      - purchases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Purchase'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Purchase'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Purchase'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: Logged. Source MANUAL, logged by the member making the request.
+            Shared unless `visibility` is `private`.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: '**Not created - this `sync_id` already exists**, and the body
+            is the entry that was already there, unchanged. A client tells the two
+            apart by the status code, never by the body.'
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+  /api/purchases/{purchase_id}:
+    get:
+      operationId: api_purchases_retrieve
+      description: '`GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`.'
+      parameters:
+      - in: path
+        name: purchase_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+    patch:
+      operationId: api_purchases_partial_update
+      description: '`GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`.'
+      parameters:
+      - in: path
+        name: purchase_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - purchases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPurchase'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPurchase'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPurchase'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was changed: this member may not make the entry private.
+            `detail` is the sentence to show.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+    delete:
+      operationId: api_purchases_destroy
+      description: '`GET`/`PATCH`/`DELETE /api/purchases/<purchase_id>`.'
+      parameters:
+      - in: path
+        name: purchase_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Done. Soft-deleted (`deleted_at` set); already deleted is also
+            a 204. A deleted entry no longer answers `last-bought` or the list.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/purchases/last-bought:
+    get:
+      operationId: api_purchases_last_bought
+      description: '`GET /api/purchases/last-bought?q=shampoo` (purchase-log ticket
+        02).'
+      parameters:
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: What was bought, in the asker's words ("shampoo").
+        required: true
+      tags:
+      - purchases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LastBought'
+          description: 'Every distinct item text that matches, each as its newest
+            entry, newest first. Matching is loose (every word of `q` in the entry,
+            plurals folded), so an answer must name the entry''s own text and date,
+            as `message` does. Several matches: say them all, never pick one. No match
+            is an empty `matches` and "I have no record of buying ...": absence of
+            a record, never "never bought".'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nothing was searched.
   /api/push/preferences:
     get:
       operationId: api_push_preferences_retrieve
@@ -8341,6 +8605,40 @@ components:
       - live
       - reason
       - uses_left
+    LastBought:
+      type: object
+      properties:
+        query:
+          type: string
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/LastBoughtMatch'
+        message:
+          type: string
+          description: The sentence to show or say. It always names the entries it
+            matched.
+      required:
+      - matches
+      - message
+      - query
+    LastBoughtMatch:
+      type: object
+      properties:
+        entry:
+          $ref: '#/components/schemas/Purchase'
+        exact:
+          type: boolean
+          description: 'True when the entry''s text IS the query (case and spacing
+            aside). False for a loose match: say the entry''s own text, never the
+            query''s.'
+        times_logged:
+          type: integer
+          description: How many live entries carry this same item text.
+      required:
+      - entry
+      - exact
+      - times_logged
     LastOutcomeEnum:
       enum:
       - ok
@@ -10346,6 +10644,84 @@ components:
         name:
           type: string
           maxLength: 150
+    PatchedPurchase:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        item:
+          type: string
+          description: What was bought, as written.
+        bought_on:
+          type: integer
+          minimum: 0
+          description: The local day it was bought, as an epoch day (`LocalDate.toEpochDay()`).
+        bought_on_date:
+          type: string
+          readOnly: true
+          description: '`bought_on` as an ISO date (YYYY-MM-DD), for display.'
+        logged_at:
+          type: string
+          format: date-time
+          readOnly: true
+        logged_by:
+          type: string
+          nullable: true
+          readOnly: true
+          description: The first name of the member who logged it. Null means NOT
+            RECORDED (an entry imported from past Groceries ticks, which never stored
+            who ticked them); say "not recorded", never guess.
+        logged_by_me:
+          type: boolean
+          readOnly: true
+          description: True when the member making this request logged it.
+        store:
+          type: string
+          nullable: true
+        price_cents:
+          type: integer
+          nullable: true
+          description: Whole cents, entered by hand (499 is 4.99), or null when nobody
+            said. Never reconciled against a bank statement and never summed into
+            a ledger figure; every surface that shows it says it was entered by hand.
+        price_note:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Words to show beside the price, or null when there is no price.
+        quantity_note:
+          type: string
+          nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
+        source:
+          type: string
+          readOnly: true
+          description: MANUAL (logged by a member), GROCERIES_TICK (a tick on the
+            Groceries list, ADR 0055) or GROCERIES_BACKFILL (a Groceries tick from
+            before the log existed; who ticked it was not recorded).
+        tick:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
     Place:
       type: object
       description: |-
@@ -10435,6 +10811,116 @@ components:
         * `LLM_RECONCILED` - Llm Reconciled
         * `UNRECONCILED` - Unreconciled
         * `USER` - User
+    Purchase:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        item:
+          type: string
+          description: What was bought, as written.
+        bought_on:
+          type: integer
+          minimum: 0
+          description: The local day it was bought, as an epoch day (`LocalDate.toEpochDay()`).
+        bought_on_date:
+          type: string
+          readOnly: true
+          description: '`bought_on` as an ISO date (YYYY-MM-DD), for display.'
+        logged_at:
+          type: string
+          format: date-time
+          readOnly: true
+        logged_by:
+          type: string
+          nullable: true
+          readOnly: true
+          description: The first name of the member who logged it. Null means NOT
+            RECORDED (an entry imported from past Groceries ticks, which never stored
+            who ticked them); say "not recorded", never guess.
+        logged_by_me:
+          type: boolean
+          readOnly: true
+          description: True when the member making this request logged it.
+        store:
+          type: string
+          nullable: true
+        price_cents:
+          type: integer
+          nullable: true
+          description: Whole cents, entered by hand (499 is 4.99), or null when nobody
+            said. Never reconciled against a bank statement and never summed into
+            a ledger figure; every surface that shows it says it was entered by hand.
+        price_note:
+          type: string
+          nullable: true
+          readOnly: true
+          description: Words to show beside the price, or null when there is no price.
+        quantity_note:
+          type: string
+          nullable: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          description: |-
+            `shared` (every member of the household sees it) or `private` (only you do). Defaults to `shared` on create. A shared row can be made private only by the member who added it, or by anyone when nobody is recorded as having added it; anything else is a 403 with a sentence. Another member's private row is never served: it is a 404, and a `?since=` feed carries it only as a redacted tombstone.
+
+            * `shared` - shared
+            * `private` - private
+        source:
+          type: string
+          readOnly: true
+          description: MANUAL (logged by a member), GROCERIES_TICK (a tick on the
+            Groceries list, ADR 0055) or GROCERIES_BACKFILL (a Groceries tick from
+            before the log existed; who ticked it was not recorded).
+        tick:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
+      required:
+      - bought_on
+      - bought_on_date
+      - deleted_at
+      - id
+      - item
+      - logged_at
+      - logged_by
+      - logged_by_me
+      - price_note
+      - source
+      - tick
+    PurchaseList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Purchase'
+        truncated:
+          type: boolean
+          description: True when more entries matched than `limit`; only the newest
+            are here.
+        message:
+          type: string
+          nullable: true
+          description: A sentence to show when `results` is empty, else null. With
+            `q` it is "I have no record of buying ...", never "never bought".
+      required:
+      - message
+      - results
+      - truncated
     Receipt:
       type: object
       description: |-
