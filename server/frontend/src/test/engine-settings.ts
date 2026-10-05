@@ -106,6 +106,7 @@ export function makeDevice(overrides: Partial<DeviceToken> = {}): DeviceToken {
 export interface SettingsHost {
   settings: SettingsState
   householdName: string
+  householdTimezone: string | null
   members: components['schemas']['HouseholdMember'][]
   signedIn: boolean
 }
@@ -118,6 +119,10 @@ interface Reply {
 const OWNER_ONLY = {
   detail:
     'Nothing was changed: this route is owner-only. `owner` is the ONLY role there is and it governs membership alone - an owner and a member see exactly the same data (ADR 0045).',
+}
+
+const TIMEZONE_OWNER_ONLY = {
+  detail: 'Only the household owner can change the timezone. Nothing was changed.',
 }
 
 /** The one `ME` user id, passed in so this file does not import `engine.ts` (which imports it). */
@@ -247,11 +252,36 @@ export function handleSettings(
   if (method === 'POST' && pathname === '/api/auth/logout') return { status: 204 }
 
   if (method === 'PATCH' && pathname === '/api/households/me') {
-    if (!isOwner) return { status: 403, body: OWNER_ONLY }
-    const name = String((body as { name?: string }).name ?? '').trim()
-    if (name === '') return { status: 400, body: { name: ['This field may not be blank.'] } }
-    host.householdName = name
-    return { status: 200, body: { id: 'h1', name, members: host.members } }
+    const sent = (body ?? {}) as { name?: string; timezone?: string | null }
+    if (!isOwner) {
+      // The real engine names what was asked for (`IsOwnerForHouseholdPatch`).
+      if ('timezone' in sent && !('name' in sent)) return { status: 403, body: TIMEZONE_OWNER_ONLY }
+      return { status: 403, body: OWNER_ONLY }
+    }
+    if (!('name' in sent) && !('timezone' in sent)) {
+      return { status: 400, body: { detail: 'Nothing was changed. Send `name`, `timezone`, or both.' } }
+    }
+    if ('timezone' in sent && sent.timezone !== null) {
+      const zone = String(sent.timezone).trim()
+      if (!Intl.supportedValuesOf('timeZone').includes(zone)) {
+        return {
+          status: 400,
+          body: {
+            detail: `Nothing was changed. '${zone}' is not a timezone this server knows. Use an IANA name such as America/Chicago.`,
+          },
+        }
+      }
+    }
+    if ('name' in sent) {
+      const name = String(sent.name ?? '').trim()
+      if (name === '') return { status: 400, body: { detail: 'Nothing was changed. name: This field may not be blank.' } }
+      host.householdName = name
+    }
+    if ('timezone' in sent) host.householdTimezone = sent.timezone ?? null
+    return {
+      status: 200,
+      body: { id: 'h1', name: host.householdName, timezone: host.householdTimezone, members: host.members },
+    }
   }
 
   if (pathname === '/api/households/me/invites') {

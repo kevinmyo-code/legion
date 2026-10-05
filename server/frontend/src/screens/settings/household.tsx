@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import type { components } from '@/api/schema'
 import { useHousehold, useMe } from '@/api/queries'
@@ -8,6 +8,7 @@ import {
   useRemoveMember,
   useRenameHousehold,
   useRevokeInvite,
+  useSetHouseholdTimezone,
 } from '@/api/settings'
 import { InlineConfirm } from '@/components/settings/inline-confirm'
 import { OkSentence, SettingsPage } from '@/components/settings/settings-page'
@@ -49,6 +50,9 @@ function who(member: Member): string {
  * fault, a sentence reads as a rule). The engine refuses a member's attempt
  * either way (`IsHouseholdOwner`), so hiding is a courtesy, never the lock.
  *
+ * The household timezone (Kevin, 2026-10-05) sits beside the name: everyone reads
+ * it, the owner sets it.
+ *
  * Membership is the only authorization and `owner` is the only role (ADR 0045):
  * nothing here describes anyone as an admin, a manager, or a guest.
  */
@@ -82,6 +86,7 @@ export function HouseholdScreen() {
   return (
     <SettingsPage title="Household">
       <NamePanel name={household.data.name} isOwner={isOwner} />
+      <TimezonePanel timezone={household.data.timezone} isOwner={isOwner} />
       <MembersPanel members={members} myId={myId} isOwner={isOwner} />
       <InvitesPanel isOwner={isOwner} />
     </SettingsPage>
@@ -141,6 +146,136 @@ function NamePanel({ name, isOwner }: { name: string; isOwner: boolean }) {
             disabled={rename.isPending || value.trim() === '' || value.trim() === name}
           >
             {rename.isPending ? 'Saving' : 'Rename'}
+          </Button>
+        </div>
+      </form>
+    </Panel>
+  )
+}
+
+/** Every zone this browser knows, sorted, or none on a browser too old to say. */
+function browserZones(): string[] {
+  try {
+    return typeof Intl.supportedValuesOf === 'function' ? [...Intl.supportedValuesOf('timeZone')] : []
+  } catch {
+    return []
+  }
+}
+
+/** The zone this browser is in: the suggestion when the household has none. */
+function browserZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null
+  } catch {
+    return null
+  }
+}
+
+function matchesQuery(zone: string, query: string): boolean {
+  const wanted = query.trim().toLowerCase().replace(/[\s_]+/g, ' ')
+  if (wanted === '') return true
+  return zone.toLowerCase().replace(/[_/]+/g, ' ').includes(wanted)
+}
+
+/**
+ * Which calendar day "today" is for the whole household. The engine reads it
+ * for the Groceries same-day untick rule, so it is the owner's to set once
+ * rather than each device's to guess. Saved only when the engine answers 2xx;
+ * a refusal is the engine's own sentence.
+ *
+ * The zone's NAME is fine here: this is a screen, not a model prompt
+ * (CLAUDE.md section 1 keeps zone ids out of prompts, and the engine only ever
+ * hands the assistant an offset).
+ */
+function TimezonePanel({ timezone, isOwner }: { timezone: string | null; isOwner: boolean }) {
+  const save = useSetHouseholdTimezone()
+  const suggested = useMemo(browserZone, [])
+  const zones = useMemo(() => {
+    const all = new Set(browserZones())
+    for (const extra of [timezone, suggested]) if (extra) all.add(extra)
+    return [...all].sort()
+  }, [timezone, suggested])
+  const [query, setQuery] = useState('')
+  const [choice, setChoice] = useState<string | null>(null)
+  const [savedAs, setSavedAs] = useState<string | null>(null)
+  const value = choice ?? timezone ?? suggested ?? ''
+  const shown = zones.filter((zone) => zone === value || matchesQuery(zone, query))
+
+  const description =
+    'Which day "today" is for everyone here. On the Groceries list, unticking an item on the day it was ticked takes back its bought entry; this decides when that day ends.'
+
+  if (!isOwner) {
+    return (
+      <Panel title="Household timezone" description={description}>
+        <p className="text-[0.9375rem]">
+          {timezone ?? 'Not set. Until the owner sets one, each phone and browser says what day it is.'}
+        </p>
+        <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+          Only the owner can change the household timezone.
+        </p>
+      </Panel>
+    )
+  }
+
+  return (
+    <Panel title="Household timezone" description={description}>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(event) => {
+          event.preventDefault()
+          setSavedAs(null)
+          const zone = value
+          save.mutate(zone, {
+            onSuccess: () => {
+              setChoice(null)
+              setQuery('')
+              setSavedAs(zone)
+            },
+          })
+        }}
+      >
+        {timezone === null && (
+          <p className="text-[0.9375rem]">
+            {suggested
+              ? `Not set yet. This browser is in ${suggested}, so that is chosen below. Nothing is saved until you press Save.`
+              : 'Not set yet. Choose one below.'}
+          </p>
+        )}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="household-timezone-search">Find a timezone</Label>
+          <Input
+            id="household-timezone-search"
+            type="search"
+            value={query}
+            placeholder="Chicago, London, Tokyo"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="household-timezone">Household timezone</Label>
+          <select
+            id="household-timezone"
+            value={value}
+            onChange={(event) => {
+              setSavedAs(null)
+              save.reset()
+              setChoice(event.target.value)
+            }}
+            className="h-12 w-full rounded-t-control rounded-b-md border-0 border-b-2 border-outline bg-surface-2 px-3 text-base outline-none focus-visible:border-primary focus-visible:bg-surface-3"
+          >
+            {value === '' && <option value="">Choose a timezone</option>}
+            {shown.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+        </div>
+        {save.error && <ErrorSentence>{save.error.message}</ErrorSentence>}
+        {savedAs && <OkSentence>The household now keeps time in {savedAs.replace(/_/g, ' ')}.</OkSentence>}
+        <div>
+          <Button type="submit" disabled={save.isPending || value === '' || value === timezone}>
+            {save.isPending ? 'Saving' : 'Save timezone'}
           </Button>
         </div>
       </form>
