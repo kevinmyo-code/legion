@@ -6175,3 +6175,25 @@ now asserts the same ceiling for both). Headroom for the worst case is ~171 toke
 tool addition needs its own measurement again.
 - **Household timezone setting:** Kevin ruled it, to be built next (not in this merge).
 - **Finished branches merge into dev** rather than waiting.
+
+## 2026-10-05 - Groceries is a built-in list
+
+Live finding: the engine was deployed with the bought log and its Groceries import created ZERO
+entries. No shared, non-deleted, non-archived list named "Groceries" existed: six had come and gone
+since Sep 6 (four deleted, two archived), Kevin deleted the latest on Oct 3, and the rule "oldest shared
+non-deleted list named Groceries" picked an ARCHIVED one holding 0 ticks. 59 live ticks sat on the
+other lists. The live tick hook fired on nothing.
+
+Kevin: *"can u create groceries as a persistent list instead of a hand created one then since we re
+gonna be using it to measure and record stuff."*
+- **Every household has one built-in Groceries list** (`checklists.system_key = "groceries"`), made
+  with the household, shared, plain, and **empty**: asked whether to revive the deleted Oct 3 list or
+  start empty, Kevin ruled **start empty**. It cannot be deleted, archived, renamed or made private
+  (REST answers 403 in words: "The Groceries list is built in, so it can't be deleted. Nothing was
+  changed."). Its items and ticks behave like any list's.
+- **The hook keys on `system_key`, not the name** (ADR 0055 amended). A user list named Groceries is
+  just a list.
+- **Import all 59 past Groceries ticks**, from deleted and archived lists too, "logged by: not
+  recorded" (purchases 0003, source `GROCERIES_BACKFILL`, idempotent on the tick).
+- The phone never creates a Groceries list: it adopts the engine's by sync and says "Getting the
+  Groceries list from the household..." until it arrives.

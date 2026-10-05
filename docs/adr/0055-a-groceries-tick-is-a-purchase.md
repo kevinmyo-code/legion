@@ -2,6 +2,7 @@
 status: accepted
 decided: 2026-10-04
 decided-by: Kevin
+amended: 2026-10-05
 supersedes: []
 source: "[[decisions#2026-10-04 - The household bought log, and the assistant on the web]]"
 tags: [adr]
@@ -39,5 +40,7 @@ an inference the software makes.
 - An untick on the same day removes the entry it created. A later untick does not: clearing an old
   tick is not evidence the purchase did not happen.
 - "Who" is the member whose request created the tick. Ticks themselves still record no user.
-- Which list is "the Groceries list" when it is renamed or duplicated is decided in
-  `.scratch/purchase-log/` ticket 01.
+- The household's Groceries list is its built-in Groceries list (`system_key`), which cannot be
+  deleted, renamed, archived or made private. (AMENDED 2026-10-05: ticket 01 had chosen the oldest
+  shared, non-deleted list NAMED Groceries; on the live engine no such list was live, so the hook fired
+  on nothing. A list a person names Groceries is now just a list.)
