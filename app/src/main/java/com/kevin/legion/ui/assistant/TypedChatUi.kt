@@ -109,7 +109,12 @@ internal fun TypedMessageField(companionName: String, onSend: (String) -> Unit, 
                 decorationBox = { inner ->
                     Box {
                         if (draft.isEmpty()) {
-                            Text(hint, style = MaterialTheme.typography.bodyLarge, color = SoftColors.text3, maxLines = 1)
+                            Text(
+                                hint,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = SoftColors.text3,
+                                maxLines = 1,
+                            )
                         }
                         inner()
                     }
@@ -238,15 +243,16 @@ private val PANEL_MAX_HEIGHT = 220.dp
 
 // --- previews: SoftTheme, 384dp, same as the strip's own ------------------------------------------
 
+// Ids are placeholders (0): the panel keys nothing off them in a preview.
 private val PreviewChat = TypedChatUi(
     companionName = "Dorothy",
     entries = listOf(
-        ChatEntry(1, ChatEntry.Kind.USER, "When did we last buy shampoo?", ChatEntry.Via.TYPED),
-        ChatEntry(2, ChatEntry.Kind.TOOL, "Search bought log"),
-        ChatEntry(3, ChatEntry.Kind.ASSISTANT, "You logged shampoo on Sep 28.", ChatEntry.Via.TYPED),
-        ChatEntry(4, ChatEntry.Kind.USER, "what is on the calendar", ChatEntry.Via.SPOKEN),
-        ChatEntry(5, ChatEntry.Kind.ASSISTANT, "Soccer practice at five.", ChatEntry.Via.SPOKEN),
-        ChatEntry(6, ChatEntry.Kind.SYSTEM, "Stopped speaking because you typed."),
+        ChatEntry(0, ChatEntry.Kind.USER, "When did we last buy shampoo?", ChatEntry.Via.TYPED),
+        ChatEntry(0, ChatEntry.Kind.TOOL, "Search bought log"),
+        ChatEntry(0, ChatEntry.Kind.ASSISTANT, "You logged shampoo on Sep 28.", ChatEntry.Via.TYPED),
+        ChatEntry(0, ChatEntry.Kind.USER, "what is on the calendar", ChatEntry.Via.SPOKEN),
+        ChatEntry(0, ChatEntry.Kind.ASSISTANT, "Soccer practice at five.", ChatEntry.Via.SPOKEN),
+        ChatEntry(0, ChatEntry.Kind.SYSTEM, "Stopped speaking because you typed."),
     ),
     pendingReply = null,
     onSend = {},

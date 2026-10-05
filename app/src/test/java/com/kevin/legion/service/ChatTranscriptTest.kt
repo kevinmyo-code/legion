@@ -8,7 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The assistant panel's reducers: tagging, overlap outcomes and session-only lifetime. Plain JVM. */
+/** The assistant panel's reducers: tagging, overlap outcomes, session-only lifetime. Plain JVM. */
 class ChatTranscriptTest {
 
     private fun kinds(t: ChatTranscript) = t.entries.map { it.kind }
@@ -19,7 +19,11 @@ class ChatTranscriptTest {
             .typedSent("when did we last buy shampoo")
             .typedReplyProgress("You logged")
         assertEquals("You logged", t.pendingTypedReply)
-        val done = t.turnComplete(heard = "when did we last buy shampoo", said = "You logged shampoo on Sep 28.", typed = true)
+        val done = t.turnComplete(
+            heard = "when did we last buy shampoo",
+            said = "You logged shampoo on Sep 28.",
+            typed = true,
+        )
         assertNull(done.pendingTypedReply)
         assertEquals(listOf(Kind.USER, Kind.ASSISTANT), kinds(done))
         assertEquals(Via.TYPED, done.entries[0].via)
@@ -96,7 +100,7 @@ class ChatTranscriptTest {
 
     @Test
     fun `a queued message that then fails to connect clears the pending reply and says so`() {
-        val t = ChatTranscript().typedSent("hi").typedFailed("Not sent: couldn't connect.")
+        val t = ChatTranscript().typedSent("hi").notSent("", "Not sent: couldn't connect.", clearPending = true)
         assertNull(t.pendingTypedReply)
         assertEquals(Kind.NOT_SENT, t.entries.last().kind)
     }

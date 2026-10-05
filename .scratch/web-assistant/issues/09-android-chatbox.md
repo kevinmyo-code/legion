@@ -21,7 +21,7 @@ no regression to push-to-talk or the wake word. Gates per CLAUDE.md §6.
 
 ## Built (2026-10-04)
 
-- Typed box beside the talk pill: `ui/assistant/AssistantTypedUi.kt` (field, reply panel,
+- Typed box beside the talk pill: `ui/assistant/TypedChatUi.kt` (field, reply panel,
   `LocalTypedChat`), wired in `AssistantStrip.kt`; ViewModel `AssistantChatViewModel`.
 - Controller path: `LiveSessionController.onTyped` -> `GeminiLiveSession.sendTypedTurn` (same
   `clientContent` text turn as `sendText`; playback muted for the turn; reply from output

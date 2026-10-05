@@ -82,9 +82,15 @@ data class ChatTranscript(
         return flushPending(note = "Stopped because you started talking.")
     }
 
-    /** A typed message that was NOT sent, with the reason in words. */
-    fun notSent(text: String, reason: String): ChatTranscript =
-        beginIfEnded().add(ChatEntry.Kind.NOT_SENT, text, ChatEntry.Via.TYPED, note = reason)
+    /**
+     * A typed message that was NOT sent, with the reason in words. [clearPending] is for a message
+     * that WAS shown as sent (so a reply was pending) and then could not be delivered at connect: the
+     * waiting reply is closed out and [text] is blank, since the USER line is already above it.
+     */
+    fun notSent(text: String, reason: String, clearPending: Boolean = false): ChatTranscript {
+        val base = if (clearPending) copy(pendingTypedReply = null) else beginIfEnded()
+        return base.add(ChatEntry.Kind.NOT_SENT, text, ChatEntry.Via.TYPED, note = reason)
+    }
 
     /**
      * One tool line, from a tool call that RETURNED. [ok] is the tool's own `success`; a tool whose
@@ -98,10 +104,6 @@ data class ChatTranscript(
             humanToolName(name),
             note = if (ok) null else "Did not run" + (detail?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""),
         )
-
-    /** A typed message that was already shown and then could not be delivered or answered. */
-    fun typedFailed(reason: String): ChatTranscript =
-        copy(pendingTypedReply = null).add(ChatEntry.Kind.NOT_SENT, "", ChatEntry.Via.TYPED, note = reason)
 
     /** The Live socket closed. Keeps what was said, says it ended, flushes a half-arrived reply. */
     fun sessionEnded(): ChatTranscript {
@@ -134,11 +136,11 @@ data class ChatTranscript(
     )
 
     companion object {
-        /** `add_to_list` -> `Add to list`. Tool names are identifiers; the panel is for people. */
-        fun humanToolName(name: String): String =
-            name.replace('_', ' ').trim().replaceFirstChar { it.uppercase() }
-
         /** A session-only panel never needs more than a screenful of history; bounded so it cannot grow for days. */
         const val MAX_ENTRIES = 100
     }
 }
+
+/** `add_to_list` -> `Add to list`. Tool names are identifiers; the panel is for people. */
+fun humanToolName(name: String): String =
+    name.replace('_', ' ').trim().replaceFirstChar { it.uppercase() }

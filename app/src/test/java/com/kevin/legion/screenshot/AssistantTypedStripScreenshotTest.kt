@@ -80,7 +80,10 @@ class AssistantTypedStripScreenshotTest {
     @Test
     fun `mic blocked says typing still works`() {
         val entries = listOf(
-            ChatEntry(1, ChatEntry.Kind.NOT_SENT, "add milk", ChatEntry.Via.TYPED, "The assistant isn't set up: add a Gemini key in Setup."),
+            ChatEntry(
+                1, ChatEntry.Kind.NOT_SENT, "add milk", ChatEntry.Via.TYPED,
+                "The assistant isn't set up: add a Gemini key in Setup.",
+            ),
         )
         capture("assistant-typed-mic-blocked.png", chat(entries)) {
             AssistantStripContent(

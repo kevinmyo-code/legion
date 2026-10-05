@@ -316,6 +316,70 @@ private val MicBlockedContainer = Color(0xFF3A2E12)
  */
 @Composable
 internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -> Unit) {
+    // The typed box (web-assistant ticket 09) arrives on [LocalTypedChat]; null is the strip exactly
+    // as it was. Beside the box the pill is narrow, so a long label (a notice, "Microphone
+    // permission needed") moves out of the pill into the line beneath it, in words, and the pill
+    // keeps only its icon. Phase labels ("Tap to talk", "Listening...") are short and stay inside.
+    val typed = LocalTypedChat.current
+    val iconOnly = typed != null && pillIsIconOnly(state)
+    val subtitle = stripSubtitle(state, iconOnly)
+    AssistantStripBar {
+        if (typed != null && typed.hasConversation) {
+            AssistantReplyPanel(typed, Modifier.padding(bottom = 8.dp))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (typed != null) {
+                TypedMessageField(typed.companionName, typed.onSend, Modifier.weight(1f))
+            }
+            TalkPill(state, onTap, narrow = typed != null, iconOnly = iconOnly)
+        }
+        if (subtitle != null) {
+            val unavailable = state.micBlocked || state.silenced
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (unavailable && typed != null) SoftColors.caution else SoftColors.text2,
+                maxLines = if (typed != null) 3 else 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Whether the pill beside the typed box shows only its icon: blocked/silenced states and any label
+ * longer than [COMPACT_LABEL_MAX] (a notice) are said in the line under the strip instead.
+ */
+internal fun pillIsIconOnly(state: AssistantStripResolver.State): Boolean =
+    state.micBlocked || state.silenced || state.label.length > COMPACT_LABEL_MAX
+
+/**
+ * The line under the strip. [iconOnly] (typed box present, label moved out of the pill) folds the
+ * label in and, when the mic is unavailable, says typing still works - true because typing never
+ * touches the mic. Otherwise exactly [AssistantStripResolver.State.subtitle], as before.
+ */
+internal fun stripSubtitle(state: AssistantStripResolver.State, iconOnly: Boolean): String? =
+    if (iconOnly) {
+        listOfNotNull(
+            state.label.trimEnd('.'),
+            state.subtitle?.trimEnd('.'),
+            "Typing still works".takeIf { state.micBlocked || state.silenced },
+        ).joinToString(". ") + "."
+    } else {
+        state.subtitle
+    }
+
+/**
+ * The talk pill itself - the part of [AssistantStripContent] that used to be inline. [narrow] is the
+ * typed-box layout (wraps its content, 14dp side padding); false is the original full-width pill.
+ */
+@Composable
+private fun TalkPill(state: AssistantStripResolver.State, onTap: () -> Unit, narrow: Boolean, iconOnly: Boolean) {
     val blocked = state.micBlocked || state.silenced
     val pillContainer = if (blocked) MicBlockedContainer else SoftColors.primaryContainer
     val pillContent = if (blocked) SoftColors.caution else SoftColors.onPrimaryContainer
@@ -330,73 +394,34 @@ internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: (
     // follows (`cursorAlpha.value` inside its `graphicsLayer` lambda, never destructured earlier).
     val iconAlpha = pulseAlpha(active = state.active)
 
-    // The typed box (web-assistant ticket 09) arrives on [LocalTypedChat]; null is the strip exactly
-    // as it was. Beside the box the pill is narrow, so a long label (a notice, "Microphone
-    // permission needed") moves out of the pill into the line beneath it, in words, and the pill
-    // keeps only its icon. Phase labels ("Tap to talk", "Listening...") are short and stay inside.
-    val typed = LocalTypedChat.current
-    val iconOnly = typed != null && (blocked || state.label.length > COMPACT_LABEL_MAX)
-    val subtitle = when {
-        iconOnly -> listOfNotNull(
-            state.label.trimEnd('.'),
-            state.subtitle?.trimEnd('.'),
-            "Typing still works".takeIf { blocked },
-        ).joinToString(". ") + "."
-        else -> state.subtitle
-    }
-
     val interactionSource = remember { MutableInteractionSource() }
-    AssistantStripBar {
-        if (typed != null && typed.hasConversation) {
-            AssistantReplyPanel(typed, Modifier.padding(bottom = 8.dp))
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (typed != null) {
-                TypedMessageField(typed.companionName, typed.onSend, Modifier.weight(1f))
-            }
-            Row(
-                modifier = (if (typed != null) Modifier.widthIn(min = 52.dp) else Modifier.fillMaxWidth())
-                    .height(52.dp)
-                    .legionPressScale(interactionSource)
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(pillContainer)
-                    .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap)
-                    .padding(horizontal = if (typed != null) 14.dp else 0.dp)
-                    .semantics(mergeDescendants = true) { if (iconOnly) contentDescription = state.label },
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                MsIcon(
-                    res = iconRes,
-                    // Decorative - state.label (below) already carries the meaning in words, and the
-                    // whole pill is one clickable region TalkBack reads as a unit.
-                    contentDescription = null,
-                    tint = pillContent,
-                    modifier = Modifier.graphicsLayer { alpha = iconAlpha.value },
-                )
-                if (!iconOnly) {
-                    Text(
-                        state.label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = pillContent,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-        if (subtitle != null) {
+    Row(
+        modifier = (if (narrow) Modifier.widthIn(min = 52.dp) else Modifier.fillMaxWidth())
+            .height(52.dp)
+            .legionPressScale(interactionSource)
+            .clip(RoundedCornerShape(percent = 50))
+            .background(pillContainer)
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap)
+            .padding(horizontal = if (narrow) 14.dp else 0.dp)
+            .semantics(mergeDescendants = true) { if (iconOnly) contentDescription = state.label },
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MsIcon(
+            res = iconRes,
+            // Decorative - state.label (below) already carries the meaning in words, and the
+            // whole pill is one clickable region TalkBack reads as a unit.
+            contentDescription = null,
+            tint = pillContent,
+            modifier = Modifier.graphicsLayer { alpha = iconAlpha.value },
+        )
+        if (!iconOnly) {
             Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (blocked && typed != null) SoftColors.caution else SoftColors.text2,
-                maxLines = if (typed != null) 3 else 2,
+                state.label,
+                style = MaterialTheme.typography.labelLarge,
+                color = pillContent,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }

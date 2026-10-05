@@ -838,15 +838,20 @@ class GeminiLiveSession(
      * @return [TypedSendResult.SOCKET_GONE] if the socket is gone, so the caller can say the message
      * was NOT sent.
      */
-    fun sendTypedTurn(text: String, wireText: String = text, micClosed: Boolean): TypedSendResult {
-        if (!running.get() || closed.get() || webSocket == null) return TypedSendResult.SOCKET_GONE
-        if (CrisisDetector.detect(text)) {
+    fun sendTypedTurn(text: String, wireText: String = text, micClosed: Boolean): TypedSendResult = when {
+        !running.get() || closed.get() || webSocket == null -> TypedSendResult.SOCKET_GONE
+        CrisisDetector.detect(text) -> {
             Log.w(TAG, "Crisis phrase detected in typed text - not sending, notifying owner")
             flushAudio()
             speakingThisTurn = false
             emit(LiveEvent.CrisisDetected)
-            return TypedSendResult.CRISIS
+            TypedSendResult.CRISIS
         }
+        else -> dispatchTypedTurn(text, wireText, micClosed)
+    }
+
+    /** The send half of [sendTypedTurn], split out so each stays inside detekt's return-count rule. */
+    private fun dispatchTypedTurn(text: String, wireText: String, micClosed: Boolean): TypedSendResult {
         warmHoldJob?.cancel()
         idleJob?.cancel()
         // Typing over the assistant's speech stops it, same as speaking over it.
@@ -863,13 +868,13 @@ class GeminiLiveSession(
             MicArbiter.request(micClaimant, micPreemptionListener)
         }
         typedTurnInFlight = true
-        if (!sendText(wireText)) {
+        val sent = sendText(wireText)
+        if (!sent) {
             typedTurnInFlight = false
             userTurnText.setLength(0)
             if (micClosed) parkWarm()
-            return TypedSendResult.SOCKET_GONE
         }
-        return TypedSendResult.SENT
+        return if (sent) TypedSendResult.SENT else TypedSendResult.SOCKET_GONE
     }
 
     /**
@@ -1495,7 +1500,11 @@ class GeminiLiveSession(
             for (i in 0 until parts.length()) {
                 val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data")
                 if (!data.isNullOrEmpty()) {
-                    if (myTurnGeneration != turnGeneration.get()) {
+                    // `|| typedTurnInFlight` is web-assistant ticket 09's: a typed turn's reply is
+                    // shown, not spoken, so its audio is dropped HERE - before it can flip
+                    // speakingThisTurn, mute the mic half-duplex, duck music or reach the track. It
+                    // shares this branch only to keep the loop to one `continue`.
+                    if (myTurnGeneration != turnGeneration.get() || typedTurnInFlight) {
                         // Superseded: a barge-in/interrupt/crisis flush landed between this
                         // message being sent by the server and being processed here. Drop
                         // the chunk outright - do not flip speakingThisTurn or capturing
@@ -1504,9 +1513,6 @@ class GeminiLiveSession(
                         // reply the driver already interrupted).
                         continue
                     }
-                    // A typed turn's reply is shown, not spoken: drop the audio before it can flip
-                    // speakingThisTurn, mute the mic half-duplex, duck music or reach the track.
-                    if (typedTurnInFlight) continue
                     if (!speakingThisTurn) {
                         speakingThisTurn = true
                         // Half-duplex: mute the mic while Zero speaks so his own

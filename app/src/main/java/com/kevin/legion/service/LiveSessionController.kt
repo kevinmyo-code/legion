@@ -506,7 +506,7 @@ class LiveSessionController(context: Context) {
                 pendingAction = Pending.NONE; pendingPrompt = null
                 typedTurnPending = false
                 set(Phase.IDLE, IDLE_STATUS)
-                AssistantChatStore.update { it.typedFailed(TypedTurnPolicy.Refusal.NO_KEY.words) }
+                AssistantChatStore.update { it.notSent("", TypedTurnPolicy.Refusal.NO_KEY.words, clearPending = true) }
                 return@launch
             }
             val base = brain.buildBaseInstruction()
@@ -529,7 +529,7 @@ class LiveSessionController(context: Context) {
     private fun failQueuedTyped(reason: TypedTurnPolicy.Refusal) {
         typedTurnPending = false
         set(Phase.IDLE, IDLE_STATUS)
-        AssistantChatStore.update { it.typedFailed(reason.words) }
+        AssistantChatStore.update { it.notSent("", reason.words, clearPending = true) }
     }
 
     /**
@@ -953,7 +953,7 @@ class LiveSessionController(context: Context) {
                 "quota" -> "Not sent: Gemini quota or rate limit reached. See Setup."
                 else -> TypedTurnPolicy.Refusal.COULD_NOT_CONNECT.words
             }
-            AssistantChatStore.update { it.typedFailed(reason) }
+            AssistantChatStore.update { it.notSent("", reason, clearPending = true) }
         } else {
             AssistantChatStore.update { it.sessionEnded() }
         }
