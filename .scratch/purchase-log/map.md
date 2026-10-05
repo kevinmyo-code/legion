@@ -5,7 +5,7 @@ charted: 2026-10-04
 charted-by: "Kevin + Opus"
 effort: "`.scratch/purchase-log/`"
 tickets: 9
-open: 5
+open: 4
 status: open
 tags: [map]
 ---
@@ -80,6 +80,7 @@ answers from real purchase entries on the phone, the web, and the web assistant
   same-day untick removes it; private entries via `owner_user`.
 - [Matching](issues/02-matching.md) - loose search, always name the entry matched; never "never bought".
 - [Backfill](issues/03-backfill.md) - past Groceries ticks imported, "logged by: not recorded".
+- [Where it lives on screen](issues/05-where-it-lives-on-screen.md) - C: a "When did we last buy...?" search from Home.
 - [The phone's half](issues/04-the-phones-half.md) - online only, by Kevin's ruling; server down said in words.
 
 ## Not yet specified

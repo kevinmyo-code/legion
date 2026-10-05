@@ -5,7 +5,7 @@ charted: 2026-10-04
 charted-by: "Kevin + Opus"
 effort: "`.scratch/web-assistant/`"
 tickets: 10
-open: 5
+open: 4
 status: open
 tags: [map]
 ---
@@ -83,6 +83,7 @@ Android app gets a typed chatbox beside push-to-talk. Execution is in scope.
 - [One prompt](issues/03-one-prompt.md) - shared clauses generated from one file for Kotlin and TS; the engine
   assembles the web prompt; companions per member on the engine; Mia gets Dorothy.
 - [Web tool surface](issues/04-web-tool-surface.md) - engine tools + bought log + tick history; phone-only things said so.
+- [Chat and voice UI](issues/05-chat-and-voice-ui.md) - C, the orb, opening to typing; mic switches to live voice.
 - [Android typed chat](issues/06-android-typed-chat.md) - typed turns into the same Live session, reply shown as text.
 
 ## Not yet specified
