@@ -190,7 +190,11 @@ private fun EntryRow(entry: Purchase, today: Int, callbacks: BoughtCallbacks) {
                 TextButton(onClick = { callbacks.onDeleteEntry(entry) }) { Text("Delete") }
             }
         } else {
-            Text("Logged by someone else, so read-only", style = MaterialTheme.typography.labelMedium, color = SoftColors.text3)
+            Text(
+                "Logged by someone else, so read-only",
+                style = MaterialTheme.typography.labelMedium,
+                color = SoftColors.text3,
+            )
         }
     }
 }

@@ -200,7 +200,12 @@ internal fun AssistantReplyPanel(
 private fun ChatEntryRow(entry: ChatEntry, companionName: String) {
     when (entry.kind) {
         ChatEntry.Kind.USER -> ChatLine("You", viaTag(entry.via, assistant = false), entry.text)
-        ChatEntry.Kind.ASSISTANT -> ChatLine(entry.speaker ?: companionName, viaTag(entry.via, assistant = true), entry.text, entry.note)
+        ChatEntry.Kind.ASSISTANT -> ChatLine(
+            entry.speaker ?: companionName,
+            viaTag(entry.via, assistant = true),
+            entry.text,
+            entry.note,
+        )
         ChatEntry.Kind.TOOL -> Text(
             if (entry.note == null) "Done: ${entry.text}" else "${entry.text}: ${entry.note}",
             style = MaterialTheme.typography.bodySmall,

@@ -44,6 +44,9 @@ class BoughtViewModel(
 
     private var searchJob: Job? = null
 
+    /** Edit and Delete of an existing entry; kept in its own class so this one stays small. */
+    val changes = BoughtChanges(controller, viewModelScope, _state) { refresh() }
+
     init {
         refresh()
     }
@@ -99,55 +102,6 @@ class BoughtViewModel(
         }
     }
 
-    /** Opens the form on [entry], filled from it. Only called for an entry the member may change. */
-    fun openEdit(entry: Purchase) {
-        if (!entry.mayChange) return
-        _state.update {
-            it.copy(
-                mode = BoughtMode.LOG,
-                savedMessage = null,
-                problem = null,
-                form = LogFormState(
-                    item = entry.item,
-                    dateText = LocalDate.ofEpochDay(entry.boughtOn.toLong()).toString(),
-                    store = entry.store.orEmpty(),
-                    price = entry.priceCents?.let { c -> "%d.%02d".format(c / CENTS, c % CENTS) }.orEmpty(),
-                    note = entry.quantityNote.orEmpty(),
-                    isPrivate = entry.isPrivate,
-                    editing = entry,
-                ),
-            )
-        }
-    }
-
-    fun askDelete(entry: Purchase) {
-        if (entry.mayChange) _state.update { it.copy(pendingDelete = entry, problem = null, savedMessage = null) }
-    }
-
-    fun cancelDelete() {
-        _state.update { it.copy(pendingDelete = null) }
-    }
-
-    /** Deletes the entry the confirm named. **Deleted is only said from a 2xx**; any other outcome
-     * says in words that nothing was deleted, and the list is re-read either way. */
-    fun confirmDelete() {
-        val entry = _state.value.pendingDelete ?: return
-        _state.update { it.copy(pendingDelete = null) }
-        viewModelScope.launch {
-            when (val outcome = controller.delete(entry)) {
-                is PurchaseOutcome.Ok ->
-                    _state.update { it.copy(savedMessage = PurchaseWording.deleted(entry.item), problem = null) }
-                else -> _state.update {
-                    it.copy(
-                        problem = PurchaseFailures.changeFailed(outcome, "delete", "deleted", "\"${entry.item}\""),
-                        savedMessage = null,
-                    )
-                }
-            }
-            refresh()
-        }
-    }
-
     fun closeLog() {
         _state.update { it.copy(mode = BoughtMode.SEARCH) }
         refresh()
@@ -168,21 +122,22 @@ class BoughtViewModel(
         if (form.saving) return
         val boughtOn = parseDay(form.dateText)
         val price = PurchasesController.parsePrice(form.price)
+        val didnt = if (form.editing != null) "changed" else "logged"
         val problem = when {
-            boughtOn == null -> "That date isn't YYYY-MM-DD, so nothing was logged."
-            !price.valid -> "That price isn't a number like 4.99, so nothing was logged."
+            boughtOn == null -> "That date isn't YYYY-MM-DD, so nothing was $didnt."
+            !price.valid -> "That price isn't a number like 4.99, so nothing was $didnt."
             else -> null
         }
-        if (problem != null) {
+        if (problem != null || boughtOn == null) {
             _state.update { it.copy(form = form.copy(error = problem)) }
             return
         }
-        val day = boughtOn ?: return // unreachable: a null date set `problem` above
+        val day = boughtOn
         _state.update { it.copy(form = form.copy(saving = true, error = null)) }
         val editing = form.editing
         viewModelScope.launch {
             if (editing != null) {
-                saveEdit(form, editing, day, price.cents)
+                changes.saveEdit(form, editing, day, price.cents)
                 return@launch
             }
             val outcome = controller.log(
@@ -215,25 +170,6 @@ class BoughtViewModel(
         }
     }
 
-    private suspend fun saveEdit(form: LogFormState, editing: Purchase, boughtOn: Int, priceCents: Long?) {
-        val outcome = controller.edit(
-            entry = editing,
-            item = form.item,
-            boughtOn = boughtOn,
-            store = form.store,
-            priceCents = priceCents,
-            note = form.note,
-            isPrivate = form.isPrivate,
-        )
-        if (outcome is PurchaseOutcome.Ok) {
-            val said = PurchaseWording.edited(outcome.value, controller.today())
-            _state.update { it.copy(mode = BoughtMode.SEARCH, savedMessage = said, problem = null) }
-            refresh()
-        } else {
-            failSave(form, PurchaseFailures.changeFailed(outcome, "change", "changed", form.item.trim().ifEmpty { "that" }))
-        }
-    }
-
     private fun failSave(form: LogFormState, sentence: String) {
         _state.update { it.copy(form = form.copy(saving = false, error = sentence)) }
     }
@@ -242,9 +178,5 @@ class BoughtViewModel(
         LocalDate.parse(text.trim()).toEpochDay().toInt()
     } catch (e: DateTimeParseException) {
         null
-    }
-
-    private companion object {
-        const val CENTS = 100
     }
 }

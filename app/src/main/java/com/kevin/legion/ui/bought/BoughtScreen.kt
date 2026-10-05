@@ -34,10 +34,10 @@ fun BoughtScreen(onBack: () -> Unit) {
                     onQueryChange = viewModel::setQuery,
                     onRetry = viewModel::refresh,
                     onLogIt = { viewModel.openLog(it) },
-                    onEditEntry = viewModel::openEdit,
-                    onDeleteEntry = viewModel::askDelete,
-                    onConfirmDelete = viewModel::confirmDelete,
-                    onCancelDelete = viewModel::cancelDelete,
+                    onEditEntry = viewModel.changes::openEdit,
+                    onDeleteEntry = viewModel.changes::askDelete,
+                    onConfirmDelete = viewModel.changes::confirmDelete,
+                    onCancelDelete = viewModel.changes::cancelDelete,
                 ),
             )
             BoughtMode.LOG -> LogPurchaseContent(

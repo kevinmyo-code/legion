@@ -106,7 +106,9 @@ class PurchasesController(
         if (entry.mayChange) {
             backend.delete(entry.id)
         } else {
-            PurchaseOutcome.Refused("That entry was logged by someone else, so it can't be deleted. Nothing was deleted.")
+            PurchaseOutcome.Refused(
+                "That entry was logged by someone else, so it can't be deleted. Nothing was deleted.",
+            )
         }
 
     /** "When did we last buy [query]?" - every distinct matching item text, newest first. */
