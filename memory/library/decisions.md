@@ -6175,3 +6175,23 @@ now asserts the same ceiling for both). Headroom for the worst case is ~171 toke
 tool addition needs its own measurement again.
 - **Household timezone setting:** Kevin ruled it, to be built next (not in this merge).
 - **Finished branches merge into dev** rather than waiting.
+
+## 2026-10-05 - The household has a timezone
+
+Kevin, asked whether the bought log's same-day untick rule should keep falling back to UTC when a
+client sends no local date, chose: **"Household timezone setting: store the household's timezone on
+the server so it never needs the client's date."**
+
+- **`Household.timezone`**: a nullable IANA zone name, validated against the server's tz database
+  (`tzdata` is pinned). Additive migration `household/0005`, `public` only. **No migration sets a
+  value**; the owner sets it once (Settings > Household, or `manage.py set_household_timezone`).
+- **Read by every member, written only by the owner** (the one role, ADR 0045), through the existing
+  `PATCH /api/households/me` rather than a new settings route. A member's attempt is refused in
+  words: "Only the household owner can change the timezone. Nothing was changed."
+- **Precedence for the Groceries same-day untick (ADR 0055):** the household's timezone (server
+  clock at arrival, read in that zone), then the client's `?today=` (kept for compatibility and as
+  the fallback when unset), then UTC. Consequence accepted: a phone untick queued offline before
+  local midnight and delivered after it is a later day and keeps the entry - the safe direction.
+- **The model still never sees a zone id** (CLAUDE.md section 1). The web assistant may turn the
+  household zone into the CURRENT UTC offset when the browser sends none, and says it is "the
+  household's clock"; the browser's own offset still wins.

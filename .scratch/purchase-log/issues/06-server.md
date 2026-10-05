@@ -29,6 +29,9 @@ did not happen. pytest green.
 - The hook runs from `checklists/views.py`'s tick POST (create and revive) and untick DELETE, the
   only two tick write paths; phone, web and `/mcp` all reach them. The untick takes `?today=<local
   epoch day>`; without it the engine falls back to the UTC date (see `groceries.py`).
+  **Superseded in part 2026-10-05 (Kevin): the household has a timezone.** "Today" is now the
+  household's zone first (server clock), then `?today=`, then UTC - `groceries.untick_today`,
+  tests in `tests/test_household_timezone.py`. The owner sets it once; until then nothing changes.
 - `/mcp`: `log_purchase`, `last_bought`, `list_purchases`, `delete_purchase`. Existing tools
   unchanged.
 - In `TENANT_TABLES` and `OWNER_PATHS`; member removal tombstones private entries. Leak tests in
