@@ -18,9 +18,16 @@ import kotlinx.serialization.json.Json
 
 /** The only payload any checklist outbox entry carries: the day a queued tick/untick is FOR. Every
  * other queued write needs nothing beyond [OutboxEntry.localId], because the drain re-reads the
- * row - see [ChecklistsOutboxDrain]'s own class doc. */
+ * row - see [ChecklistsOutboxDrain]'s own class doc.
+ *
+ * [today] is the local epoch day the user UNTICKED on (purchase-log ticket 08), kept in the payload
+ * because a queued untick can drain a day later and the engine must still be told the day it was
+ * made, not the day it was sent. Null on a tick, and on an untick queued before this field existed
+ * (those fall back to the drain day). */
 @Serializable
-internal data class ChecklistTickOutboxPayload(val day: Int)
+internal data class ChecklistTickOutboxPayload(val day: Int, val today: Int? = null)
+
+private fun localEpochDay(): Int = java.time.LocalDate.now().toEpochDay().toInt()
 
 /**
  * Resolving a local checklist row to the pair of server ids every item/tick write needs, pushing
@@ -110,9 +117,9 @@ internal class ChecklistsPush(private val db: CarDatabase, private val backend: 
         return remote != null
     }
 
-    suspend fun pushUntick(item: ChecklistItem, day: Int): Boolean {
+    suspend fun pushUntick(item: ChecklistItem, day: Int, today: Int? = null): Boolean {
         val ids = itemServerIds(item) ?: return false
-        return succeeded(backend.untick(ids.first, ids.second, day))
+        return succeeded(backend.untick(ids.first, ids.second, day, today ?: localEpochDay()))
     }
 
     /** Unwraps a backend [Result], stashing the cause in [failure] so a caller can tell "queue
@@ -232,14 +239,21 @@ class ChecklistsWriteThrough(
         if (item == null || tick == null) true else push.pushTick(item, tick)
     }
 
-    suspend fun unticked(itemId: Long, day: Int): PushOutcome = run(
-        target = OutboxTarget.CHECKLIST_TICKS,
-        operation = OutboxOperation.SOFT_DELETE,
-        localId = itemId,
-        payload = Json.encodeToString(ChecklistTickOutboxPayload.serializer(), ChecklistTickOutboxPayload(day)),
-    ) { push ->
-        val item = db().checklistItemDao().getByIdIncludingDeleted(itemId)
-        if (item == null) true else push.pushUntick(item, day)
+    suspend fun unticked(itemId: Long, day: Int): PushOutcome {
+        // Read ONCE, before the push: the same value rides the live call and the queued payload.
+        val today = localEpochDay()
+        return run(
+            target = OutboxTarget.CHECKLIST_TICKS,
+            operation = OutboxOperation.SOFT_DELETE,
+            localId = itemId,
+            payload = Json.encodeToString(
+                ChecklistTickOutboxPayload.serializer(),
+                ChecklistTickOutboxPayload(day, today),
+            ),
+        ) { push ->
+            val item = db().checklistItemDao().getByIdIncludingDeleted(itemId)
+            if (item == null) true else push.pushUntick(item, day, today)
+        }
     }
 
     private fun db() = CarDatabase.getDatabase(context)
@@ -350,13 +364,14 @@ object ChecklistsOutboxDrain {
             }
         }
         total += drainOne(db, backend, OutboxTarget.CHECKLIST_TICKS) { push, entry ->
-            val day = Json.decodeFromString(ChecklistTickOutboxPayload.serializer(), entry.payload).day
+            val payload = Json.decodeFromString(ChecklistTickOutboxPayload.serializer(), entry.payload)
+            val day = payload.day
             val item = db.checklistItemDao().getByIdIncludingDeleted(entry.localId)
             val tick = db.checklistTickDao().getForItemOnDayIncludingDeleted(entry.localId, day)
             when {
                 item == null -> true
                 entry.operation == OutboxOperation.SOFT_DELETE || tick == null || tick.deleted ->
-                    push.pushUntick(item, day)
+                    push.pushUntick(item, day, payload.today)
                 else -> push.pushTick(item, tick)
             }
         }

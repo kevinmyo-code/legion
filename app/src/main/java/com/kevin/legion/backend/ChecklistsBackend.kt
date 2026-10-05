@@ -197,6 +197,19 @@ interface ChecklistsBackend {
     /** `DELETE .../items/<item>/tick/<day>`, the untick. Idempotent server-side: no tick on that
      * day is still a 204. */
     suspend fun untick(checklistServerId: String, itemServerId: String, day: Int): Result<Boolean>
+
+    /**
+     * The untick with the caller's own local epoch day ([today]), which the engine needs: on the
+     * Groceries list a tick is a purchase (ADR 0055) and an untick on the tick's own day removes
+     * the bought entry it made, while a later one leaves it. Without `today` the engine falls back
+     * to the UTC date, which west of UTC keeps an entry a late-evening untick meant to remove.
+     *
+     * **A default that delegates, not a second abstract method**, so a backend that predates this
+     * (the test fakes) keeps compiling; [com.kevin.legion.backend.engine.DjangoChecklistsBackend]
+     * overrides it and is the only one that talks to the engine.
+     */
+    suspend fun untick(checklistServerId: String, itemServerId: String, day: Int, today: Int): Result<Boolean> =
+        untick(checklistServerId, itemServerId, day)
 }
 
 /** Thrown (wrapped in [Result.failure]) for a failure this package raised itself rather than one
