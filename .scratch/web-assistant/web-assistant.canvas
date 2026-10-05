@@ -1,0 +1,183 @@
+{
+  "nodes": [
+    {
+      "id": "424b2973f7e216fe",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/01-live-from-an-iphone-pwa.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "20ed552f74fe9a52",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/03-one-prompt.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e1ef8cecf80482a4",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/05-chat-and-voice-ui.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "155447e20574a730",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/06-android-typed-chat.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6f815c2ba49da4bc",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/02-who-runs-the-tools.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2bf68a8aed419bbf",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/09-android-chatbox.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ace1c86ed8512671",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/04-web-tool-surface.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "15740ffeb8cc947e",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/07-engine-endpoints.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "766631389e63b49a",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/08-web-chat-and-voice.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "800f5e37418b5531",
+      "type": "file",
+      "file": ".scratch/web-assistant/issues/10-real-devices.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "988a168c3753eb87",
+      "fromNode": "424b2973f7e216fe",
+      "fromSide": "right",
+      "toNode": "6f815c2ba49da4bc",
+      "toSide": "left"
+    },
+    {
+      "id": "8e6ff9f60396c247",
+      "fromNode": "6f815c2ba49da4bc",
+      "fromSide": "right",
+      "toNode": "ace1c86ed8512671",
+      "toSide": "left"
+    },
+    {
+      "id": "2083b6f7f7cb4ec7",
+      "fromNode": "6f815c2ba49da4bc",
+      "fromSide": "right",
+      "toNode": "15740ffeb8cc947e",
+      "toSide": "left"
+    },
+    {
+      "id": "3d53f25265ae5c8d",
+      "fromNode": "ace1c86ed8512671",
+      "fromSide": "right",
+      "toNode": "15740ffeb8cc947e",
+      "toSide": "left"
+    },
+    {
+      "id": "bb13bfb7836abfea",
+      "fromNode": "20ed552f74fe9a52",
+      "fromSide": "right",
+      "toNode": "766631389e63b49a",
+      "toSide": "left"
+    },
+    {
+      "id": "f296f66e82ce8903",
+      "fromNode": "e1ef8cecf80482a4",
+      "fromSide": "right",
+      "toNode": "766631389e63b49a",
+      "toSide": "left"
+    },
+    {
+      "id": "140479af2d152709",
+      "fromNode": "15740ffeb8cc947e",
+      "fromSide": "right",
+      "toNode": "766631389e63b49a",
+      "toSide": "left"
+    },
+    {
+      "id": "5c5e39770cfed890",
+      "fromNode": "e1ef8cecf80482a4",
+      "fromSide": "right",
+      "toNode": "2bf68a8aed419bbf",
+      "toSide": "left"
+    },
+    {
+      "id": "ccf764124eb41e22",
+      "fromNode": "155447e20574a730",
+      "fromSide": "right",
+      "toNode": "2bf68a8aed419bbf",
+      "toSide": "left"
+    },
+    {
+      "id": "f561e305b3c8a2b4",
+      "fromNode": "766631389e63b49a",
+      "fromSide": "right",
+      "toNode": "800f5e37418b5531",
+      "toSide": "left"
+    },
+    {
+      "id": "7eba97f45924bbe1",
+      "fromNode": "2bf68a8aed419bbf",
+      "fromSide": "right",
+      "toNode": "800f5e37418b5531",
+      "toSide": "left"
+    }
+  ]
+}

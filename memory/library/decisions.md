@@ -6044,3 +6044,19 @@ fired first try (12:34:13: KWS hit, confirm accept, Gemini opened). Supersedes t
 above for the wake half; "that will be all" sleeps unchanged. `WakePhrases.WAKE` is gone;
 `grammar(name)` is `["hey <name>"]`, or EMPTY for a blank name. Wake-word ticket 09's rule is
 live again: `WakeWordEngine.start` and `WakeKeywords.build` refuse a blank name in words.
+
+## 2026-10-04 - The household bought log, and the assistant on the web
+
+Kevin: *"wife wants to be able to keep track when we bought certain household items. like shampoo
+etc."* and *"give the web/phone app a chatbox + push to talk same like my android app"*. Interviewed
+the same day; Mia is on an iPhone and uses the web app only.
+
+- **Bought log** (`.scratch/purchase-log/`): a bought entry is its own record (item, date, who;
+  optional store, price as entered, quantity / note), household-shared with an optional private flag
+  (ADR 0052's model). **A tick on the Groceries list logs a purchase by itself** (ADR 0055, narrowing
+  ADR 0049 for that one list); every other list stays "ticked".
+- **Web assistant** (`.scratch/web-assistant/`): a chatbox and a LIVE voice conversation on Mia's
+  PWA and Kevin's web workbench, plus a typed chatbox on Kevin's Android app answering in text only.
+  Reaches everything the engine holds, with private rows staying private. Runs on the household key
+  held by the engine, which mints short-lived tokens; no key ever reaches a browser (ADR 0056).
+  History is session-only.

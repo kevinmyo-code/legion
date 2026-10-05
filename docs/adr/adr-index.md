@@ -60,6 +60,8 @@ Format and the test for whether something deserves an ADR:
 | 0051 | [[0051-design-language-soft-material\|Design language: soft Material]] | accepted | 2026-09-27 | - |
 | 0052 | [[0052-a-row-may-be-private-to-one-member\|A row may be private to one member]] | accepted | 2026-10-03 | - |
 | 0053 | [[0053-web-design-language-and-two-surfaces\|The web's design language, and two surfaces rendered by viewport]] | accepted | 2026-10-03 | - |
+| 0055 | [[0055-a-groceries-tick-is-a-purchase\|A tick on the Groceries list is a purchase]] | accepted | 2026-10-04 | - |
+| 0056 | [[0056-the-household-key-serves-the-web-assistant\|The household's key serves the web assistant, and never reaches a browser]] | accepted | 2026-10-04 | - |
 
 ## Superseded
 

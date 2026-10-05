@@ -54,6 +54,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[01-the-bought-entry\|01]] | decision | The bought entry: schema, tenancy, privacy, and the Groceries tick hook |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[02-matching\|02]] | decision | Matching: when is shampoo the same thing as Head & Shoulders? |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
@@ -61,6 +63,10 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[01-live-from-an-iphone-pwa\|01]] | research | Gemini Live from an iPhone PWA: ephemeral tokens, mic, playback, lock screen, cost |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[03-one-prompt\|03]] | decision | One prompt for every client: the persona, the frame, the honesty clause |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[05-chat-and-voice-ui\|05]] | prototype | The chat and voice UI: family view, workbench, and the Android chatbox |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[06-android-typed-chat\|06]] | decision | Android typed chat: a text turn into the Live session, or a separate text model |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[01-the-calendar-widget\|01]] | build | The calendar widget on the web home - month grid plus day view |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[02-delete-a-finished-list\|02]] | build | Delete a list, from Lists and from Home, and offer it when everything is ticked |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[04-when-did-i-last-buy-x\|04]] | build | When did I last buy X, from tick history, saying only what a tick can say |
@@ -195,6 +201,13 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[03-backfill\|03]] | decision | Backfill: do past Groceries ticks become bought entries?  waiting on [[01-the-bought-entry\|01]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[04-the-phones-half\|04]] | decision | The phone's half: Room replica and sync, or engine-only  waiting on [[01-the-bought-entry\|01]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[05-where-it-lives-on-screen\|05]] | prototype | Where the log lives on screen, phone and web  waiting on [[01-the-bought-entry\|01]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[06-server\|06]] | build | Server: table, API, tenancy, the Groceries hook, /mcp tools  waiting on [[01-the-bought-entry\|01]], [[02-matching\|02]], [[03-backfill\|03]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[07-web\|07]] | build | Web: the log screen, log-it form, last-bought on list items  waiting on [[05-where-it-lives-on-screen\|05]], [[06-server\|06]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[08-phone\|08]] | build | Phone: voice tools, the log screen, last-bought label  waiting on [[04-the-phones-half\|04]], [[05-where-it-lives-on-screen\|05]], [[06-server\|06]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[09-mia-on-her-iphone\|09]] | test | Mia logs and asks, on her iPhone  waiting on [[07-web\|07]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[03-transcribe-and-summarize\|03]] | build | One upload, a transcript and a summary out  waiting on [[01-the-recorder-and-the-mic\|01]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
@@ -202,6 +215,12 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[02b-rls-belt\|02]] | build | Postgres RLS keyed on a session variable Django sets per request  waiting on [[02b-rls-belt\|02]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[03-accounts-signup-invites\|03]] | build | Accounts: signup, create a household, invite codes, join, members; session auth for the browser  waiting on [[02b-rls-belt\|02]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[11-report-endpoints\|11]] | build | Report endpoints: aggregates computed once, described in the contract, unverified carried through  waiting on [[02b-rls-belt\|02]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[02-who-runs-the-tools\|02]] | decision | Who runs the tools for a browser session, and how the engine authenticates it  waiting on [[01-live-from-an-iphone-pwa\|01]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[04-web-tool-surface\|04]] | decision | The tool surface on the web: engine tools, plus which phone-only ones move  waiting on [[02-who-runs-the-tools\|02]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[07-engine-endpoints\|07]] | build | Engine: the token-minting endpoint and the session-authenticated tool path  waiting on [[02-who-runs-the-tools\|02]], [[04-web-tool-surface\|04]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[08-web-chat-and-voice\|08]] | build | Web: chatbox and live voice  waiting on [[03-one-prompt\|03]], [[05-chat-and-voice-ui\|05]], [[07-engine-endpoints\|07]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[09-android-chatbox\|09]] | build | Android: the typed chatbox  waiting on [[05-chat-and-voice-ui\|05]], [[06-android-typed-chat\|06]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[10-real-devices\|10]] | test | Mia talks to it on her iPhone; Kevin on the desktop and the phone  waiting on [[08-web-chat-and-voice\|08]], [[09-android-chatbox\|09]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[03-the-shell-split-by-viewport\|03]] | build | The shell split by viewport  waiting on [[02-design-tokens-light-dark-manifest-icons\|02]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[05-join-signup-and-settings\|05]] | build | Join, signup and settings  waiting on [[03-the-shell-split-by-viewport\|03]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[07-shared-and-private-on-the-web\|07]] | build | Shared and private on the web  waiting on [[03-the-shell-split-by-viewport\|03]], [[06-private-rows-on-the-engine\|06]] |
@@ -273,12 +292,14 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | 9 | 9 | [[.scratch/purchase-log/purchase-log.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 19 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 7 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | 10 | 10 | [[.scratch/web-assistant/web-assistant.canvas\|open]] |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | 18 | 17 | [[.scratch/web-revamp/web-revamp.canvas\|open]] |
 | [[.scratch/web-surface/map\|web-surface]] | 7 | 6 | [[.scratch/web-surface/web-surface.canvas\|open]] |

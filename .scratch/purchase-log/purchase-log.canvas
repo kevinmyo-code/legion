@@ -1,0 +1,180 @@
+{
+  "nodes": [
+    {
+      "id": "0743b4a5558fed2b",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/01-the-bought-entry.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "85f97daf324b24b0",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/02-matching.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "387bd3544140c775",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/03-backfill.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "469d23c6630f5336",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/04-the-phones-half.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ff2513a8053d833b",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/05-where-it-lives-on-screen.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f930b2e8921bb6e1",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/06-server.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "be96f55a8f7aeb91",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/07-web.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ffd6893600148e33",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/08-phone.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d3d1b88e8b4d0001",
+      "type": "file",
+      "file": ".scratch/purchase-log/issues/09-mia-on-her-iphone.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e17d7ad58abd2890",
+      "fromNode": "0743b4a5558fed2b",
+      "fromSide": "right",
+      "toNode": "387bd3544140c775",
+      "toSide": "left"
+    },
+    {
+      "id": "1ef6e2ac183404c6",
+      "fromNode": "0743b4a5558fed2b",
+      "fromSide": "right",
+      "toNode": "469d23c6630f5336",
+      "toSide": "left"
+    },
+    {
+      "id": "eaf5779dc14e4426",
+      "fromNode": "0743b4a5558fed2b",
+      "fromSide": "right",
+      "toNode": "ff2513a8053d833b",
+      "toSide": "left"
+    },
+    {
+      "id": "ed82c20157b2936d",
+      "fromNode": "0743b4a5558fed2b",
+      "fromSide": "right",
+      "toNode": "f930b2e8921bb6e1",
+      "toSide": "left"
+    },
+    {
+      "id": "b09a06a2b8bec485",
+      "fromNode": "85f97daf324b24b0",
+      "fromSide": "right",
+      "toNode": "f930b2e8921bb6e1",
+      "toSide": "left"
+    },
+    {
+      "id": "d53aee97323d7a99",
+      "fromNode": "387bd3544140c775",
+      "fromSide": "right",
+      "toNode": "f930b2e8921bb6e1",
+      "toSide": "left"
+    },
+    {
+      "id": "b252e11d1596c700",
+      "fromNode": "ff2513a8053d833b",
+      "fromSide": "right",
+      "toNode": "be96f55a8f7aeb91",
+      "toSide": "left"
+    },
+    {
+      "id": "d6fbce0297e513d0",
+      "fromNode": "f930b2e8921bb6e1",
+      "fromSide": "right",
+      "toNode": "be96f55a8f7aeb91",
+      "toSide": "left"
+    },
+    {
+      "id": "a2db6df773de217f",
+      "fromNode": "469d23c6630f5336",
+      "fromSide": "right",
+      "toNode": "ffd6893600148e33",
+      "toSide": "left"
+    },
+    {
+      "id": "1703524610043a83",
+      "fromNode": "ff2513a8053d833b",
+      "fromSide": "right",
+      "toNode": "ffd6893600148e33",
+      "toSide": "left"
+    },
+    {
+      "id": "088159b44b485d47",
+      "fromNode": "f930b2e8921bb6e1",
+      "fromSide": "right",
+      "toNode": "ffd6893600148e33",
+      "toSide": "left"
+    },
+    {
+      "id": "281999091ad05d66",
+      "fromNode": "be96f55a8f7aeb91",
+      "fromSide": "right",
+      "toNode": "d3d1b88e8b4d0001",
+      "toSide": "left"
+    }
+  ]
+}
