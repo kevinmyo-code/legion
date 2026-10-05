@@ -20,6 +20,7 @@ baseline one of those tests compares its render against.
 | `stat-tile-data-count.png` | `EngineWidgetStatesScreenshotTest` | `StatTileWidget` with one active record - a real `Count(1)`. |
 | `record-list-empty-in-words.png` | `EngineWidgetStatesScreenshotTest` | `RecordListWidget` against a real, zero-record record type - "NO RECORDS YET", worded emptiness rather than a blank list. |
 | `mirror-sync-no-folder.png` | `MirrorSyncNoFolderScreenshotTest` | `MirrorSyncActivity` before any mirror folder has ever been connected. |
+| `nav-*.png` (17) | `NavScreenScreenshotTest` | The nav screen (mapbox-nav ticket 10, layout A) with a flat stand-in for the map: choosing, several places match, a lookup that found nothing, preview, guiding (muted, unknowns, stops panel, routes panel, rerouting, reroute failed), arrived, ended, route failure, not set up, token refused. The route line, puck and camera are on the phone, not here. |
 
 No single `WidgetKind` carries all four states the ticket asks for (data / empty-in-words / error /
 not-configured) - see `EngineWidgetStatesScreenshotTest`'s own class doc for exactly which widget

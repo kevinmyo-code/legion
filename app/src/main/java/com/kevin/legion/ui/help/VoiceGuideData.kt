@@ -64,7 +64,6 @@ object VoiceGuideData {
                 Entry(name = "tag_place", say = "Save this as work", does = "Saves where you are now under a name, so reminders can trigger there.", hands = "Fleet > Saved places screen."),
                 Entry(name = "forget_place", say = "Forget the old gym", does = "Removes a saved place.", hands = "Fleet > Saved places screen, delete behind a confirm."),
                 Entry(name = "show_saved_places", say = "Show my saved places", does = "Puts your saved places on screen.", hands = "Is itself the Fleet > Saved places screen."),
-                Entry(name = "open_navigation", say = "Navigate to the hardware store", does = "Hands off to your maps app.", hands = "Fleet > Saved places screen, Navigate button on each place."),
                 Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Calendar tab, today's day view shows the same thing directly."),
                 Entry(name = "show_generated_view", say = "Show me my grocery spend by month", does = "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", hands = "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
                 Entry(name = "ask_engine", say = "What does the engine say is due this week?", does = "Asks your household server directly for records the phone does not keep itself - what is due, checklists, places, body, ledger, pantry and fleet history - and can add or change them. If the server is unreachable it says nothing was read or written, never that you have nothing.", hands = "A dispatcher onto data your own screens already show (Calendar, checklists, Body, Ledger, Pantry, Fleet, places, recordings); two internal sync tables with no screen are refused."),
@@ -108,6 +107,10 @@ object VoiceGuideData {
             title = "Driving",
             blurb = "Things that only make sense while you are actually out.",
             entries = listOf(
+                Entry(name = "navigate", say = "Take me to the hardware store", does = "Starts turn-by-turn directions inside LEGION, on its own map, with each turn spoken in one steady voice. It looks in your saved places, calendar and contacts first, then on the map. If several places could match it names the best one with its distance and waits for your yes before going. Say \"show me the routes\" to look without starting. It says so plainly when it could not find the place or no route came back.", hands = "Fleet > Navigate: type the place, pick a route, tap Start. Every saved place also has a Navigate button."),
+                Entry(name = "change_trip", say = "Add a stop at a gas station", does = "Changes the trip you are on: add or drop a stop, avoid tolls, highways or ferries, take the other route, mute or unmute the spoken turns (never the assistant itself), show the whole route or follow you again. If the new route cannot include the change it says the trip is unchanged.", hands = "The navigation screen: the Stops, No tolls, Routes and Mute tiles and the overview button. Avoiding highways or ferries is voice only."),
+                Entry(name = "trip_status", say = "How long until I get there?", does = "Reads the live trip: time left, distance left, arrival time, the next turn, the road you are on, the speed limit and traffic. With no trip it says it is not navigating, and a value the map does not have, like a speed limit on a road with none posted, it says it does not know.", hands = "The navigation screen's turn banner and trip sheet show the same numbers."),
+                Entry(name = "end_trip", say = "Stop navigating", does = "Ends the trip, or clears a route you were only previewing. Says so if nothing was running.", hands = "The navigation screen's End button."),
                 Entry(name = "activate_garage", say = "Open the garage", does = "Triggers the garage relay. Asks you to confirm, and never claims to know whether the door opened or closed.", hands = "Voice only - no garage button in the app."),
                 Entry(name = "control_volume", say = "Turn it up", does = "Changes the volume.", hands = "Media panel, volume control."),
             ),
@@ -250,6 +253,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 124 as of the last regeneration. */
-    val TOOL_COUNT: Int = 124
+    /** Total entries across every group above - 127 as of the last regeneration. */
+    val TOOL_COUNT: Int = 127
 }

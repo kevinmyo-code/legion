@@ -6045,6 +6045,71 @@ above for the wake half; "that will be all" sleeps unchanged. `WakePhrases.WAKE`
 `grammar(name)` is `["hey <name>"]`, or EMPTY for a blank name. Wake-word ticket 09's rule is
 live again: `WakeWordEngine.start` and `WakeKeywords.build` refuse a blank name in words.
 
+## 2026-10-03 - Mapbox returns: full native navigation, Mapbox only, for maximum voice control
+
+Kevin reopened the §3 drop. Asked how far voice navigation could go on the existing Google Maps
+hand-off (`open_navigation`, built and verified on the phone 2026-08-19), he was shown the ceiling:
+once Google Maps is open, LEGION cannot touch it. No public API reroutes, adds a stop, cancels, or
+reports the next turn or ETA. Kevin: *"how about mapbox? me as a single user should be free"*, then
+*"full mapbox native. i want max voice functionality"*.
+
+- **Cost is not an objection, as already found 2026-07-08.** Free tier (mapbox.com/pricing, read
+  2026-10-03): Nav SDK 100 MAU + 1,000 trips/month, Directions and Geocoding 100,000 requests/month
+  each. Two users. Free-drive mode also counts as trips (1 h cap each), so the app must never leave a
+  trip session running in the background.
+- **Embedded Nav SDK, not the Directions-API-only option.** The Directions-only option was offered
+  (answers ETA questions and leaves Google driving) and declined. The point is voice control DURING
+  a trip, which needs LEGION to own the route.
+- **Mapbox only, no Google fallback.** Asked directly whether the Google intent survives as a
+  fallback when there is no token, Kevin ruled it does not. No token means no navigation, said in
+  words and pointed at Setup. Same shape as Midnight AI's 2026-07-25 call. **The Google hand-off is
+  removed when Mapbox navigation ships, not before**: a working capability is not deleted ahead of
+  its replacement.
+- **Phone only.** Android Auto stays on the fog list, tied to `.scratch/android-auto/`.
+- **BYO token per household**, the same shape as the Gemini key. Nothing Kevin-hosted.
+
+Charted as `.scratch/mapbox-nav/`. ADR 0054.
+
+## 2026-10-03 - Mapbox research: buildable without a secret, one licence question open
+
+`.scratch/mapbox-nav/research/01-sdk-facts.md`. Nav SDK v3 and Maps, Search and maps-compose now
+download anonymously (tested with curl, Gradle not run), so clone-and-run needs no stub build.
++56 MB uncompressed for arm64. Every voice intent has a public API; adding a stop mid-trip rebuilds
+the route and starts a new billed trip. With no card on the account the caps are 20 Nav users and 100 guided trips,
+and hitting one cuts off every Mapbox API. Product Terms 1.2.2 "vehicle usage" may require a paid
+licence; Kevin to ask Mapbox in writing (ticket 13). 2.9.1 forbids raw REST from the phone alongside
+the SDK, and 2.7.2 / 2.10.1 forbid storing Mapbox results.
+
+## 2026-10-03 - Mapbox licence risk accepted; the token lives per phone
+
+Kevin on Product Terms 1.2.2: *"covers a phone app. im not gonna email mapbox man its just a hobby
+app for my self."* The clause stays ambiguous; the risk is accepted knowingly
+(`.scratch/mapbox-nav/issues/13-*.md`). Token placement delegated to Opus: per phone in `KeyVault`
+via Setup, plus a dev token baked from the `MAPBOX_ACCESS_TOKEN` Gradle property, `-Pnokey` baking an
+empty one (`issues/08-*.md`).
+
+## 2026-10-03 - Turn cues: Mapbox decides when, LEGION speaks them, a cue wins
+
+Kevin picked option C on `.scratch/mapbox-nav/issues/05-*.md`. Mapbox's own voice player is never
+wired; its instruction text is spoken by LEGION's speech path in one steady TTS voice, never by the
+persona. A cue pauses the assistant's playback and gates the mic through `MicArbiter`, so it is never
+transcribed as the user. The assistant answers questions about the route from SDK state via a tool.
+
+## 2026-10-03 - Navigation voice tools: four wide tools, read back when unsure, jump to the map
+
+Kevin on `.scratch/mapbox-nav/` tickets 04, 03 and 07: four wide tools (`navigate`, `change_trip`,
+`trip_status`, `end_trip`), each reporting success only from SDK state after the call; a destination
+is read back only when the match is ambiguous; a trip started by voice while LEGION is in the
+background brings the nav screen to the front.
+
+## 2026-10-03 - Nav screen A; destination lookup order; guidance survives the screen going off
+
+Kevin on `.scratch/mapbox-nav/`: the nav screen is prototype A (turn banner plus bottom sheet,
+ticket 06). A spoken destination resolves through saved places, then calendar event locations,
+then contact addresses, then Mapbox search via the Search SDK (ticket 03). Guidance keeps running
+with the screen off or the app backgrounded; a trip ends on arrival, End, or process death, never
+on leaving the nav screen (ticket 07).
+
 ## 2026-10-04 - The household bought log, and the assistant on the web
 
 Kevin: *"wife wants to be able to keep track when we bought certain household items. like shampoo
@@ -6098,3 +6163,15 @@ answer as close as possible to how real marcus would have." Built as the fourth 
 - **Payload:** Alfred's setup is unchanged (~22,279 estimated tokens, ceiling 22,500 untouched).
   Marcus-active measures ~22,922, over the ceiling number the way Kratos-active (~22,613) already is,
   because the ceiling test measures Alfred only. Not raised; reported.
+
+## 2026-10-05 - Raise the Live setup ceiling; merge the household work into dev
+
+Kevin, integrating nine finished branches (bought log, web assistant, typed chat on the phone, the
+Marcus companion, native Mapbox navigation): **the Live setup ceiling rises to 23,800 estimated
+tokens** (`LiveSetupPayloadSizeTest`), option A, chosen over trimming tool descriptions or making
+tools context-loaded. Measured on the merged tree: Alfred ~22,987 (91 declarations, 84,069 chars of
+tools JSON + 7,879 chars of system instruction), Kratos ~23,320, Marcus ~23,629 (`MarcusPayloadTest`
+now asserts the same ceiling for both). Headroom for the worst case is ~171 tokens, so the next
+tool addition needs its own measurement again.
+- **Household timezone setting:** Kevin ruled it, to be built next (not in this merge).
+- **Finished branches merge into dev** rather than waiting.

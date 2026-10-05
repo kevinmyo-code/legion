@@ -398,7 +398,7 @@ object SpotifyController {
 
     /**
      * The pure outcome -> spoken-line mapping, kept free of [Context] and the SDK's async
-     * plumbing (same shape as [com.kevin.legion.location.NavigationController.message]) so it is
+     * plumbing (the same pure outcome-to-sentence shape the navigation tools use) so it is
      * a plain JVM unit test. [description] is whatever the driver asked for in their own words
      * (a song/artist/playlist name) - every failure names it, so "nothing happened" always comes
      * with a "to what".

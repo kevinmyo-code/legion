@@ -352,6 +352,22 @@ object LegionRoute {
     const val SETTINGS_CAR_PROBE = "settings/car-probe"
 
     /**
+     * The navigation screen (`.scratch/mapbox-nav/` ticket 10, ADR 0054): destination, route preview,
+     * guidance. Replaces the spike's `settings/nav-spike`, which is gone. Reached from the Fleet
+     * screen's Navigate row and a saved place's Navigate action. [NAVIGATE_PLACE_ARG] is optional:
+     * a saved-place label that goes through the destination resolver as if it had been typed.
+     * A trip started here keeps running when the screen is left (ticket 07).
+     */
+    const val NAVIGATE = "navigate"
+
+    const val NAVIGATE_PLACE_ARG = "place"
+
+    /** The route pattern the graph registers: the optional place rides as a query argument. */
+    const val NAVIGATE_PATTERN = "navigate?$NAVIGATE_PLACE_ARG={$NAVIGATE_PLACE_ARG}"
+
+    fun navigateTo(placeLabel: String): String = "navigate?$NAVIGATE_PLACE_ARG=${android.net.Uri.encode(placeLabel)}"
+
+    /**
      * Connect Spotify - the entry point that makes the whole `media/` Spotify tier reachable
      * (2026-08-12). Same shape as [SETTINGS_DRIVE_SYNC]: before it,
      * [com.kevin.legion.ai.CompanionProfile.saveSpotifyClientId],

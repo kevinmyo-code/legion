@@ -133,6 +133,13 @@ class MainActivity : ComponentActivity() {
     // is: pressing Home twice delivers an identical intent.
     private var homePressNonce by mutableStateOf(0)
 
+    // A LAUNCHER-category start: the icon, or the Navigation SDK's own foreground notification (the
+    // SDK builds its content intent from `getLaunchIntentForPackage`, which is MAIN + LAUNCHER). With
+    // a trip running that start belongs on the nav screen, not wherever the Home press last left the
+    // app (mapbox-nav ticket 10, device-run defect 8). Nonce-keyed like the two above. A Home press
+    // is CATEGORY_HOME, not LAUNCHER, so pressing Home still goes home even mid-trip.
+    private var tripResumeNonce by mutableStateOf(0)
+
     // True only while LEGION is the DEFAULT home app. Back on HOME is swallowed only then - a
     // launcher that Back "exits" just redraws itself, while a normal app should still exit.
     // Re-read in onResume, since Kevin can switch the Home app in Settings at any time.
@@ -140,19 +147,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        readDeepLinkExtras(intent)
+        readDeepLinkExtras(intent, freshStart = savedInstanceState == null)
         // Fill the app drawer's cache in the background, so even the first APPS tap is instant.
         com.kevin.legion.ui.apps.AppDrawerCache.warm(this)
         setContent {
             LegionTheme {
-                LegionShell(
-                    deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce,
-                    openItemId = openItemId, openItemNonce = openItemNonce,
-                    spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
-                    onSpotifyRedirectConsumed = { spotifyRedirect = null },
-                    homePressNonce = homePressNonce,
-                    isDefaultHome = isDefaultHome,
-                )
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalTripResumeNonce provides tripResumeNonce,
+                ) {
+                    LegionShell(
+                        deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce,
+                        openItemId = openItemId, openItemNonce = openItemNonce,
+                        spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
+                        onSpotifyRedirectConsumed = { spotifyRedirect = null },
+                        homePressNonce = homePressNonce,
+                        isDefaultHome = isDefaultHome,
+                    )
+                }
             }
         }
     }
@@ -163,8 +174,15 @@ class MainActivity : ComponentActivity() {
         readDeepLinkExtras(intent)
     }
 
-    private fun readDeepLinkExtras(intent: Intent?) {
+    // [freshStart] is false for a rotation / process-restore recreate: the original launcher intent is still
+    // attached to the activity then, and must not pull a running trip's screen up a second time.
+    private fun readDeepLinkExtras(intent: Intent?, freshStart: Boolean = true) {
         if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) homePressNonce++
+        if (intent?.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER) &&
+            freshStart
+        ) {
+            tripResumeNonce++
+        }
         deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++
         val itemId = intent?.getLongExtra(ReminderAlarmReceiver.EXTRA_OPEN_ITEM_ID, -1L) ?: -1L
@@ -496,6 +514,11 @@ private fun LegionShell(
     isDefaultHome: Boolean = false,
 ) {
     val navController = rememberNavController()
+    // A launcher-category start (icon or the SDK's trip notification) with a trip running lands on the
+    // nav screen; see TripResumeEffect.
+    com.kevin.legion.ui.navigation.TripResumeEffect {
+        navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true }
+    }
 
     // Home press: back to HOME from wherever you are, dropping whatever was stacked on top of it.
     // Skipped on the initial 0 so a cold start doesn't navigate for no reason.
@@ -550,7 +573,11 @@ private fun LegionShell(
         // [deepLinkNonce] and [openItemNonce] tick together (both bump in [readDeepLinkExtras] on
         // every intent), so keying this single effect on [deepLinkNonce] alone still re-navigates
         // on a repeat reminder tap.
-        LegionRoute.deepLinkTargetFor(deepLinkRoute, openItemId)?.let { navController.navigate(it) }
+        // The nav screen is single-top: a voice-started trip brings LEGION forward onto it (mapbox-nav
+        // ticket 11), and it may already be the screen showing, which must not stack a second copy.
+        LegionRoute.deepLinkTargetFor(deepLinkRoute, openItemId)?.let { target ->
+            navController.navigate(target) { launchSingleTop = target == LegionRoute.NAVIGATE }
+        }
     }
 
     // The Spotify OAuth token exchange (2026-08-12). Runs HERE, above the NavHost, not inside
@@ -773,6 +800,19 @@ private fun LegionShell(
                     // the app now, and the drill-downs are reached by tapping the row that
                     // summarises them, exactly as they were reached from METERS.
                 }
+                // A trip keeps running when its screen is left (Home press, Back); this is the way
+                // back. Absent on the nav screen itself and when nothing is guiding.
+                com.kevin.legion.ui.navigation.TripReturnBar(
+                    onNavScreen = shellBackStackEntry?.destination?.route == LegionRoute.NAVIGATE_PATTERN,
+                    onOpen = { navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true } },
+                )
+                // mapbox-nav ticket 10: the two ways other screens open the nav screen.
+                val navEntryPoints = remember(navController) {
+                    com.kevin.legion.ui.navigation.NavEntryPoints(
+                        open = { navController.navigate(LegionRoute.NAVIGATE) },
+                        openFor = { label -> navController.navigate(LegionRoute.navigateTo(label)) },
+                    )
+                }
                 NavHost(
                     navController = navController,
                     // HOME is the start destination - **CORRECTED home-launcher ticket 03**: this
@@ -819,23 +859,29 @@ private fun LegionShell(
                 // As the home app, Back on HOME does nothing: there is nowhere behind the home
                 // screen to go. As an ordinary app it still exits (ADR 0050).
                 androidx.activity.compose.BackHandler(enabled = isDefaultHome) {}
-                com.kevin.legion.ui.home.HomeScreen(
-                    onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
-                    onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
-                    onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
-                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
-                    onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
-                    onOpenRecordings = {
-                        navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
-                    },
-                    onOpenNews = { navController.navigate(LegionRoute.NEWS) { launchSingleTop = true } },
-                    // "Reports" is the ASK screen (ticket 01's resolution: "Reports is the ASK
-                    // screen, the closed-enum builder over ledger and pantry").
-                    onOpenReports = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
-                    onOpenMedia = {
-                        navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
-                    },
-                )
+                // mapbox-nav: HOME's Maps button opens LEGION's own nav screen (ADR 0054), reached
+                // through the same local as Fleet's Navigate row.
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
+                ) {
+                    com.kevin.legion.ui.home.HomeScreen(
+                        onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                        onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
+                        onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
+                        onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
+                        onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
+                        onOpenRecordings = {
+                            navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
+                        },
+                        onOpenNews = { navController.navigate(LegionRoute.NEWS) { launchSingleTop = true } },
+                        // "Reports" is the ASK screen (ticket 01's resolution: "Reports is the ASK
+                        // screen, the closed-enum builder over ledger and pantry").
+                        onOpenReports = { navController.navigate(LegionRoute.ASK) { launchSingleTop = true } },
+                        onOpenMedia = {
+                            navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
+                        },
+                    )
+                }
             }
             // CALENDAR (home-launcher ticket 03): the month grid + day view, split back off HOME
             // now that HOME has its own content again - see [LegionRoute.CALENDAR]'s own doc
@@ -895,19 +941,25 @@ private fun LegionShell(
                 // UPLINK panel (ticket 09 answer §1) - FleetScreen no longer takes an
                 // onOpenTelemetry callback at all, see FLEET_TELEMETRY's own comment below
                 // for where the old nav entry point now lands.
-                FleetScreen(
-                    onOpenPlaces = { navController.navigate(LegionRoute.FLEET_PLACES) },
-                    onOpenCars = { navController.navigate(LegionRoute.FLEET_CARS) },
-                    onBack = { navController.popBackStack() },
-                    // Ticket 20: the UPLINK panel's DRIVE MODE row, inert since ticket 18,
-                    // gets its click wired here - ticket 11 answer §1's OFFER, never auto.
-                    onOpenDrivingMode = { navController.navigate(LegionRoute.DRIVING) { launchSingleTop = true } },
-                    // onSweepActiveChanged no longer wired here (home-launcher ticket 02) - it used
-                    // to feed `fleetSweepActive` above, which only ever fed [StatusLine]'s retired
-                    // `cursorSolid`. FleetScreen's own parameter still defaults to a no-op, so this
-                    // is unaffected on FleetScreen's side - see that parameter's own doc comment,
-                    // still accurate about what it reports, just unread now.
-                )
+                // mapbox-nav ticket 10: the Navigate row and a saved place's Navigate action reach the
+                // nav screen through this local (see NavEntryPoints for why not a parameter).
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
+                ) {
+                    FleetScreen(
+                        onOpenPlaces = { navController.navigate(LegionRoute.FLEET_PLACES) },
+                        onOpenCars = { navController.navigate(LegionRoute.FLEET_CARS) },
+                        onBack = { navController.popBackStack() },
+                        // Ticket 20: the UPLINK panel's DRIVE MODE row, inert since ticket 18,
+                        // gets its click wired here - ticket 11 answer §1's OFFER, never auto.
+                        onOpenDrivingMode = { navController.navigate(LegionRoute.DRIVING) { launchSingleTop = true } },
+                        // onSweepActiveChanged no longer wired here (home-launcher ticket 02) - it used
+                        // to feed `fleetSweepActive` above, which only ever fed [StatusLine]'s retired
+                        // `cursorSolid`. FleetScreen's own parameter still defaults to a no-op, so this
+                        // is unaffected on FleetScreen's side - see that parameter's own doc comment,
+                        // still accurate about what it reports, just unread now.
+                    )
+                }
             }
             // Ticket 20: full-bleed, no shell chrome (see isDrivingMode above) - a plain
             // popBackStack covers both exit paths DrivingModeScreen itself drives (the
@@ -916,7 +968,11 @@ private fun LegionShell(
                 DrivingModeScreen(onExit = { navController.popBackStack() })
             }
             composable(LegionRoute.FLEET_PLACES) {
-                SavedPlacesScreen(onBack = { navController.popBackStack() })
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
+                ) {
+                    SavedPlacesScreen(onBack = { navController.popBackStack() })
+                }
             }
             composable(LegionRoute.FLEET_CARS) {
                 CarsScreen(onBack = { navController.popBackStack() })
@@ -1060,6 +1116,26 @@ private fun LegionShell(
             // see CarProbeScreen's own doc for why this exists at all.
             composable(LegionRoute.SETTINGS_CAR_PROBE) {
                 CarProbeScreen(onBack = { navController.popBackStack() })
+            }
+            // mapbox-nav ticket 10 (ADR 0054): the navigation screen, replacing the spike. Fully qualified
+            // for the same reason as the dial screen above. The optional `place` argument is a saved
+            // place's Navigate action; it is resolved like typed text. Leaving this screen does NOT end
+            // a trip (ticket 07), so a plain popBackStack is correct here.
+            composable(
+                LegionRoute.NAVIGATE_PATTERN,
+                arguments = listOf(
+                    androidx.navigation.navArgument(LegionRoute.NAVIGATE_PLACE_ARG) {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                com.kevin.legion.ui.navigation.NavScreen(
+                    initialPlace = entry.arguments?.getString(LegionRoute.NAVIGATE_PLACE_ARG),
+                    onBack = { navController.popBackStack() },
+                    onOpenSetup = { navController.navigate(LegionRoute.SETTINGS_KEY) },
+                )
             }
             // Playbook/memory build (2026-08-18): both are single-screen, no sub-routes of their
             // own - the list-to-editor drill-down inside PlaybookScreen is internal Compose state,

@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.MidnightApplication
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiKeyValidator
 import com.kevin.legion.ai.KeyCheck
@@ -431,6 +432,13 @@ fun KeyScreen(onBack: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                 }
+
+                Spacer(Modifier.height(24.dp))
+
+                // --- Mapbox token (mapbox-nav ticket 09) - the row lives in MapboxTokenSection.kt ---
+                MapboxTokenSection((context.applicationContext as MidnightApplication).mapboxTokens)
+                Spacer(Modifier.height(8.dp))
+                MapboxTelemetrySection()
 
                 Spacer(Modifier.height(24.dp))
 

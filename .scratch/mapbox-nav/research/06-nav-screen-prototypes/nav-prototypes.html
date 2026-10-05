@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LEGION Nav Screen: A, B, C</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ground:#121317; --card:#1C1E24; --cardHigh:#24272E; --outline:#3A3E47; --text:#E6E7EC; --text2:#A9ADB8; --text3:#8A8F9B;
+          --primary:#FFB4A1; --onPrimary:#3B0A00; --pc:#733423; --onPc:#FFDBD1; --alert:#4A1F24; --onAlert:#FFB4AB;
+          --good:#7EDBA5; --teal:#77DCE5; --tealC:#0F3B40; --caution:#FFC857; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0c0f; color: var(--text); font-family: Figtree, system-ui, sans-serif; }
+  header { padding: 24px 24px 8px; max-width: 1320px; margin: 0 auto; }
+  header h1 { margin: 0 0 6px; font-size: 26px; }
+  header p { margin: 0; color: var(--text2); font-size: 15px; line-height: 1.5; }
+  .row { display: flex; flex-wrap: wrap; gap: 40px; justify-content: center; padding: 24px 16px 48px; }
+  .col { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .label { font-size: 18px; font-weight: 700; }
+  .states { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .states button { background: var(--card); color: var(--text2); border: 1px solid var(--outline); border-radius: 14px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .states button.on { background: var(--pc); color: var(--onPc); border-color: var(--pc); }
+  .phone { width: 384px; height: 832px; position: relative; overflow: hidden; background: var(--ground); border-radius: 28px; border: 1px solid #2a2d34; }
+  .phone button { font-family: inherit; cursor: pointer; }
+  .abs { position: absolute; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-radius: 28px 28px 0 0; padding: 14px 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--outline); align-self: center; }
+  .route { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 16px; color: var(--text); text-align: left; background: var(--cardHigh); border: 2px solid transparent; }
+  .route.sel { background: var(--tealC); border-color: var(--teal); }
+  .route .n { font-size: 16px; font-weight: 600; display: block; }
+  .route .v { font-size: 13px; color: var(--text2); display: block; }
+  .route .t { font-size: 18px; font-weight: 700; }
+  .primary { height: 52px; border: none; border-radius: 26px; background: var(--primary); color: var(--onPrimary); font-size: 17px; font-weight: 700; }
+  .ghost { height: 48px; border: 1px solid var(--outline); border-radius: 24px; background: transparent; color: var(--text); font-size: 15px; font-weight: 600; }
+  .end { border: none; background: var(--alert); color: var(--onAlert); font-weight: 600; }
+  .kicker { font-size: 13px; color: var(--good); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+  .muted-tag { background: var(--alert); color: var(--onAlert); font-size: 14px; padding: 8px 14px; border-radius: 14px; }
+  .assist { display: flex; align-items: center; gap: 10px; background: var(--cardHigh); border: 1px solid var(--outline); border-radius: 24px; padding: 8px 16px 8px 10px; font-size: 14px; color: var(--text2); }
+  .mic { width: 28px; height: 28px; border-radius: 14px; background: var(--pc); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 16px; font-size: 12px; font-weight: 600; border: none; background: var(--cardHigh); color: var(--text); }
+  .tile.on, .roundb.on, .chip.on { background: var(--pc); color: var(--onPc); border-color: var(--pc); }
+  .roundb { width: 52px; height: 52px; border-radius: 26px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--outline); background: var(--card); color: var(--text); }
+  .chip { height: 52px; border-radius: 16px; font-size: 14px; font-weight: 600; background: var(--card); color: var(--text); border: 1px solid var(--outline); }
+  .chip.end { border: 1px solid var(--alert); }
+  footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--text3); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nav screen: pick A, B or C</h1>
+  <p>Sized to the A25 (384 dp wide), soft Material dark. Each phone is clickable: pick a route, Start, add a stop, avoid tolls, mute, End. The chips above each phone jump to a state.</p>
+</header>
+<div class="row" id="row"></div>
+<footer>Prototype only. Map is a drawing, numbers are made up. Source: .scratch/mapbox-nav/research/06-nav-screen-prototypes/</footer>
+
+<script>
+const ICON = {
+  turn: (c, s) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20V10a3 3 0 0 0-3-3H6"/><path d="M10 3L6 7l4 4"/></svg>`,
+  plus: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  toll: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></svg>`,
+  list: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h16M4 18h7"/></svg>`,
+  mute: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M16 9l5 6M21 9l-5 6"/></svg>`,
+  fit: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`,
+  mic: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFDBD1" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`
+};
+const ROUTES = [
+  { n: 'Fastest', v: 'via I-69 S · has tolls', t: '18 min' },
+  { n: 'No tolls', v: 'via Kirby Dr', t: '21 min' },
+  { n: 'Shortest', v: 'via Westheimer Rd', t: '23 min' }
+];
+
+function map(st, h = 832, vb = '0 0 384 832') {
+  const path = st.tolls ? 'M170 640 V270 H230 V120' : 'M170 640 V470 H60 L45 270 H230 V120';
+  return `<svg class="abs" style="top:0;left:0" width="384" height="${h}" viewBox="${vb}" preserveAspectRatio="xMidYMid slice">
+    <rect width="384" height="832" fill="#17191E"/>
+    <rect x="20" y="150" width="120" height="90" rx="6" fill="#1D2026"/><rect x="190" y="130" width="160" height="110" rx="6" fill="#1D2026"/>
+    <rect x="30" y="300" width="110" height="140" rx="6" fill="#1B2A22"/><rect x="200" y="300" width="150" height="150" rx="6" fill="#1D2026"/>
+    <rect x="20" y="500" width="130" height="120" rx="6" fill="#1D2026"/><rect x="210" y="510" width="150" height="100" rx="6" fill="#1D2026"/>
+    <path d="M0 270 H384" stroke="#2C3038" stroke-width="16"/><path d="M0 470 H384" stroke="#2C3038" stroke-width="12"/>
+    <path d="M170 0 V832" stroke="#2C3038" stroke-width="16"/><path d="M60 0 L120 832" stroke="#25282F" stroke-width="10"/><path d="M300 0 V832" stroke="#25282F" stroke-width="10"/>
+    ${st.screen === 'preview' ? '<path d="M170 700 V470 H300 V120" fill="none" stroke="#3A3E47" stroke-width="7" stroke-dasharray="2 10" stroke-linecap="round"/>' : ''}
+    <path d="${path}" fill="none" stroke="#0F3B40" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${path}" fill="none" stroke="#77DCE5" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    ${st.stop ? '<circle cx="170" cy="380" r="11" fill="#FFC857" stroke="#121317" stroke-width="3"/>' : ''}
+    <circle cx="230" cy="120" r="12" fill="#FFB4A1" stroke="#121317" stroke-width="3"/>
+    <circle cx="170" cy="640" r="18" fill="#FFB4A1" fill-opacity=".2"/>
+    <path d="M170 626 L180 652 L170 646 L160 652 Z" fill="#FFB4A1" stroke="#121317" stroke-width="2" stroke-linejoin="round"/>
+  </svg>`;
+}
+const mins = st => 18 + (st.tolls ? 3 : 0) + (st.stop ? 5 : 0);
+const dist = st => st.stop ? '11.1 mi' : '9.4 mi';
+const arrive = st => '6:' + (24 + mins(st)) + ' PM';
+const on = b => b ? ' on' : '';
+
+function noSetup() {
+  return `<div class="abs" style="inset:0;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:32px">
+    <div style="width:56px;height:56px;border-radius:16px;background:var(--tealC);display:flex;align-items:center;justify-content:center">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#77DCE5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg></div>
+    <div style="font-size:24px;font-weight:700">Navigation isn't set up</div>
+    <div style="font-size:16px;color:var(--text2);line-height:1.5">LEGION needs a Mapbox token to draw maps and give directions. Nothing is navigating.</div>
+    <button class="primary" style="align-self:flex-start;padding:0 24px;height:48px;font-size:16px" data-act="preview">Add a token in Setup</button></div>`;
+}
+function previewSheet(st) {
+  return `<div class="sheet"><div class="grab"></div>
+    <div><div style="font-size:13px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">To</div>
+    <div style="font-size:22px;font-weight:700">Home</div><div style="font-size:14px;color:var(--text2)">Saved place · 9.4 mi</div></div>
+    ${ROUTES.map((r, i) => `<button class="route${st.route === i ? ' sel' : ''}" data-act="route" data-i="${i}" aria-pressed="${st.route === i}"><span><span class="n">${r.n}</span><span class="v">${r.v}</span></span><span class="t">${r.t}</span></button>`).join('')}
+    <button class="primary" data-act="start">Start</button></div>`;
+}
+function endSheet(st, floating) {
+  const title = st.ended ? 'Trip ended' : 'Arrived';
+  const line = st.ended ? 'Ended 2.1 mi short. Nothing is navigating.' : 'You are here. Nothing is navigating.';
+  const box = floating ? 'position:absolute;left:12px;right:12px;bottom:16px;border-radius:28px;border:1px solid var(--outline);background:var(--card);padding:20px;display:flex;flex-direction:column;gap:10px' : '';
+  return `<div class="${floating ? '' : 'sheet'}" style="${box}">
+    <div class="kicker">${title}</div><div style="font-size:24px;font-weight:700">Home</div>
+    <div style="font-size:15px;color:var(--text2)">${line}</div><button class="ghost" data-act="preview">Done</button></div>`;
+}
+function assist(text, style) {
+  return `<div class="abs" style="left:12px;right:12px;${style};display:flex;justify-content:center"><div class="assist"><span class="mic">${ICON.mic}</span><span>${text}</span></div></div>`;
+}
+
+const VARIANTS = {
+  A: { label: 'A. Bottom sheet', render(st) {
+    if (st.screen === 'nosetup') return noSetup();
+    let h = map(st);
+    if (st.screen === 'guiding') {
+      h += `<div class="abs" style="top:12px;left:12px;right:12px;background:var(--tealC);border-radius:20px;padding:16px;display:flex;gap:14px;align-items:center">
+        ${ICON.turn('#E6F9FB', 44)}<div><div style="font-size:30px;font-weight:700;color:#E6F9FB;line-height:1">0.3 mi</div>
+        <div style="font-size:18px;font-weight:600;color:#BDEFF4">Turn left onto Kirby Dr</div></div></div>
+        <div class="abs" style="top:112px;left:12px;background:var(--card);border-radius:0 0 14px 14px;padding:8px 14px;font-size:14px;color:var(--text2)">Then: merge onto I-69 S</div>
+        ${st.muted ? '<div class="abs muted-tag" style="top:112px;right:12px;border-radius:0 0 14px 14px">Turn cues muted</div>' : ''}
+        ${assist('"How long left?" Ask, or use the buttons', 'bottom:196px')}
+        <div class="sheet" style="gap:14px"><div class="grab"></div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between">
+            <div><div style="font-size:28px;font-weight:700;color:var(--good)">${mins(st)} min</div>
+            <div style="font-size:14px;color:var(--text2)">${dist(st)}${st.stop ? ' · via Shell, Westheimer' : ''} · arrive ${arrive(st)}</div></div>
+            <button class="end" style="height:44px;padding:0 20px;border-radius:22px;font-size:15px" data-act="end">End</button></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">
+            <button class="tile${on(st.stop)}" data-act="stop">${ICON.plus}<span>${st.stop ? 'Drop stop' : 'Add stop'}</span></button>
+            <button class="tile${on(st.tolls)}" data-act="tolls">${ICON.toll}<span>No tolls</span></button>
+            <button class="tile" data-act="preview">${ICON.list}<span>Routes</span></button>
+            <button class="tile${on(st.muted)}" data-act="mute">${ICON.mute}<span>${st.muted ? 'Unmute' : 'Mute'}</span></button></div></div>`;
+    } else if (st.screen === 'preview') {
+      h += assist('Say "take me home", or tap Start', 'bottom:384px') + previewSheet(st);
+    } else h += endSheet(st, false);
+    return h;
+  }},
+  B: { label: 'B. Turn card + button rail', render(st) {
+    if (st.screen === 'nosetup') return noSetup();
+    let h = map(st);
+    if (st.screen === 'guiding') {
+      h += `<div class="abs" style="top:12px;left:12px;width:280px;background:var(--card);border:1px solid var(--outline);border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:12px"><div style="width:56px;height:56px;border-radius:16px;background:var(--tealC);display:flex;align-items:center;justify-content:center">${ICON.turn('#77DCE5', 34)}</div>
+          <div style="font-size:36px;font-weight:700;line-height:1">0.3 mi</div></div>
+          <div style="font-size:19px;font-weight:600">Kirby Dr</div><div style="font-size:14px;color:var(--text2)">Then merge onto I-69 S</div></div>
+        <div class="abs" style="top:12px;right:12px;display:flex;flex-direction:column;gap:10px">
+          <button class="roundb${on(st.muted)}" data-act="mute" aria-label="Mute turn cues">${ICON.mute}</button>
+          <button class="roundb${on(st.tolls)}" data-act="tolls" aria-label="Avoid tolls">${ICON.toll}</button>
+          <button class="roundb${on(st.stop)}" data-act="stop" aria-label="Add a stop">${ICON.plus}</button>
+          <button class="roundb" data-act="preview" aria-label="Other routes">${ICON.list}</button>
+          <button class="roundb" aria-label="Show whole route">${ICON.fit}</button></div>
+        ${st.muted ? '<div class="abs muted-tag" style="top:188px;left:12px">Turn cues muted</div>' : ''}
+        ${assist('"Add a gas stop on the way"', 'bottom:96px')}
+        <div class="abs" style="left:12px;right:12px;bottom:16px;height:68px;background:var(--card);border:1px solid var(--outline);border-radius:34px;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 22px">
+          <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:24px;font-weight:700;color:var(--good)">${mins(st)} min</span>
+          <span style="font-size:14px;color:var(--text2)">${dist(st)} · ${arrive(st)}</span></div>
+          <button class="end" style="height:48px;padding:0 22px;border-radius:24px;font-size:15px" data-act="end">End</button></div>`;
+    } else if (st.screen === 'preview') h += previewSheet(st);
+    else h += endSheet(st, true);
+    return h;
+  }},
+  C: { label: 'C. Map over big panel', render(st) {
+    if (st.screen === 'nosetup') return noSetup();
+    const g = st.screen === 'guiding';
+    let h = map(st, g ? 368 : 832, g ? '0 300 384 368' : '0 0 384 832');
+    if (g) {
+      h += `<div class="abs" style="top:340px;left:0;right:0;bottom:0;background:var(--ground);border-radius:28px 28px 0 0;padding:20px 16px 16px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:16px"><div style="width:72px;height:72px;border-radius:20px;background:var(--tealC);display:flex;align-items:center;justify-content:center;flex-shrink:0">${ICON.turn('#77DCE5', 44)}</div>
+          <div><div style="font-size:40px;font-weight:700;line-height:1">0.3 mi</div><div style="font-size:19px;font-weight:600;color:#BDEFF4">Left onto Kirby Dr</div></div></div>
+        <div style="display:flex;gap:10px;font-size:14px;color:var(--text2);padding-left:4px"><span style="font-weight:600;color:var(--text3)">THEN</span><span>Merge onto I-69 S · 2.4 mi</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;background:var(--card);border-radius:18px;padding:12px">
+          <div><div style="font-size:12px;color:var(--text3)">Time left</div><div style="font-size:20px;font-weight:700;color:var(--good)">${mins(st)} min</div></div>
+          <div><div style="font-size:12px;color:var(--text3)">Distance</div><div style="font-size:20px;font-weight:700">${dist(st)}</div></div>
+          <div><div style="font-size:12px;color:var(--text3)">Arrive</div><div style="font-size:20px;font-weight:700">${arrive(st).replace(' PM', '')}</div></div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+          <button class="chip${on(st.stop)}" data-act="stop">${st.stop ? 'Drop stop' : 'Add stop'}</button>
+          <button class="chip${on(st.tolls)}" data-act="tolls">No tolls</button>
+          <button class="chip" data-act="preview">Routes</button>
+          <button class="chip${on(st.muted)}" data-act="mute">${st.muted ? 'Unmute' : 'Mute'}</button>
+          <button class="chip">Overview</button>
+          <button class="chip end" data-act="end">End</button></div>
+        <div style="margin-top:auto;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text2)"><span class="mic" style="width:32px;height:32px;border-radius:16px">${ICON.mic}</span>
+          <span>${st.muted ? 'Turn cues muted. Ask "what\'s next?" any time' : 'Ask "how long left?" or tap'}</span></div></div>`;
+    } else if (st.screen === 'preview') h += previewSheet(st);
+    else h += endSheet(st, false);
+    return h;
+  }}
+};
+
+const STATES = ['preview', 'guiding', 'arrived', 'nosetup'];
+const state = {};
+const row = document.getElementById('row');
+for (const k of Object.keys(VARIANTS)) {
+  state[k] = { screen: 'guiding', muted: false, tolls: false, stop: false, route: 0, ended: false };
+  row.insertAdjacentHTML('beforeend', `<div class="col"><div class="label">${VARIANTS[k].label}</div><div class="states" id="s${k}"></div><div class="phone" id="p${k}"></div></div>`);
+}
+function draw(k) {
+  const st = state[k];
+  document.getElementById('p' + k).innerHTML = VARIANTS[k].render(st);
+  document.getElementById('s' + k).innerHTML = STATES.map(s => `<button class="${st.screen === s ? 'on' : ''}" data-jump="${s}">${s === 'nosetup' ? 'not set up' : s}</button>`).join('');
+}
+row.addEventListener('click', e => {
+  const col = e.target.closest('.col'); if (!col) return;
+  const k = col.querySelector('.phone').id.slice(1); const st = state[k];
+  const jump = e.target.closest('[data-jump]');
+  if (jump) { st.screen = jump.dataset.jump; st.ended = false; return draw(k); }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  switch (b.dataset.act) {
+    case 'route': st.route = +b.dataset.i; st.tolls = st.route === 1; break;
+    case 'start': st.screen = 'guiding'; break;
+    case 'end': st.screen = 'arrived'; st.ended = true; break;
+    case 'preview': st.screen = 'preview'; st.ended = false; break;
+    case 'mute': st.muted = !st.muted; break;
+    case 'tolls': st.tolls = !st.tolls; break;
+    case 'stop': st.stop = !st.stop; break;
+  }
+  draw(k);
+});
+Object.keys(VARIANTS).forEach(draw);
+</script>
+</body>
+</html>

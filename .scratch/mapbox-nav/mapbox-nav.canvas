@@ -1,0 +1,262 @@
+{
+  "nodes": [
+    {
+      "id": "1364711bd5f3a267",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/01-sdk-facts.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8c41b4eb08207027",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/13-vehicle-usage-clause.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "66e114db4acaefbd",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/02-build-with-and-without-credentials.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3d2747d30b71f6b1",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/03-resolving-a-spoken-destination.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "bc34f30b578d9e9e",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/04-voice-tool-surface.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4a27f8dee7c6455b",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/05-who-speaks-the-turns.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "872850f0c25c5c56",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/07-trip-lifecycle.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9b54d2c3baccf004",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/08-where-the-token-lives.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "fc0dba35b433d06c",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/06-the-nav-screen.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "5f2184feb0b6b970",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/09-sdk-in-the-build.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8a5aa7cf49e4ad9c",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/10-route-and-guidance.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "37fd5924ceae2dd3",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/11-voice-tools-over-the-live-trip.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ca88ae2374236297",
+      "type": "file",
+      "file": ".scratch/mapbox-nav/issues/12-a-real-drive.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "03739549bbf0ef22",
+      "fromNode": "1364711bd5f3a267",
+      "fromSide": "right",
+      "toNode": "66e114db4acaefbd",
+      "toSide": "left"
+    },
+    {
+      "id": "e73f5be9dc595f75",
+      "fromNode": "1364711bd5f3a267",
+      "fromSide": "right",
+      "toNode": "3d2747d30b71f6b1",
+      "toSide": "left"
+    },
+    {
+      "id": "1aca08f78f5b5f46",
+      "fromNode": "1364711bd5f3a267",
+      "fromSide": "right",
+      "toNode": "bc34f30b578d9e9e",
+      "toSide": "left"
+    },
+    {
+      "id": "22e6f60db5fc5a32",
+      "fromNode": "1364711bd5f3a267",
+      "fromSide": "right",
+      "toNode": "4a27f8dee7c6455b",
+      "toSide": "left"
+    },
+    {
+      "id": "dff2ea1bd4af0cce",
+      "fromNode": "bc34f30b578d9e9e",
+      "fromSide": "right",
+      "toNode": "fc0dba35b433d06c",
+      "toSide": "left"
+    },
+    {
+      "id": "715ee03545cd9d1d",
+      "fromNode": "1364711bd5f3a267",
+      "fromSide": "right",
+      "toNode": "872850f0c25c5c56",
+      "toSide": "left"
+    },
+    {
+      "id": "7b980dfe44c1b776",
+      "fromNode": "1364711bd5f3a267",
+      "fromSide": "right",
+      "toNode": "9b54d2c3baccf004",
+      "toSide": "left"
+    },
+    {
+      "id": "68447633d311c57a",
+      "fromNode": "66e114db4acaefbd",
+      "fromSide": "right",
+      "toNode": "5f2184feb0b6b970",
+      "toSide": "left"
+    },
+    {
+      "id": "8c3b0d9c45d94374",
+      "fromNode": "9b54d2c3baccf004",
+      "fromSide": "right",
+      "toNode": "5f2184feb0b6b970",
+      "toSide": "left"
+    },
+    {
+      "id": "ed8f25d48b7f2d5d",
+      "fromNode": "8c41b4eb08207027",
+      "fromSide": "right",
+      "toNode": "5f2184feb0b6b970",
+      "toSide": "left"
+    },
+    {
+      "id": "11e808513da310f0",
+      "fromNode": "3d2747d30b71f6b1",
+      "fromSide": "right",
+      "toNode": "8a5aa7cf49e4ad9c",
+      "toSide": "left"
+    },
+    {
+      "id": "423fb733535c50fb",
+      "fromNode": "fc0dba35b433d06c",
+      "fromSide": "right",
+      "toNode": "8a5aa7cf49e4ad9c",
+      "toSide": "left"
+    },
+    {
+      "id": "7f8f8633bc4eb20a",
+      "fromNode": "872850f0c25c5c56",
+      "fromSide": "right",
+      "toNode": "8a5aa7cf49e4ad9c",
+      "toSide": "left"
+    },
+    {
+      "id": "448d962b274a181a",
+      "fromNode": "5f2184feb0b6b970",
+      "fromSide": "right",
+      "toNode": "8a5aa7cf49e4ad9c",
+      "toSide": "left"
+    },
+    {
+      "id": "1d3b9c100dcce4ce",
+      "fromNode": "bc34f30b578d9e9e",
+      "fromSide": "right",
+      "toNode": "37fd5924ceae2dd3",
+      "toSide": "left"
+    },
+    {
+      "id": "bb8e3314498b2c93",
+      "fromNode": "4a27f8dee7c6455b",
+      "fromSide": "right",
+      "toNode": "37fd5924ceae2dd3",
+      "toSide": "left"
+    },
+    {
+      "id": "d8598a8a24d8e24c",
+      "fromNode": "8a5aa7cf49e4ad9c",
+      "fromSide": "right",
+      "toNode": "37fd5924ceae2dd3",
+      "toSide": "left"
+    },
+    {
+      "id": "85757c93705fb5d8",
+      "fromNode": "37fd5924ceae2dd3",
+      "fromSide": "right",
+      "toNode": "ca88ae2374236297",
+      "toSide": "left"
+    }
+  ]
+}

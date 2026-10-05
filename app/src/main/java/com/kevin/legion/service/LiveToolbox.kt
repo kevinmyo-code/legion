@@ -41,7 +41,6 @@ import com.kevin.legion.workouts.WorkoutController
 import com.kevin.legion.location.AreaInfo
 import com.kevin.legion.location.CrimeHistory
 import com.kevin.legion.location.LocationController
-import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.util.Temp
 import com.kevin.legion.util.documentDate
@@ -564,23 +563,67 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "open_navigation",
-            description = "Open the user's map app on a destination they name - 'take me to', " +
-                "'navigate to', 'where is', 'show me on the map'. mode 'navigate' starts " +
-                "turn-by-turn guidance in Google Maps; mode 'show' just drops the place on the " +
-                "map without starting directions. Defaults to navigate. LEGION does not draw a " +
-                "map itself; this hands off to the map app on the phone. It reports honestly " +
-                "whether the map actually opened - if it comes back unsuccessful, tell the " +
-                "user plainly that nothing opened and never say you started navigation.",
+            name = "navigate",
+            description = "Start turn-by-turn navigation in LEGION's own map ('take me to', 'directions " +
+                "to', 'nearest gas station'), or with preview=true only show the routes. Looks in " +
+                "saved places, calendar and contacts, then the map. Say navigation started, or give " +
+                "an arrival time, only if the result says so; on failure nothing is navigating, say " +
+                "why. If the result says several places match, NOTHING started: read the top pick " +
+                "back with its distance, wait for a yes, then call again with the same destination " +
+                "and choice=1 (choice=N for another, in the order read). Refuses while a trip " +
+                "runs: use change_trip or end_trip. If the map could not be brought up, say so; " +
+                "guidance still runs.",
             params = obj(
                 "destination" to schema("string",
-                    "Where the user wants to go, in their own words - an address, a business " +
-                        "name, or a place, e.g. '2200 Kirby Drive' or 'the nearest Shell station'."),
-                "mode" to schema("string",
-                    "'navigate' for turn-by-turn (the default), 'show' to just display it.",
-                    enum = listOf("navigate", "show")),
+                    "Where to, in the user's words: saved place, event, contact, address, business."),
+                "via" to schema("string", "Optional stop on the way."),
+                "avoid" to schema("string", "Optional: tolls, highways, ferries (comma separated)."),
+                "preview" to schema("boolean", "True to only show the routes, not start."),
+                "choice" to schema("integer",
+                    "Only after the user answered 'several places match': 1 is the top pick."),
             ),
             required = listOf("destination"),
+        ))
+
+        fns.put(fn(
+            name = "change_trip",
+            description = "Change the running or previewed trip: add_stop, remove_stop, avoid, " +
+                "take_alternative, mute/unmute (spoken TURN cues only, never you), overview, " +
+                "recenter. Say a change happened only if the result says so; unsuccessful means the " +
+                "trip is unchanged, say that. With no trip, say nothing is navigating. If add_stop " +
+                "says several places match, read the top pick back, wait, then call again with choice.",
+            params = obj(
+                "action" to schema("string", "What to do.",
+                    enum = listOf("add_stop", "remove_stop", "avoid", "take_alternative", "mute",
+                        "unmute", "overview", "recenter")),
+                "place" to schema("string", "add_stop: where. remove_stop: part of the stop's name."),
+                "avoid" to schema("string", "avoid: tolls, highways, ferries, or none to allow all."),
+                "route" to schema("integer",
+                    "take_alternative: the number in the order the routes were read out; 1 is in use."),
+                "choice" to schema("integer", "Only after 'several places match' for add_stop."),
+            ),
+            required = listOf("action"),
+        ))
+
+        fns.put(fn(
+            name = "trip_status",
+            description = "Read the running trip: time_left, distance_left, arrival, next_turn, road, " +
+                "speed_limit, traffic. If not navigating, or a value is unknown, say exactly that; " +
+                "never invent a figure.",
+            params = obj(
+                "ask" to schema("string", "What to read.",
+                    enum = listOf("time_left", "distance_left", "arrival", "next_turn", "road",
+                        "speed_limit", "traffic")),
+            ),
+            required = listOf("ask"),
+        ))
+
+        fns.put(fn(
+            name = "end_trip",
+            description = "End the running trip or clear a route preview. Say it ended only if the " +
+                "result says so.",
+            params = obj(),
+            required = emptyList(),
         ))
 
         fns.put(fn(
@@ -2662,7 +2705,7 @@ object LiveToolbox {
             )
             "browse_my_music" -> browseMyMusic(context, args)
             "get_music_queue" -> getMusicQueue(context, args)
-            "open_navigation" -> openNavigation(context, args)
+            "navigate", "change_trip", "trip_status", "end_trip" -> navVoiceTool(context, name, args)
             "show_app" -> showApp(context)
             // set_reminder/tag_place/forget_place/register_vehicle: success DERIVED from the
             // controller's own outcome, never hardcoded. All four used to pass `success = true`
@@ -7688,7 +7731,7 @@ object LiveToolbox {
         // ensureConnected -> connectSwitchToLocalDevice -> play(uri), and it awaits App Remote's
         // real result, so a Started outcome genuinely means playback started - not just that the
         // call didn't throw. SpotifyController.message/succeeded are the pure outcome -> spoken
-        // mapping (same shape as NavigationController's), so every one of the four distinct
+        // mapping (same shape as the navigation tools' result mapping), so every one of the four distinct
         // connect failures the research called for gets its own line here, never one generic one.
         val outcome = SpotifyController.playUri(context, uri, pickedLabel = pickedLabel)
         if (SpotifyController.succeeded(outcome)) {
@@ -7932,34 +7975,39 @@ object LiveToolbox {
             "wrong song is worse than an honest no."
     }
 
-    /** Brings our own app to the foreground on request. */
     /**
-     * Hands a destination to the phone's map app via [NavigationController].
-     *
-     * Ticket 03 of `.scratch/drive-test-2026-08-18/` exists because the assistant told Kevin, on
-     * a real drive, that it had opened Maps when the app had no navigation capability at all -
-     * with nothing to call, the model produced a plausible sentence. So the load-bearing rule
-     * here is that success is DERIVED from whether `startActivity` actually ran, exactly like
-     * `set_odometer`/`log_service`'s no-op guard: a tool that returns true unconditionally would
-     * reproduce the original bug behind a tool call instead of in front of one.
-     *
-     * The map-pin fallback returns success WITH a message, because something real but lesser
-     * happened and the driver has to be told which one they got.
+     * The four navigation tools (mapbox-nav tickets 04 and 11). The logic is [NavVoiceTools]; this
+     * only parses arguments and maps its result. Run on Main because the Mapbox SDK and the
+     * controller are main-thread only.
      */
-    private fun openNavigation(context: Context, args: JSONObject): JSONObject {
-        val destination = args.optString("destination").trim()
-        val mode = if (args.optString("mode", "navigate") == "show") {
-            NavigationController.Mode.SHOW
-        } else {
-            NavigationController.Mode.NAVIGATE
+    private suspend fun navVoiceTool(context: Context, name: String, args: JSONObject): JSONObject {
+        val app = context.applicationContext as? com.kevin.legion.MidnightApplication
+            ?: return result(false, "Navigation isn't available here. Nothing has started.")
+        val tools = app.navVoiceTools
+        val r = withContext(Dispatchers.Main) {
+            when (name) {
+                "navigate" -> tools.navigate(
+                    destination = args.optString("destination"),
+                    via = args.optString("via").ifBlank { null },
+                    avoid = args.optString("avoid").ifBlank { null },
+                    preview = args.optBoolean("preview", false),
+                    choice = args.optInt("choice", 0).takeIf { it > 0 },
+                )
+                "change_trip" -> tools.changeTrip(
+                    action = args.optString("action"),
+                    place = args.optString("place").ifBlank { null },
+                    avoid = args.optString("avoid").ifBlank { null },
+                    route = args.optInt("route", 0).takeIf { it > 0 },
+                    choice = args.optInt("choice", 0).takeIf { it > 0 },
+                )
+                "trip_status" -> tools.tripStatus(args.optString("ask"))
+                else -> tools.endTrip()
+            }
         }
-        val outcome = NavigationController.launch(context, destination, mode)
-        return result(
-            success = NavigationController.succeeded(outcome),
-            message = NavigationController.message(outcome, destination),
-        )
+        return result(r.success, r.message)
     }
 
+    /** Brings our own app to the foreground on request. */
     private fun showApp(context: Context): JSONObject {
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT) }

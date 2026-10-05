@@ -18,8 +18,8 @@ import org.robolectric.RobolectricTestRunner
  * system instruction = persona clause + delivery + [SHARED_INSTRUCTIONS]).
  *
  * **Why a second test and not a second ceiling.** [LiveSetupPayloadSizeTest] measures [ALFRED], the
- * default companion, and its ceiling is deliberately not touched here (CLAUDE.md / the brief: if a
- * change needs the ceiling moved, measure and report rather than raise it). Every persona has a
+ * default companion, and its ceiling (raised to 23,800 by Kevin's
+ * ruling 2026-10-05, option A) was written for Alfred alone and is re-asserted below for Kratos and Marcus. Every persona has a
  * different register length, so that test cannot speak for the others: Kratos's clause is already
  * ~1,400 chars longer than Alfred's. What this pins is Marcus's OWN delta, so growth in his clause or
  * his tool shows up as a failure with a number on it.
@@ -29,6 +29,9 @@ import org.robolectric.RobolectricTestRunner
  */
 @RunWith(RobolectricTestRunner::class)
 class MarcusPayloadTest {
+
+    // Mirrors LiveSetupPayloadSizeTest.ceilingTokens; two private copies are cheaper than widening one.
+    private val LIVE_SETUP_CEILING_TOKENS = 23_800
 
     private fun tokens(chars: Int) = chars / 4
 
@@ -62,6 +65,12 @@ class MarcusPayloadTest {
                 "(~${tokens(clauseDelta)} tokens) over Alfred; totals alfred ~${tokens(alfredTotal)}, " +
                 "kratos ~${tokens(kratosTotal)}, marcus ~${tokens(marcusTotal)} estimated tokens (chars/4)",
         )
+
+        // The ceiling Kevin set 2026-10-05 (option A) covers every companion, not only Alfred, which
+        // is the only one LiveSetupPayloadSizeTest measures. Measured at that merge: kratos ~23,320,
+        // marcus ~23,629. A persona that outgrows it trips here with its own number.
+        assertTrue("kratos is ~${tokens(kratosTotal)} tokens", tokens(kratosTotal) <= LIVE_SETUP_CEILING_TOKENS)
+        assertTrue("marcus is ~${tokens(marcusTotal)} tokens", tokens(marcusTotal) <= LIVE_SETUP_CEILING_TOKENS)
 
         // ~225 tokens for the one declaration. It is trimmed to the rules that matter (quote only
         // what it returned, say paraphrase, say when nothing matched); more than this and it should

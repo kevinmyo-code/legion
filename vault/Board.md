@@ -123,6 +123,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/home-launcher/map\|home-launcher]] | [[02-soft-theme-and-chrome\|02]] | build | Soft theme, bundled font and icons, and the shell chrome restyled |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[07-settings-menu-letter-folders-category-buttons\|07]] | build | Settings menu, letter folders in Apps, and category buttons under the dock |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
+| [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[09-sdk-in-the-build\|09]] | build | Mapbox in the build, behind the clone-and-run gate, with token setup |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
 | [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |
@@ -197,6 +198,9 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
+| [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[10-route-and-guidance\|10]] | build | Route and guidance on the nav screen  waiting on [[09-sdk-in-the-build\|09]] |
+| [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[11-voice-tools-over-the-live-trip\|11]] | build | Voice tools over the live trip, and the Google hand-off retired  waiting on [[10-route-and-guidance\|10]] |
+| [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[12-a-real-drive\|12]] | test | A real drive on the A25  waiting on [[11-voice-tools-over-the-live-trip\|11]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[07-web\|07]] | build | Web: the log screen, log-it form, last-bought on list items  waiting on [[06-server\|06]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[08-phone\|08]] | build | Phone: voice tools, the log screen, last-bought label  waiting on [[06-server\|06]] |
@@ -275,6 +279,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
 | [[.scratch/live-sync/map\|live-sync]] | 0 | 0 | [[.scratch/live-sync/live-sync.canvas\|open]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
+| [[.scratch/mapbox-nav/map\|mapbox-nav]] | 13 | 4 | [[.scratch/mapbox-nav/mapbox-nav.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 11 | 7 | [[.scratch/one-home/one-home.canvas\|open]] |

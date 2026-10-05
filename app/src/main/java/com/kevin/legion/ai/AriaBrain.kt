@@ -653,15 +653,22 @@ class AriaBrain private constructor(context: Context) {
                 "get_current_location tool to fetch the latest fix.")
         }
 
-        // Navigation (ticket 03 of .scratch/drive-test-2026-08-18/): before this tool existed the
-        // model had nothing to call, so it answered "opening Maps now" in free text and opened
-        // nothing. The honesty clause is the point, not the capability.
-        sb.appendSection("To take the user somewhere, call open_navigation with the destination " +
-            "- it hands off to the map app on the phone (turn-by-turn with mode 'navigate', a " +
-            "plain map pin with mode 'show'). You cannot open a map any other way, and LEGION " +
-            "draws no map of its own. NEVER say you have opened a map, started navigation or set " +
-            "a destination unless open_navigation came back successful: if it fails, say plainly " +
-            "that nothing opened and why it said it couldn't.")
+        // Navigation (ticket 03 of .scratch/drive-test-2026-08-18/, rewritten by mapbox-nav ticket
+        // 11): before a navigation tool existed the model had nothing to call, so it answered
+        // "opening Maps now" in free text and opened nothing. This section used to describe a
+        // hand-off to the phone's map app (open_navigation, gone with ADR 0054); LEGION now
+        // navigates itself, with four tools. The honesty clause is the point, not the capability.
+        sb.appendSection("To take the user somewhere, call navigate with the destination: LEGION " +
+            "navigates inside its own map. To change a trip that is running or previewed (add or " +
+            "drop a stop, avoid tolls, highways or ferries, another route, mute the turn cues, " +
+            "show the whole route) call change_trip. To answer how long is left, how far, when " +
+            "they arrive, the next turn, the road, the speed limit or traffic, call trip_status " +
+            "and read what it returns. To stop, call end_trip. NEVER say you have started " +
+            "navigation, changed the trip, ended it or given an arrival time unless the tool " +
+            "came back successful in that turn: if it fails, say plainly that nothing happened " +
+            "and why it said it couldn't. When navigate says several places match, read the top " +
+            "pick back with its distance and wait for a yes before calling it again. You never " +
+            "speak the turn-by-turn cues yourself: LEGION says those, in its own voice.")
 
         val currentPlace = PlaceController.currentLabel(appContext)
         if (currentPlace != null) {
@@ -947,8 +954,8 @@ class AriaBrain private constructor(context: Context) {
  *
  *  - **No list of what LEGION cannot do.** A negative list is correct only until the next tool
  *    lands, and burns tokens every turn describing absences. The rule is conditioned on the tool
- *    RESULT instead, so it stays true as the toolset grows - the day `open_navigation` landed, the
- *    clause needed no edit.
+ *    RESULT instead, so it stays true as the toolset grows - the day the first navigation tool
+ *    landed (`open_navigation`, since replaced by `navigate`), the clause needed no edit.
  *  - **It offers the nearest thing it really has** (Kevin's call on register), with the trap named
  *    in the text: the nearest thing must itself be a real tool, or the clause has merely moved the
  *    invention one sentence later.

@@ -30,7 +30,13 @@ import android.util.Log
  * 3. [Claimant.VOICE_NOTE] - a recording Kevin deliberately started (voice-notes ticket 01,
  *    `.scratch/voice-notes/issues/01-the-recorder-and-the-mic.md`). See [outranks] for its one
  *    asymmetric rule against [Claimant.LIVE_TURN].
- * 4. [Claimant.WAKE_WORD] - yields to everything, and is expected to keep trying to reacquire once
+ * 4. [Claimant.NAV_CUE] - a spoken navigation turn cue (mapbox-nav tickets 05 and 11), held only
+ *    for the seconds the cue is being said so the wake word's recognizer cannot hear it. It sits
+ *    BELOW every conversation-shaped claimant on purpose: a cue must never preempt a live turn
+ *    (that would fire [Listener.onMicPreempted] and end the user's conversation), so it is refused
+ *    while one holds the mic and the live session gates its own capture instead (see
+ *    [AssistantCueHold]). It does take the mic from [Claimant.WAKE_WORD].
+ * 5. [Claimant.WAKE_WORD] - yields to everything, and is expected to keep trying to reacquire once
  *    whatever preempted it releases (see [WakeWordEngine]'s watchdog - that retry loop lives on
  *    the claimant, not here, because it is the only claimant that ever needs one).
  *
@@ -43,8 +49,9 @@ object MicArbiter {
     private const val TAG = "MicArbiter"
 
     /** Declared in priority order - see the class doc. Do not reorder without re-reading ticket 05
-     * (for the first three) and voice-notes ticket 01 (for [VOICE_NOTE]'s insertion point). */
-    enum class Claimant { LIVE_TURN, RING_LISTENING, VOICE_NOTE, WAKE_WORD }
+     * (for the first three), voice-notes ticket 01 (for [VOICE_NOTE]'s insertion point) and
+     * mapbox-nav ticket 11 (for [NAV_CUE]'s). */
+    enum class Claimant { LIVE_TURN, RING_LISTENING, VOICE_NOTE, NAV_CUE, WAKE_WORD }
 
     /**
      * Does [requester] take the mic away from [holder]? [requester] already holding it (an

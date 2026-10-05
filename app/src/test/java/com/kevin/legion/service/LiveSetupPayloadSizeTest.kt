@@ -118,8 +118,29 @@ class LiveSetupPayloadSizeTest {
      * leaves 8 tokens of headroom. It is ONE action-dispatched declaration (log / last / recent),
      * not three, and its description was trimmed three times to fit; the next tool addition trips
      * this test and needs its own measurement and justification.
+     *
+     * **Raised to 22,750 on 2026-10-03 (mapbox-nav ticket 11, the four navigation tools).**
+     * Measured that day: 89 declarations, 82,547 chars of tools JSON plus 7,879 chars of system
+     * instruction = 90,426 chars, ~22,606 estimated tokens, against ~22,111 before (about 495
+     * tokens net: four declarations in, `open_navigation` out). Kevin ruled four wide tools
+     * (ticket 04) precisely because Live re-bills every declaration every turn, so the surface
+     * is already the narrow option; each description was cut to the sentences that carry an
+     * honesty rule (an outcome verb only after a successful result, "several places match means
+     * nothing started", "not navigating" is its own answer, mute never mutes the assistant) and
+     * `navigate` is the largest at roughly 1,200 chars. Trimming those would weaken the exact
+     * clauses CLAUDE.md sec 7 requires, so the ceiling moved. Headroom is ~0.6%, so the next
+     * tool addition trips this again, as intended.
+     *
+     * **Raised to 23,800 on 2026-10-05 (integration of the nine finished branches).** Kevin ruled
+     * option A (raise), 2026-10-05, over trimming descriptions or making tools context-loaded. Measured
+     * on the merged tree: 91 declarations, 84,069 chars of tools JSON plus 7,879 chars of system
+     * instruction = 91,948 chars, ~22,987 estimated tokens for Alfred (this test's subject). The
+     * other two built-in companions that carry a longer persona clause, same tools plus Marcus's
+     * `consult_meditations` for him (`MarcusPayloadTest`, which asserts the same ceiling): Kratos
+     * ~23,320, Marcus ~23,629. Headroom for the worst of the three is ~171 tokens (~0.7%), so
+     * the next tool addition trips this again, as intended.
      */
-    private val ceilingTokens = 22_500
+    private val ceilingTokens = 23_800
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {

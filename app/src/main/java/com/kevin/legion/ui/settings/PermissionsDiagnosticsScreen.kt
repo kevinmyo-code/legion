@@ -49,7 +49,11 @@ import com.kevin.legion.ui.common.findActivity
  * it moved to `ui/common/` rather than staying `internal` to one package).
  */
 @Composable
-fun PermissionsDiagnosticsScreen(onBack: () -> Unit, onOpenCarProbe: () -> Unit, onOpenDialer: () -> Unit = {}) {
+fun PermissionsDiagnosticsScreen(
+    onBack: () -> Unit,
+    onOpenCarProbe: () -> Unit,
+    onOpenDialer: () -> Unit = {},
+) {
     val context = LocalContext.current
 
     var canSeeCaller by remember { mutableStateOf(false) }

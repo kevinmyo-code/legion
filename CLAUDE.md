@@ -167,9 +167,10 @@ Kotlin + Compose, single `app` module, Room, Gemini Live over a WebSocket, Supab
 record. **Read `build.gradle.kts` and `gradle/libs.versions.toml` for what is actually in the
 build** - a list here would be wrong within a month, and has been.
 
-**Dropped deliberately. Do not reintroduce without a ruling:** Mapbox, Firebase, Play Billing,
-Media3, ZXing, PdfBox-Android. Each went for a reason recorded in `library/decisions.md`; adding one
-back is a decision, not a dependency bump.
+**Dropped deliberately. Do not reintroduce without a ruling:** Firebase, Play Billing, Media3,
+ZXing, PdfBox-Android. Each went for a reason recorded in `library/decisions.md`; adding one back is
+a decision, not a dependency bump. **Mapbox came back by ruling** (Kevin, 2026-10-03, ADR 0054):
+native navigation on the household's own token, Mapbox only, no hand-off to another map app.
 
 ---
 

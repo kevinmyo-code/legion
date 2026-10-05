@@ -11,7 +11,8 @@ import org.junit.Test
  * spawning sibling tool declarations.
  *
  * [LiveToolbox.MusicAction.fromWire] is a plain function over a plain string, same shape as
- * [com.kevin.legion.location.NavigationController.uriFor] - no Context, no coroutines, no Spotify
+ * the navigation tools' pure parsers (it used to name the retired
+ * `NavigationController.uriFor`) - no Context, no coroutines, no Spotify
  * SDK.
  */
 class LiveToolboxMusicActionTest {

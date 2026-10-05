@@ -10,7 +10,25 @@ import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.engine.mirror.MirrorFolderPreferences
 import com.kevin.legion.engine.mirror.MirrorLifecycleBinder
 import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
+import com.kevin.legion.location.LocationController
+import com.kevin.legion.navigation.GeoPoint
+import com.kevin.legion.navigation.MapboxNavController
+import com.kevin.legion.navigation.MapboxNavSdk
+import com.kevin.legion.navigation.MapboxTokenProvider
+import com.kevin.legion.navigation.MapboxTokenStore
+import com.kevin.legion.navigation.NavMapFeed
+import com.kevin.legion.navigation.resolve.CalendarSource
+import com.kevin.legion.navigation.resolve.ContactSource
+import com.kevin.legion.navigation.resolve.DestinationResolver
+import com.kevin.legion.navigation.resolve.MapboxPlaceSearch
+import com.kevin.legion.navigation.resolve.PhoneContacts
+import com.kevin.legion.navigation.resolve.PhoneEvents
+import com.kevin.legion.navigation.resolve.PhonePlacesReader
+import com.kevin.legion.navigation.resolve.SavedPlaceSource
+import com.kevin.legion.navigation.voice.NavCueSpeaker
+import com.kevin.legion.navigation.voice.NavVoiceTools
 import com.kevin.legion.service.ProactivePreferences
+import com.mapbox.common.MapboxOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +43,79 @@ import kotlinx.coroutines.launch
  * quota tracking) was retired with the rest of billing/ in the 2026-07-31 pivot.
  */
 class MidnightApplication : Application() {
+    /**
+     * The one Mapbox token owner (mapbox-nav ticket 09). Process-wide because the SDK's token is.
+     * Lazy so a unit test that never builds an Application is not forced through it.
+     */
+    val mapboxTokens: MapboxTokenProvider by lazy {
+        MapboxTokenProvider(
+            store = object : MapboxTokenStore {
+                override fun load() = CompanionProfile.mapboxToken(this@MidnightApplication)
+                override fun save(token: String) = CompanionProfile.saveMapboxToken(this@MidnightApplication, token)
+                override fun clear() = CompanionProfile.clearMapboxToken(this@MidnightApplication)
+            },
+            bakedToken = BuildConfig.MAPBOX_ACCESS_TOKEN,
+            applyToSdk = { token ->
+                // The setter is native. Under Robolectric (unit tests of a build WITH a baked dev
+                // token) the library is absent and Application.onCreate would throw for every test;
+                // on a phone the link never fails, so a failure here is only ever that case.
+                try {
+                    MapboxOptions.accessToken = token
+                } catch (e: UnsatisfiedLinkError) {
+                    android.util.Log.w("MidnightApplication", "Mapbox native library unavailable: ${e.message}")
+                }
+            },
+        )
+    }
+
+    /** The raw route/progress objects the nav screen's map draws; written by [navController]'s SDK seam. */
+    val navMapFeed: NavMapFeed by lazy { NavMapFeed() }
+
+    /**
+     * The one navigation controller (mapbox-nav ticket 10, ticket 07: a trip outlives its screen).
+     * App-owned, like [mapboxTokens], because a guided trip ends only on arrival, End or process
+     * death. There is no Hilt in the tree yet; this is the single-instance stopgap CLAUDE.md sec 8
+     * allows, and ticket 11's voice tools read it from here too.
+     */
+    val navController: MapboxNavController by lazy {
+        MapboxNavController(
+            tokens = mapboxTokens,
+            sdkFactory = { MapboxNavSdk(this, navMapFeed) },
+            fix = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
+        )
+    }
+
+    /** Destination lookup in ticket 03's order: saved places, calendar, contacts, then Mapbox search. */
+    val navResolver: DestinationResolver by lazy {
+        DestinationResolver(
+            sources = listOf(
+                SavedPlaceSource(PhonePlacesReader(this)),
+                CalendarSource(PhoneEvents(this)),
+                ContactSource(PhoneContacts(this)),
+            ),
+            placeSearch = MapboxPlaceSearch(),
+        )
+    }
+
+    /**
+     * Speaks the SDK's turn cues (mapbox-nav tickets 05 and 11). App-owned for the same reason the
+     * controller is: cues must keep coming with the screen off and the nav screen gone.
+     */
+    val navCueSpeaker: NavCueSpeaker by lazy { NavCueSpeaker(this, navController) }
+
+    /** The four voice tools' logic (ticket 04), over the same controller and resolver the nav screen uses. */
+    val navVoiceTools: NavVoiceTools by lazy {
+        NavVoiceTools(
+            controller = navController,
+            resolver = navResolver,
+            fix = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
+            screen = com.kevin.legion.service.NavScreenOpener(this),
+        )
+    }
+
+    /** Main-thread scope for [navCueSpeaker]: the arbiter, the engine callbacks and the SDK all live there. */
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     /**
      * Process-lifetime scope for start-up work that touches disk or Room and so
      * must not block `onCreate`. Owned by the Application because that is what
@@ -52,6 +143,16 @@ class MidnightApplication : Application() {
         // two, which is harmless - they are idempotent - and is left alone so
         // the assistant path does not depend on this ordering.
         GeminiKeyProvider.init(this)
+        // Mapbox's public token (mapbox-nav spike, ticket 08). Set only when non-blank: the
+        // SDK reads this at first use, and a blank value would shadow a token supplied by any
+        // other path with an empty string. Initialised here, not lazily in a screen, because
+        // Midnight AI's lesson was that SDK init belongs in Application.onCreate. The baked
+        // token is the dev convenience; ticket 09's [MapboxTokenProvider] now owns the order
+        // (pasted token, then baked, then none) and a paste or clear re-applies it live.
+        mapboxTokens.applyAtStartup()
+        // Turn cues need the speaker wired before the first trip starts. Gated off under Robolectric
+        // for the reason the Room blocks below are: it would construct the nav controller in every test.
+        if (!isRunningUnderRobolectric()) navCueSpeaker.attach(mainScope)
         // Token metering (2026-09-06). Seeded here for the same L12 reason as the caches
         // around it: SubAgent's REST calls run from ledger, pantry and the vehicle agents
         // whether or not the assistant service is switched on, and a meter that only woke
