@@ -1,6 +1,11 @@
 ﻿package com.kevin.legion.ai
 
 import android.content.Context
+import android.content.SharedPreferences
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.kevin.legion.vehicle.ActiveVehicle
 
 /**
@@ -201,6 +206,20 @@ object CompanionProfile {
     }
 
     fun name(context: Context): String = identityString(context, KEY_NAME)
+
+    /**
+     * The active companion's name, re-emitted whenever the identity prefs change - a switch on the
+     * Companions screen, a rename, a voice command. The assistant strip collects this so its
+     * "Type to <name>" placeholder and reply-panel labels follow the switch live instead of waiting
+     * for a resume (2026-10-05: they kept saying the outgoing companion's name).
+     */
+    fun nameFlow(context: Context): Flow<String> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> trySend(name(context)) }
+        val p = prefs(context)
+        p.registerOnSharedPreferenceChangeListener(listener)
+        trySend(name(context))
+        awaitClose { p.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.distinctUntilChanged()
 
     /** The persona prompt fed into the system instruction (blank until onboarded). */
     fun persona(context: Context): String = identityString(context, KEY_PERSONA)

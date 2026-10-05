@@ -459,10 +459,13 @@ class LiveSessionController(context: Context) {
         else -> TypedTurnPolicy.Shape.PROACTIVE_LINE
     }
 
+    /** The active companion's name, as stamped on the panel's ASSISTANT lines. */
+    private fun speakerName(): String? = CompanionProfile.name(appContext).trim().ifBlank { null }
+
     /** Records a typed message as sent and shows the assistant working on it. */
     private fun markTypedSent(typed: String) {
         typedTurnPending = true
-        AssistantChatStore.update { it.typedSent(typed) }
+        AssistantChatStore.update { it.withSpeaker(speakerName()).typedSent(typed) }
         set(Phase.THINKING, "...")
     }
 
@@ -497,7 +500,7 @@ class LiveSessionController(context: Context) {
         connectedThisSession = false
         coldRetry = null
         typedTurnPending = true
-        AssistantChatStore.update { it.typedSent(typed) }
+        AssistantChatStore.update { it.withSpeaker(speakerName()).typedSent(typed) }
         set(Phase.CONNECTING, "Connecting...")
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
@@ -513,7 +516,9 @@ class LiveSessionController(context: Context) {
             val live = brain.buildLiveContext()
             pendingTypedContext = live.takeIf { it.isNotBlank() }
             s.start(
-                base, LiveToolbox.declarations(),
+                // The active persona's set, as every other open: declarations() alone left a typed
+                // turn after a switch to Marcus without consult_meditations (2026-10-05).
+                base, CompanionHandover.declarations(CompanionProfile.persona(appContext)),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -1148,7 +1153,9 @@ class LiveSessionController(context: Context) {
             is LiveEvent.TypedReplyProgress -> AssistantChatStore.update { it.typedReplyProgress(event.text) }
             is LiveEvent.TurnTranscript -> {
                 if (event.typed) typedTurnPending = false
-                AssistantChatStore.update { it.turnComplete(event.heard, event.said, event.typed) }
+                AssistantChatStore.update {
+                    it.withSpeaker(speakerName()).turnComplete(event.heard, event.said, event.typed)
+                }
             }
             is LiveEvent.ToolCall -> handleToolCall(event)
             is LiveEvent.Closed -> {
@@ -1428,20 +1435,38 @@ class LiveSessionController(context: Context) {
     fun companionChanged() {
         if (destroyed) return
         WakeWordEngine.refresh(appContext)
-        if (!conversationMode) {
-            refreshIdleVoice()
-            return
-        }
+        val plan = CompanionHandover.plan(inVoiceConversation = conversationMode)
+        // The panel: close out a reply still arriving, name who answers from here on, and end the
+        // panel so the next turn (typed or spoken) opens a fresh one. Earlier lines keep the name
+        // that actually said them.
+        val incoming = CompanionProfile.name(appContext).trim().ifBlank { null }
+        AssistantChatStore.update { it.companionSwitched(incoming) }
         // silentDestroy, not destroy: this is an orderly handover, and the Closed branch would
         // flash its unrecognised reason to the user as a fault. Same reasoning as the crisis and
         // refreshIdleVoice paths. The resume handle is dropped deliberately - see
-        // [performCompanionSwitch]'s doc.
-        session?.silentDestroy()
-        session = null
+        // [performCompanionSwitch]'s doc - and on EVERY branch: an idle or typed session used to
+        // keep it, so the rebuilt socket resumed the outgoing companion's thread.
+        if (plan.dropSession) {
+            session?.silentDestroy()
+            session = null
+        }
         conversationMode = false
-        sessionResumeHandle = null
+        sessionResumeHandle = plan.resumeHandle
         pendingThreadLossNotice = false
-        startHandover()
+        typedTurnPending = false
+        pendingAction = Pending.NONE
+        pendingPrompt = null
+        pendingTypedContext = null
+        connectedThisSession = false
+        if (plan.spokenHandover) {
+            startHandover()
+        } else {
+            // Idle, warm or typed: nobody is mid-sentence, so nothing is spoken. The warm socket is
+            // rebuilt for the new voice; with no BYO key there is none, and the next typed or
+            // spoken turn cold-opens one on the same new identity.
+            set(Phase.IDLE, IDLE_STATUS)
+            prewarm()
+        }
     }
 
     /**

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * What the assistant strip's typed box and reply panel draw. One value, collected with
@@ -37,6 +38,14 @@ data class AssistantChatUiState(
  */
 class AssistantChatViewModel(application: Application) : AndroidViewModel(application) {
     private val companionName = MutableStateFlow(readCompanionName())
+
+    init {
+        // Live, not on resume: the Companions screen switches the companion while this strip's
+        // ViewModel is alive, and the placeholder and speaker label must follow at once.
+        viewModelScope.launch {
+            CompanionProfile.nameFlow(application).collect { companionName.value = it.trim().ifBlank { FALLBACK_NAME } }
+        }
+    }
 
     val state: StateFlow<AssistantChatUiState> = combine(companionName, AssistantChatStore.transcript) { name, t ->
         AssistantChatUiState(name, t.entries, t.pendingTypedReply)

@@ -8,6 +8,8 @@ data class ChatEntry(
     val via: Via = Via.NONE,
     /** Extra words under the text: why a message was not sent, or that a reply was cut short. */
     val note: String? = null,
+    /** Who said an ASSISTANT line, stamped when it was said so a later companion switch cannot relabel it. Null: the current name. */
+    val speaker: String? = null,
 ) {
     enum class Kind { USER, ASSISTANT, TOOL, SYSTEM, NOT_SENT }
 
@@ -35,6 +37,8 @@ data class ChatTranscript(
     /** A typed turn's reply still arriving: the text so far, shown as "Replying". Null when none. */
     val pendingTypedReply: String? = null,
     val ended: Boolean = false,
+    /** The active companion's name, stamped onto each ASSISTANT line as it is added. Null until known. */
+    val speaker: String? = null,
     private val nextId: Long = 1,
 ) {
     val isEmpty: Boolean get() = entries.isEmpty() && pendingTypedReply == null
@@ -112,8 +116,24 @@ data class ChatTranscript(
         return flushed.add(ChatEntry.Kind.SYSTEM, "Conversation ended.").copy(ended = true)
     }
 
+    /** Records who is answering from now on; used before a turn adds its ASSISTANT line. */
+    fun withSpeaker(name: String?): ChatTranscript = if (name == speaker) this else copy(speaker = name)
+
+    /**
+     * The active companion changed (ADR 0047: a switch ends the open session). A reply still arriving
+     * is closed out under the OUTGOING name, then - if there is anything on the panel - a line says
+     * who answers next and that they do not know what was said, and the panel is marked ended so the
+     * next turn starts a fresh one. An empty panel only learns the new name.
+     */
+    fun companionSwitched(newName: String?): ChatTranscript {
+        if (isEmpty || ended) return copy(speaker = newName)
+        val flushed = flushPending(note = "The conversation ended before this finished.")
+        val line = (newName ?: "The new companion") + " is answering from here. They do not know what was said above."
+        return flushed.add(ChatEntry.Kind.SYSTEM, line).copy(ended = true, speaker = newName)
+    }
+
     /** The first line of a NEW session replaces an ended panel instead of stacking under it. */
-    fun beginIfEnded(): ChatTranscript = if (ended) ChatTranscript(nextId = nextId) else this
+    fun beginIfEnded(): ChatTranscript = if (ended) ChatTranscript(speaker = speaker, nextId = nextId) else this
 
     private fun flushPending(note: String): ChatTranscript {
         val partial = pendingTypedReply ?: return this
@@ -131,7 +151,12 @@ data class ChatTranscript(
         via: ChatEntry.Via = ChatEntry.Via.NONE,
         note: String? = null,
     ) = copy(
-        entries = (entries + ChatEntry(nextId, kind, text, via, note)).takeLast(MAX_ENTRIES),
+        entries = (
+            entries + ChatEntry(
+                nextId, kind, text, via, note,
+                speaker = if (kind == ChatEntry.Kind.ASSISTANT) speaker else null,
+            )
+        ).takeLast(MAX_ENTRIES),
         nextId = nextId + 1,
     )
 

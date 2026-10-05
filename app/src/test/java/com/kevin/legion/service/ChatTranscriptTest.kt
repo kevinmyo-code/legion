@@ -157,4 +157,44 @@ class ChatTranscriptTest {
         repeat(ChatTranscript.MAX_ENTRIES + 25) { t = t.interruptedByTyping() }
         assertEquals(ChatTranscript.MAX_ENTRIES, t.entries.size)
     }
+
+    @Test
+    fun `a companion switch keeps earlier lines under the name that said them and ends the panel`() {
+        val before = ChatTranscript()
+            .withSpeaker("Alfred")
+            .typedSent("hello")
+            .turnComplete("hello", "Good evening.", typed = true)
+
+        val switched = before.companionSwitched("Marcus")
+
+        assertEquals("Alfred", switched.entries.first { it.kind == Kind.ASSISTANT }.speaker)
+        assertTrue(switched.ended)
+        assertEquals(Kind.SYSTEM, switched.entries.last().kind)
+        assertTrue(switched.entries.last().text.contains("Marcus is answering from here"))
+        // The next turn opens a fresh panel and its reply is stamped with the new name.
+        val next = switched.withSpeaker("Marcus").typedSent("a question")
+            .turnComplete("a question", "Consider this.", typed = true)
+        assertEquals(listOf(Kind.USER, Kind.ASSISTANT), kinds(next))
+        assertEquals("Marcus", next.entries.last().speaker)
+    }
+
+    @Test
+    fun `a switch closes out a reply still arriving under the outgoing name`() {
+        val mid = ChatTranscript().withSpeaker("Alfred").typedSent("hello").typedReplyProgress("Good")
+
+        val switched = mid.companionSwitched("Marcus")
+
+        assertNull(switched.pendingTypedReply)
+        val flushed = switched.entries.first { it.kind == Kind.ASSISTANT }
+        assertEquals("Alfred", flushed.speaker)
+        assertEquals("Good", flushed.text)
+    }
+
+    @Test
+    fun `a switch on an empty panel only learns the new name`() {
+        val switched = ChatTranscript().companionSwitched("Marcus")
+        assertTrue(switched.entries.isEmpty())
+        assertFalse(switched.ended)
+        assertEquals("Marcus", switched.speaker)
+    }
 }
