@@ -40,12 +40,15 @@ fun ItemEditorDialog(
     currentDirection: String?,
     onDismiss: () -> Unit,
     onSave: (text: String, unit: String?, target: Double?, direction: String?) -> Unit,
+    /** The open list's name: Groceries shows "last bought" (ADR 0055), every other list keeps
+     * "last ticked" (ADR 0049). Null (a caller that does not know) keeps "last ticked". */
+    listName: String? = null,
 ) {
     var text by remember { mutableStateOf(currentText) }
     var unit by remember { mutableStateOf(currentUnit ?: "") }
     var targetText by remember { mutableStateOf(currentTarget?.let { formatMeasureNumber(it) } ?: "") }
     var direction by remember { mutableStateOf(currentDirection ?: MeasureDirection.AT_LEAST.name) }
-    val lastTickedLabel = rememberLastTickedLabel(currentText)
+    val lastTickedLabel = rememberLastItemLabel(listName, currentText)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Item") },

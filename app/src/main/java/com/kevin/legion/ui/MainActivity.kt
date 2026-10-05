@@ -51,6 +51,7 @@ import com.kevin.legion.service.ReminderAlarmReceiver
 import com.kevin.legion.sync.SyncCapability
 import com.kevin.legion.sync.SyncEngine
 import com.kevin.legion.ui.assistant.AssistantStrip
+import com.kevin.legion.ui.bought.BoughtScreen
 import com.kevin.legion.ui.checklists.ChecklistsScreen
 import com.kevin.legion.ui.common.StatusLine
 import com.kevin.legion.ui.companions.MemoryScreen
@@ -1080,7 +1081,14 @@ private fun LegionShell(
             // One-today ticket 09 - the recurring-checklists management screen, reached from
             // MetersScreen's LISTS pane (not Settings) - see LegionRoute.CHECKLISTS's own doc.
             composable(LegionRoute.CHECKLISTS) {
-                ChecklistsScreen(onBack = { navController.popBackStack() })
+                ChecklistsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenBought = { navController.navigate(LegionRoute.BOUGHT) { launchSingleTop = true } },
+                )
+            }
+            // purchase-log ticket 08: the bought log, reached from the Lists page's top bar.
+            composable(LegionRoute.BOUGHT) {
+                BoughtScreen(onBack = { navController.popBackStack() })
             }
             // authOk/authNonce carry the browser round trip's outcome down from the exchange
             // effect above - see its own comment for why the exchange cannot live in this screen.

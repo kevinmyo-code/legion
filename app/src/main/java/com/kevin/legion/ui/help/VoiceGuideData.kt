@@ -132,6 +132,7 @@ object VoiceGuideData {
             title = "Food and shopping",
             blurb = "Groceries, receipts and meals.",
             entries = listOf(
+                Entry(name = "bought_log", say = "When did we last buy shampoo?", does = "The household's shared bought log. Log something you bought (today, or on a date you say, with an optional store, price and note, and private if you ask), ask when you last bought something, or hear the newest entries. It answers with the exact entry it found and its date, and who logged it. No match means there is no record, not that you never bought it. A price is only what someone typed, never checked against the bank. If the engine can't be reached it says nothing was logged. Ticking a line on Groceries logs a purchase too.", hands = "Lists, Bought log button: search 'When did we last buy...?' or log something by hand. A Groceries item shows 'last bought'."),
                 Entry(name = "import_receipt", say = "Scan this receipt", does = "Opens the camera to photograph a grocery receipt.", hands = "Money > Pantry sub-route, scan flow."),
                 Entry(name = "list_recent_groceries", say = "What did I buy last shop?", does = "Recent grocery purchases.", hands = "Money > Pantry sub-route."),
                 Entry(name = "get_grocery_spend", say = "How much on groceries this month?", does = "Grocery spending.", hands = "Money > Pantry sub-route, spend panel."),
@@ -248,6 +249,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 122 as of the last regeneration. */
-    val TOOL_COUNT: Int = 122
+    /** Total entries across every group above - 123 as of the last regeneration. */
+    val TOOL_COUNT: Int = 123
 }

@@ -1443,7 +1443,7 @@ object LiveToolbox {
                 "nothing matches, that is an absent RECORD, not proof nothing was acquired - say " +
                 "plainly that you have no record of it being ticked, and leave it there. Matches " +
                 "on the exact line text (case/whitespace only) - 'toothpaste' will not match " +
-                "'Colgate toothpaste'. Use for 'when did I last buy X', 'when did I last get X'.",
+                "'Colgate toothpaste'. For 'when did we last buy X' use bought_log.",
             params = obj(
                 "item" to schema("string", "The line to look for, e.g. 'toothpaste'."),
             ),
@@ -2355,6 +2355,10 @@ object LiveToolbox {
         val engineDecls = EngineToolbox.declarations()
         for (i in 0 until engineDecls.length()) fns.put(engineDecls.getJSONObject(i))
 
+        // purchase-log ticket 08: the household bought log, one action-dispatched declaration.
+        val purchaseDecls = PurchaseToolbox.declarations()
+        for (i in 0 until purchaseDecls.length()) fns.put(purchaseDecls.getJSONObject(i))
+
         return fns
     }
 
@@ -2523,6 +2527,7 @@ object LiveToolbox {
         // The nine aspect-engine meta-tools (ticket 17) live in their own file; try them first so
         // this already-7,000-line `when` never has to grow their branches too.
         EngineToolbox.dispatch(context, name, args)?.let { return it }
+        PurchaseToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
@@ -2876,6 +2881,8 @@ object LiveToolbox {
         "start_voice_note", "stop_voice_note",
         // 2026-10-03: writes Event.done through EventsAppointmentWriter.setDone.
         "complete_task",
+        // purchase-log ticket 08: action=log writes a bought entry on the engine.
+        "bought_log",
     )
 
     /**

@@ -42,7 +42,7 @@ this README does not pretend they have.)
 
 <!-- VOICE-SURFACE:START -->
 
-**122 voice tools across 15 domains**, dispatched from one Gemini Live
+**123 voice tools across 15 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
@@ -53,7 +53,7 @@ model rather than to sell the feature.
 | The cars | 28 | &ldquo;Any trouble codes?&rdquo; |
 | Driving | 2 | &ldquo;Open the garage&rdquo; |
 | Money | 11 | &ldquo;What's my balance?&rdquo; |
-| Food and shopping | 8 | &ldquo;Scan this receipt&rdquo; |
+| Food and shopping | 9 | &ldquo;When did we last buy shampoo?&rdquo; |
 | Training and sleep | 10 | &ldquo;Squats, five at a hundred kilos&rdquo; |
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |
 | Music | 4 | &ldquo;Play the Roadtrip playlist&rdquo; |

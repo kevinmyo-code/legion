@@ -140,6 +140,7 @@ private fun DetailDialogs(checklist: com.kevin.legion.data.local.Checklist?, sta
             currentDirection = item.measureDirection,
             onDismiss = callbacks.onDismissEdit,
             onSave = callbacks.onSaveEdit,
+            listName = checklist?.name,
         )
     }
 

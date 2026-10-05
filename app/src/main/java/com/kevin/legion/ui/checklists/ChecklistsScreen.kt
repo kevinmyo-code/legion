@@ -27,7 +27,7 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
  * own doc comment - is closed in the controller via `ItemState.tickDay`, never re-checked here).
  */
 @Composable
-fun ChecklistsScreen(onBack: () -> Unit) {
+fun ChecklistsScreen(onBack: () -> Unit, onOpenBought: (() -> Unit)? = null) {
     val viewModel: ListsViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -39,13 +39,7 @@ fun ChecklistsScreen(onBack: () -> Unit) {
         when (state.mode) {
             is ListsMode.Page -> ListsContent(
                 state = state.page,
-                callbacks = ListsPageCallbacks(
-                    onBack = onBack,
-                    onOpenList = viewModel::openList,
-                    onToggleArchived = viewModel::toggleShowArchived,
-                    onShowCreateDialog = viewModel::showCreateDialog,
-                    onCreate = viewModel::createList,
-                ),
+                callbacks = listsPageCallbacks(viewModel, onBack, onOpenBought),
             )
             is ListsMode.Detail -> {
                 state.detail?.let { detail ->
@@ -91,3 +85,15 @@ fun ChecklistsScreen(onBack: () -> Unit) {
         }
     }
 }
+
+/** The Lists page's callbacks, built outside [ChecklistsScreen] so that function stays under
+ * detekt's length ceiling once it also carries the bought-log entry point (purchase-log ticket 08). */
+private fun listsPageCallbacks(viewModel: ListsViewModel, onBack: () -> Unit, onOpenBought: (() -> Unit)?) =
+    ListsPageCallbacks(
+        onBack = onBack,
+        onOpenList = viewModel::openList,
+        onToggleArchived = viewModel::toggleShowArchived,
+        onShowCreateDialog = viewModel::showCreateDialog,
+        onCreate = viewModel::createList,
+        onOpenBought = onOpenBought,
+    )

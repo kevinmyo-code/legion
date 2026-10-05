@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.kevin.legion.checklists.TickHistoryController
+import com.kevin.legion.purchases.GroceriesLabel
+import com.kevin.legion.purchases.PurchasesController
 import com.kevin.legion.util.shortDate
 
 /**
@@ -38,6 +40,28 @@ fun rememberLastTickedLabel(itemText: String): String? {
         } else {
             "No record of this being ticked"
         }
+    }
+    return label
+}
+
+/**
+ * The item editor's history line, chosen by list (purchase-log ticket 08, ADR 0055): the Groceries
+ * list reads "Last bought Sep 20 (middle dot) Mia" from the bought log, the same read the
+ * `bought_log` voice tool makes through [PurchasesController]; every other list keeps
+ * [rememberLastTickedLabel]'s "Last ticked" (ADR 0049). A separate function rather than a changed
+ * [rememberLastTickedLabel] so that signature stays what it was.
+ *
+ * **The log is online only (ticket 04)**, so a read that fails shows [GroceriesLabel.UNREADABLE]
+ * - the line is never simply absent, which would read as "never bought".
+ */
+@Composable
+fun rememberLastItemLabel(listName: String?, itemText: String): String? {
+    if (!GroceriesLabel.isGroceriesList(listName)) return rememberLastTickedLabel(itemText)
+    val context = LocalContext.current
+    var label by remember(itemText) { mutableStateOf<String?>(null) }
+    LaunchedEffect(itemText) {
+        val controller = PurchasesController.forContext(context)
+        label = GroceriesLabel.labelFor(controller.lastBought(itemText), controller.today())
     }
     return label
 }

@@ -274,6 +274,17 @@ class DjangoChecklistsBackend(private val http: EngineHttp) : ChecklistsBackend 
             http.delete("$CHECKLISTS_PATH$checklistServerId/items/$itemServerId/tick/$day")
         }
 
+    /** Sends `?today=<local epoch day>` (purchase-log ticket 06): the engine decides "same day" on
+     * the Groceries list from it, so a same-day untick removes that tick's bought entry. */
+    override suspend fun untick(
+        checklistServerId: String,
+        itemServerId: String,
+        day: Int,
+        today: Int,
+    ): Result<Boolean> = deletingEngineRow("undo that tick") {
+        http.delete("$CHECKLISTS_PATH$checklistServerId/items/$itemServerId/tick/$day?today=$today")
+    }
+
 }
 
 private fun ChecklistFields.toWrite(syncId: String) = ChecklistWrite(
