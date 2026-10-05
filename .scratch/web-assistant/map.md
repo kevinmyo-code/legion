@@ -5,7 +5,7 @@ charted: 2026-10-04
 charted-by: "Kevin + Opus"
 effort: "`.scratch/web-assistant/`"
 tickets: 10
-open: 10
+open: 9
 status: open
 tags: [map]
 ---
@@ -75,6 +75,9 @@ Android app gets a typed chatbox beside push-to-talk. Execution is in scope.
 | 10 | test | Mia talks to it on her iPhone; Kevin on the desktop and the phone | 08, 09 |
 
 ## Decisions so far
+
+- [Gemini Live from an iPhone PWA](issues/01-live-from-an-iphone-pwa.md) - viable with caveats: tokens and locking are solid,
+  iOS audio (mic re-prompt, WebKit playback bugs, screen lock) needs a spike on Mia's phone.
 
 ## Not yet specified
 
