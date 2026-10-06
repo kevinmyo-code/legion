@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,7 +38,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -179,39 +177,45 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
     // connected; whatever error was on screen is over (2026-10-02).
     LaunchedEffect(phase) { if (phase == Phase.LISTENING) notice = null }
 
-    // The typed box and reply panel (web-assistant ticket 09) ride in on a CompositionLocal so the
-    // strip's own signatures stay as they were. See [TypedChatUi].
+    // The chat button and chat panel (web-assistant ticket 09, panel rework 2026-10-05) ride in on a
+    // CompositionLocal so the strip's own signatures stay as they were. See [TypedChatUi]. The
+    // panel's open flag and unread dot live in [ChatPanelState]; nothing here focuses a field.
     val chatViewModel: AssistantChatViewModel = viewModel()
     val chat by chatViewModel.state.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { chatViewModel.refreshCompanionName() }
+    val panel = remember { ChatPanelState() }
+    LaunchedEffect(chat.entries) { panel.observe(chat.entries) }
     val typedChat = TypedChatUi(
         companionName = chat.companionName,
         entries = chat.entries,
         pendingReply = chat.pendingReply,
         onSend = chatViewModel::send,
         onNewConversation = chatViewModel::newConversation,
+        unreadReply = panel.unread,
+        onOpenChat = panel::show,
     )
+
+    // Same path for the pill and the panel's mic button: never binds, never constructs
+    // LiveSessionController here - the controller is service-owned; this is the ACTION_TALK
+    // start-intent path AriaForegroundService.onStartCommand already handles.
+    val talk: () -> Unit = {
+        if (micGranted) {
+            context.startService(
+                Intent(context, AriaForegroundService::class.java)
+                    .setAction(AriaForegroundService.ACTION_TALK)
+            )
+        } else {
+            onOpenSettings()
+        }
+    }
 
     CompositionLocalProvider(LocalTypedChat provides typedChat) {
         AssistantStripContent(
             state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced),
-            onTap = {
-                if (micGranted) {
-                    // Never binds, never constructs LiveSessionController here -
-                    // the controller is service-owned; this is the same
-                    // ACTION_TALK start-intent path AriaForegroundService.
-                    // onStartCommand already handles (the only prior caller was
-                    // the dead CruiseScreen).
-                    context.startService(
-                        Intent(context, AriaForegroundService::class.java)
-                            .setAction(AriaForegroundService.ACTION_TALK)
-                    )
-                } else {
-                    onOpenSettings()
-                }
-            },
+            onTap = talk,
         )
     }
+    if (panel.open) ChatPanelSheet(typedChat, onTalk = talk, onClose = panel::hide)
 }
 
 /**
@@ -316,34 +320,25 @@ private val MicBlockedContainer = Color(0xFF3A2E12)
  */
 @Composable
 internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -> Unit) {
-    // The typed box (web-assistant ticket 09) arrives on [LocalTypedChat]; null is the strip exactly
-    // as it was. Beside the box the pill is narrow, so a long label (a notice, "Microphone
-    // permission needed") moves out of the pill into the line beneath it, in words, and the pill
-    // keeps only its icon. Phase labels ("Tap to talk", "Listening...") are short and stay inside.
+    // The chat button (web-assistant ticket 09) arrives on [LocalTypedChat]; null is the strip
+    // exactly as it was. The pill stays the main control at full width, the button sits at the end.
+    // Nothing on this strip is a text field, so nothing here can take focus or raise the keyboard.
     val typed = LocalTypedChat.current
-    val iconOnly = typed != null && pillIsIconOnly(state)
-    val subtitle = stripSubtitle(state, iconOnly)
     AssistantStripBar {
-        if (typed != null && typed.hasConversation) {
-            AssistantReplyPanel(typed, Modifier.padding(bottom = 8.dp))
-        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (typed != null) {
-                TypedMessageField(typed.companionName, typed.onSend, Modifier.weight(1f))
-            }
-            TalkPill(state, onTap, narrow = typed != null, iconOnly = iconOnly)
+            TalkPill(state, onTap, if (typed != null) Modifier.weight(1f) else Modifier.fillMaxWidth())
+            if (typed != null) ChatButton(typed)
         }
-        if (subtitle != null) {
-            val unavailable = state.micBlocked || state.silenced
+        if (state.subtitle != null) {
             Text(
-                subtitle,
+                state.subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (unavailable && typed != null) SoftColors.caution else SoftColors.text2,
-                maxLines = if (typed != null) 3 else 2,
+                color = SoftColors.text2,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 6.dp),
             )
@@ -352,34 +347,12 @@ internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: (
 }
 
 /**
- * Whether the pill beside the typed box shows only its icon: blocked/silenced states and any label
- * longer than [COMPACT_LABEL_MAX] (a notice) are said in the line under the strip instead.
- */
-internal fun pillIsIconOnly(state: AssistantStripResolver.State): Boolean =
-    state.micBlocked || state.silenced || state.label.length > COMPACT_LABEL_MAX
-
-/**
- * The line under the strip. [iconOnly] (typed box present, label moved out of the pill) folds the
- * label in and, when the mic is unavailable, says typing still works - true because typing never
- * touches the mic. Otherwise exactly [AssistantStripResolver.State.subtitle], as before.
- */
-internal fun stripSubtitle(state: AssistantStripResolver.State, iconOnly: Boolean): String? =
-    if (iconOnly) {
-        listOfNotNull(
-            state.label.trimEnd('.'),
-            state.subtitle?.trimEnd('.'),
-            "Typing still works".takeIf { state.micBlocked || state.silenced },
-        ).joinToString(". ") + "."
-    } else {
-        state.subtitle
-    }
-
-/**
- * The talk pill itself - the part of [AssistantStripContent] that used to be inline. [narrow] is the
- * typed-box layout (wraps its content, 14dp side padding); false is the original full-width pill.
+ * The talk pill itself - the part of [AssistantStripContent] that used to be inline. [sizing] is
+ * `fillMaxWidth()` alone, or `weight(1f)` when the chat button shares the row; either way the pill
+ * is the full-width main control it was before the typed chat.
  */
 @Composable
-private fun TalkPill(state: AssistantStripResolver.State, onTap: () -> Unit, narrow: Boolean, iconOnly: Boolean) {
+private fun TalkPill(state: AssistantStripResolver.State, onTap: () -> Unit, sizing: Modifier) {
     val blocked = state.micBlocked || state.silenced
     val pillContainer = if (blocked) MicBlockedContainer else SoftColors.primaryContainer
     val pillContent = if (blocked) SoftColors.caution else SoftColors.onPrimaryContainer
@@ -396,14 +369,13 @@ private fun TalkPill(state: AssistantStripResolver.State, onTap: () -> Unit, nar
 
     val interactionSource = remember { MutableInteractionSource() }
     Row(
-        modifier = (if (narrow) Modifier.widthIn(min = 52.dp) else Modifier.fillMaxWidth())
+        modifier = sizing
             .height(52.dp)
             .legionPressScale(interactionSource)
             .clip(RoundedCornerShape(percent = 50))
             .background(pillContainer)
             .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap)
-            .padding(horizontal = if (narrow) 14.dp else 0.dp)
-            .semantics(mergeDescendants = true) { if (iconOnly) contentDescription = state.label },
+            .semantics(mergeDescendants = true) {},
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -415,15 +387,13 @@ private fun TalkPill(state: AssistantStripResolver.State, onTap: () -> Unit, nar
             tint = pillContent,
             modifier = Modifier.graphicsLayer { alpha = iconAlpha.value },
         )
-        if (!iconOnly) {
-            Text(
-                state.label,
-                style = MaterialTheme.typography.labelLarge,
-                color = pillContent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            state.label,
+            style = MaterialTheme.typography.labelLarge,
+            color = pillContent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -456,12 +426,6 @@ private fun pulseAlpha(active: Boolean): State<Float> {
 private fun hasRecordAudio(context: android.content.Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
         PackageManager.PERMISSION_GRANTED
-
-/**
- * Longest label that stays inside the narrow pill beside the typed box. The longest phase label,
- * "Connecting...", is 11 characters; anything longer is a notice or a blocked state.
- */
-private const val COMPACT_LABEL_MAX = 14
 
 /** How long a flashed [CompanionPhase] notice stays on the strip before clearing. */
 private const val NOTICE_DISPLAY_MS = 4_000L

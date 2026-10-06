@@ -1,51 +1,38 @@
 package com.kevin.legion.ui.assistant
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.R
 import com.kevin.legion.service.ChatEntry
-import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
 
 /**
- * Everything [AssistantStripContent] needs to grow a typed box and a reply panel, handed down by a
+ * Everything [AssistantStripContent] needs to grow a chat button, and the chat panel ([ChatPanelSheet])
+ * its transcript, handed down by a
  * CompositionLocal ([LocalTypedChat]) rather than as parameters. That is deliberate: it leaves
  * `AssistantStrip`, `AssistantStripContent` and the screenshot tests' call sites byte-for-byte
  * unchanged (null = the strip as it was), and `AssistantStrip` (the state holder) is the one place
@@ -57,6 +44,10 @@ data class TypedChatUi(
     val pendingReply: String?,
     val onSend: (String) -> Unit,
     val onNewConversation: () -> Unit,
+    /** A typed reply arrived while the chat panel was closed: the chat button wears a dot. */
+    val unreadReply: Boolean = false,
+    /** The chat button's tap. The default keeps the pre-panel call sites compiling. */
+    val onOpenChat: () -> Unit = {},
 ) {
     val hasConversation: Boolean get() = entries.isNotEmpty() || pendingReply != null
 }
@@ -64,79 +55,10 @@ data class TypedChatUi(
 /** Null = no typed box (the strip exactly as before). Provided by [AssistantStrip]. */
 val LocalTypedChat = compositionLocalOf<TypedChatUi?> { null }
 
-private val PillShape = RoundedCornerShape(percent = 50)
+internal val PillShape = RoundedCornerShape(percent = 50)
 
 /**
- * The typed box beside the talk pill (the Android mock in
- * `.scratch/web-assistant/research/05-prototypes/assistant-prototypes.html`): a 52dp pill field
- * reading "Type to <companion>", the keyboard's Send action and a send button that appears once
- * there is something to send. The draft survives rotation and process death (`rememberSaveable`)
- * and is cleared only when a message is handed off.
- */
-@Composable
-internal fun TypedMessageField(companionName: String, onSend: (String) -> Unit, modifier: Modifier = Modifier) {
-    var draft by rememberSaveable { mutableStateOf("") }
-    val hint = "Type to $companionName"
-    val submit = {
-        val text = draft.trim()
-        if (text.isNotEmpty()) {
-            onSend(text)
-            draft = ""
-        }
-    }
-    Row(
-        modifier = modifier
-            .heightIn(min = 52.dp)
-            .clip(PillShape)
-            .background(SoftColors.cardHigh)
-            .border(1.dp, SoftColors.outline, PillShape)
-            .padding(start = 16.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.weight(1f).padding(vertical = 8.dp), contentAlignment = Alignment.CenterStart) {
-            BasicTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = hint },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = SoftColors.text),
-                cursorBrush = SolidColor(SoftColors.primary),
-                maxLines = INPUT_MAX_LINES,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Send,
-                ),
-                keyboardActions = KeyboardActions(onSend = { submit() }),
-                decorationBox = { inner ->
-                    Box {
-                        if (draft.isEmpty()) {
-                            Text(
-                                hint,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = SoftColors.text3,
-                                maxLines = 1,
-                            )
-                        }
-                        inner()
-                    }
-                },
-            )
-        }
-        if (draft.isNotBlank()) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(PillShape)
-                    .clickable(role = Role.Button, onClickLabel = "Send", onClick = { submit() }),
-                contentAlignment = Alignment.Center,
-            ) {
-                MsIcon(R.drawable.ms_send, contentDescription = "Send", tint = SoftColors.primary)
-            }
-        }
-    }
-}
-
-/**
- * The session's turns above the strip: typed and spoken, each tagged IN WORDS ("shown, not spoken"
+ * The session's turns inside the chat panel: typed and spoken, each tagged IN WORDS ("shown, not spoken"
  * / "spoken", "typed" / "spoken" - never an icon or colour alone, CLAUDE.md sec 7). Session-only:
  * the header says "Not saved." because it is true. Follows the newest line as it arrives.
  */
@@ -144,6 +66,8 @@ internal fun TypedMessageField(companionName: String, onSend: (String) -> Unit, 
 internal fun AssistantReplyPanel(
     chat: TypedChatUi,
     modifier: Modifier = Modifier,
+    /** The transcript's own height cap; null = it takes the room the caller gives it (the sheet). */
+    maxTranscriptHeight: Dp? = PANEL_MAX_HEIGHT,
 ) {
     val scroll = rememberScrollState()
     val lastKey = chat.entries.lastOrNull()?.id
@@ -180,7 +104,8 @@ internal fun AssistantReplyPanel(
         Column(
             modifier = Modifier
                 .padding(top = 8.dp)
-                .heightIn(max = PANEL_MAX_HEIGHT)
+                .then(if (maxTranscriptHeight != null) Modifier.heightIn(max = maxTranscriptHeight) else Modifier.weight(1f))
+                .fillMaxWidth()
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -243,7 +168,6 @@ private fun ChatLine(who: String, tag: String?, text: String, note: String? = nu
     }
 }
 
-private const val INPUT_MAX_LINES = 3
 private val PANEL_MAX_HEIGHT = 220.dp
 
 // --- previews: SoftTheme, 384dp, same as the strip's own ------------------------------------------
@@ -270,4 +194,4 @@ private fun PreviewReplyPanel() = SoftTheme { AssistantReplyPanel(PreviewChat) }
 
 @Preview(name = "Typed field", widthDp = 384)
 @Composable
-private fun PreviewTypedField() = SoftTheme { TypedMessageField("Dorothy", onSend = {}) }
+private fun PreviewTypedField() = SoftTheme { TypedMessageField("Dorothy", onSend = {}, focusRequester = remember { FocusRequester() }) }

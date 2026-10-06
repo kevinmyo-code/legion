@@ -186,8 +186,10 @@
              only makes it SELECTABLE in Settings > Default apps > Home app; nothing here forces it.
              singleTask matters twice: the Spotify OAuth redirect (below), and a Home press, which
              must reach the existing instance via onNewIntent rather than stack a new one.
-             adjustResize (web-assistant ticket 09): the typed box lives in the bottom bar, so the
-             window must shrink for the keyboard and lift the bar above it rather than pan. -->
+             No adjustResize (web-assistant ticket 09 added it for a typed box on the bottom bar,
+             2026-10-04; removed 2026-10-05 by the chat panel): the text field now lives in a
+             bottom sheet, its own window, which handles the keyboard itself. Resizing THIS window
+             as well would make the strip jump under the sheet. -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -195,7 +197,6 @@
             android:launchMode="singleTask"
             android:screenOrientation="unspecified"
             android:resizeableActivity="true"
-            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|navigation|uiMode"
             android:theme="@style/Theme.Legion">
             <intent-filter>

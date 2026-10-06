@@ -3,6 +3,7 @@ package com.kevin.legion.screenshot
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -11,11 +12,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kevin.legion.service.ChatEntry
 import com.kevin.legion.service.Phase
 import com.kevin.legion.ui.assistant.AssistantStripContent
 import com.kevin.legion.ui.assistant.AssistantStripResolver
+import com.kevin.legion.ui.assistant.ChatPanelContent
 import com.kevin.legion.ui.assistant.LocalTypedChat
 import com.kevin.legion.ui.assistant.TypedChatUi
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -27,11 +31,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Web-assistant ticket 09: the assistant strip WITH the typed box (the Android mock in
- * `.scratch/web-assistant/research/05-prototypes/assistant-prototypes.html`). The existing
- * [AssistantStripScreenshotTest] baselines are the no-regression half - they render the strip with
- * no [LocalTypedChat] and must still match byte for byte. Same runner, graphics mode and device
- * qualifier as that test; the strip is bottom-aligned here as it is in the app's Scaffold.
+ * Web-assistant ticket 09 (panel rework 2026-10-05): the assistant strip WITH its chat button, and
+ * the chat panel's body. The existing [AssistantStripScreenshotTest] baselines are the no-regression
+ * half - they render the strip with no [LocalTypedChat] and must still match byte for byte. Baselines
+ * recorded before the rework showed a typed box on the strip; they were re-recorded on purpose.
+ * Same runner, graphics mode and device qualifier as that test; the strip is bottom-aligned here as
+ * it is in the app's Scaffold.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -49,8 +54,17 @@ class AssistantTypedStripScreenshotTest {
         onNewConversation = {},
     )
 
+    private val conversation = listOf(
+        ChatEntry(1, ChatEntry.Kind.USER, "When did we last buy shampoo?", ChatEntry.Via.TYPED),
+        ChatEntry(2, ChatEntry.Kind.TOOL, "Search bought log"),
+        ChatEntry(3, ChatEntry.Kind.ASSISTANT, "You logged shampoo on Sep 28.", ChatEntry.Via.TYPED),
+        ChatEntry(4, ChatEntry.Kind.USER, "What is on the calendar?", ChatEntry.Via.SPOKEN),
+        ChatEntry(5, ChatEntry.Kind.ASSISTANT, "Soccer practice at five.", ChatEntry.Via.SPOKEN),
+        ChatEntry(6, ChatEntry.Kind.SYSTEM, "Stopped speaking because you typed."),
+    )
+
     @Test
-    fun `idle shows the typed box beside a narrower talk pill`() {
+    fun `idle shows the full width talk pill with a chat button at the end`() {
         capture("assistant-typed-idle.png", chat()) {
             AssistantStripContent(
                 AssistantStripResolver.resolve(Phase.IDLE, "", null, micGranted = true, silenced = false),
@@ -60,37 +74,48 @@ class AssistantTypedStripScreenshotTest {
     }
 
     @Test
-    fun `typed and spoken turns are tagged in words above the strip`() {
-        val entries = listOf(
-            ChatEntry(1, ChatEntry.Kind.USER, "When did we last buy shampoo?", ChatEntry.Via.TYPED),
-            ChatEntry(2, ChatEntry.Kind.TOOL, "Search bought log"),
-            ChatEntry(3, ChatEntry.Kind.ASSISTANT, "You logged shampoo on Sep 28.", ChatEntry.Via.TYPED),
-            ChatEntry(4, ChatEntry.Kind.USER, "What is on the calendar?", ChatEntry.Via.SPOKEN),
-            ChatEntry(5, ChatEntry.Kind.ASSISTANT, "Soccer practice at five.", ChatEntry.Via.SPOKEN),
-            ChatEntry(6, ChatEntry.Kind.SYSTEM, "Stopped speaking because you typed."),
-        )
-        capture("assistant-typed-conversation.png", chat(entries, pending = "")) {
+    fun `an unread typed reply puts a dot on the chat button`() {
+        capture("assistant-typed-unread.png", chat().copy(unreadReply = true)) {
             AssistantStripContent(
-                AssistantStripResolver.resolve(Phase.THINKING, "", null, micGranted = true, silenced = false),
+                AssistantStripResolver.resolve(Phase.IDLE, "", null, micGranted = true, silenced = false),
                 onTap = {},
             )
         }
     }
 
     @Test
-    fun `mic blocked says typing still works`() {
-        val entries = listOf(
-            ChatEntry(
-                1, ChatEntry.Kind.NOT_SENT, "add milk", ChatEntry.Via.TYPED,
-                "The assistant isn't set up: add a Gemini key in Setup.",
-            ),
-        )
-        capture("assistant-typed-mic-blocked.png", chat(entries)) {
+    fun `mic blocked keeps its words in the pill beside the chat button`() {
+        capture("assistant-typed-mic-blocked.png", chat()) {
             AssistantStripContent(
                 AssistantStripResolver.resolve(Phase.IDLE, "", null, micGranted = false, silenced = false),
                 onTap = {},
             )
         }
+    }
+
+    @Test
+    fun `the panel shows typed and spoken turns tagged in words`() {
+        capturePanel("assistant-panel-conversation.png", chat(conversation, pending = ""), PANEL_TALL)
+    }
+
+    @Test
+    fun `a shorter panel standing in for the keyboard keeps the composer visible`() {
+        // Robolectric has no IME, so the keyboard's share of the screen is stood in for by a shorter
+        // host: the transcript must give way and the composer stay on screen.
+        capturePanel("assistant-panel-keyboard-space.png", chat(conversation.take(3)), PANEL_SHORT)
+    }
+
+    private fun capturePanel(fileName: String, typed: TypedChatUi, height: Dp) {
+        composeTestRule.setContent {
+            SoftTheme {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                        ChatPanelContent(typed, onTalk = {}, onClose = {}, Modifier.height(height), autoFocus = false)
+                    }
+                }
+            }
+        }
+        composeTestRule.onRoot().captureRoboImage(fileName)
     }
 
     private fun capture(fileName: String, typed: TypedChatUi, content: @Composable () -> Unit) {
@@ -106,3 +131,6 @@ class AssistantTypedStripScreenshotTest {
         composeTestRule.onRoot().captureRoboImage(fileName)
     }
 }
+
+private val PANEL_TALL = 640.dp
+private val PANEL_SHORT = 300.dp
