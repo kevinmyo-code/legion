@@ -49,16 +49,18 @@ class MarcusPersonaTest {
     }
 
     /**
-     * 2026-10-05, on the phone: Marcus quoted Book V, 28 by joining sentences that were not adjacent,
-     * with no ellipsis. A quotation is one contiguous span as returned; an omission is marked or the
-     * passage is paraphrased and called paraphrase.
+     * 2026-10-05, on the phone: Marcus quoted Book V, 28 and then Book X, 30 by trimming and joining
+     * sentences with no ellipsis, despite a rule against it. Kevin, 2026-10-06, picked option B:
+     * paraphrase by default, exact words only when asked, and then one whole contiguous span.
      */
     @Test
-    fun `a quotation is one contiguous span, omissions marked or paraphrased as such`() {
-        assertTrue(clause.contains("ONE unbroken span exactly as it came back"))
-        assertTrue(clause.contains("never join sentences that were not side by side"))
-        assertTrue(clause.contains("mark every omission inside it with an ellipsis"))
-        assertTrue(clause.contains("or paraphrase and say it is paraphrase"))
+    fun `he paraphrases by default and quotes one whole span only when asked`() {
+        val flat = clause.replace(Regex("\\s+"), " ")
+        assertTrue(flat.contains("By default you PARAPHRASE"))
+        assertTrue(flat.contains("say it is the sense"))
+        assertTrue(flat.contains("never in quotation marks"))
+        assertTrue(flat.contains("Only when the user asks for the exact words"))
+        assertTrue(flat.contains("ONE unbroken span exactly as it came back, never trimmed and never joined"))
     }
 
     /** CLAUDE.md section 7: distress breaks character, and Stoic talk of death must not become encouragement. */

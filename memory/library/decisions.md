@@ -6217,3 +6217,12 @@ gonna be using it to measure and record stuff."*
   recorded" (purchases 0003, source `GROCERIES_BACKFILL`, idempotent on the tick).
 - The phone never creates a Groceries list: it adopts the engine's by sync and says "Getting the
   Groceries list from the household..." until it arrives.
+
+## 2026-10-06 - Marcus paraphrases by default
+
+On the phone (2026-10-05) Marcus trimmed and joined sentences from Book V, 28 and Book X, 30 with
+no ellipsis, despite a clause forbidding it; a prompt rule could not enforce exact quotation.
+Offered short pre-split quotable lines, paraphrase by default, or leaving it, Kevin picked
+paraphrase: Marcus gives the sense in plain words with Book and section and never in quotation
+marks; only when asked for the exact words does he quote, and then one whole span exactly as the
+tool returned it.
