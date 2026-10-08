@@ -64,6 +64,43 @@ class CategoryRule(models.Model):
         ]
 
 
+class MerchantAlias(models.Model):
+    """A merchant name a person chose, shown IN PLACE OF a gated row's bank
+    text and never written onto it (Kevin, 2026-10-07).
+
+    `ledger_transactions.description` is the bank's own text and is never
+    changed (`private.forbid_mutation_of_facts`). An alias is a substring ->
+    display name rule; every read of a transaction carries the name of the
+    oldest live alias that matches as `display_description`
+    (`ingest/merchant_aliases.with_display_description`). Display only: no
+    categorisation, dedup, transfer detection or gate logic reads this table.
+
+    AUTHORED, not gated: `updated_at`, a `deleted_at` tombstone and an
+    `origin_guid` identity like `CategoryRule`. `managed = False`, its DDL
+    shipped by `ingest/migrations/0016_merchant_aliases.py` (ADR 0044). Unlike
+    every older synced table, `origin_guid` is a `uuid` column.
+    """
+
+    id = models.UUIDField(primary_key=True)
+    substring = models.TextField()
+    display_name = models.TextField()
+    created_at_client = models.DateTimeField()
+    provenance = models.TextField(choices=Provenance.choices)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(null=True)
+    origin_guid = models.UUIDField()
+
+    household = household_field()
+
+    class Meta:
+        managed = False
+        db_table = "merchant_aliases"
+        constraints = [
+            household_unique("merchant_aliases", "origin_guid"),
+        ]
+
+
 class BudgetTarget(models.Model):
     id = models.UUIDField(primary_key=True)
     category = models.TextField()

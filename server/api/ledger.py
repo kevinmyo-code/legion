@@ -1,4 +1,4 @@
-"""`/api/ledger/<table>` - five tables, and they are NOT all the same shape.
+"""`/api/ledger/<table>` - the ledger's tables, and they are NOT all the same shape.
 
 This is the first aspect where ticket 04's uniform shape and its own
 exceptions table meet in one module, so the split is stated here rather than
@@ -8,6 +8,7 @@ left to be inferred from which base class each viewset happens to extend:
 |---|---|---|
 | `categories` | full CRUD | authored config, `LedgerConfigBackend` already writes it |
 | `category_rules` | full CRUD | same |
+| `merchant_aliases` | full CRUD | same; a name shown over a gated row's bank text |
 | `budget_targets` | full CRUD | same |
 | `ledger_transaction_categories` | full CRUD, by transaction | a category laid OVER a gated row |
 | `statements` | **GET only** | the section 4 gate's own output |
@@ -30,6 +31,15 @@ instead. On `GET /api/ledger/transactions/` (and in `/api/changes`):
   `stored`, or null when there is none.
 
 The precedence is written once, in `ingest/category_overrides.py`.
+
+## A transaction's merchant name may be an ALIAS (display only)
+
+Kevin, 2026-10-07. `description` is the bank's own text and is never changed.
+`display_description` is the `display_name` of the household's oldest live
+`merchant_aliases` row whose substring the description contains
+(case-insensitive), or null. It changes what a surface SHOWS and nothing
+else: categorisation, dedup, transfer detection and the gate all read
+`description`. `ingest/merchant_aliases.py` holds the match.
 
 Ticket 04 spells the second half out: "`statements`, `receipts`,
 `ledger_transactions`, `receipt_line_items` - **no PUT, no DELETE.** Written
@@ -82,6 +92,7 @@ deterministically parsed one.
 """
 from __future__ import annotations
 
+from django.db.models.functions import Now
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -95,6 +106,7 @@ from api.synced import (
     choice_error,
 )
 from ingest.category_overrides import STORED, with_effective_category
+from ingest.merchant_aliases import with_display_description
 from ingest.provisional import ROW_NOTE
 from legacy.enums import Provenance
 from legacy.models.ledger import (
@@ -103,6 +115,7 @@ from legacy.models.ledger import (
     CategoryRule,
     LedgerTransaction,
     LedgerTransactionCategory,
+    MerchantAlias,
     Statement,
 )
 
@@ -200,6 +213,74 @@ class CategoryRuleSerializer(SyncedSerializer):
         return value
 
 
+class MerchantAliasSerializer(SyncedSerializer):
+    """One `merchant_aliases` row: show `display_name` wherever a
+    transaction's bank text contains `substring` (Kevin, 2026-10-07).
+
+    Display only. The bank's `description` is never changed, and no
+    categorisation, dedup, transfer or gate logic reads this table.
+
+    `created_at_client` orders aliases exactly as it orders category rules -
+    the oldest matching alias wins - and is the client's own write instant.
+    Unlike `category_rules` it may be left out: the row then takes the
+    server's clock at insert, and a later PUT that leaves it out keeps it.
+    """
+
+    class Meta:
+        model = MerchantAlias
+        fields = [
+            "id",
+            "substring",
+            "display_name",
+            "created_at_client",
+            "provenance",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "origin_guid",
+        ]
+        read_only_fields = ["id", "provenance", "created_at", "updated_at", "deleted_at"]
+        extra_kwargs = {
+            "substring": {
+                "help_text": (
+                    "Matched case-insensitively and literally (`%` and `_` mean themselves) "
+                    "against a transaction's bank `description`."
+                )
+            },
+            "display_name": {
+                "help_text": (
+                    "What a surface shows for a matching transaction, as "
+                    "`display_description`. Never written onto the transaction."
+                )
+            },
+            "created_at_client": {
+                "required": False,
+                "help_text": (
+                    "The client's own write instant; the oldest matching live alias wins. "
+                    "Omitted on create, the server's clock is used; omitted on a PUT over an "
+                    "existing row, it is unchanged."
+                ),
+            },
+        }
+
+    def validate_substring(self, value: str) -> str:
+        # A blank substring is contained in every description, so this one
+        # alias would rename the whole ledger. Postgres refuses it too
+        # (`merchant_aliases_substring_not_blank`); this says so in words.
+        if not value or not value.strip():
+            raise blank_error("substring")
+        return value
+
+    def validate_display_name(self, value: str) -> str:
+        if not value or not value.strip():
+            raise blank_error("display_name")
+        return value
+
+    def create(self, validated_data: dict):
+        validated_data.setdefault("created_at_client", Now())
+        return super().create(validated_data)
+
+
 class BudgetTargetSerializer(SyncedSerializer):
     """Field-for-field `RemoteBudgetTarget` / `BudgetTargetFields`.
 
@@ -248,6 +329,15 @@ class CategoryViewSet(_LedgerViewSet):
 class CategoryRuleViewSet(_LedgerViewSet):
     table = "category_rules"
     serializer_class = CategoryRuleSerializer
+
+
+class MerchantAliasViewSet(_LedgerViewSet):
+    table = "merchant_aliases"
+    serializer_class = MerchantAliasSerializer
+    # `origin_guid` is a uuid column here, unlike every older synced table, so
+    # a segment that is not a uuid is not a route at all (a 404) rather than a
+    # query Postgres would refuse.
+    identity_url_converter = "uuid"
 
 
 class BudgetTargetViewSet(_LedgerViewSet):
@@ -473,6 +563,18 @@ class LedgerTransactionSerializer(GatedReadSerializer):
             "`forbid_mutation_of_facts` refuses every UPDATE."
         ),
     )
+    # Kevin, 2026-10-07: the merchant name a person chose, read from the
+    # annotation `with_display_description` puts on the queryset
+    # (`LedgerTransactionViewSet.decorate`). `description` stays the bank's.
+    display_description = serializers.CharField(
+        read_only=True,
+        allow_null=True,
+        help_text=(
+            "Merchant name a person chose for this row's bank text (a merchant alias); "
+            "null when none applies. Display only: `description` is the bank's own text "
+            "and is never changed."
+        ),
+    )
     category_source = serializers.ChoiceField(
         choices=[
             LedgerTransactionCategory.SOURCE_PERSON,
@@ -496,6 +598,7 @@ class LedgerTransactionSerializer(GatedReadSerializer):
             "currency",
             "txn_date",
             "description",
+            "display_description",
             "amount_cents",
             "balance_cents",
             "line_ref",
@@ -576,8 +679,9 @@ class LedgerTransactionViewSet(_GatedLedgerViewSet):
 
     @classmethod
     def decorate(cls, queryset):
-        """The effective category (`ingest/category_overrides.py`)."""
-        return with_effective_category(queryset)
+        """The effective category (`ingest/category_overrides.py`) and the
+        merchant alias's display name (`ingest/merchant_aliases.py`)."""
+        return with_display_description(with_effective_category(queryset))
 
 
 # Registry order is the order routes are declared and the order the changes
@@ -587,6 +691,7 @@ class LedgerTransactionViewSet(_GatedLedgerViewSet):
 LEDGER_VIEWSETS = [
     CategoryViewSet,
     CategoryRuleViewSet,
+    MerchantAliasViewSet,
     BudgetTargetViewSet,
     LedgerTransactionCategoryViewSet,
     StatementViewSet,

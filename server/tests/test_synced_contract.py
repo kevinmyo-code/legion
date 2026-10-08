@@ -51,12 +51,32 @@ does mix them, and it passes in a full run and fails when run alone
 """
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from rest_framework.test import APIClient
 
 pytestmark = pytest.mark.django_db
 
 EPOCH = "1970-01-01T00:00:00Z"
+
+# Tables whose identity column is a `uuid`, not text. `merchant_aliases` is the
+# first: its route only matches a uuid segment, so the readable names the
+# tests below use ("guid-1", "kept", ...) are mapped to a uuid derived from the
+# name - the same name always gives the same uuid, so every assertion about
+# "the same identity" still holds.
+UUID_IDENTITY_URLS = frozenset({"/api/ledger/merchant_aliases/"})
+
+
+def ident(url: str, name: str) -> str:
+    """The identity segment a test called `name`, in the form `url` accepts."""
+    if url in UUID_IDENTITY_URLS:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
+    return name
+
+
+def detail(url: str, name: str) -> str:
+    return f"{url}{ident(url, name)}/"
 
 
 def _iso(day: int) -> str:
@@ -204,6 +224,15 @@ TABLES = [
         id="category_rules",
     ),
     pytest.param(
+        "/api/ledger/merchant_aliases/",
+        lambda i: {
+            "substring": f"JOHN NAUS MD PA {i}",
+            "display_name": f"Walmart {i}",
+            "created_at_client": _iso(1 + i),
+        },
+        id="merchant_aliases",
+    ),
+    pytest.param(
         "/api/ledger/budget_targets/",
         lambda i: {
             "category": "groceries",
@@ -237,12 +266,12 @@ def test_unauthenticated_list_is_401(url, payload):
 
 @pytest.mark.parametrize(("url", "payload"), TABLES)
 def test_unauthenticated_put_is_401(url, payload):
-    assert APIClient().put(f"{url}guid-1/", payload(0), format="json").status_code == 401
+    assert APIClient().put(detail(url, "guid-1"), payload(0), format="json").status_code == 401
 
 
 @pytest.mark.parametrize(("url", "payload"), TABLES)
 def test_put_creates_and_returns_the_row_as_stored(auth_client, url, payload):
-    response = auth_client.put(f"{url}guid-1/", payload(0), format="json")
+    response = auth_client.put(detail(url, "guid-1"), payload(0), format="json")
     assert response.status_code == 200, response.data
     body = response.data
     # Server facts, all four filled in by the server and none of them
@@ -262,10 +291,10 @@ def test_put_creates_and_returns_the_row_as_stored(auth_client, url, payload):
 def test_repeated_put_is_idempotent(auth_client, url, payload):
     """The phone retries. A retry under the same identity updates the one
     row and never makes a second."""
-    first = auth_client.put(f"{url}guid-1/", payload(0), format="json")
+    first = auth_client.put(detail(url, "guid-1"), payload(0), format="json")
     assert first.status_code == 200, first.data
 
-    second = auth_client.put(f"{url}guid-1/", payload(0), format="json")
+    second = auth_client.put(detail(url, "guid-1"), payload(0), format="json")
     assert second.status_code == 200, second.data
     assert second.data["id"] == first.data["id"]
 
@@ -275,8 +304,8 @@ def test_repeated_put_is_idempotent(auth_client, url, payload):
 
 @pytest.mark.parametrize(("url", "payload"), TABLES)
 def test_put_updates_an_existing_row_in_place(auth_client, url, payload):
-    created = auth_client.put(f"{url}guid-1/", payload(0), format="json").data
-    updated = auth_client.put(f"{url}guid-1/", payload(1), format="json")
+    created = auth_client.put(detail(url, "guid-1"), payload(0), format="json").data
+    updated = auth_client.put(detail(url, "guid-1"), payload(1), format="json")
     assert updated.status_code == 200, updated.data
     assert updated.data["id"] == created["id"]
     for field, value in payload(1).items():
@@ -285,9 +314,9 @@ def test_put_updates_an_existing_row_in_place(auth_client, url, payload):
 
 @pytest.mark.parametrize(("url", "payload"), DELETABLE)
 def test_delete_tombstones_rather_than_deleting(auth_client, url, payload):
-    created = auth_client.put(f"{url}guid-1/", payload(0), format="json").data
+    created = auth_client.put(detail(url, "guid-1"), payload(0), format="json").data
 
-    first = auth_client.delete(f"{url}guid-1/")
+    first = auth_client.delete(detail(url, "guid-1"))
     assert first.status_code == 204
 
     # The row is still there, carrying a tombstone - a phone that has not
@@ -298,14 +327,14 @@ def test_delete_tombstones_rather_than_deleting(auth_client, url, payload):
     assert rows[created["id"]]["deleted_at"] is not None
 
     # Idempotent: a second delete is still a 204.
-    assert auth_client.delete(f"{url}guid-1/").status_code == 204
+    assert auth_client.delete(detail(url, "guid-1")).status_code == 204
 
 
 @pytest.mark.parametrize(("url", "payload"), DELETABLE)
 def test_active_omits_tombstones(auth_client, url, payload):
-    auth_client.put(f"{url}gone/", payload(0), format="json")
-    kept = auth_client.put(f"{url}kept/", payload(1), format="json").data
-    auth_client.delete(f"{url}gone/")
+    auth_client.put(detail(url, "gone"), payload(0), format="json")
+    kept = auth_client.put(detail(url, "kept"), payload(1), format="json").data
+    auth_client.delete(detail(url, "gone"))
 
     active = auth_client.get(f"{url}?active=1")
     ids = [row["id"] for row in active.data["results"]]
@@ -317,8 +346,8 @@ def test_since_feed_omits_rows_changed_before_the_watermark(auth_client, url, pa
     """Both timestamps in this comparison come from the DATABASE clock -
     see this module's own doc comment for why that matters and what
     happens when they do not."""
-    auth_client.put(f"{url}older/", payload(0), format="json")
-    newer = auth_client.put(f"{url}newer/", payload(1), format="json").data
+    auth_client.put(detail(url, "older"), payload(0), format="json")
+    newer = auth_client.put(detail(url, "newer"), payload(1), format="json").data
     assert newer["updated_at"] is not None
 
     feed = auth_client.get(f"{url}?since={newer['updated_at']}")
@@ -331,8 +360,8 @@ def test_since_feed_omits_rows_changed_before_the_watermark(auth_client, url, pa
 
 @pytest.mark.parametrize(("url", "payload"), TABLES)
 def test_missing_since_returns_everything(auth_client, url, payload):
-    auth_client.put(f"{url}a/", payload(0), format="json")
-    auth_client.put(f"{url}b/", payload(1), format="json")
+    auth_client.put(detail(url, "a"), payload(0), format="json")
+    auth_client.put(detail(url, "b"), payload(1), format="json")
 
     feed = auth_client.get(url)
     assert feed.status_code == 200
@@ -347,7 +376,7 @@ def test_unknown_field_is_400_naming_the_field(auth_client, url, payload):
     and it is told - never a silent drop that reads like a successful
     write."""
     body = payload(0) | {"vibe": "excellent"}
-    response = auth_client.put(f"{url}guid-1/", body, format="json")
+    response = auth_client.put(detail(url, "guid-1"), body, format="json")
     assert response.status_code == 400
     assert "vibe" in str(response.data)
 
@@ -509,6 +538,30 @@ REFUSED = [
         id="category-rules-blank-substring",
     ),
     pytest.param(
+        "/api/ledger/merchant_aliases/",
+        lambda i: {
+            "substring": "JOHN NAUS",
+            "display_name": "Walmart",
+            "created_at_client": _iso(1),
+        },
+        # A blank substring is contained in every description, so this one
+        # alias would rename the whole ledger.
+        {"substring": "  "},
+        ("substring", "blank"),
+        id="merchant-aliases-blank-substring",
+    ),
+    pytest.param(
+        "/api/ledger/merchant_aliases/",
+        lambda i: {
+            "substring": "JOHN NAUS",
+            "display_name": "Walmart",
+            "created_at_client": _iso(1),
+        },
+        {"display_name": " "},
+        ("display_name", "blank"),
+        id="merchant-aliases-blank-display-name",
+    ),
+    pytest.param(
         "/api/ledger/budget_targets/",
         lambda i: {
             "category": "groceries",
@@ -538,7 +591,7 @@ REFUSED = [
 def test_a_check_refused_value_is_400_naming_the_allowed_set(
     auth_client, url, payload, bad, expected_words
 ):
-    response = auth_client.put(f"{url}guid-1/", payload(0) | bad, format="json")
+    response = auth_client.put(detail(url, "guid-1"), payload(0) | bad, format="json")
     assert response.status_code == 400, response.data
     text = str(response.data)
     for word in expected_words:

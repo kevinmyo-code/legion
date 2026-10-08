@@ -279,6 +279,12 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = create_table(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0016` (merchant aliases), the same way and for
+            # the same reason: the migration is a no-op here.
+            from ingest.merchant_aliases import create_table as create_merchant_aliases
+
+            skipped = create_merchant_aliases(cursor)
+            assert skipped is None, skipped
             # `ingest/migrations/0008`, the same way and for the same reason.
             from ingest.category_flags import add_column
 

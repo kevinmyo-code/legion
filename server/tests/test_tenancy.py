@@ -63,6 +63,7 @@ from tests.test_fleet_api import TABLES as FLEET_TABLES
 from tests.test_fleet_api import a_vehicle
 from tests.test_ingest_api import a_receipt, a_statement
 from tests.test_synced_contract import TABLES as SYNCED_TABLES
+from tests.test_synced_contract import ident
 
 pytestmark = pytest.mark.django_db
 
@@ -94,10 +95,26 @@ def _synced_cases():
     cases = []
     for param in SYNCED_TABLES:
         url, factory = param.values
-        cases.append(
-            pytest.param(param.id, url, f"{url}guid-{{n}}/", factory, id=param.id)
-        )
+        cases.append(pytest.param(param.id, url, _DetailTemplate(url), factory, id=param.id))
     return cases
+
+
+class _DetailTemplate:
+    """`detail_template.format(n=...)` -> the detail URL of identity
+    `guid-<n>`, in the form the table's route accepts (`ident`: a uuid for a
+    uuid-keyed table such as `merchant_aliases`, the name itself elsewhere)."""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def identity(self, n) -> str:
+        return ident(self.url, f"guid-{n}")
+
+    def format(self, *, n) -> str:
+        return f"{self.url}{self.identity(n)}/"
+
+    def __repr__(self) -> str:
+        return f"{self.url}guid-{{n}}/"
 
 
 def _fleet_for(client):
@@ -137,7 +154,7 @@ def test_synced_list_never_shows_another_households_rows(
         rows = client.get(f"{url}?since={EPOCH}").data["results"]
         identities = {row.get("origin_guid") or row.get("label") for row in rows}
         assert len(rows) == 1, (table, rows)
-        assert f"guid-{theirs}" not in identities, (table, identities)
+        assert detail_template.identity(theirs) not in identities, (table, identities)
 
 
 @pytest.mark.parametrize(("table", "url", "detail_template", "payload"), _synced_cases())
@@ -755,6 +772,9 @@ REKEYED = [
     ("grocery_staples", ["name"]),
     ("ingested_files", ["content_sha256"]),
     ("ledger_transactions", ["origin_guid"]),
+    # Born scoped rather than re-keyed (`ingest/merchant_aliases.py` creates it
+    # under the planner's own name), and checked the same way.
+    ("merchant_aliases", ["origin_guid"]),
     ("meal_targets", ["effective_from_date"]),
     ("places", ["label"]),
     ("receipt_line_items", ["origin_guid"]),
