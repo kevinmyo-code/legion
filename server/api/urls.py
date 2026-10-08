@@ -28,6 +28,7 @@ are declared separately at the foot of this file:
     /api/memory/memory_audit/             /api/memory/memory_audit/<origin_guid>/
     /api/ledger/categories/               /api/ledger/categories/<origin_guid>/
     /api/ledger/category_rules/           /api/ledger/category_rules/<origin_guid>/
+    /api/ledger/merchant_aliases/         /api/ledger/merchant_aliases/<origin_guid>/  uuid identity
     /api/ledger/budget_targets/           /api/ledger/budget_targets/<origin_guid>/
     /api/ledger/statements/               /api/ledger/statements/<uuid>/          GET only
     /api/ledger/transactions/             /api/ledger/transactions/<uuid>/        GET only

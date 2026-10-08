@@ -211,6 +211,11 @@ def _say(table: str, row: dict) -> str:
             "unaccounted_cents is an amount this receipt's lines do not explain. It is not "
             "tax and is never added into a total"
         )
+    if row.get("display_description") is not None:
+        said.append(
+            "display_description is a merchant name the household chose (a merchant alias); "
+            "description is the bank's own text, unchanged"
+        )
     return "; ".join(said)
 
 

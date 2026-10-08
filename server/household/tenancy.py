@@ -79,6 +79,10 @@ TENANT_TABLES: tuple[str, ...] = (
     # tenanted; its household must equal its transaction's, by composite FK
     # (`ingest/category_overrides.py`).
     "ledger_transaction_categories",
+    # Kevin, 2026-10-07: a merchant name shown in place of a gated row's bank
+    # text, display only. Born tenanted like the overrides above
+    # (`ingest/merchant_aliases.py`), and like them not Django-managed.
+    "merchant_aliases",
     # pantry
     "grocery_staples",
     "meal_logs",

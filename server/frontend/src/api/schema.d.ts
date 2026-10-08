@@ -2160,6 +2160,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/merchant_aliases/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `?since=<iso>` (tombstones included) and `?active=1` (live rows
+         *     only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+         *     feed, and `?active=1` alone is every live row since the epoch.
+         *
+         *     A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+         *     holds that rule for the whole API and quotes the phone-side cursor
+         *     comment it comes from.
+         */
+        get: operations["api_ledger_merchant_aliases_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/merchant_aliases/{identity}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT <table>/<identity>/`. Idempotent by construction: the
+         *     identity comes from the URL, so a retry cannot make a second row.
+         *     200 whether the row was created or updated - the caller asked for
+         *     the row to exist in this state and it does, and which of the two
+         *     happened is not something a retrying client can act on.
+         */
+        put: operations["api_ledger_merchant_aliases_update"];
+        post?: never;
+        /**
+         * @description `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+         *     stays, because a phone that has not synced since still needs to
+         *     learn the row is gone. Idempotent - a second delete is still a 204,
+         *     matching `EventsBackend.softDelete`'s own contract.
+         */
+        delete: operations["api_ledger_merchant_aliases_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/spend": {
         parameters: {
             query?: never;
@@ -3214,6 +3268,7 @@ export interface components {
             memory_audit?: components["schemas"]["MemoryAudit"][];
             categories?: components["schemas"]["Category"][];
             category_rules?: components["schemas"]["CategoryRule"][];
+            merchant_aliases?: components["schemas"]["MerchantAlias"][];
             budget_targets?: components["schemas"]["BudgetTarget"][];
             ledger_transaction_categories?: components["schemas"]["LedgerTransactionCategory"][];
             statements?: components["schemas"]["Statement"][];
@@ -3868,6 +3923,8 @@ export interface components {
             /** Format: date */
             readonly txn_date: string;
             readonly description: string;
+            /** @description Merchant name a person chose for this row's bank text (a merchant alias); null when none applies. Display only: `description` is the bank's own text and is never changed. */
+            readonly display_description: string | null;
             /** Format: int64 */
             readonly amount_cents: number;
             /** Format: int64 */
@@ -4157,6 +4214,40 @@ export interface components {
             readonly updated_at: string;
             /** Format: date-time */
             readonly deleted_at: string | null;
+            origin_guid: string;
+        };
+        /**
+         * @description One `merchant_aliases` row: show `display_name` wherever a
+         *     transaction's bank text contains `substring` (Kevin, 2026-10-07).
+         *
+         *     Display only. The bank's `description` is never changed, and no
+         *     categorisation, dedup, transfer or gate logic reads this table.
+         *
+         *     `created_at_client` orders aliases exactly as it orders category rules -
+         *     the oldest matching alias wins - and is the client's own write instant.
+         *     Unlike `category_rules` it may be left out: the row then takes the
+         *     server's clock at insert, and a later PUT that leaves it out keeps it.
+         */
+        MerchantAlias: {
+            /** Format: uuid */
+            readonly id: string;
+            /** @description Matched case-insensitively and literally (`%` and `_` mean themselves) against a transaction's bank `description`. */
+            substring: string;
+            /** @description What a surface shows for a matching transaction, as `display_description`. Never written onto the transaction. */
+            display_name: string;
+            /**
+             * Format: date-time
+             * @description The client's own write instant; the oldest matching live alias wins. Omitted on create, the server's clock is used; omitted on a PUT over an existing row, it is unchanged.
+             */
+            created_at_client?: string;
+            readonly provenance: components["schemas"]["ProvenanceEnum"];
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: date-time */
+            readonly deleted_at: string | null;
+            /** Format: uuid */
             origin_guid: string;
         };
         /** @enum {unknown} */
@@ -4540,6 +4631,16 @@ export interface components {
         };
         PagedMemoryAudit: {
             results: components["schemas"]["MemoryAudit"][];
+            /**
+             * Format: date-time
+             * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
+             */
+            next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
+        };
+        PagedMerchantAlias: {
+            results: components["schemas"]["MerchantAlias"][];
             /**
              * Format: date-time
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
@@ -9641,6 +9742,101 @@ export interface operations {
         };
     };
     api_ledger_category_rules_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done. Soft-deleted (the tombstone row stays so an unsynced client learns of it). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_ledger_merchant_aliases_list: {
+        parameters: {
+            query?: {
+                /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
+                active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
+                /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedMerchantAlias"];
+                };
+            };
+        };
+    };
+    api_ledger_merchant_aliases_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MerchantAlias"];
+                "application/x-www-form-urlencoded": components["schemas"]["MerchantAlias"];
+                "multipart/form-data": components["schemas"]["MerchantAlias"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantAlias"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    api_ledger_merchant_aliases_destroy: {
         parameters: {
             query?: never;
             header?: never;

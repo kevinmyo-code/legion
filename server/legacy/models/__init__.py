@@ -40,6 +40,7 @@ from legacy.models.ledger import (
     Category,
     CategoryRule,
     LedgerTransaction,
+    MerchantAlias,
     Statement,
 )
 from legacy.models.memory import (
@@ -79,6 +80,7 @@ __all__ = [
     "MealTarget",
     "Memory",
     "MemoryAudit",
+    "MerchantAlias",
     "ObdSample",
     "OilAnalysis",
     "Place",
