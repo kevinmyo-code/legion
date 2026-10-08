@@ -66,4 +66,48 @@ class LedgerDisplayTest {
         assertEquals("USD -87.34", formatMoney(-8734L, LedgerCurrency.USD))
         assertEquals("SGD 2,165.82", formatMoney(216_582L, LedgerCurrency.SGD))
     }
+
+    private fun alias(substring: String, name: String, createdAt: Long = 1L) =
+        com.kevin.legion.data.local.MerchantAlias(substring = substring, displayName = name, createdAt = createdAt)
+
+    @Test
+    fun `an alias whose substring is in the raw text supplies the display name`() {
+        assertEquals(
+            "Walmart",
+            displayDescription("JOHN NAUS MD PA COLLEYVILLE TX", listOf(alias("JOHN NAUS", "Walmart"))),
+        )
+    }
+
+    @Test
+    fun `alias matching ignores case`() {
+        val raw = "JOHN NAUS MD PA COLLEYVILLE TX"
+        assertEquals("Walmart", displayDescription(raw, listOf(alias("john naus", "Walmart"))))
+    }
+
+    @Test
+    fun `the oldest alias wins when two overlap`() {
+        val aliases = listOf(alias("NAUS", "First", createdAt = 1L), alias("JOHN NAUS", "Second", createdAt = 2L))
+        assertEquals("First", displayDescription("JOHN NAUS MD", aliases))
+    }
+
+    @Test
+    fun `no match falls back to the existing noise stripping`() {
+        assertEquals(
+            "TRADER JOES #452 SAN JOSE CA",
+            displayDescription("CHECKCARD 0701 TRADER JOES #452 SAN JOSE CA", listOf(alias("NAUS", "Walmart"))),
+        )
+    }
+
+    @Test
+    fun `a blank substring never matches`() {
+        val blanks = listOf(alias("", "Everything"), alias("   ", "Also everything"))
+        assertEquals("KROGER #115", displayDescription("KROGER #115", blanks))
+    }
+
+    @Test
+    fun `an alias never changes the raw text it was resolved from`() {
+        val raw = "JOHN NAUS MD PA COLLEYVILLE TX"
+        displayDescription(raw, listOf(alias("JOHN NAUS", "Walmart")))
+        assertEquals("JOHN NAUS MD PA COLLEYVILLE TX", raw)
+    }
 }

@@ -508,7 +508,7 @@ private fun CategoryDrilldownRow(
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
         Text(
-            displayDescription(txn.description),
+            displayDescription(txn.description, LocalMerchantAliases.current),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -534,6 +534,8 @@ private fun CategoryDrilldownRow(
             Spacer(Modifier.height(2.dp))
             Text(note, style = LegionType.stamp, color = sem.estimated)
         }
+        // Merchant alias (2026-10-07): the rename, and the bank's own text in words when a rename hides it.
+        MerchantRenameRow(txn)
         if (expanded) {
             Spacer(Modifier.height(4.dp))
             RecategorizePanel(

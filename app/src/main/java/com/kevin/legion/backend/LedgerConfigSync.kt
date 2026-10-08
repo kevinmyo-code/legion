@@ -9,6 +9,7 @@ import com.kevin.legion.data.local.BudgetTarget
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Category
 import com.kevin.legion.data.local.CategoryRule
+import com.kevin.legion.data.local.MerchantAlias
 import com.kevin.legion.data.local.LedgerCurrency
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -152,12 +153,14 @@ object LedgerConfigSync {
         var total = PullReport(0, 0, 0, 0, 0)
         total += pullCategories(context, backend)
         total += pullCategoryRules(context, backend)
+        total += pullMerchantAliases(context, backend)
         total += pullBudgetTargets(context, backend)
         return total
     }
 
     private const val T_CATEGORIES = "categories"
     private const val T_CATEGORY_RULES = "category_rules"
+    private const val T_MERCHANT_ALIASES = "merchant_aliases"
     private const val T_BUDGET_TARGETS = "budget_targets"
 
     private suspend fun pullCategories(context: Context, backend: LedgerConfigBackend): PullReport {
@@ -248,6 +251,50 @@ object LedgerConfigSync {
             update = { db.categoryRuleDao().update(it) },
         )
         remote.maxOfOrNull { it.updatedAtMs }?.let { LedgerConfigPullCursor.advance(context, T_CATEGORY_RULES, it) }
+        return report.toPullReport()
+    }
+
+    private suspend fun pullMerchantAliases(context: Context, backend: LedgerConfigBackend): PullReport {
+        val db = CarDatabase.getDatabase(context)
+        val sinceMs = LedgerConfigPullCursor.lastPulledAtMs(context, T_MERCHANT_ALIASES)
+        val remote = backend.fetchChangedMerchantAliasesSince(sinceMs).getOrThrow()
+        val local = db.merchantAliasDao().getAllIncludingDeleted()
+        val report = LedgerConfigMerge.merge(
+            remoteRows = remote,
+            localRows = local,
+            remoteGuid = { it.originGuid },
+            localGuid = { it.guid },
+            remoteDeleted = { it.deleted },
+            remoteUpdatedAtMs = { it.updatedAtMs },
+            localUpdatedAtMs = { it.updatedAtMs },
+            localDeleted = { it.deleted },
+            toInserted = { r ->
+                MerchantAlias(
+                    id = 0,
+                    substring = r.substring,
+                    displayName = r.displayName,
+                    createdAt = r.createdAtMs,
+                    guid = r.originGuid,
+                    serverId = r.serverId,
+                    updatedAtMs = r.updatedAtMs,
+                    deleted = r.deleted,
+                )
+            },
+            toMerged = { r, existing ->
+                existing.copy(
+                    substring = r.substring,
+                    displayName = r.displayName,
+                    createdAt = r.createdAtMs,
+                    serverId = r.serverId,
+                    updatedAtMs = r.updatedAtMs,
+                    deleted = r.deleted,
+                )
+            },
+            withDeletedFlag = { existing, atMs -> existing.copy(deleted = true, updatedAtMs = atMs) },
+            insert = { db.merchantAliasDao().insert(it) },
+            update = { db.merchantAliasDao().update(it) },
+        )
+        remote.maxOfOrNull { it.updatedAtMs }?.let { LedgerConfigPullCursor.advance(context, T_MERCHANT_ALIASES, it) }
         return report.toPullReport()
     }
 

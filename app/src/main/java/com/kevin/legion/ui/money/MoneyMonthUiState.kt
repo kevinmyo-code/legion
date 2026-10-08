@@ -63,11 +63,14 @@ fun drilldownCategoryName(category: String?): String = category ?: UNCATEGORIZED
 
 const val UNCATEGORIZED_LABEL = "Uncategorized"
 
-internal fun drilldownRowsFrom(rows: List<LedgerTransaction>): List<MoneyDrilldownRow> =
+internal fun drilldownRowsFrom(
+    rows: List<LedgerTransaction>,
+    aliases: List<com.kevin.legion.data.local.MerchantAlias> = emptyList(),
+): List<MoneyDrilldownRow> =
     rows.map {
         MoneyDrilldownRow(
             date = calendarDateOf(it).toString(),
-            description = displayDescription(it.description),
+            description = displayDescription(it.description, aliases),
             cents = -it.amountCents,
             unverified = it.ingestMethod == IngestMethod.UNRECONCILED,
         )

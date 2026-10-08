@@ -27,6 +27,7 @@ class LedgerConfigBackfillTest {
 
     private class FakeLedgerConfigBackend : LedgerConfigBackend {
         val ruleUpsertCalls = mutableListOf<String>()
+        val aliasUpsertCalls = mutableListOf<String>()
         var failGuid: String? = null
 
         // Genuinely succeeds, unlike a bare "not used" stub - MIGRATION_5_6/MIGRATION_11_12 seed
@@ -46,6 +47,16 @@ class LedgerConfigBackfillTest {
             return Result.success(RemoteCategoryRule(originGuid, fields.category, fields.substring, fields.createdAtMs, fields.createdAtMs, false, originGuid))
         }
         override suspend fun softDeleteCategoryRule(originGuid: String) = Result.success(true)
+
+        override suspend fun fetchChangedMerchantAliasesSince(sinceMs: Long) =
+            Result.success(emptyList<RemoteMerchantAlias>())
+        override suspend fun upsertMerchantAlias(originGuid: String, fields: MerchantAliasFields): Result<RemoteMerchantAlias> {
+            aliasUpsertCalls.add(originGuid)
+            val ms = fields.createdAtMs
+            val row = RemoteMerchantAlias(originGuid, fields.substring, fields.displayName, ms, ms, false, originGuid)
+            return Result.success(row)
+        }
+        override suspend fun softDeleteMerchantAlias(originGuid: String) = Result.success(true)
 
         override suspend fun fetchChangedBudgetTargetsSince(sinceMs: Long) = Result.success(emptyList<RemoteBudgetTarget>())
         override suspend fun upsertBudgetTarget(originGuid: String, fields: BudgetTargetFields) =
@@ -80,6 +91,22 @@ class LedgerConfigBackfillTest {
         return db.categoryRuleDao().insert(
             CategoryRule(category = "Groceries", substring = "SUBSTR-$guid", createdAt = 1_000L, guid = guid, serverId = serverId, updatedAtMs = 1_000L, deleted = deleted),
         )
+    }
+
+    @Test
+    fun `a pre-write-through merchant alias with no serverId is pushed with its display name`() = runBlocking {
+        primeCategoriesBackfillCursor()
+        val dao = com.kevin.legion.data.local.CarDatabase.getDatabase(context).merchantAliasDao()
+        dao.insert(
+            com.kevin.legion.data.local.MerchantAlias(
+                substring = "JOHN NAUS", displayName = "Walmart", createdAt = 1L, guid = "alias-guid", updatedAtMs = 1L,
+            ),
+        )
+
+        val report = LedgerConfigBackfill.run(context, backend)
+
+        assertEquals(listOf("alias-guid"), backend.aliasUpsertCalls)
+        assertEquals(1, report.pushed)
     }
 
     @Test

@@ -210,8 +210,13 @@ object GeneratedViewQueryRunner {
             QueryAggregation.SUM -> formatMoney(kept.sumOf { -it.amountCents }, LEDGER_ENTITY.currency)
             QueryAggregation.COUNT -> "${kept.size} transaction${if (kept.size == 1) "" else "s"}"
         }
+        // Merchant aliases (2026-10-07): the label is what the person sees, so it uses their name.
+        val aliases = LedgerController.merchantAliases(context)
         val rows = kept.sortedByDescending { it.txnDate }.take(MAX_ROWS).map {
-            GeneratedViewRow(label = it.description, value = formatMoney(-it.amountCents, LEDGER_ENTITY.currency))
+            GeneratedViewRow(
+                label = com.kevin.legion.ledger.displayDescription(it.description, aliases),
+                value = formatMoney(-it.amountCents, LEDGER_ENTITY.currency),
+            )
         }
 
         return RunResult.Rendered(

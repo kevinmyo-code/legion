@@ -9,6 +9,7 @@ import com.kevin.legion.data.local.BudgetTarget
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Category
 import com.kevin.legion.data.local.CategoryRule
+import com.kevin.legion.data.local.MerchantAlias
 import com.kevin.legion.data.local.OutboxTarget
 
 /**
@@ -116,13 +117,21 @@ object LedgerConfigBackfill {
             localId = { it.id }, localGuid = { it.guid }, localServerId = { it.serverId }, localDeleted = { it.deleted },
             push = { row: CategoryRule -> backend.upsertCategoryRule(row.guid, LedgerConfigWriteThrough.CategoryRulePayload.from(row).toFields()) },
         )
+        val merchantAliases = backfillTable(
+            context, OutboxTarget.LEDGER_MERCHANT_ALIASES, db.merchantAliasDao().getAllIncludingDeleted(),
+            localId = { it.id }, localGuid = { it.guid }, localServerId = { it.serverId }, localDeleted = { it.deleted },
+            push = { row: MerchantAlias ->
+                val fields = LedgerConfigWriteThrough.MerchantAliasPayload.from(row).toFields()
+                backend.upsertMerchantAlias(row.guid, fields)
+            },
+        )
         val budgetTargets = backfillTable(
             context, OutboxTarget.LEDGER_BUDGET_TARGETS, db.budgetTargetDao().getAll(),
             localId = { it.id }, localGuid = { it.guid }, localServerId = { it.serverId }, localDeleted = { it.deleted },
             push = { row: BudgetTarget -> backend.upsertBudgetTarget(row.guid, LedgerConfigWriteThrough.BudgetTargetPayload.from(row).toFields()) },
         )
 
-        val results = listOf(categories, categoryRules, budgetTargets)
+        val results = listOf(categories, categoryRules, merchantAliases, budgetTargets)
 
         return Report(
             pushed = results.sumOf { it.pushed },

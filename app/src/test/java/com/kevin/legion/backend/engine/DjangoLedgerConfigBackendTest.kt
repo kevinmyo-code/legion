@@ -3,6 +3,7 @@ package com.kevin.legion.backend.engine
 import com.kevin.legion.backend.BudgetTargetFields
 import com.kevin.legion.backend.CategoryFields
 import com.kevin.legion.backend.CategoryRuleFields
+import com.kevin.legion.backend.MerchantAliasFields
 import com.kevin.legion.backend.engine.EngineTestSupport.json
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -103,6 +104,29 @@ class DjangoLedgerConfigBackendTest {
         assertEquals(1_783_166_400_000L, saved.createdAtMs)
 
         val body = (request(engine))
+        assertTrue("the client clock is sent: $body", body.contains("\"created_at_client\""))
+        assertTrue("and the server's own is not: $body", !body.contains("\"created_at\":"))
+    }
+
+    @Test
+    fun `a merchant alias maps display_name both ways and sends created_at_client`() = runBlocking {
+        val row = """
+            {"id":"dddddddd-0000-4000-8000-000000000001","substring":"JOHN NAUS","display_name":"Walmart",
+             "created_at_client":"2026-07-04T12:00:00Z","provenance":"USER",
+             "created_at":"2026-09-01T00:00:00Z","updated_at":"2026-09-01T00:00:00Z",
+             "deleted_at":null,"origin_guid":"$guid"}
+        """.trimIndent()
+        val engine = EngineTestSupport.RecordingEngine { json(row) }
+
+        val saved = backend(engine)
+            .upsertMerchantAlias(guid, MerchantAliasFields("JOHN NAUS", "Walmart", 1_783_166_400_000L))
+            .getOrThrow()
+
+        assertEquals("Walmart", saved.displayName)
+        assertEquals("JOHN NAUS", saved.substring)
+        assertEquals(1_783_166_400_000L, saved.createdAtMs)
+        val body = request(engine)
+        assertTrue("snake_case display_name on the wire: $body", body.contains("\"display_name\":\"Walmart\""))
         assertTrue("the client clock is sent: $body", body.contains("\"created_at_client\""))
         assertTrue("and the server's own is not: $body", !body.contains("\"created_at\":"))
     }

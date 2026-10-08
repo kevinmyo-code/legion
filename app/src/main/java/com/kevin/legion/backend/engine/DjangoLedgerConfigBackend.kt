@@ -6,7 +6,9 @@ import com.kevin.legion.backend.CategoryRuleFields
 import com.kevin.legion.backend.LedgerConfigBackend
 import com.kevin.legion.backend.RemoteBudgetTarget
 import com.kevin.legion.backend.RemoteCategory
+import com.kevin.legion.backend.MerchantAliasFields
 import com.kevin.legion.backend.RemoteCategoryRule
+import com.kevin.legion.backend.RemoteMerchantAlias
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -116,6 +118,36 @@ private data class DjangoCategoryRuleRow(
     )
 }
 
+/** One `merchant_aliases` row (2026-10-07). Same `created_at_client` vs `created_at` split as
+ * [DjangoCategoryRuleRow], for the same reason. */
+@Serializable
+private data class DjangoMerchantAliasRow(
+    val id: String,
+    val substring: String,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("created_at_client") val createdAtClient: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+    @SerialName("origin_guid") val originGuid: String,
+) {
+    fun toRemote() = RemoteMerchantAlias(
+        serverId = id,
+        substring = substring,
+        displayName = displayName,
+        createdAtMs = ledgerParseTs(createdAtClient),
+        updatedAtMs = ledgerParseTs(updatedAt),
+        deleted = deletedAt != null,
+        originGuid = originGuid,
+    )
+}
+
+@Serializable
+private data class DjangoMerchantAliasWrite(
+    val substring: String,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("created_at_client") val createdAtClient: String,
+)
+
 @Serializable
 private data class DjangoCategoryRuleWrite(
     val category: String,
@@ -179,6 +211,7 @@ private data class DjangoBudgetTargetWrite(
  * places), matching `SupabaseLedgerConfigBackend`'s own upsert DTOs, which carry no `deleted_at` and
  * so leave an existing tombstone alone.
  */
+@Suppress("TooManyFunctions") // implements the per-table LedgerConfigBackend interface, one trio per table
 class DjangoLedgerConfigBackend(http: EngineHttp) : LedgerConfigBackend {
 
     private val categories = EngineSyncedTable(
@@ -192,6 +225,13 @@ class DjangoLedgerConfigBackend(http: EngineHttp) : LedgerConfigBackend {
         http = http,
         path = LEDGER_ROOT + "category_rules/",
         rowSerializer = DjangoCategoryRuleRow.serializer(),
+        idOf = { it.id },
+    )
+
+    private val merchantAliases = EngineSyncedTable(
+        http = http,
+        path = LEDGER_ROOT + "merchant_aliases/",
+        rowSerializer = DjangoMerchantAliasRow.serializer(),
         idOf = { it.id },
     )
 
@@ -248,6 +288,30 @@ class DjangoLedgerConfigBackend(http: EngineHttp) : LedgerConfigBackend {
 
     override suspend fun softDeleteCategoryRule(originGuid: String): Result<Boolean> =
         deletingEngineRow("remove that categorisation rule") { categoryRules.deleteRow(originGuid) }
+
+    override suspend fun fetchChangedMerchantAliasesSince(sinceMs: Long): Result<List<RemoteMerchantAlias>> =
+        translatingEngineCall("load your merchant names") {
+            merchantAliases.fetchChangedSince(ledgerTs(sinceMs)).map { it.toRemote() }
+        }
+
+    override suspend fun upsertMerchantAlias(
+        originGuid: String,
+        fields: MerchantAliasFields,
+    ): Result<RemoteMerchantAlias> =
+        translatingEngineCall("save that merchant name") {
+            val body = engineSyncedJson.encodeToString(
+                DjangoMerchantAliasWrite.serializer(),
+                DjangoMerchantAliasWrite(
+                    substring = fields.substring,
+                    displayName = fields.displayName,
+                    createdAtClient = ledgerTs(fields.createdAtMs),
+                ),
+            )
+            merchantAliases.put(originGuid, body).toRemote()
+        }
+
+    override suspend fun softDeleteMerchantAlias(originGuid: String): Result<Boolean> =
+        deletingEngineRow("remove that merchant name") { merchantAliases.deleteRow(originGuid) }
 
     override suspend fun fetchChangedBudgetTargetsSince(sinceMs: Long): Result<List<RemoteBudgetTarget>> =
         translatingEngineCall("load your budgets") {

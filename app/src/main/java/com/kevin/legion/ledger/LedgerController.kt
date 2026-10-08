@@ -885,6 +885,38 @@ object LedgerController {
         return com.kevin.legion.backend.LedgerConfigWriteThrough.deleteCategoryRulesBySubstring(context, merchantKey)
     }
 
+    // --- Merchant aliases (Kevin, 2026-10-07): display-only renames --------------------------------
+
+    /** Live aliases, oldest first, as a stream: what [com.kevin.legion.ui.ledger.ProvideMerchantAliases]
+     * hands to every composable that renders a description. */
+    fun merchantAliasesFlow(context: Context): kotlinx.coroutines.flow.Flow<List<com.kevin.legion.data.local.MerchantAlias>> =
+        db(context).merchantAliasDao().observeActive()
+
+    /** Live aliases, oldest first, for the non-Compose display sites (digest, tools, view runner). */
+    suspend fun merchantAliases(context: Context): List<com.kevin.legion.data.local.MerchantAlias> =
+        db(context).merchantAliasDao().getActive()
+
+    /**
+     * Saves a rename: rows whose bank text contains [substring] show as [displayName]. Returns null
+     * (and writes nothing) when either is blank. Display only; no row is touched. Goes through
+     * [com.kevin.legion.backend.LedgerConfigWriteThrough], which pushes it or queues the push.
+     */
+    suspend fun addMerchantAlias(context: Context, substring: String, displayName: String): com.kevin.legion.data.local.MerchantAlias? {
+        val sub = substring.trim()
+        val name = displayName.trim()
+        if (sub.isEmpty() || name.isEmpty()) return null
+        return com.kevin.legion.backend.LedgerConfigWriteThrough.addMerchantAlias(
+            context,
+            com.kevin.legion.data.local.MerchantAlias(
+                substring = sub, displayName = name, createdAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    /** Removes a rename; the rows go back to showing the bank's own text. */
+    suspend fun removeMerchantAlias(context: Context, id: Long): Boolean =
+        com.kevin.legion.backend.LedgerConfigWriteThrough.deleteMerchantAlias(context, id)
+
     /**
      * D18: "confirming a guess creates the rule automatically... the whole stability answer: a
      * merchant is guessed at most once, ever." Clears [com.kevin.legion.data.local.LedgerTransaction.categoryPending]
