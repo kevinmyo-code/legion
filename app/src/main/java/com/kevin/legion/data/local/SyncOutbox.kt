@@ -87,6 +87,9 @@ object OutboxTarget {
     const val LEDGER_CATEGORY_RULES = "category_rules"
     const val LEDGER_BUDGET_TARGETS = "budget_targets"
 
+    /** Merchant aliases (2026-10-07): display-only renames, see MerchantAlias. */
+    const val LEDGER_MERCHANT_ALIASES = "merchant_aliases"
+
     /** backend-etl ticket 14 option 2: a person's category laid over one server transaction
      * (`ledger_transaction_categories`), never a write into `ledger_transactions` itself.
      * [OutboxEntry.localId] is the local transaction's id. */

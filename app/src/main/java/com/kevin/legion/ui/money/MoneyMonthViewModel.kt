@@ -72,6 +72,7 @@ class MoneyMonthViewModel(application: Application) : AndroidViewModel(applicati
                     LedgerController.categoryTransactions(
                         getApplication(), section.entity, section.month, category, section.accountIds,
                     ),
+                    LedgerController.merchantAliases(getApplication()),
                 )
             } catch (e: Exception) {
                 null

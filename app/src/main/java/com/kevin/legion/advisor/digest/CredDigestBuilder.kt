@@ -204,7 +204,10 @@ class CredDigestBuilder : DigestBuilder {
         val expenses = operatingExpenses(entity, rows, rows, notSpending = notSpending)
         if (expenses.isEmpty()) return DigestText.line("MERCHANTS", "none")
 
-        val spends = expenses.groupBy { it.description }
+        // Merchant aliases (2026-10-07): group by the name the person gave, so two bank spellings of one
+        // merchant add up. Display only; the rows and figures are untouched.
+        val aliases = LedgerController.merchantAliases(context)
+        val spends = expenses.groupBy { com.kevin.legion.ledger.displayDescription(it.description, aliases) }
             .map { (merchant, txns) -> Triple(merchant, -txns.sumOf { it.amountCents }, txns.map(::rowTier).combinedTier()) }
             .sortedByDescending { it.second }
             .take(3)

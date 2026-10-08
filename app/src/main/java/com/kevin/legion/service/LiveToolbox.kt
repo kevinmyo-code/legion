@@ -29,6 +29,7 @@ import com.kevin.legion.data.local.MemoryAudit
 import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.ledger.LedgerController
+import com.kevin.legion.ledger.displayDescription
 import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.excludedOwnAccountMovementsSentence
 import com.kevin.legion.ledger.formatCents
@@ -857,8 +858,10 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "list_recent_transactions",
-            description = "Read back the most recent ledger transactions (raw descriptions and " +
-                "amounts - there's no spend-by-category breakdown yet, so don't imply insight this " +
+            description = "Read back the most recent ledger transactions (amounts, plus two names for " +
+                "each: merchant is the name the person gave it, description is the bank's raw text. " +
+                "Say the merchant; quote the bank's text only when asked what the bank printed. " +
+                "There's no spend-by-category breakdown yet, so don't imply insight this " +
                 "doesn't have). Use when the user asks what they've spent money on recently or " +
                 "wants to review recent transactions. Some rows are pending card activity read from a " +
                 "mid-cycle export, not yet confirmed by a statement (CLAUDE.md §4 rule 7) - each such " +
@@ -944,7 +947,9 @@ object LiveToolbox {
         fns.put(fn(
             name = "list_pending_transactions",
             description = "Read back every pending transaction the user has logged by voice - " +
-                "none of these are confirmed by the bank, every one carries verified=false. Use " +
+                "none of these are confirmed by the bank, every one carries verified=false. " +
+                "Each row carries merchant (the name the person gave it) and description (the raw " +
+                "text it was logged as). Use " +
                 "when the user asks what pending charges they've logged, or wants to review or " +
                 "clear one.",
             params = obj(),
@@ -4249,12 +4254,16 @@ object LiveToolbox {
      */
     private suspend fun listPendingTransactions(context: Context): JSONObject {
         val rows = LedgerController.pendingTransactions(context)
+        val aliases = LedgerController.merchantAliases(context)
         val arr = JSONArray()
         var totalCents = 0L
         for (r in rows) {
             arr.put(
                 JSONObject()
                     .put("date", documentDate(r.txnDate))
+                    // Merchant aliases (2026-10-07): `merchant` is the person's name for it; `description`
+                    // stays the raw text because clear_pending_transaction matches against it.
+                    .put("merchant", displayDescription(r.description, aliases))
                     .put("description", r.description)
                     .put("amount", r.amountCents / 100.0)
                     .put("currency", r.currency.name)
@@ -4318,10 +4327,14 @@ object LiveToolbox {
      */
     private suspend fun listRecentTransactions(context: Context, count: Int): JSONObject {
         val transactions = LedgerController.recentTransactions(context, count.coerceIn(1, 100))
+        val aliases = LedgerController.merchantAliases(context)
         val arr = JSONArray()
         for (t in transactions) {
             val o = JSONObject()
                 .put("date", documentDate(t.txnDate))
+                // Merchant aliases (2026-10-07): `merchant` is the person's name for it; `description`
+                // stays the bank's raw text, unchanged, so nothing keyed on it breaks.
+                .put("merchant", displayDescription(t.description, aliases))
                 .put("description", t.description)
                 .put("amount", t.amountCents / 100.0)
                 .put("currency", t.currency.name)

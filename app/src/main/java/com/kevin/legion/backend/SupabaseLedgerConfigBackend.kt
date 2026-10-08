@@ -131,6 +131,7 @@ private data class LedgerConfigDeletedAtDto(@SerialName("deleted_at") val delete
  * (`YYYY-MM-DD`), unlike every timestamptz column elsewhere in this file - matching the migration's
  * own `effective_from_month date` column, month-start UTC by convention on the phone side.
  */
+@Suppress("TooManyFunctions") // implements the per-table LedgerConfigBackend interface, one trio per table
 class SupabaseLedgerConfigBackend(private val client: SupabaseClient) : LedgerConfigBackend {
 
     private suspend inline fun <T> translating(action: String, block: () -> T): Result<T> = try {
@@ -217,6 +218,29 @@ class SupabaseLedgerConfigBackend(private val client: SupabaseClient) : LedgerCo
 
     override suspend fun softDeleteCategoryRule(originGuid: String): Result<Boolean> =
         softDeleteByOriginGuid(CATEGORY_RULES_TABLE, originGuid, "remove that category rule")
+
+    // --- Merchant aliases -------------------------------------------------------------------------
+    // Merchant aliases (2026-10-07) exist on the Django engine only. The Supabase transport is
+    // retiring (ADR 0044) and no Supabase table was added for them, so a read answers "nothing
+    // changed" and a write FAILS in words rather than pretending to sync: a success here would
+    // tell the outbox the row reached a server that has no such table.
+
+    override suspend fun fetchChangedMerchantAliasesSince(sinceMs: Long): Result<List<RemoteMerchantAlias>> =
+        Result.success(emptyList())
+
+    override suspend fun upsertMerchantAlias(originGuid: String, fields: MerchantAliasFields): Result<RemoteMerchantAlias> =
+        Result.failure(
+            LedgerConfigBackendException(
+                "Merchant names only sync through your household server, so that rename stays on this phone.",
+            ),
+        )
+
+    override suspend fun softDeleteMerchantAlias(originGuid: String): Result<Boolean> =
+        Result.failure(
+            LedgerConfigBackendException(
+                "Merchant names only sync through your household server, so that removal stays on this phone.",
+            ),
+        )
 
     // --- Budget targets --------------------------------------------------------------------------
 

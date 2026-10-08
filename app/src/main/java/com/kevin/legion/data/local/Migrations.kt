@@ -2980,3 +2980,24 @@ val MIGRATION_71_72 = object : Migration(SCHEMA_V71, SCHEMA_V72) {
         db.execSQL("ALTER TABLE `checklists` ADD COLUMN `systemKey` TEXT")
     }
 }
+
+private const val SCHEMA_V73 = 73
+
+/**
+ * `merchant_aliases` (Kevin, 2026-10-07: card rows reading "JOHN NAUS MD PA COLLEYVILLE TX" should
+ * show as "Walmart") - see [MerchantAlias]. A new table is additive. The CREATE statements are
+ * copied verbatim out of the generated `73.json` (the `${TABLE_NAME}` placeholder replaced by the
+ * table name, the only edit CLAUDE.md section 5 permits). Born with its sync columns, so no
+ * guid backfill is needed: the table starts empty.
+ */
+val MIGRATION_72_73 = object : Migration(SCHEMA_V72, SCHEMA_V73) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `merchant_aliases` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`substring` TEXT NOT NULL, `displayName` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                "`guid` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `updatedAtMs` INTEGER NOT NULL DEFAULT 0, " +
+                "`deleted` INTEGER NOT NULL DEFAULT 0)",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_merchant_aliases_guid` ON `merchant_aliases` (`guid`)")
+    }
+}

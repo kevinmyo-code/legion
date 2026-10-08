@@ -1,6 +1,7 @@
 package com.kevin.legion.ledger
 
 import com.kevin.legion.data.local.LedgerCurrency
+import com.kevin.legion.data.local.MerchantAlias
 
 /**
  * Display-time-only formatting for [com.kevin.legion.data.local.LedgerTransaction].
@@ -61,6 +62,24 @@ fun displayDescription(raw: String): String {
     if (!stripped) return raw
     return EXTRA_WHITESPACE.replace(result, " ").trim()
 }
+
+/**
+ * The first alias in [aliases] (pre-sorted oldest first, so the oldest rule wins on overlap) whose
+ * substring is contained in [raw], case-insensitively; null when none applies. Blank substrings
+ * never match: an empty string is "contained" in everything and would rename every row.
+ */
+fun matchingMerchantAlias(raw: String, aliases: List<MerchantAlias>): MerchantAlias? =
+    aliases.firstOrNull { it.substring.isNotBlank() && raw.contains(it.substring.trim(), ignoreCase = true) }
+
+/**
+ * Merchant aliases (Kevin, 2026-10-07): the name a person gave this merchant, else the existing
+ * noise-stripped bank text. **The one resolution function** every display surface goes through.
+ * Display only - category rules, merchant keys, dedup, transfer detection, pending-log matching
+ * and voice matching keep reading the raw description, and the stored description is never
+ * rewritten (it is the row's provenance).
+ */
+fun displayDescription(raw: String, aliases: List<MerchantAlias>): String =
+    matchingMerchantAlias(raw, aliases)?.displayName?.trim()?.takeIf { it.isNotEmpty() } ?: displayDescription(raw)
 
 /**
  * Formats signed cents as `"-1,234.56"` / `"41.00"` - grouped thousands, always

@@ -326,7 +326,11 @@ private fun UncategorizedRow(
 ) {
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-        Text(displayDescription(txn.description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        Text(
+            displayDescription(txn.description, LocalMerchantAliases.current),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
         Spacer(Modifier.height(3.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(documentDateCompact(txn.txnDate), style = LegionType.stamp, color = sem.faint)
@@ -385,7 +389,11 @@ fun UncategorizedTransfersSection(rows: List<LedgerTransaction>) {
     Column(Modifier.fillMaxWidth()) {
         for (row in rows) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Text(displayDescription(row.description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    displayDescription(row.description, LocalMerchantAliases.current),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(documentDateCompact(row.txnDate), style = LegionType.stamp, color = sem.faint)

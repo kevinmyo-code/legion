@@ -49,6 +49,21 @@ class LedgerConfigSyncTest {
             return Result.success(true)
         }
 
+        val merchantAliases = mutableMapOf<String, RemoteMerchantAlias>()
+        override suspend fun fetchChangedMerchantAliasesSince(sinceMs: Long) =
+            Result.success(merchantAliases.values.toList())
+        override suspend fun upsertMerchantAlias(originGuid: String, fields: MerchantAliasFields): Result<RemoteMerchantAlias> {
+            val ms = fields.createdAtMs
+            val row = RemoteMerchantAlias(originGuid, fields.substring, fields.displayName, ms, ms, false, originGuid)
+            merchantAliases[originGuid] = row
+            return Result.success(row)
+        }
+        override suspend fun softDeleteMerchantAlias(originGuid: String): Result<Boolean> {
+            val existing = merchantAliases[originGuid] ?: return Result.success(false)
+            merchantAliases[originGuid] = existing.copy(deleted = true)
+            return Result.success(true)
+        }
+
         override suspend fun fetchChangedBudgetTargetsSince(sinceMs: Long) = Result.success(emptyList<RemoteBudgetTarget>())
         override suspend fun upsertBudgetTarget(originGuid: String, fields: BudgetTargetFields) =
             Result.failure<RemoteBudgetTarget>(LedgerConfigBackendException("not used"))
@@ -68,6 +83,56 @@ class LedgerConfigSyncTest {
         return db.categoryRuleDao().insert(
             CategoryRule(category = "Groceries", substring = substring, createdAt = updatedAtMs, guid = guid, updatedAtMs = updatedAtMs, deleted = deleted),
         )
+    }
+
+    private fun remoteAlias(
+        guid: String,
+        substring: String,
+        displayName: String,
+        updatedAtMs: Long,
+        deleted: Boolean = false,
+    ) =
+        RemoteMerchantAlias(
+            serverId = "srv-$guid", substring = substring, displayName = displayName,
+            createdAtMs = updatedAtMs, updatedAtMs = updatedAtMs, deleted = deleted, originGuid = guid,
+        )
+
+    private fun localAlias(substring: String, name: String, createdAt: Long, guid: String, updatedAtMs: Long) =
+        com.kevin.legion.data.local.MerchantAlias(
+            substring = substring, displayName = name, createdAt = createdAt, guid = guid, updatedAtMs = updatedAtMs,
+        )
+
+    @Test
+    fun `a server-only merchant alias is inserted with its display name`() = runBlocking {
+        val backend = FakeLedgerConfigBackend()
+        backend.merchantAliases["alias-1"] = remoteAlias("alias-1", "JOHN NAUS", "Walmart", 1_000L)
+
+        val report = LedgerConfigSync.pull(context, backend)
+
+        assertEquals(1, report.inserted)
+        val all = CarDatabase.getDatabase(context).merchantAliasDao().getAllIncludingDeleted()
+        assertEquals("Walmart", all.single().displayName)
+        assertEquals("JOHN NAUS", all.single().substring)
+    }
+
+    @Test
+    fun `merchant alias merge is last-write-wins by guid and a tombstone leaves the live list`() = runBlocking {
+        val dao = CarDatabase.getDatabase(context).merchantAliasDao()
+        val backend = FakeLedgerConfigBackend()
+        dao.insert(localAlias("A", "local newer", 1L, "g-a", 5_000L))
+        dao.insert(localAlias("B", "local older", 2L, "g-b", 1_000L))
+        dao.insert(localAlias("C", "to remove", 3L, "g-c", 1_000L))
+        backend.merchantAliases["g-a"] = remoteAlias("g-a", "A", "server stale", 1_000L)
+        backend.merchantAliases["g-b"] = remoteAlias("g-b", "B", "server fresh", 5_000L)
+        backend.merchantAliases["g-c"] = remoteAlias("g-c", "C", "to remove", 5_000L, deleted = true)
+
+        val report = LedgerConfigSync.pull(context, backend)
+
+        assertEquals(1, report.skippedLocalNewer)
+        assertEquals(1, report.updated)
+        assertEquals(1, report.tombstoned)
+        val live = dao.getActive().associate { it.guid to it.displayName }
+        assertEquals(mapOf("g-a" to "local newer", "g-b" to "server fresh"), live)
     }
 
     @Test

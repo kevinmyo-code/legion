@@ -76,7 +76,7 @@ fun LedgerTransactionRow(txn: LedgerTransaction) {
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
         Text(
-            displayDescription(txn.description),
+            displayDescription(txn.description, LocalMerchantAliases.current),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -256,7 +256,11 @@ private fun PendingTransactionRow(row: LedgerTransaction, onClear: (id: Long) ->
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(displayDescription(row.description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                displayDescription(row.description, LocalMerchantAliases.current),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(documentDateCompact(row.txnDate), style = LegionType.stamp, color = sem.faint)

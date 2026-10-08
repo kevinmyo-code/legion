@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">Legion</string>
+    <string name="merchant_alias_rename">Rename merchant</string>
+    <string name="merchant_alias_edit">Edit name</string>
+    <string name="merchant_alias_dialog_title">Rename merchant</string>
+    <string name="merchant_alias_bank_contains">Bank text contains</string>
+    <string name="merchant_alias_show_as">Show as</string>
+    <string name="merchant_alias_explainer">Only changes what is shown. The bank\'s own text is kept on every row.</string>
+    <string name="merchant_alias_save">Save</string>
+    <string name="merchant_alias_cancel">Cancel</string>
+    <string name="merchant_alias_remove">Remove rename</string>
+    <string name="merchant_alias_bank_text">Bank text: %1$s</string>
 </resources>

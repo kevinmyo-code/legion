@@ -39,7 +39,7 @@ object LedgerConfigRealtime {
     @Volatile private var channels: List<RealtimeChannel> = emptyList()
     @Volatile private var bound = false
 
-    private val TABLES = listOf("categories", "category_rules", "budget_targets")
+    private val TABLES = listOf("categories", "category_rules", "budget_targets", "merchant_aliases")
 
     /** Idempotent - safe to call more than once, matching [MemoryRealtime.bind]'s own contract. */
     fun bind(context: Context) {

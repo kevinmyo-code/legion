@@ -9,6 +9,7 @@ import com.kevin.legion.data.local.BudgetTarget
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Category
 import com.kevin.legion.data.local.CategoryRule
+import com.kevin.legion.data.local.MerchantAlias
 import com.kevin.legion.data.local.OutboxEntry
 import com.kevin.legion.data.local.OutboxOperation
 import com.kevin.legion.data.local.OutboxTarget
@@ -180,6 +181,55 @@ object LedgerConfigWriteThrough {
         return matches.size
     }
 
+    // --- Merchant aliases (2026-10-07) -------------------------------------------------------------
+
+    @Serializable
+    internal data class MerchantAliasPayload(
+        val guid: String,
+        val substring: String,
+        val displayName: String,
+        val createdAtMs: Long,
+    ) {
+        fun toFields() = MerchantAliasFields(substring, displayName, createdAtMs)
+        companion object {
+            fun from(row: MerchantAlias) = MerchantAliasPayload(row.guid, row.substring, row.displayName, row.createdAt)
+        }
+    }
+
+    /** Inserts locally, pushes, and queues the push when it fails. Returns the row with its id. */
+    suspend fun addMerchantAlias(context: Context, row: MerchantAlias): MerchantAlias {
+        val db = CarDatabase.getDatabase(context)
+        val saved = row.copy(id = db.merchantAliasDao().insert(row))
+        val backend = backend(context) ?: return saved
+        val result = backend.upsertMerchantAlias(saved.guid, MerchantAliasPayload.from(saved).toFields())
+        if (result.isFailure) {
+            enqueue(
+                db, OutboxTarget.LEDGER_MERCHANT_ALIASES, OutboxOperation.UPSERT, saved.id,
+                Json.encodeToString(MerchantAliasPayload.serializer(), MerchantAliasPayload.from(saved)),
+                result.exceptionOrNull()?.message,
+            )
+        }
+        return saved
+    }
+
+    /** Soft-deletes the alias locally (a tombstone, so a merge pull cannot resurrect it) and pushes
+     * the delete, queueing it on failure. Returns false when no live alias has [id]. */
+    suspend fun deleteMerchantAlias(context: Context, id: Long): Boolean {
+        val db = CarDatabase.getDatabase(context)
+        val alias = db.merchantAliasDao().getById(id)?.takeIf { !it.deleted } ?: return false
+        cancelPendingCreateIfPending(db, OutboxTarget.LEDGER_MERCHANT_ALIASES, alias.id)
+        db.merchantAliasDao().update(alias.copy(deleted = true, updatedAtMs = System.currentTimeMillis()))
+        val result = backend(context)?.softDeleteMerchantAlias(alias.guid)
+        if (result != null && result.isFailure) {
+            enqueue(
+                db, OutboxTarget.LEDGER_MERCHANT_ALIASES, OutboxOperation.SOFT_DELETE, alias.id,
+                Json.encodeToString(LedgerConfigDeletePayload.serializer(), LedgerConfigDeletePayload(alias.guid)),
+                result.exceptionOrNull()?.message,
+            )
+        }
+        return true
+    }
+
     // --- Budget targets ------------------------------------------------------------------------------
 
     @Serializable
@@ -266,6 +316,21 @@ object LedgerConfigOutboxDrain {
                 OutboxOperation.SOFT_DELETE -> {
                     val p = Json.decodeFromString(LedgerConfigDeletePayload.serializer(), entry.payload)
                     backend.softDeleteCategoryRule(p.guid)
+                }
+                else -> Result.success(Unit)
+            }
+        }
+        total += drainOne(db, OutboxTarget.LEDGER_MERCHANT_ALIASES) { entry ->
+            when (entry.operation) {
+                OutboxOperation.UPSERT -> {
+                    val p = Json.decodeFromString(
+                        LedgerConfigWriteThrough.MerchantAliasPayload.serializer(), entry.payload,
+                    )
+                    backend.upsertMerchantAlias(p.guid, p.toFields())
+                }
+                OutboxOperation.SOFT_DELETE -> {
+                    val p = Json.decodeFromString(LedgerConfigDeletePayload.serializer(), entry.payload)
+                    backend.softDeleteMerchantAlias(p.guid)
                 }
                 else -> Result.success(Unit)
             }

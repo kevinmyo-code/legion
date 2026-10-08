@@ -155,14 +155,18 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.kevin.legion.ui.navigation.LocalTripResumeNonce provides tripResumeNonce,
                 ) {
-                    LegionShell(
-                        deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce,
-                        openItemId = openItemId, openItemNonce = openItemNonce,
-                        spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
-                        onSpotifyRedirectConsumed = { spotifyRedirect = null },
-                        homePressNonce = homePressNonce,
-                        isDefaultHome = isDefaultHome,
-                    )
+                    // Merchant aliases (2026-10-07): provided once so every ledger row renders the
+                    // household's own merchant names without threading a list through each screen.
+                    com.kevin.legion.ui.ledger.ProvideMerchantAliases {
+                        LegionShell(
+                            deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce,
+                            openItemId = openItemId, openItemNonce = openItemNonce,
+                            spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
+                            onSpotifyRedirectConsumed = { spotifyRedirect = null },
+                            homePressNonce = homePressNonce,
+                            isDefaultHome = isDefaultHome,
+                        )
+                    }
                 }
             }
         }

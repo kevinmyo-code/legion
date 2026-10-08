@@ -72,6 +72,27 @@ data class CategoryRuleFields(
 )
 
 // ---------------------------------------------------------------------------------------------
+// MERCHANT_ALIASES (2026-10-07)
+// ---------------------------------------------------------------------------------------------
+
+/** A `merchant_aliases` row as the engine reports it: a household's display-only rename rule. */
+data class RemoteMerchantAlias(
+    val serverId: String,
+    val substring: String,
+    val displayName: String,
+    val createdAtMs: Long,
+    val updatedAtMs: Long,
+    val deleted: Boolean,
+    val originGuid: String,
+)
+
+data class MerchantAliasFields(
+    val substring: String,
+    val displayName: String,
+    val createdAtMs: Long,
+)
+
+// ---------------------------------------------------------------------------------------------
 // BUDGET_TARGETS
 // ---------------------------------------------------------------------------------------------
 
@@ -96,6 +117,7 @@ data class BudgetTargetFields(
 
 /** See this file's own class doc for the shared shape every one of the following functions
  * follows. */
+@Suppress("TooManyFunctions") // fetch/upsert/delete per table by design; merchant aliases made it four tables
 interface LedgerConfigBackend {
     suspend fun fetchChangedCategoriesSince(sinceMs: Long): Result<List<RemoteCategory>>
     suspend fun upsertCategory(originGuid: String, fields: CategoryFields): Result<RemoteCategory>
@@ -104,6 +126,10 @@ interface LedgerConfigBackend {
     suspend fun fetchChangedCategoryRulesSince(sinceMs: Long): Result<List<RemoteCategoryRule>>
     suspend fun upsertCategoryRule(originGuid: String, fields: CategoryRuleFields): Result<RemoteCategoryRule>
     suspend fun softDeleteCategoryRule(originGuid: String): Result<Boolean>
+
+    suspend fun fetchChangedMerchantAliasesSince(sinceMs: Long): Result<List<RemoteMerchantAlias>>
+    suspend fun upsertMerchantAlias(originGuid: String, fields: MerchantAliasFields): Result<RemoteMerchantAlias>
+    suspend fun softDeleteMerchantAlias(originGuid: String): Result<Boolean>
 
     suspend fun fetchChangedBudgetTargetsSince(sinceMs: Long): Result<List<RemoteBudgetTarget>>
     suspend fun upsertBudgetTarget(originGuid: String, fields: BudgetTargetFields): Result<RemoteBudgetTarget>
