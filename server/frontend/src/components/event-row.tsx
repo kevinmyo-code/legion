@@ -2,6 +2,7 @@ import { ExternalLink, MoreHorizontal } from 'lucide-react'
 
 import { useEventSheet } from '@/components/event-sheet-context'
 import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
+import { SuggestionPinToggle, SuggestionPinnedLine } from '@/components/suggestion-pin'
 import { TaskCheck } from '@/components/task-check'
 import { Button } from '@/components/ui/button'
 import { VisibilityMark } from '@/components/visibility-mark'
@@ -46,7 +47,9 @@ export function isCanvasRow(occurrence: Pick<Occurrence, 'event'>): boolean {
  * A suggestion with an http(s) page is the one exception to "opens the sheet":
  * its body is a link to that page in a new tab, and the sheet (Add to my plans,
  * Not interested) sits behind its own "..." button. Without such a page it opens
- * the sheet like any other row.
+ * the sheet like any other row. Every suggestion also says who wants to go and
+ * carries the signed-in member's own "I want to go" toggle, both outside the
+ * link.
  */
 export function EventRow({
   occurrence,
@@ -109,6 +112,27 @@ export function EventRow({
     </>
   )
 
+  const mainClass = cn(
+    'min-w-0 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-primary',
+    suggestion ? 'w-full' : 'flex-1',
+  )
+  const main = pageUrl ? (
+    <a href={pageUrl} target="_blank" rel="noopener noreferrer" className={mainClass} aria-label={`Open event page for ${label}`}>
+      {body}
+    </a>
+  ) : editable ? (
+    <button
+      type="button"
+      className={mainClass}
+      aria-label={`Edit ${label}`}
+      onClick={() => sheet.open({ kind: 'edit', occurrence })}
+    >
+      {body}
+    </button>
+  ) : (
+    <div className={cn('min-w-0', suggestion ? 'w-full' : 'flex-1')}>{body}</div>
+  )
+
   return (
     <li
       className={cn(
@@ -126,27 +150,16 @@ export function EventRow({
           {timeLabel(occurrence)}
         </span>
       )}
-      {pageUrl ? (
-        <a
-          href={pageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-primary"
-          aria-label={`Open event page for ${label}`}
-        >
-          {body}
-        </a>
-      ) : editable ? (
-        <button
-          type="button"
-          className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-primary"
-          aria-label={`Edit ${label}`}
-          onClick={() => sheet.open({ kind: 'edit', occurrence })}
-        >
-          {body}
-        </button>
+      {suggestion ? (
+        // The pin (2026-10-09) sits OUTSIDE the link and the sheet button, so
+        // pressing it never opens the event page or the sheet.
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+          {main}
+          <SuggestionPinnedLine event={event} />
+          <SuggestionPinToggle event={event} />
+        </div>
       ) : (
-        <div className="min-w-0 flex-1">{body}</div>
+        main
       )}
       {isTask && detail === undefined && (
         <span className="mt-0.5 shrink-0 text-[0.8125rem] tabular-nums text-muted-foreground">

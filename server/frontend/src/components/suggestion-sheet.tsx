@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { useDeleteEvent, useUpdateEvent } from '@/api/mutations'
 import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
+import { SuggestionPinToggle, SuggestionPinnedLine } from '@/components/suggestion-pin'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from '@/components/ui/dialog'
 import { ErrorSentence } from '@/components/workbench/page'
@@ -21,6 +22,10 @@ import { timeLabel } from '@/components/event-row'
  *   place and notes stay). Until then it is not the household's plan and nothing
  *   counts it.
  * - "Not interested" deletes it.
+ *
+ * Beside them, and apart from them, the signed-in member's own pin (2026-10-09):
+ * "I want to go" tells the household without making it a plan. It is not a
+ * third thing done TO the suggestion, so it sits above the two actions.
  *
  * Neither is optimistic. A refusal keeps the sheet open and says, in the engine's
  * words, what did NOT happen.
@@ -87,6 +92,11 @@ export function SuggestionSheet({ occurrence, onClose }: { occurrence: Occurrenc
                 Open the source page
               </a>
             )}
+          </div>
+
+          <div className="flex flex-col items-start gap-2">
+            <SuggestionPinnedLine event={event} />
+            <SuggestionPinToggle event={event} size="lg" />
           </div>
 
           {problem && <ErrorSentence>{problem}</ErrorSentence>}

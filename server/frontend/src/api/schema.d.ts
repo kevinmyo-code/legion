@@ -978,6 +978,40 @@ export interface paths {
         patch: operations["api_events_partial_update"];
         trace?: never;
     };
+    "/api/events/{id}/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description `POST /api/events/<id>/pins`. */
+        post: operations["api_events_pins_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{id}/pins/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description `DELETE /api/events/<id>/pins/mine`. */
+        delete: operations["api_events_pins_mine_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/{id}/skips": {
         parameters: {
             query?: never;
@@ -3287,6 +3321,7 @@ export interface components {
             server_time: string;
             events?: components["schemas"]["Event"][];
             event_skips?: components["schemas"]["EventSkip"][];
+            suggestion_pins?: components["schemas"]["SuggestionPin"][];
             checklists?: components["schemas"]["Checklist"][];
             checklist_items?: components["schemas"]["ChecklistItem"][];
             checklist_ticks?: components["schemas"]["ChecklistTick"][];
@@ -3676,6 +3711,8 @@ export interface components {
              *     * `private` - private
              */
             visibility?: components["schemas"]["VisibilityEnum"];
+            /** @description For a suggestion, the members who pinned it ("I want to go"), oldest pin first. Always [] for anything else. A wish, never a plan: nothing that counts plans reads it. Read-only; pin with POST /api/events/{id}/pins, unpin with DELETE /api/events/{id}/pins/mine. */
+            readonly pinned_by: components["schemas"]["PinnedBy"][];
         };
         EventSkip: {
             /** Format: uuid */
@@ -4936,6 +4973,8 @@ export interface components {
              *     * `private` - private
              */
             visibility?: components["schemas"]["VisibilityEnum"];
+            /** @description For a suggestion, the members who pinned it ("I want to go"), oldest pin first. Always [] for anything else. A wish, never a plan: nothing that counts plans reads it. Read-only; pin with POST /api/events/{id}/pins, unpin with DELETE /api/events/{id}/pins/mine. */
+            readonly pinned_by?: components["schemas"]["PinnedBy"][];
         };
         /**
          * @description Rename the household, set its timezone, or both. Owner-only. At least
@@ -4985,6 +5024,15 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at?: string | null;
             sync_id?: string | null;
+        };
+        PinnedBy: {
+            /**
+             * Format: uuid
+             * @description The member, as listed in GET /api/households/me.
+             */
+            user_id: string;
+            /** @description Their account name, or their email before "@" when they have not set one. */
+            display_name: string;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -5550,6 +5598,20 @@ export interface components {
              * @default UTC
              */
             tz: string;
+        };
+        SuggestionPin: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            event: string;
+            /** Format: uuid */
+            user_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            deleted_at: string | null;
         };
         /**
          * @description `POST /api/checklists/<id>/items/<item>/tick` body - `{day, value?,
@@ -7130,7 +7192,7 @@ export interface operations {
     api_changes_retrieve: {
         parameters: {
             query?: {
-                /** @description Comma-separated aspect names. Selects which top-level keys get populated: `events` fills `events` AND `event_skips`; `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` fills all eight of its tables; `memory` all three. **Omitted or blank means every known aspect.** An unknown name is a 400 naming it - never a silently smaller response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**: this endpoint is not paged and that table held 20,796 rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here is a design, not an empty table. */
+                /** @description Comma-separated aspect names. Selects which top-level keys get populated: `events` fills `events`, `event_skips` AND `suggestion_pins`; `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` fills all eight of its tables; `memory` all three. **Omitted or blank means every known aspect.** An unknown name is a 400 naming it - never a silently smaller response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**: this endpoint is not paged and that table held 20,796 rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here is a design, not an empty table. */
                 aspects?: ("events" | "checklists" | "body" | "fleet" | "ingest" | "ledger" | "memory" | "pantry" | "places" | "voice_notes")[];
                 /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
                 since?: string;
@@ -7141,7 +7203,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One key per TABLE, named for the table, each holding every row changed at or after `since` with tombstones included, oldest first. **Not paged**: a large first pull should use the per-table `?since=` routes, which are. In `events`, `event_skips`, `checklists`, `checklist_items` and `checklist_ticks`, a row private to another member (or under a parent that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at` and `redacted: true`, nothing else (ADR 0052). */
+            /** @description One key per TABLE, named for the table, each holding every row changed at or after `since` with tombstones included, oldest first. **Not paged**: a large first pull should use the per-table `?since=` routes, which are. In `events`, `event_skips`, `suggestion_pins`, `checklists`, `checklist_items` and `checklist_ticks`, a row private to another member (or under a parent that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at` and `redacted: true`, nothing else (ADR 0052). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7789,6 +7851,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_events_pins_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Already pinned by you; nothing changed. Idempotent. The event, rendered exactly as GET /api/events renders it, with the new `pinned_by`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
+                };
+            };
+            /** @description Pinned: a new pin, or one that had been unpinned is live again. The event, rendered exactly as GET /api/events renders it, with the new `pinned_by`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
+                };
+            };
+            /** @description Nothing was pinned: the event is not a suggestion (it was added to the plans). `detail` says so. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_events_pins_mine_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unpinned: your pin is tombstoned, so every replica drops it. Idempotent: no pin of yours is still a 200. Only ever YOUR pin; another member's cannot be named here. The event, rendered exactly as GET /api/events renders it, with the new `pinned_by`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
                 };
             };
             /** @description No such row. Nothing was changed. */

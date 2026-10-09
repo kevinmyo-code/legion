@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pin, Plus } from 'lucide-react'
 import { useState } from 'react'
 
 import { EventRow } from '@/components/event-row'
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import type { Event, EventSkip } from '@/api/types'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
 import { buildMonth, type MonthCell } from '@/lib/horizon'
-import { isSuggestion } from '@/lib/suggestion'
+import { isSuggestion, pinnedSuggestionsOnly } from '@/lib/suggestion'
 import { occurrencesOnDay } from '@/lib/recurrence'
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -29,8 +29,12 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
   const sheet = useEventSheet()
   const [monthAnchor, setMonthAnchor] = useState(() => dateForEpochDay(today))
   const [selectedDay, setSelectedDay] = useState(today)
+  // "Pinned only" (2026-10-09): hides the suggestions nobody has pinned, on the
+  // grid and in the day. Plans are never hidden by it.
+  const [pinnedOnly, setPinnedOnly] = useState(false)
+  const shown = pinnedOnly ? pinnedSuggestionsOnly(events) : events
 
-  const cells = buildMonth(monthAnchor, events, skips)
+  const cells = buildMonth(monthAnchor, shown, skips)
   const monthLabel = monthAnchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
   const goToMonth = (offset: number) => {
@@ -41,7 +45,10 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
     setSelectedDay(today)
   }
 
-  const selectedEvents = occurrencesOnDay(selectedDay, events, skips)
+  const selectedEvents = occurrencesOnDay(selectedDay, shown, skips)
+  const daySuggestionCount = pinnedOnly
+    ? occurrencesOnDay(selectedDay, events, skips).filter((o) => isSuggestion(o.event)).length
+    : selectedEvents.filter((o) => isSuggestion(o.event)).length
   const selectedTasks = selectedEvents.filter((o) => o.event.kind === 'task')
   const selectedCalendar = selectedEvents.filter((o) => o.event.kind !== 'task' && !isSuggestion(o.event))
   const selectedSuggestions = selectedEvents.filter((o) => isSuggestion(o.event))
@@ -117,14 +124,32 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
             ))}
           </ul>
         )}
-        {selectedSuggestions.length > 0 && (
+        {daySuggestionCount > 0 && (
           <div className="mt-3 flex flex-col gap-1.5">
-            <h4 className="px-1 text-[0.8125rem] text-muted-foreground">Suggestions, not in your plans</h4>
-            <ul className="flex flex-col gap-1.5">
-              {selectedSuggestions.map((occurrence) => (
-                <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
-              ))}
-            </ul>
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="px-1 text-[0.8125rem] text-muted-foreground">Suggestions, not in your plans</h4>
+              <Button
+                type="button"
+                variant={pinnedOnly ? 'secondary' : 'outline'}
+                size="xs"
+                aria-pressed={pinnedOnly}
+                onClick={() => setPinnedOnly((on) => !on)}
+              >
+                <Pin aria-hidden="true" />
+                Pinned only
+              </Button>
+            </div>
+            {selectedSuggestions.length === 0 ? (
+              <p className="px-1 text-[0.9375rem] text-muted-foreground">
+                No pinned suggestions on this day. Nobody has said they want to go to one yet.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {selectedSuggestions.map((occurrence) => (
+                  <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </div>

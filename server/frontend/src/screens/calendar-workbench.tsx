@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pin } from 'lucide-react'
 import { RadioGroup } from 'radix-ui'
 import { useState } from 'react'
 
@@ -11,6 +11,7 @@ import { WeekView } from '@/components/week-view'
 import { EmptySentence, PageHeader } from '@/components/workbench/page'
 import { groupByDay, monthGridDays, monthLabel, stepAnchor, weekDays, weekLabel } from '@/lib/calendar-range'
 import { todayEpochDay } from '@/lib/day'
+import { pinnedSuggestionsOnly } from '@/lib/suggestion'
 
 type View = 'week' | 'month'
 
@@ -36,9 +37,13 @@ export function CalendarWorkbench({
   const today = todayEpochDay()
   const [view, setView] = useState<View>('week')
   const [anchor, setAnchor] = useState(today)
+  // "Pinned only" (2026-10-09): hides the suggestions nobody has pinned. Plans
+  // are never hidden by it.
+  const [pinnedOnly, setPinnedOnly] = useState(false)
 
   const days = view === 'week' ? weekDays(anchor) : monthGridDays(anchor)
-  const byDay = groupByDay(days, changes.events ?? [], changes.event_skips)
+  const events = changes.events ?? []
+  const byDay = groupByDay(days, pinnedOnly ? pinnedSuggestionsOnly(events) : events, changes.event_skips)
   const total = [...byDay.values()].reduce((sum, items) => sum + items.length, 0)
   const label = view === 'week' ? weekLabel(days) : monthLabel(anchor)
 
@@ -86,6 +91,16 @@ export function CalendarWorkbench({
             <ChevronRight />
           </Button>
         </div>
+        <Button
+          type="button"
+          variant={pinnedOnly ? 'secondary' : 'outline'}
+          size="sm"
+          aria-pressed={pinnedOnly}
+          onClick={() => setPinnedOnly((on) => !on)}
+        >
+          <Pin aria-hidden="true" />
+          Pinned only
+        </Button>
         <h2 className="text-xl font-medium" aria-live="polite">
           {label}
         </h2>
@@ -93,7 +108,9 @@ export function CalendarWorkbench({
 
       {total === 0 && (
         <EmptySentence>
-          Nothing on the calendar this {view}. Press an empty time, or New event, to add something.
+          {pinnedOnly
+            ? `Nothing on the calendar this ${view}, and no pinned suggestions. Turn off Pinned only to see every suggestion.`
+            : `Nothing on the calendar this ${view}. Press an empty time, or New event, to add something.`}
         </EmptySentence>
       )}
 

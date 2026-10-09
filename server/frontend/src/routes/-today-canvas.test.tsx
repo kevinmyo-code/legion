@@ -85,6 +85,7 @@ function canvasEvent(overrides: Partial<Event> = {}): Event {
       points_possible: 10,
       read_at: new Date().toISOString(),
     },
+    pinned_by: [],
     ...overrides,
   }
 }

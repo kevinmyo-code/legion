@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { isCanvasRow, timeLabel } from '@/components/event-row'
 import { useEventSheet } from '@/components/event-sheet-context'
 import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
+import { SuggestionPinnedLine } from '@/components/suggestion-pin'
 import { TaskCheck } from '@/components/task-check'
 import { VisibilityMark } from '@/components/visibility-mark'
 import { dateForEpochDay } from '@/lib/day'
@@ -163,6 +164,7 @@ function Chip({ occurrence }: { occurrence: Occurrence }) {
           <div className="flex min-w-0 flex-1 items-center gap-1.5">{text}</div>
         )}
       </div>
+      {suggestion && <SuggestionPinnedLine event={event} compact />}
       {suggestion ? (
         <SuggestionMark compact className="self-start" />
       ) : (

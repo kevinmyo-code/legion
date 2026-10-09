@@ -41,6 +41,7 @@ function event(overrides: Partial<Event>): Event {
     origin_guid: null,
     structured_meta: null,
     kind: 'event',
+    pinned_by: [],
     ...overrides,
   }
 }

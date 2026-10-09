@@ -4,6 +4,7 @@ import { isCanvasRow, timeLabel } from '@/components/event-row'
 import { useEventSheet } from '@/components/event-sheet-context'
 import { TaskCheck } from '@/components/task-check'
 import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
+import { SuggestionPinnedLine } from '@/components/suggestion-pin'
 import { VisibilityMark } from '@/components/visibility-mark'
 import { canvasLine, canvasMetaOf } from '@/lib/canvas'
 import { dateForEpochDay } from '@/lib/day'
@@ -157,6 +158,7 @@ function AllDayChip({ occurrence, onOpen }: { occurrence: Occurrence; onOpen?: (
   const body = (
     <>
       <span className="block truncate text-[0.8125rem] font-medium">{event.title}</span>
+      {suggestion && <SuggestionPinnedLine event={event} compact className="max-w-full" />}
       {suggestion ? <SuggestionMark compact /> : <VisibilityMark visibility={visibility} compact onTint={shared} />}
     </>
   )
@@ -293,6 +295,7 @@ function Block({ block, sheet }: { block: Placed; sheet: ReturnType<typeof useEv
           {event.location ? ` · ${event.location}` : ''}
         </span>
       )}
+      {suggestion && !short && <SuggestionPinnedLine event={event} compact className="max-w-full" />}
       {suggestion ? (
         <SuggestionMark compact className="shrink-0" />
       ) : (

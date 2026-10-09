@@ -3,7 +3,15 @@ import { describe, expect, test } from 'vitest'
 import type { Event } from '@/api/types'
 import { epochDay, todayEpochDay } from '@/lib/day'
 import { buildHorizon, buildMonth, overdueTasks } from '@/lib/horizon'
-import { firstLink, isSuggestion, plansOnly, suggestionMeta } from '@/lib/suggestion'
+import {
+  firstLink,
+  isPinnedBy,
+  isSuggestion,
+  pinnedSuggestionsOnly,
+  pinnedWords,
+  plansOnly,
+  suggestionMeta,
+} from '@/lib/suggestion'
 import { eventsOnDay } from '@/lib/today'
 import { makeEvent, todayAt } from '@/test/engine'
 
@@ -72,5 +80,45 @@ describe('suggestionMeta', () => {
     expect(suggestionMeta({ structured_meta: 'x' })).toBeNull()
     expect(suggestionMeta({ structured_meta: [1] })).toBeNull()
     expect(suggestionMeta({ structured_meta: { city: 3 } })).toBeNull()
+  })
+})
+
+describe('pinnedWords', () => {
+  const ME = 'me-id'
+  const mia = { user_id: 'mia-id', display_name: 'Mia' }
+  const sam = { user_id: 'sam-id', display_name: 'Sam' }
+  const me = { user_id: ME, display_name: 'Kevin' }
+
+  test.each([
+    ['nobody', [], null],
+    ['only me', [me], 'You want to go'],
+    ['only Mia', [mia], 'Mia wants to go'],
+    ['me and Mia, Mia first', [mia, me], 'You and Mia want to go'],
+    ['me and two others', [sam, me, mia], 'You, Sam and Mia want to go'],
+    ['two others', [mia, sam], 'Mia and Sam want to go'],
+  ])('%s', (_name, pins, words) => {
+    expect(pinnedWords(pins, ME)).toBe(words)
+  })
+
+  test('with no signed-in id, everyone is named', () => {
+    expect(pinnedWords([me, mia], null)).toBe('Kevin and Mia want to go')
+  })
+})
+
+describe('pinned helpers', () => {
+  test('isPinnedBy reads pinned_by and treats a missing list as nobody', () => {
+    const pinned = makeEvent({ title: 'Jazz', kind: 'suggestion', pinned_by: [{ user_id: 'a', display_name: 'A' }] })
+    expect(isPinnedBy(pinned, 'a')).toBe(true)
+    expect(isPinnedBy(pinned, 'b')).toBe(false)
+    expect(isPinnedBy(pinned, null)).toBe(false)
+    const legacy = { ...pinned, pinned_by: undefined } as unknown as Event
+    expect(isPinnedBy(legacy, 'a')).toBe(false)
+  })
+
+  test('Pinned only keeps every plan and only the pinned suggestions', () => {
+    const pinned = makeEvent({ title: 'Jazz', kind: 'suggestion', pinned_by: [{ user_id: 'a', display_name: 'A' }] })
+    const unpinned = suggestion()
+    const dentist = plan()
+    expect(pinnedSuggestionsOnly([pinned, unpinned, dentist]).map((e) => e.title)).toEqual(['Jazz', 'Dentist'])
   })
 })
