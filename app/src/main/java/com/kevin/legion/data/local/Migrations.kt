@@ -3001,3 +3001,18 @@ val MIGRATION_72_73 = object : Migration(SCHEMA_V72, SCHEMA_V73) {
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_merchant_aliases_guid` ON `merchant_aliases` (`guid`)")
     }
 }
+
+private const val SCHEMA_V74 = 74
+
+/**
+ * `places.address` (Kevin, 2026-10-09: "saving places seems to be by coordinates now. lets change
+ * that to addresses") - see [TaggedPlace.address]. One nullable column, so every existing place
+ * reads exactly as it did, with no address on file. The statement is copied verbatim from the
+ * column's generated `74.json` definition, the shape Room emits for an `ALTER TABLE ... ADD COLUMN`
+ * of a nullable `TEXT` with no default.
+ */
+val MIGRATION_73_74 = object : Migration(SCHEMA_V73, SCHEMA_V74) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `places` ADD COLUMN `address` TEXT")
+    }
+}
