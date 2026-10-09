@@ -2778,6 +2778,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/places/{label}/rename/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/places/<label>/rename/` - a new label for the same place.
+         *
+         *     **Why a route of its own rather than a PUT plus a DELETE from the
+         *     client** (voice audit 2026-10-09, finding 2): "rename Home to Katie House"
+         *     was carried out as `forget_place` then `tag_place`, which deleted home
+         *     with nothing said and then re-pinned wherever the phone happened to be.
+         *     A rename keeps the coordinates and the address and changes nothing but
+         *     the name, so it is one write the engine owns, in one transaction.
+         *
+         *     `label` is this table's identity and every phone keys its replica by it,
+         *     so the rename is written as the sync feed can carry it: the new label is
+         *     upserted (reviving its own tombstone if it once existed) with the old
+         *     row's coordinates and address, and the old label is tombstoned. A row
+         *     updated in place would reach other phones as a new label with no
+         *     tombstone for the old one, and they would keep both forever.
+         *
+         *     Place-triggered reminders name a place by this string
+         *     (`events.trigger_place_label`), so the live ones move with it, in the
+         *     same transaction; `touch_updated_at` on `events` puts them in the feed.
+         */
+        post: operations["api_places_rename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/purchases/": {
         parameters: {
             query?: never;
@@ -4977,6 +5014,7 @@ export interface components {
             latitude: number;
             /** Format: double */
             longitude: number;
+            address?: string | null;
             readonly provenance: components["schemas"]["ProvenanceEnum"];
             /** Format: date-time */
             readonly created_at: string;
@@ -4984,6 +5022,18 @@ export interface components {
             readonly updated_at: string;
             /** Format: date-time */
             readonly deleted_at: string | null;
+        };
+        PlaceRenameRequest: {
+            /** @description The new label. Refused when a live place already has it. */
+            to: string;
+        };
+        PlaceRenameResult: {
+            /** @description The place under its new label, as stored. */
+            place: components["schemas"]["Place"];
+            /** @description How many live place-triggered reminders (`events.trigger_place_label`) were moved from the old label to the new one in the same transaction. */
+            reminders_moved: number;
+            /** @description What happened, in words. */
+            detail: string;
         };
         Preference: {
             list_changes: boolean;
@@ -10655,6 +10705,63 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_places_rename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceRenameRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["PlaceRenameRequest"];
+                "multipart/form-data": components["schemas"]["PlaceRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Renamed. The old label is tombstoned, the new one carries the same coordinates and address, and live reminders on the old label moved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceRenameResult"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A live place already has the new label, or the two labels are the same. Nothing was renamed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

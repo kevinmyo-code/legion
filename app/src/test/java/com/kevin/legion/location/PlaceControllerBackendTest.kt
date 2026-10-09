@@ -4,6 +4,7 @@ import android.location.Location
 import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.PlacesBackendException
 import com.kevin.legion.backend.RemotePlace
+import com.kevin.legion.backend.RemoteRename
 import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttpException
@@ -59,7 +60,15 @@ class PlaceControllerBackendTest {
         override suspend fun fetchActive(): Result<List<RemotePlace>> =
             Result.success(rows.values.filterNot { it.deleted })
 
-        override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> {
+        var renameRefusal: EngineFailure? = null
+        var remindersMoved: Int? = 0
+
+        override suspend fun upsert(
+            label: String,
+            latitude: Double,
+            longitude: Double,
+            address: String?,
+        ): Result<RemotePlace> {
             upsertAttempts++
             val refusal = upsertRefusal
             val failure: Throwable? = when {
@@ -69,9 +78,24 @@ class PlaceControllerBackendTest {
             }
             if (failure != null) return Result.failure(failure)
             upsertCalls++
-            val row = RemotePlace(label, latitude, longitude, updatedAtMs = ++clock, deleted = false)
+            val row = RemotePlace(
+                label, latitude, longitude, updatedAtMs = ++clock, deleted = false, address = address,
+            )
             rows[label] = row
             return Result.success(row)
+        }
+
+        override suspend fun rename(from: String, to: String): Result<RemoteRename> {
+            val source = rows[from]?.takeIf { !it.deleted }
+            val missing = EngineFailure.Refused(404, "{\"detail\": \"no such place\"}")
+            return if (renameRefusal != null || source == null) {
+                Result.failure(EngineHttpException(renameRefusal ?: missing))
+            } else {
+                val renamed = source.copy(label = to, updatedAtMs = ++clock)
+                rows[to] = renamed
+                rows[from] = source.copy(deleted = true, updatedAtMs = ++clock)
+                Result.success(RemoteRename(renamed, remindersMoved))
+            }
         }
 
         override suspend fun softDelete(label: String): Result<Boolean> {
@@ -86,6 +110,7 @@ class PlaceControllerBackendTest {
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
+        PlaceController.geocoderOverride = FakePlaceGeocoder()
         setFix(29.7604, -95.3698)
     }
 
@@ -97,10 +122,15 @@ class PlaceControllerBackendTest {
         // this test can leave a Room InvalidationTracker refresh in flight, and it must finish
         // before this test method returns or it races Robolectric's per-method reset.
         RoomTestReset.drainArchDiskIoPool()
+        PlaceController.geocoderOverride = null
 
         PlaceController.backendOverride = null
         setFix(null, null)
     }
+
+    /** The `tag_place` path with no address: the current fix, reverse looked up by the fake. */
+    private suspend fun tag(label: String, confirmed: Boolean = false) =
+        PlaceController.savePlace(context, label, rawAddress = null, confirmed = confirmed)
 
     private fun setFix(lat: Double?, lon: Double?) {
         val field = LocationController::class.java.getDeclaredField("_state")
@@ -119,7 +149,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
 
-        val ack = PlaceController.tagPlace(context, "work").message
+        val ack = tag("work").message
 
         assertTrue(ack.isNotBlank())
         assertEquals(1, backend.upsertCalls)
@@ -133,7 +163,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend(upsertFails = true)
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, "work").message
+        val result = tag("work").message
 
         assertTrue(
             "a failed write must say in words that it did not save, never a bare success",
@@ -150,9 +180,10 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
 
-        PlaceController.tagPlace(context, "work")
+        tag("work")
         setFix(30.0, -96.0)
-        PlaceController.tagPlace(context, "work")
+        // Moving a label is a replacement now (voice audit 2026-10-09), so it needs the confirm.
+        tag("work", confirmed = true)
 
         val replica = CarDatabase.getDatabase(context).placeDao().getAll()
         assertEquals(1, replica.size)
@@ -164,7 +195,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
 
-        val message = PlaceController.forgetPlace(context, "nowhere").message
+        val message = PlaceController.forgetPlace(context, "nowhere", confirmed = true).message
         assertTrue(message.contains("don't have"))
 
         val boolResult = PlaceController.forget(context, "nowhere")
@@ -175,9 +206,9 @@ class PlaceControllerBackendTest {
     fun `forgetPlace on a real label deletes server-side and clears the replica`() = runBlocking {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
-        PlaceController.tagPlace(context, "home")
+        tag("home")
 
-        val ack = PlaceController.forgetPlace(context, "home").message
+        val ack = PlaceController.forgetPlace(context, "home", confirmed = true).message
 
         assertTrue(ack.isNotBlank())
         assertTrue(CarDatabase.getDatabase(context).placeDao().getAll().isEmpty())
@@ -191,11 +222,11 @@ class PlaceControllerBackendTest {
         // blanked and not half-written to the new coordinates.
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
-        PlaceController.tagPlace(context, "home")
+        tag("home")
         val before = CarDatabase.getDatabase(context).placeDao().getAll().single()
 
         backend.upsertFails = true
-        val result = PlaceController.tagPlace(context, "home").message
+        val result = tag("home").message
 
         assertTrue(
             "a failed write must say it did not save",
@@ -211,10 +242,10 @@ class PlaceControllerBackendTest {
     fun `a FAILED remote delete leaves the replica untouched and says so in words`() = runBlocking {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
-        PlaceController.tagPlace(context, "home")
+        tag("home")
         backend.deleteFails = true
 
-        val message = PlaceController.forgetPlace(context, "home").message
+        val message = PlaceController.forgetPlace(context, "home", confirmed = true).message
 
         assertTrue(message.contains("nothing was deleted"))
         assertEquals(1, CarDatabase.getDatabase(context).placeDao().getAll().size)
@@ -269,7 +300,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend(upsertRefusal = EngineFailure.Refused(400, serverLabelRefusal))
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, "gym").message
+        val result = tag("gym").message
 
         assertTrue(
             "the engine's own explanation must reach the user: was <$result>",
@@ -295,7 +326,7 @@ class PlaceControllerBackendTest {
         )
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, "gym").message
+        val result = tag("gym").message
 
         assertTrue(
             "a fault must still say in words that nothing saved: was <$result>",
@@ -315,7 +346,7 @@ class PlaceControllerBackendTest {
         // "by the way" and "location" are not blank as spoken - normalizeLabel strips both to
         // nothing, which is the same refusal by a different road and is worth holding here too.
         for (nothing in listOf("", "   ", "by the way", "location")) {
-            val result = PlaceController.tagPlace(context, nothing).message
+            val result = tag(nothing).message
             assertTrue(
                 "a label with no name in it must be refused before any write: <$nothing> gave <$result>",
                 result.contains("didn't catch"),
@@ -343,7 +374,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend()
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, tooLongLabel).message
+        val result = tag(tooLongLabel).message
 
         assertEquals("nothing in normalizeLabel shortens this one", 31, tooLongLabel.length)
         assertTrue("the local guard is what answers here: was <$result>", result.contains("didn't catch"))
@@ -361,7 +392,7 @@ class PlaceControllerBackendTest {
         val backend = FakePlacesBackend(upsertRefusal = EngineFailure.Refused(400, serverLabelRefusal))
         PlaceController.backendOverride = backend
 
-        val result = PlaceController.tagPlace(context, tooLongLabel).message
+        val result = tag(tooLongLabel).message
 
         assertEquals("the request must actually be made", 1, backend.upsertAttempts)
         assertTrue(
@@ -384,12 +415,66 @@ class PlaceControllerBackendTest {
         EngineTransport(context).setTransport(EngineBackends.ASPECT_PLACES, Transport.DJANGO)
         PlaceController.backendOverride = null
 
-        val result = PlaceController.tagPlace(context, tooLongLabel).message
+        val result = tag(tooLongLabel).message
 
         assertTrue("the local guard must still answer: was <$result>", result.contains("didn't catch"))
         assertTrue(
             "and nothing may be stored locally either",
             CarDatabase.getDatabase(context).placeDao().getAll().isEmpty(),
         )
+    }
+
+    // -- rename over the engine (voice audit 2026-10-09, finding 2) ------------------------------
+
+    @Test
+    fun `rename over the engine moves the replica row and keeps its address`() = runBlocking {
+        val backend = FakePlacesBackend(
+            seed = listOf(RemotePlace("home", 29.7, -95.4, updatedAtMs = 500L, deleted = false, address = "1 Elm St")),
+        )
+        backend.remindersMoved = 2
+        PlaceController.backendOverride = backend
+        CarDatabase.getDatabase(context).placeDao().upsert(
+            TaggedPlace(label = "home", latitude = 29.7, longitude = -95.4, timestamp = 500L, address = "1 Elm St"),
+        )
+
+        val outcome = PlaceController.renamePlace(context, "home", "katie house")
+
+        assertTrue(outcome.message, outcome.success)
+        assertTrue(outcome.message.contains("2 reminders moved with it"))
+        val replica = CarDatabase.getDatabase(context).placeDao().getAll()
+        assertEquals(listOf("katie house"), replica.map { it.label })
+        assertEquals("1 Elm St", replica.single().address)
+        assertEquals(29.7, replica.single().latitude, 0.0)
+    }
+
+    @Test
+    fun `a rename the engine refuses relays its sentence and leaves the replica alone`() = runBlocking {
+        val backend = FakePlacesBackend()
+        backend.renameRefusal = EngineFailure.Refused(
+            409,
+            """{"detail": "Nothing was renamed. There is already a saved place called 'work'."}""",
+        )
+        PlaceController.backendOverride = backend
+        tag("home")
+
+        val outcome = PlaceController.renamePlace(context, "home", "work")
+
+        assertFalse(outcome.success)
+        assertEquals("Nothing was renamed. There is already a saved place called 'work'.", outcome.message)
+        assertEquals(listOf("home"), CarDatabase.getDatabase(context).placeDao().getAll().map { it.label })
+    }
+
+    @Test
+    fun `an unconfirmed forget over the engine sends nothing`() = runBlocking {
+        val backend = FakePlacesBackend()
+        PlaceController.backendOverride = backend
+        tag("home")
+        backend.deleteFails = true // any delete attempt would surface as "nothing was deleted"
+
+        val outcome = PlaceController.forgetPlace(context, "home", confirmed = false)
+
+        assertTrue(outcome.message.startsWith("Nothing was deleted yet."))
+        assertFalse(backend.rows.getValue("home").deleted)
+        assertEquals(1, CarDatabase.getDatabase(context).placeDao().getAll().size)
     }
 }

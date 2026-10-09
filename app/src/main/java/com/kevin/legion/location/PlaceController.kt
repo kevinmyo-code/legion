@@ -3,7 +3,9 @@ package com.kevin.legion.location
 import android.content.Context
 import android.location.Location
 import android.util.Log
+import com.kevin.legion.backend.EventsSync
 import com.kevin.legion.backend.PlacesBackend
+import com.kevin.legion.backend.PlacesBackendException
 import com.kevin.legion.backend.engine.EngineBackends
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttpException
@@ -13,6 +15,7 @@ import com.kevin.legion.backend.engine.engineRefusalSentence
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.engine.migration.EnginePlacesRetirementCopy
+import com.kevin.legion.notes.NotesController
 
 /**
  * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`) originally moved every read/write in
@@ -47,6 +50,8 @@ object PlaceController {
     private const val TAG = "PlaceController"
 
     private const val MATCH_RADIUS_M = 150f
+
+    private const val PIN_FAILED = "Something went wrong pinning that spot - it didn't save. Try again in a sec."
 
     /** The local pre-validation cap, applied only where no server enforces one - see
      * [normalizeLabel]'s own doc comment. Deliberately the SAME number as
@@ -107,135 +112,261 @@ object PlaceController {
     }
 
     /**
-     * What one [tagPlace] or [forgetPlace] call did. Same shape and same reason as
-     * [com.kevin.legion.ai.AriaBrain.RememberOutcome]: both functions returned a bare `String` and
-     * `LiveToolbox`'s `tag_place`/`forget_place` dispatches hardcoded `success = true` over it, so
-     * every refusal below - no label heard, no GPS lock, the engine saying no in its own words, a
-     * Room write that threw, a label that was never saved - reached the model as
-     * `{"success": true, "message": "<a failure>"}`. §7's outcome-verb clause is conditioned on the
-     * tool RESULT, so a lying flag defeats it outright. Corrected 2026-09-07 alongside the
-     * identical hole in `remember`.
+     * What one [forgetPlace] or [renamePlace] call did. Same shape and same reason as
+     * [com.kevin.legion.ai.AriaBrain.RememberOutcome]: these functions returned a bare `String` and
+     * `LiveToolbox`'s dispatches hardcoded `success = true` over it, so every refusal - no label
+     * heard, no GPS lock, the engine saying no in its own words, a Room write that threw, a label
+     * that was never saved - reached the model as `{"success": true, "message": "<a failure>"}`.
+     * §7's outcome-verb clause is conditioned on the tool RESULT, so a lying flag defeats it
+     * outright. Corrected 2026-09-07 alongside the identical hole in `remember`.
      *
-     * [message] is what the caller speaks either way; `ui/FleetScreen.kt` renders it unchanged.
+     * [message] is what the caller speaks either way; the Saved places screen renders it unchanged.
      */
     data class WriteOutcome(val success: Boolean, val message: String)
 
+    /** Where a save pins: the coordinates always, the human address when one is known. */
+    data class Spot(val latitude: Double, val longitude: Double, val address: String?)
+
     /**
-     * Tags the current GPS location under [rawLabel] (normalized). Returns a spoken ack and
-     * whether anything was actually pinned - see [WriteOutcome].
-     *
-     * Address-based tagging (resolving a spoken address via forward geocoding) is not
-     * supported - only "tag where I am right now".
+     * What one save did (2026-10-09). Richer than [WriteOutcome] because two of its refusals are
+     * questions the caller has to put to the user - which address, and whether to replace - and the
+     * Saved places screen answers them with a picker and a dialog rather than a sentence.
+     * [success] is true only for [Saved]; every other branch wrote nothing.
      */
-    suspend fun tagPlace(context: Context, rawLabel: String): WriteOutcome {
+    sealed interface SaveOutcome {
+        val message: String
+        val success: Boolean get() = this is Saved
+
+        data class Saved(override val message: String, val place: TaggedPlace) : SaveOutcome
+
+        /** The label already names a live place somewhere else. Nothing written; [spot] is what a
+         * confirmed save will store, so the screen can confirm without a second lookup. */
+        data class NeedsConfirm(
+            override val message: String,
+            val label: String,
+            val existing: TaggedPlace,
+            val spot: Spot,
+        ) : SaveOutcome
+
+        /** The address matched several places. Nothing written. */
+        data class Choose(
+            override val message: String,
+            val label: String,
+            val candidates: List<GeocodedAddress>,
+        ) : SaveOutcome
+
+        data class Refused(override val message: String) : SaveOutcome
+    }
+
+    /**
+     * Test seam for the address lookups, same posture as [backendOverride]. Null means the real
+     * [AndroidPlaceGeocoder].
+     */
+    @Volatile
+    internal var geocoderOverride: PlaceGeocoder? = null
+
+    private fun geocoder(context: Context): PlaceGeocoder = geocoderOverride ?: AndroidPlaceGeocoder(context)
+
+    /**
+     * Saves a place under [rawLabel] (normalized) - the one function behind `tag_place` and the
+     * Saved places screen's two save buttons (ADR 0035).
+     *
+     * - [rawAddress] given: it is looked up ([PlaceGeocoder.forward]) and the RESOLVED address and
+     *   its point are stored, so what is read back is what was saved. Several plausible matches or
+     *   none: nothing is saved and the result says so ([SaveOutcome.Choose] / [SaveOutcome.Refused]).
+     *   No lookup service or no connection: refused in words, never a guessed address.
+     * - [rawAddress] null or blank: the current GPS fix, as `tag_place` always did, then reverse
+     *   looked up for its address. A failed reverse lookup still saves by coordinates and says the
+     *   address is unknown.
+     *
+     * **No silent replacement** (voice audit 2026-10-09, finding 2): when [rawLabel] already names a
+     * live place more than [MATCH_RADIUS_M] away from the new spot, nothing is written unless
+     * [confirmed] - the result says what would be lost, the `clear_codes` shape.
+     */
+    suspend fun savePlace(context: Context, rawLabel: String, rawAddress: String?, confirmed: Boolean): SaveOutcome {
         // Resolved BEFORE the label is normalized, because which transport this write is going to
-        // decides whether the local length cap applies at all - see [serverOwnsTheLabelCap]. This
-        // is a pure resolve with no network I/O (see [backend]'s own doc comment), so moving it
-        // above the GPS read costs nothing and changes no ordering that matters.
+        // decides whether the local length cap applies at all - see [serverOwnsTheLabelCap]. A pure
+        // resolve with no network I/O (see [backend]'s own doc comment).
         val backend = backend(context)
         val label = normalizeLabel(rawLabel, capLength = !serverOwnsTheLabelCap(context, backend))
-        val loc = LocationController.state.value
-        // The two refusals and the two write paths are ONE expression rather than four early
-        // returns, purely to stay under detekt's `ReturnCount`. That rule used to be covered for
-        // this function by a baseline entry, and the entry is keyed on the old `: String`
-        // signature - answering a [WriteOutcome] stales it, so the rule bites again and the
-        // honest answer is to satisfy it rather than to re-baseline. Same order, same sentences,
-        // same behaviour.
-        return when {
-            label == null ->
-                WriteOutcome(false, "I didn't catch what to call this spot — try something like 'home' or 'work'.")
-            loc == null -> WriteOutcome(
-                false,
-                "I don't have a GPS lock yet, so I can't pin this spot. Give it a sec and try again.",
-            )
-            backend != null -> tagOverBackend(context, backend, label, loc)
-            else -> tagUnconfigured(context, label, loc)
+            ?: return SaveOutcome.Refused(PlaceSentences.NO_LABEL)
+        val address = rawAddress?.trim()?.takeIf { it.isNotEmpty() }
+        return when (val resolved = if (address != null) lookUp(context, label, address) else here(context)) {
+            is Resolved.Ready -> commit(context, backend, label, resolved.pinned, confirmed)
+            is Resolved.Stop -> resolved.outcome
         }
     }
 
-    /** [tagPlace]'s configured branch. Room is written ONLY after a genuine server ACK (ticket 01
-     * ruling 9) - never ahead of it, and never on the failure branch. */
-    private suspend fun tagOverBackend(
+    /**
+     * Saves [spot] as it is, with no lookup - the screen's path after the user picked one of a
+     * [SaveOutcome.Choose]'s candidates or confirmed a [SaveOutcome.NeedsConfirm]. The same commit,
+     * confirm gate and sentences as [savePlace].
+     */
+    suspend fun savePlaceAt(context: Context, rawLabel: String, spot: Spot, confirmed: Boolean): SaveOutcome {
+        val backend = backend(context)
+        val label = normalizeLabel(rawLabel, capLength = !serverOwnsTheLabelCap(context, backend))
+            ?: return SaveOutcome.Refused(PlaceSentences.NO_LABEL)
+        return commit(context, backend, label, Pinned(spot, here = false), confirmed)
+    }
+
+    /** Where a save will pin and how it was found: [here] for the current fix, [lookupFailure] when
+     * its reverse lookup could not answer (said in words, never guessed). */
+    private data class Pinned(val spot: Spot, val here: Boolean, val lookupFailure: String? = null)
+
+    /** Where a save will pin, or the outcome that stops it before anything is written. */
+    private sealed interface Resolved {
+        data class Ready(val pinned: Pinned) : Resolved
+
+        data class Stop(val outcome: SaveOutcome) : Resolved
+    }
+
+    private suspend fun lookUp(context: Context, label: String, address: String): Resolved =
+        when (val found = geocoder(context).forward(address)) {
+            is ForwardLookup.Unavailable ->
+                Resolved.Stop(SaveOutcome.Refused(PlaceSentences.lookupUnavailable(found.why)))
+            ForwardLookup.NotFound -> Resolved.Stop(SaveOutcome.Refused(PlaceSentences.lookupNotFound(address)))
+            is ForwardLookup.Found -> when (val choice = AddressChoice.decide(address, found.results)) {
+                is AddressChoice.Decision.One -> choice.address.let {
+                    Resolved.Ready(Pinned(Spot(it.latitude, it.longitude, it.address), here = false))
+                }
+                is AddressChoice.Decision.Several -> Resolved.Stop(
+                    SaveOutcome.Choose(PlaceSentences.severalMatches(choice.candidates), label, choice.candidates),
+                )
+            }
+        }
+
+    /** The current fix, reverse looked up. A failed lookup is not a failed save: the coordinates
+     * are still the place, and the sentence says the address is unknown. */
+    private suspend fun here(context: Context): Resolved {
+        val loc = LocationController.state.value
+            ?: return Resolved.Stop(SaveOutcome.Refused(PlaceSentences.NO_FIX))
+        val pinned = when (val r = geocoder(context).reverse(loc.latitude, loc.longitude)) {
+            is ReverseLookup.Found -> Pinned(Spot(loc.latitude, loc.longitude, r.address), here = true)
+            ReverseLookup.NotFound -> Pinned(Spot(loc.latitude, loc.longitude, null), here = true)
+            is ReverseLookup.Unavailable -> Pinned(Spot(loc.latitude, loc.longitude, null), here = true, r.why)
+        }
+        return Resolved.Ready(pinned)
+    }
+
+    /**
+     * The confirm gate, then the write. The existing place is read from the replica (cache-first,
+     * ticket 01 ruling 9), the same read the screen's list shows. Moving a label less than
+     * [MATCH_RADIUS_M] is not replacing a location, so it needs no confirm.
+     */
+    private suspend fun commit(
+        context: Context,
+        backend: PlacesBackend?,
+        label: String,
+        pinned: Pinned,
+        confirmed: Boolean,
+    ): SaveOutcome {
+        val spot = pinned.spot
+        val replaced = all(context).firstOrNull { it.label == label }
+            ?.takeIf { distanceM(it.latitude, it.longitude, spot) > MATCH_RADIUS_M }
+        if (replaced != null && !confirmed) {
+            return SaveOutcome.NeedsConfirm(
+                PlaceSentences.confirmReplace(label, replaced, spot.address),
+                label,
+                replaced,
+                spot,
+            )
+        }
+        val written = if (backend != null) {
+            writeOverBackend(context, backend, label, spot)
+        } else {
+            writeUnconfigured(context, label, spot)
+        }
+        return written.fold(
+            onSuccess = { place ->
+                // A spot with no address is always the user's own fix (a lookup result always has
+                // one) - including one the screen re-sends after a replace confirm - so it gets the
+                // "where you are now, address unknown" sentence, never "at ." over nothing.
+                val address = spot.address
+                val sentence = if (pinned.here || address == null) {
+                    PlaceSentences.savedHere(label, place.address ?: address, pinned.lookupFailure, replaced)
+                } else {
+                    PlaceSentences.savedAtAddress(label, address, replaced)
+                }
+                SaveOutcome.Saved(sentence, place)
+            },
+            onFailure = { SaveOutcome.Refused(it.message ?: PIN_FAILED) },
+        )
+    }
+
+    /** The configured write. Room is written ONLY after a genuine server ACK (ticket 01 ruling 9) -
+     * never ahead of it, and never on the failure branch. A REFUSAL is relayed in the engine's own
+     * words; anything else keeps the generic sentence (see [engineRefusal]). */
+    private suspend fun writeOverBackend(
         context: Context,
         backend: PlacesBackend,
         label: String,
-        loc: Location,
-    ): WriteOutcome {
-        val remote = backend.upsert(label, loc.latitude, loc.longitude).getOrElse {
-            // A REFUSAL is relayed in the engine's own words; anything else keeps the generic
-            // sentence. See [engineRefusal] for why the two are not the same thing.
-            return WriteOutcome(
-                false,
-                engineRefusal(it)
-                    ?: "Something went wrong pinning that spot - it didn't save. Try again in a sec.",
-            )
+        spot: Spot,
+    ): Result<TaggedPlace> {
+        val remote = backend.upsert(label, spot.latitude, spot.longitude, spot.address).getOrElse {
+            return Result.failure(IllegalStateException(engineRefusal(it) ?: PIN_FAILED))
         }
-        placeDao(context).upsert(
-            TaggedPlace(
-                label = remote.label,
-                latitude = remote.latitude,
-                longitude = remote.longitude,
-                timestamp = remote.updatedAtMs,
-                deleted = remote.deleted,
-            )
+        val place = TaggedPlace(
+            label = remote.label,
+            latitude = remote.latitude,
+            longitude = remote.longitude,
+            timestamp = remote.updatedAtMs,
+            deleted = remote.deleted,
+            // The transport's own answer, not what was sent: Supabase has no address column and
+            // answers null, and the replica must agree with the server it mirrors.
+            address = remote.address,
         )
-        return WriteOutcome(true, ackFor(label))
+        placeDao(context).upsert(place)
+        return Result.success(place)
     }
 
     /**
-     * [tagPlace]'s unconfigured branch (ticket 15 step 1): `places` is now the single store for
-     * this branch too, so tagging is a plain upsert on its `@PrimaryKey` label - the exact
-     * re-tag-overwrites semantics [TaggedPlace]'s own doc comment describes, reproduced here
-     * instead of by hand against the engine the way the retired code did.
+     * The unconfigured write (ticket 15 step 1): `places` is the single store for this branch, so
+     * saving is a plain upsert on its `@PrimaryKey` label.
      *
-     * **The failure is WORDED, not thrown, and that was corrected rather than assumed.** Step 1
-     * originally let a Room failure propagate, on the reasoning that a suspend insert either
-     * completes or throws so there is nothing to check. That is only safe for a function
-     * reachable solely through a voice tool, because `LiveSessionController.dispatch` wraps
-     * every tool call in a catch-all. `tagPlace` is NOT only that: `ui/FleetScreen.kt` calls it
-     * from a bare `scope.launch` with no handler, so a throw there is an unhandled coroutine
-     * exception rather than anything the user can read. Section 7 wants a failure result that
-     * says in words what did not happen, and a crash says nothing at all. Found while tracing
-     * the identical question for `PantryController.writeReceipt` in step 2.
+     * **The failure is WORDED, not thrown**: the Saved places screen calls this from a bare
+     * `scope.launch` with no handler, so a throw there is an unhandled coroutine exception rather
+     * than anything the user can read. Section 7 wants a failure result that says in words what did
+     * not happen, and a crash says nothing at all.
      */
-    private suspend fun tagUnconfigured(context: Context, label: String, loc: Location): WriteOutcome {
+    private suspend fun writeUnconfigured(context: Context, label: String, spot: Spot): Result<TaggedPlace> {
         ensureLegacyReconciled(context)
+        val place = TaggedPlace(
+            label = label,
+            latitude = spot.latitude,
+            longitude = spot.longitude,
+            timestamp = System.currentTimeMillis(),
+            deleted = false,
+            address = spot.address,
+        )
         return try {
-            placeDao(context).upsert(
-                TaggedPlace(
-                    label = label,
-                    latitude = loc.latitude,
-                    longitude = loc.longitude,
-                    timestamp = System.currentTimeMillis(),
-                    deleted = false,
-                )
-            )
-            WriteOutcome(true, ackFor(label))
+            placeDao(context).upsert(place)
+            Result.success(place)
         } catch (e: Exception) {
-            Log.w(TAG, "unconfigured tagPlace write failed for $label: ${e.message}")
-            WriteOutcome(false, "Something went wrong pinning that spot - it didn't save. Try again in a sec.")
+            Log.w(TAG, "unconfigured save failed for $label: ${e.message}")
+            Result.failure(IllegalStateException(PIN_FAILED))
         }
     }
 
-    /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found
-     * or if the delete itself did not actually land (same §7 fix as [tagPlace]).
+    /**
+     * Deletes the saved place matching [rawLabel] - only when [confirmed]. Unconfirmed, nothing is
+     * deleted and the result names what would be lost (label and address), the `clear_codes` shape
+     * (voice audit 2026-10-09: a rename was carried out as an unconfirmed forget + tag).
      *
      * **"No such saved place" is [WriteOutcome.success] = false**, not a quiet success: nothing was
      * deleted, so nothing may be spoken with an outcome verb over it. Same reading
-     * [com.kevin.legion.backend.PlacesBackend.softDelete]'s own `Result.success(false)` already
-     * carries ("must never be reported as a delete having happened"). */
-    suspend fun forgetPlace(context: Context, rawLabel: String): WriteOutcome {
-        // Same ordering and the same reason as [tagPlace] - and the cap has to be lifted on BOTH
-        // or the pair disagrees: a label the engine accepted for a tag must still be nameable when
-        // the user asks to forget it, or the app would answer "I'm not sure which place you mean"
-        // about a place it is currently showing them.
+     * [com.kevin.legion.backend.PlacesBackend.softDelete]'s own `Result.success(false)` carries.
+     */
+    suspend fun forgetPlace(context: Context, rawLabel: String, confirmed: Boolean): WriteOutcome {
+        // Same ordering and the same reason as [savePlace] - and the cap has to be lifted on BOTH
+        // or the pair disagrees: a label the engine accepted for a save must still be nameable when
+        // the user asks to forget it.
         val backend = backend(context)
         val label = normalizeLabel(rawLabel, capLength = !serverOwnsTheLabelCap(context, backend))
-        // One expression rather than three early returns, for exactly the reason [tagPlace]'s own
-        // comment gives: the baseline entry covering `ReturnCount` here was keyed on the old
-        // `: String` signature and no longer matches.
         return when {
             label == null -> WriteOutcome(false, "I'm not sure which place you mean.")
+            !confirmed -> all(context).firstOrNull { it.label == label }
+                ?.let { WriteOutcome(false, PlaceSentences.confirmForget(it)) }
+                ?: WriteOutcome(false, PlaceSentences.noSuchPlace(label))
             backend != null -> forgetOverBackend(context, backend, label)
             else -> forgetUnconfigured(context, label)
         }
@@ -244,34 +375,123 @@ object PlaceController {
     /** `Result.success(false)` from the backend means "no active row matched" and is reported as a
      * delete that did NOT happen - [com.kevin.legion.backend.PlacesBackend.softDelete]'s own
      * contract. A `Result.failure` is the request itself not completing, which is a different
-     * sentence. One `when` rather than three returns, for detekt's `ReturnCount`. */
+     * sentence. */
     private suspend fun forgetOverBackend(context: Context, backend: PlacesBackend, label: String): WriteOutcome {
         val result = backend.softDelete(label)
         return when (result.getOrNull()) {
             null -> WriteOutcome(false, "I found \"$label\" but couldn't remove it just now - nothing was deleted.")
-            false -> WriteOutcome(false, "I don't have a saved place called \"$label\".")
+            false -> WriteOutcome(false, PlaceSentences.noSuchPlace(label))
             else -> {
                 placeDao(context).delete(label)
-                WriteOutcome(true, forgetAck(label))
+                WriteOutcome(true, PlaceSentences.forgot(label))
             }
         }
     }
 
-    /** Unconfigured (ticket 15 step 1): existence has to be checked against `places` directly now
-     * (there is no server ACK to report a real/fake delete) - a label with no active row is
-     * reported as never-found rather than issuing a soft-delete UPDATE that would match zero rows
-     * and still speak a false "gone." */
+    /** Unconfigured (ticket 15 step 1): existence is checked against `places` directly (there is no
+     * server ACK to report a real/fake delete). */
     private suspend fun forgetUnconfigured(context: Context, label: String): WriteOutcome {
         ensureLegacyReconciled(context)
         val present = placeDao(context).getAll().any { it.label == label }
-        if (!present) return WriteOutcome(false, "I don't have a saved place called \"$label\".")
+        if (!present) return WriteOutcome(false, PlaceSentences.noSuchPlace(label))
         placeDao(context).delete(label)
-        return WriteOutcome(true, forgetAck(label))
+        return WriteOutcome(true, PlaceSentences.forgot(label))
+    }
+
+    /**
+     * A new name for a saved place, keeping its coordinates and address (voice audit 2026-10-09,
+     * finding 2: "rename Home to Katie House" ran forget then tag, which silently re-pinned home
+     * wherever the phone was). Refuses in words when [rawTo] already names a live place.
+     *
+     * Configured: one engine write (`POST /api/places/<from>/rename/`), which also moves live
+     * place-triggered reminders in the same transaction; the replica follows on ACK. Unconfigured,
+     * or a transport that does not move reminders: the reminders are moved here, through
+     * [NotesController.setPlaceTrigger], the same write `set_reminder` makes.
+     */
+    suspend fun renamePlace(context: Context, rawFrom: String, rawTo: String): WriteOutcome {
+        val backend = backend(context)
+        val cap = !serverOwnsTheLabelCap(context, backend)
+        val from = normalizeLabel(rawFrom, cap)
+        val to = normalizeLabel(rawTo, cap)
+        return when {
+            from == null -> WriteOutcome(false, PlaceSentences.RENAME_NO_FROM)
+            to == null -> WriteOutcome(false, PlaceSentences.RENAME_NO_TO)
+            from == to -> WriteOutcome(false, PlaceSentences.renameSame(from))
+            backend != null -> renameOverBackend(context, backend, from, to)
+            else -> renameUnconfigured(context, from, to)
+        }
+    }
+
+    private suspend fun renameOverBackend(
+        context: Context,
+        backend: PlacesBackend,
+        from: String,
+        to: String,
+    ): WriteOutcome {
+        val renamed = backend.rename(from, to).getOrElse {
+            val said = engineRefusal(it)
+                ?: (it as? PlacesBackendException)?.message
+                ?: PlaceSentences.RENAME_FAILED
+            return WriteOutcome(false, said)
+        }
+        val remote = renamed.place
+        val place = TaggedPlace(
+            label = remote.label,
+            latitude = remote.latitude,
+            longitude = remote.longitude,
+            timestamp = remote.updatedAtMs,
+            deleted = remote.deleted,
+            address = remote.address,
+        )
+        placeDao(context).upsert(place)
+        placeDao(context).delete(from)
+        val moved = renamed.remindersMoved
+        return if (moved != null) {
+            // The engine moved them; the events replica learns on its next pull.
+            if (moved > 0) EventsSync.maybeAutoPull(context)
+            WriteOutcome(true, PlaceSentences.renamed(from, place, moved, remindersFailed = 0))
+        } else {
+            val (ok, failed) = moveReminders(context, from, to)
+            WriteOutcome(true, PlaceSentences.renamed(from, place, ok, failed))
+        }
+    }
+
+    private suspend fun renameUnconfigured(context: Context, from: String, to: String): WriteOutcome {
+        ensureLegacyReconciled(context)
+        val places = placeDao(context).getAll()
+        val source = places.firstOrNull { it.label == from }
+        return when {
+            source == null -> WriteOutcome(false, PlaceSentences.noSuchPlace(from))
+            places.any { it.label == to } -> WriteOutcome(false, PlaceSentences.renameTaken(to))
+            else -> try {
+                val place = source.copy(label = to, timestamp = System.currentTimeMillis(), deleted = false)
+                placeDao(context).upsert(place)
+                placeDao(context).delete(from)
+                val (ok, failed) = moveReminders(context, from, to)
+                WriteOutcome(true, PlaceSentences.renamed(from, place, ok, failed))
+            } catch (e: Exception) {
+                Log.w(TAG, "unconfigured rename failed for $from: ${e.message}")
+                WriteOutcome(false, PlaceSentences.RENAME_FAILED)
+            }
+        }
+    }
+
+    /** Re-points every live reminder on [from] at [to]. (moved, failed). */
+    private suspend fun moveReminders(context: Context, from: String, to: String): Pair<Int, Int> {
+        val items = ReminderController.activeFor(context, from)
+        val moved = items.count { NotesController.setPlaceTrigger(context, it, to) != null }
+        return moved to (items.size - moved)
+    }
+
+    private fun distanceM(lat: Double, lng: Double, spot: Spot): Float {
+        val out = FloatArray(1)
+        Location.distanceBetween(lat, lng, spot.latitude, spot.longitude, out)
+        return out[0]
     }
 
     /** Deletes a saved place by label (used by the UI list). Returns true only on a confirmed
      * delete - false for "no such label" and for a write that did not actually land, same §7 fix as
-     * [tagPlace]/[forgetPlace]. */
+     * [savePlace]/[forgetPlace]. */
     suspend fun forget(context: Context, label: String): Boolean {
         val backend = backend(context)
         if (backend != null) {
@@ -374,7 +594,7 @@ object PlaceController {
      *
      * **The 30-character cap now ALSO lives in the engine** (django-engine ticket 14):
      * `server/api/places.py`'s `PlaceSerializer.LABEL_MAX_LENGTH` refuses the same write with a
-     * sentence [tagPlace] relays verbatim, and `supabase/migrations/20260907000200_places_label_length.sql`
+     * sentence [savePlace] relays verbatim, and `supabase/migrations/20260907000200_places_label_length.sql`
      * is the matching CHECK (UNAPPLIED as of 2026-09-07). The server is the authority.
      *
      * **[capLength] is how that authority is honoured without losing the rule where the server has
@@ -386,7 +606,7 @@ object PlaceController {
      * the exact drift ticket 14 was opened to remove.
      *
      * **The cap is lifted ONLY on the Django path, and that narrowness IS ticket 14's own trap.**
-     * That ticket asks for the Kotlin copy to be deleted outright, on the reasoning that [tagPlace]
+     * That ticket asks for the Kotlin copy to be deleted outright, on the reasoning that [savePlace]
      * is a synchronous write-through with no outbox so the refusal reaches the user before anything
      * is stored. That is true of the DJANGO transport and of no other:
      * [com.kevin.legion.backend.engine.EngineTransport.DJANGO_BY_DEFAULT] is
@@ -428,23 +648,5 @@ object PlaceController {
             "home", "house", "where i live", "live" -> "home"
             else -> s
         }
-    }
-
-    private fun ackFor(label: String): String {
-        val where = if (label == "home" || label == "work") label else "\"$label\""
-        return listOf(
-            "Got it. This is $where now. Filed away with the rest of my baggage.",
-            "Noted... $where, right here. I'll remember, don't you worry.",
-            "Fine, $where it is. Pinned it.",
-        ).random()
-    }
-
-    private fun forgetAck(label: String): String {
-        val where = if (label == "home" || label == "work") label else "\"$label\""
-        return listOf(
-            "Done. Wiped $where off my map. One less thing rattling around back here.",
-            "Forgotten. $where? Never heard of it.",
-            "Gone. $where's off the books.",
-        ).random()
     }
 }

@@ -35,8 +35,13 @@ class PlacesReconcileTest {
         override suspend fun fetchActive(): Result<List<RemotePlace>> =
             Result.success(rows.values.filterNot { it.deleted })
 
-        override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> {
-            val row = RemotePlace(label, latitude, longitude, updatedAtMs = ++clock, deleted = false)
+        override suspend fun upsert(
+            label: String,
+            latitude: Double,
+            longitude: Double,
+            address: String?,
+        ): Result<RemotePlace> {
+            val row = RemotePlace(label, latitude, longitude, updatedAtMs = ++clock, deleted = false, address = address)
             rows[label] = row
             return Result.success(row)
         }
@@ -46,6 +51,9 @@ class PlacesReconcileTest {
             rows[label] = existing.copy(deleted = true, updatedAtMs = ++clock)
             return Result.success(true)
         }
+
+        override suspend fun rename(from: String, to: String): Result<RemoteRename> =
+            Result.failure(PlacesBackendException("rename is not exercised here"))
     }
 
     @Before

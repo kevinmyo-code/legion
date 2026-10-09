@@ -101,7 +101,7 @@ class DjangoPlacesBackendTest {
             )
         }
 
-        val saved = backend(engine).upsert("fancy walmart", 29.9, -95.7).getOrThrow()
+        val saved = backend(engine).upsert("fancy walmart", 29.9, -95.7, address = null).getOrThrow()
 
         assertEquals("fancy walmart", saved.label)
         val request = engine.requests.single()
@@ -140,7 +140,7 @@ class DjangoPlacesBackendTest {
     fun `an unreachable engine fails in words and sends nothing`() = runBlocking {
         val http = EngineHttp(EngineTestSupport.signedInConfig(context), EngineTestSupport.unreachableClient())
 
-        val result = DjangoPlacesBackend(http).upsert("home", 29.0, -95.0)
+        val result = DjangoPlacesBackend(http).upsert("home", 29.0, -95.0, address = null)
 
         assertTrue(result.isFailure)
         val failure = (result.exceptionOrNull() as EngineHttpException).failure
@@ -162,7 +162,9 @@ class DjangoPlacesBackendTest {
             EngineHttp(EngineTestSupport.signedInConfig(context), EngineTestSupport.unreachableClient()),
         )
 
-        val spoken = PlaceController.tagPlace(context, "work").message
+        PlaceController.geocoderOverride = com.kevin.legion.location.FakePlaceGeocoder()
+        val spoken = PlaceController.savePlace(context, "work", rawAddress = null, confirmed = false).message
+        PlaceController.geocoderOverride = null
 
         assertTrue(
             "a failed write must say in words that it did not save",

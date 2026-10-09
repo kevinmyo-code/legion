@@ -134,6 +134,8 @@ Two Postgres ENUM types also bind columns typed `provenance` or
 - `water_percent IS NULL OR water_percent >= 0`
 
 ## places
+- `address IS NULL OR length(trim(address)) > 0` (`places_address_not_blank`, added by
+  `ingest/migrations/0017` via `api/place_columns.py`, 2026-10-09)
 - `latitude BETWEEN -90 AND 90`
 - `length(trim(label)) > 0`
 - `longitude BETWEEN -180 AND 180`

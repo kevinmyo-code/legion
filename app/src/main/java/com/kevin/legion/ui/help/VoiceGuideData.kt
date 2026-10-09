@@ -61,8 +61,9 @@ object VoiceGuideData {
                 Entry(name = "set_reminder", say = "Remind me to grab my gym bag when I get to the gym", does = "Sets a reminder tied to a saved place, so it comes up when you next arrive there.", hands = "Partial - Calendar's day view shows and edits a place-triggered reminder, but there is no add-a-new-reminder dialog by hand."),
                 Entry(name = "read_calendar", say = "What's on today?", does = "Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.", hands = "Calendar tab's month grid and day view, and Home's next-event tile."),
                 Entry(name = "complete_task", say = "Mark my math assignments done", does = "Marks calendar tasks (assignments, quizzes, homework) done, or un-marks them. If more than one task fits it changes nothing and asks which, unless you said all of them. It reports only what it actually changed, and says so when a change is saved on the phone waiting for the server.", hands = "Calendar tab, tap a task's tick box."),
-                Entry(name = "tag_place", say = "Save this as work", does = "Saves where you are now under a name, so reminders can trigger there.", hands = "Fleet > Saved places screen."),
-                Entry(name = "forget_place", say = "Forget the old gym", does = "Removes a saved place.", hands = "Fleet > Saved places screen, delete behind a confirm."),
+                Entry(name = "tag_place", say = "Save this place as Katie House, its address is 123 Main St, Katy", does = "Saves a place under a name, so reminders can trigger there and you can navigate to it. Give an address and it looks it up and reads back the address it actually saved; if the address matches several places or none, it saves nothing and says so. Without an address it saves where you are now and looks up that spot's address (if the lookup fails it still saves the spot and says the address is unknown). Reusing a name that already points somewhere else asks you first.", hands = "Fleet > Saved places: 'Save by address' (pick from the matches) or 'Tag current location'."),
+                Entry(name = "rename_place", say = "Rename home to Katie House", does = "Gives a saved place a new name and keeps its location and address. Reminders tied to it move with it. Refuses if a place already has the new name.", hands = "Fleet > Saved places, Rename on the place's row."),
+                Entry(name = "forget_place", say = "Forget the old gym", does = "Removes a saved place, but only after telling you what would be lost and hearing you say yes.", hands = "Fleet > Saved places screen, delete behind a confirm."),
                 Entry(name = "show_saved_places", say = "Show my saved places", does = "Puts your saved places on screen.", hands = "Is itself the Fleet > Saved places screen."),
                 Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Calendar tab, today's day view shows the same thing directly."),
                 Entry(name = "show_generated_view", say = "Show me my grocery spend by month", does = "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", hands = "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
@@ -253,6 +254,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 127 as of the last regeneration. */
-    val TOOL_COUNT: Int = 127
+    /** Total entries across every group above - 128 as of the last regeneration. */
+    val TOOL_COUNT: Int = 128
 }

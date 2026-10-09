@@ -76,7 +76,7 @@ object PlacesReconcile {
 
         var uploaded = 0
         for (place in enginePlaces) {
-            val result = backend.upsert(place.label, place.latitude, place.longitude)
+            val result = backend.upsert(place.label, place.latitude, place.longitude, address = null)
             result.exceptionOrNull()?.let { return Result.failure(it) }
             uploaded++
         }
@@ -90,6 +90,7 @@ object PlacesReconcile {
                     longitude = row.longitude,
                     timestamp = row.updatedAtMs,
                     deleted = row.deleted,
+                    address = row.address,
                 )
             )
         }

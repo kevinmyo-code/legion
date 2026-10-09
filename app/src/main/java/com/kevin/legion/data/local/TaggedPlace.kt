@@ -23,4 +23,9 @@ data class TaggedPlace(
     // disappear. All active-row reads must filter `deleted = 0`; only the sync
     // SELECT and tombstone GC see deleted rows.
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    // The human address (2026-10-09, `MIGRATION_73_74`): shown and spoken wherever the place is.
+    // The coordinates above stay the place - geofences, navigation and distance need them - and
+    // this names them. Null on every place saved before it, and on one saved where the user
+    // stood when the address lookup failed (said so in words, never guessed).
+    val address: String? = null,
 )

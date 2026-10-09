@@ -116,3 +116,140 @@ def test_a_thirty_character_label_is_accepted(auth_client):
 
     assert response.status_code == 200, response.data
     assert response.data["label"] == label
+
+
+# -- places by address (2026-10-09) --------------------------------------
+
+KATY = "123 Main St, Katy, TX 77494"
+
+
+def test_an_address_rides_with_the_place_and_reads_back(auth_client):
+    response = auth_client.put("/api/places/home/", HOME | {"address": KATY}, format="json")
+    assert response.status_code == 200, response.data
+    assert response.data["address"] == KATY
+    listed = auth_client.get("/api/places/?active=1").data["results"]
+    assert listed[0]["address"] == KATY
+
+
+def test_a_put_without_an_address_leaves_the_stored_one_alone(auth_client):
+    """A phone one release behind never sends `address`; re-tagging from it
+    must not wipe what a newer phone saved."""
+    auth_client.put("/api/places/home/", HOME | {"address": KATY}, format="json")
+    response = auth_client.put("/api/places/home/", HOME, format="json")
+    assert response.status_code == 200
+    assert response.data["address"] == KATY
+
+
+def test_a_null_or_blank_address_is_stored_as_none(auth_client):
+    auth_client.put("/api/places/home/", HOME | {"address": KATY}, format="json")
+    cleared = auth_client.put("/api/places/home/", HOME | {"address": None}, format="json")
+    assert cleared.data["address"] is None
+    blank = auth_client.put("/api/places/gym/", HOME | {"address": "   "}, format="json")
+    assert blank.status_code == 200
+    assert blank.data["address"] is None
+
+
+def test_an_over_long_address_is_refused_in_words(auth_client):
+    response = auth_client.put("/api/places/home/", HOME | {"address": "x" * 301}, format="json")
+    assert response.status_code == 400
+    assert "Nothing was saved" in str(response.data)
+    assert not Place.objects.filter(label="home").exists()
+
+
+def test_rename_keeps_coordinates_and_address_and_tombstones_the_old_label(auth_client):
+    auth_client.put("/api/places/home/", HOME | {"address": KATY}, format="json")
+    response = auth_client.post("/api/places/home/rename/", {"to": "katie house"}, format="json")
+
+    assert response.status_code == 200, response.data
+    place = response.data["place"]
+    assert place["label"] == "katie house"
+    assert place["latitude"] == HOME["latitude"]
+    assert place["longitude"] == HOME["longitude"]
+    assert place["address"] == KATY
+    assert place["deleted_at"] is None
+    assert "Renamed" in response.data["detail"]
+    assert Place.objects.get(label="home").deleted_at is not None
+    # The feed carries both halves, so another phone drops "home" and gains the new one.
+    feed = {r["label"]: r for r in auth_client.get("/api/places/").data["results"]}
+    assert feed["home"]["deleted_at"] is not None
+    assert feed["katie house"]["deleted_at"] is None
+
+
+def test_rename_onto_a_live_label_is_refused_and_changes_nothing(auth_client):
+    auth_client.put("/api/places/home/", HOME, format="json")
+    auth_client.put("/api/places/work/", {"latitude": 1.0, "longitude": 2.0}, format="json")
+    response = auth_client.post("/api/places/home/rename/", {"to": "work"}, format="json")
+
+    assert response.status_code == 409
+    assert "already a saved place called 'work'" in response.data["detail"]
+    assert Place.objects.get(label="home").deleted_at is None
+    assert Place.objects.get(label="work").latitude == 1.0
+
+
+def test_rename_to_the_same_label_is_refused(auth_client):
+    auth_client.put("/api/places/home/", HOME, format="json")
+    response = auth_client.post("/api/places/home/rename/", {"to": "home"}, format="json")
+    assert response.status_code == 409
+    assert Place.objects.get(label="home").deleted_at is None
+
+
+def test_rename_of_a_missing_place_is_404(auth_client):
+    response = auth_client.post("/api/places/nowhere/rename/", {"to": "x"}, format="json")
+    assert response.status_code == 404
+    assert "no saved place called 'nowhere'" in response.data["detail"]
+
+
+def test_rename_onto_a_forgotten_label_revives_that_row(auth_client):
+    """`(household, label)` is unique tombstones included, so the new name
+    reuses its own old row rather than colliding with it."""
+    old = auth_client.put("/api/places/gym/", {"latitude": 5.0, "longitude": 6.0}, format="json")
+    auth_client.delete("/api/places/gym/")
+    auth_client.put("/api/places/home/", HOME | {"address": KATY}, format="json")
+
+    response = auth_client.post("/api/places/home/rename/", {"to": "gym"}, format="json")
+    assert response.status_code == 200, response.data
+    assert response.data["place"]["id"] == old.data["id"]
+    assert response.data["place"]["latitude"] == HOME["latitude"]
+    assert response.data["place"]["address"] == KATY
+    assert Place.objects.filter(label="gym").count() == 1
+
+
+def test_rename_refuses_a_blank_or_over_long_new_label(auth_client):
+    auth_client.put("/api/places/home/", HOME, format="json")
+    blank = auth_client.post("/api/places/home/rename/", {"to": "  "}, format="json")
+    long = auth_client.post("/api/places/home/rename/", {"to": "a" * 31}, format="json")
+    assert blank.status_code == 400
+    assert long.status_code == 400
+    assert Place.objects.get(label="home").deleted_at is None
+
+
+def test_rename_moves_live_place_reminders_with_it(auth_client):
+    from legacy.models.dates import Event
+
+    auth_client.put("/api/places/home/", HOME, format="json")
+    made = auth_client.post(
+        "/api/events",
+        {"title": "grab the mail", "trigger_place_label": "home"},
+        format="json",
+    )
+    assert made.status_code == 201, made.data
+
+    response = auth_client.post("/api/places/home/rename/", {"to": "katie house"}, format="json")
+    assert response.status_code == 200, response.data
+    assert response.data["reminders_moved"] == 1
+    assert "1 reminder moved" in response.data["detail"]
+    assert Event.objects.get(id=made.data["id"]).trigger_place_label == "katie house"
+
+
+def test_rename_is_household_scoped(auth_client, token_b):
+    """Household B cannot rename A's place, and its own same-named place is
+    the only one it can touch."""
+    auth_client.put("/api/places/home/", HOME, format="json")
+    response = token_b.post("/api/places/home/rename/", {"to": "mine"}, format="json")
+    assert response.status_code == 404
+    assert Place.objects.get(label="home").deleted_at is None
+
+
+def test_unauthenticated_rename_is_401():
+    response = APIClient().post("/api/places/home/rename/", {"to": "x"}, format="json")
+    assert response.status_code == 401

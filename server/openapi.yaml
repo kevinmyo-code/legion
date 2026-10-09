@@ -6561,6 +6561,84 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/places/{label}/rename/:
+    post:
+      operationId: api_places_rename
+      description: |-
+        `POST /api/places/<label>/rename/` - a new label for the same place.
+
+        **Why a route of its own rather than a PUT plus a DELETE from the
+        client** (voice audit 2026-10-09, finding 2): "rename Home to Katie House"
+        was carried out as `forget_place` then `tag_place`, which deleted home
+        with nothing said and then re-pinned wherever the phone happened to be.
+        A rename keeps the coordinates and the address and changes nothing but
+        the name, so it is one write the engine owns, in one transaction.
+
+        `label` is this table's identity and every phone keys its replica by it,
+        so the rename is written as the sync feed can carry it: the new label is
+        upserted (reviving its own tombstone if it once existed) with the old
+        row's coordinates and address, and the old label is tombstoned. A row
+        updated in place would reach other phones as a new label with no
+        tombstone for the old one, and they would keep both forever.
+
+        Place-triggered reminders name a place by this string
+        (`events.trigger_place_label`), so the live ones move with it, in the
+        same transaction; `touch_updated_at` on `events` puts them in the feed.
+      parameters:
+      - in: path
+        name: label
+        schema:
+          type: string
+        required: true
+      tags:
+      - places
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceRenameRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlaceRenameRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlaceRenameRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceRenameResult'
+          description: Renamed. The old label is tombstoned, the new one carries the
+            same coordinates and address, and live reminders on the old label moved.
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: 'The write was refused and NOTHING was written. Two body shapes
+            occur and both are JSON objects: `{"detail": "..."}` for an unknown field,
+            a database refusal or a hand-written check, and `{"<field>": ["..."]}`
+            for a field-level validation error. Both carry text meant to be shown
+            to a person.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A live place already has the new label, or the two labels are
+            the same. Nothing was renamed.
   /api/purchases/:
     get:
       operationId: api_purchases_list
@@ -11303,6 +11381,9 @@ components:
         longitude:
           type: number
           format: double
+        address:
+          type: string
+          nullable: true
         provenance:
           allOf:
           - $ref: '#/components/schemas/ProvenanceEnum'
@@ -11329,6 +11410,32 @@ components:
       - longitude
       - provenance
       - updated_at
+    PlaceRenameRequest:
+      type: object
+      properties:
+        to:
+          type: string
+          description: The new label. Refused when a live place already has it.
+      required:
+      - to
+    PlaceRenameResult:
+      type: object
+      properties:
+        place:
+          allOf:
+          - $ref: '#/components/schemas/Place'
+          description: The place under its new label, as stored.
+        reminders_moved:
+          type: integer
+          description: How many live place-triggered reminders (`events.trigger_place_label`)
+            were moved from the old label to the new one in the same transaction.
+        detail:
+          type: string
+          description: What happened, in words.
+      required:
+      - detail
+      - place
+      - reminders_moved
     Preference:
       type: object
       properties:

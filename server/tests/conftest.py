@@ -311,6 +311,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_event_skip_sync_columns(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0017` (places by address), the same way.
+            from api.place_columns import add_place_address
+
+            skipped = add_place_address(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

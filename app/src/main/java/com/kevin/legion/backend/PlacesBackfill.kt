@@ -279,7 +279,7 @@ object PlacesBackfill {
     /** The push itself, plus the ACK write-back. Split out of [examine] to keep both under
      * detekt's ceilings and to keep the branch table above readable as a branch table. */
     private suspend fun push(context: Context, backend: PlacesBackend, row: TaggedPlace): RowOutcome {
-        val result = backend.upsert(row.label, row.latitude, row.longitude)
+        val result = backend.upsert(row.label, row.latitude, row.longitude, row.address)
         val remote = result.getOrElse { return classify(it) }
         // The ACK's own `updated_at` written back onto the replica, the same way
         // PlaceController.tagPlace does on its configured branch: `TaggedPlace.timestamp` is this
@@ -299,6 +299,7 @@ object PlacesBackfill {
                 longitude = remote.longitude,
                 timestamp = remote.updatedAtMs,
                 deleted = remote.deleted,
+                address = remote.address,
             )
         )
         return RowOutcome.Pushed

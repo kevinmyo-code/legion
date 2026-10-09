@@ -53,17 +53,25 @@ class PlacesBackfillTest {
             return Result.success(serverRows.filter { it.updatedAtMs >= sinceMs })
         }
 
-        override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> {
+        override suspend fun upsert(
+            label: String,
+            latitude: Double,
+            longitude: Double,
+            address: String?,
+        ): Result<RemotePlace> {
             refuse(label)?.let { return Result.failure(it) }
             upserted += label
             clock += 1_000L
-            val row = RemotePlace(label, latitude, longitude, updatedAtMs = clock, deleted = false)
+            val row = RemotePlace(label, latitude, longitude, updatedAtMs = clock, deleted = false, address = address)
             serverRows.removeAll { it.label == label }
             serverRows += row
             return Result.success(row)
         }
 
         override suspend fun softDelete(label: String): Result<Boolean> = Result.success(false)
+
+        override suspend fun rename(from: String, to: String): Result<RemoteRename> =
+            Result.failure(PlacesBackendException("rename is not exercised here"))
     }
 
     @Before

@@ -121,16 +121,18 @@ object PlacesSync {
                     longitude = r.longitude,
                     timestamp = r.updatedAtMs,
                     deleted = r.deleted,
+                    address = r.address,
                 )
             },
             toMerged = { r, existing ->
                 // `label` is the primary key and is what these two were matched ON, so it is
-                // already equal; copying the other four columns is the whole row.
+                // already equal; copying the other five columns is the whole row.
                 existing.copy(
                     latitude = r.latitude,
                     longitude = r.longitude,
                     timestamp = r.updatedAtMs,
                     deleted = r.deleted,
+                    address = r.address,
                 )
             },
             withDeletedFlag = { existing, atMs -> existing.copy(deleted = true, timestamp = atMs) },

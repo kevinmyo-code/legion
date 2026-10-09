@@ -39,6 +39,7 @@ class PlaceControllerTest {
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
+        PlaceController.geocoderOverride = FakePlaceGeocoder()
         setFix(29.7604, -95.3698)
     }
 
@@ -50,9 +51,14 @@ class PlaceControllerTest {
         // this test can leave a Room InvalidationTracker refresh in flight, and it must finish
         // before this test method returns or it races Robolectric's per-method reset.
         RoomTestReset.drainArchDiskIoPool()
+        PlaceController.geocoderOverride = null
 
         setFix(null, null)
     }
+
+    /** The `tag_place` path with no address: the current fix, reverse looked up by the fake. */
+    private suspend fun tag(label: String, confirmed: Boolean = false) =
+        PlaceController.savePlace(context, label, rawAddress = null, confirmed = confirmed)
 
     private fun setFix(lat: Double?, lon: Double?) {
         val field = LocationController::class.java.getDeclaredField("_state")
@@ -86,7 +92,7 @@ class PlaceControllerTest {
 
     @Test
     fun `tagPlace writes places directly, readable back through all`() = runBlocking {
-        val ack = PlaceController.tagPlace(context, "my work").message
+        val ack = tag("my work").message
         assertTrue(ack.isNotBlank())
 
         val places = PlaceController.all(context)
@@ -101,9 +107,10 @@ class PlaceControllerTest {
 
     @Test
     fun `re-tagging the same label upserts in place, never a second row`() = runBlocking {
-        PlaceController.tagPlace(context, "work")
+        tag("work")
         setFix(30.0, -96.0)
-        PlaceController.tagPlace(context, "work")
+        // Moving a label is a replacement now (voice audit 2026-10-09), so it needs the confirm.
+        tag("work", confirmed = true)
 
         val places = PlaceController.all(context)
         assertEquals("a re-tag must overwrite, not duplicate - the known v1 gap the wave 1 carve doc flagged", 1, places.size)
@@ -112,12 +119,12 @@ class PlaceControllerTest {
 
     @Test
     fun `forgetPlace removes a saved place and reports missing labels`() = runBlocking {
-        PlaceController.tagPlace(context, "home")
-        val forgotten = PlaceController.forgetPlace(context, "home").message
+        tag("home")
+        val forgotten = PlaceController.forgetPlace(context, "home", confirmed = true).message
         assertTrue(forgotten.isNotBlank())
         assertTrue(PlaceController.all(context).isEmpty())
 
-        val missing = PlaceController.forgetPlace(context, "home").message
+        val missing = PlaceController.forgetPlace(context, "home", confirmed = true).message
         assertTrue(missing.contains("don't have"))
     }
 
@@ -125,7 +132,7 @@ class PlaceControllerTest {
 
     @Test
     fun `forget returns true on a real delete and false for an unknown label, never a false success`() = runBlocking {
-        PlaceController.tagPlace(context, "home")
+        tag("home")
         assertTrue("a real delete must report true", PlaceController.forget(context, "home"))
         assertTrue("the place must actually be gone", PlaceController.all(context).isEmpty())
         assertTrue(
@@ -136,7 +143,7 @@ class PlaceControllerTest {
 
     @Test
     fun `currentLabel matches the nearest saved place within radius`() = runBlocking {
-        PlaceController.tagPlace(context, "work")
+        tag("work")
         assertEquals("work", PlaceController.currentLabel(context))
 
         setFix(40.0, -74.0) // far away - New York, nowhere near Houston

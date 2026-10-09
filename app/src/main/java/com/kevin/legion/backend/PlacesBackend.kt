@@ -14,7 +14,15 @@ data class RemotePlace(
     val longitude: Double,
     val updatedAtMs: Long,
     val deleted: Boolean,
+    /** The human address (`places.address`, 2026-10-09). Null when none is on file - and always
+     * null from [SupabasePlacesBackend], whose `public.places` has no such column. */
+    val address: String? = null,
 )
+
+/** What one [PlacesBackend.rename] did: the place under its new label, and how many live
+ * place-triggered reminders the engine moved with it - or null when this transport does not move
+ * them at all, which tells the caller to move them itself. */
+data class RemoteRename(val place: RemotePlace, val remindersMoved: Int?)
 
 /**
  * The seam Phase 4 exists to prove (`.scratch/backend-erp/issues/05-migration-path.md`, Phase 3
@@ -43,7 +51,15 @@ interface PlacesBackend {
      * doc comment for why that needs an explicit `deleted_at: null` in the upload, not an implicit
      * one).
      */
-    suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace>
+    suspend fun upsert(label: String, latitude: Double, longitude: Double, address: String?): Result<RemotePlace>
+
+    /**
+     * A new label for the place called [from], keeping its coordinates and address (voice audit
+     * 2026-10-09: a rename done as forget + tag silently replaced "home"). `Result.failure` when
+     * nothing was renamed - no such place, [to] already taken, or the request did not complete -
+     * carrying the engine's own sentence where it gave one.
+     */
+    suspend fun rename(from: String, to: String): Result<RemoteRename>
 
     /**
      * Soft-deletes the active row for [label]. `Result.success(false)` means "no active row
