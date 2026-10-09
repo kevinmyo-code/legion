@@ -56,6 +56,7 @@ EVENT_TAGS = ["events"]
 # `validate_*` methods refuse anything outside of, naming the set in the
 # 400 body rather than leaving the caller to guess (this ticket's own rule
 # 2: "a wrong value returns 400 naming the allowed set").
+SUGGESTION_META_KEYS = ("city", "venue", "address", "url", "price")
 # `KIND_CHOICES` lives in `api/event_columns.py`, beside the CHECK it is
 # built into, so the 400 and the constraint cannot disagree.
 SOURCE_CHOICES = ("legion", "google")
@@ -216,6 +217,23 @@ class EventSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+        meta = attrs.get("structured_meta")
+        if meta is not None:
+            # The suggestion's details (2026-10-09): city, venue, address, url, price - each a
+            # string or null, so the phone's navigation lookup and the calendar can read them.
+            bad = not isinstance(meta, dict) or any(
+                not isinstance(meta.get(key), (str, type(None))) for key in SUGGESTION_META_KEYS
+            )
+            if bad:
+                raise serializers.ValidationError(
+                    {
+                        "structured_meta": (
+                            "A suggestion's structured_meta is an object whose "
+                            f"{', '.join(SUGGESTION_META_KEYS)} are each a string or null. "
+                            "Nothing was saved."
+                        )
+                    }
+                )
         if attrs.get("done", current.done if current is not None else False):
             raise serializers.ValidationError(
                 {"done": "A suggestion cannot be marked done: it is not a plan. Nothing was saved."}

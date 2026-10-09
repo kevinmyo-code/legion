@@ -1005,7 +1005,9 @@ TOOLS: tuple[EngineTool, ...] = (
             "Creates an event or task. `fields` takes the REST event fields: title (required), "
             "starts_at, ends_at, all_day, location, notes, origin_guid (pass one so a retry "
             "cannot create a duplicate), remind_minutes_before, kind (reminder, event, task, "
-            "or suggestion: a thing the household could do, not their plan; no reminder), and "
+            "or suggestion: a thing the household could do, not their plan; no reminder; give it "
+            "structured_meta {city, venue, address (street, or null), url, price} and location "
+            "\"venue, street address, city TX\"), and "
             "visibility: \"shared\" (the default; every member of the household sees it) or "
             "\"private\" (only the member this token belongs to)." + _WRITE_NOTE
         ),

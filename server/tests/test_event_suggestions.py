@@ -171,3 +171,23 @@ def test_the_engine_tools_say_a_suggestion_is_not_a_plan():
     assert "not their plan" in by_name["add_event"].description
     assert "not plans" in by_name["list_events"].description
     assert '{"kind": "event"}' in by_name["update_event"].description
+
+
+def test_a_suggestions_details_round_trip_in_structured_meta(auth_client):
+    meta = {
+        "city": "Austin",
+        "venue": "Zilker Park",
+        "address": "2100 Barton Springs Rd",
+        "url": "https://example.com/acl",
+        "price": "$25",
+    }
+    row = _make(auth_client, structured_meta=meta)
+    assert row["structured_meta"] == meta
+
+
+def test_a_malformed_suggestion_meta_is_refused_in_words(auth_client):
+    response = auth_client.post(
+        "/api/events", {**SUGGESTION, "structured_meta": {"city": 5}}, format="json"
+    )
+    assert response.status_code == 400
+    assert "Nothing was saved" in str(response.data["structured_meta"][0])
