@@ -8,8 +8,7 @@ status-detail: >
   Built 2026-10-09 on feat/home-calendar, not merged. HOME's middle area is now prototype A: month
   header, 6-week grid, selected-day agenda, and To-dos / Lists / Ideas buttons opening bottom sheets,
   above the unchanged dock and category row. Dock: a one-app bucket wears its app's icon; Google Maps
-  can be added to the Maps bucket again. Owes the device run, and owes Kevin a ruling on where the
-  six unmounted tiles (Money, Body, Fleet, Recordings, News, Reports) are reached from.
+  can be added to the Maps bucket again. The six area tiles live behind a fourth button, More (Kevin's ruling). Owes the device run.
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -83,12 +82,15 @@ is not that**, and no navigation code changed.
 6. **Agenda rows are 40dp (grown with font scale), not the prototype's 44**, for the same reason.
 7. "Plus who pinned it, if pins exist by then": no pins exist, so rows say only the type.
 
-## Owed from Kevin
+## Kevin's ruling on the six tiles (2026-10-09)
 
-**Where do Money, Body, Fleet, Recordings (and its record button), News and Reports open from now?**
-Those six tiles were the only hands path to those screens (ADR 0035); the brief replaced the area they
-lived in and did not say. They are not deleted: `HomeTilesContent` keeps the old layout and its
-screenshot tests, and the callbacks still reach `HomeScreen`. Until ruled, voice is the only way in.
+Asked where Money, Body, Fleet, Recordings, News and Reports open from, Kevin: *"4th button: More"*.
+A fourth button, **More**, joins To-dos / Lists / Ideas (52dp, label only; Ideas' second line is now
+"N ideas" so four buttons fit at font scale 1.3). It opens a bottom sheet holding the weather and area
+card (it fits above the tiles at 1.3, so it is back) and the six tiles, reusing `TileGrid`/`TileCard`
+and `HomeCallbacks`, record button and recording state included. A tile that navigates closes the sheet
+first. `HomeViewModel` is back for the tile and card state. `HomeTilesContent` is kept: the 11
+`HomeContentScreenshotTest` tests render it, and it shares `TileGrid` and `TodayCard` with the sheet.
 
 ## Verification
 
@@ -97,7 +99,10 @@ screenshot tests, and the callbacks still reach `HomeScreen`. Until ruled, voice
 - [x] Single-app icon rule; Google Maps addable to the Maps bucket (Robolectric compose).
 - [x] Roborazzi baselines at 384 x 832 and 384 x 636, font scale 1.0 and 1.3, looked at: no scrolling,
       no clipping, three agenda rows at the tightest case. `app/src/test/snapshots/home-calendar-*.png`.
-- [ ] **On the phone:** every tap in the list below, at the system font scale Kevin actually uses.
+- [x] More sheet and the four-button row at font scale 1.3: `home-calendar-more-sheet-font13.png`,
+      `home-calendar-four-buttons-font13.png`, looked at.
+- [ ] **On the phone:** every tap, plus More: each tile opens its screen and closes the sheet, the record button
+      starts and stops a recording without closing it; in the list below, at the system font scale Kevin actually uses.
       Cold start lands on this screen; prev/next month; tap a day; tap each kind of row; "+N more";
       tick and untick in the To-dos sheet and see the grid and agenda follow; open a list from the
       Lists sheet; add a suggestion to plans and drop one from the Ideas sheet; long-press Maps, pick

@@ -523,7 +523,12 @@ private fun LegendItem(label: String, mark: @Composable () -> Unit) {
 /** The three panel buttons (To-dos, Lists, Ideas), each opening a bottom sheet. The Ask/mic button
  * lives in the shell's talk bar and is deliberately not repeated here. */
 @Composable
-fun HomePanelButtons(state: HomeCalendarUiState, callbacks: HomeCalendarCallbacks, modifier: Modifier = Modifier) {
+fun HomePanelButtons(
+    state: HomeCalendarUiState,
+    callbacks: HomeCalendarCallbacks,
+    modifier: Modifier = Modifier,
+    onMore: () -> Unit = {},
+) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PanelButton(
             "To-dos",
@@ -543,11 +548,13 @@ fun HomePanelButtons(state: HomeCalendarUiState, callbacks: HomeCalendarCallback
             "Ideas",
             when {
                 state.ideasNote != null -> "can't read"
-                state.ideas.isEmpty() -> "none this weekend"
-                else -> "${state.ideas.size} this weekend"
+                state.ideas.isEmpty() -> "none"
+                else -> "${state.ideas.size} ideas"
             },
             AreaAccent.NEWS.container, AreaAccent.NEWS.onContainer, Modifier.weight(1f),
         ) { callbacks.onOpenSheet(PanelSheet.IDEAS) }
+        // Kevin, 2026-10-09: "4th button: More" - the six area tiles that used to fill this screen.
+        PanelButton("More", "", SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f), onMore)
     }
 }
 
@@ -576,7 +583,7 @@ private fun PanelButton(
             color = content,
             maxLines = 1,
         )
-        Text(
+        if (sub.isNotEmpty()) Text(
             sub,
             style = MaterialTheme.typography.labelSmall,
             color = content.copy(alpha = SUB_ALPHA),

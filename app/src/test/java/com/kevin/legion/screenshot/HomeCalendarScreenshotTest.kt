@@ -4,6 +4,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Canvas
@@ -26,7 +28,11 @@ import com.kevin.legion.ui.home.CategoryUi
 import com.kevin.legion.ui.home.DayMarkers
 import com.kevin.legion.ui.home.HomeCalendarCallbacks
 import com.kevin.legion.ui.home.HomeCalendarUiState
+import com.kevin.legion.ui.home.HomeCallbacks
 import com.kevin.legion.ui.home.HomeContent
+import com.kevin.legion.ui.home.HomePanelButtons
+import com.kevin.legion.ui.home.HomeUiState
+import com.kevin.legion.ui.home.MoreSheetContent
 import com.kevin.legion.ui.home.HomePanelSheetContent
 import com.kevin.legion.ui.home.IdeaRowUi
 import com.kevin.legion.ui.home.ListRowUi
@@ -246,4 +252,50 @@ class HomeCalendarScreenshotTest {
     @Config(qualifiers = "w384dp-h600dp")
     @Test
     fun `sheet - ideas`() = captureSheet("home-calendar-sheet-ideas.png", 1.0f, PanelSheet.IDEAS)
+
+    // ------------------------------------------------------------------------- More (Kevin: "4th button: More")
+
+    private val noTileCallbacks = HomeCallbacks({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+
+    @Config(qualifiers = "w384dp-h800dp")
+    @Test
+    fun `more sheet - the six area tiles, font 1_3`() {
+        rule.setContent {
+            val base = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(base.density, 1.3f)) {
+                SoftTheme {
+                    Box(Modifier.fillMaxSize().background(SoftColors.card)) {
+                        MoreSheetContent(
+                            state = HomeUiState(
+                                loading = false, weekdayLabel = "Friday", dateLabel = "October 9",
+                                weatherText = "72F, partly cloudy", areaAqiLine = "Houston, TX - AQI 42 (Good)",
+                                nextLine = "Next: Team standup - 9:00 AM", checklistCount = 3, voiceNotesCount = 5,
+                            ),
+                            recording = false,
+                            recordRefusal = null,
+                            callbacks = noTileCallbacks,
+                            onDismiss = {},
+                        )
+                    }
+                }
+            }
+        }
+        rule.onRoot().captureRoboImage("home-calendar-more-sheet-font13.png")
+    }
+
+    @Config(qualifiers = "w384dp-h120dp")
+    @Test
+    fun `four-button row, font 1_3`() {
+        rule.setContent {
+            val base = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(base.density, 1.3f)) {
+                SoftTheme {
+                    Box(Modifier.fillMaxSize().background(SoftColors.ground).padding(12.dp)) {
+                        HomePanelButtons(state(today, friday), HomeCalendarCallbacks())
+                    }
+                }
+            }
+        }
+        rule.onRoot().captureRoboImage("home-calendar-four-buttons-font13.png")
+    }
 }
