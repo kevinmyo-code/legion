@@ -53,6 +53,10 @@ interface DayCounts {
   tasks: number
   events: number
   tasksDone: number
+  /** Suggestions (kind "suggestion") on this day. NEVER part of `events`: a
+   * suggestion is not a plan. Only the month calendar reads this, to mark the
+   * day; `buildHorizon` drops it. */
+  suggestions: number
 }
 
 /**
@@ -73,14 +77,16 @@ function bucketByDay(
   skips: readonly EventSkip[] | undefined,
 ): Map<number, DayCounts> {
   const buckets = new Map<number, DayCounts>(
-    days.map((day) => [day, { tasks: 0, events: 0, tasksDone: 0 }]),
+    days.map((day) => [day, { tasks: 0, events: 0, tasksDone: 0, suggestions: 0 }]),
   )
   if (days.length === 0) return buckets
   const occurrences = occurrencesBetween(events, skips, Math.min(...days), Math.max(...days))
   for (const { event, day } of occurrences) {
     const bucket = buckets.get(day)
     if (!bucket) continue
-    if (event.kind === 'task') {
+    if (event.kind === 'suggestion') {
+      bucket.suggestions += 1
+    } else if (event.kind === 'task') {
       bucket.tasks += 1
       if (event.done) bucket.tasksDone += 1
     } else {
@@ -102,12 +108,12 @@ export function buildHorizon(
   const cellDays: number[] = []
   for (let offset = 0; offset < days; offset += 1) cellDays.push(today + offset)
   const buckets = bucketByDay(cellDays, events, skips)
-  return cellDays.map((day) => ({
-    day,
-    offset: day - today,
-    date: dateForEpochDay(day),
-    ...buckets.get(day)!,
-  }))
+  return cellDays.map((day) => {
+    // The strip is about plans: suggestions are counted by the bucketer for the
+    // month calendar and dropped here.
+    const { suggestions: _suggestions, ...counts } = buckets.get(day)!
+    return { day, offset: day - today, date: dateForEpochDay(day), ...counts }
+  })
 }
 
 export interface MonthCell extends DayCounts {

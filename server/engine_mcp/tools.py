@@ -54,6 +54,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from django.utils.dateparse import parse_date, parse_datetime
 from jsonschema import Draft202012Validator
 
+from api.event_columns import KIND_SUGGESTION
 from api.registry import SYNCED_VIEWSETS
 from engine_mcp.dispatch import RouteNotFound, call_route
 from engine_mcp.models import Outcome
@@ -387,6 +388,12 @@ def _list_events(request, args) -> ToolResult:
     live = visible(Event, request).filter(deleted_at__isnull=True)
     if not args.get("include_done", False):
         live = live.filter(done=False)
+    # Suggestions (Kevin, 2026-10-09) are things the household COULD do, never
+    # their plans: their own section, never mixed into the three below.
+    suggested = live.filter(
+        kind=KIND_SUGGESTION, starts_at__gte=start, starts_at__lte=end
+    ).order_by("starts_at")[:READ_LIMIT_MAX]
+    live = live.exclude(kind=KIND_SUGGESTION)
     one_off = live.filter(
         repeat_kind__isnull=True, starts_at__gte=start, starts_at__lte=end
     ).order_by("starts_at")[:READ_LIMIT_MAX]
@@ -400,6 +407,7 @@ def _list_events(request, args) -> ToolResult:
         "in_window": EventSerializer(one_off, many=True).data,
         "repeating": EventSerializer(repeating, many=True).data,
         "undated": EventSerializer(undated, many=True).data,
+        "suggestions": EventSerializer(suggested, many=True).data,
     }
     window = f"{start.isoformat()} to {end.isoformat()}"
     if not any(sections.values()):
@@ -417,6 +425,8 @@ def _list_events(request, args) -> ToolResult:
         f"on or before the window's end. They are NOT expanded into occurrences: read each "
         f"one's repeat_* fields before saying whether it falls in the window.\n"
         f"- undated: {len(sections['undated'])} tasks with no date.\n"
+        f"- suggestions: {len(sections['suggestions'])} things the household could do in the "
+        f"window. NOT plans: never say they have one on, are going, or are busy then.\n"
         f"{_json(sections)}",
         structured=sections,
     )
@@ -911,7 +921,8 @@ TOOLS: tuple[EngineTool, ...] = (
         title="What is due",
         description=(
             "Events and tasks in a window (default: now to 14 days ahead), plus repeating "
-            "events and undated tasks. Repeating events are NOT expanded into occurrences."
+            "events and undated tasks. Repeating events are NOT expanded into occurrences. "
+            "Suggestions come in their own list and are not plans."
         ),
         input_schema=_object(
             {
@@ -993,9 +1004,12 @@ TOOLS: tuple[EngineTool, ...] = (
         description=(
             "Creates an event or task. `fields` takes the REST event fields: title (required), "
             "starts_at, ends_at, all_day, location, notes, origin_guid (pass one so a retry "
-            "cannot create a duplicate), remind_minutes_before, and visibility: \"shared\" "
-            "(the default; every member of the household sees it) or \"private\" (only the "
-            "member this token belongs to)." + _WRITE_NOTE
+            "cannot create a duplicate), remind_minutes_before, kind (reminder, event, task, "
+            "or suggestion: a thing the household could do, not their plan; no reminder; give it "
+            "structured_meta {city, venue, address (street, or null), url, price} and location "
+            "\"venue, street address, city TX\"), and "
+            "visibility: \"shared\" (the default; every member of the household sees it) or "
+            "\"private\" (only the member this token belongs to)." + _WRITE_NOTE
         ),
         input_schema=_object({"fields": {"type": "object"}}, ("fields",)),
         handler=_add_event,
@@ -1006,7 +1020,8 @@ TOOLS: tuple[EngineTool, ...] = (
         title="Change an event or task",
         description=(
             "Changes fields on one event or task, by id; marking a task done is "
-            '{"done": true}.' + _WRITE_NOTE
+            '{"done": true}; adding a suggestion to the plans is {"kind": "event"}.'
+            + _WRITE_NOTE
         ),
         input_schema=_object({"id": _UUID, "fields": {"type": "object"}}, ("id", "fields")),
         handler=_update_event,

@@ -10,6 +10,7 @@ import {
   useUpdateEvent,
 } from '@/api/mutations'
 import type { SheetRequest } from '@/components/event-sheet-context'
+import { SuggestionSheet } from '@/components/suggestion-sheet'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -31,6 +32,7 @@ import {
   type RepeatChoice,
 } from '@/lib/event-form'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
+import { isSuggestion } from '@/lib/suggestion'
 import { cn } from '@/lib/utils'
 import { useSurface } from '@/lib/surface'
 import { PRIVATE_WORDS, SHARED_WORDS } from '@/lib/visibility'
@@ -98,7 +100,17 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
 const CHIP =
   'inline-flex h-11 min-w-0 flex-1 items-center justify-center rounded-full border border-outline px-3 text-[0.8125rem] font-medium whitespace-nowrap outline-none transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-[state=checked]:border-transparent data-[state=checked]:bg-primary-container data-[state=checked]:text-primary-container-foreground data-[state=on]:border-transparent data-[state=on]:bg-primary-container data-[state=on]:text-primary-container-foreground'
 
+/** A suggestion gets its own two-action sheet, never the edit form: it is not
+ * the household's plan until someone adds it, and its fields belong to the
+ * engine that found it. Everything else is the one form below. */
 export function EventSheet({ request, onClose }: { request: SheetRequest; onClose: () => void }) {
+  if (request.kind === 'edit' && isSuggestion(request.occurrence.event)) {
+    return <SuggestionSheet occurrence={request.occurrence} onClose={onClose} />
+  }
+  return <EventSheetForm request={request} onClose={onClose} />
+}
+
+function EventSheetForm({ request, onClose }: { request: SheetRequest; onClose: () => void }) {
   const surface = useSurface()
   const edit = request.kind === 'edit' ? request.occurrence : null
   const series = edit !== null && edit.recurring

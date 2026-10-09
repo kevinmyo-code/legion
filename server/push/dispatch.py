@@ -257,13 +257,17 @@ class _Dispatcher:
         return out
 
     def event_reminders(self, user, subs):
+        from api.event_columns import KIND_SUGGESTION
         from api.recurrence import series_occurrences
 
         zone = _zone(subs[0].tz)
+        # Never a suggestion: a suggestion is not a plan, so it never
+        # rings (the CHECK in `api/event_columns.py` already keeps its reminder
+        # null; this is the reader saying so too, in case that ever moves).
         events = list(
-            self._visible_events(user).filter(
-                remind_minutes_before__isnull=False, done=False, starts_at__isnull=False
-            )
+            self._visible_events(user)
+            .filter(remind_minutes_before__isnull=False, done=False, starts_at__isnull=False)
+            .exclude(kind=KIND_SUGGESTION)
         )
         skips = self._skips([e.pk for e in events])
         for event in events:

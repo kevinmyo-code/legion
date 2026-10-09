@@ -24,7 +24,9 @@ import com.kevin.legion.navigation.resolve.MapboxPlaceSearch
 import com.kevin.legion.navigation.resolve.PhoneContacts
 import com.kevin.legion.navigation.resolve.PhoneEvents
 import com.kevin.legion.navigation.resolve.PhonePlacesReader
+import com.kevin.legion.navigation.resolve.PhoneSuggestions
 import com.kevin.legion.navigation.resolve.SavedPlaceSource
+import com.kevin.legion.navigation.resolve.SuggestionSource
 import com.kevin.legion.navigation.voice.NavCueSpeaker
 import com.kevin.legion.navigation.voice.NavVoiceTools
 import com.kevin.legion.service.ProactivePreferences
@@ -85,12 +87,14 @@ class MidnightApplication : Application() {
         )
     }
 
-    /** Destination lookup in ticket 03's order: saved places, calendar, contacts, then Mapbox search. */
+    /** Destination lookup in ticket 03's order: saved places, calendar, calendar suggestions
+     * (2026-10-09), contacts, then Mapbox search. */
     val navResolver: DestinationResolver by lazy {
         DestinationResolver(
             sources = listOf(
                 SavedPlaceSource(PhonePlacesReader(this)),
                 CalendarSource(PhoneEvents(this)),
+                SuggestionSource(PhoneSuggestions(this)),
                 ContactSource(PhoneContacts(this)),
             ),
             placeSearch = MapboxPlaceSearch(),

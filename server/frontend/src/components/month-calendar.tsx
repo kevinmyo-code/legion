@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import type { Event, EventSkip } from '@/api/types'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
 import { buildMonth, type MonthCell } from '@/lib/horizon'
+import { isSuggestion } from '@/lib/suggestion'
 import { occurrencesOnDay } from '@/lib/recurrence'
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -42,7 +43,9 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
 
   const selectedEvents = occurrencesOnDay(selectedDay, events, skips)
   const selectedTasks = selectedEvents.filter((o) => o.event.kind === 'task')
-  const selectedCalendar = selectedEvents.filter((o) => o.event.kind !== 'task')
+  const selectedCalendar = selectedEvents.filter((o) => o.event.kind !== 'task' && !isSuggestion(o.event))
+  const selectedSuggestions = selectedEvents.filter((o) => isSuggestion(o.event))
+  const planCount = selectedTasks.length + selectedCalendar.length
   const selectedLabel = dateForEpochDay(selectedDay).toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'short',
@@ -102,7 +105,7 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
             </Button>
           )}
         </div>
-        {selectedEvents.length === 0 ? (
+        {planCount === 0 ? (
           <p className="px-1 text-[0.9375rem] text-muted-foreground">Nothing on the calendar this day.</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
@@ -113,6 +116,16 @@ export function MonthCalendar({ events, skips }: { events: Event[]; skips?: read
               <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
             ))}
           </ul>
+        )}
+        {selectedSuggestions.length > 0 && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            <h4 className="px-1 text-[0.8125rem] text-muted-foreground">Suggestions, not in your plans</h4>
+            <ul className="flex flex-col gap-1.5">
+              {selectedSuggestions.map((occurrence) => (
+                <EventRow key={`${occurrence.event.id}:${occurrence.date}`} occurrence={occurrence} />
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>
@@ -137,10 +150,12 @@ function MonthDayCell({
       onClick={onSelect}
       aria-label={`${cell.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}${
         outstanding > 0 ? `, ${outstanding} unfinished` : ''
-      }${cell.events > 0 ? `, ${cell.events} on the calendar` : ''}`}
+      }${cell.events > 0 ? `, ${cell.events} on the calendar` : ''}${
+        cell.suggestions > 0 ? `, ${cell.suggestions} ${cell.suggestions === 1 ? 'suggestion' : 'suggestions'}, not planned` : ''
+      }`}
       aria-current={isSelected ? 'date' : undefined}
       className={[
-        'flex aspect-square min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl bg-surface-1 text-xs lg:aspect-auto lg:h-14',
+        'relative flex aspect-square min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl bg-surface-1 text-xs lg:aspect-auto lg:h-14',
         cell.inMonth ? '' : 'opacity-40',
         isSelected ? 'ring-2 ring-primary' : '',
         isToday ? 'font-bold text-primary' : '',
@@ -160,6 +175,13 @@ function MonthDayCell({
       >
         {outstanding > 0 ? outstanding : cell.events > 0 ? '·' : ''}
       </span>
+      {cell.suggestions > 0 && (
+        <span
+          aria-hidden="true"
+          title="Suggestion, not planned"
+          className="absolute top-1 right-1 size-1.5 rounded-full border border-dashed border-primary bg-primary-container"
+        />
+      )}
     </button>
   )
 }

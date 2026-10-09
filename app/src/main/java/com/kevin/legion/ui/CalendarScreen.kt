@@ -307,7 +307,13 @@ fun CalendarScreen(
             monthTodoLoadFailed = true
             emptyMap()
         }
-        monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone, todoCountsByDayStart)
+        // Suggestions (2026-10-09) get their own mark, never folded into the event dots, which
+        // count plans. A failed read leaves no marks; the day view says so in words.
+        val suggestionCounts = runCatching {
+            val s = com.kevin.legion.calendar.EventSuggestions
+            s.countsByDay(s.inLocalWindow(context, monthStart, monthEnd, zone), dayStarts, zone)
+        }.getOrDefault(emptyMap())
+        monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone, todoCountsByDayStart, suggestionCounts)
         monthLoading = false
     }
 
@@ -595,6 +601,14 @@ fun CalendarScreen(
                         scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
                     }
                 }
+                // Suggestions sit BELOW the plans, in their own section with their own words.
+                com.kevin.legion.ui.agenda.SuggestionsDaySection(
+                    dayStart = selectedDayStart,
+                    dayEndExclusive = selectedDayStart + DAY_FILTER_WINDOW_MS,
+                    zone = zone,
+                    reloadKey = reloadNonce,
+                    onChanged = { reloadNonce++ },
+                )
                 // RECORDED - a read-time join, no checkbox, excluded from the completion ratio below
                 // (this screen's own file doc comment). [recordedLoadFailed] renders its own distinct
                 // sentence, never folded into the ordinary empty-list case.

@@ -55,6 +55,42 @@ class PhoneEvents(private val context: Context) : UpcomingEvents {
     }
 }
 
+/** Calendar suggestions from the start of today on (`calendar/EventSuggestions.kt`); read, never written. */
+class PhoneSuggestions(private val context: Context) : SuggestionsReader {
+    @Suppress("TooGenericExceptionCaught") // same reason as above
+    override suspend fun read(nowMs: Long): SuggestionsRead = try {
+        val zone = java.time.ZoneId.systemDefault()
+        val today = java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        val from = today.atStartOfDay(zone).toInstant().toEpochMilli()
+        val to = today.plusDays(HORIZON_DAYS).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        val rows = com.kevin.legion.calendar.EventSuggestions.inLocalWindow(context, from, to, zone)
+        SuggestionsRead.Rows(
+            rows.mapNotNull { e ->
+                val start = e.startsAt ?: return@mapNotNull null
+                val meta = com.kevin.legion.calendar.SuggestionMeta.parse(e.structuredMeta)
+                SuggestionRow(
+                    title = e.title,
+                    startMs = start,
+                    allDay = e.allDay,
+                    city = meta?.city,
+                    venue = meta?.venue,
+                    address = meta?.address,
+                    location = e.location,
+                    structured = meta != null,
+                )
+            },
+        )
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        SuggestionsRead.Unreadable("calendar suggestions could not be read (${e.message ?: e::class.java.simpleName})")
+    }
+
+    private companion object {
+        const val HORIZON_DAYS = 60L
+    }
+}
+
 /** Postal addresses from `ContactsContract.CommonDataKinds.StructuredPostal`, filtered by display name. */
 class PhoneContacts(private val context: Context) : ContactsReader {
     @Suppress("TooGenericExceptionCaught") // same reason as above

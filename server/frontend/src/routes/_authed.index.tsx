@@ -15,6 +15,7 @@ import { WorkbenchMoneyPanels } from '@/components/workbench/home-money'
 import { isChecklistComplete, tickState } from '@/lib/checklist'
 import { todayEpochDay } from '@/lib/day'
 import { buildHorizon, nextUp, overdueOccurrences } from '@/lib/horizon'
+import { plansOnly } from '@/lib/suggestion'
 import { useSurface } from '@/lib/surface'
 import { FamilyHome } from '@/screens/home-family'
 import { itemsDueOn } from '@/lib/today'
@@ -140,7 +141,8 @@ function WorkbenchHome() {
   }
 
   const today = todayEpochDay()
-  const events = changes.data.events ?? []
+  // Suggestions are not the household's plans; Today never sees them.
+  const events = plansOnly(changes.data.events ?? [])
   const due = itemsDueOn(
     today,
     changes.data.checklists ?? [],

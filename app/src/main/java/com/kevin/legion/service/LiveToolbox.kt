@@ -1982,12 +1982,13 @@ object LiveToolbox {
                 "calendar'.** Each row gives title, start, end, all_day, kind, and done for a " +
                 "task. This does not return reminders or checklist items - those are " +
                 "`read_list` and `manage_checklist`. Read-only: use manage_item to change " +
-                "anything.",
+                "anything. A separate `suggestions` list is ideas, not plans.",
             params = obj(
                 "from" to schema("string", "First day of the window, yyyy-MM-dd. Call " +
                     "get_current_time first if you need to know what 'today' is."),
                 "to" to schema("string", "Last day of the window, yyyy-MM-dd, inclusive. For a " +
                     "single day, pass the same value as 'from'."),
+                "city" to schema("string", "Suggestions in this city only."),
             ),
             required = listOf("from", "to"),
         ))
@@ -3713,6 +3714,9 @@ object LiveToolbox {
             )
         }
         val o = JSONObject().put("success", true).put("count", arr.length()).put("events", arr)
+        // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
+        // user could do, not plans, and `count` and the empty-window sentence below stay about plans.
+        com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone, args.optString("city"))
         // Says what was actually looked at. "Nothing on the calendar" invited the model to answer a
         // question about DEADLINES with a sentence about appointments, which is how a window that
         // excluded every task still sounded authoritative.

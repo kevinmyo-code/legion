@@ -316,6 +316,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_place_address(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0018` (event suggestions), the same way.
+            from api.event_columns import add_event_suggestions
+
+            skipped = add_event_suggestions(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

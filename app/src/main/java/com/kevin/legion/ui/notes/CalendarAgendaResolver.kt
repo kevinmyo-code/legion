@@ -217,7 +217,15 @@ fun dayOfWeekLetter(dayStartMs: Long, zone: ZoneId = ZoneId.systemDefault()): St
  * "nothing due" misread this field exists to fix. See [buildMonthOpenTodoCounts]'s own doc comment
  * for what counts and what deliberately does not (checklist lines, done rows, events).
  */
-data class MonthCell(val dayStart: Long?, val dayOfMonth: Int?, val eventCount: Int, val openTodoCount: Int = 0)
+/** [suggestionCount]: calendar suggestions starting that day (2026-10-09) - never part of
+ * [eventCount], which counts plans. */
+data class MonthCell(
+    val dayStart: Long?,
+    val dayOfMonth: Int?,
+    val eventCount: Int,
+    val openTodoCount: Int = 0,
+    val suggestionCount: Int = 0,
+)
 
 /**
  * The displayed [month]'s cells, always a multiple of seven (leading blanks + the month's own days
@@ -237,6 +245,7 @@ fun buildMonthCells(
     counts: Map<Long, Int>,
     zone: ZoneId = ZoneId.systemDefault(),
     todoCounts: Map<Long, Int> = emptyMap(),
+    suggestionCounts: Map<Long, Int> = emptyMap(),
 ): List<MonthCell> {
     val firstDayOfWeek = java.time.temporal.WeekFields.of(Locale.getDefault()).firstDayOfWeek
     val firstOfMonth = month.atDay(1)
@@ -256,6 +265,7 @@ fun buildMonthCells(
                 dayOfMonth = day,
                 eventCount = counts[dayStart] ?: 0,
                 openTodoCount = todoCounts[dayStart] ?: 0,
+                suggestionCount = suggestionCounts[dayStart] ?: 0,
             ),
         )
     }
