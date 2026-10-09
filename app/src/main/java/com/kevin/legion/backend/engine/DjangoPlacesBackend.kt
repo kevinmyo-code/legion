@@ -3,6 +3,8 @@ package com.kevin.legion.backend.engine
 import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.PlacesIncrementalPull
 import com.kevin.legion.backend.RemotePlace
+import com.kevin.legion.backend.RemoteRename
+import io.ktor.http.encodeURLPathPart
 import java.time.Instant
 import java.time.OffsetDateTime
 import kotlinx.serialization.SerialName
@@ -33,6 +35,9 @@ private data class DjangoPlaceRow(
     val longitude: Double,
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("deleted_at") val deletedAt: String? = null,
+    /** `places.address` (2026-10-09). Defaulted so an engine one release behind, which does not
+     * send it, still decodes. */
+    val address: String? = null,
 ) {
     fun toRemote() = RemotePlace(
         label = label,
@@ -40,8 +45,20 @@ private data class DjangoPlaceRow(
         longitude = longitude,
         updatedAtMs = parsePlaceTs(updatedAt),
         deleted = deletedAt != null,
+        address = address,
     )
 }
+
+/** `POST /api/places/<label>/rename/`'s body. */
+@Serializable
+private data class DjangoPlaceRename(val to: String)
+
+/** `POST /api/places/<label>/rename/`'s 200 body - `PlaceRenameResultSerializer`. */
+@Serializable
+private data class DjangoPlaceRenameResult(
+    val place: DjangoPlaceRow,
+    @SerialName("reminders_moved") val remindersMoved: Int,
+)
 
 /**
  * The `PUT /api/places/<label>/` body. Three fields, because three is every writable column
@@ -61,6 +78,9 @@ private data class DjangoPlaceWrite(
     val label: String,
     val latitude: Double,
     val longitude: Double,
+    /** Sent on every write, null included (`engineSyncedJson` has `explicitNulls`): a place
+     * re-pinned with no address known must not keep the old spot's address. */
+    val address: String?,
 )
 
 /**
@@ -83,7 +103,7 @@ private data class DjangoPlaceWrite(
  * does not have would make "did that save?" depend on which row the debug Setup screen has flipped,
  * which is the kind of divergence the whole two-transport period exists to avoid.
  */
-class DjangoPlacesBackend(http: EngineHttp) : PlacesBackend, PlacesIncrementalPull {
+class DjangoPlacesBackend(private val http: EngineHttp) : PlacesBackend, PlacesIncrementalPull {
 
     private val table = EngineSyncedTable(
         http = http,
@@ -117,13 +137,32 @@ class DjangoPlacesBackend(http: EngineHttp) : PlacesBackend, PlacesIncrementalPu
             table.fetchChangedSince(Instant.ofEpochMilli(sinceMs).toString()).map { it.toRemote() }
         }
 
-    override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> =
+    override suspend fun upsert(
+        label: String,
+        latitude: Double,
+        longitude: Double,
+        address: String?,
+    ): Result<RemotePlace> =
         translatingEngineCall("save that place") {
             val body = engineSyncedJson.encodeToString(
                 DjangoPlaceWrite.serializer(),
-                DjangoPlaceWrite(label = label, latitude = latitude, longitude = longitude),
+                DjangoPlaceWrite(label = label, latitude = latitude, longitude = longitude, address = address),
             )
             table.put(label, body).toRemote()
+        }
+
+    /**
+     * `POST /api/places/<from>/rename/` - one transaction on the engine: [to] upserted with the
+     * old coordinates and address, [from] tombstoned, live reminders moved. A 404 (no such place)
+     * and a 409 ([to] taken) come back as [EngineHttpException] carrying the engine's sentence,
+     * which [com.kevin.legion.location.PlaceController] relays.
+     */
+    override suspend fun rename(from: String, to: String): Result<RemoteRename> =
+        translatingEngineCall("rename that place") {
+            val body = engineSyncedJson.encodeToString(DjangoPlaceRename.serializer(), DjangoPlaceRename(to))
+            val ok = http.post("$PLACES_PATH${from.encodeURLPathPart()}/rename/", body).getOrThrow()
+            val result = engineSyncedJson.decodeFromString(DjangoPlaceRenameResult.serializer(), ok.body)
+            RemoteRename(result.place.toRemote(), result.remindersMoved)
         }
 
     /**

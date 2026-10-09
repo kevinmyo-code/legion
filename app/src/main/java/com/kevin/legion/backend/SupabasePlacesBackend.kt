@@ -86,7 +86,15 @@ class SupabasePlacesBackend(private val client: SupabaseClient) : PlacesBackend 
             .map { it.toRemotePlace() }
     }
 
-    override suspend fun upsert(label: String, latitude: Double, longitude: Double): Result<RemotePlace> =
+    /** [address] is not sent: `public.places` on Supabase has no `address` column (it was added
+     * on the engine only, 2026-10-09, and this transport is retiring), so sending it would be
+     * refused. The row comes back with no address, and the replica stores what came back. */
+    override suspend fun upsert(
+        label: String,
+        latitude: Double,
+        longitude: Double,
+        address: String?,
+    ): Result<RemotePlace> =
         translating("save that place") {
             client.postgrest.from(TABLE)
                 .upsert(PlaceUpsertDto(label = label, latitude = latitude, longitude = longitude, deletedAt = null)) {
@@ -96,6 +104,33 @@ class SupabasePlacesBackend(private val client: SupabaseClient) : PlacesBackend 
                 .decodeSingle<PlaceRowDto>()
                 .toRemotePlace()
         }
+
+    /**
+     * Two requests, not one transaction - Postgrest has no rename route here, and this transport
+     * is retiring (ADR 0044), so it gets the honest minimum rather than a new SQL function: [to]
+     * is refused if it is already live, then upserted with [from]'s coordinates, then [from] is
+     * tombstoned. Reminders are NOT moved on this transport; `remindersMoved` is null and the
+     * controller moves them itself. If the second write fails the place exists under both names, which is
+     * reported as a failure and loses nothing.
+     */
+    override suspend fun rename(from: String, to: String): Result<RemoteRename> = try {
+        Result.success(renameOrThrow(from, to))
+    } catch (e: PlacesBackendException) {
+        // Every failure below is one: [translating] wraps each request's in this type.
+        Result.failure(e)
+    }
+
+    private suspend fun renameOrThrow(from: String, to: String): RemoteRename {
+        val active = fetchActive().getOrThrow()
+        val source = active.firstOrNull { it.label == from }
+            ?: throw PlacesBackendException("Nothing was renamed. There is no saved place called '$from'.")
+        if (active.any { it.label == to }) {
+            throw PlacesBackendException("Nothing was renamed. There is already a saved place called '$to'.")
+        }
+        val renamed = upsert(to, source.latitude, source.longitude, source.address).getOrThrow()
+        softDelete(from).getOrThrow()
+        return RemoteRename(renamed, remindersMoved = null)
+    }
 
     override suspend fun softDelete(label: String): Result<Boolean> = translating("remove that place") {
         client.postgrest.from(TABLE)

@@ -747,21 +747,38 @@ object LiveToolbox {
             required = listOf("place", "text"),
         ))
 
+        // Places by address (Kevin, 2026-10-09) and no silent destruction (voice audit finding 2).
+        // `tag_place` grew an optional `address` rather than a second save tool. The descriptions are
+        // deliberately short (LiveSetupPayloadSizeTest): the confirm and pick-one protocol is carried
+        // by the tool RESULT, which says in words what was not saved and what to do next, and the
+        // confirm itself is enforced in PlaceController, not by the model reading a description.
         fns.put(fn(
             name = "tag_place",
-            description = "Save the user's CURRENT location under a label like 'home', 'work', or " +
-                "'gym', so it can be referenced later. Use when the user says something like 'this " +
-                "is my work' while they're there. No address-based tagging - only the current GPS spot.",
+            description = "Save a place under a label. With address: looks it up and saves there. " +
+                "Without: saves the current location. Repeat the address the result says was saved. " +
+                "If the result asks to confirm or choose, ask the user, then do as it says.",
             params = obj(
-                "label" to schema("string", "Short label for this place, e.g. home, work, gym."),
+                "label" to schema("string", "e.g. home, work, gym."),
+                "address" to schema("string", "Street address as said. Omit for the current location."),
+                "confirmed" to schema("boolean", "True only after the user agreed to replace."),
             ),
             required = listOf("label"),
         ))
 
         fns.put(fn(
+            name = "rename_place",
+            description = "Rename a saved place, keeping its location. Use for every rename.",
+            params = obj("from" to schema("string", "Current label."), "to" to schema("string", "New label.")),
+            required = listOf("from", "to"),
+        ))
+
+        fns.put(fn(
             name = "forget_place",
-            description = "Delete a previously saved place by its label.",
-            params = obj("label" to schema("string", "Label of the saved place to forget, e.g. work.")),
+            description = "Delete a saved place. Unconfirmed, deletes nothing and says what would be lost.",
+            params = obj(
+                "label" to schema("string", "e.g. work."),
+                "confirmed" to schema("boolean", "True only after the user said yes."),
+            ),
             required = listOf("label"),
         ))
 
@@ -2721,11 +2738,12 @@ object LiveToolbox {
             "set_reminder" ->
                 ReminderController.add(context, args.optString("place"), args.optString("text"))
                     .let { result(it.success, it.message) }
-            "tag_place" ->
-                PlaceController.tagPlace(context, args.optString("label"))
+            "tag_place" -> tagPlace(context, args)
+            "rename_place" ->
+                PlaceController.renamePlace(context, args.optString("from"), args.optString("to"))
                     .let { result(it.success, it.message) }
             "forget_place" ->
-                PlaceController.forgetPlace(context, args.optString("label"))
+                PlaceController.forgetPlace(context, args.optString("label"), args.optBoolean("confirmed", false))
                     .let { result(it.success, it.message) }
             "start_voice_note" -> startVoiceNote(context, args)
             "stop_voice_note" -> stopVoiceNote(context)
@@ -2928,7 +2946,7 @@ object LiveToolbox {
      * itself writes nothing for them, the screen it launches does, downstream of this file entirely.
      */
     private val MUTATING_TOOLS = setOf(
-        "clear_codes", "set_reminder", "tag_place", "forget_place", "set_odometer", "log_service",
+        "clear_codes", "set_reminder", "tag_place", "rename_place", "forget_place", "set_odometer", "log_service",
         "log_past_service", "set_maintenance_interval", "register_vehicle", "remember",
         // "manage_grocery" removed (one-today ticket 10 slice B, 2026-09-05) - its dispatch branch
         // no longer writes anything, only returns the retirement message.
@@ -5306,6 +5324,27 @@ object LiveToolbox {
      * (CLEARED), false for every other outcome including the confirm-prompt turn itself - the
      * driver-facing wording is always [message], never inferred from this flag.
      */
+    /**
+     * `tag_place` over [PlaceController.savePlace] - the same function the Saved places screen's
+     * save buttons call (ADR 0035). `success` is true only when a place was written; the confirm
+     * and pick-one turns are false with the sentence to recite, `clear_codes`'s convention. The
+     * candidates ride as a list as well as in the sentence, so the model can name one exactly.
+     */
+    private suspend fun tagPlace(context: Context, args: JSONObject): JSONObject {
+        val outcome = PlaceController.savePlace(
+            context,
+            args.optString("label"),
+            args.optString("address", "").ifBlank { null },
+            args.optBoolean("confirmed", false),
+        )
+        val out = result(outcome.success, outcome.message)
+        if (outcome is PlaceController.SaveOutcome.Choose) {
+            out.put("candidates", org.json.JSONArray(outcome.candidates.map { it.address }))
+        }
+        if (outcome is PlaceController.SaveOutcome.NeedsConfirm) out.put("needsConfirmation", true)
+        return out
+    }
+
     private suspend fun clearCodes(context: Context, args: JSONObject): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
         if (!ObdBluetoothManager.isConnected) {
