@@ -1723,14 +1723,15 @@ paths:
             - places
             - voice_notes
         description: 'Comma-separated aspect names. Selects which top-level keys get
-          populated: `events` fills `events` AND `event_skips`; `checklists` fills
-          `checklists`, `checklist_items` AND `checklist_ticks`; `body` fills all
-          eight of its tables; `memory` all three. **Omitted or blank means every
-          known aspect.** An unknown name is a 400 naming it - never a silently smaller
-          response. **`fleet` fills eleven of its twelve tables and never `obd_samples`**:
-          this endpoint is not paged and that table held 20,796 rows on 2026-09-07,
-          so telemetry has its own paged, per-vehicle route at GET /api/fleet/obd_samples/?vehicle=<uuid>&since=
-          instead. Its absence here is a design, not an empty table.'
+          populated: `events` fills `events`, `event_skips` AND `suggestion_pins`;
+          `checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`;
+          `body` fills all eight of its tables; `memory` all three. **Omitted or blank
+          means every known aspect.** An unknown name is a 400 naming it - never a
+          silently smaller response. **`fleet` fills eleven of its twelve tables and
+          never `obd_samples`**: this endpoint is not paged and that table held 20,796
+          rows on 2026-09-07, so telemetry has its own paged, per-vehicle route at
+          GET /api/fleet/obd_samples/?vehicle=<uuid>&since= instead. Its absence here
+          is a design, not an empty table.'
         explode: false
         style: form
       - in: query
@@ -1758,10 +1759,10 @@ paths:
           description: 'One key per TABLE, named for the table, each holding every
             row changed at or after `since` with tombstones included, oldest first.
             **Not paged**: a large first pull should use the per-table `?since=` routes,
-            which are. In `events`, `event_skips`, `checklists`, `checklist_items`
-            and `checklist_ticks`, a row private to another member (or under a parent
-            that is) arrives only as a redacted tombstone: `id`, `deleted_at`, `updated_at`
-            and `redacted: true`, nothing else (ADR 0052).'
+            which are. In `events`, `event_skips`, `suggestion_pins`, `checklists`,
+            `checklist_items` and `checklist_ticks`, a row private to another member
+            (or under a parent that is) arrives only as a redacted tombstone: `id`,
+            `deleted_at`, `updated_at` and `redacted: true`, nothing else (ADR 0052).'
         '400':
           content:
             application/json:
@@ -2477,6 +2478,83 @@ paths:
         '204':
           description: Done. Soft-deleted (the tombstone row stays so an unsynced
             client learns of it).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/events/{id}/pins:
+    post:
+      operationId: api_events_pins_create
+      description: '`POST /api/events/<id>/pins`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - events
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+          description: 'Pinned: a new pin, or one that had been unpinned is live again.
+            The event, rendered exactly as GET /api/events renders it, with the new
+            `pinned_by`.'
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+          description: Already pinned by you; nothing changed. Idempotent. The event,
+            rendered exactly as GET /api/events renders it, with the new `pinned_by`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was pinned: the event is not a suggestion (it was
+            added to the plans). `detail` says so.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such row. Nothing was changed.
+  /api/events/{id}/pins/mine:
+    delete:
+      operationId: api_events_pins_mine_destroy
+      description: '`DELETE /api/events/<id>/pins/mine`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - events
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+          description: 'Unpinned: your pin is tombstoned, so every replica drops it.
+            Idempotent: no pin of yours is still a 200. Only ever YOUR pin; another
+            member''s cannot be named here. The event, rendered exactly as GET /api/events
+            renders it, with the new `pinned_by`.'
         '404':
           content:
             application/json:
@@ -7754,6 +7832,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EventSkip'
+        suggestion_pins:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuggestionPin'
         checklists:
           type: array
           items:
@@ -8660,10 +8742,20 @@ components:
 
             * `shared` - shared
             * `private` - private
+        pinned_by:
+          type: array
+          items:
+            $ref: '#/components/schemas/PinnedBy'
+          readOnly: true
+          description: 'For a suggestion, the members who pinned it ("I want to go"),
+            oldest pin first. Always [] for anything else. A wish, never a plan: nothing
+            that counts plans reads it. Read-only; pin with POST /api/events/{id}/pins,
+            unpin with DELETE /api/events/{id}/pins/mine.'
       required:
       - created_at
       - deleted_at
       - id
+      - pinned_by
       - provenance
       - title
       - updated_at
@@ -11246,6 +11338,15 @@ components:
 
             * `shared` - shared
             * `private` - private
+        pinned_by:
+          type: array
+          items:
+            $ref: '#/components/schemas/PinnedBy'
+          readOnly: true
+          description: 'For a suggestion, the members who pinned it ("I want to go"),
+            oldest pin first. Always [] for anything else. A wish, never a plan: nothing
+            that counts plans reads it. Read-only; pin with POST /api/events/{id}/pins,
+            unpin with DELETE /api/events/{id}/pins/mine.'
     PatchedHouseholdPatchRequest:
       type: object
       description: |-
@@ -11347,6 +11448,20 @@ components:
           type: string
           nullable: true
           maxLength: 64
+    PinnedBy:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: The member, as listed in GET /api/households/me.
+        display_name:
+          type: string
+          description: Their account name, or their email before "@" when they have
+            not set one.
+      required:
+      - display_name
+      - user_id
     Place:
       type: object
       description: |-
@@ -12535,6 +12650,35 @@ components:
       required:
       - endpoint
       - keys
+    SuggestionPin:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - event
+      - id
+      - updated_at
+      - user_id
     TickRequest:
       type: object
       description: |-

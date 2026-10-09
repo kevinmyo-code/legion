@@ -95,6 +95,7 @@ from api.fleet import OBD_SAMPLE_PATHS
 from api.ledger_spend import SpendView
 from api.places import PlaceRenameView
 from api.registry import SYNCED_VIEWSETS
+from api.suggestion_pin_views import SuggestionPinCreateView, SuggestionPinMineView
 from api.synced import synced_paths
 
 urlpatterns = [
@@ -107,6 +108,9 @@ urlpatterns = [
         EventSkipDetailView.as_view(),
         name="event-skip-detail",
     ),
+    # 2026-10-09: one member's "I want to go" on a suggestion.
+    path("events/<uuid:pk>/pins", SuggestionPinCreateView.as_view(), name="event-pin-create"),
+    path("events/<uuid:pk>/pins/mine", SuggestionPinMineView.as_view(), name="event-pin-mine"),
     path("changes", ChangesView.as_view(), name="changes"),
     # web-revamp ticket 11: spend computed once, on the engine (`api/spend.py`).
     path("ledger/spend", SpendView.as_view(), name="ledger-spend"),

@@ -321,6 +321,13 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_event_suggestions(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0019` (suggestion pins), the same way. AFTER
+            # tenancy and 0018: its composite key names `events.household_id`
+            # and its guard reads `events.kind`.
+            from api.suggestion_pins import create_table as create_suggestion_pins
+
+            skipped = create_suggestion_pins(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

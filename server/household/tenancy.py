@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Fifty-three names. The fifty-fourth `public` table, `household_members`, is
+# Fifty-five names. The fifty-sixth `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -46,6 +46,10 @@ TENANT_TABLES: tuple[str, ...] = (
     # dates
     "events",
     "event_skips",
+    # Kevin, 2026-10-09: one member's "I want to go" on a suggestion. Born
+    # tenanted; its household must equal its event's, by composite FK
+    # (`api/suggestion_pins.py`), and it has its event's visibility.
+    "suggestion_pins",
     # checklists (Django-managed, `public` schema - see checklists/models.py)
     "checklists",
     "checklist_items",
@@ -306,6 +310,7 @@ MAKE_SHARED_REFUSAL = "Only the person this is private to can share it."
 OWNER_PATHS: dict[str, str] = {
     "events": "owner_user",
     "event_skips": "event__owner_user",
+    "suggestion_pins": "event__owner_user",
     "checklists": "owner_user",
     "checklist_items": "checklist__owner_user",
     "checklist_ticks": "item__checklist__owner_user",
@@ -320,6 +325,7 @@ OWNER_PATHS: dict[str, str] = {
 # child that it is gone. `feed_rows` compares the later of the two.
 PARENT_UPDATED_AT: dict[str, str] = {
     "event_skips": "event__updated_at",
+    "suggestion_pins": "event__updated_at",
     "checklist_items": "checklist__updated_at",
     "checklist_ticks": "item__checklist__updated_at",
 }

@@ -480,11 +480,19 @@ def tombstone_private_rows(household, user) -> dict[str, int]:
     tombstone is still theirs: everyone else's feed carries it only as a
     redacted tombstone, never as a full row with a title in it. Items, ticks
     and skips under them inherit that and need no write of their own. A
-    shared row they created stays shared, untouched.
+    shared row they created stays shared, untouched. Their suggestion pins
+    are tombstoned too: a removed member no longer "wants to go" anywhere.
     """
     from checklists.models import Checklist
-    from legacy.models.dates import Event
+    from legacy.models.dates import Event, SuggestionPin
     from purchases.models import Purchase
+
+    # Kevin, 2026-10-09: their "I want to go" pins go with them, and each
+    # pinned event is touched so every replica re-reads its `pinned_by`.
+    pins = SuggestionPin.objects.filter(household=household, user=user, deleted_at__isnull=True)
+    pinned_events = list(pins.values_list("event_id", flat=True))
+    unpinned = pins.update(deleted_at=Now())
+    Event.objects.filter(household=household, pk__in=pinned_events).update(updated_at=Now())
 
     return {
         "events": Event.objects.filter(
@@ -497,4 +505,5 @@ def tombstone_private_rows(household, user) -> dict[str, int]:
         "purchases": Purchase.objects.filter(
             household=household, owner_user=user, deleted_at__isnull=True
         ).update(deleted_at=Now()),
+        "suggestion_pins": unpinned,
     }

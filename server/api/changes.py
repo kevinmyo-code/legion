@@ -78,6 +78,7 @@ from api.event_skips import EventSkipSerializer
 from api.events import EventSerializer
 from api.registry import SYNCED_ASPECTS, SYNCED_VIEWSETS
 from api.schema import SINCE_PARAMETER, DetailSerializer
+from api.suggestion_pins import SuggestionPinSerializer
 from api.sync import parse_since
 from checklists.models import Checklist, ChecklistItem, ChecklistTick
 from checklists.serializers import (
@@ -86,7 +87,7 @@ from checklists.serializers import (
     ChecklistTickSerializer,
 )
 from household.tenancy import feed_rows, render_feed, scoped
-from legacy.models.dates import Event, EventSkip
+from legacy.models.dates import Event, EventSkip, SuggestionPin
 
 # The two hand-written aspects (Phase 2), then everything on the generic
 # shape (Phase 5). Order matters only for the message a 400 prints.
@@ -117,6 +118,7 @@ def _build_changes_serializer() -> type[serializers.Serializer]:
         ),
         "events": EventSerializer(many=True, required=False),
         "event_skips": EventSkipSerializer(many=True, required=False),
+        "suggestion_pins": SuggestionPinSerializer(many=True, required=False),
         "checklists": ChecklistSerializer(many=True, required=False),
         "checklist_items": ChecklistItemSerializer(many=True, required=False),
         "checklist_ticks": ChecklistTickSerializer(many=True, required=False),
@@ -137,7 +139,7 @@ ASPECTS_PARAMETER = OpenApiParameter(
     type={"type": "array", "items": {"type": "string", "enum": list(KNOWN_ASPECTS)}},
     description=(
         "Comma-separated aspect names. Selects which top-level keys get populated: "
-        "`events` fills `events` AND `event_skips`; "
+        "`events` fills `events`, `event_skips` AND `suggestion_pins`; "
         "`checklists` fills `checklists`, `checklist_items` AND `checklist_ticks`; `body` "
         "fills all eight of its tables; `memory` all three. **Omitted or blank means every "
         "known aspect.** An unknown name is a 400 naming it - never a silently smaller "
@@ -162,7 +164,8 @@ class ChangesView(APIView):
                     "One key per TABLE, named for the table, each holding every row changed "
                     "at or after `since` with tombstones included, oldest first. **Not "
                     "paged**: a large first pull should use the per-table `?since=` routes, "
-                    "which are. In `events`, `event_skips`, `checklists`, `checklist_items` "
+                    "which are. In `events`, `event_skips`, `suggestion_pins`, `checklists`, "
+                    "`checklist_items` "
                     "and `checklist_ticks`, a row private to another member (or under a parent "
                     "that is) arrives only as a redacted tombstone: `id`, `deleted_at`, "
                     "`updated_at` and `redacted: true`, nothing else (ADR 0052)."
@@ -291,6 +294,12 @@ class ChangesView(APIView):
             # tombstones included, and inherit its visibility.
             body["event_skips"] = render_feed(
                 feed_rows(EventSkip, request, since), EventSkipSerializer, request
+            )
+            # 2026-10-09: who wants to go to which suggestion. The same change
+            # also re-sends the event (its `updated_at` moves, and it carries
+            # `pinned_by`); these are the pin rows themselves.
+            body["suggestion_pins"] = render_feed(
+                feed_rows(SuggestionPin, request, since), SuggestionPinSerializer, request
             )
         if "checklists" in requested:
             body["checklists"] = render_feed(

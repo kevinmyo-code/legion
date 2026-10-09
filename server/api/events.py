@@ -22,7 +22,7 @@ import uuid
 
 from django.db import transaction
 from django.db.models.functions import Now
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -36,6 +36,7 @@ from api.schema import (
     DetailSerializer,
     paged_serializer,
 )
+from api.suggestion_pins import PinnedBySerializer, pinned_by
 from api.sync import paginate_since, parse_since, save_or_400
 from api.visibility import VisibilityField
 from household.tenancy import (
@@ -94,6 +95,17 @@ def _choice_error(field: str, value, allowed: tuple[str, ...]) -> serializers.Va
 class EventSerializer(serializers.ModelSerializer):
     # ADR 0052. Rendered from `owner_user_id`, which never goes on the wire.
     visibility = VisibilityField()
+    # Kevin, 2026-10-09: who in the household wants to go to a suggestion
+    # (`api/suggestion_pins.py`). Read-only; written only through
+    # `POST`/`DELETE /api/events/<id>/pins`.
+    pinned_by = serializers.SerializerMethodField(
+        help_text=(
+            "For a suggestion, the members who pinned it (\"I want to go\"), oldest pin first. "
+            "Always [] for anything else. A wish, never a plan: nothing that counts plans "
+            "reads it. Read-only; pin with POST /api/events/{id}/pins, unpin with "
+            "DELETE /api/events/{id}/pins/mine."
+        )
+    )
 
     class Meta:
         model = Event
@@ -133,6 +145,7 @@ class EventSerializer(serializers.ModelSerializer):
             "kind",
             "remind_minutes_before",
             "visibility",
+            "pinned_by",
         ]
         # provenance/created_at/updated_at/deleted_at are server facts, not
         # caller intent (matching EventFields's own doc comment: "these
@@ -157,6 +170,10 @@ class EventSerializer(serializers.ModelSerializer):
             "exact_downgraded": {"required": False},
             "kind": {"required": False},
         }
+
+    @extend_schema_field(PinnedBySerializer(many=True))
+    def get_pinned_by(self, obj: Event) -> list[dict]:
+        return pinned_by(obj)
 
     def validate_title(self, value: str) -> str:
         if not value or not value.strip():
