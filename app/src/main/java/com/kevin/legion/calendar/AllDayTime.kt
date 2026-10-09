@@ -26,6 +26,9 @@ object AllDayTime {
      * midnight); 9 AM was chosen as a waking hour that is still early enough to act on. */
     const val REMINDER_HOUR = 9
 
+    /** Up to this many days ahead a bare weekday is unambiguous; beyond it the date is added. */
+    private const val WEEKDAY_ONLY_DAYS = 6L
+
     /** The calendar date an all-day row names - read in UTC, never the device zone. */
     fun localDate(startsAt: Long): LocalDate =
         Instant.ofEpochMilli(startsAt).atZone(ZoneOffset.UTC).toLocalDate()
@@ -55,8 +58,11 @@ object AllDayTime {
             days == 0L -> "today"
             days == 1L -> "tomorrow"
             days == -1L -> "yesterday"
-            days in 2..6 -> "on ${weekday(date.dayOfWeek)}"
-            else -> "on ${weekday(date.dayOfWeek)} ${date.month.getDisplayName(TextStyle.SHORT, Locale.US)} ${date.dayOfMonth}"
+            days in 2..WEEKDAY_ONLY_DAYS -> "on ${weekday(date.dayOfWeek)}"
+            else -> {
+                val month = date.month.getDisplayName(TextStyle.SHORT, Locale.US)
+                "on ${weekday(date.dayOfWeek)} $month ${date.dayOfMonth}"
+            }
         }
     }
 

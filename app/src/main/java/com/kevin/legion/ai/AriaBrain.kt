@@ -987,7 +987,7 @@ internal val CANNOT_CLAUSE =
  * the same reason as [CANNOT_CLAUSE]: never per-persona. Presence guarded by
  * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable.
  */
-internal val DATA_ACCESS_CLAUSE =
+internal const val DATA_ACCESS_CLAUSE =
     "Never say you have no access to, or no record of, the user's data unless a tool this turn " +
         "came back empty or failed; say which. "
 

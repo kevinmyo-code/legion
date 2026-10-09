@@ -55,14 +55,14 @@ class NewCodeTracker {
         if (!ObdResponseParser.isValidDtcReply(rawReply)) return Verdict.Skip
         val codes = ObdResponseParser.dtcCodes(rawReply).toSet()
         val known = seen.getOrPut(vehicleKey) { mutableSetOf() }
-        if (baselined.add(vehicleKey)) {
-            known.addAll(codes)
-            return Verdict.Baselined(codes)
-        }
+        val firstValidRead = baselined.add(vehicleKey)
         val fresh = codes - known
-        if (fresh.isEmpty()) return Verdict.Unchanged
-        known.addAll(fresh)
-        return Verdict.Fresh(fresh, codes)
+        known.addAll(codes)
+        return when {
+            firstValidRead -> Verdict.Baselined(codes)
+            fresh.isEmpty() -> Verdict.Unchanged
+            else -> Verdict.Fresh(fresh, codes)
+        }
     }
 
     companion object {

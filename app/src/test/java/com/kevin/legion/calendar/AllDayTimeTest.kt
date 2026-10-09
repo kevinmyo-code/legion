@@ -27,7 +27,8 @@ class AllDayTimeTest {
     fun `utc midnight resolves to the same calendar date, not the evening before`() {
         assertEquals(LocalDate.of(2026, 10, 6), AllDayTime.localDate(oct6UtcMidnight))
         // The bug: read as an instant in Chicago this is Oct 5, 7 PM.
-        assertEquals(LocalDate.of(2026, 10, 5), java.time.Instant.ofEpochMilli(oct6UtcMidnight).atZone(chicago).toLocalDate())
+        val asInstant = java.time.Instant.ofEpochMilli(oct6UtcMidnight).atZone(chicago)
+        assertEquals(LocalDate.of(2026, 10, 5), asInstant.toLocalDate())
         assertEquals(chi(10, 6, 0), AllDayTime.anchorMs(oct6UtcMidnight, true, chicago))
     }
 
