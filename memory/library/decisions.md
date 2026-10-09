@@ -6226,3 +6226,31 @@ Offered short pre-split quotable lines, paraphrase by default, or leaving it, Ke
 paraphrase: Marcus gives the sense in plain words with Book and section and never in quotation
 marks; only when asked for the exact words does he quote, and then one whole span exactly as the
 tool returned it.
+
+## 2026-10-07 - Merchant aliases: a rename shown over the bank's text
+
+Kevin asked that card rows reading "JOHN NAUS MD PA COLLEYVILLE TX" show as Walmart. Ledger rows are
+gate-only and immutable, so the bank's `description` is never rewritten. Offered a display-only rename
+layer, a recategorisation, or hiding the rows, Kevin picked the rename layer, then: *"just add straight
+to server. basically anything john naus just show as walmart. nothing manual. auto."*
+- **`merchant_aliases`** (substring to display name, household-scoped, oldest live match wins) changes
+  what every surface SHOWS. Category rules, dedup, transfer detection and the gate keep reading the
+  bank's text. A row with an alias says "Bank text: ..." in words on its detail.
+- His rule ("JOHN NAUS" to "Walmart") was written to the live engine directly, not seeded in code:
+  clone-and-run must not inherit one household's renames.
+
+## 2026-10-09 - Places are saved by address; the prompt ceiling rises to 24,000
+
+After a voice-log audit (54 sessions) found "rename Home to Katie House" had deleted and silently
+overwritten "home", and Kevin asked: *"saving places seems to be by coordinates now. lets change that
+to addresses? so i can say hey save this palce > its addres is X"*.
+- **Places keep coordinates and gain an `address`.** Saving by a spoken address forward-geocodes it,
+  reads the resolved address back, and saves nothing on several or no matches. `rename_place` renames;
+  forgetting a place, or moving a label more than 150 m, needs an explicit confirm.
+- **Geocoder: Android's `Geocoder`, not Mapbox.** Mapbox's terms forbid storing Search Box results
+  (only paid permanent geocoding allows it), and mapbox-nav ticket 03 already ruled that nothing from
+  Mapbox is stored. Kevin accepted Android's geocoder.
+- **Live setup payload ceiling 23,800 -> 24,000 tokens.** `rename_place` and the data-access honesty
+  line did not fit. Offered raising, trimming other tool descriptions, or dropping voice rename, Kevin
+  chose raising. Kevin had ruled the previous raise on 2026-10-05.
+- Kevin declined restoring the old Katy "home" coordinates from a backup.

@@ -140,14 +140,14 @@ class LiveSetupPayloadSizeTest {
      * ~23,320, Marcus ~23,629. Headroom for the worst of the three is ~171 tokens (~0.7%), so
      * the next tool addition trips this again, as intended.
      *
-     * **Raised to 23,900 on 2026-10-09 (places by address, rename_place) - PENDING KEVIN'S RULING.**
+     * **Raised to 24,000 on 2026-10-09 (places by address, rename_place, the data-access clause) - Kevin's ruling.**
      * `rename_place` is a new declaration and `tag_place`/`forget_place` gained `address` and
      * `confirmed`; all three descriptions were cut to the minimum (the confirm and pick-one protocol
      * rides in the tool result instead). Measured: Alfred ~23,179, Kratos ~23,512, Marcus ~23,892.
      * Marcus was ~37 tokens under the old ceiling before this change, so no rename tool fits without
-     * either this raise or trimming other tools. Committed on its own so it can be dropped.
+     * either this raise or trimming other tools. Kevin chose raising over trimming tool descriptions.
      */
-    private val ceilingTokens = 23_900
+    private val ceilingTokens = 24_000
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {

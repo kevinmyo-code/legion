@@ -31,7 +31,7 @@ import org.robolectric.RobolectricTestRunner
 class MarcusPayloadTest {
 
     // Mirrors LiveSetupPayloadSizeTest.ceilingTokens; two private copies are cheaper than widening one.
-    private val liveSetupCeilingTokens = 23_900
+    private val liveSetupCeilingTokens = 24_000
 
     private fun tokens(chars: Int) = chars / 4
 
