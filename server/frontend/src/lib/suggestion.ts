@@ -78,7 +78,8 @@ export function isPinnedBy(event: Pick<Event, 'pinned_by'>, userId: string | nul
  * Who wants to go, in words (Kevin, 2026-10-09). "You" first, then everyone
  * else in the order they pinned: "You want to go", "Mia wants to go", "You and
  * Mia want to go", "You, Mia and Sam want to go". Null when nobody has pinned
- * it. The Android row says exactly the same (`EventSuggestions.pinnedWords`).
+ * it. The Android row says exactly the same (`SuggestionPin.words` in
+ * `calendar/EventSuggestions.kt`).
  */
 export function pinnedWords(pins: readonly Pin[], myUserId: string | null | undefined): string | null {
   const mine = myUserId != null && pins.some((pin) => pin.user_id === myUserId)
