@@ -7766,7 +7766,7 @@ object LiveToolbox {
         } else {
             when (val resolved = resolveSpotifyUri(context, query, type, artist)) {
                 is SpotifyUriResolution.Found -> resolved.uri to
-                    (resolved.subtitle?.let { "${resolved.name}, $it" } ?: resolved.name)
+                    SpotifyController.pickedLabel(resolved.name, resolved.subtitle)
                 is SpotifyUriResolution.Failed -> return resolved.toolResult
             }
         }
@@ -7801,13 +7801,21 @@ object LiveToolbox {
     private suspend fun controlMusicQueue(context: Context, query: String): JSONObject {
         if (query.isBlank()) return result(success = false, message = "What should I queue?")
 
-        val uri = when (val resolved = resolveSpotifyUri(context, query, "song")) {
-            is SpotifyUriResolution.Found -> resolved.uri
+        val (uri, pickedLabel) = when (val resolved = resolveSpotifyUri(context, query, "song")) {
+            is SpotifyUriResolution.Found -> resolved.uri to
+                SpotifyController.pickedLabel(resolved.name, resolved.subtitle)
             is SpotifyUriResolution.Failed -> return resolved.toolResult
         }
 
         val outcome = SpotifyController.queueUri(context, uri)
-        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))
+        // Names the track Spotify resolved, not the user's own words: the queue line used to echo
+        // the query ("Queued \"Ugly by The Gazette\"") whatever had actually been found, the same
+        // wrong-song blind spot play_music had (voice audit finding 4, S18). Falls back to the
+        // query only when the resolution carried no name.
+        return result(
+            success = SpotifyController.succeeded(outcome),
+            message = SpotifyController.message(outcome, pickedLabel ?: query),
+        )
     }
 
     /**

@@ -567,6 +567,14 @@ object SpotifyController {
         data object QueueRejected : QueueOutcome
     }
 
+    /**
+     * "Name, Artist" for what a search actually resolved to, or null when it carried no name. Both
+     * `play_music` and the queue action speak THIS, never the user's own query: echoing the query
+     * is how a wrong song was confirmed as the right one (voice audit finding 4).
+     */
+    internal fun pickedLabel(name: String?, subtitle: String?): String? =
+        name?.takeIf { it.isNotBlank() }?.let { n -> subtitle?.takeIf { it.isNotBlank() }?.let { "$n, $it" } ?: n }
+
     /** Only [QueueOutcome.Queued] represents the track actually landing in Spotify's queue. */
     internal fun succeeded(outcome: QueueOutcome): Boolean = outcome is QueueOutcome.Queued
 
