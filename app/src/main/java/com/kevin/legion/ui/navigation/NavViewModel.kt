@@ -8,6 +8,7 @@ import com.kevin.legion.location.LocationController
 import com.kevin.legion.navigation.AvoidKind
 import com.kevin.legion.navigation.GeoPoint
 import com.kevin.legion.navigation.NavCameraMode
+import com.kevin.legion.navigation.NavFollowFrame
 import com.kevin.legion.navigation.NavDestination
 import com.kevin.legion.navigation.NavResult
 import com.kevin.legion.navigation.NavPhase
@@ -218,8 +219,16 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
 
     fun overviewOrRecenter() {
         val camera = controller.state.value.camera
-        report(if (camera == NavCameraMode.FOLLOWING) controller.overview() else controller.recenter())
+        report(
+            if (NavFollowFrame.afterOverviewTap(camera) == NavCameraMode.OVERVIEW) {
+                controller.overview()
+            } else {
+                controller.recenter()
+            },
+        )
     }
+
+    fun recenter() = report(controller.recenter())
 
     fun openPanel(panel: NavPanel) = local.update { it.copy(panel = panel, problem = null) }
 

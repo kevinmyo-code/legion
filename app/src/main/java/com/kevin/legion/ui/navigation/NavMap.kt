@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -23,6 +24,8 @@ import com.kevin.legion.location.LocationController
 import com.kevin.legion.navigation.CameraAction
 import com.kevin.legion.navigation.NavCameraMode
 import com.kevin.legion.navigation.NavCameraPlan
+import com.kevin.legion.navigation.FramePadding
+import com.kevin.legion.navigation.NavFollowFrame
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.NavMapFeed
 import com.kevin.legion.navigation.RouteFailure
@@ -152,16 +155,29 @@ fun NavMap(
 
     val marginPx = with(density) { CHROME_MARGIN.toPx().toDouble() }
     val sidePx = with(density) { SIDE_PADDING.toPx().toDouble() }
+    val followSidePx = with(density) { FOLLOW_SIDE_PADDING.toPx().toDouble() }
     val currentInsets by rememberUpdatedState(insets)
+    var mapHeightPx by remember { mutableIntStateOf(0) }
 
     // The camera's padding: what the chrome measured, plus a margin, never more than 60 percent of the
     // map's height from the bottom (a sheet grown by a panel must not squeeze the route to nothing).
-    fun edge(): EdgeInsets {
-        val maxBottom = if (mapView.height > 0) mapView.height * MAX_BOTTOM_SHARE else Double.MAX_VALUE
-        val top = currentInsets.topPx + marginPx
-        val bottom = minOf(currentInsets.bottomPx.toDouble(), maxBottom) + marginPx
-        return EdgeInsets(top, sidePx, bottom, sidePx)
-    }
+    fun edge(): EdgeInsets = NavFollowFrame.overviewPadding(
+        mapView.height.toDouble(),
+        currentInsets.topPx.toDouble(),
+        currentInsets.bottomPx.toDouble(),
+        marginPx,
+        sidePx,
+        MAX_BOTTOM_SHARE,
+    ).toEdgeInsets()
+
+    // The follow frame: puck in the lower third, sheet (collapsed height) and banner kept clear, slim sides.
+    fun followEdge(): EdgeInsets = NavFollowFrame.followPadding(
+        mapView.height.toDouble(),
+        currentInsets.topPx.toDouble(),
+        currentInsets.bottomPx.toDouble(),
+        marginPx,
+        followSidePx,
+    ).toEdgeInsets()
 
     DisposableEffect(mapView) {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -177,6 +193,14 @@ fun NavMap(
         // the back button and the banner, the compass under the overview button.
         mapView.scalebar.updateSettings { enabled = false }
         mapView.compass.updateSettings { enabled = false }
+        // Third person, like a driving map: tilted, street level, and tilted ALL the time. The SDK's default
+        // flattens the camera to top-down near every manoeuvre, which read as "it never tilts".
+        viewport.options.followingFrameOptions.apply {
+            defaultPitch = NavFollowFrame.PITCH
+            minZoom = NavFollowFrame.MIN_ZOOM
+            maxZoom = NavFollowFrame.MAX_ZOOM
+            pitchNearManeuvers.enabled = false
+        }
         mapView.camera.addCameraAnimationsLifecycleListener(NavigationBasicGesturesHandler(navCamera))
         var styleReady = false
         val styleLoaded = mapView.mapboxMap.subscribeStyleLoaded {
@@ -230,10 +254,9 @@ fun NavMap(
     }
 
     // Camera padding and the map's own attribution follow the measured chrome (device-run defect 3).
-    LaunchedEffect(insets) {
-        val e = edge()
-        viewport.followingPadding = e
-        viewport.overviewPadding = e
+    LaunchedEffect(insets, mapHeightPx) {
+        viewport.followingPadding = followEdge()
+        viewport.overviewPadding = edge()
         viewport.evaluate()
         // Mapbox's logo and attribution must stay visible (their terms): above the sheet, not under it.
         val lift = (insets.bottomPx + marginPx).toFloat()
@@ -297,7 +320,11 @@ fun NavMap(
     // The SDK camera is engaged only while guiding; every other phase releases it (phone run 4: it stayed
     // in FOLLOWING after End and beat the next preview's fit). The decision is NavCameraPlan's.
     val action = NavCameraPlan.decide(phase, camera, routes.isNotEmpty())
-    LaunchedEffect(action) {
+    val stillFitting = rememberUpdatedState(action == CameraAction.FIT_ROUTE)
+    // Re-asked when the first map-matched fix lands: a follow request made before any location exists has
+    // nothing to frame, and this makes the tilt appear the moment there is something to frame.
+    val hasMatched = matched != null
+    LaunchedEffect(action, hasMatched) {
         when (action) {
             CameraAction.SDK_FOLLOW -> navCamera.requestNavigationCameraToFollowing()
             CameraAction.SDK_OVERVIEW -> navCamera.requestNavigationCameraToOverview()
@@ -315,11 +342,14 @@ fun NavMap(
         if (action == CameraAction.FIT_ROUTE) {
             delay(FRAME_SETTLE_MS)
             val fix = deviceFix?.let { Point.fromLngLat(it.longitude, it.latitude) }
-            frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), listOfNotNull(fix), edge())
+            frame(mapView, routes.getOrNull(selectedRoute) ?: routes.first(), listOfNotNull(fix), edge()) {
+                // The callback is asynchronous: if follow took over meanwhile, a late fit would flatten it.
+                stillFitting.value
+            }
         }
     }
 
-    AndroidView(factory = { mapView }, modifier = modifier)
+    AndroidView(factory = { mapView }, modifier = modifier.onSizeChanged { mapHeightPx = it.height })
 }
 
 private fun clearPreview(style: Style) {
@@ -386,7 +416,13 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
 }
 
 /** Fit the camera to [route] and any [extra] points (the puck) with room for the banner and the bottom sheet. */
-private fun frame(mapView: MapView, route: NavigationRoute, extra: List<Point>, padding: EdgeInsets) {
+private fun frame(
+    mapView: MapView,
+    route: NavigationRoute,
+    extra: List<Point>,
+    padding: EdgeInsets,
+    stillWanted: () -> Boolean,
+) {
     val geometry = route.directionsRoute.geometry() ?: return
     val routePoints = PolylineUtils.decode(geometry, POLYLINE_PRECISION)
     if (routePoints.size < 2) return
@@ -398,8 +434,10 @@ private fun frame(mapView: MapView, route: NavigationRoute, extra: List<Point>, 
         padding,
         null,
         null,
-    ) { camera -> mapView.mapboxMap.setCamera(camera) }
+    ) { camera -> if (stillWanted()) mapView.mapboxMap.setCamera(camera) }
 }
+
+private fun FramePadding.toEdgeInsets() = EdgeInsets(top, left, bottom, right)
 
 private const val PREVIEW_SLOTS = 3
 private const val PREVIEW_SOURCE_ID = "nav-preview-src-"
@@ -422,6 +460,9 @@ private const val NO_FIX_ZOOM = 3.0
 private const val US_LNG = -98.5
 private const val US_LAT = 39.8
 private val CHROME_MARGIN = 16.dp
+
+/** The follow frame needs little side room: the road ahead is the point, the buttons sit over the corners. */
+private val FOLLOW_SIDE_PADDING = 16.dp
 
 /** Wide enough to clear the round buttons down the right edge. */
 private val SIDE_PADDING = 64.dp

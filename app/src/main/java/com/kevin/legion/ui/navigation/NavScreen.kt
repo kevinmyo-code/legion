@@ -36,6 +36,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kevin.legion.MidnightApplication
 import com.kevin.legion.R
 import com.kevin.legion.navigation.NavCameraMode
+import com.kevin.legion.navigation.NavFollowFrame
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.NavPhase
 import com.kevin.legion.ui.theme.soft.AreaAccent
@@ -90,6 +91,7 @@ fun NavScreen(
         onToggleTolls = viewModel::toggleTolls,
         onToggleMute = viewModel::toggleMute,
         onOverviewOrRecenter = viewModel::overviewOrRecenter,
+        onRecenter = viewModel::recenter,
         onOpenPanel = viewModel::openPanel,
         onClosePanel = viewModel::closePanel,
         onStopInput = viewModel::onStopInput,
@@ -133,10 +135,17 @@ fun NavContent(ui: NavUiState, actions: NavActions, map: @Composable (Modifier, 
             // measured inside its imePadding wrapper: a keyboard must not read as a taller sheet.
             val topMeasure = Modifier.onSizeChanged { topPx = it.height }
             val bottomMeasure = Modifier.onSizeChanged { bottomPx = it.height }
-            map(Modifier.fillMaxSize(), NavMapInsets(topPx, bottomPx))
+            // While guiding the map pads by the sheet's COLLAPSED height, not its measured one: the sheet opens
+            // over the map, and the camera must not jump every time it does.
+            var collapsedPx by remember { mutableIntStateOf(0) }
+            var sheetOpen by rememberSaveable { mutableStateOf(false) }
+            val guiding = phase == NavPhase.GUIDING
+            map(Modifier.fillMaxSize(), NavMapInsets(topPx, if (guiding) collapsedPx else bottomPx))
             MapStatusNote(ui.mapStatus, Modifier.align(Alignment.Center))
             when (phase) {
-                NavPhase.GUIDING -> GuidingOverlay(ui, actions, topMeasure, bottomMeasure, topPx)
+                NavPhase.GUIDING -> GuidingOverlay(
+                    ui, actions, topMeasure, topPx, sheetOpen, { sheetOpen = it }, { collapsedPx = it },
+                )
                 NavPhase.PREVIEW -> {
                     BackButton(actions.onCancelPreview, Modifier.align(Alignment.TopStart).then(topMeasure))
                     MapFab(ui, actions, Modifier.align(Alignment.TopEnd))
@@ -258,10 +267,11 @@ private fun MapFab(
     modifier: Modifier = Modifier,
     withStatusBarPadding: Boolean = true,
 ) {
-    val following = ui.nav.camera == NavCameraMode.FOLLOWING && ui.nav.phase == NavPhase.GUIDING
+    // The overview toggle only (Re-centre is its own button while guiding): whole route, and back to following.
+    val inOverview = ui.nav.camera == NavCameraMode.OVERVIEW && ui.nav.phase == NavPhase.GUIDING
     RoundMapButton(
-        icon = if (following || ui.nav.phase == NavPhase.PREVIEW) R.drawable.ms_nav_fit else R.drawable.ms_navigation,
-        description = if (following || ui.nav.phase == NavPhase.PREVIEW) "Show the whole route" else "Recenter on me",
+        icon = if (inOverview) R.drawable.ms_navigation else R.drawable.ms_nav_fit,
+        description = if (inOverview) "Back to following me" else "Show the whole route",
         onClick = actions.onOverviewOrRecenter,
         modifier = if (withStatusBarPadding) modifier.statusBarsPadding() else modifier,
     )
@@ -272,8 +282,10 @@ private fun GuidingOverlay(
     ui: NavUiState,
     actions: NavActions,
     topMeasure: Modifier,
-    bottomMeasure: Modifier,
     topPx: Int,
+    sheetOpen: Boolean,
+    onSheetOpenChange: (Boolean) -> Unit,
+    onCollapsedHeightPx: (Int) -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.align(Alignment.TopStart).then(topMeasure).statusBarsPadding().padding(12.dp)) {
@@ -283,15 +295,38 @@ private fun GuidingOverlay(
             // row and pushed this tag out of view (device-run defect 7).
             if (ui.nav.muted) MutedTag()
         }
-        // Under the measured top chrome, on the right: the overview / recenter button, then a way off the
-        // screen (the trip keeps going; the SDK's notification is the sign it is running).
+        // Under the measured top chrome, on the right: the overview toggle, then a way off the screen (the
+        // trip keeps going; the SDK's notification is the sign it is running).
         val belowChrome = with(LocalDensity.current) { topPx.toDp() }
         Column(Modifier.align(Alignment.TopEnd).padding(top = belowChrome)) {
             MapFab(ui, actions, withStatusBarPadding = false)
             RoundMapButton(R.drawable.ms_arrow_back, "Leave the map; the trip keeps going", actions.onBack)
         }
-        Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
-            GuidingSheet(ui, actions, bottomMeasure)
+        Column(Modifier.align(Alignment.BottomCenter).imePadding()) {
+            // Above the sheet, never under it: panning or pinching left the follow camera, this takes it back.
+            if (NavFollowFrame.showRecentre(ui.nav.phase, ui.nav.camera)) {
+                RecentreButton(
+                    actions.onRecenter,
+                    Modifier.align(Alignment.Start).padding(start = 12.dp, bottom = 12.dp),
+                )
+            }
+            GuidingSheet(ui, actions, sheetOpen, onSheetOpenChange, onCollapsedHeightPx)
         }
+    }
+}
+
+/** The Re-centre pill. Words, not just an icon: it is the only way back to the follow view after a pan. */
+@Composable
+private fun RecentreButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .background(SoftColors.primaryContainer, RoundedCornerShape(24.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MsIcon(R.drawable.ms_navigation, contentDescription = null, tint = SoftColors.onPrimaryContainer, size = 20.dp)
+        Text("Re-centre", style = MaterialTheme.typography.labelLarge, color = SoftColors.onPrimaryContainer)
     }
 }

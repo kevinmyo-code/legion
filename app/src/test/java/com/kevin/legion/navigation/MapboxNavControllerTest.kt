@@ -661,6 +661,21 @@ class MapboxNavControllerTest {
         assertEquals(NavCameraMode.FREE, r.controller.state.value.camera)
     }
 
+    @Test fun aPanInTheOverviewAlsoLeavesTheGuidedCameraAndStartingATripFollows() = runBlocking {
+        val r = rig()
+        r.controller.preview(home)
+        r.controller.overview()
+        assertTrue(r.controller.start().ok)
+        assertEquals(
+            "a trip starts in the follow view whatever the preview did",
+            NavCameraMode.FOLLOWING,
+            r.controller.state.value.camera,
+        )
+        r.controller.overview()
+        r.controller.cameraDetached()
+        assertEquals(NavCameraMode.FREE, r.controller.state.value.camera)
+    }
+
     // ------------------------------------------------------------------ status
 
     @Test fun statusWithNoTripIsNotNavigatingNeverZeros() = runBlocking {

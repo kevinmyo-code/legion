@@ -56,7 +56,7 @@ class NavScreenScreenshotTest {
     private val actions = NavActions(
         onBack = {}, onOpenSetup = {}, onInput = {}, onSubmit = {}, onNavigateTo = {}, onPickCandidate = {},
         onDismissChoice = {}, onPickRoute = {}, onStart = {}, onCancelPreview = {}, onEnd = {}, onDismiss = {},
-        onToggleTolls = {}, onToggleMute = {}, onOverviewOrRecenter = {}, onOpenPanel = {}, onClosePanel = {},
+        onToggleTolls = {}, onToggleMute = {}, onOverviewOrRecenter = {}, onRecenter = {}, onOpenPanel = {}, onClosePanel = {},
         onStopInput = {}, onAddStop = {}, onDropStop = {},
     )
 

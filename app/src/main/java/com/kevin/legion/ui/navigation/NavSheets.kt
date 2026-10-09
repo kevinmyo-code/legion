@@ -1,7 +1,6 @@
 package com.kevin.legion.ui.navigation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,27 +26,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
 import com.kevin.legion.navigation.AvoidKind
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.NavPhase
 import com.kevin.legion.navigation.NavState
-import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 
-private const val SHEET_MAX_SHARE = 0.5f
+internal const val SHEET_MAX_SHARE = 0.5f
 
-private val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+internal val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 
 /**
  * The sheet. **Scrolls** when its content is taller than the room it is given (device-run defect 6:
@@ -82,66 +77,7 @@ private fun SheetColumn(modifier: Modifier, content: @Composable () -> Unit) {
 
 // ------------------------------------------------------------------ guiding
 
-/** Time left, distance, arrival and End, then the four tiles. */
-@Composable
-internal fun GuidingSheet(ui: NavUiState, actions: NavActions, modifier: Modifier = Modifier) {
-    val nav = ui.nav
-    val g = nav.guidance
-    SheetColumn(modifier) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    g?.durationLeftS?.let { NavFormat.duration(it) } ?: "Time unknown",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = SoftColors.good,
-                )
-                Text(infoLine(nav), style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
-            }
-            Button(
-                onClick = actions.onEnd,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = SoftColors.alertContainer,
-                    contentColor = SoftColors.onAlert,
-                ),
-            ) { Text("End") }
-        }
-        val onRoad = listOfNotNull(
-            g?.road?.let { "On $it" },
-            NavFormat.speedLimit(g?.speedLimit)?.let { "limit $it" },
-        ).joinToString(" · ")
-        if (onRoad.isNotEmpty()) Text(onRoad, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
-        g?.traffic?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2) }
-        nav.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
-        nav.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
-        ui.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution) }
-        PanelContent(ui, actions)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val cell = Modifier.weight(1f)
-            StopsTile(nav, actions, cell)
-            TollsTile(nav, actions, cell)
-            Tile(
-                R.drawable.ms_nav_list,
-                "Routes",
-                ui.panel == NavPanel.ROUTES,
-                { actions.onOpenPanel(NavPanel.ROUTES) },
-                cell,
-            )
-            Tile(
-                if (nav.muted) R.drawable.ms_nav_unmute else R.drawable.ms_nav_mute,
-                if (nav.muted) "Unmute" else "Mute",
-                nav.muted,
-                actions.onToggleMute,
-                Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-private fun infoLine(nav: NavState): String {
+internal fun infoLine(nav: NavState): String {
     val g = nav.guidance
     val parts = listOfNotNull(
         g?.distanceLeftM?.let { NavFormat.distance(it) } ?: "distance unknown",
@@ -153,7 +89,7 @@ private fun infoLine(nav: NavState): String {
 
 /** The stops tile: "Add stop" with none, "Stops" once there are some; both open the stops panel. */
 @Composable
-private fun StopsTile(nav: NavState, actions: NavActions, modifier: Modifier) {
+internal fun StopsTile(nav: NavState, actions: NavActions, modifier: Modifier) {
     Tile(
         R.drawable.ms_add,
         if (nav.stops.isEmpty()) "Add stop" else "Stops",
@@ -164,12 +100,12 @@ private fun StopsTile(nav: NavState, actions: NavActions, modifier: Modifier) {
 }
 
 @Composable
-private fun TollsTile(nav: NavState, actions: NavActions, modifier: Modifier) {
+internal fun TollsTile(nav: NavState, actions: NavActions, modifier: Modifier) {
     Tile(R.drawable.ms_nav_toll, "No tolls", AvoidKind.TOLLS in nav.avoid, actions.onToggleTolls, modifier)
 }
 
 @Composable
-private fun Tile(icon: Int, label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier) {
+internal fun Tile(icon: Int, label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier) {
     Column(
         modifier
             .background(if (on) SoftColors.primaryContainer else SoftColors.cardHigh, RoundedCornerShape(16.dp))
