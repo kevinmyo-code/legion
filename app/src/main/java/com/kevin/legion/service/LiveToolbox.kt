@@ -1384,7 +1384,7 @@ object LiveToolbox {
                 "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
                 "For every action but 'add', 'item' fuzzily matches the existing item's text, " +
                 "never a position like 'the third one'. A recurring item can't be ticked - edit " +
-                "its repeat instead.",
+                "its repeat instead. Assignments and homework are calendar tasks: use complete_task.",
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "tick", "untick", "remove", "schedule", "skip")),
@@ -5465,43 +5465,29 @@ object LiveToolbox {
                 else result(false, "I don't see \"$itemArg\" on your list - add it?")
             }
             is ItemMatch.Ambiguous -> result(
-                false, "Which one? " + match.candidates.joinToString(", ") { it.text },
+                false, "Nothing was changed. Which one? " + match.candidates.joinToString(", ") { it.text },
             )
             is ItemMatch.Resolved -> dispatchItemAction(context, action, list, match.item, args)
         }
     }
 
     /** `manage_item`'s tick/untick fallback once a reminder match came back empty - one-today
-     * ticket 02, narrowed by ticket 08 ("events are not todos") to a [EventKind.TASK] match only.
-     * Matches against [NotesController.openAppointments] (already [EventKind.TASK]-filtered - see
-     * that function's own doc comment) and writes through
-     * [NotesController.tickAppointment]/[untickAppointment] directly, never through
-     * [dispatchItemAction] (that function's repeat/place-trigger/skip branches are reminder-only
-     * concepts a calendar-table row does not have). Since nothing writes a task yet, this branch
-     * currently always falls to [ItemMatch.NoMatch] below, which is correct - there is nothing on
-     * the calendar to tick until Canvas populates one. */
+     * ticket 02, narrowed by ticket 08 ("events are not todos") to an [EventKind.TASK] match only.
+     * **CORRECTED 2026-10-09:** this used to say it matched [NotesController.openAppointments] and
+     * wrote through [NotesController.tickAppointment]/[untickAppointment] directly. It now hands the
+     * phrase to [completeTask], the same code `complete_task` runs, so the two voice paths cannot
+     * disagree about what matched or what the result says. */
     private suspend fun tickOrUntickAppointment(context: Context, itemArg: String, action: String): JSONObject =
-        when (val match = NotesController.findAppointment(context, itemArg)) {
-            is ItemMatch.NoMatch -> result(false, "I don't see \"$itemArg\" on your list or calendar - add it?")
-            is ItemMatch.Ambiguous -> result(false, "Which one? " + match.candidates.joinToString(", ") { it.text })
-            is ItemMatch.Resolved -> {
-                val row = CarDatabase.getDatabase(context).eventDao().getById(match.item.id)
-                if (row == null) {
-                    result(false, "I couldn't find that appointment any more.")
-                } else {
-                    val ok = if (action == "tick") {
-                        NotesController.tickAppointment(context, row)
-                    } else {
-                        NotesController.untickAppointment(context, row)
-                    }
-                    if (ok) {
-                        result(true, if (action == "tick") "Marked \"${row.title}\" attended." else "Marked \"${row.title}\" not attended.")
-                    } else {
-                        result(false, "I couldn't update \"${row.title}\" - try again?")
-                    }
-                }
-            }
-        }
+        // Delegates to completeTask (2026-10-09, voice audit finding 6). This branch used to fuzzy-match
+        // with NotesController.findAppointment and say 'Marked "X" attended.' for homework; in S46 a
+        // quiz that was already done fell out of the open-task pool and the fuzzy matcher answered
+        // 'Which one?' with eight OTHER quizzes. completeTask matches on every word, counts a done
+        // task as a match (so 'already done' is reported as that), words the result as task done /
+        // not done, and its failures all begin 'Nothing was changed' with the closest real titles.
+        completeTask(
+            context,
+            JSONObject().put("title", itemArg).put("done", action == "tick"),
+        )
 
     /**
      * `manage_item`'s `add` action once [ScheduleIntentResolver] has decided the item is an
