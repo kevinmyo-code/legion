@@ -3,6 +3,7 @@ package com.kevin.legion.calendar
 import android.content.Context
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.backend.EventsAppointmentWriter
+import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.OutboxTarget
@@ -55,6 +56,78 @@ data class SuggestionMeta(
 }
 
 /**
+ * One household member's "I want to go" on a suggestion (Kevin, 2026-10-09), as the engine's
+ * read-only `pinned_by` array carries it and [Event.pinnedByJson] stores it. Oldest pin first.
+ */
+data class SuggestionPin(val userId: String, val displayName: String) {
+    companion object {
+        /** What [words] and `wants_to_go` call the phone's own user. */
+        const val SELF = "You"
+
+        /** [raw] as a list; null, blank or malformed text is an empty list, never a crash, and an
+         * entry without a non-blank `user_id` and `display_name` is skipped rather than guessed. */
+        fun parse(raw: String?): List<SuggestionPin> {
+            val array = raw?.takeIf { it.isNotBlank() }?.let { runCatching { JSONArray(it) }.getOrNull() }
+                ?: return emptyList()
+            return (0 until array.length()).mapNotNull { i ->
+                val o = array.optJSONObject(i) ?: return@mapNotNull null
+                val id = if (o.isNull("user_id")) "" else o.optString("user_id", "").trim()
+                val name = if (o.isNull("display_name")) "" else o.optString("display_name", "").trim()
+                if (id.isEmpty() || name.isEmpty()) null else SuggestionPin(id, name)
+            }
+        }
+
+        /** [pins] in the same shape the engine sends. */
+        fun toJson(pins: List<SuggestionPin>): String = JSONArray().also { array ->
+            pins.forEach { array.put(JSONObject().put("user_id", it.userId).put("display_name", it.displayName)) }
+        }.toString()
+
+        /**
+         * [raw] with [userId]'s own pin added ([pinned] true; a pin already there is kept where it
+         * is) or removed - the optimistic local change before the engine has answered. Everyone
+         * else's pins are untouched.
+         */
+        fun withMine(raw: String?, userId: String, pinned: Boolean): String {
+            val all = parse(raw)
+            val next = when {
+                !pinned -> all.filter { it.userId != userId }
+                all.any { it.userId == userId } -> all
+                else -> all + SuggestionPin(userId, SELF)
+            }
+            return toJson(next)
+        }
+
+        /** True when [myUserId] is among [pins]; false for a null id. */
+        fun includes(pins: List<SuggestionPin>, myUserId: String?): Boolean =
+            myUserId != null && pins.any { it.userId == myUserId }
+
+        /**
+         * Who wants to go, in words (never colour alone), mirrored by the web: "You want to go",
+         * "Mia wants to go", "You and Mia want to go", "You, Mia and Sam want to go". The phone's
+         * own user is "You" and always first; everyone else follows in [pins] order. Null when
+         * nobody has pinned it.
+         */
+        fun words(pins: List<SuggestionPin>, myUserId: String?): String? {
+            val names = names(pins, myUserId, SELF)
+            if (names.isEmpty()) return null
+            val joined = when (names.size) {
+                1 -> names[0]
+                else -> names.dropLast(1).joinToString(", ") + " and " + names.last()
+            }
+            val verb = if (names.size == 1 && names[0] != SELF) "wants" else "want"
+            return "$joined $verb to go"
+        }
+
+        /** Display names with the phone's own user first and called [selfName]. */
+        fun names(pins: List<SuggestionPin>, myUserId: String?, selfName: String): List<String> {
+            val mine = includes(pins, myUserId)
+            val others = pins.filter { myUserId == null || it.userId != myUserId }.map { it.displayName }
+            return (if (mine) listOf(selfName) else emptyList()) + others
+        }
+    }
+}
+
+/**
  * Event suggestions (Kevin, 2026-10-09): *"event suggestions like things to do on the weekend, as
  * separately colored events on our calendar."* A suggestion is an `events` row with
  * `kind = `[EventKind.SUGGESTION], entered through the engine (never scraped by this app), shared
@@ -70,9 +143,11 @@ data class SuggestionMeta(
  * `read_calendar`'s separate `suggestions` list, and the navigation resolver's suggestion source
  * (`navigation/resolve/SuggestionSource.kt`), which only finds a place to drive to.
  *
- * **The hands path (ADR 0035) is two actions and no more:** [addToPlans] (it becomes an
+ * **The hands path (ADR 0035) is three actions** - the third, the pin toggle, is
+ * [SuggestionPinActions]; before it (2026-10-09) this said "two actions and no more". The first two:
+ * [addToPlans] (it becomes an
  * [EventKind.EVENT], time, place and notes kept, and from then on it IS a plan) and [notInterested]
- * (a tombstone). **There is no voice tool for either** - the Live setup payload had about a hundred
+ * (a tombstone). **There is no voice tool for any of them** - the Live setup payload had about a hundred
  * tokens of headroom on 2026-10-09, not enough for a declaration, so `read_calendar`'s result says
  * so rather than letting the model offer what it cannot do. The engine's own MCP tools
  * (`update_event` with `{"kind": "event"}`, `delete_event`) do both for the web assistant.
@@ -85,7 +160,8 @@ object EventSuggestions {
     const val MODEL_NOTE =
         "Suggestions are things the user could do, NOT plans: never say they have one on, are " +
             "going, or are busy then. No voice tool adds one to the plans or drops it; the user taps " +
-            "it on the calendar day view. navigate takes a suggestion's title and city."
+            "it on the calendar day view. navigate takes a suggestion's title and city. wants_to_go " +
+            "names household members who want to go; it is a wish, not a plan."
 
     /** More than this many cities and the model is told to ask which city before listing. */
     const val ASK_CITY_ABOVE = 2
@@ -161,7 +237,7 @@ object EventSuggestions {
         )
     }
 
-    private suspend fun live(context: Context, row: Event): Event? =
+    internal suspend fun live(context: Context, row: Event): Event? =
         CarDatabase.getDatabase(context).eventDao().getById(row.id)
             ?.takeIf { !it.deleted && it.kind == EventKind.SUGGESTION }
 
@@ -172,7 +248,7 @@ object EventSuggestions {
 
     /** One suggestion as the model hears it: title, when ("all day" said in words), venue, price.
      * Free-text notes only for a row that has no structured details to give instead. */
-    fun toModelJson(row: Event): JSONObject? {
+    fun toModelJson(row: Event, myUserId: String? = null): JSONObject? {
         val start = row.startsAt ?: return null
         val meta = SuggestionMeta.parse(row.structuredMeta)
         val o = JSONObject()
@@ -185,6 +261,9 @@ object EventSuggestions {
             if (!row.location.isNullOrBlank()) o.put("location", row.location)
             if (!row.notes.isNullOrBlank()) o.put("notes", row.notes)
         }
+        // Who wants to go (pins, 2026-10-09): the phone's own user as "you", omitted when nobody has.
+        SuggestionPin.names(SuggestionPin.parse(row.pinnedByJson), myUserId, "you").takeIf { it.isNotEmpty() }
+            ?.let { o.put("wants_to_go", JSONArray(it)) }
         return o
     }
 
@@ -197,7 +276,12 @@ object EventSuggestions {
         zone: ZoneId,
         city: String,
     ): JSONObject =
-        attachForModel(result, inLocalWindow(context, fromMs, toMs, zone), city.takeIf { it.isNotBlank() })
+        attachForModel(
+            result,
+            inLocalWindow(context, fromMs, toMs, zone),
+            city.takeIf { it.isNotBlank() },
+            EngineConfig(context.applicationContext).userId(),
+        )
 
     /**
      * Adds the suggestions answer to a `read_calendar` result, and only when there is one - an empty
@@ -208,7 +292,12 @@ object EventSuggestions {
      *   note tells the model to ask which city first (Kevin: "maybe ask the city first").
      * - otherwise: every suggestion in the window.
      */
-    fun attachForModel(result: JSONObject, rows: List<Event>, city: String? = null): JSONObject {
+    fun attachForModel(
+        result: JSONObject,
+        rows: List<Event>,
+        city: String? = null,
+        myUserId: String? = null,
+    ): JSONObject {
         if (rows.isEmpty()) {
             if (!city.isNullOrBlank()) result.put("suggestions_note", "No suggestions at all in that window.")
             return result
@@ -226,7 +315,7 @@ object EventSuggestions {
                         "No suggestions in $wanted in that window; the cities with some are listed. $MODEL_NOTE",
                     )
                 } else {
-                    result.put("suggestions", JSONArray(inCity.mapNotNull { toModelJson(it) }))
+                    result.put("suggestions", JSONArray(inCity.mapNotNull { toModelJson(it, myUserId) }))
                     result.put("suggestions_note", MODEL_NOTE)
                 }
             }
@@ -239,7 +328,7 @@ object EventSuggestions {
                 )
             }
             else -> {
-                result.put("suggestions", JSONArray(rows.mapNotNull { toModelJson(it) }))
+                result.put("suggestions", JSONArray(rows.mapNotNull { toModelJson(it, myUserId) }))
                 result.put("suggestions_note", MODEL_NOTE)
             }
         }

@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -23,6 +25,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +35,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.calendar.EventSuggestions
+import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.calendar.SuggestionMeta
+import com.kevin.legion.calendar.SuggestionPin
+import com.kevin.legion.calendar.SuggestionPinActions
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.ui.common.DeckSectionRule
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -56,8 +62,11 @@ val SUGGESTION_ACCENT = AreaAccent.NEWS
  *
  * Kept out of [com.kevin.legion.ui.CalendarScreen] (already at the 1000-line hook) and out of its
  * SCHEDULE section on purpose: a suggestion is not a plan, so it never sits among plans. Each row
- * offers the only two actions there are ([EventSuggestions.addToPlans], [EventSuggestions.notInterested])
- * and shows what the tap did in words, "queued" included. [onChanged] lets the screen reload, since
+ * offers the two plan actions ([EventSuggestions.addToPlans], [EventSuggestions.notInterested])
+ * and shows what the tap did in words, "queued" included. Each row also carries a pin toggle ("I want
+ * to go" / "Unpin", [SuggestionPinActions], 2026-10-09) with a line saying who has pinned it, and
+ * the section a "Pinned only" filter; neither changes what the two plan actions do. [onChanged]
+ * lets the screen reload, since
  * an added suggestion now belongs in SCHEDULE. A row whose `structured_meta.url` is http(s) also
  * opens that page in the browser when its body is tapped (Kevin, 2026-10-09); the buttons do not.
  */
@@ -68,19 +77,15 @@ fun SuggestionsDaySection(dayStart: Long, dayEndExclusive: Long, zone: ZoneId, r
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf(emptyList<Event>()) }
     var failed by remember { mutableStateOf(false) }
+    // "Pinned only" is remembered for the session (and across rotation), not per day.
+    var pinnedOnly by rememberSaveable { mutableStateOf(false) }
     val outcomes = remember(dayStart) { mutableStateMapOf<Long, String>() }
+    val myUserId = remember { EngineConfig(context.applicationContext).userId() }
 
     LaunchedEffect(dayStart, reloadKey) {
-        try {
-            rows = EventSuggestions.inLocalWindow(context, dayStart, dayEndExclusive - 1, zone)
-            failed = false
-        } catch (e: CancellationException) {
-            throw e
-        } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
-            // Said in words below ("Couldn't load suggestions"), never an empty-looking day.
-            rows = emptyList()
-            failed = true
-        }
+        val loaded = loadSuggestions(context, dayStart, dayEndExclusive, zone)
+        rows = loaded.orEmpty()
+        failed = loaded == null
     }
 
     if (!failed && rows.isEmpty() && outcomes.isEmpty()) return
@@ -91,16 +96,26 @@ fun SuggestionsDaySection(dayStart: Long, dayEndExclusive: Long, zone: ZoneId, r
             .background(SoftColors.card, MaterialTheme.shapes.large)
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        SectionSentences(failed, outcomes.values)
-        rows.forEach { row ->
+        val shown = SuggestionPinActions.visibleRows(rows, pinnedOnly)
+        SectionSentences(failed, outcomes.values, noPinned = rows.isNotEmpty() && shown.isEmpty())
+        if (rows.isNotEmpty()) PinnedOnlyFilter(pinnedOnly) { pinnedOnly = it }
+        shown.forEach { row ->
             SuggestionRow(
                 row = row,
+                myUserId = myUserId,
                 onOpen = { url ->
                     openEventPage(context, url)?.let { outcomes[row.id] = "${row.title}: $it" }
                 },
                 onAdd = {
                     scope.launch {
                         outcomes[row.id] = "${row.title}: ${EventSuggestions.addToPlans(context, row).sentence}"
+                        onChanged()
+                    }
+                },
+                onPin = { pinned ->
+                    scope.launch {
+                        val outcome = SuggestionPinActions.setPinned(context, row, pinned)
+                        outcomes[row.id] = "${row.title}: ${outcome.sentence}"
                         onChanged()
                     }
                 },
@@ -115,15 +130,55 @@ fun SuggestionsDaySection(dayStart: Long, dayEndExclusive: Long, zone: ZoneId, r
     }
 }
 
-/** What the section has to say in words: a failed read, then what each tap did (or did not do). */
+/** The day's suggestions, or null when the read FAILED - said in words by the caller ("Couldn't
+ * load suggestions"), never an empty-looking day. */
+private suspend fun loadSuggestions(
+    context: Context,
+    dayStart: Long,
+    dayEndExclusive: Long,
+    zone: ZoneId,
+): List<Event>? =
+    try {
+        EventSuggestions.inLocalWindow(context, dayStart, dayEndExclusive - 1, zone)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
+        null
+    }
+
+/** The "Pinned only" switch at the top of the section. Its label says the state in words, so the
+ * current view is never left to a colour. */
 @Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
 @Composable
-private fun SectionSentences(failed: Boolean, outcomes: Collection<String>) {
+private fun PinnedOnlyFilter(pinnedOnly: Boolean, onChange: (Boolean) -> Unit) {
+    TextButton(onClick = { onChange(!pinnedOnly) }) {
+        Text(
+            if (pinnedOnly) "Showing pinned only - show all" else "Pinned only",
+            style = MaterialTheme.typography.labelLarge,
+            color = SUGGESTION_ACCENT.onContainer,
+        )
+    }
+}
+
+/** What the section has to say in words: a failed read, "Pinned only" hiding every row, then what
+ * each tap did (or did not do). */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun SectionSentences(failed: Boolean, outcomes: Collection<String>, noPinned: Boolean) {
     if (failed) {
         Text(
             "Couldn't load suggestions for this day.",
             style = MaterialTheme.typography.bodyMedium,
             color = LocalLegionSemantics.current.estimated,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+        )
+    }
+    if (noPinned) {
+        // "Pinned only" hid every row: say so rather than leave an empty-looking card.
+        Text(
+            "No pinned suggestions on this day.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SoftColors.text2,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
         )
     }
@@ -150,8 +205,16 @@ private fun openEventPage(context: Context, url: String): String? = try {
 
 @Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
 @Composable
-private fun SuggestionRow(row: Event, onOpen: (String) -> Unit, onAdd: () -> Unit, onDrop: () -> Unit) {
+private fun SuggestionRow(
+    row: Event,
+    myUserId: String?,
+    onOpen: (String) -> Unit,
+    onAdd: () -> Unit,
+    onPin: (Boolean) -> Unit,
+    onDrop: () -> Unit,
+) {
     val meta = SuggestionMeta.parse(row.structuredMeta)
+    val pins = SuggestionPin.parse(row.pinnedByJson)
     // Only an http(s) page makes the row tappable; with none, nothing on the row pretends it is.
     val pageUrl = SuggestionMeta.openablePageUrl(meta?.url)
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
@@ -181,6 +244,7 @@ private fun SuggestionRow(row: Event, onOpen: (String) -> Unit, onAdd: () -> Uni
             Column(body) {
                 SuggestionDetails(row, meta, pageUrl)
             }
+            PinControls(pins, myUserId, onPin)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onAdd) {
                     Text(
@@ -194,6 +258,31 @@ private fun SuggestionRow(row: Event, onOpen: (String) -> Unit, onAdd: () -> Uni
                 }
             }
         }
+    }
+}
+
+/**
+ * Who wants to go, in words, and the pin toggle beside it (Kevin, 2026-10-09). Outside the row
+ * body's clickable on purpose, like the other buttons, so a tap here can never open the browser.
+ * The state is in the button's label ("I want to go" / "Unpin") and in the wording line; the
+ * button's fill is extra.
+ */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun PinControls(pins: List<SuggestionPin>, myUserId: String?, onPin: (Boolean) -> Unit) {
+    val mine = SuggestionPin.includes(pins, myUserId)
+    SuggestionPin.words(pins, myUserId)?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.bodyMedium,
+            color = SoftColors.text,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+    if (mine) {
+        FilledTonalButton(onClick = { onPin(false) }) { Text("Unpin") }
+    } else {
+        OutlinedButton(onClick = { onPin(true) }) { Text("I want to go") }
     }
 }
 

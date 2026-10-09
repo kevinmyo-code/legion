@@ -126,6 +126,12 @@ data class RemoteEvent(
      * "not yet migrated" apart from "created directly against the server", same role as
      * [RemoteReceipt.originGuid]. */
     val originGuid: String? = null,
+    /** The engine's read-only `pinned_by` array (Kevin, 2026-10-09: suggestion pins) as a compact
+     * JSON string, stored verbatim in [com.kevin.legion.data.local.Event.pinnedByJson]. **Null means
+     * the transport stated none** - a redacted tombstone, an older engine, the Supabase path - and
+     * [EventsSync] then leaves the stored value alone; `"[]"` means the engine said nobody pinned
+     * it. Never part of [EventFields], so it can never go back out on a write. */
+    val pinnedByJson: String? = null,
 )
 
 /**
@@ -267,6 +273,19 @@ interface EventsBackend {
      * not change. `Result.failure` means the request itself did not complete.
      */
     suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean>
+
+    /**
+     * Pins the suggestion at [serverId] as the signed-in member ("I want to go"; idempotent) and
+     * returns the event as the engine now holds it, `pinned_by` included. A default that FAILS in
+     * words rather than an abstract member: only the household engine has pins, and a transport
+     * without them must say so, not pretend the pin landed.
+     */
+    suspend fun pin(serverId: String): Result<RemoteEvent> =
+        Result.failure(EventsBackendException("This connection has no suggestion pins - nothing was pinned."))
+
+    /** Withdraws the signed-in member's own pin on [serverId] (idempotent); see [pin]. */
+    suspend fun unpin(serverId: String): Result<RemoteEvent> =
+        Result.failure(EventsBackendException("This connection has no suggestion pins - nothing was unpinned."))
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseEventsBackend] for every failure branch -

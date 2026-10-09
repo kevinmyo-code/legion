@@ -12,6 +12,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 
 private const val EVENTS_PATH = "/api/events"
@@ -83,6 +84,9 @@ private data class DjangoEventRow(
     @SerialName("origin_guid") val originGuid: String? = null,
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("deleted_at") val deletedAt: String? = null,
+    // Read-only, always an array on a live row and absent on a redacted tombstone (suggestion pins,
+    // 2026-10-09). Kept as a JsonElement so only a real array survives into RemoteEvent.
+    @SerialName("pinned_by") val pinnedBy: JsonElement? = null,
 ) {
     fun toRemoteEvent() = RemoteEvent(
         serverId = id,
@@ -122,6 +126,7 @@ private data class DjangoEventRow(
         updatedAtMs = parseTs(updatedAt),
         deleted = deletedAt != null,
         originGuid = originGuid,
+        pinnedByJson = (pinnedBy as? JsonArray)?.toString(),
     )
 }
 
@@ -385,6 +390,25 @@ class DjangoEventsBackend(private val http: EngineHttp) : EventsBackend {
             response.status == HTTP_CREATED
         }
     }
+
+    /**
+     * `POST /api/events/<id>/pins`: 201 (created or revived) and 200 (already pinned) are both a
+     * pin that exists now; the body is the event as `GET` renders it. A 400 (no longer a
+     * suggestion) or 404 comes back as [EngineFailure.Refused], which [EventsOutboxDrain] reads as
+     * terminal.
+     */
+    override suspend fun pin(serverId: String): Result<RemoteEvent> =
+        translatingEngineCall("pin that") {
+            decode(DjangoEventRow.serializer(), http.post("$EVENTS_PATH/$serverId/pins", "").getOrThrow().body)
+                .toRemoteEvent()
+        }
+
+    /** `DELETE /api/events/<id>/pins/mine`: 200 with the event, also when there was no pin. */
+    override suspend fun unpin(serverId: String): Result<RemoteEvent> =
+        translatingEngineCall("unpin that") {
+            decode(DjangoEventRow.serializer(), http.delete("$EVENTS_PATH/$serverId/pins/mine").getOrThrow().body)
+                .toRemoteEvent()
+        }
 
     private companion object {
         /** 200 pages x 500 rows = 100k events, two orders of magnitude past the 437 the live

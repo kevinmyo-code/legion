@@ -641,7 +641,9 @@ object EventsOutboxDrain {
      * the rejection on attempt one. */
     const val MAX_ATTEMPTS = 5
 
-    data class DrainReport(val succeeded: Int, val stillPending: Int, val poisoned: Int)
+    /** [refused] counts queued pins the engine refused for good and that were dropped (not in
+     * [succeeded], not in [poisoned]); see [EventsPins.dropIfRefused]. */
+    data class DrainReport(val succeeded: Int, val stillPending: Int, val poisoned: Int, val refused: Int = 0)
 
     /**
      * Retries every `events` [OutboxEntry] still under [MAX_ATTEMPTS]. **Idempotent by
@@ -659,6 +661,25 @@ object EventsOutboxDrain {
      * this doc comment describes above are UNCHANGED; only which payload shape gets decoded and
      * which [EventsBackend] call gets made varies by [OutboxEntry.operation] now.
      */
+    /** One queued entry's call, or null for an operation this drain does not know (left in place). */
+    private suspend fun sendOne(db: CarDatabase, entry: OutboxEntry, backend: EventsBackend): Result<*>? =
+        when (entry.operation) {
+            OutboxOperation.UPSERT -> {
+                val payload = Json.decodeFromString(EventUpsertOutboxPayload.serializer(), entry.payload)
+                backend.uploadMigratedEvent(payload.toMigratedEvent())
+            }
+            OutboxOperation.UPDATE -> {
+                val payload = Json.decodeFromString(EventUpdateOutboxPayload.serializer(), entry.payload)
+                backend.upsert(payload.serverId, payload.toFields())
+            }
+            OutboxOperation.SOFT_DELETE -> {
+                val payload = Json.decodeFromString(EventDeleteOutboxPayload.serializer(), entry.payload)
+                backend.softDelete(payload.serverId)
+            }
+            OutboxOperation.PIN, OutboxOperation.UNPIN -> EventsPins.drainOne(db, entry, backend)
+            else -> null
+        }
+
     suspend fun drain(context: Context, backend: EventsBackend): DrainReport {
         val db = CarDatabase.getDatabase(context)
         val dao = db.outboxDao()
@@ -667,22 +688,15 @@ object EventsOutboxDrain {
         var succeeded = 0
         var stillPending = 0
         var poisoned = 0
+        var refused = 0
 
         for (entry in pending) {
-            val result: Result<*> = when (entry.operation) {
-                OutboxOperation.UPSERT -> {
-                    val payload = Json.decodeFromString(EventUpsertOutboxPayload.serializer(), entry.payload)
-                    backend.uploadMigratedEvent(payload.toMigratedEvent())
-                }
-                OutboxOperation.UPDATE -> {
-                    val payload = Json.decodeFromString(EventUpdateOutboxPayload.serializer(), entry.payload)
-                    backend.upsert(payload.serverId, payload.toFields())
-                }
-                OutboxOperation.SOFT_DELETE -> {
-                    val payload = Json.decodeFromString(EventDeleteOutboxPayload.serializer(), entry.payload)
-                    backend.softDelete(payload.serverId)
-                }
-                else -> continue
+            val result: Result<*> = sendOne(db, entry, backend) ?: continue
+            if (!result.isSuccess && EventsPins.dropIfRefused(db, entry, result.exceptionOrNull())) {
+                // A pin the engine refused for good (no longer a suggestion / gone): retrying can
+                // never help, so it leaves the queue and the optimistic pin comes back off the row.
+                refused++
+                continue
             }
             if (result.isSuccess) {
                 dao.delete(entry.id)
@@ -695,7 +709,12 @@ object EventsOutboxDrain {
             if (attempts >= MAX_ATTEMPTS) poisoned++ else stillPending++
         }
 
-        return DrainReport(succeeded = succeeded, stillPending = stillPending, poisoned = poisoned)
+        return DrainReport(
+            succeeded = succeeded,
+            stillPending = stillPending,
+            poisoned = poisoned,
+            refused = refused,
+        )
     }
 
     /**

@@ -373,7 +373,7 @@ import androidx.room.RoomDatabase
         GeminiUsage::class, LiveConnectDay::class, BackgroundPassState::class,
         FeedSubscription::class,
     ],
-    version = 74,
+    version = 75,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -549,7 +549,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 74
+        const val SCHEMA_VERSION = 75
         // 2026-09-06: bumped to 67 alongside `@Database(version=)` in the same edit again
         // (`conversation_audit.clientUuid` + its unique index - the client-minted identity that
         // replaces `(device_id, local_id)` as the upload's server key, after that pair silently
@@ -682,7 +682,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_62_63, MIGRATION_63_64, MIGRATION_64_65, MIGRATION_65_66,
                         MIGRATION_66_67, MIGRATION_67_68, MIGRATION_68_69, MIGRATION_69_70,
                         MIGRATION_70_71, MIGRATION_71_72, MIGRATION_72_73,
-                        MIGRATION_73_74,
+                        MIGRATION_73_74, MIGRATION_74_75,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

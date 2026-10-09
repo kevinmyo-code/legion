@@ -3016,3 +3016,18 @@ val MIGRATION_73_74 = object : Migration(SCHEMA_V73, SCHEMA_V74) {
         db.execSQL("ALTER TABLE `places` ADD COLUMN `address` TEXT")
     }
 }
+
+private const val SCHEMA_V75 = 75
+
+/**
+ * `events.pinnedByJson` (Kevin, 2026-10-09: a household member pins a suggestion "I want to go" and
+ * the other sees it) - see [Event.pinnedByJson]. One nullable `TEXT` column, so every existing
+ * event reads exactly as it did, with nobody pinned. The statement is copied verbatim from the
+ * column's generated `75.json` definition, the shape Room emits for an `ALTER TABLE ... ADD COLUMN`
+ * of a nullable `TEXT` with no default.
+ */
+val MIGRATION_74_75 = object : Migration(SCHEMA_V74, SCHEMA_V75) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `events` ADD COLUMN `pinnedByJson` TEXT")
+    }
+}
