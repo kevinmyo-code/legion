@@ -41,6 +41,12 @@ object EventKind {
     const val EVENT = "event"
     /** New (ticket 08). Nothing writes this yet - see this object's own class doc. */
     const val TASK = "task"
+    /** Something the household COULD do (Kevin, 2026-10-09: weekend things to do, separately
+     * coloured on the calendar) - never their plan. Every reader of this table filters by an explicit
+     * kind, so a suggestion reaches only the readers that ask for it by name: the calendar day view's
+     * own section and month mark, and `read_calendar`'s separate list. The server refuses a reminder
+     * or a tick on one; "Add to my plans" turns it into [EVENT]. See `calendar/EventSuggestions.kt`. */
+    const val SUGGESTION = "suggestion"
 }
 
 /**

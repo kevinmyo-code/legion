@@ -12,6 +12,7 @@ import kotlin.math.sqrt
 enum class SourceKind(val label: String) {
     SAVED_PLACE("saved places"),
     CALENDAR("calendar"),
+    SUGGESTIONS("calendar suggestions"),
     CONTACTS("contacts"),
     SEARCH("Mapbox search"),
 }
@@ -53,8 +54,9 @@ data class AddressToSearch(val label: String, val text: String)
 sealed interface SourceAnswer {
     data class Hits(val candidates: List<Candidate>, val ambiguous: Boolean) : SourceAnswer
 
-    /** The source matched but holds only address TEXT: search resolves it. Several means ambiguous. */
-    data class NeedsSearch(val items: List<AddressToSearch>) : SourceAnswer
+    /** The source matched but holds only address TEXT: search resolves it. Several means ambiguous,
+     * and so does [severalMatched]: a source whose other matches had no address still asks. */
+    data class NeedsSearch(val items: List<AddressToSearch>, val severalMatched: Boolean = false) : SourceAnswer
 
     /** The source was readable and nothing in it matched. Fall through. */
     data object NoMatch : SourceAnswer
@@ -192,7 +194,7 @@ class DestinationResolver(
             )
         }
         if (failures.isNotEmpty()) reports += SourceReport(from, failures.first(), unreadable = true)
-        return SourceAnswer.Hits(found, ambiguous = needs.items.size > 1)
+        return SourceAnswer.Hits(found, ambiguous = needs.items.size > 1 || needs.severalMatched)
     }
 
     private fun noteFor(r: SourceReport) = "Couldn't read ${r.kind.label}: ${r.line}."

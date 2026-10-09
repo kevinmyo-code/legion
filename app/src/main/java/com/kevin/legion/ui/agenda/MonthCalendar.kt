@@ -120,6 +120,17 @@ fun MonthCalendar(
                     }
                 }
             }
+            // The month's suggestion mark explained in words, only when the month has one.
+            if (cells.any { it.suggestionCount > 0 }) {
+                Row(Modifier.padding(top = 6.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(SUGGESTION_MARK_DP.dp).background(SUGGESTION_ACCENT.onContainer, CircleShape))
+                    Text(
+                        "  Orange dot: suggestions - things you could do, not plans",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = sem.faint,
+                    )
+                }
+            }
             if (!calendarLinked) {
                 CalendarNotLinkedRow(
                     "Calendar not linked - grant access to see Google events on the calendar too.",
@@ -246,7 +257,19 @@ private fun CellMarks(cell: MonthCell, isToday: Boolean) {
             }
         }
     }
+    // One mark however many: "there is something you could do", in its own hue, never counted
+    // with the event dots above (those are plans). Explained by the legend under the grid.
+    if (cell.suggestionCount > 0) {
+        Box(
+            Modifier
+                .padding(top = 1.dp)
+                .size(SUGGESTION_MARK_DP.dp)
+                .background(if (isToday) accent.container else SUGGESTION_ACCENT.onContainer, CircleShape),
+        )
+    }
 }
+
+private const val SUGGESTION_MARK_DP = 5
 
 // Sentence case ("October 2026"): the old `.uppercase()` was a mission-control stamp.
 private val MONTH_GRID_LABEL: DateTimeFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")

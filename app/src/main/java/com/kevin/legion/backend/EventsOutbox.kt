@@ -433,6 +433,33 @@ object EventsAppointmentWriter {
     }
 
     /**
+     * Changes a row's [Event.kind] and PUSHES it - [setDone]'s shape exactly (local write first,
+     * then the engine, then the outbox on failure; a null [Event.serverId] re-points the queued
+     * create). One caller today: a suggestion's "Add to my plans"
+     * (`calendar/EventSuggestions.kt`), which turns a [EventKind.SUGGESTION] into an
+     * [EventKind.EVENT] and keeps every other field, time, place and notes included.
+     */
+    suspend fun setKind(context: Context, existing: Event, kind: String): Event {
+        val db = CarDatabase.getDatabase(context)
+        val updated = existing.copy(kind = kind, updatedAtMs = System.currentTimeMillis())
+        db.eventDao().update(updated)
+
+        val backend = backend(context)
+        val serverId = existing.serverId
+        when {
+            backend == null -> Unit
+            serverId == null -> repointPendingCreate(db, updated)
+            else -> {
+                val result = backend.upsert(serverId, updated.toEventFields())
+                if (result.isFailure) {
+                    enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+                }
+            }
+        }
+        return updated
+    }
+
+    /**
      * Soft-deletes a calendar-table row already read by the caller. Local write always happens -
      * marks [Event.deleted] rather than a hard delete, so a resurrecting pull (this row's own
      * tombstone reaching the server late) never finds anything locally left to conflict with. On a

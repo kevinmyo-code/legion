@@ -123,7 +123,7 @@ object EventsSync {
      *   counted here, never in [inserted] (it was never really an insert) and never in [tombstoned]
      *   (nothing was actually deleted here - there was nothing to delete).
      * @param unrecognizedKinds every distinct [RemoteEvent.kind] value seen this run that is not
-     *   one of [EventKind]'s three known constants, sorted - reported, never silently dropped; the
+     *   one of [EventKind]'s known constants, sorted - reported, never silently dropped; the
      *   rows themselves are still merged normally.
      */
     data class PullReport(
@@ -135,7 +135,7 @@ object EventsSync {
         val unrecognizedKinds: List<String>,
     )
 
-    private val KNOWN_KINDS = setOf(EventKind.REMINDER, EventKind.EVENT, EventKind.TASK)
+    private val KNOWN_KINDS = setOf(EventKind.REMINDER, EventKind.EVENT, EventKind.TASK, EventKind.SUGGESTION)
 
     /**
      * Pulls every server event changed since [EventsPullCursor]'s own watermark - active or
