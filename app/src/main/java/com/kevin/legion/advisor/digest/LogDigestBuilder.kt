@@ -5,6 +5,7 @@ import com.kevin.legion.advisor.AdvisorAspect
 import com.kevin.legion.advisor.DigestBuilder
 import com.kevin.legion.advisor.DigestText
 import com.kevin.legion.backend.EventKind
+import com.kevin.legion.calendar.AllDayTime
 import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.activeByKindInLocalWindow
@@ -71,7 +72,16 @@ object LogDigestBuilder : DigestBuilder {
         // midnight of its date, not a device-zone instant (see that function's own doc comment).
         val calendarEvents = db.eventDao()
             .activeByKindInLocalWindow(EventKind.EVENT, now, now + CALENDAR_HORIZON_MS, java.time.ZoneId.systemDefault())
-            .map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.startsAt ?: now, endMs = it.endsAt ?: (it.startsAt ?: now), allDay = it.allDay) }
+            .map {
+                // An all-day row's startsAt is UTC midnight; re-anchor to the local date so
+                // compactDate in calendarLine names the right day (voice audit finding 3).
+                val zone = java.time.ZoneId.systemDefault()
+                val start = AllDayTime.anchorMs(it.startsAt ?: now, it.allDay, zone)
+                OpenerCalendarBriefing.BriefingEvent(
+                    title = it.title, startMs = start,
+                    endMs = if (it.allDay) start else it.endsAt ?: (it.startsAt ?: now), allDay = it.allDay,
+                )
+            }
 
         return buildDigestText(
             allActive = allActive,

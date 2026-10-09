@@ -14,10 +14,7 @@ import com.kevin.legion.news.FeedFetchResult
 import com.kevin.legion.news.FeedFetcher
 import com.kevin.legion.news.FeedSubscriptionController
 import com.kevin.legion.weather.WeatherController
-import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -92,8 +89,6 @@ object SitrepBuilder {
      * one line per feed, not a race for a shared pool. */
     private const val FEED_HEADLINE_CAP = 5
 
-    private val EVENT_TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
-
     /**
      * The full sitrep, respecting per-module settings AND an optional caller-supplied [modules]
      * filter - `get_sitrep`'s own contract (ticket 22 part C: "ONE tool, optional `modules` filter
@@ -129,7 +124,9 @@ object SitrepBuilder {
             val hasPermission = true
             val events = DatesAgenda.windowed(context, now, now + CALENDAR_WINDOW_MS).map {
                 OpenerCalendarBriefing.BriefingEvent(
-                    title = it.title, startMs = it.dueAt, endMs = it.endAt ?: it.dueAt, dueIsInferred = it.dueIsInferred,
+                    title = it.title, startMs = it.dueAt,
+                    endMs = if (it.allDay) it.dueAt else it.endAt ?: it.dueAt,
+                    allDay = it.allDay, dueIsInferred = it.dueIsInferred,
                 )
             }
             sections[SitrepModule.CALENDAR] = calendarSection(hasPermission, events, now, zone)
@@ -194,10 +191,8 @@ object SitrepBuilder {
         if (!hasPermission) return DigestText.line("CALENDAR", "no permission to read it")
         val upcoming = events.filter { it.allDay || it.endMs > nowMs }.sortedBy { it.startMs }
         if (upcoming.isEmpty()) return DigestText.line("CALENDAR", "clear for the next 24h")
-        val listed = upcoming.joinToString("; ") { event ->
-            val title = event.title.trim().ifEmpty { "(untitled)" }
-            if (event.allDay) "\"$title\" (all day)"
-            else "\"$title\" at ${Instant.ofEpochMilli(event.startMs).atZone(zone).format(EVENT_TIME_FMT)}"
+        val listed = upcoming.joinToString("; ") {
+            OpenerCalendarBriefing.describe(it, zone, java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate())
         }
         return DigestText.line("CALENDAR", listed)
     }

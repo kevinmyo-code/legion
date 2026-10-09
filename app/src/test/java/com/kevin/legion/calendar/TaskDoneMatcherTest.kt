@@ -117,4 +117,31 @@ class TaskDoneMatcherTest {
         assertTrue(text.startsWith("Nothing was changed. 2 tasks match"))
         assertTrue(text.contains("all_matches"))
     }
+
+    // Voice audit finding 6 (S46, 2026-10-03). manage_item tick of "Chapter 5 Quiz (WebAssign)"
+    // answered "Which one?" with eight OTHER quizzes because the intended one was already done.
+    private val stats = (5..13).map { task("MATH 3391 Probability & Statistics – Chapter $it Quiz (WebAssign)", done = it == 5) }
+
+    @Test fun anAlreadyDoneQuizIsReportedAsDoneNotReplacedByEightOtherQuizzes() {
+        val r = resolve("MATH 3391 Probability & Statistics Chapter 5 Quiz (WebAssign)", list = stats)
+        assertTrue(r is Resolution.AlreadyThere)
+        assertEquals(1, (r as Resolution.AlreadyThere).matches.size)
+        val text = TaskDoneMatcher.alreadyText(true, r.matches, dateOf)
+        assertTrue(text, text.startsWith("Nothing was changed: already done"))
+        assertTrue(text, !text.contains("Chapter 6"))
+    }
+
+    @Test fun aFailedTickSaysNothingWasTickedAndNamesTheClosestRealTasks() {
+        val r = resolve("Chapter 99 Quiz", list = stats)
+        assertTrue(r is Resolution.NoMatch)
+        val text = TaskDoneMatcher.noMatchText((r as Resolution.NoMatch).nearest, dateOf)
+        assertTrue(text, text.startsWith("Nothing was changed"))
+        assertTrue(text, text.contains("Closest titles:"))
+    }
+
+    @Test fun aCommittedHomeworkTickSaysDoneNeverAttended() {
+        val text = TaskDoneMatcher.resultText(true, listOf(webassign), emptyList(), emptySet(), emptyList(), dateOf)
+        assertTrue(text, text.startsWith("Marked done:"))
+        assertTrue(text, !text.contains("attended"))
+    }
 }

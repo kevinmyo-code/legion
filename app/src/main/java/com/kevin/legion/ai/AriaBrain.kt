@@ -977,6 +977,21 @@ internal val CANNOT_CLAUSE =
         "about something that never happened. "
 
 /**
+ * Never deny access to the user's own data (voice audit findings 8 and 9, 2026-10-09). A successful
+ * `get_current_location` result was answered with "I don't have your current location", and "Can you
+ * see my bank statements?" got "I don't have access" with no tool call while the ledger tools exist.
+ * A capability denial is the costliest wrong answer: the user stops asking. Conditioned on the tool
+ * RESULT, like [CANNOT_CLAUSE], and naming no tools, so it survives the next one. Deliberately
+ * short: `MarcusPayloadTest` holds every persona under a 23,800-token ceiling and had ~45 tokens of
+ * headroom. The call-the-tool-first half already lives in the "NEVER state a fact" rule below. At file scope for
+ * the same reason as [CANNOT_CLAUSE]: never per-persona. Presence guarded by
+ * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable.
+ */
+internal const val DATA_ACCESS_CLAUSE =
+    "Never say you have no access to, or no record of, the user's data unless a tool this turn " +
+        "came back empty or failed; say which. "
+
+/**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08
  * (`.scratch/proactive-mode/issues/08-proactive-register.md`), Kevin 2026-08-21.
  *
@@ -1053,6 +1068,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-ti
     "user arrives at a place). Always call the matching tool before claiming you've done " +
     "something - never say you're pulling up music unless you actually called the tool for it. " +
     CANNOT_CLAUSE +
+    DATA_ACCESS_CLAUSE +
     PROACTIVE_CLAUSE +
     // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
     // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -

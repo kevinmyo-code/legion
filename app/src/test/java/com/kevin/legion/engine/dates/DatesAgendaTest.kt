@@ -328,4 +328,72 @@ class DatesAgendaTest {
             matches.single().recordId,
         )
     }
+
+    // ---- All-day events (voice audit finding 3, 2026-10-05) ----------------------------------
+
+    private suspend fun createAllDay(title: String, utcMidnight: Long, now: Long): Long = db.eventDao().insert(
+        Event(
+            serverId = UUID.randomUUID().toString(), title = title, startsAt = utcMidnight, allDay = true,
+            source = DatesAspectSeeder.SOURCE_LEGION, kind = EventKind.EVENT, updatedAtMs = now, createdAt = now,
+        ),
+    )
+
+    private fun withChicago(block: suspend (zone: java.time.ZoneId) -> Unit) {
+        val saved = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Chicago"))
+        try {
+            runBlocking { block(java.time.ZoneId.of("America/Chicago")) }
+        } finally {
+            java.util.TimeZone.setDefault(saved)
+        }
+    }
+
+    private fun chicago(zone: java.time.ZoneId, m: Int, d: Int, h: Int) =
+        java.time.LocalDateTime.of(2026, m, d, h, 0).atZone(zone).toInstant().toEpochMilli()
+
+    @Test
+    fun `an all-day event stored at UTC midnight is reported on its own local date`() = withChicago { zone ->
+        val oct6 = java.time.LocalDate.of(2026, 10, 6).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        val now = chicago(zone, 10, 5, 13)
+        createAllDay("Buy paddleboard", oct6, now)
+
+        val item = DatesAgenda.windowed(context, now, now + 12L * 3_600_000L, nowMs = now).single()
+
+        assertTrue(item.allDay)
+        // Start of Oct 6 in Chicago, NOT Oct 5 7 PM.
+        assertEquals(chicago(zone, 10, 6, 0), item.dueAt)
+        assertEquals(java.time.LocalDate.of(2026, 10, 6), java.time.Instant.ofEpochMilli(item.dueAt).atZone(zone).toLocalDate())
+        assertEquals(chicago(zone, 10, 6, 9), item.remindAtMs)
+    }
+
+    @Test
+    fun `today's all-day event stays in a mid-afternoon window`() = withChicago { zone ->
+        val oct6 = java.time.LocalDate.of(2026, 10, 6).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        val now = chicago(zone, 10, 6, 15)
+        createAllDay("Buy paddleboard", oct6, now)
+
+        assertEquals(1, DatesAgenda.windowed(context, now, now + 12L * 3_600_000L, nowMs = now).size)
+    }
+
+    @Test
+    fun `the reminder for tomorrow's all-day event is armed for 9 AM local, even the evening before`() = withChicago { zone ->
+        val oct6 = java.time.LocalDate.of(2026, 10, 6).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        // 8 PM Oct 5 Chicago is already past the stored UTC midnight; the old SQL floor dropped it.
+        val now = chicago(zone, 10, 5, 20)
+        createAllDay("Buy paddleboard", oct6, now)
+
+        val next = DatesAgenda.nextUnmuted(context, now)
+
+        assertEquals("Buy paddleboard", next?.title)
+        assertEquals(chicago(zone, 10, 6, 9), next?.remindAtMs)
+    }
+
+    @Test
+    fun `an all-day event whose 9 AM has passed is not armed`() = withChicago { zone ->
+        val oct6 = java.time.LocalDate.of(2026, 10, 6).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        val now = chicago(zone, 10, 6, 14)
+        createAllDay("Buy paddleboard", oct6, now)
+
+        assertNull(DatesAgenda.nextUnmuted(context, now))
+    }
 }

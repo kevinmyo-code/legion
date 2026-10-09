@@ -87,4 +87,14 @@ class SpotifyControllerQueueOutcomeTest {
         val message = SpotifyController.message(QueueOutcome.ConnectFailed("SecurityException"), "Bad Bunny")
         assertTrue(message.contains("SecurityException"))
     }
+
+    @Test
+    fun `the queued line names the resolved track, not the words the user said`() {
+        val label = SpotifyController.pickedLabel("Wakare Michi", "the GazettE")
+        assertEquals("Wakare Michi, the GazettE", label)
+        val message = SpotifyController.message(QueueOutcome.Queued, label!!)
+        assertTrue(message, message.contains("Wakare Michi, the GazettE"))
+        assertEquals("Ugly", SpotifyController.pickedLabel("Ugly", null))
+        assertEquals(null, SpotifyController.pickedLabel("  ", "x"))
+    }
 }

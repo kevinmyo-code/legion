@@ -40,6 +40,19 @@ object ObdResponseParser {
         return FAILURE_MARKERS.any { it in upper }
     }
 
+    /**
+     * True only when [response] is a genuine Mode 03 answer: not a failure, and it carries a "43"
+     * frame (a real `43 00` for "no codes" counts). [dtcCodes] returns an empty list for both this
+     * and a dead link; a caller deciding whether a code is NEW must tell the two apart, or an
+     * unreadable car reads as a clean one (voice audit finding 5).
+     */
+    fun isValidDtcReply(response: String): Boolean {
+        if (isFailureResponse(response)) return false
+        return response.split('\r', '\n').any { line ->
+            line.trim().split(Regex("\\s+")).firstOrNull()?.equals("43", ignoreCase = true) == true
+        }
+    }
+
     private val FAILURE_MARKERS = listOf(
         "NO DATA",
         "UNABLE",        // "UNABLE TO CONNECT"

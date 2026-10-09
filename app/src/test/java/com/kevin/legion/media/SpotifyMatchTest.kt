@@ -144,4 +144,32 @@ class SpotifyMatchTest {
         )
         assertEquals(listOf("Changes by 2Pac", "Penny by Sparrow", "A by B"), SpotifyMatch.describe(hits))
     }
+
+    // Voice audit finding 4 cases not covered above: S35 "Wakare Michi" and the S18 queue query.
+    // The queue action resolves through the same SpotifyMatch.pick with no artist param.
+
+    @Test
+    fun `Wakare Michi by The Gazette rejects the Wakaretemo Sukina Hito hit it used to play`() {
+        val wrong = listOf(
+            track("Wakaretemo Sukina Hito", "Hiroshi Wada and Mahina Stars", "spotify:track:w1", 80),
+            track("Michi", "Someone Else", "spotify:track:w2", 60),
+        )
+        assertNull(SpotifyMatch.pick(wrong, "Wakare Michi by The Gazette", null))
+        val real = track("Wakare Michi", "the GazettE", "spotify:track:wm", 30)
+        assertEquals("spotify:track:wm", SpotifyMatch.pick(wrong + real, "Wakare Michi by The Gazette", null)?.optString("uri"))
+    }
+
+    @Test
+    fun `queue query Ugly by The Gazette does not accept an unrelated top hit`() {
+        val wrong = listOf(track("Ugly Duckling", "Danny Kaye", "spotify:track:u1", 70), track("Pretty Ugly", "Jhene", "spotify:track:u2", 50))
+        assertNull(SpotifyMatch.pick(wrong, "Ugly by The Gazette", null))
+        val real = track("UGLY", "the GazettE", "spotify:track:ug", 20)
+        assertEquals("spotify:track:ug", SpotifyMatch.pick(wrong + real, "Ugly by The Gazette", null)?.optString("uri"))
+    }
+
+    @Test
+    fun `Despacito and the audited wrong-song hits never cross`() {
+        // S36/S37: a play for Despacito must not land on any of the earlier wrong tracks.
+        assertNull(SpotifyMatch.pick(wrongHits, "Despacito", null))
+    }
 }

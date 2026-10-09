@@ -11,7 +11,9 @@ import com.kevin.legion.data.local.RecordType
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.migration.EngineNotesRetirementCopy
 import com.kevin.legion.engine.notes.NotesAspectSeeder
+import com.kevin.legion.calendar.AllDayTime
 import org.json.JSONObject
+import java.time.ZoneId
 
 /**
  * **THE agenda source** (`.scratch/aspect-engine/issues/19-build-dates-aspect.md` point 3, locked
@@ -74,6 +76,14 @@ object DatesAgenda {
          * date, and MUST exclude it from anything that can nag or go overdue - see [nextUnmuted]'s
          * own doc comment for where that second half is actually enforced. */
         val dueIsInferred: Boolean,
+        /** True for an all-day [Event]. [dueAt] is then the START OF ITS DATE in the device zone
+         * (re-anchored from the stored UTC midnight, see [AllDayTime]) and a caller MUST speak a
+         * date, never a clock time. Voice audit finding 3, 2026-10-05: the raw UTC midnight was
+         * spoken as "seven this evening" for an event on the following day. */
+        val allDay: Boolean = false,
+        /** When a reminder for this item should fire: [dueAt] for a timed item, 9 AM local on the
+         * date for an all-day one. Sort and arm alarms by this, never by [dueAt]. */
+        val remindAtMs: Long = dueAt,
     )
 
     /** How many candidates [nextUnmuted] reads (PER SOURCE - engine and `events` each get their own
@@ -88,6 +98,9 @@ object DatesAgenda {
      * the past" (ruling clause 4, "rolls forward silently"), and nothing in the ruling asks for
      * midnight-alignment precision - it only asks that it read as "tomorrow" and never go stale. */
     private const val INFERRED_DUE_OFFSET_MS = 24L * 60 * 60 * 1000
+
+    /** Slack for [nextUnmuted]'s SQL floor; covers any UTC offset (see that method). */
+    private const val ALL_DAY_LOOKBACK_MS = 24L * 60 * 60 * 1000
 
     /** Aspect names excluded from the generic engine dueAt scan - see this object's own class doc,
      * point 2, for why. */
@@ -131,7 +144,8 @@ object DatesAgenda {
 
         val appointments = activeAppointments(db)
         val mutedIds = db.mutedReminderDao().mutedRecordIds(appointments.map { it.id }).toSet()
-        val eventItems = appointments.mapNotNull { toAgendaItemFromEvent(it, nowMs, mutedIds) }
+        val zone = ZoneId.systemDefault()
+        val eventItems = appointments.mapNotNull { toAgendaItemFromEvent(it, nowMs, mutedIds, zone) }
 
         val dated = db.engineRecordDao().activeWithDueAtInWindow(fromMs, toMs, EXCLUDED_ENGINE_ASPECTS)
         val undated = db.engineRecordDao().activeUndatedWithDueConcept(EXCLUDED_ENGINE_ASPECTS)
@@ -140,7 +154,13 @@ object DatesAgenda {
         // The undated fetches above are NOT themselves windowed by SQL (there is nothing stored to
         // filter on) - filter here, after the inferred dueAt has been computed, so an inferred date
         // only shows up in a window that actually contains it, the same as a real one would.
-        return (eventItems + engineItems).filter { it.dueAt in fromMs..toMs }.sortedBy { it.dueAt }
+        // An all-day item occupies its whole local date, so it is in the window when that date
+        // overlaps it - not only when its midnight does. Otherwise today's all-day event vanished
+        // from a mid-afternoon opener the moment its midnight passed.
+        return (eventItems + engineItems).filter {
+            it.dueAt in fromMs..toMs ||
+                (it.allDay && it.dueAt <= toMs && AllDayTime.dayEndMs(it.dueAt, zone) > fromMs)
+        }.sortedBy { it.dueAt }
     }
 
     /** One specific record, resolved into an [AgendaItem] if it is live and has a real (non-
@@ -159,7 +179,7 @@ object DatesAgenda {
         if (event != null) {
             if (event.deleted || event.kind != EventKind.EVENT || event.startsAt == null) return null
             val mutedIds = db.mutedReminderDao().mutedRecordIds(listOf(event.id)).toSet()
-            return toAgendaItemFromEvent(event, System.currentTimeMillis(), mutedIds)
+            return toAgendaItemFromEvent(event, System.currentTimeMillis(), mutedIds, ZoneId.systemDefault())
         }
 
         val record = db.engineRecordDao().getById(recordId) ?: return null
@@ -187,14 +207,21 @@ object DatesAgenda {
         val db = CarDatabase.getDatabase(context)
         ensureLegacyReconciled(context)
 
-        val eventCandidates = db.eventDao().activeByKindFrom(EventKind.EVENT, afterMs, NEXT_DUE_BATCH_SIZE)
+        // Looks a day back: an all-day row sits at UTC midnight, which can be up to a day BEFORE
+        // the 9 AM local reminder it arms, so a plain `startsAt >= afterMs` dropped tomorrow's
+        // all-day event from the evening before. The remind-time check below is the real filter.
+        val zone = ZoneId.systemDefault()
+        val eventCandidates = db.eventDao()
+            .activeByKindFrom(EventKind.EVENT, afterMs - ALL_DAY_LOOKBACK_MS, NEXT_DUE_BATCH_SIZE)
         val eventMutedIds = db.mutedReminderDao().mutedRecordIds(eventCandidates.map { it.id }).toSet()
-        val eventItems = eventCandidates.mapNotNull { toAgendaItemFromEvent(it, afterMs, eventMutedIds) }
+        val eventItems = eventCandidates
+            .mapNotNull { toAgendaItemFromEvent(it, afterMs, eventMutedIds, zone) }
+            .filter { it.remindAtMs >= afterMs }
 
         val engineCandidates = db.engineRecordDao().activeWithDueAtFrom(afterMs, NEXT_DUE_BATCH_SIZE, EXCLUDED_ENGINE_ASPECTS)
         val engineItems = toAgendaItemsFromEngine(db, engineCandidates, afterMs)
 
-        return (eventItems + engineItems).sortedBy { it.dueAt }.firstOrNull { !it.muted }
+        return (eventItems + engineItems).sortedBy { it.remindAtMs }.firstOrNull { !it.muted }
     }
 
     /** Flat mapping, no [FieldDef]/[PayloadCodec] involved - an [Event] row already carries every
@@ -202,9 +229,12 @@ object DatesAgenda {
      * particular caller did not want an inferred one ([byId] never calls this at all in that case;
      * every OTHER caller wants the inferred row, so this always synthesizes one instead of ever
      * returning null for a null [Event.startsAt] here). */
-    private fun toAgendaItemFromEvent(event: Event, nowMs: Long, mutedIds: Set<Long>): AgendaItem {
+    private fun toAgendaItemFromEvent(event: Event, nowMs: Long, mutedIds: Set<Long>, zone: ZoneId): AgendaItem {
         val dueIsInferred = event.startsAt == null
-        val dueAt = event.startsAt ?: (nowMs + INFERRED_DUE_OFFSET_MS)
+        val startsAt = event.startsAt
+        val allDay = event.allDay && startsAt != null
+        val dueAt = if (startsAt == null) nowMs + INFERRED_DUE_OFFSET_MS else AllDayTime.anchorMs(startsAt, allDay, zone)
+        val remindAt = if (startsAt == null) dueAt else AllDayTime.reminderMs(startsAt, allDay, zone)
         return AgendaItem(
             recordId = event.id,
             title = event.title,
@@ -214,6 +244,8 @@ object DatesAgenda {
             source = event.source,
             muted = event.id in mutedIds,
             dueIsInferred = dueIsInferred,
+            allDay = allDay,
+            remindAtMs = remindAt,
         )
     }
 
