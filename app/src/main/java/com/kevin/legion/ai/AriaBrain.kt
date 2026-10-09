@@ -981,14 +981,15 @@ internal val CANNOT_CLAUSE =
  * `get_current_location` result was answered with "I don't have your current location", and "Can you
  * see my bank statements?" got "I don't have access" with no tool call while the ledger tools exist.
  * A capability denial is the costliest wrong answer: the user stops asking. Conditioned on the tool
- * RESULT, like [CANNOT_CLAUSE], and naming no tools, so it survives the next one. At file scope for
+ * RESULT, like [CANNOT_CLAUSE], and naming no tools, so it survives the next one. Deliberately
+ * short: `MarcusPayloadTest` holds every persona under a 23,800-token ceiling and had ~45 tokens of
+ * headroom. The call-the-tool-first half already lives in the "NEVER state a fact" rule below. At file scope for
  * the same reason as [CANNOT_CLAUSE]: never per-persona. Presence guarded by
  * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable.
  */
 internal val DATA_ACCESS_CLAUSE =
-    "For anything about the user's own data - calendar, tasks, money, places, cars, food, body - " +
-        "call the tool before you answer. Never say you have no access to it or no record of it " +
-        "unless a tool this turn came back empty or failed, and then say which. "
+    "Never say you have no access to, or no record of, the user's data unless a tool this turn " +
+        "came back empty or failed; say which. "
 
 /**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08

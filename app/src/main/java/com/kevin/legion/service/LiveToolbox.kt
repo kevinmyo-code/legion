@@ -1384,7 +1384,7 @@ object LiveToolbox {
                 "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
                 "For every action but 'add', 'item' fuzzily matches the existing item's text, " +
                 "never a position like 'the third one'. A recurring item can't be ticked - edit " +
-                "its repeat instead. Assignments and homework are calendar tasks: use complete_task.",
+                "its repeat instead.",
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "tick", "untick", "remove", "schedule", "skip")),
