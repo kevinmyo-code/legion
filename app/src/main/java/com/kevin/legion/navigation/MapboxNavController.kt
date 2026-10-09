@@ -592,9 +592,13 @@ class MapboxNavController(
         return NavResult(true, sentence)
     }
 
-    /** The map reports the user dragged it away from the guided camera. UI only; never a voice verb. */
+    /**
+     * The map reports the user dragged it away from the guided camera (from following OR from the overview:
+     * a pan in the overview also leaves the SDK camera, and the Re-centre button must come back).
+     * UI only; never a voice verb.
+     */
     fun cameraDetached() {
-        if (guard.phase == NavPhase.GUIDING && _state.value.camera == NavCameraMode.FOLLOWING) {
+        if (guard.phase == NavPhase.GUIDING && _state.value.camera != NavCameraMode.FREE) {
             _state.value = _state.value.copy(camera = NavCameraMode.FREE)
         }
     }

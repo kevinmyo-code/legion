@@ -19,6 +19,7 @@ data class NavActions(
     val onToggleTolls: () -> Unit,
     val onToggleMute: () -> Unit,
     val onOverviewOrRecenter: () -> Unit,
+    val onRecenter: () -> Unit,
     val onOpenPanel: (NavPanel) -> Unit,
     val onClosePanel: () -> Unit,
     val onStopInput: (String) -> Unit,
