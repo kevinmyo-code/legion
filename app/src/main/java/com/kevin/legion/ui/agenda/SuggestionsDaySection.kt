@@ -1,6 +1,11 @@
 package com.kevin.legion.ui.agenda
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +26,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.calendar.EventSuggestions
 import com.kevin.legion.calendar.SuggestionMeta
@@ -50,7 +58,8 @@ val SUGGESTION_ACCENT = AreaAccent.NEWS
  * SCHEDULE section on purpose: a suggestion is not a plan, so it never sits among plans. Each row
  * offers the only two actions there are ([EventSuggestions.addToPlans], [EventSuggestions.notInterested])
  * and shows what the tap did in words, "queued" included. [onChanged] lets the screen reload, since
- * an added suggestion now belongs in SCHEDULE.
+ * an added suggestion now belongs in SCHEDULE. A row whose `structured_meta.url` is http(s) also
+ * opens that page in the browser when its body is tapped (Kevin, 2026-10-09); the buttons do not.
  */
 @Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
 @Composable
@@ -82,25 +91,13 @@ fun SuggestionsDaySection(dayStart: Long, dayEndExclusive: Long, zone: ZoneId, r
             .background(SoftColors.card, MaterialTheme.shapes.large)
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        if (failed) {
-            Text(
-                "Couldn't load suggestions for this day.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LocalLegionSemantics.current.estimated,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
-            )
-        }
-        outcomes.values.forEach { sentence ->
-            Text(
-                sentence,
-                style = MaterialTheme.typography.bodySmall,
-                color = SoftColors.text2,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            )
-        }
+        SectionSentences(failed, outcomes.values)
         rows.forEach { row ->
             SuggestionRow(
                 row = row,
+                onOpen = { url ->
+                    openEventPage(context, url)?.let { outcomes[row.id] = "${row.title}: $it" }
+                },
                 onAdd = {
                     scope.launch {
                         outcomes[row.id] = "${row.title}: ${EventSuggestions.addToPlans(context, row).sentence}"
@@ -118,10 +115,45 @@ fun SuggestionsDaySection(dayStart: Long, dayEndExclusive: Long, zone: ZoneId, r
     }
 }
 
+/** What the section has to say in words: a failed read, then what each tap did (or did not do). */
 @Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
 @Composable
-private fun SuggestionRow(row: Event, onAdd: () -> Unit, onDrop: () -> Unit) {
+private fun SectionSentences(failed: Boolean, outcomes: Collection<String>) {
+    if (failed) {
+        Text(
+            "Couldn't load suggestions for this day.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = LocalLegionSemantics.current.estimated,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+        )
+    }
+    outcomes.forEach { sentence ->
+        Text(
+            sentence,
+            style = MaterialTheme.typography.bodySmall,
+            color = SoftColors.text2,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/**
+ * Opens [url] in the browser. Null when the browser was asked; otherwise what did NOT happen, in
+ * words, for the section to show (§7: no outcome is implied when nothing could open it).
+ */
+private fun openEventPage(context: Context, url: String): String? = try {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    null
+} catch (@Suppress("SwallowedException") e: ActivityNotFoundException) {
+    "Couldn't open the event page: no browser on this phone can open it."
+}
+
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun SuggestionRow(row: Event, onOpen: (String) -> Unit, onAdd: () -> Unit, onDrop: () -> Unit) {
     val meta = SuggestionMeta.parse(row.structuredMeta)
+    // Only an http(s) page makes the row tappable; with none, nothing on the row pretends it is.
+    val pageUrl = SuggestionMeta.openablePageUrl(meta?.url)
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
         // The colour bar: the accent on the row's leading edge, beside the words that say what it is.
         Box(
@@ -132,28 +164,22 @@ private fun SuggestionRow(row: Event, onAdd: () -> Unit, onDrop: () -> Unit) {
                 .background(SUGGESTION_ACCENT.onContainer, MaterialTheme.shapes.small),
         )
         Column(Modifier.weight(1f)) {
-            Text(
-                EventSuggestions.LABEL,
-                style = MaterialTheme.typography.labelMedium,
-                color = SUGGESTION_ACCENT.onContainer,
-            )
-            Text(row.title, style = MaterialTheme.typography.bodyLarge, color = SoftColors.text)
-            val start = row.startsAt
-            val whenText = when {
-                start == null -> null
-                row.allDay -> "${documentDateCompact(start)}, all day"
-                else -> clockTime(start)
+            // The row body is the tap target for the event page. The two action buttons sit OUTSIDE
+            // it, below, so a tap on either can never also open the browser.
+            val body = if (pageUrl == null) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable(
+                        onClickLabel = "Open event page for ${row.title}",
+                        role = Role.Button,
+                        onClick = { onOpen(pageUrl) },
+                    )
             }
-            listOfNotNull(whenText, meta?.price).joinToString(" - ").takeIf { it.isNotEmpty() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
-            }
-            (row.location ?: listOfNotNull(meta?.venue, meta?.city).joinToString(", ").ifEmpty { null })?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
-            }
-            // The source link (or, for an unstructured row, its notes) so the details are one tap of
-            // copy away. Shown as text: opening links from here is not part of this change.
-            (meta?.url ?: row.notes.takeIf { meta == null })?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
+            Column(body) {
+                SuggestionDetails(row, meta, pageUrl)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onAdd) {
@@ -167,6 +193,44 @@ private fun SuggestionRow(row: Event, onAdd: () -> Unit, onDrop: () -> Unit) {
                     Text("Not interested", style = MaterialTheme.typography.labelLarge, color = SoftColors.text2)
                 }
             }
+        }
+    }
+}
+
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun SuggestionDetails(row: Event, meta: SuggestionMeta?, pageUrl: String?) {
+    Text(
+        EventSuggestions.LABEL,
+        style = MaterialTheme.typography.labelMedium,
+        color = SUGGESTION_ACCENT.onContainer,
+    )
+    Text(row.title, style = MaterialTheme.typography.bodyLarge, color = SoftColors.text)
+    val start = row.startsAt
+    val whenText = when {
+        start == null -> null
+        row.allDay -> "${documentDateCompact(start)}, all day"
+        else -> clockTime(start)
+    }
+    listOfNotNull(whenText, meta?.price).joinToString(" - ").takeIf { it.isNotEmpty() }?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
+    }
+    (row.location ?: listOfNotNull(meta?.venue, meta?.city).joinToString(", ").ifEmpty { null })?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
+    }
+    if (pageUrl != null) {
+        // The visible half of the tap target, so the row says it opens something before anyone tries.
+        Text(
+            "Open event page",
+            style = MaterialTheme.typography.labelLarge,
+            color = SUGGESTION_ACCENT.onContainer,
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    } else {
+        // A link that is not http(s), or an unstructured row's notes: shown as plain text, not tappable.
+        (meta?.url ?: row.notes.takeIf { meta == null })?.takeIf { it.isNotBlank() }?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
         }
     }
 }

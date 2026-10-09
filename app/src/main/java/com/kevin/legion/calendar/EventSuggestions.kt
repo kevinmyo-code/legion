@@ -10,6 +10,7 @@ import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.documentDate
 import com.kevin.legion.util.shortDate
+import java.net.URI
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -35,6 +36,20 @@ data class SuggestionMeta(
             val o = raw?.takeIf { it.isNotBlank() }?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return null
             fun s(key: String) = o.optString(key, "").trim().takeIf { it.isNotEmpty() && !o.isNull(key) }
             return SuggestionMeta(s("city"), s("venue"), s("address"), s("url"), s("price"))
+        }
+
+        /**
+         * [raw] as a page the browser may open (Kevin, 2026-10-09: *"tap the event row to open up the
+         * event's page in the browser"*), or null. Only an absolute `http`/`https` URL with a host
+         * passes; null, blank, `javascript:`, `file:`, `intent:` and anything unparseable are refused,
+         * so a row with no such URL is simply not tappable. The web's guard
+         * (`server/frontend/src/lib/suggestion.ts`) checks the scheme only; this one also wants a host.
+         */
+        fun openablePageUrl(raw: String?): String? {
+            val url = raw?.trim()?.takeIf { it.isNotEmpty() }
+            val uri = url?.let { runCatching { URI(it) }.getOrNull() }
+            val web = uri?.scheme?.lowercase() in setOf("http", "https") && !uri?.host.isNullOrBlank()
+            return url.takeIf { web }
         }
     }
 }
