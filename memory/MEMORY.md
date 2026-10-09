@@ -22,6 +22,31 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Where we stopped - 2026-10-09 (session e4a5a3d6)
+
+- **`dev` is `fa966bc9`, pushed; engine deployed at that point (revision `legion-00029-bbs` + worker job).**
+  Android 4472 / 0 failures, server 1652 with 0 failures after the const-val parser fix. Live on dev:
+  merchant aliases ("JOHN NAUS" shows as Walmart, rule written on live), voice-tool fixes from the
+  54-session voice-log audit (all-day dates, new-code baseline, tick wording, data-access clause),
+  nav follow camera, places by address + rename + confirm, event suggestions (118 rows loaded,
+  Oct 9 - Nov 1). **Phone is on `b42ad60a`**, so suggestions are not on the A25 yet.
+- **Three branches, pushed, NOT merged:**
+  - `feat/home-calendar`: HOME is prototype A plus a More sheet. Done, 4515/0, ready to merge.
+    Ticket `one-home/11`, on-device checks owed.
+  - `feat/suggestion-tap`: tap opens the event page, plus per-member pins (new server table).
+    Built, but the builder was stopped before its final review and test pass. Owes the suite.
+  - `feat/plaid-ledger`: Plaid as the BofA ledger truth (ADR 0057). **One WIP commit, untested.**
+    Stopped mid-build at the CLAUDE.md §4 amendment.
+- **Plaid:** Trial applied 2026-10-09, under review 2-3 business days. **Never click "request
+  production access"; it ends Trial.** Sandbox `PLAID_CLIENT_ID`/`PLAID_SECRET` are in GCP Secret
+  Manager, readable by the runtime SA. Swap in the production secret when Trial is approved.
+- **Owed by Kevin:**
+  - Skip Tue Oct 13 in the weekly COSC 4320 series via "Just this one". The one-off copy is deleted.
+  - Phone checks once suggestions and the home screen are installed.
+- **Cloud credits ($250, expire 2026-11-04):** cloud sessions bypass the weekly limit. Use them for
+  web, server and doc work; phone and deploy work stays local.
+- The voice-log audit report was never committed: the repo is public and it quotes private conversations. Its findings are fixed above.
+
 ## Web revamp - 2026-10-03 (session legion-26)
 
 - **`.scratch/web-revamp/` is built end to end and on `dev` (`db73b6e`)**: soft Material light web
