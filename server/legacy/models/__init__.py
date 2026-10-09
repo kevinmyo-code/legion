@@ -18,7 +18,7 @@ from legacy.models.body import (
     WorkoutPlanItem,
     WorkoutSetLog,
 )
-from legacy.models.dates import Event, EventSkip
+from legacy.models.dates import Event, EventSkip, SuggestionPin
 from legacy.models.fleet import (
     BuildEntry,
     ChassisQuirk,
@@ -90,6 +90,7 @@ __all__ = [
     "SleepLog",
     "SleepTarget",
     "Statement",
+    "SuggestionPin",
     "Vehicle",
     "VehicleSpec",
     "VoiceNote",

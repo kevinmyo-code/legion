@@ -173,6 +173,7 @@ export function makeEvent(overrides: Partial<Event> & { title: string }): Event 
     kind: 'event',
     remind_minutes_before: null,
     visibility: 'shared',
+    pinned_by: [],
     ...overrides,
   }
 }
@@ -443,6 +444,27 @@ export function createEngine(options: EngineOptions = {}): Engine {
           event.updated_at = now
         }
         return { status: 204 }
+      }
+
+      // Suggestion pins (2026-10-09): the caller is ME, like every other write.
+      match = pathname.match(/^\/api\/events\/([^/]+)\/pins(\/mine)?$/)
+      if (match && ((method === 'POST' && !match[2]) || (method === 'DELETE' && match[2]))) {
+        const event = engine.events.find((candidate) => candidate.id === match![1] && candidate.deleted_at === null)
+        if (!event) return { status: 404, body: { detail: `No suggestion with id ${match[1]}. Nothing was pinned or unpinned.` } }
+        const pins = event.pinned_by ?? []
+        const mine = pins.some((pin) => pin.user_id === ME.user_id)
+        if (method === 'POST') {
+          if (event.kind !== 'suggestion') {
+            return { status: 400, body: { detail: 'Nothing was pinned. Only a suggestion can be pinned.' } }
+          }
+          if (mine) return { status: 200, body: event }
+          Object.assign(event, { pinned_by: [...pins, { user_id: ME.user_id, display_name: ME.name }], updated_at: now })
+          return { status: 201, body: event }
+        }
+        if (mine) {
+          Object.assign(event, { pinned_by: pins.filter((pin) => pin.user_id !== ME.user_id), updated_at: now })
+        }
+        return { status: 200, body: event }
       }
 
       match = pathname.match(/^\/api\/events\/([^/]+)\/skips$/)

@@ -286,6 +286,17 @@ data class Event(
      * needed for lookup performance either.
      */
     @ColumnInfo(defaultValue = "''") val guid: String = "",
+    /**
+     * Who on the household has pinned this suggestion ("I want to go"; Kevin, 2026-10-09), stored
+     * verbatim as the engine's `pinned_by` JSON array - `[{"user_id": "...", "display_name": "..."}]`,
+     * oldest pin first (v74 -> v75, [MIGRATION_74_75]). **READ-ONLY from the server's point of view:**
+     * [com.kevin.legion.backend.EventsSync] fills it from the pull and nothing ever sends it back on
+     * an event POST/PATCH; a pin is changed only through the pin/unpin outbox ops. Null means
+     * "never heard of any" (every non-suggestion, and every row from before this column); `"[]"`
+     * means the engine said nobody has pinned it. Parsed by
+     * [com.kevin.legion.calendar.SuggestionPin.parse], which reads malformed text as empty.
+     */
+    val pinnedByJson: String? = null,
 ) {
     companion object {
         /**

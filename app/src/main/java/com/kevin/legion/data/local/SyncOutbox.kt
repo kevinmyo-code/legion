@@ -135,6 +135,11 @@ object OutboxOperation {
      * doc for why that function cannot express a rename). */
     const val UPDATE = "update"
     const val SOFT_DELETE = "soft_delete"
+
+    /** `events` only: pin / unpin a suggestion as the signed-in member
+     * ([com.kevin.legion.backend.EventsPins]; `POST` / `DELETE /api/events/<id>/pins`). */
+    const val PIN = "pin"
+    const val UNPIN = "unpin"
 }
 
 @Dao

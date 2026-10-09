@@ -177,6 +177,8 @@ object EventsSync {
         // way since the lookup below is always keyed by a real server uuid, but filtering says so.
         val localByServerId = localRows.mapNotNull { row -> row.serverId?.let { it to row } }.toMap()
 
+        val rowsWithPendingPin = EventsPins.rowsWithPendingPin(db)
+
         var inserted = 0
         var updated = 0
         var skippedLocalNewer = 0
@@ -241,7 +243,7 @@ object EventsSync {
             // by this tie: a local tick the server never heard about is strictly NEWER than the
             // server row, so it takes the skippedLocalNewer branch below, not this one.
             if (remote.updatedAtMs >= local.updatedAtMs) {
-                val merged = remote.toMergedEvent(local)
+                val merged = remote.toMergedEvent(local, keepLocalPins = local.id in rowsWithPendingPin)
                 // Idempotency (rule 8): on a second consecutive pull of the same server state,
                 // local.updatedAtMs already equals remote.updatedAtMs from THIS pull's own prior
                 // write, so this branch runs again but produces a byte-for-byte identical [Event] -
@@ -314,6 +316,7 @@ object EventsSync {
         createdAt = createdAtMs,
         kind = kind,
         structuredMeta = structuredMeta,
+        pinnedByJson = pinnedByJson,
         // A fresh local row has no prior identity to preserve - reuse the server's own
         // migration-provenance guid when it states one (so a FUTURE pull or reconcile recognises
         // this exact row as already-present rather than treating it as a second copy), or mint a
@@ -325,7 +328,7 @@ object EventsSync {
     /** [existing] merged with [this] server row's fields - the LOCAL surrogate [Event.id] and,
      * where the server states none, [Event.guid] are the only two columns NOT simply replaced
      * wholesale by the server's own values. */
-    private fun RemoteEvent.toMergedEvent(existing: Event): Event = Event(
+    private fun RemoteEvent.toMergedEvent(existing: Event, keepLocalPins: Boolean = false): Event = Event(
         id = existing.id,
         serverId = serverId,
         title = title,
@@ -358,6 +361,11 @@ object EventsSync {
         createdAt = createdAtMs,
         kind = kind,
         structuredMeta = structuredMeta,
+        // Suggestion pins (2026-10-09). A key the transport did not state (null: a redacted
+        // tombstone, an older engine) leaves the stored value alone, and so does a pin or unpin
+        // still waiting in the outbox - the server has not heard it yet, so its older list must not
+        // erase the tap. Otherwise the server's list wins, "[]" included.
+        pinnedByJson = if (keepLocalPins) existing.pinnedByJson else pinnedByJson ?: existing.pinnedByJson,
         // Preserve the row's OWN existing guid on an update rather than regenerating one - this is
         // exactly what lets serverId matching become trustworthy on the NEXT pull for a row that
         // only matched via guid this time (see this file's own class doc), and it leaves a

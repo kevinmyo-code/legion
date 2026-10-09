@@ -112,3 +112,36 @@ class EventSkip(models.Model):
         managed = False
         db_table = "event_skips"
         unique_together = (("event", "skip_date"),)
+
+
+class SuggestionPin(models.Model):
+    """One member's "I want to go" on one suggestion (Kevin, 2026-10-09).
+
+    Created by `ingest/migrations/0019` (SQL in `api/suggestion_pins.py`), not
+    by Supabase, so `managed = False` like every table here. One row per
+    (event, member), revived rather than duplicated on a second pin; an unpin
+    tombstones it. The event and the pin share a household by composite
+    foreign key, and the database refuses a pin on anything but a live
+    suggestion or by anyone but a member of that household.
+    """
+
+    id = models.UUIDField(primary_key=True)
+    event = models.ForeignKey(
+        Event, db_column="event_id", on_delete=models.DO_NOTHING, related_name="+"
+    )
+    # The member who wants to go. Their `id` and name ARE on the wire
+    # (`pinned_by`), the same way `GET /api/households/me` lists the roster;
+    # this is not an owner, and no privacy is decided by it.
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, db_column="user_id", on_delete=models.DO_NOTHING, related_name="+"
+    )
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(null=True)
+
+    household = household_field()
+
+    class Meta:
+        managed = False
+        db_table = "suggestion_pins"
+        unique_together = (("event", "user"),)

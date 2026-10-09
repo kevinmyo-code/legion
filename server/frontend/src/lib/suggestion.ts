@@ -58,3 +58,40 @@ export function suggestionMeta(event: Pick<Event, 'structured_meta'>): Suggestio
   }
   return Object.values(meta).every((v) => v === null) ? null : meta
 }
+
+/** One member who pinned a suggestion ("I want to go"), as the engine sends it. */
+export interface Pin {
+  user_id: string
+  display_name: string
+}
+
+/** Who pinned it, oldest first; `[]` when nobody has or the row predates pins. */
+export function pinsOf(event: Pick<Event, 'pinned_by'>): readonly Pin[] {
+  return Array.isArray(event.pinned_by) ? event.pinned_by : []
+}
+
+export function isPinnedBy(event: Pick<Event, 'pinned_by'>, userId: string | null | undefined): boolean {
+  return userId != null && pinsOf(event).some((pin) => pin.user_id === userId)
+}
+
+/**
+ * Who wants to go, in words (Kevin, 2026-10-09). "You" first, then everyone
+ * else in the order they pinned: "You want to go", "Mia wants to go", "You and
+ * Mia want to go", "You, Mia and Sam want to go". Null when nobody has pinned
+ * it. The Android row says exactly the same (`SuggestionPin.words` in
+ * `calendar/EventSuggestions.kt`).
+ */
+export function pinnedWords(pins: readonly Pin[], myUserId: string | null | undefined): string | null {
+  const mine = myUserId != null && pins.some((pin) => pin.user_id === myUserId)
+  const others = pins.filter((pin) => pin.user_id !== myUserId).map((pin) => pin.display_name)
+  const names = mine ? ['You', ...others] : others
+  if (names.length === 0) return null
+  if (names.length === 1) return names[0] === 'You' ? 'You want to go' : `${names[0]} wants to go`
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} want to go`
+}
+
+/** The "Pinned only" filter: every plan stays; a suggestion stays only when
+ * someone in the household has pinned it. */
+export function pinnedSuggestionsOnly<T extends Pick<Event, 'kind' | 'pinned_by'>>(events: readonly T[]): T[] {
+  return events.filter((event) => !isSuggestion(event) || pinsOf(event).length > 0)
+}

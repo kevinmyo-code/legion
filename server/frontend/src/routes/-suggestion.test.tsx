@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, test } from 'vitest'
 
-import { createEngine, makeEvent, todayAt, type Engine } from '@/test/engine'
+import { ME, createEngine, makeEvent, todayAt, type Engine } from '@/test/engine'
 import { renderApp } from '@/test/render-app'
 
 /** The suggestion kind end to end: shown apart and in words on the calendar,
@@ -59,8 +59,10 @@ test('Add to my plans sends kind "event" and nothing else', async () => {
     'href',
     'https://example.test/riverfest',
   )
-  // Exactly two actions besides closing.
+  // Exactly two actions besides closing, and the member's own pin above them
+  // (a wish, not a thing done to the suggestion).
   expect(within(dialog).getAllByRole('button').map((b) => b.textContent)).toEqual([
+    'I want to go',
     'Close',
     'Not interested',
     'Add to my plans',
@@ -105,7 +107,8 @@ test('a structured suggestion shows venue, city, price and links its url', async
   })
   renderApp('/calendar', engine, 'family')
   await screen.findByRole('heading', { name: 'Calendar' })
-  fireEvent.click(await screen.findByRole('button', { name: 'Edit Jazz night' }))
+  // The row itself is the page link now; the sheet sits behind its own button.
+  fireEvent.click(await screen.findByRole('button', { name: 'Add or dismiss Jazz night' }))
   const dialog = await screen.findByRole('dialog')
   expect(within(dialog).getByText('The Hall')).toBeInTheDocument()
   expect(within(dialog).getByText('Austin')).toBeInTheDocument()
@@ -133,4 +136,202 @@ test('an unsafe structured url is not linked and notes are not searched', async 
   fireEvent.click(await screen.findByRole('button', { name: 'Edit Odd' }))
   const dialog = await screen.findByRole('dialog')
   expect(within(dialog).queryByRole('link')).toBeNull()
+})
+
+function engineWithPage(url: unknown): Engine {
+  return createEngine({
+    events: [
+      makeEvent({
+        title: 'Jazz night',
+        kind: 'suggestion',
+        starts_at: todayAt(19, 0),
+        notes: 'https://notes.test/jazz',
+        structured_meta: { city: 'Austin', venue: 'The Hall', url },
+      }),
+    ],
+  })
+}
+
+async function calendarDay(engine: Engine) {
+  renderApp('/calendar', engine, 'family')
+  await screen.findByRole('heading', { name: 'Calendar' })
+  await screen.findByText('Suggestions, not in your plans')
+}
+
+test('a suggestion row with an http(s) page is a real link to it, in a new tab', async () => {
+  await calendarDay(engineWithPage('https://right.test/jazz'))
+  const link = screen.getByRole('link', { name: 'Open event page for Jazz night' })
+  expect(link.tagName).toBe('A')
+  expect(link).toHaveAttribute('href', 'https://right.test/jazz')
+  expect(link).toHaveAttribute('target', '_blank')
+  expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  // The affordance is visible in words, not only in the accessible name.
+  expect(within(link).getByText('Open event page')).toBeInTheDocument()
+  // The row no longer offers to "Edit" itself; the sheet is behind its own button.
+  expect(screen.queryByRole('button', { name: 'Edit Jazz night' })).toBeNull()
+})
+
+test('the actions button sits outside the link and opens the sheet without navigating', async () => {
+  const engine = engineWithPage('https://right.test/jazz')
+  await calendarDay(engine)
+  const link = screen.getByRole('link', { name: 'Open event page for Jazz night' })
+  expect(within(link).queryAllByRole('button')).toHaveLength(0)
+  const linkClicks: Event[] = []
+  link.addEventListener('click', (e) => linkClicks.push(e))
+  const actions = screen.getByRole('button', { name: 'Add or dismiss Jazz night' })
+  expect(actions.closest('a')).toBeNull()
+  const before = window.location.href
+  fireEvent.click(actions)
+  const dialog = await screen.findByRole('dialog')
+  expect(linkClicks).toHaveLength(0)
+  expect(window.location.href).toBe(before)
+  // Both actions stay reachable, and pressing one writes without touching the link.
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Add to my plans' }))
+  await waitFor(() => expect(engine.writes.filter((w) => w.method === 'PATCH')).toHaveLength(1))
+  expect(linkClicks).toHaveLength(0)
+  expect(window.location.href).toBe(before)
+})
+
+test.each([
+  ['javascript:', 'javascript:alert(1)'],
+  ['file:', 'file:///etc/passwd'],
+  ['blank', '   '],
+  ['missing', null],
+])('a %s page leaves the row opening the sheet, with no link', async (_name, url) => {
+  await calendarDay(engineWithPage(url))
+  expect(screen.queryByRole('link', { name: /Open event page/ })).toBeNull()
+  expect(screen.queryByText('Open event page')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Add or dismiss Jazz night' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Jazz night' }))
+  expect(await screen.findByRole('dialog')).toBeInTheDocument()
+})
+
+// Suggestion pins (Kevin, 2026-10-09): "I want to go", seen by the household.
+
+const KEVIN = { user_id: '9a9a9a9a-0000-4000-8000-0123456789ab', display_name: 'Kevin' }
+const SAM = { user_id: '8b8b8b8b-0000-4000-8000-0123456789ab', display_name: 'Sam' }
+
+function engineWithPins(pins: { user_id: string; display_name: string }[], url: unknown = 'https://right.test/jazz') {
+  return createEngine({
+    events: [
+      makeEvent({
+        title: 'Jazz night',
+        kind: 'suggestion',
+        starts_at: todayAt(19, 0),
+        structured_meta: { city: 'Austin', url },
+        pinned_by: pins,
+      }),
+    ],
+  })
+}
+
+test('I want to go pins it as me, and the row says so in words', async () => {
+  const engine = engineWithPins([])
+  await calendarDay(engine)
+  const toggle = await screen.findByRole('button', { name: 'I want to go: Jazz night' })
+  await waitFor(() => expect(toggle).toBeEnabled())
+  expect(toggle).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByText('You want to go')).toBeNull()
+
+  fireEvent.click(toggle)
+  await waitFor(() =>
+    expect(engine.writes.filter((w) => w.method === 'POST' && w.pathname.endsWith('/pins'))).toHaveLength(1),
+  )
+  const unpin = await screen.findByRole('button', { name: 'Unpin: Jazz night' })
+  expect(unpin).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByText('You want to go')).toBeInTheDocument()
+
+  fireEvent.click(unpin)
+  await waitFor(() =>
+    expect(engine.writes.filter((w) => w.method === 'DELETE' && w.pathname.endsWith('/pins/mine'))).toHaveLength(1),
+  )
+  expect(await screen.findByRole('button', { name: 'I want to go: Jazz night' })).toBeInTheDocument()
+  expect(screen.queryByText('You want to go')).toBeNull()
+})
+
+test.each([
+  ['another member only', [KEVIN], 'Kevin wants to go'],
+  ['another member and me', [KEVIN, { user_id: ME.user_id, display_name: 'Mia' }], 'You and Kevin want to go'],
+  ['me and two others', [KEVIN, SAM, { user_id: ME.user_id, display_name: 'Mia' }], 'You, Kevin and Sam want to go'],
+])('the row says who wants to go: %s', async (_name, pins, words) => {
+  await calendarDay(engineWithPins(pins))
+  expect(await screen.findByText(words)).toBeInTheDocument()
+})
+
+test('the pin toggle is outside the event-page link and never navigates', async () => {
+  const engine = engineWithPins([KEVIN])
+  await calendarDay(engine)
+  const link = screen.getByRole('link', { name: 'Open event page for Jazz night' })
+  const linkClicks: Event[] = []
+  link.addEventListener('click', (e) => linkClicks.push(e))
+  const toggle = await screen.findByRole('button', { name: 'I want to go: Jazz night' })
+  expect(toggle.closest('a')).toBeNull()
+  // The words are outside the link too, so a screen reader hears them.
+  expect(screen.getByText('Kevin wants to go').closest('a')).toBeNull()
+  await waitFor(() => expect(toggle).toBeEnabled())
+  const before = window.location.href
+  fireEvent.click(toggle)
+  await screen.findByText('You and Kevin want to go')
+  expect(linkClicks).toHaveLength(0)
+  expect(window.location.href).toBe(before)
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('a refused pin says what did not happen, beside the button', async () => {
+  const engine = engineWithPins([])
+  const id = engine.events[0].id
+  engine.refusals[`POST /api/events/${id}/pins`] = {
+    status: 400,
+    body: { detail: 'Nothing was pinned. Only a suggestion can be pinned.' },
+  }
+  await calendarDay(engine)
+  const toggle = await screen.findByRole('button', { name: 'I want to go: Jazz night' })
+  await waitFor(() => expect(toggle).toBeEnabled())
+  fireEvent.click(toggle)
+  expect(await screen.findByRole('alert')).toHaveTextContent('Nothing was pinned. Only a suggestion can be pinned.')
+})
+
+test('Pinned only hides the suggestions nobody pinned, and says so when none are left', async () => {
+  const engine = createEngine({
+    events: [
+      makeEvent({ title: 'Jazz night', kind: 'suggestion', starts_at: todayAt(19, 0), pinned_by: [KEVIN] }),
+      makeEvent({ title: 'Book fair', kind: 'suggestion', starts_at: todayAt(10, 0) }),
+      makeEvent({ title: 'Dentist', kind: 'event', starts_at: todayAt(15, 0) }),
+    ],
+  })
+  await calendarDay(engine)
+  expect(screen.getByText('Book fair')).toBeInTheDocument()
+  const filter = screen.getByRole('button', { name: 'Pinned only' })
+  expect(filter).toHaveAttribute('aria-pressed', 'false')
+
+  fireEvent.click(filter)
+  expect(screen.getByRole('button', { name: 'Pinned only' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByText('Book fair')).toBeNull()
+  expect(screen.getByText('Jazz night')).toBeInTheDocument()
+  expect(screen.getByText('Dentist')).toBeInTheDocument()
+})
+
+test('Pinned only on a day with no pinned suggestion says so in words', async () => {
+  await calendarDay(engineWithPins([]))
+  fireEvent.click(screen.getByRole('button', { name: 'Pinned only' }))
+  expect(screen.getByText(/No pinned suggestions on this day/)).toBeInTheDocument()
+  // The filter stays reachable to turn back off.
+  fireEvent.click(screen.getByRole('button', { name: 'Pinned only' }))
+  expect(screen.getByText('Jazz night')).toBeInTheDocument()
+})
+
+test('the desk calendar has the same filter, and its chips say who wants to go', async () => {
+  const engine = createEngine({
+    events: [
+      makeEvent({ title: 'Jazz night', kind: 'suggestion', starts_at: todayAt(19, 0), pinned_by: [KEVIN] }),
+      makeEvent({ title: 'Book fair', kind: 'suggestion', starts_at: todayAt(10, 0) }),
+    ],
+  })
+  renderApp('/calendar', engine, 'workbench')
+  await screen.findByRole('heading', { name: 'Calendar' })
+  await screen.findByText('Book fair')
+  expect(screen.getByText('Kevin wants to go')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Pinned only' }))
+  expect(screen.queryByText('Book fair')).toBeNull()
+  expect(screen.getByText('Jazz night')).toBeInTheDocument()
 })

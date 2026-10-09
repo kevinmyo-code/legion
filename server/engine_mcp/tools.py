@@ -426,7 +426,8 @@ def _list_events(request, args) -> ToolResult:
         f"one's repeat_* fields before saying whether it falls in the window.\n"
         f"- undated: {len(sections['undated'])} tasks with no date.\n"
         f"- suggestions: {len(sections['suggestions'])} things the household could do in the "
-        f"window. NOT plans: never say they have one on, are going, or are busy then.\n"
+        f"window. NOT plans: never say they have one on, are going, or are busy then. "
+        f"`pinned_by` names the members who want to go to one: a wish, still not a plan.\n"
         f"{_json(sections)}",
         structured=sections,
     )

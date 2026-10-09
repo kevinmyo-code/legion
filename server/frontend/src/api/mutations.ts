@@ -164,6 +164,19 @@ export function useDeleteEvent() {
   )
 }
 
+/** "I want to go" on a suggestion, or taking it back (Kevin, 2026-10-09). Only
+ * ever the signed-in member's own pin: the engine has no route that names
+ * another member's. Idempotent both ways, so a retry is safe. */
+export function usePinSuggestion() {
+  return useEventWrite(async ({ id, pinned }: { id: string; pinned: boolean }) =>
+    runWrite(pinned ? 'saved' : 'changed', () =>
+      pinned
+        ? api.POST('/api/events/{id}/pins', { params: { path: { id } } })
+        : api.DELETE('/api/events/{id}/pins/mine', { params: { path: { id } } }),
+    ),
+  )
+}
+
 /** "Not this one": the occurrence on `date` (`YYYY-MM-DD`, the date it shows) is
  * taken out of the series. Idempotent on the engine, so a retry is safe. */
 export function useSkipOccurrence() {
