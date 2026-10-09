@@ -95,4 +95,20 @@ class AriaBrainHonestyClauseTest {
             assertTrue("missing from the prompt: $why", SHARED_INSTRUCTIONS.contains(rule))
         }
     }
+
+    /** Voice audit findings 8 and 9: a tool result ignored, and a blanket "no access" with no call. */
+    @Test
+    fun `the data-access clause is wired in, demands a tool call, and forbids an unfounded no-access`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(DATA_ACCESS_CLAUSE))
+        assertTrue(DATA_ACCESS_CLAUSE.contains("call the tool before you answer"))
+        assertTrue(DATA_ACCESS_CLAUSE.contains("no access"))
+        assertTrue(DATA_ACCESS_CLAUSE.contains("came back empty or failed, and then say which"))
+        for (domain in listOf("calendar", "tasks", "money", "places", "cars", "food", "body")) {
+            assertTrue("the clause must cover $domain", DATA_ACCESS_CLAUSE.contains(domain))
+        }
+        // Names no tool, so it stays true as the toolset changes.
+        for (tool in listOf("get_current_location", "get_balance", "read_calendar")) {
+            assertTrue(!DATA_ACCESS_CLAUSE.contains(tool))
+        }
+    }
 }

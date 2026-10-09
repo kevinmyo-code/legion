@@ -977,6 +977,20 @@ internal val CANNOT_CLAUSE =
         "about something that never happened. "
 
 /**
+ * Never deny access to the user's own data (voice audit findings 8 and 9, 2026-10-09). A successful
+ * `get_current_location` result was answered with "I don't have your current location", and "Can you
+ * see my bank statements?" got "I don't have access" with no tool call while the ledger tools exist.
+ * A capability denial is the costliest wrong answer: the user stops asking. Conditioned on the tool
+ * RESULT, like [CANNOT_CLAUSE], and naming no tools, so it survives the next one. At file scope for
+ * the same reason as [CANNOT_CLAUSE]: never per-persona. Presence guarded by
+ * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable.
+ */
+internal val DATA_ACCESS_CLAUSE =
+    "For anything about the user's own data - calendar, tasks, money, places, cars, food, body - " +
+        "call the tool before you answer. Never say you have no access to it or no record of it " +
+        "unless a tool this turn came back empty or failed, and then say which. "
+
+/**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08
  * (`.scratch/proactive-mode/issues/08-proactive-register.md`), Kevin 2026-08-21.
  *
@@ -1053,6 +1067,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-ti
     "user arrives at a place). Always call the matching tool before claiming you've done " +
     "something - never say you're pulling up music unless you actually called the tool for it. " +
     CANNOT_CLAUSE +
+    DATA_ACCESS_CLAUSE +
     PROACTIVE_CLAUSE +
     // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
     // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -
