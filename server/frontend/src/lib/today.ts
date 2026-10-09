@@ -1,6 +1,7 @@
 import type { Checklist, ChecklistItem, ChecklistTick, Event, EventSkip } from '@/api/types'
 import { appliesOnDay } from '@/lib/day'
 import { occurrencesOnDay } from '@/lib/recurrence'
+import { plansOnly } from '@/lib/suggestion'
 
 /** A checklist item due today, or already ticked/skipped today - the
  * "to do today" zone `docs/design/today.md` recommends leading with, one
@@ -58,7 +59,7 @@ export function itemsDueOn(
   return due.sort((a, b) => (a.item.sort_order ?? 0) - (b.item.sort_order ?? 0))
 }
 
-/** Live events/tasks landing on the viewer's local `day`, a repeating series
+/** Live events/tasks (never suggestions: those are not the household's plans) landing on the viewer's local `day`, a repeating series
  * included (one of its occurrences) and a skipped occurrence not.
  * `starts_at` is nullable (an event with no time at all); such rows never land
  * in a day bucket, matching the phone's own `activeByKindInLocalWindow` (a row
@@ -67,5 +68,5 @@ export function itemsDueOn(
  * `localDayOfEvent`'s own doc comment for the trap this avoids. The expansion
  * itself lives in `lib/recurrence.ts`. */
 export function eventsOnDay(day: number, events: Event[], skips?: readonly EventSkip[]): Event[] {
-  return occurrencesOnDay(day, events, skips).map((occurrence) => occurrence.event)
+  return occurrencesOnDay(day, plansOnly(events), skips).map((occurrence) => occurrence.event)
 }

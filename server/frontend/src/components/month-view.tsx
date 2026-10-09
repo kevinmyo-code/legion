@@ -2,11 +2,13 @@ import { Plus } from 'lucide-react'
 
 import { isCanvasRow, timeLabel } from '@/components/event-row'
 import { useEventSheet } from '@/components/event-sheet-context'
+import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
 import { TaskCheck } from '@/components/task-check'
 import { VisibilityMark } from '@/components/visibility-mark'
 import { dateForEpochDay } from '@/lib/day'
 import { splitCourse } from '@/lib/horizon'
 import type { Occurrence } from '@/lib/recurrence'
+import { isSuggestion } from '@/lib/suggestion'
 import { cn } from '@/lib/utils'
 import { visibilityOf } from '@/lib/visibility'
 
@@ -62,8 +64,10 @@ export function MonthView({
           const date = dateForEpochDay(day)
           const items = byDay.get(day) ?? []
           const ordered = [
-            ...items.filter((o) => o.event.kind !== 'task'),
+            ...items.filter((o) => o.event.kind !== 'task' && !isSuggestion(o.event)),
             ...items.filter((o) => o.event.kind === 'task'),
+            // Suggestions last, so they never push a plan into "+ N more".
+            ...items.filter((o) => isSuggestion(o.event)),
           ]
           const hidden = ordered.length - SHOWN
           const inMonth = date.getMonth() === month
@@ -127,6 +131,7 @@ function Chip({ occurrence }: { occurrence: Occurrence }) {
   const visibility = visibilityOf(event)
   const shared = visibility === 'shared'
   const isTask = event.kind === 'task'
+  const suggestion = isSuggestion(event)
   const { label } = splitCourse(event.title)
   const editable = sheet !== null && !isCanvasRow(occurrence)
   const time = event.all_day || isTask ? '' : timeLabel(occurrence)
@@ -139,7 +144,7 @@ function Chip({ occurrence }: { occurrence: Occurrence }) {
       </span>
     </>
   )
-  const tone = isTask ? 'bg-surface-2' : shared ? 'bg-shared text-shared-foreground' : 'bg-surface-3'
+  const tone = suggestion ? SUGGESTION_TONE : isTask ? 'bg-surface-2' : shared ? 'bg-shared text-shared-foreground' : 'bg-surface-3'
 
   return (
     <div className={cn('flex min-w-0 flex-col gap-0.5 rounded-md px-1.5 py-1 text-[0.75rem]', tone)}>
@@ -158,7 +163,11 @@ function Chip({ occurrence }: { occurrence: Occurrence }) {
           <div className="flex min-w-0 flex-1 items-center gap-1.5">{text}</div>
         )}
       </div>
-      <VisibilityMark visibility={visibility} compact onTint={shared && !isTask} className="self-start" />
+      {suggestion ? (
+        <SuggestionMark compact className="self-start" />
+      ) : (
+        <VisibilityMark visibility={visibility} compact onTint={shared && !isTask} className="self-start" />
+      )}
     </div>
   )
 }

@@ -1,9 +1,11 @@
 import { useEventSheet } from '@/components/event-sheet-context'
+import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
 import { TaskCheck } from '@/components/task-check'
 import { VisibilityMark } from '@/components/visibility-mark'
 import { canvasLine, canvasMetaOf } from '@/lib/canvas'
 import { splitCourse } from '@/lib/horizon'
 import type { Occurrence } from '@/lib/recurrence'
+import { isSuggestion, suggestionMeta } from '@/lib/suggestion'
 import { cn } from '@/lib/utils'
 import { visibilityOf } from '@/lib/visibility'
 
@@ -57,7 +59,8 @@ export function EventRow({
   const canvas = canvasMeta ? canvasLine(event.done ?? false, canvasMeta) : ''
   const visibility = visibilityOf(event)
   const isTask = event.kind === 'task'
-  const tinted = !isTask && visibility === 'shared'
+  const suggestion = isSuggestion(event)
+  const tinted = !isTask && !suggestion && visibility === 'shared'
   const editable = sheet !== null && !isCanvasRow(occurrence)
 
   const body = (
@@ -74,6 +77,9 @@ export function EventRow({
       {showCourse && course && (
         <span className="ml-2 text-[0.8125rem] text-muted-foreground">{course}</span>
       )}
+      {suggestion && suggestionMeta(event)?.price && (
+        <span className="block text-[0.8125rem] opacity-75">Price: {suggestionMeta(event)?.price}</span>
+      )}
       {event.location && !isTask && (
         <span className="block text-[0.8125rem] opacity-75">{event.location}</span>
       )}
@@ -89,7 +95,7 @@ export function EventRow({
     <li
       className={cn(
         'flex min-h-11 items-start gap-3 rounded-[1.125rem] py-2 pr-2.5 pl-4',
-        tinted ? 'bg-shared text-shared-foreground' : 'bg-surface-2',
+        suggestion ? SUGGESTION_TONE : tinted ? 'bg-shared text-shared-foreground' : 'bg-surface-2',
       )}
     >
       {isTask ? (
@@ -119,7 +125,11 @@ export function EventRow({
           {timeLabel(occurrence)}
         </span>
       )}
-      <VisibilityMark visibility={visibility} onTint={tinted} className="mt-0.5" />
+      {suggestion ? (
+        <SuggestionMark className="mt-0.5" />
+      ) : (
+        <VisibilityMark visibility={visibility} onTint={tinted} className="mt-0.5" />
+      )}
     </li>
   )
 }

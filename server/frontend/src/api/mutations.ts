@@ -151,7 +151,7 @@ export function useCreateEvent() {
 
 export function useUpdateEvent() {
   return useEventWrite(
-    async ({ id, fields }: { id: string; fields: Partial<EventFields> & { visibility?: Visibility } }) =>
+    async ({ id, fields }: { id: string; fields: Partial<EventFields> & { visibility?: Visibility; kind?: string } }) =>
       runWrite('saved', () =>
         api.PATCH('/api/events/{id}', { params: { path: { id } }, body: fields }),
       ),

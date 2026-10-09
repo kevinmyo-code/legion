@@ -2,6 +2,7 @@ import type { Event, EventSkip } from '@/api/types'
 import { EventRow } from '@/components/event-row'
 import { GroupedTasks } from '@/components/grouped-tasks'
 import { groupByDay } from '@/lib/calendar-range'
+import { plansOnly } from '@/lib/suggestion'
 import { dateForEpochDay, todayEpochDay } from '@/lib/day'
 import { cn } from '@/lib/utils'
 
@@ -29,7 +30,8 @@ export function AgendaPanel({
 }) {
   const today = todayEpochDay()
   const days = Array.from({ length: AGENDA_DAYS_AFTER + 1 }, (_, offset) => today + offset)
-  const byDay = groupByDay(days, events, skips)
+  // Home is the household's plans: a suggestion is not one (lib/suggestion.ts).
+  const byDay = groupByDay(days, plansOnly(events), skips)
   const total = [...byDay.values()].reduce((sum, items) => sum + items.length, 0)
 
   return (

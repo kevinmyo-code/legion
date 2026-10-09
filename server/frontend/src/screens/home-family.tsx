@@ -15,6 +15,7 @@ import { HOME_COPY, NOTHING_TO_SHOW_PINNED, greeting, type HomeSection } from '@
 import { overdueOccurrences } from '@/lib/horizon'
 import { homeLists, usePins } from '@/lib/pins'
 import { occurrencesOnDay, type Occurrence } from '@/lib/recurrence'
+import { plansOnly } from '@/lib/suggestion'
 import { itemsDueOn } from '@/lib/today'
 
 /** Overdue rows shown before "and N more" (spec D6). */
@@ -195,7 +196,8 @@ export function FamilyHome() {
 
   const data = changes.data!
   const today = todayEpochDay()
-  const events = data.events ?? []
+  // Suggestions are not the household's plans; Home never sees them.
+  const events = plansOnly(data.events ?? [])
   const skips = data.event_skips ?? []
   const checklists = data.checklists ?? []
   const items = (data.checklist_items ?? []).filter((row) => row.deleted_at === null)

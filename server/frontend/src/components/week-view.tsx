@@ -3,11 +3,13 @@ import type { MouseEvent } from 'react'
 import { isCanvasRow, timeLabel } from '@/components/event-row'
 import { useEventSheet } from '@/components/event-sheet-context'
 import { TaskCheck } from '@/components/task-check'
+import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
 import { VisibilityMark } from '@/components/visibility-mark'
 import { canvasLine, canvasMetaOf } from '@/lib/canvas'
 import { dateForEpochDay } from '@/lib/day'
 import { splitCourse } from '@/lib/horizon'
 import type { Occurrence } from '@/lib/recurrence'
+import { isSuggestion } from '@/lib/suggestion'
 import { cn } from '@/lib/utils'
 import { visibilityOf } from '@/lib/visibility'
 import {
@@ -150,16 +152,17 @@ function Lane({ day, isToday, items }: { day: number; isToday: boolean; items: O
 function AllDayChip({ occurrence, onOpen }: { occurrence: Occurrence; onOpen?: () => void }) {
   const { event } = occurrence
   const visibility = visibilityOf(event)
-  const shared = visibility === 'shared'
+  const suggestion = isSuggestion(event)
+  const shared = visibility === 'shared' && !suggestion
   const body = (
     <>
       <span className="block truncate text-[0.8125rem] font-medium">{event.title}</span>
-      <VisibilityMark visibility={visibility} compact onTint={shared} />
+      {suggestion ? <SuggestionMark compact /> : <VisibilityMark visibility={visibility} compact onTint={shared} />}
     </>
   )
   const className = cn(
     'flex min-w-0 flex-col items-start gap-0.5 rounded-lg px-2 py-1 text-left',
-    shared ? 'bg-shared text-shared-foreground' : 'bg-surface-3',
+    suggestion ? SUGGESTION_TONE : shared ? 'bg-shared text-shared-foreground' : 'bg-surface-3',
   )
   return onOpen ? (
     <button
@@ -261,7 +264,8 @@ function Block({ block, sheet }: { block: Placed; sheet: ReturnType<typeof useEv
   const { occurrence } = block
   const { event } = occurrence
   const visibility = visibilityOf(event)
-  const shared = visibility === 'shared'
+  const suggestion = isSuggestion(event)
+  const shared = visibility === 'shared' && !suggestion
   const top = minutesToY(block.startMinutes)
   const height = ((block.endMinutes - block.startMinutes) / 60) * HOUR_PX
   // What fits. A half-hour block is one row (title, then the words); an hour has
@@ -272,7 +276,7 @@ function Block({ block, sheet }: { block: Placed; sheet: ReturnType<typeof useEv
   const className = cn(
     'absolute flex min-w-0 overflow-hidden rounded-lg px-2 text-left',
     short ? 'flex-row items-center gap-1.5 py-0' : 'flex-col items-start gap-0.5 py-1',
-    shared ? 'bg-shared text-shared-foreground' : 'bg-surface-3 text-foreground',
+    suggestion ? SUGGESTION_TONE : shared ? 'bg-shared text-shared-foreground' : 'bg-surface-3 text-foreground',
   )
   const style = {
     top: top + 1,
@@ -289,7 +293,11 @@ function Block({ block, sheet }: { block: Placed; sheet: ReturnType<typeof useEv
           {event.location ? ` · ${event.location}` : ''}
         </span>
       )}
-      <VisibilityMark visibility={visibility} compact onTint={shared} className="shrink-0" />
+      {suggestion ? (
+        <SuggestionMark compact className="shrink-0" />
+      ) : (
+        <VisibilityMark visibility={visibility} compact onTint={shared} className="shrink-0" />
+      )}
     </>
   )
   return sheet ? (
