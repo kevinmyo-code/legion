@@ -677,30 +677,36 @@ class AriaForegroundService : Service() {
      */
     private fun startHealthMonitor() {
         serviceScope.launch {
-            var knownCodes: Set<String>? = null
+            // Persisted-baseline tracker (voice audit finding 5): seeded from code_events, ignores
+            // failed reads, never shrinks. See NewCodeTracker for the 47-false-raises account.
+            val tracker = com.kevin.legion.vehicle.NewCodeTracker()
             var overheatAnnounced = false
 
             while (isActive) {
                 delay(HEALTH_SCAN_INTERVAL_MS)
                 if (!ObdBluetoothManager.isConnected || ConversationState.isBusy) continue
 
-                val codes = ObdBluetoothManager.getDtcCodes().toSet()
-                val baseline = knownCodes
-                if (baseline == null) {
-                    knownCodes = codes // first reading establishes the baseline
-                    // Pre-existing codes still get one code_events row per install,
-                    // so the history starts now even if the light was already on.
-                    if (codes.isNotEmpty()) recordCodeEvent(codes)
-                } else {
-                    val fresh = codes - baseline
-                    if (fresh.isNotEmpty()) {
-                        recordCodeEvent(codes)
+                val vehicleKey = VehicleController.currentVehicle(this@AriaForegroundService).obdMac
+                if (!tracker.isSeeded(vehicleKey)) {
+                    val history = com.kevin.legion.data.local.CarDatabase.getDatabase(this@AriaForegroundService)
+                        .codeEventDao().getAll(vehicleKey).map { it.codesJson }
+                    tracker.seed(vehicleKey, com.kevin.legion.vehicle.NewCodeTracker.historyFrom(history))
+                }
+                val raw = ObdBluetoothManager.getDtcCodesRaw()
+                when (val verdict = tracker.observe(vehicleKey, raw)) {
+                    // Pre-existing codes still get one code_events row per install, so the
+                    // history starts now even if the light was already on.
+                    is com.kevin.legion.vehicle.NewCodeTracker.Verdict.Baselined ->
+                        if (verdict.codes.isNotEmpty()) recordCodeEvent(verdict.codes)
+                    is com.kevin.legion.vehicle.NewCodeTracker.Verdict.Fresh -> {
+                        val fresh = verdict.fresh
+                        recordCodeEvent(verdict.all)
                         speakProactive(
                             ProactiveRaise(
                                 ruleId = "new_trouble_code",
                                 category = ProactiveCategory.SAFETY,
                                 reason = "new OBD code(s) ${fresh.joinToString(", ")}",
-                                facts = "stored trouble codes: ${codes.joinToString(", ")}",
+                                facts = "stored trouble codes: ${verdict.all.joinToString(", ")}",
                                 prompt = "(System: the car's OBD just reported new trouble code(s): " +
                                     "${fresh.joinToString(", ")}. In one short, in-character line, tell " +
                                     "the user a new code just popped up and they can ask you about it. " +
@@ -708,7 +714,7 @@ class AriaForegroundService : Service() {
                             )
                         )
                     }
-                    knownCodes = codes
+                    else -> Unit // Skip (unusable read) or Unchanged
                 }
 
                 val temp = ObdBluetoothManager.getCoolantTemp()
