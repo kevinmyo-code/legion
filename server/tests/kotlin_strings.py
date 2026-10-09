@@ -99,7 +99,7 @@ def _read_raw(src: str, i: int) -> tuple[str, int]:
 
 
 def _declaration(src: str, name: str) -> int:
-    match = re.search(rf"(?m)^\s*(?:(?:internal|private)\s+)?val\s+{re.escape(name)}\s*=", src)
+    match = re.search(rf"(?m)^\s*(?:(?:internal|private)\s+)?(?:const\s+)?val\s+{re.escape(name)}\s*=", src)
     if match is None:
         raise KotlinReadError(f"no `val {name} =` in the file")
     return match.end()
