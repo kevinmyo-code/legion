@@ -112,6 +112,14 @@ ESTIMATE_NOTE = (
 # UNRECONCILED only when `unaccounted_cents is not null`, and that RPC never
 # writes that column, so it too cannot mint a provisional row.
 #
+# ADR 0057: `BANK_API` is the bank feed's own tag, written only by
+# `ingest/plaid_sync.py`. A document never carries it.
+BANK_API_REFUSAL = (
+    "This endpoint cannot store a BANK_API document. That tag belongs to the bank's own "
+    "transaction feed (the bank connection) and is never sent with a document. Nothing was "
+    "written."
+)
+
 # So this port refuses an UNRECONCILED payload up front, in words, instead of
 # carrying a guard that pretends to be reachable. The provisional path is real
 # work and is its own ticket.
@@ -512,6 +520,8 @@ class StatementIngestView(_IngestView):
             )
         if provenance == Provenance.UNRECONCILED:
             raise gate.GateInputError(PROVISIONAL_REFUSAL)
+        if provenance == Provenance.BANK_API:
+            raise gate.GateInputError(BANK_API_REFUSAL)
 
         raw_lines = payload.get("lines") or []
         if not isinstance(raw_lines, list):
@@ -788,6 +798,8 @@ class ReceiptIngestView(_IngestView):
             )
         if provenance == Provenance.UNRECONCILED:
             raise gate.GateInputError(PROVISIONAL_REFUSAL)
+        if provenance == Provenance.BANK_API:
+            raise gate.GateInputError(BANK_API_REFUSAL)
 
         raw_items = payload.get("items") or []
         if not isinstance(raw_items, list):

@@ -2,7 +2,7 @@
 status: locked
 decided: 2026-07-30
 decided-by: Kevin
-amended: 2026-08-06
+amended: 2026-10-09
 supersedes: [0005-no-llm-extraction]
 source: "CLAUDE.md §4"
 tags: [adr]
@@ -12,7 +12,7 @@ tags: [adr]
 
 ## Standing
 
-LOCKED, and AMENDED 2026-08-06 by [[0009-provisional-unreconciled-tier]]. This is the core architectural rule of the project.
+LOCKED, and AMENDED 2026-08-06 by [[0009-provisional-unreconciled-tier]]. AMENDED again 2026-10-09 by [[0057-the-bank-feed-is-the-ledgers-truth]], narrowly: rows from a bank's own transaction feed (Plaid, provenance `BANK_API`) are stored as fact with no gate, by Kevin's explicit ruling; every other ingestion path is unchanged. This is the core architectural rule of the project.
 
 ## Context
 

@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Fifty-three names. The fifty-fourth `public` table, `household_members`, is
+# Fifty-five names. The fifty-sixth `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -97,6 +97,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # backend-etl ticket 02: the session vault. Ciphertext only; the key is
     # LEGION_VAULT_KEY in the environment, never in the database.
     "source_credentials",
+    # ADR 0057: the household's bank connection (Plaid Item). The access token
+    # is sealed by the same vault; born tenanted like `ingest_runs`.
+    "plaid_items",
     # engine-mcp ticket 10 (ticket 08's audit ruling): one row per `/mcp`
     # call, Django-managed, born tenanted like `ingest_runs`.
     "mcp_calls",
@@ -149,6 +152,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "checklist_ticks",
         "ingest_runs",
         "source_credentials",
+        "plaid_items",
         "mcp_calls",
         "push_subscriptions",
         "push_preferences",

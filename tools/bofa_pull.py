@@ -1,3 +1,6 @@
+# RETIRED 2026-10-09 (ADR 0057, docs/adr/0057-the-bank-feed-is-the-ledgers-truth.md): Bank of America
+# now comes from the bank connection (Plaid). Kept for history and as the way back; the server's
+# Drive watcher skips the bofa_* files this writes.
 """`connect_session.py bofa`: you log in to Bank of America, this pulls the files.
 
 backend-etl ticket 09. Runs on the LAPTOP, inside Kevin's own login sitting.

@@ -41,6 +41,8 @@ class Source(models.TextChoices):
     # web-revamp ticket 15: not a feed either; one row per household per run
     # of `manage.py push_dispatch`, so a stalled sender shows as stale.
     PUSH = "push", "Notifications"
+    # ADR 0057: the bank's own transaction feed (Plaid), `manage.py plaid_sync`.
+    PLAID = "plaid", "Bank connection"
 
 
 class Outcome(models.TextChoices):
@@ -226,3 +228,70 @@ class SourceCredential(models.Model):
 
     def __str__(self) -> str:
         return f"{self.source} session ({self.kind})"
+
+
+# =============================================================================
+# The bank connection (ADR 0057)
+# =============================================================================
+
+
+class PlaidItem(models.Model):
+    """One household's link to its bank through Plaid: an "Item" in Plaid's
+    words, one login at one institution covering the accounts picked there.
+
+    **One per household, by unique constraint.** Plaid's free Trial plan allows
+    10 Items per Plaid team for its LIFETIME, and removing one never frees the
+    slot (`.scratch/backend-etl/research/plaid-bofa-2026-10.md` section 1). So
+    this engine never links a second Item for a household and never removes
+    one: a broken connection is repaired in Plaid's update mode, which keeps
+    the same access token and spends no slot.
+
+    **The access token is sealed by the session vault** (`ingest/vault.py`:
+    Fernet under `LEGION_VAULT_KEY`), the same machinery `source_credentials`
+    uses, and it is never served: every response that describes this row is
+    built by hand in `ingest/plaid_views.py`. Losing it loses the slot for good,
+    which is why it is stored and never re-linked.
+
+    In `public`, born tenanted like `ingest_runs`, and in
+    `household.tenancy.TENANT_TABLES`.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        "household.Household", on_delete=models.PROTECT, related_name="+"
+    )
+    # Plaid's own id for the Item. Not secret.
+    item_id = models.TextField()
+    # `vault.seal({"access_token": ...})`. Never served, never logged.
+    access_token_ciphertext = models.BinaryField()
+    institution_id = models.TextField(null=True, blank=True)
+    institution_name = models.TextField(null=True, blank=True)
+    # The accounts Plaid reports for this Item, as of the last sync:
+    # [{"account_id", "mask", "name", "official_name", "type", "subtype"}].
+    accounts = models.JSONField(default=list, blank=True)
+    # `/transactions/sync`'s `next_cursor` after the last APPLIED sync. Null
+    # before the first one. Saved in the same transaction as the rows it read.
+    cursor = models.TextField(null=True, blank=True)
+    # `/item/get`'s `consent_expiration_time` (BofA: 12 months after consent).
+    consent_expires_at = models.DateTimeField(null=True, blank=True)
+    # `/item/get`'s `item.error.error_code` at the last check, if any.
+    error_code = models.TextField(null=True, blank=True)
+    # Set when Plaid said the bank wants the person to sign in again
+    # (ITEM_LOGIN_REQUIRED, PENDING_DISCONNECT and kin); cleared by the first
+    # sync that succeeds afterwards. Keeps the FIRST time.
+    needs_sign_in_since = models.DateTimeField(null=True, blank=True)
+    linked_by = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(db_default=Now())
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "plaid_items"
+        constraints = [
+            models.UniqueConstraint(fields=["household"], name="plaid_items_one_per_household"),
+            models.UniqueConstraint(fields=["item_id"], name="plaid_items_item_id_uniq"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Plaid item {self.item_id} ({self.institution_name or 'unknown bank'})"

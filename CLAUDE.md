@@ -198,6 +198,17 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    **three** independent anchors - printed total, opening balance, closing balance - and a statement
    that prints fewer falls to rule 7 provisional. LLM rows are `LLM_RECONCILED`, parser rows
    `DETERMINISTIC`. Tickets: `.scratch/backend-etl/issues/06-*.md`, `09-*.md`, `10-*.md`.
+
+   **AMENDED 2026-10-09 (Kevin): a bank's own transaction feed is fact, with no gate.** *"everything
+   from plaid becomes truth, we retire manual parsers and csvs and statements etc. no need to
+   verify."* Rows Plaid returns for a linked account (today Kevin's BofA checking and cards) are
+   stored **as fact with no verification**, provenance `BANK_API`, and every surface shows them
+   exactly like a verified row: no "unverified" wording, no tag (*"Plain, no tag at all"*). From
+   the earliest date Plaid returns per account they replace the CSV- and statement-derived rows;
+   the BofA files are no longer read. **This is the only exception, and it is narrow: rules 1
+   through 8 still bind every other ingestion path** - pantry receipts, DBS statements, and
+   anything new. **Money stays `Long` cents** (Plaid's float goes through `Decimal(str(x))`, never
+   float arithmetic). ADR 0057; reopens locked ADR 0006 for this one source.
 2. **Extracted rows must reconcile against the document's OWN stated total**, exactly. Sum of
    line items equals the printed total, or the whole document **quarantines**. Nothing partial is
    ever written. Never silently accept.

@@ -65,6 +65,15 @@ def a_reading(**overrides) -> dict:
     return reading
 
 
+@pytest.fixture(autouse=True)
+def _bofa_files_still_read(monkeypatch):
+    """ADR 0057 retired Bank of America from this watcher (`statements.BOFA_RETIRED`):
+    the bank's own feed is the source now. The BofA readers are kept for history,
+    and these tests pin how they behave when switched back on; the retired
+    default is pinned by `tests/test_plaid.py`."""
+    monkeypatch.setattr(statements, "BOFA_RETIRED", False)
+
+
 # =============================================================================
 # Fakes
 # =============================================================================

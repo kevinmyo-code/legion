@@ -429,6 +429,17 @@ LEGION_MCP = os.environ.get("LEGION_MCP", "").strip().lower() in {
     "on",
 }
 
+# ADR 0057 (Kevin, 2026-10-09): the bank's own transaction feed, through the
+# household's OWN Plaid team. Optional: with either key unset the bank
+# connection says it is not set up, and `manage.py plaid_sync` records
+# `skipped`. Read by `ingest/plaid_client.py`, nowhere else; never logged,
+# never served. PLAID_ENV is `sandbox` (the default: Plaid's test bank, no real
+# data) or `production`; it must match the secret, which Plaid issues per
+# environment.
+PLAID_CLIENT_ID = os.environ.get("PLAID_CLIENT_ID", "").strip()
+PLAID_SECRET = os.environ.get("PLAID_SECRET", "").strip()
+PLAID_ENV = os.environ.get("PLAID_ENV", "").strip().lower() or "sandbox"
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "LEGION",
     "DESCRIPTION": "The engine. One Django server, every limb a client of it.",

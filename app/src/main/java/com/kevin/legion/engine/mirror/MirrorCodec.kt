@@ -222,7 +222,8 @@ object MirrorCodec {
             ws.value(r, COL_CREATED_AT, record.createdAt.toDouble())
             ws.value(r, COL_UPDATED_AT, record.updatedAt.toDouble())
             val readOnly = record.provenance == RecordProvenance.DETERMINISTIC ||
-                record.provenance == RecordProvenance.LLM_RECONCILED
+                record.provenance == RecordProvenance.LLM_RECONCILED ||
+                record.provenance == RecordProvenance.BANK_API
             ws.value(
                 r, COL_PROVENANCE,
                 record.provenance.name + if (readOnly) " (read-only)" else "",

@@ -4628,6 +4628,127 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/ingest/plaid:
+    get:
+      operationId: api_ingest_plaid_retrieve
+      description: The household's bank connection. Never the access token.
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankStatus'
+          description: ''
+  /api/ingest/plaid/exchange:
+    post:
+      operationId: api_ingest_plaid_exchange_create
+      description: Turns Link's public token into the household's connection. The
+        access token is sealed by the session vault and never returned. The first
+        sync runs on the next schedule, or with POST /api/ingest/plaid/sync.
+      tags:
+      - ingest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Exchange'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Exchange'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Exchange'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankStatus'
+          description: ''
+        '403':
+          description: Not an owner. Nothing was stored.
+        '409':
+          description: A bank is already connected. Nothing was stored.
+        '502':
+          description: Plaid refused. Nothing was stored.
+        '503':
+          description: No Plaid keys or no vault key. Nothing was stored.
+  /api/ingest/plaid/link-token:
+    post:
+      operationId: api_ingest_plaid_link_token_create
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkToken'
+          description: ''
+        '403':
+          description: Not an owner. Nothing was changed.
+        '409':
+          description: A bank is already connected; use update mode.
+        '502':
+          description: Plaid refused. `detail` says what it said.
+        '503':
+          description: The server has no Plaid keys.
+  /api/ingest/plaid/sync:
+    post:
+      operationId: api_ingest_plaid_sync_create
+      description: Runs the bank sync now, recorded like a scheduled run. `sentence`
+        says what happened; a run that could not sync says so with outcome failed
+        or needs_login.
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResult'
+          description: ''
+  /api/ingest/plaid/update-link-token:
+    post:
+      operationId: api_ingest_plaid_update_link_token_create
+      description: 'A Link token in update mode: the person signs in to the bank again
+        on the SAME connection. No new connection is made and none of Plaid''s 10
+        is spent.'
+      tags:
+      - ingest
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkToken'
+          description: ''
+        '403':
+          description: Not an owner. Nothing was changed.
+        '404':
+          description: No bank is connected.
+        '502':
+          description: Plaid refused. `detail` says what it said.
+        '503':
+          description: The server has no Plaid keys, or no vault key.
   /api/ingest/receipt:
     post:
       operationId: api_ingest_receipt_create
@@ -7428,6 +7549,85 @@ components:
       - outcome
       - response
       - text
+    BankAccount:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        mask:
+          type: string
+          nullable: true
+        type:
+          type: string
+          nullable: true
+        subtype:
+          type: string
+          nullable: true
+      required:
+      - mask
+      - name
+      - subtype
+      - type
+    BankStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+          description: The server has Plaid keys. False means nothing here can be
+            linked.
+        configuration_problem:
+          type: string
+          nullable: true
+        environment:
+          type: string
+          description: '`sandbox` or `production`.'
+        environment_sentence:
+          type: string
+          description: 'Which Plaid environment is active, in words. Sandbox is Plaid''s
+            test bank: show this so a test link is never mistaken for real bank data.'
+        connected:
+          type: boolean
+        institution_name:
+          type: string
+          nullable: true
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/BankAccount'
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        consent_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        needs_sign_in:
+          type: boolean
+          description: The bank wants the person again (or its consent ends within
+            14 days).
+        sentence:
+          type: string
+          description: The bank connection's freshness line.
+        slot_warning:
+          type: string
+        is_owner:
+          type: boolean
+      required:
+      - accounts
+      - configuration_problem
+      - configured
+      - connected
+      - consent_expires_at
+      - environment
+      - environment_sentence
+      - institution_name
+      - is_owner
+      - last_synced_at
+      - needs_sign_in
+      - sentence
+      - slot_warning
     BodyweightLog:
       type: object
       description: |-
@@ -8701,6 +8901,14 @@ components:
       - id
       - skip_date
       - updated_at
+    Exchange:
+      type: object
+      properties:
+        public_token:
+          type: string
+          description: What Plaid Link's onSuccess returned.
+      required:
+      - public_token
     Freshness:
       type: object
       properties:
@@ -8731,7 +8939,13 @@ components:
           type: boolean
         sentence:
           type: string
+        action_url:
+          type: string
+          nullable: true
+          description: The page that fixes what `sentence` describes, when a person
+            has to act (the bank connection's Sign in again). Null otherwise.
       required:
+      - action_url
       - last_error
       - last_ok_at
       - last_outcome
@@ -9256,6 +9470,11 @@ components:
           format: date-time
           readOnly: true
           nullable: true
+        pending:
+          type: boolean
+          readOnly: true
+          description: True while the bank has not posted this transaction yet (a
+            BANK_API row only). The bank may still change its amount or drop it.
         reversal_of:
           type: string
           format: uuid
@@ -9268,12 +9487,13 @@ components:
           - $ref: '#/components/schemas/ProvenanceEnum'
           readOnly: true
           description: |-
-            DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER. **UNRECONCILED is provisional** (CLAUDE.md section 4 rule 7): the source stated no anchor, the figure is unverified, and any surface showing it - or any total containing it - must say so in words, never by colour or a glyph alone.
+            DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER / BANK_API. **UNRECONCILED is provisional** (CLAUDE.md section 4 rule 7): the source stated no anchor, the figure is unverified, and any surface showing it - or any total containing it - must say so in words, never by colour or a glyph alone. **BANK_API is the bank's own feed (ADR 0055) and is fact**: render it exactly like a verified row, with no tag.
 
             * `DETERMINISTIC` - Deterministic
             * `LLM_RECONCILED` - Llm Reconciled
             * `UNRECONCILED` - Unreconciled
             * `USER` - User
+            * `BANK_API` - Bank Api
         verification_note:
           type: string
           nullable: true
@@ -9305,6 +9525,7 @@ components:
       - id
       - line_ref
       - origin_guid
+      - pending
       - pending_logged_at
       - provenance
       - reversal_of
@@ -9367,6 +9588,22 @@ components:
       - id
       - transaction_id
       - updated_at
+    LinkToken:
+      type: object
+      properties:
+        link_token:
+          type: string
+          description: Short-lived; hand it to Plaid Link.
+        expiration:
+          type: string
+          format: date-time
+          nullable: true
+        mode:
+          $ref: '#/components/schemas/ModeEnum'
+      required:
+      - expiration
+      - link_token
+      - mode
     LoginRequest:
       type: object
       properties:
@@ -9836,6 +10073,14 @@ components:
       - provenance
       - substring
       - updated_at
+    ModeEnum:
+      enum:
+      - create
+      - update
+      type: string
+      description: |-
+        * `create` - create
+        * `update` - update
     NullEnum:
       enum:
       - null
@@ -11459,12 +11704,14 @@ components:
       - LLM_RECONCILED
       - UNRECONCILED
       - USER
+      - BANK_API
       type: string
       description: |-
         * `DETERMINISTIC` - Deterministic
         * `LLM_RECONCILED` - Llm Reconciled
         * `UNRECONCILED` - Unreconciled
         * `USER` - User
+        * `BANK_API` - Bank Api
     Purchase:
       type: object
       properties:
@@ -11648,6 +11895,7 @@ components:
             * `LLM_RECONCILED` - Llm Reconciled
             * `UNRECONCILED` - Unreconciled
             * `USER` - User
+            * `BANK_API` - Bank Api
         created_at:
           type: string
           format: date-time
@@ -12209,6 +12457,7 @@ components:
       - obd_rollup
       - heartbeat
       - push
+      - plaid
       type: string
       description: |-
         * `canvas` - Canvas
@@ -12218,6 +12467,7 @@ components:
         * `obd_rollup` - OBD roll-up
         * `heartbeat` - Heartbeat
         * `push` - Notifications
+        * `plaid` - Bank connection
     Spend:
       type: object
       properties:
@@ -12535,6 +12785,55 @@ components:
       required:
       - endpoint
       - keys
+    SyncReport:
+      type: object
+      properties:
+        added:
+          type: integer
+        modified:
+          type: integer
+        removed:
+          type: integer
+        unchanged:
+          type: integer
+        pending_posted:
+          type: integer
+        replaced_older:
+          type: integer
+        categories_moved:
+          type: integer
+        kept_older:
+          type: integer
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+      - added
+      - categories_moved
+      - kept_older
+      - modified
+      - notes
+      - pending_posted
+      - removed
+      - replaced_older
+      - unchanged
+    SyncResult:
+      type: object
+      properties:
+        outcome:
+          type: string
+          description: ok, failed, needs_login, skipped or skipped_locked.
+        sentence:
+          type: string
+        report:
+          allOf:
+          - $ref: '#/components/schemas/SyncReport'
+          nullable: true
+      required:
+      - outcome
+      - report
+      - sentence
     TickRequest:
       type: object
       description: |-

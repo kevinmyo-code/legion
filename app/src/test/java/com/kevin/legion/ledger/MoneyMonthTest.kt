@@ -111,6 +111,18 @@ class MoneyMonthTest {
     }
 
     @Test
+    fun `a bank feed row is plain fact, counted in the total and never unverified`() {
+        val rows = listOf(
+            txn(d(2), -3_000, CARD, "Dining", method = IngestMethod.BANK_API),
+            txn(d(3), -2_000, CARD, "Dining"),
+        )
+        val card = spendOf(buildAccountMonthResults(rows, oct, emptySet()), CARD)
+        assertEquals(5_000L, card.totalCents)
+        assertEquals(0L, card.unverifiedTotalCents)
+        assertEquals(0L, card.categories.single { it.category == "Dining" }.unverifiedCents)
+    }
+
+    @Test
     fun `rent paid on the 30th of last month counts in this month and says so`() {
         val rows = listOf(
             txn(LocalDate.of(2026, 9, 30), -180_000, CHECKING, "Housing", description = "RENT"),

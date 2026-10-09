@@ -60,6 +60,24 @@ should stay inside every one of these limits without trying.
    ```
    gcloud secrets add-iam-policy-binding LEGION_VAULT_KEY --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
    ```
+   Two more, the household's own Plaid team keys (ADR 0057, the bank feed), from
+   dashboard.plaid.com > Developers > Keys. Never paste them anywhere else:
+   ```
+   echo -n "<client id>" | gcloud secrets create PLAID_CLIENT_ID --data-file=-
+   echo -n "<sandbox secret>" | gcloud secrets create PLAID_SECRET --data-file=-
+   gcloud secrets add-iam-policy-binding PLAID_CLIENT_ID --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+   gcloud secrets add-iam-policy-binding PLAID_SECRET --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+   ```
+   Both the service and the scheduled job mount them. `PLAID_ENV` (plain, in `.env`) defaults
+   to `sandbox`, and the secret must be the one for that environment (Plaid issues one per
+   environment; the client id is shared). **Going live is two steps:** add the Production
+   secret as a new version, then set `PLAID_ENV=production` in `.env` and redeploy the service
+   and the job:
+   ```
+   echo -n "<production secret>" | gcloud secrets versions add PLAID_SECRET --data-file=-
+   ```
+   Sandbox links never touch a real bank and never spend one of the Trial plan's 10 lifetime
+   connections; the web page says "Test mode (Plaid sandbox): no real bank data" while it is on.
    The `DATABASE_URL` is the Supabase session pooler connection string (ticket 07's decided
    database layer), not a value this repo ever holds.
 4. **Copy the non-secret config:**

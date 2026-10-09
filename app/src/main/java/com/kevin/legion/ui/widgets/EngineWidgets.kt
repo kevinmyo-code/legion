@@ -254,6 +254,7 @@ private fun provenanceLabel(provenance: RecordProvenance): String? = when (prove
     RecordProvenance.LLM_RECONCILED -> "LLM RECONCILED"
     RecordProvenance.UNRECONCILED -> "UNVERIFIED"
     RecordProvenance.USER -> null // a plain hand-entered row needs no provenance callout
+    RecordProvenance.BANK_API -> null // Kevin 2026-10-09: bank-feed rows are plain fact, no tag
 }
 
 /** How many content rows a multi-row [WidgetKind] renders at its CURRENT [GridPreset] - the same

@@ -178,6 +178,9 @@ PROVENANCE_WORDS = {
         "and must never be stated as fact"
     ),
     "USER": "entered by a person",
+    # ADR 0057 (Kevin, 2026-10-09): the bank's own feed is fact, said plainly,
+    # never as unverified.
+    "BANK_API": "fact: from the bank's own transaction feed",
     "LLM_DERIVED": "derived by a model from a recording",
 }
 

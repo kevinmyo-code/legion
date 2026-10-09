@@ -12,7 +12,7 @@ import androidx.room.PrimaryKey
  * manually-added record) that [LedgerTransaction]/[PantryReceipt] never needed a tag for - those
  * two entities are always document-derived by construction, this one is not.
  */
-enum class RecordProvenance { DETERMINISTIC, LLM_RECONCILED, UNRECONCILED, USER }
+enum class RecordProvenance { DETERMINISTIC, LLM_RECONCILED, UNRECONCILED, USER, BANK_API }
 
 /**
  * One row of any record type in any aspect - the engine's single generic record table (charter

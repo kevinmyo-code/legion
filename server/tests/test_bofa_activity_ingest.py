@@ -28,6 +28,15 @@ CHECKING_NAME = "bofa_1000_period_2026-08-03.csv"
 CARD_HEADER = "Posted Date,Reference Number,Payee,Address,Amount"
 
 
+@pytest.fixture(autouse=True)
+def _bofa_files_still_read(monkeypatch):
+    """ADR 0057 retired Bank of America from this watcher (`statements.BOFA_RETIRED`):
+    the bank's own feed is the source now. The BofA readers are kept for history,
+    and these tests pin how they behave when switched back on; the retired
+    default is pinned by `tests/test_plaid.py`."""
+    monkeypatch.setattr(statements, "BOFA_RETIRED", False)
+
+
 @pytest.fixture
 def connected(monkeypatch, household_a):
     monkeypatch.setenv(vault.VAULT_KEY_ENV, Fernet.generate_key().decode())

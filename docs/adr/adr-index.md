@@ -20,7 +20,7 @@ Format and the test for whether something deserves an ADR:
 | 0001 | [[0001-phone-only\|Phone-only, and the head-unit constraints go with it]] | locked | 2026-07-30 | - |
 | 0003 | [[0003-clone-and-run\|A stranger must be able to clone, sideload, and use it]] | locked | 2026-07-30 | - |
 | 0004 | [[0004-commercial-model-dead\|There is no commercial model]] | locked | 2026-07-30 | - |
-| 0006 | [[0006-reconciliation-gate\|LLM extraction, allowed only behind a deterministic gate]] | locked | 2026-07-30 | 2026-08-06 |
+| 0006 | [[0006-reconciliation-gate\|LLM extraction, allowed only behind a deterministic gate]] | locked | 2026-07-30 | 2026-10-09 |
 | 0007 | [[0007-money-as-long-cents\|Money is Long cents, never Double]] | locked | 2026-07-30 | - |
 | 0008 | [[0008-estimates-are-not-facts\|Anything the document does not state is an estimate]] | locked | 2026-07-30 | 2026-08-02 |
 | 0009 | [[0009-provisional-unreconciled-tier\|A source with no anchor may be stored provisionally, never as fact]] | locked | 2026-08-06 | - |
@@ -61,8 +61,9 @@ Format and the test for whether something deserves an ADR:
 | 0052 | [[0052-a-row-may-be-private-to-one-member\|A row may be private to one member]] | accepted | 2026-10-03 | - |
 | 0053 | [[0053-web-design-language-and-two-surfaces\|The web's design language, and two surfaces rendered by viewport]] | accepted | 2026-10-03 | - |
 | 0054 | [[0054-mapbox-native-navigation\|Navigation is native Mapbox, and Mapbox only]] | accepted | 2026-10-03 | - |
-| 0055 | [[0055-a-groceries-tick-is-a-purchase\|A tick on the Groceries list is a purchase]] | accepted | 2026-10-04 | - |
+| 0055 | [[0055-a-groceries-tick-is-a-purchase\|A tick on the Groceries list is a purchase]] | accepted | 2026-10-04 | 2026-10-05 |
 | 0056 | [[0056-the-household-key-serves-the-web-assistant\|The household's key serves the web assistant, and never reaches a browser]] | accepted | 2026-10-04 | - |
+| 0057 | [[0057-the-bank-feed-is-the-ledgers-truth\|The bank's own feed is the ledger's truth for the accounts it covers]] | accepted | 2026-10-09 | - |
 
 ## Superseded
 

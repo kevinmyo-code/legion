@@ -40,6 +40,15 @@ is still a no-op because of the hash, not because of the watermark.
 its reason, and `/api/freshness` says so for `drive_statements`. No key records
 `skipped` with a sentence. A refused Drive login records `needs_login`.
 
+**Bank of America is retired here (ADR 0057, Kevin 2026-10-09: "everything
+from plaid becomes truth, we retire manual parsers and csvs and statements").**
+The bank's own feed (`ingest/plaid_sync.py`) is the source for BofA now. A file
+named `bofa_*` is skipped before it is downloaded, and any file a BofA parser
+recognises is skipped before anything is written; both say so in the run log
+and nothing is recorded against them. The BofA parsers stay registered so a
+BofA file is still RECOGNISED (and never sent to Gemini); every other bank's
+path (a DBS PDF, through Gemini and the gate) is unchanged.
+
 **Never logged:** the document's content and the key. The key goes in a header,
 not the URL, so no exception message or proxy log can carry it, and every
 message a run records is `scrub()`bed by `run_job`.
@@ -109,6 +118,16 @@ SOURCE_FILE_PREFIX = "drive:"
 NO_KEY_SENTENCE = (
     f"{GEMINI_KEY_ENV} is not set on the server, so a statement no parser recognises "
     f"cannot be read. Nothing was sent to Gemini and nothing was written."
+)
+# ADR 0057: Bank of America comes from the bank's own feed now. A module flag so
+# the suite can still pin how the kept-for-history BofA paths behave; nothing
+# in the engine ever sets it False.
+BOFA_RETIRED = True
+RETIRED_NAME_PREFIX = "bofa_"
+RETIRED_PARSER_PREFIX = "bofa-"
+RETIRED_SENTENCE = (
+    "Bank of America files are no longer read: the bank connection (Plaid) is the source "
+    "for those accounts (ADR 0057). Nothing was written"
 )
 CSV_NOT_RECOGNISED = (
     "CSV not recognised: no deterministic reader for this layout, and a CSV is never "
@@ -441,7 +460,7 @@ class FileResult:
     file_id: str
     name: str
     # committed / already_committed / quarantined / provisional / known /
-    # skipped / deferred
+    # skipped / deferred / retired (a Bank of America file, ADR 0057)
     action: str
     detail: str = ""
     inserted: int = 0
@@ -464,6 +483,13 @@ class _Commit:
 @dataclass(frozen=True)
 class _Quarantine:
     reason: str
+
+
+@dataclass(frozen=True)
+class _Retired:
+    """A Bank of America file (ADR 0057). Skipped, never recorded."""
+
+    parser: str
 
 
 class _NeedsKey(Exception):
@@ -550,17 +576,22 @@ def route(
     name: str,
     key: str | None,
     gemini: Callable[..., dict],
-) -> _Commit | _Quarantine:
+) -> _Commit | _Quarantine | _Retired:
     """Parsers first, for both kinds. Then a CSV stops, and a PDF goes to
     Gemini. Raises `_NeedsKey` when only Gemini could read it and there is no
     key; Gemini's own exceptions other than a refused document propagate."""
     for parser in PARSERS:
         if kind not in parser.kinds:
             continue
+        retired = BOFA_RETIRED and parser.name.startswith(RETIRED_PARSER_PREFIX)
         try:
             parsed = parser.parse(content, file_name=name)
         except ParserRefused as exc:
+            if retired:
+                return _Retired(parser.name)
             return _Quarantine(f"{parser.name}: {exc}")
+        if parsed is not None and retired:
+            return _Retired(parser.name)
         if parsed is not None:
             payload = {"provenance": gate.DETERMINISTIC, **parsed.payload}
             if parsed.provisional:
@@ -660,6 +691,9 @@ def process(
         stamp = max(item.get("modifiedTime") or "", item.get("createdTime") or "")
         mime = item.get("mimeType") or ""
         kind = kind_of(item)
+        if BOFA_RETIRED and name.lower().startswith(RETIRED_NAME_PREFIX):
+            done(FileResult(file_id, name, "retired", RETIRED_SENTENCE), stamp, note=True)
+            continue
         if kind is None:
             why = (
                 "a Google Docs/Sheets file has no bank's bytes to read"
@@ -710,6 +744,10 @@ def process(
             # Every later file would wait out the same outage. They sort after
             # this one, so the watermark held here lists them again next run.
             break
+
+        if isinstance(routed, _Retired):
+            done(FileResult(file_id, name, "retired", RETIRED_SENTENCE), stamp, note=True)
+            continue
 
         if isinstance(routed, _Quarantine):
             _record_quarantine(household, facts, sha, routed.reason)

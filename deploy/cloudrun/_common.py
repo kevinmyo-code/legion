@@ -34,7 +34,19 @@ DEFAULT_REGION = "us-south1"
 # LEGION_GEMINI_KEY: the household's own Gemini API key, which `drive_statements`
 # (backend-etl ticket 06) uses to read a statement PDF no parser recognises.
 # Without it that job records `skipped` in words and sends nothing to Gemini.
-SECRET_ENV_VARS = ("SECRET_KEY", "DATABASE_URL", "LEGION_VAULT_KEY", "LEGION_GEMINI_KEY")
+# PLAID_CLIENT_ID / PLAID_SECRET: the household's own Plaid team keys (ADR 0057,
+# the bank's transaction feed as the ledger's source of truth). The Plaid
+# Developer Policy forbids sharing either, so both are secrets, never `.env`.
+# Without them the bank connection says it is not set up and `plaid_sync`
+# records `skipped`.
+SECRET_ENV_VARS = (
+    "SECRET_KEY",
+    "DATABASE_URL",
+    "LEGION_VAULT_KEY",
+    "LEGION_GEMINI_KEY",
+    "PLAID_CLIENT_ID",
+    "PLAID_SECRET",
+)
 
 # Non-secret configuration, read from `deploy/cloudrun/.env` (copy
 # `.env.example`). Deliberately a SEPARATE file from `deploy/.env`: that one
@@ -62,9 +74,22 @@ OPTIONAL_PLAIN_ENV_VARS = ("LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", 
 OPTIONAL_SECRET_ENV_VARS = {"VAPID_PRIVATE_KEY": "VAPID_PUBLIC_KEY"}
 
 
+# Plain vars with a default: passed always, the `.env` value winning when set. PLAID_ENV
+# (ADR 0057) picks Plaid's host: `sandbox` (Plaid's test bank, no real accounts, no Trial
+# slot spent) or `production` (real bank data, the Trial plan). The default is `sandbox`
+# because the PLAID_SECRET first stored is the Sandbox one. Going live is one line here
+# (`PLAID_ENV=production` in deploy/cloudrun/.env) plus a new version of the PLAID_SECRET
+# secret holding the Production secret (README.md); PLAID_CLIENT_ID is the same for both.
+DEFAULTED_PLAIN_ENV_VARS = {"PLAID_ENV": "sandbox"}
+
+
 def plain_env_from(cloud_env: dict[str, str]) -> dict[str, str]:
-    """Every required plain var (blank if missing), plus each optional one that is set."""
+    """Every required plain var (blank if missing), each defaulted one (its default
+    if missing), plus each optional one that is set."""
     env = {name: cloud_env.get(name, "") for name in PLAIN_ENV_VARS}
+    env.update(
+        {name: cloud_env.get(name) or default for name, default in DEFAULTED_PLAIN_ENV_VARS.items()}
+    )
     env.update({name: cloud_env[name] for name in OPTIONAL_PLAIN_ENV_VARS if cloud_env.get(name)})
     return env
 

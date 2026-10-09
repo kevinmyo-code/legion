@@ -6254,3 +6254,24 @@ to addresses? so i can say hey save this palce > its addres is X"*.
   line did not fit. Offered raising, trimming other tool descriptions, or dropping voice rename, Kevin
   chose raising. Kevin had ruled the previous raise on 2026-10-05.
 - Kevin declined restoring the old Katy "home" coordinates from a backup.
+
+## 2026-10-09 - Plaid is the truth for the BofA ledger, shown plain
+
+Teller's free tier was gone; Plaid's Trial plan (free, 10 lifetime connections, real BofA data for
+checking and cards) checked out in `.scratch/backend-etl/research/plaid-bofa-2026-10.md`. Kevin:
+*"everything from plaid becomes truth, we retire manual parsers and csvs and statements etc. no need
+to verify. automate both checking and cards, all of it"*. Offered how Plaid rows should read on
+screen, he chose *"Plain, no tag at all"*.
+- Plaid rows are stored as fact with no reconciliation, provenance `BANK_API`, rendered like verified
+  rows everywhere. CLAUDE.md section 4 is amended for these accounts only; it still binds pantry, DBS
+  and anything new. Money stays `Long` cents.
+- The engine syncs every six hours; the web's Bank connection page links once and repairs only in
+  update mode, because a removed Trial connection never comes back.
+- From the earliest date Plaid returns per account, Plaid rows replace the CSV- and statement-derived
+  rows; categories move to the matching bank row, and one with no match is kept and reported.
+- The Drive watcher skips BofA files and says so. The BofA parsers, `tools/bofa_pull.py` and
+  `tools/legion-daily.cmd` are kept, marked retired. DBS is untouched.
+- Same day: the keys went into Secret Manager as `PLAID_CLIENT_ID` / `PLAID_SECRET`, holding the
+  Sandbox secret for now; `PLAID_ENV` defaults to `sandbox` and the page says "Test mode (Plaid
+  sandbox): no real bank data" until it is switched to production.
+- ADR: [[0057-the-bank-feed-is-the-ledgers-truth]].

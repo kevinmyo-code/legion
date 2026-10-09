@@ -16,6 +16,7 @@ export type Invite = components['schemas']['Invite']
 export type InvitePreview = components['schemas']['InvitePreview']
 export type DeviceToken = components['schemas']['DeviceToken']
 export type Preference = components['schemas']['Preference']
+export type BankStatus = components['schemas']['BankStatus']
 
 export interface PushState {
   /** False is an engine with no VAPID keys: push is off, said in words. */
@@ -39,6 +40,8 @@ export interface SettingsState {
   /** An email already registered, so signup can be refused for it. */
   takenEmail: string
   push: PushState
+  /** What `GET /api/ingest/plaid` answers; `isOwner` is filled in per request. */
+  bank: Omit<BankStatus, 'is_owner'>
 }
 
 export function defaultSettings(): SettingsState {
@@ -49,6 +52,21 @@ export function defaultSettings(): SettingsState {
     devices: [],
     password: 'old-password-123',
     takenEmail: 'taken@example.test',
+    bank: {
+      configured: true,
+      configuration_problem: null,
+      environment: 'sandbox',
+      environment_sentence: 'Test mode (Plaid sandbox): no real bank data.',
+      connected: false,
+      institution_name: null,
+      accounts: [],
+      last_synced_at: null,
+      consent_expires_at: null,
+      needs_sign_in: false,
+      sentence: 'No bank is connected.',
+      slot_warning:
+        'Connecting again uses one of the 10 connections Plaid allows for the life of the account. Nothing here removes a connection.',
+    },
     push: {
       enabled: true,
       publicKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U',
@@ -136,6 +154,45 @@ export function handleSettings(
 ): Reply | undefined {
   const s = host.settings
   const isOwner = host.members.some((member) => member.user_id === meId && member.role === 'owner')
+
+  if (pathname.startsWith('/api/ingest/plaid')) {
+    const status = { ...s.bank, is_owner: isOwner }
+    if (method === 'GET' && pathname === '/api/ingest/plaid') return { status: 200, body: status }
+    const ownerOnly = { detail: 'Only the household owner can do this. Nothing was changed.' }
+    if (method === 'POST' && pathname === '/api/ingest/plaid/link-token') {
+      if (!isOwner) return { status: 403, body: ownerOnly }
+      return { status: 200, body: { link_token: 'link-sandbox-create', expiration: null, mode: 'create' } }
+    }
+    if (method === 'POST' && pathname === '/api/ingest/plaid/update-link-token') {
+      if (!isOwner) return { status: 403, body: ownerOnly }
+      return { status: 200, body: { link_token: 'link-sandbox-update', expiration: null, mode: 'update' } }
+    }
+    if (method === 'POST' && pathname === '/api/ingest/plaid/exchange') {
+      if (!isOwner) return { status: 403, body: ownerOnly }
+      s.bank = {
+        ...s.bank,
+        connected: true,
+        institution_name: 'Bank of America',
+        accounts: [{ name: 'Checking', mask: '1234', type: 'depository', subtype: 'checking' }],
+        sentence: 'Connected. Not synced yet.',
+      }
+      return { status: 201, body: { ...s.bank, is_owner: isOwner } }
+    }
+    if (method === 'POST' && pathname === '/api/ingest/plaid/sync') {
+      return {
+        status: 200,
+        body: {
+          outcome: 'ok',
+          sentence: 'Synced: 2 new transactions.',
+          report: {
+            added: 2, modified: 0, removed: 0, unchanged: 0, pending_posted: 0,
+            replaced_older: 0, categories_moved: 0, kept_older: 0,
+            notes: ['One older file row was kept.'],
+          },
+        },
+      }
+    }
+  }
 
   if (method === 'PATCH' && pathname === '/api/auth/me') {
     const name = String((body as { name?: string }).name ?? '').trim()

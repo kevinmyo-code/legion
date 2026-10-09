@@ -135,6 +135,7 @@ private fun provenanceWord(provenance: RecordProvenance): String = when (provena
     RecordProvenance.LLM_RECONCILED -> "LLM RECONCILED"
     RecordProvenance.UNRECONCILED -> "UNRECONCILED - NOT VERIFIED"
     RecordProvenance.USER -> "HAND-ENTERED"
+    RecordProvenance.BANK_API -> "BANK FEED"
 }
 
 /** @return the display string, plus whether it represents a [com.kevin.legion.engine.ComputedValue.Error]

@@ -14,6 +14,13 @@ receipts are ticket 04's, under their own plural paths.
 """
 from django.urls import path
 
+from ingest.plaid_views import (
+    BankExchangeView,
+    BankLinkTokenView,
+    BankStatusView,
+    BankSyncView,
+    BankUpdateLinkTokenView,
+)
 from ingest.sessions import SessionDetailView, SessionListView
 from ingest.views import ReceiptIngestView, StatementIngestView
 
@@ -24,4 +31,14 @@ urlpatterns = [
     # unlike the two above: these ARE resources, one per source.
     path("sessions", SessionListView.as_view(), name="ingest-sessions"),
     path("sessions/<str:source>", SessionDetailView.as_view(), name="ingest-session"),
+    # ADR 0057: the bank connection (`ingest/plaid_views.py`).
+    path("plaid", BankStatusView.as_view(), name="ingest-plaid"),
+    path("plaid/link-token", BankLinkTokenView.as_view(), name="ingest-plaid-link-token"),
+    path(
+        "plaid/update-link-token",
+        BankUpdateLinkTokenView.as_view(),
+        name="ingest-plaid-update-link-token",
+    ),
+    path("plaid/exchange", BankExchangeView.as_view(), name="ingest-plaid-exchange"),
+    path("plaid/sync", BankSyncView.as_view(), name="ingest-plaid-sync"),
 ]
