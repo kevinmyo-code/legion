@@ -100,14 +100,15 @@ data class HomeCallbacks(
 )
 
 /**
- * HOME, the launcher's landing screen (home-launcher ticket 03, ADR 0050/0051). Stateful wrapper:
- * owns [HomeViewModel] and the two live flows [HomeContent] cannot own itself
- * ([VoiceNoteController.recordingState], [NowPlayingController.state]) - both tick on their own
- * schedule, independent of [HomeViewModel.refresh]'s `ON_RESUME` cadence, same split the retired
- * `ui/HomeMeterBands.kt` already drew between its own polled `MetersUiState` and these two live
- * reads.
+ * HOME, the launcher's landing screen (home-launcher ticket 03, ADR 0050/0051), rebuilt around the
+ * calendar on 2026-10-09 (one-home ticket 11, Kevin picked prototype A). Stateful wrapper: owns
+ * [HomeCalendarViewModel], the dock's and the category row's pin state, and the now-playing flow.
+ *
+ * The tile callbacks ([onOpenMoney] and the rest) are still accepted but nothing on HOME calls them
+ * now - see [HomeTilesContent]'s note on why they were kept rather than dropped.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER", "LongParameterList") // tile callbacks kept for HomeTilesContent; see the KDoc above
 fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenLists: () -> Unit,
@@ -118,11 +119,15 @@ fun HomeScreen(
     onOpenNews: () -> Unit,
     onOpenReports: () -> Unit,
     onOpenMedia: () -> Unit,
+    /** A calendar row or "+N more": that day's day view, with the reminder to edit when it is one. */
+    onOpenDay: (day: java.time.LocalDate, reminderId: Long?) -> Unit = { _, _ -> },
+    /** A list in the Lists sheet: that list. */
+    onOpenList: (checklistId: Long) -> Unit = { onOpenLists() },
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val viewModel: HomeViewModel = viewModel()
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    val calendarViewModel: HomeCalendarViewModel = viewModel(factory = HomeCalendarViewModel.Factory(context))
+    val calendar by calendarViewModel.state.collectAsStateWithLifecycle()
 
     // Home-launcher ticket 06's own dock - pins are read fresh on every resume (a pin/unpin made
     // from Apps must show up here without a process restart), and against AppDrawerCache's own
@@ -140,7 +145,7 @@ fun HomeScreen(
     var categoryPicks by remember { mutableStateOf(CategoryPicksStore.readAll(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        viewModel.refresh()
+        calendarViewModel.refresh()
         pins = DockPinsStore.read(context)
         categoryPicks = CategoryPicksStore.readAll(context)
         drawerSnapshot = AppDrawerCache.peek()
@@ -156,10 +161,6 @@ fun HomeScreen(
             }
         }
     }
-
-    val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
-    val recording = recordingState is VoiceNoteRecordingState.Recording
-    var recordRefusal by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { NowPlayingController.init(context) }
     val nowPlaying by NowPlayingController.state.collectAsStateWithLifecycle()
@@ -199,10 +200,25 @@ fun HomeScreen(
     }
 
     HomeContent(
-        state = state,
-        recording = recording,
-        recordRefusal = recordRefusal,
+        calendar = calendar,
+        calendarCallbacks = HomeCalendarCallbacks(
+            onPreviousMonth = calendarViewModel::previousMonth,
+            onNextMonth = calendarViewModel::nextMonth,
+            onSelectDay = calendarViewModel::selectDay,
+            onOpenRow = { day, row -> onOpenDay(day, row.reminderId) },
+            onOpenDay = { day -> onOpenDay(day, null) },
+            onOpenSheet = calendarViewModel::openSheet,
+            onCloseSheet = calendarViewModel::closeSheet,
+            onToggleTodo = calendarViewModel::setTodoDone,
+            onOpenList = { list ->
+                calendarViewModel.closeSheet()
+                onOpenList(list.id)
+            },
+            onAddIdea = calendarViewModel::addIdeaToPlans,
+            onDropIdea = calendarViewModel::dropIdea,
+        ),
         nowPlaying = nowPlaying,
+        onOpenMedia = onOpenMedia,
         dockSlots = buildDockSlots(pins, drawerSnapshot),
         dock = DockCallbacks(
             onLaunch = launchSlot,
@@ -231,40 +247,62 @@ fun HomeScreen(
                 categoryPicks = categoryPicks + (category to picks)
             },
         ),
-        callbacks = HomeCallbacks(
-            onOpenCalendar = onOpenCalendar,
-            onOpenLists = onOpenLists,
-            onOpenMoney = onOpenMoney,
-            onOpenBody = onOpenBody,
-            onOpenFleet = onOpenFleet,
-            onOpenRecordings = onOpenRecordings,
-            onOpenNews = onOpenNews,
-            onOpenReports = onOpenReports,
-            onOpenMedia = onOpenMedia,
-            onStartRecording = {
-                scope.launch {
-                    when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
-                        is VoiceNoteStartResult.Started -> recordRefusal = null
-                        is VoiceNoteStartResult.Refused -> recordRefusal = started.reason
-                    }
-                }
-            },
-            onStopRecording = {
-                recordRefusal = null
-                scope.launch { VoiceNoteController.stop(context) }
-            },
-        ),
     )
 }
 
 /**
- * The stateless render (Roborazzi's own entry point, fakes for [state]/[nowPlaying]). Never
+ * The stateless render of HOME's middle and bottom (Roborazzi's entry point, fakes for everything).
+ * Top to bottom: the calendar (which absorbs all spare height and never scrolls), the three panel
+ * buttons, the pinned dock, the category row, any dock message, and the now-playing row. The top
+ * bar and the talk bar (with the mic) are the shell's and are not drawn here.
+ */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+fun HomeContent(
+    calendar: HomeCalendarUiState,
+    calendarCallbacks: HomeCalendarCallbacks,
+    nowPlaying: NowPlayingInfo?,
+    onOpenMedia: () -> Unit,
+    dockSlots: List<DockSlotUi> = emptyList(),
+    dock: DockCallbacks = DockCallbacks(onLaunch = {}, onUnpin = {}, onMoveLeft = {}, onMoveRight = {}),
+    dockMessage: String? = null,
+    categories: List<CategoryUi> = emptyList(),
+    chooserRows: List<ChooserRow> = emptyList(),
+    categoryCallbacks: CategoryCallbacks = CategoryCallbacks(onLaunch = {}, onSave = { _, _ -> }),
+) {
+    SoftTheme {
+        Column(Modifier.fillMaxSize().background(SoftColors.ground).padding(12.dp)) {
+            HomeCalendarArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth())
+            HomePanelButtons(calendar, calendarCallbacks, Modifier.padding(top = 6.dp, bottom = 4.dp))
+            AppDock(slots = dockSlots, callbacks = dock)
+            CategoryRow(categories = categories, chooserRows = chooserRows, callbacks = categoryCallbacks)
+            dockMessage?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SoftColors.caution,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            }
+            NowPlayingRow(nowPlaying = nowPlaying, onOpenMedia = onOpenMedia)
+        }
+        HomePanelSheet(calendar, calendarCallbacks)
+    }
+}
+
+/**
+ * **UNMOUNTED 2026-10-09 (one-home ticket 11).** HOME's middle area is now the calendar
+ * ([HomeContent]); this is the previous today card + 2 x 4 tile grid, kept whole with its
+ * screenshot tests because the tiles were the only hands path to Money, Body, Fleet, Recordings,
+ * News and Reports, and Kevin's brief did not say where those go. Remounting is one call.
+ *
+ * Was: the stateless render (Roborazzi's own entry point, fakes for [state]/[nowPlaying]). Never
  * scrolls or clips in the A25's content box - [BoxWithConstraints] picks the fixed-grid layout
  * above [GRID_FITS_MIN_HEIGHT] and a scrolling one below it (a small phone, a big font scale),
  * per this ticket's own "Fit, and the fallback" section.
  */
 @Composable
-fun HomeContent(
+fun HomeTilesContent(
     state: HomeUiState,
     recording: Boolean,
     recordRefusal: String?,

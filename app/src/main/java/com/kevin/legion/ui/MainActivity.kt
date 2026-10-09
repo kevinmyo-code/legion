@@ -518,6 +518,10 @@ private fun LegionShell(
     isDefaultHome: Boolean = false,
 ) {
     val navController = rememberNavController()
+    // HOME's calendar hands these to the day view and the Lists screen (one-home ticket 11). Hoisted
+    // here because both screens are separate destinations; HOME clears them when it shows again.
+    var homeDayPick by remember { mutableStateOf<HomeDayPick?>(null) }
+    var homeListPick by remember { mutableStateOf<Long?>(null) }
     // A launcher-category start (icon or the SDK's trip notification) with a trip running lands on the
     // nav screen; see TripResumeEffect.
     com.kevin.legion.ui.navigation.TripResumeEffect {
@@ -860,6 +864,12 @@ private fun LegionShell(
             // already did. `ui/CalendarScreen.kt` no longer renders here; see [LegionRoute.CALENDAR]
             // just below for where it moved.
             composable(LegionRoute.HOME) {
+                // Whatever HOME's calendar last asked the day view or Lists to open is spent once HOME
+                // is showing again; a stale pick must not beat a later notification deep link.
+                LaunchedEffect(Unit) {
+                    homeDayPick = null
+                    homeListPick = null
+                }
                 // As the home app, Back on HOME does nothing: there is nowhere behind the home
                 // screen to go. As an ordinary app it still exits (ADR 0050).
                 androidx.activity.compose.BackHandler(enabled = isDefaultHome) {}
@@ -884,6 +894,17 @@ private fun LegionShell(
                         onOpenMedia = {
                             navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
                         },
+                        // One-home ticket 11: the calendar's rows and its Lists sheet. A tapped
+                        // reminder opens that day's view with its edit dialog (the same highlight
+                        // path a notification tap uses); everything else opens the day.
+                        onOpenDay = { day, reminderId ->
+                            homeDayPick = nextHomeDayPick(homeDayPick, day, reminderId)
+                            navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true }
+                        },
+                        onOpenList = { checklistId ->
+                            homeListPick = checklistId
+                            navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true }
+                        },
                     )
                 }
             }
@@ -893,9 +914,10 @@ private fun LegionShell(
             // and all - not the start destination any more.
             composable(LegionRoute.CALENDAR) {
                 CalendarScreen(
-                    highlightItemId = openItemId,
-                    highlightItemNonce = openItemNonce,
+                    highlightItemId = calendarHighlightId(homeDayPick, openItemId),
+                    highlightItemNonce = calendarHighlightNonce(homeDayPick, openItemNonce),
                     onBack = { navController.popBackStack() },
+                    initialDayStart = homeDayPick?.dayStart,
                 )
             }
             // The Ask hands path's own route (one-home ticket 02, ADR 0035) - see
@@ -1162,6 +1184,7 @@ private fun LegionShell(
             // MetersScreen's LISTS pane (not Settings) - see LegionRoute.CHECKLISTS's own doc.
             composable(LegionRoute.CHECKLISTS) {
                 ChecklistsScreen(
+                    initialChecklistId = homeListPick,
                     onBack = { navController.popBackStack() },
                     onOpenBought = { navController.navigate(LegionRoute.BOUGHT) { launchSingleTop = true } },
                 )
@@ -1299,3 +1322,18 @@ private const val CLOCK_POLL_MS = 60_000L
 // permanently-lit label taking 56dp of every screen. `LegionRoute.TOP_LEVEL`, `topLevelOf`
 // and `label` went with it - this row was their only production caller, grep-confirmed
 // before deletion, the same way the six dead `label` branches were confirmed on 2026-09-01.
+
+/** Which day HOME's calendar asked the day view to open, and the reminder to edit there, if any.
+ * [nonce] ticks on every request so a repeat tap on the same row re-opens its dialog. */
+private data class HomeDayPick(val dayStart: Long, val reminderId: Long?, val nonce: Int)
+
+private fun nextHomeDayPick(previous: HomeDayPick?, day: java.time.LocalDate, reminderId: Long?) = HomeDayPick(
+    dayStart = day.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+    reminderId = reminderId,
+    nonce = (previous?.nonce ?: 0) + 1,
+)
+
+/** HOME's pick wins over a notification deep link only while it is set; HOME clears it on return. */
+private fun calendarHighlightId(pick: HomeDayPick?, openItemId: Long?): Long? = pick?.reminderId ?: openItemId
+
+private fun calendarHighlightNonce(pick: HomeDayPick?, openItemNonce: Int): Int = pick?.nonce ?: openItemNonce

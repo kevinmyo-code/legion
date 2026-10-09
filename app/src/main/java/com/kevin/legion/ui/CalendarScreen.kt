@@ -201,6 +201,9 @@ fun CalendarScreen(
     // never the app's own start destination, so it gets the same `DeckScreenHeader`/`onBack` every
     // other drill-down under `LegionTheme` takes.
     onBack: () -> Unit = {},
+    /** HOME's calendar (one-home ticket 11) opens this day's view: a tapped agenda row, or "+N more".
+     * Null opens today. */
+    initialDayStart: Long? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -212,8 +215,12 @@ fun CalendarScreen(
     // A day is always selected (fixed on-device 2026-09-01, Kevin: "it should show the due items
     // on the tapped date" - no unselected state, no navigation). Today's start on open, matching
     // [MonthCellView]'s own `isToday` computation below.
-    val todayStartOnOpen = remember { LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli() }
-    var displayedMonth by remember { mutableStateOf(YearMonth.now()) }
+    val todayStartOnOpen = remember {
+        initialDayStart ?: LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+    }
+    var displayedMonth by remember {
+        mutableStateOf(YearMonth.from(java.time.Instant.ofEpochMilli(todayStartOnOpen).atZone(zone).toLocalDate()))
+    }
     var selectedDayStart by remember { mutableStateOf(todayStartOnOpen) }
     var calendarCollapsed by remember { mutableStateOf(false) }
     var monthLoading by remember { mutableStateOf(true) }

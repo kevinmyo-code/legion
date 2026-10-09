@@ -73,19 +73,26 @@ internal fun OpenWithSheet(
     onDismiss: () -> Unit,
     onLaunch: (DockSlotUi) -> Unit,
     onChoose: () -> Unit,
+    onOpenNavigation: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = SoftColors.card,
     ) {
-        OpenWithSheetContent(ui = ui, onLaunch = onLaunch, onChoose = onChoose)
+        OpenWithSheetContent(ui = ui, onLaunch = onLaunch, onChoose = onChoose, onOpenNavigation = onOpenNavigation)
     }
 }
 
 /** The sheet body, split from its window so a screenshot can draw it directly. */
 @Composable
-internal fun OpenWithSheetContent(ui: CategoryUi, onLaunch: (DockSlotUi) -> Unit, onChoose: () -> Unit) {
+internal fun OpenWithSheetContent(
+    ui: CategoryUi,
+    onLaunch: (DockSlotUi) -> Unit,
+    onChoose: () -> Unit,
+    /** Set only for Maps: LEGION's own navigation, listed first (ADR 0054). */
+    onOpenNavigation: (() -> Unit)? = null,
+) {
     val look = lookOf(ui.category)
     Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 18.dp)) {
         Row(
@@ -100,9 +107,38 @@ internal fun OpenWithSheetContent(ui: CategoryUi, onLaunch: (DockSlotUi) -> Unit
             Box(Modifier.weight(1f))
             Text("Open with", style = MaterialTheme.typography.bodySmall, color = SoftColors.text2)
         }
+        onOpenNavigation?.let { NavigationRow(onClick = it) }
         ui.slots.forEach { slot -> OpenWithRow(slot, onClick = { onLaunch(slot) }) }
         OutlinedButton(onClick = onChoose, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Text("Choose apps")
+        }
+    }
+}
+
+/** Maps' first choice: LEGION's own Mapbox navigation, the one ADR 0054 makes the only navigation. */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+private fun NavigationRow(onClick: () -> Unit) {
+    val look = lookOf(HomeCategory.MAPS)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(look.tile), contentAlignment = Alignment.Center) {
+            MsIcon(res = look.icon, contentDescription = null, tint = look.glyph, size = 20.dp)
+        }
+        Column(Modifier.weight(1f)) {
+            Text("LEGION Navigation", style = MaterialTheme.typography.bodyLarge, color = SoftColors.text)
+            Text(
+                "Built in. Turn-by-turn guidance.",
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftColors.text2,
+            )
         }
     }
 }

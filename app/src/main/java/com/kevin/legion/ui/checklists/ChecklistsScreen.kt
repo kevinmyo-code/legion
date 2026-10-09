@@ -27,9 +27,15 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
  * own doc comment - is closed in the controller via `ItemState.tickDay`, never re-checked here).
  */
 @Composable
-fun ChecklistsScreen(onBack: () -> Unit, onOpenBought: (() -> Unit)? = null) {
+fun ChecklistsScreen(
+    onBack: () -> Unit,
+    onOpenBought: (() -> Unit)? = null,
+    /** HOME's Lists sheet (one-home ticket 11) opens straight into this list. Null opens the page. */
+    initialChecklistId: Long? = null,
+) {
     val viewModel: ListsViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(initialChecklistId) { initialChecklistId?.let(viewModel::openList) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.refresh()

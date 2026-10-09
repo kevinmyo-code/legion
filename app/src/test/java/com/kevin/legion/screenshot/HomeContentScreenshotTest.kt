@@ -32,7 +32,7 @@ import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.home.DockCallbacks
 import com.kevin.legion.ui.home.DockSlotUi
 import com.kevin.legion.ui.home.HomeCallbacks
-import com.kevin.legion.ui.home.HomeContent
+import com.kevin.legion.ui.home.HomeTilesContent
 import com.kevin.legion.ui.home.HomeUiState
 import com.kevin.legion.ui.home.buildDockSlots
 import com.kevin.legion.ui.home.buildTodayChips
@@ -386,7 +386,7 @@ class HomeContentScreenshotTest {
         nowPlaying: NowPlayingInfo? = null,
     ) {
         composeTestRule.setContent {
-            HomeContent(
+            HomeTilesContent(
                 state = state,
                 recording = recording,
                 recordRefusal = recordRefusal,
