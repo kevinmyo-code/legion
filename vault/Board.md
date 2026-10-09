@@ -129,6 +129,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |
 | [[.scratch/one-home/map\|one-home]] | [[07-the-news-surface\|07]] | build | The news surface: sources, refresh on demand, and three distinct failure sentences |
 | [[.scratch/one-home/map\|one-home]] | [[10-the-news-question-spans-both-sources\|10]] | build | Asking for the news reaches both sources, not just the mailbox |
+| [[.scratch/one-home/map\|one-home]] | [[11-home-is-the-calendar\|11]] | build | HOME is the calendar: month grid, day agenda, three panel buttons |
 | [[.scratch/one-today/map\|one-today]] | [[05-maintenance-has-no-date-axis\|05]] | build | MAINTENANCE 0 DUE is computed against nothing |
 | [[.scratch/one-today/map\|one-today]] | [[07-what-becomes-of-todayscreen\|07]] | build | TodayScreen is half-emptied. Rehome the survivors, then delete it. |
 | [[.scratch/one-today/map\|one-today]] | [[10-everything-is-a-checklist\|10]] | build | Retire the persistent list and the grocery trip: everything is a checklist |
@@ -282,7 +283,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | 13 | 4 | [[.scratch/mapbox-nav/mapbox-nav.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
-| [[.scratch/one-home/map\|one-home]] | 11 | 7 | [[.scratch/one-home/one-home.canvas\|open]] |
+| [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |

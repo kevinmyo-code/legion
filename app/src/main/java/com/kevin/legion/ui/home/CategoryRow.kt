@@ -3,6 +3,7 @@
 package com.kevin.legion.ui.home
 
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -48,6 +49,9 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 /** A dimmed button or row: the same figure the dock uses for "still here, plainly not live". */
 private const val CATEGORY_DIMMED_ALPHA = 0.5f
 
+/** A single picked app's icon, drawn in the 40dp button (the bucket glyph is 20dp inside a tile). */
+private const val SINGLE_APP_ICON_DP = 40
+
 /** One category button's resolved state: its picks, each already matched to the drawer snapshot
  * (`app == null` means that pick is no longer installed). */
 data class CategoryUi(val category: HomeCategory, val slots: List<DockSlotUi>)
@@ -84,6 +88,20 @@ internal fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
     val category = ui.category
     val slots = ui.slots
     return when {
+        // Maps always has LEGION's own navigation (ADR 0054), so a missing or paused picked app can
+        // never leave the button dead: it asks which, and LEGION Navigation is always a choice.
+        category == HomeCategory.MAPS && slots.isNotEmpty() -> CategoryButtonSpec(
+            label = category.short,
+            description = "${category.title}, LEGION Navigation or ${appCountLabelOf(slots.size)}, asks which to open",
+            unset = false,
+            dimmed = false,
+        )
+        category == HomeCategory.MAPS -> CategoryButtonSpec(
+            label = category.short,
+            description = "${category.title}, opens LEGION Navigation. Long-press to add a map app.",
+            unset = false,
+            dimmed = false,
+        )
         slots.isEmpty() -> CategoryButtonSpec(
             label = category.short,
             description = "${category.title}, not set up. Tap to choose apps.",
@@ -117,6 +135,31 @@ internal fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
         }
     }
 }
+
+private fun appCountLabelOf(n: Int): String = if (n == 1) "1 picked app" else "$n picked apps"
+
+/**
+ * The app icon a category button wears in place of its bucket glyph: set only when EXACTLY ONE app
+ * is picked, it is installed, and its icon has loaded (Kevin, 2026-10-09: "if a bucket has only one
+ * app, take the icon of that app too"). Two or more keep the bucket glyph; none keeps today's look.
+ * A pick that is gone or still loading has no icon to show, so the glyph stays rather than a blank.
+ */
+internal fun singleAppIcon(ui: CategoryUi): ImageBitmap? {
+    val slot = ui.slots.singleOrNull() ?: return null
+    return if (slot.app != null && !slot.loading) slot.icon else null
+}
+
+/** What a tap on a category button does for [HomeCategory.MAPS], decided from the picks. */
+internal sealed interface MapsTap {
+    /** Nothing picked: LEGION's own navigation, as before. */
+    data object OpenNavigation : MapsTap
+
+    /** Something picked: ask, with LEGION Navigation as the first choice. */
+    data object AskWhich : MapsTap
+}
+
+internal fun mapsTap(slots: List<DockSlotUi>): MapsTap =
+    if (slots.isEmpty()) MapsTap.OpenNavigation else MapsTap.AskWhich
 
 /** The prototype's per-category tile and glyph colours (research/tray-canvas, option A). */
 internal data class CategoryLook(@DrawableRes val icon: Int, val tile: Color, val glyph: Color)
@@ -157,8 +200,8 @@ fun CategoryRow(
     if (categories.isEmpty()) return
     var chooserFor by remember { mutableStateOf<HomeCategory?>(null) }
     var askFor by remember { mutableStateOf<HomeCategory?>(null) }
-    // ADR 0054: navigation is LEGION's own Mapbox screen, never another map app, so Maps skips
-    // the picked-app launch and the chooser entirely.
+    // ADR 0054: navigation is LEGION's own Mapbox screen, never another map app. A map app may still
+    // sit in the Maps bucket as a launcher entry; picking one never reroutes navigation itself.
     val openNav = com.kevin.legion.ui.navigation.LocalNavEntryPoints.current.open
 
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -169,7 +212,13 @@ fun CategoryRow(
                 modifier = Modifier.weight(1f),
                 onClick = {
                     if (isMaps) {
-                        openNav()
+                        // ADR 0054 forbids handing NAVIGATION to another map app; it says nothing about
+                        // a map app sitting in a launcher bucket. Maps asks which once an app is picked,
+                        // and LEGION Navigation is always one of the choices.
+                        when (mapsTap(ui.slots)) {
+                            MapsTap.OpenNavigation -> openNav()
+                            MapsTap.AskWhich -> askFor = ui.category
+                        }
                     } else {
                         when (val tap = CategoryPicks.tap(ui.slots.map { it.pin })) {
                             CategoryTap.Choose -> chooserFor = ui.category
@@ -178,7 +227,9 @@ fun CategoryRow(
                         }
                     }
                 },
-                onLongClick = { if (isMaps) openNav() else chooserFor = ui.category },
+                // Long-press is the chooser for every bucket, Maps included (it used to open navigation,
+                // which left no way to add a map app at all - commit 3d5376a6).
+                onLongClick = { chooserFor = ui.category },
             )
         }
     }
@@ -191,6 +242,11 @@ fun CategoryRow(
                 onDismiss = { askFor = null },
                 onLaunch = { slot -> askFor = null; callbacks.onLaunch(slot) },
                 onChoose = { askFor = null; chooserFor = category },
+                onOpenNavigation = if (category == HomeCategory.MAPS) {
+                    { askFor = null; openNav() }
+                } else {
+                    null
+                },
             )
         }
     }
@@ -236,16 +292,26 @@ private fun CategoryButton(
                     .size(40.dp)
                     .clip(CircleShape)
                     .let {
-                        if (spec.unset) it.border(1.5.dp, SoftColors.outline, CircleShape) else it.background(look.tile)
+                        when {
+                            spec.unset -> it.border(1.5.dp, SoftColors.outline, CircleShape)
+                            // The app's own icon is its own tile; the bucket's tinted tile would only muddy it.
+                            singleAppIcon(ui) != null -> it
+                            else -> it.background(look.tile)
+                        }
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                MsIcon(
-                    res = look.icon,
-                    contentDescription = null,
-                    tint = if (spec.unset) SoftColors.text3 else look.glyph,
-                    size = 20.dp,
-                )
+                val appIcon = singleAppIcon(ui)
+                if (appIcon != null) {
+                    Image(bitmap = appIcon, contentDescription = null, modifier = Modifier.size(SINGLE_APP_ICON_DP.dp))
+                } else {
+                    MsIcon(
+                        res = look.icon,
+                        contentDescription = null,
+                        tint = if (spec.unset) SoftColors.text3 else look.glyph,
+                        size = 20.dp,
+                    )
+                }
             }
         }
         Text(

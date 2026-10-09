@@ -41,3 +41,13 @@ reason Mapbox was killed, and it stopped being a reason once the token became BY
   Navigation is then absent, said in words. How the build achieves that is
   `.scratch/mapbox-nav/` ticket 02.
 - Android Auto is not covered here.
+
+## Notes
+
+- **2026-10-09, a launcher entry is not a navigation hand-off.** Kevin, asking to put Google Maps back in
+  HOME's Maps bucket: *"map bucket > let me add google maps back there"*. The Maps bucket holds apps the
+  way every bucket does, and a map app sitting in it is a launcher entry. This ADR forbids handing
+  NAVIGATION to another map app; nothing in the navigation path (`navigate`, `change_trip`,
+  `trip_status`, `end_trip`, the nav screen) changed, and LEGION Navigation is always the first choice
+  in that bucket. `.scratch/one-home/issues/11-home-is-the-calendar.md`.
+

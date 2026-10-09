@@ -6254,3 +6254,24 @@ to addresses? so i can say hey save this palce > its addres is X"*.
   line did not fit. Offered raising, trimming other tool descriptions, or dropping voice rename, Kevin
   chose raising. Kevin had ruled the previous raise on 2026-10-05.
 - Kevin declined restoring the old Katy "home" coordinates from a backup.
+
+## 2026-10-09 - HOME becomes the calendar (prototype A); a map app may sit in the Maps bucket
+
+Kevin: *"meanwhile, i wanna revamp my phones home page. i want the calender to be the main thing, no
+scrolling, with lists, events, todos all accessible somehow."* After three prototypes: *"i like A, for
+the phone screen. keep the existing top bar ofc. app tray opener and settings etc. obd link etc.
+bottom for the pinned apps and the prebuilt app buckets too should stay. if a bucket has only one app,
+take the icon of that app too. map bucket > let me add google maps back there"*
+
+- **The today card and the 2 x 4 tile grid give way to a month grid, the selected day's agenda and
+  three panel buttons** (To-dos, Lists, Ideas) that open bottom sheets. Top bar, talk bar, dock and
+  category buckets are unchanged. Suggestions keep their own mark and words and never count as plans.
+  Ticket `.scratch/one-home/issues/11-home-is-the-calendar.md`; prototype saved in `research/`.
+- **Open for Kevin:** the six tiles (Money, Body, Fleet, Recordings, News, Reports) were the only hands
+  path to those screens and the brief did not say where they go. Kept unmounted, not deleted.
+- **A bucket with exactly one app shows that app's own icon.**
+- **Google Maps can be added to the Maps bucket.** It was not excluded: commit `3d5376a6` made the Maps
+  button's tap and long-press both open LEGION navigation, so its chooser never opened. **This is a
+  launcher entry, not a navigation hand-off, so ADR 0054 stands unchanged** (a note was added there).
+  Tapping Maps with an app picked asks which, LEGION Navigation first.
+

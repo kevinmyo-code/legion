@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -100,14 +101,14 @@ data class HomeCallbacks(
 )
 
 /**
- * HOME, the launcher's landing screen (home-launcher ticket 03, ADR 0050/0051). Stateful wrapper:
- * owns [HomeViewModel] and the two live flows [HomeContent] cannot own itself
- * ([VoiceNoteController.recordingState], [NowPlayingController.state]) - both tick on their own
- * schedule, independent of [HomeViewModel.refresh]'s `ON_RESUME` cadence, same split the retired
- * `ui/HomeMeterBands.kt` already drew between its own polled `MetersUiState` and these two live
- * reads.
+ * HOME, the launcher's landing screen (home-launcher ticket 03, ADR 0050/0051), rebuilt around the
+ * calendar on 2026-10-09 (one-home ticket 11, Kevin picked prototype A). Stateful wrapper: owns
+ * [HomeCalendarViewModel], the dock's and the category row's pin state, and the now-playing flow.
+ *
+ * The six area tiles live in the More sheet (Kevin, 2026-10-09: "4th button: More").
  */
 @Composable
+@Suppress("LongParameterList") // one callback per screen HOME can open
 fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenLists: () -> Unit,
@@ -118,11 +119,21 @@ fun HomeScreen(
     onOpenNews: () -> Unit,
     onOpenReports: () -> Unit,
     onOpenMedia: () -> Unit,
+    /** A calendar row or "+N more": that day's day view, with the reminder to edit when it is one. */
+    onOpenDay: (day: java.time.LocalDate, reminderId: Long?) -> Unit = { _, _ -> },
+    /** A list in the Lists sheet: that list. */
+    onOpenList: (checklistId: Long) -> Unit = { onOpenLists() },
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val viewModel: HomeViewModel = viewModel()
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    val calendarViewModel: HomeCalendarViewModel = viewModel(factory = HomeCalendarViewModel.Factory(context))
+    val calendar by calendarViewModel.state.collectAsStateWithLifecycle()
+    // The More sheet's six tiles read the same state HOME's tile grid always did (ticket 03).
+    val tilesViewModel: HomeViewModel = viewModel()
+    val tiles by tilesViewModel.state.collectAsStateWithLifecycle()
+    val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
+    val recording = recordingState is VoiceNoteRecordingState.Recording
+    var recordRefusal by remember { mutableStateOf<String?>(null) }
 
     // Home-launcher ticket 06's own dock - pins are read fresh on every resume (a pin/unpin made
     // from Apps must show up here without a process restart), and against AppDrawerCache's own
@@ -140,7 +151,8 @@ fun HomeScreen(
     var categoryPicks by remember { mutableStateOf(CategoryPicksStore.readAll(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        viewModel.refresh()
+        calendarViewModel.refresh()
+        tilesViewModel.refresh()
         pins = DockPinsStore.read(context)
         categoryPicks = CategoryPicksStore.readAll(context)
         drawerSnapshot = AppDrawerCache.peek()
@@ -156,10 +168,6 @@ fun HomeScreen(
             }
         }
     }
-
-    val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
-    val recording = recordingState is VoiceNoteRecordingState.Recording
-    var recordRefusal by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { NowPlayingController.init(context) }
     val nowPlaying by NowPlayingController.state.collectAsStateWithLifecycle()
@@ -199,10 +207,51 @@ fun HomeScreen(
     }
 
     HomeContent(
-        state = state,
+        calendar = calendar,
+        calendarCallbacks = HomeCalendarCallbacks(
+            onPreviousMonth = calendarViewModel::previousMonth,
+            onNextMonth = calendarViewModel::nextMonth,
+            onSelectDay = calendarViewModel::selectDay,
+            onOpenRow = { day, row -> onOpenDay(day, row.reminderId) },
+            onOpenDay = { day -> onOpenDay(day, null) },
+            onOpenSheet = calendarViewModel::openSheet,
+            onCloseSheet = calendarViewModel::closeSheet,
+            onToggleTodo = calendarViewModel::setTodoDone,
+            onOpenList = { list ->
+                calendarViewModel.closeSheet()
+                onOpenList(list.id)
+            },
+            onAddIdea = calendarViewModel::addIdeaToPlans,
+            onDropIdea = calendarViewModel::dropIdea,
+        ),
+        tiles = tiles,
         recording = recording,
         recordRefusal = recordRefusal,
+        tileCallbacks = HomeCallbacks(
+            onOpenCalendar = onOpenCalendar,
+            onOpenLists = onOpenLists,
+            onOpenMoney = onOpenMoney,
+            onOpenBody = onOpenBody,
+            onOpenFleet = onOpenFleet,
+            onOpenRecordings = onOpenRecordings,
+            onOpenNews = onOpenNews,
+            onOpenReports = onOpenReports,
+            onOpenMedia = onOpenMedia,
+            onStartRecording = {
+                scope.launch {
+                    when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
+                        is VoiceNoteStartResult.Started -> recordRefusal = null
+                        is VoiceNoteStartResult.Refused -> recordRefusal = started.reason
+                    }
+                }
+            },
+            onStopRecording = {
+                recordRefusal = null
+                scope.launch { VoiceNoteController.stop(context) }
+            },
+        ),
         nowPlaying = nowPlaying,
+        onOpenMedia = onOpenMedia,
         dockSlots = buildDockSlots(pins, drawerSnapshot),
         dock = DockCallbacks(
             onLaunch = launchSlot,
@@ -231,40 +280,151 @@ fun HomeScreen(
                 categoryPicks = categoryPicks + (category to picks)
             },
         ),
-        callbacks = HomeCallbacks(
-            onOpenCalendar = onOpenCalendar,
-            onOpenLists = onOpenLists,
-            onOpenMoney = onOpenMoney,
-            onOpenBody = onOpenBody,
-            onOpenFleet = onOpenFleet,
-            onOpenRecordings = onOpenRecordings,
-            onOpenNews = onOpenNews,
-            onOpenReports = onOpenReports,
-            onOpenMedia = onOpenMedia,
-            onStartRecording = {
-                scope.launch {
-                    when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
-                        is VoiceNoteStartResult.Started -> recordRefusal = null
-                        is VoiceNoteStartResult.Refused -> recordRefusal = started.reason
-                    }
-                }
-            },
-            onStopRecording = {
-                recordRefusal = null
-                scope.launch { VoiceNoteController.stop(context) }
-            },
-        ),
     )
 }
 
 /**
- * The stateless render (Roborazzi's own entry point, fakes for [state]/[nowPlaying]). Never
+ * The stateless render of HOME's middle and bottom (Roborazzi's entry point, fakes for everything).
+ * Top to bottom: the calendar (which absorbs all spare height and never scrolls), the three panel
+ * buttons, the pinned dock, the category row, any dock message, and the now-playing row. The top
+ * bar and the talk bar (with the mic) are the shell's and are not drawn here.
+ */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+fun HomeContent(
+    calendar: HomeCalendarUiState,
+    calendarCallbacks: HomeCalendarCallbacks,
+    nowPlaying: NowPlayingInfo?,
+    onOpenMedia: () -> Unit,
+    tiles: HomeUiState = HomeUiState(),
+    recording: Boolean = false,
+    recordRefusal: String? = null,
+    tileCallbacks: HomeCallbacks = HomeCallbacks({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}),
+    dockSlots: List<DockSlotUi> = emptyList(),
+    dock: DockCallbacks = DockCallbacks(onLaunch = {}, onUnpin = {}, onMoveLeft = {}, onMoveRight = {}),
+    dockMessage: String? = null,
+    categories: List<CategoryUi> = emptyList(),
+    chooserRows: List<ChooserRow> = emptyList(),
+    categoryCallbacks: CategoryCallbacks = CategoryCallbacks(onLaunch = {}, onSave = { _, _ -> }),
+) {
+    var moreOpen by remember { mutableStateOf(false) }
+    SoftTheme {
+        Column(Modifier.fillMaxSize().background(SoftColors.ground).padding(12.dp)) {
+            HomeCalendarArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth())
+            HomePanelButtons(
+                calendar, calendarCallbacks, Modifier.padding(top = 6.dp, bottom = 4.dp),
+                onMore = { moreOpen = true },
+            )
+            AppDock(slots = dockSlots, callbacks = dock)
+            CategoryRow(categories = categories, chooserRows = chooserRows, callbacks = categoryCallbacks)
+            dockMessage?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SoftColors.caution,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            }
+            NowPlayingRow(nowPlaying = nowPlaying, onOpenMedia = onOpenMedia)
+        }
+        HomePanelSheet(calendar, calendarCallbacks)
+        if (moreOpen) {
+            // A tile that navigates closes the sheet first; the record button does not.
+            fun closing(go: () -> Unit): () -> Unit = { moreOpen = false; go() }
+            MoreSheet(
+                state = tiles,
+                recording = recording,
+                recordRefusal = recordRefusal,
+                callbacks = tileCallbacks.copy(
+                    onOpenMoney = closing(tileCallbacks.onOpenMoney),
+                    onOpenBody = closing(tileCallbacks.onOpenBody),
+                    onOpenFleet = closing(tileCallbacks.onOpenFleet),
+                    onOpenRecordings = closing(tileCallbacks.onOpenRecordings),
+                    onOpenNews = closing(tileCallbacks.onOpenNews),
+                    onOpenReports = closing(tileCallbacks.onOpenReports),
+                ),
+                onDismiss = { moreOpen = false },
+            )
+        }
+    }
+}
+
+/**
+ * The More sheet (Kevin, 2026-10-09: "4th button: More"): Money, Body, Fleet, Recordings, News and
+ * Reports, the same [TileGrid] tiles and callbacks HOME used to show, record button and recording
+ * state included, under the weather and area card (it fits above them, at font scale 1.3 too).
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+fun MoreSheet(
+    state: HomeUiState,
+    recording: Boolean,
+    recordRefusal: String?,
+    callbacks: HomeCallbacks,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = SoftColors.card,
+    ) {
+        MoreSheetContent(state, recording, recordRefusal, callbacks, onDismiss)
+    }
+}
+
+/** The sheet body, split from its window so a screenshot can draw it directly. */
+@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Composable
+fun MoreSheetContent(
+    state: HomeUiState,
+    recording: Boolean,
+    recordRefusal: String?,
+    callbacks: HomeCallbacks,
+    onDismiss: () -> Unit,
+) {
+    Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 20.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("More", style = MaterialTheme.typography.titleLarge, color = SoftColors.text)
+            androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 44.dp)) {
+                Text("Done", color = SoftColors.text)
+            }
+        }
+        // Rows keep their natural heights (no weights): the sheet sizes to them, and scrolls only if a
+        // huge font scale makes them taller than the screen.
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            // The weather and area card fits above the tiles (checked at font scale 1.3), so it is back.
+            TodayCard(state = state, onClick = onDismiss)
+            Spacer(Modifier.height(6.dp))
+            TileGrid(
+                state = state,
+                recording = recording,
+                recordRefusal = recordRefusal,
+                callbacks = callbacks,
+                fillRemaining = false,
+                showCalendarAndLists = false,
+            )
+        }
+    }
+}
+
+/**
+ * **NOT MOUNTED 2026-10-09 (one-home ticket 11).** HOME's middle area is now the calendar
+ * ([HomeContent]); this is the previous today card + 2 x 4 tile grid. Its parts ([TodayCard], [TileGrid])
+ * are reused by the More sheet (Kevin: "4th button: More"); the whole layout is kept only because the
+ * HomeContentScreenshotTest baselines render it.
+ *
+ * Was: the stateless render (Roborazzi's own entry point, fakes for [state]/[nowPlaying]). Never
  * scrolls or clips in the A25's content box - [BoxWithConstraints] picks the fixed-grid layout
  * above [GRID_FITS_MIN_HEIGHT] and a scrolling one below it (a small phone, a big font scale),
  * per this ticket's own "Fit, and the fallback" section.
  */
 @Composable
-fun HomeContent(
+fun HomeTilesContent(
     state: HomeUiState,
     recording: Boolean,
     recordRefusal: String?,
@@ -382,13 +542,15 @@ private fun TodayChip(text: String, alert: Boolean) {
  * News, Reports. [fillRemaining] picks weighted rows (fits the content box, no scroll) or
  * natural-height rows (the scrolling fallback) - see [HomeContent]'s own doc comment. */
 @Composable
-private fun TileGrid(
+internal fun TileGrid(
     state: HomeUiState,
     recording: Boolean,
     recordRefusal: String?,
     callbacks: HomeCallbacks,
     fillRemaining: Boolean,
     modifier: Modifier = Modifier,
+    /** False in the More sheet: Calendar and Lists are the panel buttons now (one-home ticket 11). */
+    showCalendarAndLists: Boolean = true,
 ) {
     // 4dp between rows (was 8, then 6) - the same height-back-to-the-grid reasoning as
     // HomeContent's own tightened Spacer (ticket 06's dock, then ticket 07's category row).
@@ -410,7 +572,10 @@ private fun TileGrid(
             else -> Modifier.fillMaxWidth().height(96.dp)
         }
 
-        Row(rowModifier(ROW_COMPACT_HEIGHT), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (showCalendarAndLists) Row(
+            rowModifier(ROW_COMPACT_HEIGHT),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
                 accent = AreaAccent.CALENDAR,
