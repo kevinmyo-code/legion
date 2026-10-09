@@ -61,12 +61,13 @@ object OpenerCalendarBriefing {
      * One agenda item worth mentioning in the opener - deliberately NOT
      * [CalendarProvider.GoogleCalendarEvent], since the source is now the merged central date
      * store and an event living entirely inside LEGION was never a Google row to begin with.
-     * [allDay] is not a concept the Dates aspect schema tracks (aspect-engine ticket 19's field
-     * list has no such column - see [com.kevin.legion.engine.dates.DatesAspectSeeder]'s own doc
-     * comment), so it always defaults false here; an imported all-day Google event still renders
-     * with its literal (UTC-midnight) time rather than an "(all day)" label. Known v1 limitation,
-     * not a silent behavior change from before this switch - the old Google-direct path did carry
-     * a real `allDay` bit and this one does not yet.
+     * **[allDay] CORRECTED 2026-10-09.** This comment used to say the Dates schema does not track
+     * all-day and that an imported all-day event "still renders with its literal (UTC-midnight)
+     * time" as a known v1 limitation. The `events` table has carried `allDay` for a long time and
+     * `DatesAgenda.AgendaItem` now exposes it; the limitation was the caller dropping it, and it
+     * spoke "seven this evening" for an event on the NEXT day (voice audit finding 3). For an
+     * all-day item [startMs] must be the START OF ITS DATE IN THE DEVICE ZONE
+     * ([AllDayTime.anchorMs]), never the stored UTC midnight; [describe] speaks it as a date.
      */
     data class BriefingEvent(
         val title: String,
@@ -98,6 +99,25 @@ object OpenerCalendarBriefing {
     private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
     /**
+     * One event as spoken text: an all-day item is a DATE ("all day tomorrow"), never a clock time;
+     * an inferred one says so; a timed one gets its time. Shared with the sitrep so the opener and
+     * the sitrep cannot disagree about the same event. [today] is the device-local date.
+     */
+    fun describe(event: BriefingEvent, zone: ZoneId, today: java.time.LocalDate = java.time.LocalDate.now(zone)): String {
+        val title = event.title.trim().ifEmpty { "(untitled)" }
+        return when {
+            // Ticket 01 ruling 2: an inferred date is spoken as what it is, in words, never as
+            // a bare time that would read as something the user actually scheduled.
+            event.dueIsInferred -> "\"$title\" (showing tomorrow, no date set)"
+            event.allDay -> {
+                val date = Instant.ofEpochMilli(event.startMs).atZone(zone).toLocalDate()
+                "\"$title\" (all day ${AllDayTime.dateWords(date, today)})"
+            }
+            else -> "\"$title\" at ${Instant.ofEpochMilli(event.startMs).atZone(zone).format(TIME_FMT)}"
+        }
+    }
+
+    /**
      * The calendar sentence for the opener. [events] is whatever
      * [com.kevin.legion.engine.dates.DatesAgenda.windowed] returned for the next [WINDOW_HOURS],
      * mapped to [BriefingEvent]; pass [hasPermission] `false` to get [NO_PERMISSION] instead - see
@@ -122,7 +142,7 @@ object OpenerCalendarBriefing {
             else "Their calendar, read just now, has no appointments in the next $WINDOW_HOURS " +
                 "hours. Do not mention any appointment or plan. $due"
         }
-        return appointmentsSentence(upcoming, zone) + (due ?: "")
+        return appointmentsSentence(upcoming, zone, Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()) + (due ?: "")
     }
 
     /**
@@ -143,24 +163,16 @@ object OpenerCalendarBriefing {
         if (due.isEmpty()) return null
         val listed = due.joinToString("; ") { d ->
             val title = d.title.trim().ifEmpty { "(untitled)" }
-            "\"$title\" due at ${Instant.ofEpochMilli(d.startMs).atZone(zone).format(TIME_FMT)}"
+if (d.allDay) "\"$title\" due today (no time set)"
+            else "\"$title\" due at ${Instant.ofEpochMilli(d.startMs).atZone(zone).format(TIME_FMT)}"
         }
         val more = if (deadlines.size > due.size) " (and ${deadlines.size - due.size} more)" else ""
         return "Due today and not yet done: $listed$more. Never say they are free, clear or have " +
             "nothing on while any of these is outstanding. You may mention the nearest one. "
     }
 
-    private fun appointmentsSentence(upcoming: List<BriefingEvent>, zone: ZoneId): String {
-        val listed = upcoming.joinToString("; ") { event ->
-            val title = event.title.trim().ifEmpty { "(untitled)" }
-            when {
-                // Ticket 01 ruling 2: an inferred date is spoken as what it is, in words, never as
-                // a bare time that would read as something the user actually scheduled.
-                event.dueIsInferred -> "\"$title\" (showing tomorrow, no date set)"
-                event.allDay -> "\"$title\" (all day)"
-                else -> "\"$title\" at ${Instant.ofEpochMilli(event.startMs).atZone(zone).format(TIME_FMT)}"
-            }
-        }
+    private fun appointmentsSentence(upcoming: List<BriefingEvent>, zone: ZoneId, today: java.time.LocalDate): String {
+        val listed = upcoming.joinToString("; ") { describe(it, zone, today) }
         return "Their calendar, read just now, has exactly these and nothing else for the next " +
             "$WINDOW_HOURS hours: $listed. You may mention the next one briefly if it is soon " +
             "enough to matter. Never name an appointment, a person or a plan that is not on that " +

@@ -553,7 +553,10 @@ class AriaForegroundService : Service() {
             OpenerCalendarBriefing.BriefingEvent(
                 title = it.title,
                 startMs = it.dueAt,
-                endMs = it.endAt ?: it.dueAt,
+                // An all-day item's own endAt is a UTC-midnight instant; collapse to the start so
+                // nothing downstream reads it as a clock time (voice audit finding 3).
+                endMs = if (it.allDay) it.dueAt else it.endAt ?: it.dueAt,
+                allDay = it.allDay,
                 dueIsInferred = it.dueIsInferred,
             )
         }
@@ -567,7 +570,10 @@ class AriaForegroundService : Service() {
             com.kevin.legion.data.local.CarDatabase.getDatabase(this@AriaForegroundService).eventDao()
                 .activeByKindInLocalWindow(com.kevin.legion.backend.EventKind.TASK, nowMs, endOfDay, zone)
                 .filter { !it.done && it.startsAt != null }
-                .map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.startsAt!!, endMs = it.startsAt!!) }
+                .map {
+                    val start = com.kevin.legion.calendar.AllDayTime.anchorMs(it.startsAt!!, it.allDay, zone)
+                    OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = start, endMs = start, allDay = it.allDay)
+                }
         }
         sb.append(OpenerCalendarBriefing.forOpener(events, nowMs, zone, hasCalendar, deadlines))
 

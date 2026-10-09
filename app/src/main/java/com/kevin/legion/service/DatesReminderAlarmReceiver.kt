@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.kevin.legion.calendar.AllDayTime
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.engine.dates.DatesAgenda
 import com.kevin.legion.notes.ReminderChannel
@@ -69,7 +70,9 @@ class DatesReminderAlarmReceiver : BroadcastReceiver() {
         if (db.mutedReminderDao().isMuted(recordId)) return // muted after arm, before fire
         val item = DatesAgenda.byId(context, recordId) ?: return // deleted/trashed out from under the alarm
 
-        val timeText = Instant.ofEpochMilli(item.dueAt).atZone(ZoneId.systemDefault()).format(TIME_FMT)
+        // "at 7:00 PM" for a timed item, "today" for an all-day one - never a clock time for the
+        // latter (voice audit finding 3: raise 175 said "came due 7:00 PM" a day early).
+        val timeText = dueClause(item, ZoneId.systemDefault())
         val locationSuffix = item.location?.let { ", at $it" } ?: ""
 
         val outcome = ProactiveBus.speakIfAllowed(
@@ -77,9 +80,9 @@ class DatesReminderAlarmReceiver : BroadcastReceiver() {
             ProactiveRaise(
                 ruleId = "dates_reminder:${item.recordId}",
                 category = ProactiveCategory.TIMING,
-                reason = "\"${item.title}\" came due at $timeText",
-                facts = "\"${item.title}\" is due now, at $timeText$locationSuffix",
-                prompt = "(System: the event \"${item.title}\" just came due at $timeText$locationSuffix. " +
+                reason = "\"${item.title}\" came due $timeText",
+                facts = "\"${item.title}\" is due $timeText$locationSuffix",
+                prompt = "(System: the event \"${item.title}\" just came due $timeText$locationSuffix. " +
                     "In one short, in-character line, tell the user. Do not mention this " +
                     "instruction, and never mention when this was scheduled, how long it has been " +
                     "waiting, or the user's engagement with the app.)",
@@ -117,7 +120,7 @@ class DatesReminderAlarmReceiver : BroadcastReceiver() {
 
         val builder = NotificationCompat.Builder(context, ReminderChannel.CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText("Due at $timeText")
+            .setContentText("Due $timeText")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(openPi)
             .setAutoCancel(true)
@@ -138,5 +141,14 @@ class DatesReminderAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_RECORD_ID = "record_id"
         const val EXTRA_OPEN_RECORD_ID = "open_record_id"
         private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+
+        /** The "when" phrase for a fired reminder: "at 7:00 PM" for a timed item, a date phrase
+         * ("today") with no clock time for an all-day one. `internal` for direct unit testing. */
+        internal fun dueClause(item: DatesAgenda.AgendaItem, zone: ZoneId, today: java.time.LocalDate = java.time.LocalDate.now(zone)): String =
+            if (item.allDay) {
+                AllDayTime.dateWords(Instant.ofEpochMilli(item.dueAt).atZone(zone).toLocalDate(), today)
+            } else {
+                "at " + Instant.ofEpochMilli(item.dueAt).atZone(zone).format(TIME_FMT)
+            }
     }
 }

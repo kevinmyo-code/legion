@@ -113,7 +113,7 @@ class OpenerCalendarBriefingTest {
             at(9), zone, hasPermission = true,
         )
 
-        assertTrue(briefing.contains("\"Public holiday\" (all day)"))
+        assertTrue(briefing.contains("\"Public holiday\" (all day today)"))
     }
 
     @Test

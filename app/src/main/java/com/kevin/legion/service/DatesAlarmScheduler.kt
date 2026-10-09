@@ -74,9 +74,9 @@ object DatesAlarmScheduler {
         val am = alarmManager(context)
         val pi = pendingIntent(context, next.recordId)
         if (canScheduleExact(context)) {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.dueAt, pi)
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.remindAtMs, pi)
         } else {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.dueAt, pi)
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.remindAtMs, pi)
         }
     }
 }
