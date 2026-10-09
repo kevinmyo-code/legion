@@ -16,6 +16,9 @@ class Place(models.Model):
     label = models.TextField()
     latitude = models.FloatField()
     longitude = models.FloatField()
+    # The human address (2026-10-09). Added by `ingest/migrations/0017`
+    # through `api/place_columns.py`; null on every place saved before it.
+    address = models.TextField(null=True)
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()

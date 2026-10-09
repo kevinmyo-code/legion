@@ -14,6 +14,7 @@ What that loop produces today, plus fleet's own three telemetry routes, which
 are declared separately at the foot of this file:
 
     /api/places/                          /api/places/<label>/
+                                          /api/places/<label>/rename/   POST, declared below
     /api/voice_notes/                     /api/voice_notes/<uuid>/
     /api/body/bodyweight_logs/            /api/body/bodyweight_logs/<origin_guid>/
     /api/body/meal_logs/                  /api/body/meal_logs/<origin_guid>/
@@ -92,6 +93,7 @@ from api.event_skips import EventSkipDetailView, EventSkipListCreateView
 from api.events import EventDetailView, EventListCreateView
 from api.fleet import OBD_SAMPLE_PATHS
 from api.ledger_spend import SpendView
+from api.places import PlaceRenameView
 from api.registry import SYNCED_VIEWSETS
 from api.synced import synced_paths
 
@@ -108,6 +110,8 @@ urlpatterns = [
     path("changes", ChangesView.as_view(), name="changes"),
     # web-revamp ticket 11: spend computed once, on the engine (`api/spend.py`).
     path("ledger/spend", SpendView.as_view(), name="ledger-spend"),
+    # 2026-10-09: rename keeps the coordinates and address; see the view.
+    path("places/<str:label>/rename/", PlaceRenameView.as_view(), name="places-rename"),
 ]
 
 for _viewset in SYNCED_VIEWSETS:
