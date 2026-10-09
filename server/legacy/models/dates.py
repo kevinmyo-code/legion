@@ -53,7 +53,7 @@ class Event(models.Model):
     vehicle = models.ForeignKey(
         Vehicle, db_column="vehicle_id", null=True, on_delete=models.DO_NOTHING, related_name="+"
     )
-    kind = models.TextField()  # CHECK: reminder | event | task; DB default 'reminder'
+    kind = models.TextField()  # CHECK: reminder | event | task | suggestion; DB default 'reminder'
     # web-revamp ticket 14. Added by `ingest/migrations/0009` (SQL in
     # `api/event_columns.py`), not by Supabase. CHECK in (0, 5, 10, 15, 30,
     # 60, 120, 1440); null is no reminder.

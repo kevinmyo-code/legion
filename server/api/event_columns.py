@@ -118,3 +118,81 @@ def add_event_skip_sync_columns(cursor) -> str | None:
     cursor.execute(TOUCH_FUNCTION_SQL)
     cursor.execute(SKIPS_TRIGGER_SQL)
     return None
+
+
+# **Event suggestions (Kevin, 2026-10-09).** "Things to do on the weekend, as
+# separately coloured events on our calendar." A suggestion is an event row
+# with `kind = 'suggestion'`: somewhere the household COULD go, never a plan
+# they made. Two CHECKs, both SQL because push dispatch and the phone's
+# replica read these rows without the serializer in the way:
+#
+# - `events_kind_check` widens to the fourth value. Dropped by column rather
+#   than by name, the same loop `supabase/migrations/
+#   20260901000300_events_kind_completable_axis.sql` uses, so a constraint
+#   Postgres auto-named differently on some database is still the one
+#   replaced.
+# - `events_suggestion_is_not_a_plan`: a suggestion never carries a reminder
+#   and is never done. A reminder would ring for something nobody agreed to
+#   go to, and a tick would say it happened. "Add to my plans" turns it into
+#   `kind = 'event'` first; only then can either be set.
+KIND_CHOICES: tuple[str, ...] = ("reminder", "event", "task", "suggestion")
+KIND_SUGGESTION = "suggestion"
+KIND_CHECK_NAME = "events_kind_check"
+SUGGESTION_CHECK_NAME = "events_suggestion_is_not_a_plan"
+
+_DROP_KIND_CHECKS_SQL = """
+do $$
+declare
+    c record;
+begin
+    for c in
+        select con.conname
+        from pg_constraint con
+        join pg_class rel on rel.oid = con.conrelid
+        join pg_namespace nsp on nsp.oid = rel.relnamespace
+        join pg_attribute att on att.attrelid = rel.oid and att.attname = 'kind'
+        where nsp.nspname = 'public'
+          and rel.relname = 'events'
+          and con.contype = 'c'
+          and con.conkey = array[att.attnum]
+    loop
+        execute format('alter table public.events drop constraint %I', c.conname);
+    end loop;
+end
+$$;
+"""
+
+
+def _kind_check_sql(kinds: tuple[str, ...]) -> str:
+    allowed = ", ".join(f"'{k}'" for k in kinds)
+    return (
+        _DROP_KIND_CHECKS_SQL + f"alter table public.events add constraint {KIND_CHECK_NAME} "
+        f"check (kind in ({allowed}));\n"
+    )
+
+
+SUGGESTION_ADD_SQL = (
+    f"alter table public.events drop constraint if exists {SUGGESTION_CHECK_NAME};\n"
+    + _kind_check_sql(KIND_CHOICES)
+    + f"""alter table public.events add constraint {SUGGESTION_CHECK_NAME}
+    check (kind <> '{KIND_SUGGESTION}' or (remind_minutes_before is null and done = false));
+"""
+)
+
+# Reversing refuses rather than corrupts: narrowing the CHECK fails on any
+# suggestion still stored, which is the right answer - delete them, or turn
+# them into events, before rolling back.
+SUGGESTION_DROP_SQL = (
+    f"alter table if exists public.events drop constraint if exists {SUGGESTION_CHECK_NAME};\n"
+    + _kind_check_sql(("reminder", "event", "task"))
+)
+
+
+def add_event_suggestions(cursor) -> str | None:
+    """Widens `events.kind` to `suggestion` and adds the not-a-plan CHECK, if
+    `events` is there. None when it ran, or why not. Needs
+    `remind_minutes_before` (`0009`) to exist first."""
+    if not _table_exists(cursor, "events"):
+        return "events: public.events does not exist here; nothing changed."
+    cursor.execute(SUGGESTION_ADD_SQL)
+    return None

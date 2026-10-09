@@ -27,7 +27,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.event_columns import REMIND_MINUTES_CHOICES
+from api.event_columns import KIND_CHOICES, KIND_SUGGESTION, REMIND_MINUTES_CHOICES
 from api.schema import (
     NO_CONTENT,
     NOT_FOUND,
@@ -56,7 +56,8 @@ EVENT_TAGS = ["events"]
 # `validate_*` methods refuse anything outside of, naming the set in the
 # 400 body rather than leaving the caller to guess (this ticket's own rule
 # 2: "a wrong value returns 400 naming the allowed set").
-KIND_CHOICES = ("reminder", "event", "task")
+# `KIND_CHOICES` lives in `api/event_columns.py`, beside the CHECK it is
+# built into, so the 400 and the constraint cannot disagree.
 SOURCE_CHOICES = ("legion", "google")
 REPEAT_KIND_CHOICES = ("DAILY", "WEEKLY", "MONTHLY_ON_DATE", "YEARLY")
 REPEAT_END_KIND_CHOICES = ("NEVER", "ON_DATE", "AFTER_COUNT")
@@ -192,6 +193,34 @@ class EventSerializer(serializers.ModelSerializer):
                 f"start), or null for no reminder. Nothing was saved."
             )
         return value
+
+    def validate(self, attrs: dict) -> dict:
+        # A suggestion is something the household COULD do, never a plan, so
+        # it carries no reminder and is never done (`api/event_columns.py`,
+        # `events_suggestion_is_not_a_plan`, refuses the same in SQL). On a
+        # PATCH the row's own stored values stand in for fields not sent.
+        current = self.instance
+        kind = attrs.get("kind", current.kind if current is not None else CREATE_DEFAULTS["kind"])
+        if kind != KIND_SUGGESTION:
+            return attrs
+        remind = attrs.get(
+            "remind_minutes_before",
+            current.remind_minutes_before if current is not None else None,
+        )
+        if remind is not None:
+            raise serializers.ValidationError(
+                {
+                    "remind_minutes_before": (
+                        "A suggestion cannot have a reminder: it is not a plan. Add it to "
+                        'your plans (kind "event") first. Nothing was saved.'
+                    )
+                }
+            )
+        if attrs.get("done", current.done if current is not None else False):
+            raise serializers.ValidationError(
+                {"done": "A suggestion cannot be marked done: it is not a plan. Nothing was saved."}
+            )
+        return attrs
 
     def create(self, validated_data: dict) -> Event:
         for key, default in CREATE_DEFAULTS.items():
