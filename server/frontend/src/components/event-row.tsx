@@ -1,6 +1,9 @@
+import { ExternalLink, MoreHorizontal } from 'lucide-react'
+
 import { useEventSheet } from '@/components/event-sheet-context'
 import { SUGGESTION_TONE, SuggestionMark } from '@/components/suggestion-mark'
 import { TaskCheck } from '@/components/task-check'
+import { Button } from '@/components/ui/button'
 import { VisibilityMark } from '@/components/visibility-mark'
 import { canvasLine, canvasMetaOf } from '@/lib/canvas'
 import { splitCourse } from '@/lib/horizon'
@@ -39,6 +42,11 @@ export function isCanvasRow(occurrence: Pick<Occurrence, 'event'>): boolean {
  * the plain tonal row with a lock and "Only you". Tasks are never tinted: they
  * carry a checkbox and the same words, so a day of coursework is a list, not a
  * pink wall.
+ *
+ * A suggestion with an http(s) page is the one exception to "opens the sheet":
+ * its body is a link to that page in a new tab, and the sheet (Add to my plans,
+ * Not interested) sits behind its own "..." button. Without such a page it opens
+ * the sheet like any other row.
  */
 export function EventRow({
   occurrence,
@@ -62,6 +70,10 @@ export function EventRow({
   const suggestion = isSuggestion(event)
   const tinted = !isTask && !suggestion && visibility === 'shared'
   const editable = sheet !== null && !isCanvasRow(occurrence)
+  // A suggestion with an http(s) page (structured_meta.url, already guarded in
+  // suggestionMeta): the row body becomes a real link to it (Kevin, 2026-10-09),
+  // and the sheet with its two actions moves behind a separate "..." button.
+  const pageUrl = suggestion ? (suggestionMeta(event)?.url ?? null) : null
 
   const body = (
     <>
@@ -88,6 +100,12 @@ export function EventRow({
         <span className="block text-[0.8125rem] text-muted-foreground tabular-nums">{detail}</span>
       )}
       {canvas && <span className="block text-[0.8125rem] text-muted-foreground">{canvas}</span>}
+      {pageUrl && (
+        <span className="mt-0.5 flex items-center gap-1 text-[0.8125rem] font-medium underline">
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+          Open event page
+        </span>
+      )}
     </>
   )
 
@@ -108,7 +126,17 @@ export function EventRow({
           {timeLabel(occurrence)}
         </span>
       )}
-      {editable ? (
+      {pageUrl ? (
+        <a
+          href={pageUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-primary"
+          aria-label={`Open event page for ${label}`}
+        >
+          {body}
+        </a>
+      ) : editable ? (
         <button
           type="button"
           className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-primary"
@@ -129,6 +157,19 @@ export function EventRow({
         <SuggestionMark className="mt-0.5" />
       ) : (
         <VisibilityMark visibility={visibility} onTint={tinted} className="mt-0.5" />
+      )}
+      {pageUrl && editable && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="-my-1 shrink-0"
+          aria-label={`Add or dismiss ${label}`}
+          title="Add to my plans, or Not interested"
+          onClick={() => sheet.open({ kind: 'edit', occurrence })}
+        >
+          <MoreHorizontal aria-hidden="true" />
+        </Button>
       )}
     </li>
   )

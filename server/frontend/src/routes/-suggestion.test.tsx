@@ -105,7 +105,8 @@ test('a structured suggestion shows venue, city, price and links its url', async
   })
   renderApp('/calendar', engine, 'family')
   await screen.findByRole('heading', { name: 'Calendar' })
-  fireEvent.click(await screen.findByRole('button', { name: 'Edit Jazz night' }))
+  // The row itself is the page link now; the sheet sits behind its own button.
+  fireEvent.click(await screen.findByRole('button', { name: 'Add or dismiss Jazz night' }))
   const dialog = await screen.findByRole('dialog')
   expect(within(dialog).getByText('The Hall')).toBeInTheDocument()
   expect(within(dialog).getByText('Austin')).toBeInTheDocument()
@@ -133,4 +134,72 @@ test('an unsafe structured url is not linked and notes are not searched', async 
   fireEvent.click(await screen.findByRole('button', { name: 'Edit Odd' }))
   const dialog = await screen.findByRole('dialog')
   expect(within(dialog).queryByRole('link')).toBeNull()
+})
+
+function engineWithPage(url: unknown): Engine {
+  return createEngine({
+    events: [
+      makeEvent({
+        title: 'Jazz night',
+        kind: 'suggestion',
+        starts_at: todayAt(19, 0),
+        notes: 'https://notes.test/jazz',
+        structured_meta: { city: 'Austin', venue: 'The Hall', url },
+      }),
+    ],
+  })
+}
+
+async function calendarDay(engine: Engine) {
+  renderApp('/calendar', engine, 'family')
+  await screen.findByRole('heading', { name: 'Calendar' })
+  await screen.findByText('Suggestions, not in your plans')
+}
+
+test('a suggestion row with an http(s) page is a real link to it, in a new tab', async () => {
+  await calendarDay(engineWithPage('https://right.test/jazz'))
+  const link = screen.getByRole('link', { name: 'Open event page for Jazz night' })
+  expect(link.tagName).toBe('A')
+  expect(link).toHaveAttribute('href', 'https://right.test/jazz')
+  expect(link).toHaveAttribute('target', '_blank')
+  expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  // The affordance is visible in words, not only in the accessible name.
+  expect(within(link).getByText('Open event page')).toBeInTheDocument()
+  // The row no longer offers to "Edit" itself; the sheet is behind its own button.
+  expect(screen.queryByRole('button', { name: 'Edit Jazz night' })).toBeNull()
+})
+
+test('the actions button sits outside the link and opens the sheet without navigating', async () => {
+  const engine = engineWithPage('https://right.test/jazz')
+  await calendarDay(engine)
+  const link = screen.getByRole('link', { name: 'Open event page for Jazz night' })
+  expect(within(link).queryAllByRole('button')).toHaveLength(0)
+  const linkClicks: Event[] = []
+  link.addEventListener('click', (e) => linkClicks.push(e))
+  const actions = screen.getByRole('button', { name: 'Add or dismiss Jazz night' })
+  expect(actions.closest('a')).toBeNull()
+  const before = window.location.href
+  fireEvent.click(actions)
+  const dialog = await screen.findByRole('dialog')
+  expect(linkClicks).toHaveLength(0)
+  expect(window.location.href).toBe(before)
+  // Both actions stay reachable, and pressing one writes without touching the link.
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Add to my plans' }))
+  await waitFor(() => expect(engine.writes.filter((w) => w.method === 'PATCH')).toHaveLength(1))
+  expect(linkClicks).toHaveLength(0)
+  expect(window.location.href).toBe(before)
+})
+
+test.each([
+  ['javascript:', 'javascript:alert(1)'],
+  ['file:', 'file:///etc/passwd'],
+  ['blank', '   '],
+  ['missing', null],
+])('a %s page leaves the row opening the sheet, with no link', async (_name, url) => {
+  await calendarDay(engineWithPage(url))
+  expect(screen.queryByRole('link', { name: /Open event page/ })).toBeNull()
+  expect(screen.queryByText('Open event page')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Add or dismiss Jazz night' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Jazz night' }))
+  expect(await screen.findByRole('dialog')).toBeInTheDocument()
 })
