@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home A: month first</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#A8C8FF}a:hover{color:#d4e3ff}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid #A8C8FF;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 384px; height: 832px; box-sizing: border-box; background: #121317; color: #E6E7EC; font-family: Figtree, system-ui, sans-serif; display: flex; flex-direction: column; position: relative; overflow: hidden">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 18px 16px 8px 20px">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 13px; color: #A9ADB8">Friday, Oct 9</span>
+      <span style="font-size: 26px; font-weight: 700; letter-spacing: -0.01em">October</span>
+    </div>
+    <div style="display: flex; gap: 4px">
+      <button aria-label="Previous month" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: #1C1E24; color: #E6E7EC; font-size: 18px">&#8249;</button>
+      <button aria-label="Next month" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: #1C1E24; color: #E6E7EC; font-size: 18px">&#8250;</button>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 0 10px; font-size: 11px; color: #8A8F9B; text-align: center; letter-spacing: 0.06em">
+    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; padding: 6px 10px 8px">
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="42">
+      <button onClick="{{c.pick}}" aria-label="{{c.label}}" style="{{c.style}}">
+        <span style="font-size: 14px; font-weight: 600">{{c.n}}</span>
+        <span style="display: flex; gap: 3px; height: 6px">
+          <sc-if value="{{c.ev}}" hint-placeholder-val="{{false}}"><span style="width: 5px; height: 5px; border-radius: 3px; background: #A8C8FF"></span></sc-if>
+          <sc-if value="{{c.task}}" hint-placeholder-val="{{false}}"><span style="width: 5px; height: 5px; border-radius: 3px; background: #FFD36B"></span></sc-if>
+          <sc-if value="{{c.sugg}}" hint-placeholder-val="{{false}}"><span style="width: 5px; height: 5px; border-radius: 1px; background: #FFB77C"></span></sc-if>
+        </span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="flex: 1; min-height: 0; margin: 0 12px; background: #1C1E24; border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+    <div style="display: flex; justify-content: space-between; align-items: baseline">
+      <span style="font-size: 16px; font-weight: 700">{{dayTitle}}</span>
+      <span style="font-size: 12px; color: #8A8F9B">{{dayCount}}</span>
+    </div>
+    <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+      <span style="font-size: 14px; color: #A9ADB8; padding-top: 6px">Nothing on this day.</span>
+    </sc-if>
+    <sc-for list="{{shown}}" as="it" hint-placeholder-count="3">
+      <div style="display: flex; align-items: center; gap: 12px; min-height: 44px">
+        <span style="width: 56px; flex: none; font-size: 12px; color: #A9ADB8">{{it.when}}</span>
+        <span style="{{it.bar}}"></span>
+        <div style="display: flex; flex-direction: column; min-width: 0; flex: 1">
+          <span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{it.title}}</span>
+          <span style="font-size: 11px; color: {{it.tagColor}}">{{it.tag}}</span>
+        </div>
+      </div>
+    </sc-for>
+    <sc-if value="{{more}}" hint-placeholder-val="{{false}}">
+      <button style="align-self: flex-start; border: 0; background: none; color: #A8C8FF; font-size: 13px; padding: 4px 0">{{moreLabel}}</button>
+    </sc-if>
+  </div>
+
+  <div style="display: flex; gap: 8px; padding: 10px 12px 16px; align-items: center">
+    <button onClick="{{openTodos}}" style="flex: 1; height: 52px; border-radius: 16px; border: 0; background: #43340F; color: #FFD36B; font-size: 14px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px">To-dos<span style="font-size: 11px; font-weight: 500; opacity: 0.8">4 open</span></button>
+    <button onClick="{{openLists}}" style="flex: 1; height: 52px; border-radius: 16px; border: 0; background: #24272E; color: #E6E7EC; font-size: 14px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px">Lists<span style="font-size: 11px; font-weight: 500; color: #A9ADB8">4 lists</span></button>
+    <button onClick="{{openSugg}}" style="flex: 1; height: 52px; border-radius: 16px; border: 0; background: #4A2A12; color: #FFB77C; font-size: 14px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px">Ideas<span style="font-size: 11px; font-weight: 500; opacity: 0.8">this weekend</span></button>
+    <button aria-label="Ask" style="width: 52px; height: 52px; flex: none; border-radius: 26px; border: 0; background: #FFB4A1; color: #3B0A00; display: flex; align-items: center; justify-content: center">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+    </button>
+  </div>
+
+  <sc-if value="{{sheetOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: flex; flex-direction: column; justify-content: flex-end">
+      <button onClick="{{closeSheet}}" aria-label="Close" style="flex: 1; border: 0; background: transparent"></button>
+      <div style="background: #1C1E24; border-radius: 28px 28px 0 0; padding: 10px 20px 24px; display: flex; flex-direction: column; gap: 6px; height: 470px; box-sizing: border-box">
+        <span style="align-self: center; width: 36px; height: 4px; border-radius: 2px; background: #3A3E47; margin-bottom: 8px"></span>
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <span style="font-size: 20px; font-weight: 700">{{sheetTitle}}</span>
+          <button onClick="{{closeSheet}}" style="height: 44px; padding: 0 14px; border-radius: 22px; border: 0; background: #24272E; color: #E6E7EC; font-size: 13px">Done</button>
+        </div>
+        <sc-for list="{{sheetRows}}" as="r" hint-placeholder-count="4">
+          <button onClick="{{r.tap}}" style="display: flex; align-items: center; gap: 12px; min-height: 52px; border: 0; border-bottom: 1px solid #23262D; background: none; color: #E6E7EC; text-align: left; padding: 0">
+            <span style="{{r.mark}}">{{r.markText}}</span>
+            <span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
+              <span style="font-size: 15px; font-weight: 600; {{r.strike}}">{{r.title}}</span>
+              <span style="font-size: 12px; color: #A9ADB8">{{r.sub}}</span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { day: 9, sheet: null, done: {} }; }
+  data() {
+    return {
+      9: [
+        { when: 'All day', title: 'Cuero Turkeyfest', kind: 'sugg' },
+        { when: 'Due 11:59p', title: 'Ch. 6 quiz · Python', kind: 'task' },
+        { when: '7:00 PM', title: 'Terror on Tate Road', kind: 'sugg' }
+      ],
+      10: [
+        { when: '9:00 AM', title: 'Oil change · Cherokee', kind: 'ev' },
+        { when: 'All day', title: 'Katy Rice Harvest Festival', kind: 'sugg' },
+        { when: 'All day', title: 'Korean Festival · Houston', kind: 'sugg' },
+        { when: '7:00 PM', title: 'IceRays vs Rhinos · Corpus', kind: 'sugg' },
+        { when: 'All day', title: 'Texas Renaissance Festival', kind: 'sugg' }
+      ],
+      11: [ { when: 'Due 11:59p', title: 'Sprint 2 report · Software Eng', kind: 'task' }, { when: 'All day', title: 'ACL Weekend 2', kind: 'sugg' } ],
+      12: [ { when: 'All day', title: 'Columbus Day', kind: 'ev' } ],
+      13: [ { when: '9:30 AM', title: 'COSC 3334 Cybersecurity', kind: 'ev' }, { when: '11:00 AM', title: 'COSC 3318 Python', kind: 'ev' } ],
+      15: [ { when: '9:30 AM', title: 'COSC 3334 Cybersecurity', kind: 'ev' }, { when: '11:00 AM', title: 'COSC 3318 Python', kind: 'ev' }, { when: '2:30 PM', title: 'COSC 4320 Software Eng', kind: 'ev' } ],
+      17: [ { when: 'All day', title: 'Texas Jazz Festival', kind: 'sugg' }, { when: 'All day', title: 'Yorktown Western Days', kind: 'sugg' } ],
+      20: [ { when: '9:30 AM', title: 'COSC 3334 Cybersecurity', kind: 'ev' } ],
+      22: [ { when: '2:30 PM', title: 'COSC 4320 Software Eng', kind: 'ev' } ],
+      24: [ { when: 'All day', title: 'Muertos Fest · San Antonio', kind: 'sugg' } ],
+      31: [ { when: 'All day', title: 'Halloween', kind: 'ev' }, { when: 'All day', title: 'MECA Día de Muertos', kind: 'sugg' } ]
+    };
+  }
+  renderVals() {
+    const d = this.data();
+    const sel = this.state.day;
+    const cells = [];
+    for (let i = 0; i < 42; i++) {
+      const n = i - 3; // Oct 1 2026 is a Thursday
+      const inMonth = n >= 1 && n <= 31;
+      const label = inMonth ? n : (n < 1 ? 30 + n : n - 31);
+      const items = inMonth ? (d[n] || []) : [];
+      const isSel = inMonth && n === sel;
+      const isToday = inMonth && n === 9;
+      cells.push({
+        n: label,
+        label: inMonth ? 'October ' + n : 'Outside month',
+        ev: items.some(x => x.kind === 'ev'),
+        task: items.some(x => x.kind === 'task'),
+        sugg: items.some(x => x.kind === 'sugg'),
+        style: 'height: 44px; border: 0; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; ' +
+          (isSel ? 'background: #A8C8FF; color: #0B1B33;' : isToday ? 'background: #1F3450; color: #E6E7EC;' : 'background: transparent; color: ' + (inMonth ? '#E6E7EC' : '#4A4E58') + ';'),
+        pick: () => inMonth && this.setState({ day: n })
+      });
+    }
+    const items = d[sel] || [];
+    const map = {
+      ev: { bar: '#A8C8FF', tag: 'Event', tagColor: '#A8C8FF' },
+      task: { bar: '#FFD36B', tag: 'To-do', tagColor: '#FFD36B' },
+      sugg: { bar: '#FFB77C', tag: 'Suggestion · not a plan', tagColor: '#FFB77C' }
+    };
+    const shown = items.slice(0, 4).map(x => ({ ...x, bar: 'width: 4px; align-self: stretch; border-radius: 2px; background: ' + map[x.kind].bar, tag: map[x.kind].tag, tagColor: map[x.kind].tagColor }));
+    const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][(sel + 3) % 7];
+    const todos = [
+      { title: 'Ch. 6 quiz · Python', sub: 'Due today 11:59 PM' },
+      { title: 'Sprint 2 report · Software Eng', sub: 'Due Sun Oct 11' },
+      { title: 'Follow up with financial aid', sub: 'No date' },
+      { title: 'Fix Cherokee fuel pump relay', sub: 'No date' }
+    ];
+    const lists = [ { title: 'Groceries', sub: '6 to get' }, { title: 'Todo', sub: '4 open' }, { title: 'Costco', sub: '3 to get' }, { title: 'Packing', sub: '8 items' } ];
+    const sugg = [ { title: 'Cuero Turkeyfest', sub: 'Fri–Sun · Cuero · Mia wants to go' }, { title: 'Terror on Tate Road', sub: 'Fri 7 PM · Victoria' }, { title: 'Katy Rice Harvest Festival', sub: 'Sat–Sun · Katy' }, { title: 'ACL Weekend 2', sub: 'Fri–Sun · Austin' } ];
+    const s = this.state.sheet;
+    let sheetRows = [];
+    if (s === 'todos') sheetRows = todos.map((t, i) => { const done = !!this.state.done[i]; return { ...t, markText: done ? '✓' : '', mark: 'width: 22px; height: 22px; border-radius: 6px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 14px; ' + (done ? 'background: #5E636E; color: #121317;' : 'border: 2px solid #FFD36B;'), strike: done ? 'text-decoration: line-through; color: #8A8F9B;' : '', tap: () => this.setState({ done: { ...this.state.done, [i]: !done } }) }; });
+    if (s === 'lists') sheetRows = lists.map(t => ({ ...t, markText: '', mark: 'width: 10px; height: 10px; border-radius: 5px; flex: none; background: #FFD36B;', strike: '', tap: () => {} }));
+    if (s === 'sugg') sheetRows = sugg.map(t => ({ ...t, markText: '', mark: 'width: 10px; height: 10px; border-radius: 2px; flex: none; background: #FFB77C;', strike: '', tap: () => {} }));
+    return {
+      cells,
+      dayTitle: (sel === 9 ? 'Today · ' : '') + dow + ', Oct ' + sel,
+      dayCount: items.length ? items.length + (items.length === 1 ? ' item' : ' items') : '',
+      empty: items.length === 0,
+      shown,
+      more: items.length > 4,
+      moreLabel: '+' + (items.length - 4) + ' more',
+      sheetOpen: !!s,
+      sheetTitle: s === 'todos' ? 'To-dos' : s === 'lists' ? 'Lists' : 'Ideas this weekend',
+      sheetRows,
+      openTodos: () => this.setState({ sheet: 'todos' }),
+      openLists: () => this.setState({ sheet: 'lists' }),
+      openSugg: () => this.setState({ sheet: 'sugg' }),
+      closeSheet: () => this.setState({ sheet: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -150,6 +150,7 @@ ingestion path.
 | 06 | decision | News feed sources and what may be KEPT: Gmail under §7, RSS under a ruling that does not exist yet | - |
 | 07 | build | The news feed surface: sources, refresh on demand, three distinct failure sentences, no persistence beyond what 06 allows | 06 |
 | 08 | task | Ship pass on the A25, and every claim on this map that is `reasoned` rather than `on-device` settled | 03, 05, 07 |
+| 11 | build | HOME becomes the calendar (prototype A): month grid, day agenda, To-dos / Lists / Ideas sheets; a one-app bucket wears its icon; Google Maps addable to Maps | - |
 
 **Order.** 01 is Kevin's call and gates the shell. **02 before 03, always** - rehome, then delete. 04
 and 06 are decisions that touch different files and can be taken alongside 02/03. 05 after 04. 07
