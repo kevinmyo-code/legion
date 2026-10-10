@@ -313,6 +313,7 @@ def test_freshness_lists_every_source_even_with_no_runs(token_a):
         "last_error": None,
         "stale": True,
         "sentence": "Canvas has never synced.",
+        "action_url": None,
     }
 
 

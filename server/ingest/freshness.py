@@ -30,7 +30,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from household.tenancy import household_of, scoped
-from ingest.models import LOGIN_SCRIPT, SESSION_FOR_SOURCE, IngestRun, Outcome, Source
+from ingest.models import LOGIN_SCRIPT, SESSION_FOR_SOURCE, IngestRun, Outcome, PlaidItem, Source
+from ingest.plaid_sync import BANK_SETTINGS_PATH, SIGN_IN_SENTENCE, needs_sign_in, sign_in_sentence
 from ingest.statements import quarantined_files
 
 # Ticket 01's thresholds, in code as the ticket says. `heartbeat` is not in the
@@ -44,6 +45,8 @@ STALE_AFTER: dict[str, datetime.timedelta] = {
     Source.HEARTBEAT: datetime.timedelta(hours=1),
     # Every five minutes, so three missed runs is the line.
     Source.PUSH: datetime.timedelta(minutes=15),
+    # ADR 0057: every six hours, like drive_statements.
+    Source.PLAID: datetime.timedelta(hours=36),
 }
 
 
@@ -69,6 +72,7 @@ WORDS: dict[str, _Words] = {
     Source.OBD_ROLLUP: _Words("The drive roll-up", "last ran", "has never run"),
     Source.HEARTBEAT: _Words("The scheduler", "last ran", "has never run"),
     Source.PUSH: _Words("Notifications", "were last checked", "have never been checked"),
+    Source.PLAID: _Words("The bank connection", "last synced", "has never synced"),
 }
 
 
@@ -131,6 +135,9 @@ def sentence(
             # A job that returned `skipped` and said why (ticket 06: no key).
             return f"{words.subject} is not being read. {detail}{tail}"
         return f"{words.subject} is not set up."
+    if last_outcome == Outcome.NEEDS_LOGIN and source == Source.PLAID:
+        # ADR 0057: the fix is the web page, never a laptop script.
+        return detail or f"{SIGN_IN_SENTENCE} Open Settings, then Bank connection."
     if last_outcome == Outcome.NEEDS_LOGIN:
         # Ticket 02: say what to run, since the fix is a person at a laptop.
         session = SESSION_FOR_SOURCE.get(source)
@@ -150,7 +157,9 @@ def sentence(
     return f"{base}{tail}"
 
 
-def freshness_for(runs, source: str, now: datetime.datetime, *, quarantined=()) -> dict:
+def freshness_for(
+    runs, source: str, now: datetime.datetime, *, quarantined=(), plaid_item=None
+) -> dict:
     """One source's entry. `runs` is ALREADY scoped to one household - this
     function never widens it, and neither may the caller's `quarantined`."""
     of_source = runs.filter(source=source)
@@ -171,6 +180,22 @@ def freshness_for(runs, source: str, now: datetime.datetime, *, quarantined=()) 
         stale = False
     else:
         stale = last_ok_at is None or now - last_ok_at > STALE_AFTER[source]
+    if source == Source.PLAID and plaid_item is not None and needs_sign_in(plaid_item, now):
+        # ADR 0057: the bank wants the person again (Plaid said so, or the
+        # consent ends within 14 days). Said before anything else, with the
+        # page that fixes it, whatever the last run did.
+        base = sign_in_sentence(plaid_item, now)
+        if last_ok_at is not None:
+            base += f" It last synced {ago(last_ok_at, now)}."
+        return {
+            "source": source,
+            "last_ok_at": last_ok_at,
+            "last_outcome": last_outcome,
+            "last_error": latest.error if latest else None,
+            "stale": stale,
+            "sentence": base,
+            "action_url": BANK_SETTINGS_PATH,
+        }
     return {
         "source": source,
         "last_ok_at": last_ok_at,
@@ -182,8 +207,21 @@ def freshness_for(runs, source: str, now: datetime.datetime, *, quarantined=()) 
             last_ok_at,
             last_outcome,
             now,
-            detail=latest.error if latest and last_outcome == Outcome.SKIPPED else None,
+            detail=(
+                latest.error
+                if latest
+                and (
+                    last_outcome == Outcome.SKIPPED
+                    or (source == Source.PLAID and last_outcome == Outcome.NEEDS_LOGIN)
+                )
+                else None
+            ),
             quarantined=quarantined,
+        ),
+        "action_url": (
+            BANK_SETTINGS_PATH
+            if source == Source.PLAID and last_outcome == Outcome.NEEDS_LOGIN
+            else None
         ),
     }
 
@@ -195,6 +233,13 @@ class FreshnessSourceSerializer(serializers.Serializer):
     last_error = serializers.CharField(allow_null=True)
     stale = serializers.BooleanField()
     sentence = serializers.CharField()
+    action_url = serializers.CharField(
+        allow_null=True,
+        help_text=(
+            "The page that fixes what `sentence` describes, when a person has to act "
+            "(the bank connection's Sign in again). Null otherwise."
+        ),
+    )
 
 
 class FreshnessSerializer(serializers.Serializer):
@@ -222,9 +267,9 @@ class FreshnessView(APIView):
     def get(self, request):
         now = timezone.now()
         runs = scoped(IngestRun, request)
-        refused = list(
-            quarantined_files(household_of(request), since=now - QUARANTINE_WINDOW)
-        )
+        household = household_of(request)
+        refused = list(quarantined_files(household, since=now - QUARANTINE_WINDOW))
+        plaid_item = PlaidItem.objects.filter(household=household).first()
         body = {
             "sources": [
                 freshness_for(
@@ -232,6 +277,7 @@ class FreshnessView(APIView):
                     source,
                     now,
                     quarantined=refused if source == Source.DRIVE_STATEMENTS else (),
+                    plaid_item=plaid_item,
                 )
                 for source in Source.values
             ]

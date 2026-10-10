@@ -534,6 +534,17 @@ class LedgerTransactionSerializer(GatedReadSerializer):
         )
     )
 
+    # ADR 0057: the bank has not posted this row yet. Only ever true on a
+    # BANK_API row; the bank may still change or drop it.
+    pending = serializers.BooleanField(
+        source="bank_pending",
+        read_only=True,
+        help_text=(
+            "True while the bank has not posted this transaction yet (a BANK_API row only). "
+            "The bank may still change its amount or drop it."
+        ),
+    )
+
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_verification_note(self, row) -> str | None:
         return ROW_NOTE if row.provenance == Provenance.UNRECONCILED else None
@@ -607,6 +618,7 @@ class LedgerTransactionSerializer(GatedReadSerializer):
             "stored_category",
             "category_source",
             "pending_logged_at",
+            "pending",
             "reversal_of",
             "provenance",
             "verification_note",
@@ -616,10 +628,12 @@ class LedgerTransactionSerializer(GatedReadSerializer):
         extra_kwargs = {
             "provenance": {
                 "help_text": (
-                    "DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER. **UNRECONCILED is "
-                    "provisional** (CLAUDE.md section 4 rule 7): the source stated no anchor, "
-                    "the figure is unverified, and any surface showing it - or any total "
-                    "containing it - must say so in words, never by colour or a glyph alone."
+                    "DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER / BANK_API. "
+                    "**UNRECONCILED is provisional** (CLAUDE.md section 4 rule 7): the source "
+                    "stated no anchor, the figure is unverified, and any surface showing it - "
+                    "or any total containing it - must say so in words, never by colour or a "
+                    "glyph alone. **BANK_API is the bank's own feed (ADR 0057) and is fact**: "
+                    "render it exactly like a verified row, with no tag."
                 )
             },
             "reversal_of": {

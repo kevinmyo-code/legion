@@ -1180,3 +1180,45 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
     b_household = user_b.household
     assert McpCall.objects.filter(token__user=user_b).exclude(household=b_household).count() == 0
     assert McpCall.objects.filter(household=b_household).exclude(token__user=user_b).count() == 0
+
+
+def test_bank_connections_are_scoped_by_household(
+    token_a, token_b, household_a, household_b, settings, monkeypatch
+):
+    """ADR 0057. `plaid_items` has no synced route, so this is its leak test:
+    B's bank connection, and B's bank rows, never reach A, and A's sync never
+    touches B."""
+    from cryptography.fernet import Fernet
+
+    from ingest import plaid_client, vault
+    from ingest.models import PlaidItem
+    from legacy.models.ledger import LedgerTransaction
+    from tests.test_plaid import ACCESS, CARD, CHECKING, FakePlaid, sync, txn
+
+    monkeypatch.setenv(vault.VAULT_KEY_ENV, Fernet.generate_key().decode())
+    settings.PLAID_CLIENT_ID, settings.PLAID_SANDBOX_SECRET = "c", "s"
+    settings.PLAID_ENV = "sandbox"
+    fake = FakePlaid()
+    plaid_client.set_gateway_factory(lambda: fake)
+    try:
+        PlaidItem.objects.create(
+            household=household_b,
+            item_id="item-b",
+            access_token_ciphertext=vault.seal({"access_token": ACCESS}),
+            institution_name="Household B's bank",
+            accounts=[CHECKING, CARD],
+        )
+        fake.page(None, "c1", added=[txn("t-b", name="HOUSEHOLD B COFFEE")])
+        assert sync(household_b).outcome == "ok"
+
+        a_status = token_a.get("/api/ingest/plaid").data
+        assert a_status["connected"] is False
+        assert "Household B" not in str(a_status)
+        a_rows = token_a.get("/api/ledger/transactions/").data
+        assert "HOUSEHOLD B" not in str(a_rows)
+        assert token_a.post("/api/ingest/plaid/sync").data["outcome"] == "skipped"
+        assert token_b.get("/api/ingest/plaid").data["connected"] is True
+        assert LedgerTransaction.objects.filter(household=household_a).count() == 0
+        assert LedgerTransaction.objects.filter(household=household_b).count() == 1
+    finally:
+        plaid_client.set_gateway_factory(None)
