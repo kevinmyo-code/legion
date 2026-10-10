@@ -130,11 +130,12 @@ fun GeneratedDetailScreen(
 }
 
 /** "in words" per CLAUDE.md §4 rule 7 - never a colour swatch alone. */
-private fun provenanceWord(provenance: RecordProvenance): String = when (provenance) {
+private fun provenanceWord(provenance: RecordProvenance): String? = when (provenance) {
     RecordProvenance.DETERMINISTIC -> "DETERMINISTIC"
     RecordProvenance.LLM_RECONCILED -> "LLM RECONCILED"
     RecordProvenance.UNRECONCILED -> "UNRECONCILED - NOT VERIFIED"
     RecordProvenance.USER -> "HAND-ENTERED"
+    RecordProvenance.BANK_API -> null // Kevin 2026-10-09 (ADR 0057): bank-feed rows are plain fact, no tag
 }
 
 /** @return the display string, plus whether it represents a [com.kevin.legion.engine.ComputedValue.Error]

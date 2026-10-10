@@ -29,7 +29,7 @@ enum class LedgerCurrency { SGD, USD }
  * the extraction method differed. An [UNRECONCILED] row never faced a gate at
  * all, because none existed to face.
  */
-enum class IngestMethod { DETERMINISTIC, LLM_RECONCILED, UNRECONCILED }
+enum class IngestMethod { DETERMINISTIC, LLM_RECONCILED, UNRECONCILED, BANK_API }
 
 /**
  * One transaction line exactly as printed on a source bank statement. Ported

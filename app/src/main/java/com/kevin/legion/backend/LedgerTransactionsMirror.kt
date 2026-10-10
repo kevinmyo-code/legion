@@ -50,6 +50,7 @@ internal fun ledgerIngestMethodFor(raw: String): IngestMethod? = when (raw) {
     "LLM_RECONCILED" -> IngestMethod.LLM_RECONCILED
     "UNRECONCILED" -> IngestMethod.UNRECONCILED
     "USER" -> IngestMethod.UNRECONCILED
+    "BANK_API" -> IngestMethod.BANK_API
     else -> null
 }
 

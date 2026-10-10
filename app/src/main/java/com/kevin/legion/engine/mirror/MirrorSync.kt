@@ -370,7 +370,8 @@ class MirrorSync(private val context: Context) {
 
             // Case 3: the row matches a live local record.
             val readOnly = existing.provenance == RecordProvenance.DETERMINISTIC ||
-                existing.provenance == RecordProvenance.LLM_RECONCILED
+                existing.provenance == RecordProvenance.LLM_RECONCILED ||
+                existing.provenance == RecordProvenance.BANK_API
             val existingPayload = org.json.JSONObject(existing.payload)
             val contentChanged = fieldDefs.any { fd ->
                 if (fd.type == FieldType.COMPUTED) return@any false

@@ -31,7 +31,7 @@ data class RemoteLedgerTransaction(
     val category: String?,
     val categoryPending: Boolean,
     val pendingLoggedAtMs: Long?,
-    /** `public.provenance`'s own text, one of `DETERMINISTIC`/`LLM_RECONCILED`/`UNRECONCILED`/`USER` -
+    /** `public.provenance`'s own text, one of `DETERMINISTIC`/`LLM_RECONCILED`/`UNRECONCILED`/`USER`/`BANK_API` -
      * carried as a raw string rather than [IngestMethod] because a row created directly server-side
      * (post-cutover, outside this migration) could in principle carry `USER`, which [IngestMethod]
      * cannot represent (see [com.kevin.legion.engine.ledger.LedgerRecordBridge.ingestMethodFor]'s own

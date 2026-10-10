@@ -36,6 +36,7 @@ object LedgerRecordBridge {
         IngestMethod.DETERMINISTIC -> RecordProvenance.DETERMINISTIC
         IngestMethod.LLM_RECONCILED -> RecordProvenance.LLM_RECONCILED
         IngestMethod.UNRECONCILED -> RecordProvenance.UNRECONCILED
+        IngestMethod.BANK_API -> RecordProvenance.BANK_API
     }
 
     /**
@@ -51,6 +52,7 @@ object LedgerRecordBridge {
         RecordProvenance.LLM_RECONCILED -> IngestMethod.LLM_RECONCILED
         RecordProvenance.UNRECONCILED -> IngestMethod.UNRECONCILED
         RecordProvenance.USER -> IngestMethod.UNRECONCILED
+        RecordProvenance.BANK_API -> IngestMethod.BANK_API
     }
 
     /** [LedgerAspectSeeder]'s field mapping, applied to one [LedgerTransaction] - the exact map
