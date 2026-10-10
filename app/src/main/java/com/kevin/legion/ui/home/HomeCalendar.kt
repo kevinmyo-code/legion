@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -59,15 +60,19 @@ import kotlin.math.max
 
 // Sizes lifted from prototype A (home-protos/Main.dc.html), expressed against the font scale.
 private val CELL_MAX = 40.dp
-// 18dp: the 636dp content box (the A25 under its status line and talk bar) cannot hold a 6-week grid, three
-// agenda rows, the buttons and the dock at anything taller. The digits are fixed-size (see [GRID_TEXT_DP]),
-// so a cell this short still holds a digit and its marks at every font scale.
-private val CELL_MIN = 18.dp
+// 17dp (was 18, and 18 was already a squeeze): on the real phone the dock under the panel row is two icon
+// rows, a music card, the talk bar and a two-line greeting, and the agenda was left ~54dp of rows (zero rows
+// shown, 2026-10-09). 17dp = a 13dp digit line plus a 4dp mark row. The digits are fixed-size (see
+// [GRID_TEXT_DP]), so a cell this short holds a digit and its marks at every font scale.
+private val CELL_MIN = 17.dp
 
 /** Grid digits, weekday letters and the legend are sized in dp, NOT sp: they are chrome around a fixed
  * 6 x 7 grid and growing with the font scale would push the agenda below three rows. The agenda, the
  * buttons, the month title and every sheet scale as usual. */
 private const val GRID_TEXT_DP = 12
+
+/** The digit's line: one dp over its size, so digit + 4dp marks = [CELL_MIN]. */
+private const val GRID_LINE_DP = GRID_TEXT_DP + 1
 private const val LEGEND_TEXT_DP = 11
 
 /** The agenda's day title: fixed for the same reason as the grid digits - it sits in the squeezed middle. */
@@ -78,13 +83,25 @@ private const val SUB_ALPHA = 0.8f
 private val GRID_GAP = 2.dp
 private val ROW_MIN = 40.dp
 
+/** The compact one-line row (time, title, type chip) used when two full rows would not fit. */
+private val COMPACT_ROW_MIN = 28.dp
+private const val MARK_DP = 4
+
+/** The agenda card's own padding, title line and the gap above the rows (all fixed-dp, see [AGENDA_TITLE_DP]). */
+private val PANEL_PAD_V = 6.dp
+private val PANEL_TITLE_LINE = (AGENDA_TITLE_DP + 5).dp
+private val PANEL_ROWS_GAP = 2.dp
+
 /** The "+N more" line: shorter than a row, full width to tap. */
 private val MORE_LINE = 28.dp
 
 /** The one-line "Couldn't read ..." note above a day's rows when a read failed but others worked. */
 private val READ_NOTE_LINE = 18.dp
-private val TOUCH = 44.dp
+private val TOUCH = 40.dp
 private const val MIN_AGENDA_ROWS = 3
+
+/** One compact row's height: grows with the font scale so its one text line never clips. */
+internal fun compactRowHeight(fontScale: Float): Dp = max(COMPACT_ROW_MIN.value, 20f * fontScale + 2f).dp
 
 /**
  * The area between HOME's top bar and its dock (one-home ticket 11, prototype A): the month header,
@@ -104,7 +121,7 @@ fun HomeCalendarArea(
     val minCell = CELL_MIN
     // The card's own 8dp top and bottom padding, the title row (fixed-size, see [AGENDA_TITLE_DP]),
     // and 6dp above the rows.
-    val agendaChrome = 16.dp + (AGENDA_TITLE_DP + 5).dp + 6.dp
+    val agendaChrome = PANEL_PAD_V * 2 + PANEL_TITLE_LINE + PANEL_ROWS_GAP
     val agendaMin = agendaChrome + rowH * MIN_AGENDA_ROWS + MORE_LINE
     val legendHeight = (LEGEND_TEXT_DP * 1.4f + 4f).dp
 
@@ -121,8 +138,8 @@ fun HomeCalendarArea(
         val loose = Constraints(maxWidth = width)
         val header = measurables[0].measure(loose)
         val weekdays = measurables[1].measure(loose)
-        // Grid padding (6 + 8), plus the legend line and its 4dp gap under the last week.
-        val gridPad = with(density) { (10.dp + legendHeight).roundToPx() }
+        // Grid padding (2 top + 2 bottom), plus the legend line and its 4dp gap under the last week.
+        val gridPad = with(density) { (4.dp + legendHeight).roundToPx() }
         val gapPx = with(density) { GRID_GAP.roundToPx() }
         val minGrid = with(density) { minCell.roundToPx() } * GRID_WEEKS + gapPx * (GRID_WEEKS - 1) + gridPad
         val maxGrid = with(density) { CELL_MAX.roundToPx() } * GRID_WEEKS + gapPx * (GRID_WEEKS - 1) + gridPad
@@ -153,7 +170,7 @@ internal fun agendaRowHeight(fontScale: Float): Dp = max(ROW_MIN.value, (14f + 1
 @Composable
 private fun MonthHeader(state: HomeCalendarUiState, callbacks: HomeCalendarCallbacks) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 8.dp, end = 0.dp, top = 0.dp, bottom = 2.dp),
+        Modifier.fillMaxWidth().padding(start = 8.dp, end = 0.dp, top = 0.dp, bottom = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -225,7 +242,7 @@ private fun WeekdayHeader() {
 @Composable
 private fun DayGrid(state: HomeCalendarUiState, callbacks: HomeCalendarCallbacks) {
     Column(
-        Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 6.dp),
+        Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 2.dp),
         verticalArrangement = Arrangement.spacedBy(GRID_GAP),
     ) {
         state.cells.chunked(DAYS_IN_WEEK).forEach { week ->
@@ -271,7 +288,7 @@ private fun DayCell(cell: CalendarCellUi, modifier: Modifier, onClick: () -> Uni
                 cell.date.dayOfMonth.toString(),
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = fixedSp(GRID_TEXT_DP),
-                    lineHeight = fixedSp(GRID_TEXT_DP + 3),
+                    lineHeight = fixedSp(GRID_LINE_DP),
                     fontWeight = FontWeight.SemiBold,
                 ),
                 color = when {
@@ -291,14 +308,14 @@ private fun DayCell(cell: CalendarCellUi, modifier: Modifier, onClick: () -> Uni
 @Composable
 private fun Markers(markers: DayMarkers) {
     Row(
-        Modifier.height(5.dp),
+        Modifier.height(MARK_DP.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (markers.events > 0) Box(Modifier.size(5.dp).background(AreaAccent.CALENDAR.onContainer, CircleShape))
-        if (markers.todos > 0) Box(Modifier.size(5.dp).background(AreaAccent.LISTS.onContainer, CircleShape))
+        if (markers.events > 0) Box(Modifier.size(MARK_DP.dp).background(AreaAccent.CALENDAR.onContainer, CircleShape))
+        if (markers.todos > 0) Box(Modifier.size(MARK_DP.dp).background(AreaAccent.LISTS.onContainer, CircleShape))
         if (markers.suggestions > 0) {
-            Box(Modifier.size(5.dp).background(AreaAccent.NEWS.onContainer, RoundedCornerShape(1.dp)))
+            Box(Modifier.size(MARK_DP.dp).background(AreaAccent.NEWS.onContainer, RoundedCornerShape(1.dp)))
         }
     }
 }
@@ -322,105 +339,192 @@ private fun cellDescription(cell: CalendarCellUi): String {
 
 @Composable
 private fun AgendaPanel(state: HomeCalendarUiState, callbacks: HomeCalendarCallbacks, rowH: Dp) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 2.dp)
-            .background(SoftColors.card, RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.SpaceBetween,
+    // The panel's MEASURED height (the Layout above hands it a fixed one), not an assumed box: the rows
+    // get what is left under the card's padding, title line and gap, less the partial-read note if any.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val note = state.readNote.takeIf { state.dayRows.isNotEmpty() }
+        val room = maxHeight - PANEL_PAD_V * 2 - PANEL_TITLE_LINE - PANEL_ROWS_GAP -
+            if (note != null) READ_NOTE_LINE else 0.dp
+        val compactH = compactRowHeight(LocalDensity.current.fontScale)
+        val plan = planAgenda(
+            total = state.dayRows.size,
+            room = room.value,
+            fullRow = rowH.value,
+            compactRow = compactH.value,
+            moreLine = MORE_LINE.value,
+        )
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp)
+                .background(SoftColors.card, RoundedCornerShape(20.dp))
+                .padding(horizontal = 16.dp, vertical = PANEL_PAD_V),
         ) {
-            Text(
-                dayTitle(state.selectedDay, state.today),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = fixedSp(AGENDA_TITLE_DP),
-                    lineHeight = fixedSp(AGENDA_TITLE_DP + 5),
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = SoftColors.text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                countLabel(state),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = fixedSp(LEGEND_TEXT_DP),
-                    lineHeight = fixedSp(LEGEND_TEXT_DP + 3),
-                ),
-                color = SoftColors.text3,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 8.dp),
+            AgendaHeader(state, callbacks, plan)
+            AgendaRows(
+                state, callbacks, plan, rowH, compactH, note,
+                Modifier.fillMaxWidth().weight(1f).padding(top = PANEL_ROWS_GAP),
             )
         }
-        AgendaRows(state, callbacks, rowH, Modifier.fillMaxWidth().weight(1f).padding(top = 6.dp))
     }
 }
 
-/** The agenda's rows: as many as the measured height holds, then "+N more" (see [fitAgenda]). */
+/** The panel's title row: the day, its plan/suggestion count, and (only when no row of height is left) "+N more". */
+@Composable
+private fun AgendaHeader(state: HomeCalendarUiState, callbacks: HomeCalendarCallbacks, plan: AgendaPlan) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            dayTitle(state.selectedDay, state.today),
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = fixedSp(AGENDA_TITLE_DP),
+                lineHeight = fixedSp(AGENDA_TITLE_DP + 5),
+                fontWeight = FontWeight.Bold,
+            ),
+            color = SoftColors.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            countLabel(state),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = fixedSp(LEGEND_TEXT_DP),
+                lineHeight = fixedSp(LEGEND_TEXT_DP + 3),
+            ),
+            color = SoftColors.text3,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 8.dp),
+        )
+        if (plan.moreInHeader) {
+            // No room for a line of its own: the link rides the title row, in words.
+            Text(
+                "+${plan.fit.more} more",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontSize = fixedSp(LEGEND_TEXT_DP + 1),
+                    lineHeight = fixedSp(AGENDA_TITLE_DP + 5),
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = AreaAccent.CALENDAR.onContainer,
+                maxLines = 1,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .clickable(role = Role.Button) { callbacks.onOpenDay(state.selectedDay) },
+            )
+        }
+    }
+}
+
+/** The agenda's rows, drawn as [plan] says (see [planAgenda]). */
 @Composable
 private fun AgendaRows(
     state: HomeCalendarUiState,
     callbacks: HomeCalendarCallbacks,
+    plan: AgendaPlan,
     rowH: Dp,
+    compactH: Dp,
+    note: String?,
     modifier: Modifier,
 ) {
-    BoxWithConstraints(modifier) {
+    val fit = plan.fit
+    Column(modifier) {
         // A partial read is said above the rows it affects (an empty day says it in place of "nothing").
-        val note = state.readNote.takeIf { state.dayRows.isNotEmpty() }
-        val room = maxHeight - if (note != null) READ_NOTE_LINE else 0.dp
-        val fit = fitAgenda(
-            total = state.dayRows.size,
-            rowCapacity = (room / rowH).toInt(),
-            rowCapacityWithMore = ((room - MORE_LINE) / rowH).toInt(),
-        )
-        Column {
-            if (note != null) {
+        if (note != null) {
+            Text(
+                note,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = fixedSp(LEGEND_TEXT_DP),
+                    lineHeight = fixedSp(LEGEND_TEXT_DP + 3),
+                ),
+                color = SoftColors.caution,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.height(READ_NOTE_LINE),
+            )
+        }
+        if (state.dayRows.isEmpty()) {
+            Text(
+                if (state.readNote != null) state.readNote else "Nothing on this day.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (state.readNote != null) SoftColors.caution else SoftColors.text2,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        state.dayRows.take(fit.shown).forEach { row ->
+            val open = { callbacks.onOpenRow(state.selectedDay, row) }
+            if (plan.compact) CompactAgendaRow(row, compactH, open) else AgendaRow(row, rowH, open)
+        }
+        if (fit.more > 0 && !plan.moreInHeader) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(MORE_LINE)
+                    .clickable(role = Role.Button) { callbacks.onOpenDay(state.selectedDay) },
+                contentAlignment = Alignment.CenterStart,
+            ) {
                 Text(
-                    note,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = fixedSp(LEGEND_TEXT_DP),
-                        lineHeight = fixedSp(LEGEND_TEXT_DP + 3),
-                    ),
-                    color = SoftColors.caution,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.height(READ_NOTE_LINE),
-                )
-            }
-            if (state.dayRows.isEmpty()) {
-                Text(
-                    if (state.readNote != null) state.readNote else "Nothing on this day.",
+                    "+${fit.more} more",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (state.readNote != null) SoftColors.caution else SoftColors.text2,
-                    modifier = Modifier.padding(top = 4.dp),
+                    color = AreaAccent.CALENDAR.onContainer,
                 )
-            }
-            state.dayRows.take(fit.shown).forEach { row ->
-                AgendaRow(row, rowH) { callbacks.onOpenRow(state.selectedDay, row) }
-            }
-            if (fit.more > 0) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(MORE_LINE)
-                        .clickable(role = Role.Button) { callbacks.onOpenDay(state.selectedDay) },
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Text(
-                        "+${fit.more} more",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AreaAccent.CALENDAR.onContainer,
-                    )
-                }
             }
         }
     }
 }
+
+/** The one-line row: time, a colour bar, the title, and the type said in words as a small chip (a
+ * suggestion's chip still reads "Suggestion, not a plan"; the accent is never the only signal). */
+@Composable
+private fun CompactAgendaRow(row: AgendaRowUi, rowH: Dp, onClick: () -> Unit) {
+    val accent = accentOf(row.kind).onContainer
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(rowH)
+            .clickable(role = Role.Button, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            row.whenLabel,
+            modifier = Modifier.width(80.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = SoftColors.text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Box(Modifier.width(3.dp).fillMaxHeight(0.7f).background(accent, RoundedCornerShape(2.dp)))
+        Text(
+            row.title,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = if (row.done) SoftColors.text3 else SoftColors.text,
+            textDecoration = if (row.done) TextDecoration.LineThrough else null,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            row.typeLabel,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = fixedSp(LEGEND_TEXT_DP - 1),
+                lineHeight = fixedSp(LEGEND_TEXT_DP + 2),
+            ),
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .widthIn(max = 112.dp)
+                .background(accent.copy(alpha = CHIP_ALPHA), RoundedCornerShape(6.dp))
+                .padding(horizontal = 5.dp, vertical = 1.dp),
+        )
+    }
+}
+
+/** The chip's wash: faint enough that the label's own contrast carries it. */
+private const val CHIP_ALPHA = 0.14f
 
 private val TITLE_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.ENGLISH)
 

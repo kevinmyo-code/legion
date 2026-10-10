@@ -3,6 +3,17 @@ package com.kevin.legion.screenshot
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.unit.sp
+import com.kevin.legion.media.NowPlayingInfo
+import org.junit.Assert.assertTrue
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
@@ -223,6 +234,82 @@ class HomeCalendarScreenshotTest {
     @Test
     fun `636 - a day with nothing on it`() =
         capture("home-calendar-636-empty.png", 1.0f, state(LocalDate.of(2026, 10, 14), emptyList()))
+
+    // ------------------------------------------------------------------------- the REAL phone's shell
+    // 2026-10-09: the earlier baselines assumed a 636dp content box and a bare dock. The real phone has
+    // two icon rows, a now-playing card, the talk bar and a two-line greeting under the panel row, so the
+    // agenda was left ~54dp and showed zero rows. This shell reproduces it (measured off the phone
+    // screenshot: status 27dp, top bar 55dp, talk area 110dp, nav bar 48dp, 384 x 832dp).
+
+    private val busyDay = listOf(
+        row(AgendaKind.TODO, "Due 11:59 PM", "Busy 1 Ch. 6 quiz Python", reminderId = 4),
+        row(AgendaKind.EVENT, "7:30 PM", "Busy 2 Team dinner"),
+        row(AgendaKind.SUGGESTION, "All day", "Busy 3 Cuero Turkeyfest"),
+        row(AgendaKind.SUGGESTION, "7:00 PM", "Busy 4 Terror on Tate Road"),
+        row(AgendaKind.SUGGESTION, "All day", "Busy 5 Katy Rice Harvest"),
+        row(AgendaKind.SUGGESTION, "All day", "Busy 6 Korean Festival"),
+        row(AgendaKind.SUGGESTION, "7:00 PM", "Busy 7 IceRays vs Rhinos"),
+        row(AgendaKind.SUGGESTION, "All day", "Busy 8 Renaissance Festival"),
+        row(AgendaKind.SUGGESTION, "All day", "Busy 9 ACL Weekend 2"),
+    )
+
+    private fun captureRealPhone(fileName: String, fontScale: Float, state: HomeCalendarUiState): Int {
+        rule.setContent {
+            val base = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale)) {
+                SoftTheme {
+                    Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
+                        Spacer(Modifier.height(27.dp))
+                        Box(Modifier.fillMaxWidth().height(55.dp)) {
+                            Text("Synced   OBD off   19:26", color = SoftColors.text)
+                        }
+                        Box(Modifier.weight(1f)) {
+                            HomeContent(
+                                calendar = state,
+                                calendarCallbacks = HomeCalendarCallbacks(),
+                                nowPlaying = NowPlayingInfo(
+                                    title = "solace", artist = "louke's beats", album = "", isPlaying = false,
+                                    position = 0L, duration = 0L,
+                                ),
+                                onOpenMedia = {},
+                                dockSlots = buildDockSlots(dockApps.take(4).map(::pin), loaded),
+                                categories = categories,
+                            )
+                        }
+                        Column(Modifier.fillMaxWidth().height(110.dp).padding(horizontal = 12.dp)) {
+                            Box(
+                                Modifier.fillMaxWidth().height(52.dp)
+                                    .background(SoftColors.cardHigh, RoundedCornerShape(26.dp)),
+                            ) { Text("Tap to talk", color = SoftColors.text) }
+                            Text(
+                                "Good evening. It is partly cloudy and eighty-four degrees this evening, " +
+                                    "sir; what would you like to do?",
+                                color = SoftColors.text2, fontSize = 14.sp, maxLines = 2,
+                            )
+                        }
+                        Spacer(Modifier.height(48.dp))
+                    }
+                }
+            }
+        }
+        rule.onRoot().captureRoboImage(fileName)
+        // Only the rows that were composed exist, so the node count IS the rows shown.
+        return rule.onAllNodes(hasText("Busy ", substring = true)).fetchSemanticsNodes().size
+    }
+
+    @Config(qualifiers = "w384dp-h832dp")
+    @Test
+    fun `real phone - busy day, nine items, font 1_0`() {
+        val shown = captureRealPhone("home-calendar-realphone-busy.png", 1.0f, state(today, busyDay))
+        assertTrue("agenda showed $shown rows, need at least 2", shown >= 2)
+    }
+
+    @Config(qualifiers = "w384dp-h832dp")
+    @Test
+    fun `real phone - busy day, nine items, font 1_3`() {
+        val shown = captureRealPhone("home-calendar-realphone-busy-font13.png", 1.3f, state(today, busyDay))
+        assertTrue("agenda showed $shown rows, need at least 2", shown >= 2)
+    }
 
     // ------------------------------------------------------------------------- sheets
 

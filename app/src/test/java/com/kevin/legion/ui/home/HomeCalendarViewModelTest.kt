@@ -155,6 +155,36 @@ class HomeCalendarViewModelTest {
     }
 
     @Test
+    fun `planAgenda - 56dp of row space still shows a row, and compact rows show two`() {
+        // The real phone left ~56dp: full rows beside a +N more line fit none, so the plan must not stay full.
+        val plan = planAgenda(total = 9, room = 56f, fullRow = 40f, compactRow = 28f, moreLine = 28f)
+        assertTrue(plan.compact)
+        assertTrue("shown ${plan.fit.shown}", plan.fit.shown >= 2)
+        assertEquals(9 - plan.fit.shown, plan.fit.more)
+        // No height for a line of its own, so the link rides the title row rather than vanishing.
+        assertTrue(plan.moreInHeader)
+        // Even when the room is only just over one full row, at least one row shows.
+        assertTrue(planAgenda(9, 56f, 40f, 40f, 28f).fit.shown >= 1)
+    }
+
+    @Test
+    fun `planAgenda - roomy panels keep full rows, and a day that fits needs no link`() {
+        val roomy = planAgenda(total = 9, room = 140f, fullRow = 40f, compactRow = 28f, moreLine = 28f)
+        assertFalse(roomy.compact)
+        assertEquals(AgendaFit(2, 7), roomy.fit)
+        assertEquals(
+            AgendaPlan(AgendaFit(1, 0), compact = false, moreInHeader = false),
+            planAgenda(1, 60f, 40f, 28f, 28f),
+        )
+        assertEquals(0, planAgenda(0, 10f, 40f, 28f, 28f).fit.shown)
+        // Never zero rows with a +N more when items exist and a compact row fits.
+        for (room in 28..200) {
+            val p = planAgenda(9, room.toFloat(), 40f, 28f, 28f)
+            assertTrue("room $room shown ${p.fit.shown}", p.fit.shown >= 1)
+        }
+    }
+
+    @Test
     fun `next month selects the 1st and returning to this month selects today`() {
         val src = FakeSource()
         val model = vm(src).also { it.refresh() }

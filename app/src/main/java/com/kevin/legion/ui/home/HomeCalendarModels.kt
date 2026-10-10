@@ -167,6 +167,37 @@ fun fitAgenda(total: Int, rowCapacity: Int, rowCapacityWithMore: Int = rowCapaci
     return AgendaFit(shown, total - shown)
 }
 
+/**
+ * What [planAgenda] decided: how many rows to draw, whether to draw them as one-line [compact] rows, and
+ * where the "+N more" link goes ([moreInHeader]: in the panel's title row, costing no height, because
+ * there is no vertical room left for a line of its own).
+ */
+data class AgendaPlan(val fit: AgendaFit, val compact: Boolean, val moreInHeader: Boolean)
+
+/** An agenda that has items shows at least this many of them. Never zero rows beside a "+N more". */
+const val MIN_AGENDA_ROWS_SHOWN = 2
+
+/**
+ * Chooses the row style that keeps at least [MIN_AGENDA_ROWS_SHOWN] rows on screen in [room] dp (the
+ * panel's MEASURED height under its title, never an assumed box). Full two-line rows first; one-line
+ * compact rows when those would show fewer than two; and when even compact rows cannot sit beside a
+ * "+N more" line, the link moves up into the title row so it costs no height. 2026-10-09: on the real
+ * phone the room was ~54dp and the old rule (full rows, link below) showed zero rows and "+9 more".
+ */
+fun planAgenda(total: Int, room: Float, fullRow: Float, compactRow: Float, moreLine: Float): AgendaPlan {
+    val floor = { dp: Float, per: Float -> if (dp <= 0f) 0 else (dp / per).toInt() }
+    val wanted = minOf(total, MIN_AGENDA_ROWS_SHOWN)
+    val full = fitAgenda(total, floor(room, fullRow), floor(room - moreLine, fullRow))
+    val capacity = floor(room, compactRow)
+    val beside = fitAgenda(total, capacity, floor(room - moreLine, compactRow))
+    val shown = minOf(total, capacity)
+    return when {
+        full.shown >= wanted -> AgendaPlan(full, compact = false, moreInHeader = false)
+        beside.shown >= wanted -> AgendaPlan(beside, compact = true, moreInHeader = false)
+        else -> AgendaPlan(AgendaFit(shown, total - shown), compact = true, moreInHeader = shown < total)
+    }
+}
+
 /** "This weekend" for Ideas: Friday through Sunday, starting today when today is already inside it. */
 fun weekendWindow(today: LocalDate): Pair<LocalDate, LocalDate> {
     val start = when (today.dayOfWeek) {
