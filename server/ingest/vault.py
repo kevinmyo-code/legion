@@ -50,7 +50,8 @@ REFUSED_SOURCES: dict[str, str] = {
         "Nothing was stored. A BofA session never leaves the laptop it was made on: "
         "BofA's idle timeout is minutes and it fingerprints the device, so a replayed "
         "session would be dead or read as a hijack (backend-etl ticket 09). "
-        f"`{LOGIN_SCRIPT} bofa` pulls statements inside the login sitting instead."
+        "Bank of America comes from the bank connection now (Settings, Bank connection; "
+        "ADR 0057)."
     ),
 }
 

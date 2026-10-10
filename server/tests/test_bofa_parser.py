@@ -27,6 +27,15 @@ FIXTURES = Path(__file__).parent / "bofa_fixtures"
 BOFA_PDFS = sorted(p.name for p in FIXTURES.glob("bofa_*.pdf"))
 
 
+@pytest.fixture(autouse=True)
+def _bofa_files_still_read(monkeypatch):
+    """ADR 0057 retired Bank of America from the Drive watcher
+    (`statements.BOFA_RETIRED`). The parsers are kept for history; these tests
+    pin how they read when switched back on. The retired default is pinned by
+    `tests/test_plaid.py`."""
+    monkeypatch.setattr(statements, "BOFA_RETIRED", False)
+
+
 def text_of(name: str) -> str:
     return (FIXTURES / name).with_suffix(".txt").read_text(encoding="utf-8")
 

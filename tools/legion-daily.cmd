@@ -1,4 +1,6 @@
 @echo off
+rem RETIRED 2026-10-09 (ADR 0057, docs/adr/0057-the-bank-feed-is-the-ledgers-truth.md): Bank of America now comes
+rem from the bank connection (Plaid). Kept for history and as the way back; the server skips bofa_* files.
 rem LEGION daily: log in to Bank of America, the script pulls transaction CSVs (current and closed periods) to Drive.
 rem Shortcut: right-click this file > Show more options > Send to > Desktop (create shortcut).
 rem
