@@ -440,6 +440,16 @@ interface EventDao {
     )
     suspend fun activeByKindInWindow(kind: String, fromMs: Long, toMs: Long): List<Event>
 
+    /** [activeByKindInWindow] for several kinds in ONE round trip (HOME's month load: events, tasks
+     * and suggestions together, 2026-10-09). The caller still names every kind it wants - a kind is
+     * never inferred, so a suggestion cannot be read as a plan by omission - and splits the rows
+     * itself ([activeByKindsInLocalWindow]). */
+    @Query(
+        "SELECT * FROM events WHERE deleted = 0 AND kind IN (:kinds) " +
+            "AND startsAt IS NOT NULL AND startsAt >= :fromMs AND startsAt <= :toMs ORDER BY startsAt ASC",
+    )
+    suspend fun activeByKindsInWindow(kinds: List<String>, fromMs: Long, toMs: Long): List<Event>
+
     /** Active, TIMED (never all-day) [Event]s of one [kind] whose `[startsAt, endsAt)` span covers
      * [nowMs] - `service/ProactiveDelivery.kt`'s "is an appointment running right now" check,
      * repointed off `CalendarProvider.eventsInWindow(now, now+1)` onto this table by one-today
@@ -592,16 +602,34 @@ suspend fun EventDao.nextAppointmentId(): Long {
  */
 suspend fun EventDao.activeByKindInLocalWindow(kind: String, fromMs: Long, toMs: Long, zone: java.time.ZoneId): List<Event> {
     val widenMs = java.time.Duration.ofDays(1).toMillis()
-    return activeByKindInWindow(kind, fromMs - widenMs, toMs + widenMs).filter { row ->
-        val at = row.startsAt ?: return@filter false
-        val anchor = if (row.allDay) {
-            java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneOffset.UTC).toLocalDate()
-                .atStartOfDay(zone).toInstant().toEpochMilli()
-        } else {
-            at
-        }
-        anchor in fromMs..toMs
+    return activeByKindInWindow(kind, fromMs - widenMs, toMs + widenMs)
+        .filter { anchoredInWindow(it, fromMs, toMs, zone) }
+}
+
+/** [activeByKindInLocalWindow] for several [kinds] at once: one query, the same widen-and-recheck
+ * rule per row. Rows of every requested kind come back mixed; split them with an explicit
+ * `kind ==` test, never by position. */
+suspend fun EventDao.activeByKindsInLocalWindow(
+    kinds: List<String>,
+    fromMs: Long,
+    toMs: Long,
+    zone: java.time.ZoneId,
+): List<Event> {
+    val widenMs = java.time.Duration.ofDays(1).toMillis()
+    return activeByKindsInWindow(kinds, fromMs - widenMs, toMs + widenMs)
+        .filter { anchoredInWindow(it, fromMs, toMs, zone) }
+}
+
+// The one anchor rule both window readers apply (see [activeByKindInLocalWindow]'s doc comment).
+private fun anchoredInWindow(row: Event, fromMs: Long, toMs: Long, zone: java.time.ZoneId): Boolean {
+    val at = row.startsAt ?: return false
+    val anchor = if (row.allDay) {
+        java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+    } else {
+        at
     }
+    return anchor in fromMs..toMs
 }
 
 @Dao

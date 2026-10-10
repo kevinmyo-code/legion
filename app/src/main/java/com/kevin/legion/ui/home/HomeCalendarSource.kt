@@ -8,12 +8,11 @@ import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.activeByKindInLocalWindow
+import com.kevin.legion.data.local.activeByKindsInLocalWindow
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.ui.AgendaSource
-import com.kevin.legion.ui.common.dailyBuckets
 import com.kevin.legion.ui.notes.InboxRowView
 import com.kevin.legion.ui.notes.buildInboxRows
-import com.kevin.legion.ui.notes.buildMonthOpenTodoCounts
 import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.documentDateCompact
@@ -32,9 +31,10 @@ import kotlinx.coroutines.CancellationException
  * returns an empty list for a failed read.
  */
 interface HomeCalendarSource {
-    suspend fun monthMarkers(month: YearMonth, zone: ZoneId): MonthMarkers
-
-    suspend fun dayRows(day: LocalDate, zone: ZoneId): DayRead
+    /** ONE read of [month]: events, tasks and suggestions in a single query, plus the reminders.
+     * The month grid AND every day's agenda inside it are derived from this, off the main thread
+     * (`HomeCalendarDerive.kt`). A kind that could not be read is named in `unreadable`. */
+    suspend fun readMonth(month: YearMonth, zone: ZoneId): MonthRead
 
     suspend fun openTodos(zone: ZoneId): List<TodoRowUi>
 
@@ -66,83 +66,21 @@ class ContextHomeCalendarSource(context: Context) : HomeCalendarSource {
 
     // ----------------------------------------------------------------------------- month
 
-    override suspend fun monthMarkers(month: YearMonth, zone: ZoneId): MonthMarkers {
+    override suspend fun readMonth(month: YearMonth, zone: ZoneId): MonthRead {
         val from = startMs(month.atDay(1), zone)
         val to = startMs(month.plusMonths(1).atDay(1), zone) - 1
-        val dayStarts = dailyBuckets(from, to, zone)
         val unreadable = mutableListOf<String>()
-
-        // Events are the EVENT-kind rows, the same kind-filtered read the day view's SCHEDULE
-        // section makes. (The drill-down's own dots also count timed reminders; here a reminder is a
-        // to-do and is marked as one, so a blue dot always has an Event row behind it.)
-        val events = readOrNull("events", unreadable) {
-            db().eventDao().activeByKindInLocalWindow(EventKind.EVENT, from, to, zone)
-                .mapNotNull { EventSuggestions.localDayStart(it, zone) }
-                .groupingBy { it }.eachCount()
-        }.orEmpty()
-        val todos = readOrNull("to-dos", unreadable) {
-            val tasks = db().eventDao().activeByKindInLocalWindow(EventKind.TASK, from, to, zone)
-            val rows = inboxRows(tasks)
-            dayStarts.zip(buildMonthOpenTodoCounts(rows, dayStarts, zone)).toMap()
-        }.orEmpty()
-        val suggestions = readOrNull("suggestions", unreadable) {
-            EventSuggestions.countsByDay(EventSuggestions.inLocalWindow(appContext, from, to, zone), dayStarts, zone)
-        }.orEmpty()
-
-        val byDay = dayStarts.associate { dayStart ->
-            val date = java.time.Instant.ofEpochMilli(dayStart).atZone(zone).toLocalDate()
-            date to DayMarkers(events[dayStart] ?: 0, todos[dayStart] ?: 0, suggestions[dayStart] ?: 0)
+        // Every kind is named: EVENT, TASK and SUGGESTION, split apart again by kind in
+        // HomeCalendarDerive.kt (a suggestion is never a plan).
+        val rows = readOrNull("events", unreadable) {
+            db().eventDao().activeByKindsInLocalWindow(
+                listOf(EventKind.EVENT, EventKind.TASK, EventKind.SUGGESTION), from, to, zone,
+            )
         }
-        return MonthMarkers(byDay, unreadable)
-    }
-
-    // ----------------------------------------------------------------------------- day
-
-    override suspend fun dayRows(day: LocalDate, zone: ZoneId): DayRead {
-        val from = startMs(day, zone)
-        val to = from + DAY_MS - 1
-        val unreadable = mutableListOf<String>()
-        val rows = mutableListOf<Pair<AgendaRowUi, Long?>>()
-
-        readOrNull("events", unreadable) {
-            db().eventDao().activeByKindInLocalWindow(EventKind.EVENT, from, to, zone)
-        }?.forEach { event ->
-            rows += AgendaRowUi(
-                key = "event-${event.id}",
-                kind = AgendaKind.EVENT,
-                whenLabel = whenLabel(event),
-                title = event.title,
-                typeLabel = "Event",
-            ) to event.startsAt?.takeUnless { event.allDay }
-        }
-
-        readOrNull("to-dos", unreadable) {
-            val tasks = db().eventDao().activeByKindInLocalWindow(EventKind.TASK, from, to, zone)
-            inboxRows(tasks)
-                .filter { it.instantMs != null && it.instantMs >= from && it.instantMs <= to }
-        }?.forEach { row ->
-            rows += AgendaRowUi(
-                key = "todo-${row.source}-${row.id}",
-                kind = AgendaKind.TODO,
-                whenLabel = dueLabel(row, from),
-                title = row.text,
-                typeLabel = "To-do",
-                reminderId = row.id.takeIf { row.source == AgendaSource.LOCAL },
-                done = row.done,
-            ) to row.instantMs
-        }
-
-        readOrNull("suggestions", unreadable) { EventSuggestions.inLocalWindow(appContext, from, to, zone) }
-            ?.forEach { s ->
-                rows += AgendaRowUi(
-                    key = "suggestion-${s.id}",
-                    kind = AgendaKind.SUGGESTION,
-                    whenLabel = whenLabel(s),
-                    title = s.title,
-                    typeLabel = "Suggestion · not a plan",
-                ) to s.startsAt?.takeUnless { s.allDay }
-            }
-        return DayRead(orderAgenda(rows), unreadable)
+        // One failed query loses all three kinds, and each is said in words.
+        if (rows == null) unreadable += listOf("to-dos", "suggestions")
+        val reminders = readOrNull("to-dos", unreadable) { NotesController.allItems(appContext) }
+        return MonthRead(month, rows.orEmpty(), reminders.orEmpty(), unreadable.distinct())
     }
 
     // ----------------------------------------------------------------------------- panels
@@ -224,17 +162,6 @@ class ContextHomeCalendarSource(context: Context) : HomeCalendarSource {
             System.currentTimeMillis(),
             tasks.map(Event::toAppointmentEvent),
         )
-
-    private fun whenLabel(event: Event): String {
-        val at = event.startsAt
-        return if (event.allDay || at == null) "All day" else clockTime(at)
-    }
-
-    /** "Due" for a date-only reminder or task, "Due 9:00 AM" when it has a time. */
-    private fun dueLabel(row: InboxRowView, dayStartMs: Long): String {
-        val at = row.instantMs
-        return if (at == null || at == dayStartMs || row.calendarAllDay == true) "Due" else "Due ${clockTime(at)}"
-    }
 
     // A failed read is recorded in words, never returned as an empty result (ADR 0050: HOME must
     // never crash, and "unreadable" and "empty" must not look alike).

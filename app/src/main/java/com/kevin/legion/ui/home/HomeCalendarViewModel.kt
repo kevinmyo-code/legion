@@ -4,16 +4,21 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kevin.legion.ui.notes.InboxRowView
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The ViewModel behind HOME's calendar (one-home ticket 11): one [StateFlow] of
@@ -25,6 +30,11 @@ import kotlinx.coroutines.launch
  * **HOME must never crash (ADR 0050).** Every read is guarded on its own and a failure becomes a
  * sentence in the state (`readNote`, `todosNote`...), never an empty-looking panel. [scope] is
  * `viewModelScope` in the app; a test passes its own so no Main dispatcher is needed.
+ *
+ * **Nothing here works on the main thread (2026-10-09, HOME speed pass).** Source reads run on [io];
+ * everything derived from a read (the inbox merge, the markers, the agenda, the grid cells) runs on
+ * [default]; Main only swaps the finished result into the state. A month is read ONCE (one query for
+ * its events, tasks and suggestions) and a day inside it is derived from memory.
  */
 // One method per user action on the calendar; a fifth of them would not be clearer in a second class.
 @Suppress("TooManyFunctions") // see the line above
@@ -33,19 +43,64 @@ class HomeCalendarViewModel(
     private val today: () -> LocalDate = { LocalDate.now() },
     private val zone: ZoneId = ZoneId.systemDefault(),
     scope: CoroutineScope? = null,
+    /** Where [source] reads run (Room, files). Injected so a test can see the hop. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Where everything derived from a read runs. Never Main. */
+    private val default: CoroutineDispatcher = Dispatchers.Default,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
     private val scope: CoroutineScope = scope ?: viewModelScope
 
+    // The grid shell is part of the very first state (month header, 42 empty cells), so the first
+    // frame draws the calendar's frame at once and the dots and agenda fill in when the read lands.
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<HomeCalendarUiState> = _state.asStateFlow()
 
-    // The last read of the displayed month; the grid is re-derived from it whenever the selection moves.
-    private var markers = MonthMarkers(emptyMap())
+    /** One month's read with everything derived from it. Kept so a day change inside the month
+     * derives its agenda from memory with NO query, and so swiping back to a month shows its dots
+     * at once while the fresh read runs. */
+    private class Loaded(val read: MonthRead, val inbox: List<InboxRowView>, val markers: MonthMarkers)
+
+    private val loadedMonths = object : LinkedHashMap<YearMonth, Loaded>(CACHED_MONTHS, LOAD_FACTOR, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<YearMonth, Loaded>?) = size > CACHED_MONTHS
+    }
+
+    // Loads are requests, not coroutines: every trigger (resume, sheet close, a tick, a month swipe)
+    // sets what it wants re-read and wakes ONE worker, so a burst of triggers is one read, not N
+    // reads fighting for the database's connection pool. Only touched from the scope's thread.
+    private var pendingMonth = false
+    private var pendingPanels = false
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+
+    init {
+        this.scope.launch {
+            for (ignored in wake) {
+                val month = pendingMonth
+                val panels = pendingPanels
+                pendingMonth = false
+                pendingPanels = false
+                if (month) loadMonth()
+                if (panels) loadPanels()
+            }
+        }
+    }
+
+    private fun request(month: Boolean = false, panels: Boolean = false) {
+        pendingMonth = pendingMonth || month
+        pendingPanels = pendingPanels || panels
+        wake.trySend(Unit)
+    }
 
     private fun initialState(): HomeCalendarUiState {
         val t = today()
-        return HomeCalendarUiState(today = t, month = YearMonth.from(t), selectedDay = t)
+        val month = YearMonth.from(t)
+        return HomeCalendarUiState(
+            today = t,
+            month = month,
+            selectedDay = t,
+            cells = buildHomeCells(month, t, t, emptyMap()),
+        )
     }
 
     /** `ON_RESUME`: re-reads everything, keeping the month and day the user is looking at - except
@@ -53,18 +108,14 @@ class HomeCalendarViewModel(
     fun refresh() {
         val t = today()
         _state.update { it.copy(today = t) }
-        scope.launch {
-            loadMonth()
-            loadDay()
-            loadPanels()
-        }
+        request(month = true, panels = true)
     }
 
     fun selectDay(day: LocalDate) {
         if (YearMonth.from(day) != _state.value.month) return
         _state.update { it.copy(selectedDay = day) }
-        rebuildCells()
-        scope.launch { loadDay() }
+        // The agenda comes from the month already in memory: no query.
+        scope.launch { publish() }
     }
 
     fun showMonth(month: YearMonth) {
@@ -72,10 +123,9 @@ class HomeCalendarViewModel(
         // The selection follows the month: today when it is this month, else the 1st.
         val day = if (YearMonth.from(current.today) == month) current.today else month.atDay(1)
         _state.update { it.copy(month = month, selectedDay = day) }
-        scope.launch {
-            loadMonth()
-            loadDay()
-        }
+        // A month seen before shows its dots and agenda at once; a new one shows the empty grid.
+        scope.launch { publish() }
+        request(month = true)
     }
 
     fun previousMonth() = showMonth(_state.value.month.minusMonths(1))
@@ -84,24 +134,20 @@ class HomeCalendarViewModel(
 
     fun openSheet(sheet: PanelSheet) {
         _state.update { it.copy(sheet = sheet) }
-        scope.launch { loadPanels() }
+        request(panels = true)
     }
 
     fun closeSheet() {
         _state.update { it.copy(sheet = null) }
         // The sheet may have changed things the grid and panel show.
-        scope.launch {
-            loadMonth()
-            loadDay()
-            loadPanels()
-        }
+        request(month = true, panels = true)
     }
 
     /** Ticks or unticks through the existing controller. A refusal stays on screen in words, and the
      * row keeps the state the controller left it in. */
     fun setTodoDone(todo: TodoRowUi, done: Boolean) {
         scope.launch {
-            val ok = guarded { source.setTodoDone(todo.ref, done) } ?: false
+            val ok = guarded { withContext(io) { source.setTodoDone(todo.ref, done) } } ?: false
             if (!ok) {
                 val verb = if (done) "tick" else "untick"
                 _state.update { it.copy(todosNote = "Couldn't $verb ${todo.title}. Nothing was changed.") }
@@ -117,8 +163,7 @@ class HomeCalendarViewModel(
                     todosNote = null,
                 )
             }
-            loadMonth()
-            loadDay()
+            request(month = true)
         }
     }
 
@@ -128,12 +173,12 @@ class HomeCalendarViewModel(
 
     private fun actOnIdea(idea: IdeaRowUi, act: suspend () -> String) {
         scope.launch {
-            val sentence = guarded { act() } ?: "Couldn't change ${idea.title}. Nothing was changed."
+            val sentence = guarded { withContext(io) { act() } }
+                ?: "Couldn't change ${idea.title}. Nothing was changed."
             _state.update { s ->
                 s.copy(ideas = s.ideas.map { if (it.id == idea.id) it.copy(outcome = sentence) else it })
             }
-            loadMonth()
-            loadDay()
+            request(month = true)
         }
     }
 
@@ -141,41 +186,75 @@ class HomeCalendarViewModel(
 
     private suspend fun loadMonth() {
         val month = _state.value.month
-        val read = guarded { source.monthMarkers(month, zone) }
+        val failed = MonthRead(month, emptyList(), emptyList(), listOf("the month"))
+        val read = guarded { withContext(io) { source.readMonth(month, zone) } } ?: failed
         // A month the user has already left must not overwrite the one now showing.
         if (_state.value.month != month) return
-        markers = read ?: MonthMarkers(emptyMap(), listOf("the month"))
-        rebuildCells()
+        val loaded = guarded {
+            withContext(default) {
+                val inbox = inboxOf(read, now())
+                Loaded(read, inbox, deriveMonthMarkers(read, inbox, zone))
+            }
+        } ?: Loaded(failed, emptyList(), MonthMarkers(emptyMap(), failed.unreadable))
+        loadedMonths[month] = loaded
+        publish()
     }
 
-    private fun rebuildCells() {
-        _state.update { s ->
-            s.copy(
-                cells = buildHomeCells(s.month, s.today, s.selectedDay, markers.byDay),
-                readNote = readNote(markers.unreadable, dayUnreadable),
+    /**
+     * Builds the grid cells and the selected day's agenda from the month in memory and puts them in
+     * the state. Every change of the month, the selection or the data calls this; a result that was
+     * overtaken (the selection moved, a newer read landed) is dropped, because whatever overtook it
+     * published too.
+     */
+    private suspend fun publish() {
+        val s = _state.value
+        val loaded = loadedMonths[s.month]
+        if (loaded == null) {
+            // Nothing read for this month yet: the empty grid shell, not the previous month's cells.
+            _state.update { cur ->
+                if (cur.month != s.month) {
+                    cur
+                } else {
+                    cur.copy(
+                        cells = buildHomeCells(cur.month, cur.today, cur.selectedDay, emptyMap()),
+                        dayRows = emptyList(),
+                    )
+                }
+            }
+            return
+        }
+        val built = guarded {
+            withContext(default) {
+                buildHomeCells(s.month, s.today, s.selectedDay, loaded.markers.byDay) to
+                    deriveDay(loaded.read, loaded.inbox, s.selectedDay, zone)
+            }
+        }
+        val cur = _state.value
+        val overtaken = cur.month != s.month || cur.selectedDay != s.selectedDay || cur.today != s.today ||
+            loadedMonths[s.month] !== loaded
+        if (overtaken) return
+        val note = readNote(loaded.read.unreadable, built?.second?.unreadable ?: listOf("this day"))
+        _state.update {
+            it.copy(
+                cells = built?.first ?: it.cells,
+                dayRows = built?.second?.rows.orEmpty(),
+                readNote = note,
                 loading = false,
             )
-        }
-    }
-
-    private var dayUnreadable: List<String> = emptyList()
-
-    private suspend fun loadDay() {
-        val day = _state.value.selectedDay
-        val read = guarded { source.dayRows(day, zone) }
-        if (_state.value.selectedDay != day) return
-        dayUnreadable = read?.unreadable ?: listOf("this day")
-        _state.update { s ->
-            s.copy(dayRows = read?.rows.orEmpty(), readNote = readNote(markers.unreadable, dayUnreadable))
         }
     }
 
     private suspend fun loadPanels() {
         val t = _state.value.today
         val (from, to) = weekendWindow(t)
-        val todos = guarded { source.openTodos(zone) }
-        val lists = guarded { source.lists() }
-        val ideas = guarded { source.ideas(from, to, zone) }
+        // One hop to the IO pool for the three panel reads, one after the other.
+        val (todos, lists, ideas) = withContext(io) {
+            Triple(
+                guarded { source.openTodos(zone) },
+                guarded { source.lists() },
+                guarded { source.ideas(from, to, zone) },
+            )
+        }
         _state.update { s ->
             // A row ticked inside the open sheet stays listed (done) until the sheet closes.
             val keptDone = if (s.sheet == PanelSheet.TODOS) {
@@ -215,6 +294,10 @@ class HomeCalendarViewModel(
             HomeCalendarViewModel(ContextHomeCalendarSource(appContext)) as T
     }
 }
+
+// Previous, current and next month, plus one: enough for a swipe back and forth without a blink.
+private const val CACHED_MONTHS = 4
+private const val LOAD_FACTOR = 0.75f
 
 /** One sentence naming what could not be read, or null when everything was. */
 internal fun readNote(month: List<String>, day: List<String>): String? {

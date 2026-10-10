@@ -35,14 +35,22 @@ import com.kevin.legion.weather.WeatherController
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val DAY_MS = 24 * 60 * 60 * 1000L
 private const val OVERDUE_LOOKBACK_DAYS = 30L
+private const val MIRROR_DEBOUNCE_MS = 300L
 
 /**
  * HOME's own ViewModel (home-launcher ticket 03, CLAUDE.md sec 8 - `AndroidViewModel`, no Hilt yet
@@ -61,7 +69,17 @@ private const val OVERDUE_LOOKBACK_DAYS = 30L
  * ADR 0050 forbids. A throw escaping [loadState] now lands on [crashedHomeUiState] instead: every
  * tile's own failed wording, not a stranded loading spinner.
  */
-class HomeViewModel(application: Application) : AndroidViewModel(application) {
+@OptIn(FlowPreview::class) // debounce is still preview API in coroutines 1.8; no stable equivalent
+class HomeViewModel @JvmOverloads constructor(
+    application: Application,
+    // Where loadState runs. Default, never Main: it reads Room, calls LocationController.init (a
+    // synchronous getLastKnownLocation) and merges rows, all of which showed up as skipped frames
+    // on the first seconds after launch (2026-10-09). @JvmOverloads keeps the (Application)
+    // constructor the default ViewModel factory looks for.
+    private val workDispatcher: CoroutineDispatcher = Dispatchers.Default,
+) : AndroidViewModel(application) {
+    private var refreshJob: Job? = null
+
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
@@ -70,7 +88,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         // its rows usually land after this screen has already read the budget. Re-read when it
         // says Room changed (or its sync status did), skipping the StateFlow's initial value.
         viewModelScope.launch {
-            LedgerMirrorStatus.changes.drop(1).collect { refresh() }
+            // Debounced: the mirror reports a burst of changes per sync, and each used to start its own
+            // full reload (weather and location included).
+            LedgerMirrorStatus.changes.drop(1).debounce(MIRROR_DEBOUNCE_MS).collect { refresh() }
         }
     }
 
@@ -79,10 +99,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // crashedHomeUiState below, whatever exception type it happened to be.
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun refresh() {
-        viewModelScope.launch {
+        // One reload at a time: a newer request replaces one still running instead of stacking on it.
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             val today = LocalDate.now(ZoneId.systemDefault())
             _state.value = try {
-                loadState(getApplication())
+                withContext(workDispatcher) { loadState(getApplication()) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 crashedHomeUiState(today)
             }

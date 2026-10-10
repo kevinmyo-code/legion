@@ -1,11 +1,17 @@
 package com.kevin.legion.ui.home
 
+import com.kevin.legion.backend.EventKind
+import com.kevin.legion.data.local.Event
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.ZoneOffset
+import java.util.concurrent.Executors
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -33,10 +39,22 @@ class HomeCalendarViewModelTest {
         reminderId = reminderId,
     )
 
+    private fun ms(day: LocalDate, hour: Int = 15) = day.atTime(hour, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+
+    private fun ev(id: Long, kind: String, day: LocalDate) = Event(
+        id = id,
+        serverId = null,
+        title = "t$id",
+        startsAt = ms(day),
+        source = "test",
+        updatedAtMs = 0,
+        kind = kind,
+    )
+
     private class FakeSource : HomeCalendarSource {
-        var markers = mutableMapOf<LocalDate, DayMarkers>()
-        var markerGaps = listOf<String>()
-        var days = mutableMapOf<LocalDate, DayRead>()
+        /** Mixed kinds, as the one month query returns them. */
+        var rows = listOf<Event>()
+        var gaps = listOf<String>()
         var todos = listOf<TodoRowUi>()
         var todosThrow = false
         var lists = listOf<ListRowUi>()
@@ -44,13 +62,17 @@ class HomeCalendarViewModelTest {
         var tickResult = true
         val ticks = mutableListOf<Pair<TodoRef, Boolean>>()
         val monthsRead = mutableListOf<YearMonth>()
+        var readThread: String? = null
 
-        override suspend fun monthMarkers(month: YearMonth, zone: ZoneId): MonthMarkers {
+        /** When set, readMonth suspends here until the test completes it. */
+        var gate: CompletableDeferred<Unit>? = null
+
+        override suspend fun readMonth(month: YearMonth, zone: ZoneId): MonthRead {
             monthsRead += month
-            return MonthMarkers(markers, markerGaps)
+            readThread = Thread.currentThread().name
+            gate?.await()
+            return MonthRead(month, rows, emptyList(), gaps)
         }
-
-        override suspend fun dayRows(day: LocalDate, zone: ZoneId) = days[day] ?: DayRead(emptyList())
 
         override suspend fun openTodos(zone: ZoneId): List<TodoRowUi> {
             if (todosThrow) error("db gone")
@@ -71,13 +93,17 @@ class HomeCalendarViewModelTest {
         override suspend fun dropIdea(id: Long) = "Removed."
     }
 
-    private fun vm(source: FakeSource) =
-        HomeCalendarViewModel(source, today = { today }, zone = zone, scope = CoroutineScope(Dispatchers.Unconfined))
+    private fun vm(source: FakeSource) = HomeCalendarViewModel(
+        source, today = { today }, zone = zone, scope = CoroutineScope(Dispatchers.Unconfined),
+        io = Dispatchers.Unconfined, default = Dispatchers.Unconfined, now = { ms(today) },
+    )
 
     @Test
     fun `refresh builds six weeks with today marked and the markers of each kind`() {
         val src = FakeSource()
-        src.markers[LocalDate.of(2026, 10, 10)] = DayMarkers(events = 1, todos = 2, suggestions = 3)
+        val sat0 = LocalDate.of(2026, 10, 10)
+        src.rows = listOf(ev(1, EventKind.EVENT, sat0)) + (2L..3L).map { ev(it, EventKind.TASK, sat0) } +
+            (4L..6L).map { ev(it, EventKind.SUGGESTION, sat0) }
         val model = vm(src).also { it.refresh() }
         val s = model.state.value
         assertEquals(42, s.cells.size)
@@ -91,12 +117,12 @@ class HomeCalendarViewModelTest {
     fun `selecting a day moves the selection and loads that day's rows`() {
         val src = FakeSource()
         val tenth = LocalDate.of(2026, 10, 10)
-        src.days[tenth] = DayRead(listOf(row("e1", AgendaKind.EVENT), row("s1", AgendaKind.SUGGESTION)))
+        src.rows = listOf(ev(1, EventKind.EVENT, tenth), ev(2, EventKind.SUGGESTION, tenth))
         val model = vm(src).also { it.refresh() }
         model.selectDay(tenth)
         val s = model.state.value
         assertEquals(tenth, s.selectedDay)
-        assertEquals(listOf("e1", "s1"), s.dayRows.map { it.key })
+        assertEquals(listOf("event-1", "suggestion-2"), s.dayRows.map { it.key })
         assertTrue(s.cells.single { it.date == tenth }.isSelected)
         assertEquals(1, s.cells.count { it.isSelected })
     }
@@ -111,13 +137,11 @@ class HomeCalendarViewModelTest {
     @Test
     fun `a suggestion is shown but never counted as a plan`() {
         val src = FakeSource()
-        src.days[today] = DayRead(
-            listOf(
-                row("e", AgendaKind.EVENT),
-                row("t", AgendaKind.TODO),
-                row("s", AgendaKind.SUGGESTION),
-                row("s2", AgendaKind.SUGGESTION),
-            ),
+        src.rows = listOf(
+            ev(1, EventKind.EVENT, today),
+            ev(2, EventKind.TASK, today),
+            ev(3, EventKind.SUGGESTION, today),
+            ev(4, EventKind.SUGGESTION, today),
         )
         src.todos = listOf(TodoRowUi("a", "Quiz", "Due today", done = false, ref = TodoRef.Reminder(1)))
         val s = vm(src).also { it.refresh() }.state.value
@@ -199,8 +223,7 @@ class HomeCalendarViewModelTest {
     @Test
     fun `an unreadable kind is said in words and never reads as an empty day`() {
         val src = FakeSource()
-        src.markerGaps = listOf("to-dos")
-        src.days[today] = DayRead(emptyList(), unreadable = listOf("suggestions"))
+        src.gaps = listOf("to-dos", "suggestions")
         val s = vm(src).also { it.refresh() }.state.value
         assertEquals("Couldn't read to-dos, suggestions. What is shown may be incomplete.", s.readNote)
     }
@@ -270,6 +293,91 @@ class HomeCalendarViewModelTest {
         assertEquals(PanelSheet.IDEAS, model.state.value.sheet)
         model.closeSheet()
         assertNull(model.state.value.sheet)
+    }
+
+    @Test
+    fun `a month load is one query and a day change inside the month makes none`() {
+        val src = FakeSource()
+        val tenth = LocalDate.of(2026, 10, 10)
+        src.rows = listOf(ev(1, EventKind.EVENT, tenth), ev(2, EventKind.EVENT, LocalDate.of(2026, 10, 20)))
+        val model = vm(src).also { it.refresh() }
+        assertEquals(listOf(YearMonth.of(2026, 10)), src.monthsRead)
+        model.selectDay(tenth)
+        assertEquals(listOf("event-1"), model.state.value.dayRows.map { it.key })
+        model.selectDay(LocalDate.of(2026, 10, 20))
+        assertEquals(listOf("event-2"), model.state.value.dayRows.map { it.key })
+        model.selectDay(LocalDate.of(2026, 10, 21))
+        assertEquals(emptyList<String>(), model.state.value.dayRows.map { it.key })
+        assertEquals("selection changes must not read again", 1, src.monthsRead.size)
+    }
+
+    @Test
+    fun `a burst of refreshes while a read is in flight becomes one more read, not one each`() {
+        val src = FakeSource()
+        val gate = CompletableDeferred<Unit>()
+        src.gate = gate
+        val model = vm(src)
+        model.refresh()
+        model.refresh()
+        model.refresh()
+        assertEquals("the first read is waiting on the gate", 1, src.monthsRead.size)
+        gate.complete(Unit)
+        assertEquals("the two queued refreshes collapse into one", 2, src.monthsRead.size)
+        assertFalse(model.state.value.loading)
+    }
+
+    @Test
+    fun `swiping back to a month already read shows its dots at once, a new month shows the empty grid`() {
+        val src = FakeSource()
+        val tenth = LocalDate.of(2026, 10, 10)
+        src.rows = listOf(ev(1, EventKind.EVENT, tenth))
+        val model = vm(src).also { it.refresh() }
+        val gate = CompletableDeferred<Unit>()
+        src.gate = gate
+        model.nextMonth()
+        // November has not been read: the grid shell, no October dots on a November grid.
+        assertEquals(YearMonth.of(2026, 11), model.state.value.month)
+        assertTrue(model.state.value.cells.all { it.markers.isEmpty })
+        model.previousMonth()
+        // October is in memory: its dot is back before the (gated) re-read returns.
+        assertEquals(1, model.state.value.cells.single { it.date == tenth }.markers.events)
+        gate.complete(Unit)
+    }
+
+    @Test
+    fun `the first state already holds the grid shell`() {
+        val s = vm(FakeSource()).state.value
+        assertEquals(42, s.cells.size)
+        assertEquals(YearMonth.of(2026, 10), s.month)
+        assertTrue(s.cells.all { it.markers.isEmpty })
+    }
+
+    @Test
+    fun `reads run on the io dispatcher and the derivation on the default one, never on the caller`() {
+        val io = Executors.newSingleThreadExecutor { Thread(it, "io-test") }.asCoroutineDispatcher()
+        val work = Executors.newSingleThreadExecutor { Thread(it, "default-test") }.asCoroutineDispatcher()
+        var nowThread: String? = null
+        val src = FakeSource()
+        val model = HomeCalendarViewModel(
+            src, today = { today }, zone = zone, scope = CoroutineScope(Dispatchers.Unconfined),
+            io = io, default = work,
+            // now() is called inside the derivation block, so the thread it sees is the derivation's.
+            now = {
+                nowThread = Thread.currentThread().name
+                ms(today)
+            },
+        )
+        model.refresh()
+        val deadline = System.currentTimeMillis() + 5_000
+        while (model.state.value.loading && System.currentTimeMillis() < deadline) Thread.sleep(10)
+        try {
+            assertFalse("the load did not finish", model.state.value.loading)
+            assertTrue("read ran on ${src.readThread}", src.readThread.orEmpty().startsWith("io-test"))
+            assertTrue("derived on $nowThread", nowThread.orEmpty().startsWith("default-test"))
+        } finally {
+            io.close()
+            work.close()
+        }
     }
 
     // ------------------------------------------------------------------------ pure functions
