@@ -1,4 +1,4 @@
-import { Bell, Palette, Smartphone, UserRound, Users, type LucideIcon } from 'lucide-react'
+import { Bell, Landmark, Palette, Smartphone, UserRound, Users, type LucideIcon } from 'lucide-react'
 
 /**
  * The sections of Settings, in one table, so the family index list and the
@@ -14,6 +14,7 @@ export interface SettingsSection {
     | '/settings/household'
     | '/settings/notifications'
     | '/settings/devices'
+    | '/settings/bank'
     | '/settings/appearance'
   label: string
   blurb: string
@@ -44,6 +45,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: 'Devices',
     blurb: 'Phones signed in to your account, and cutting one off.',
     icon: Smartphone,
+  },
+  {
+    to: '/settings/bank',
+    label: 'Bank connection',
+    blurb: 'The bank feed your ledger reads, and signing in to the bank again.',
+    icon: Landmark,
   },
   {
     to: '/settings/appearance',

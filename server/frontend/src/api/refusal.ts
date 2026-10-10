@@ -37,7 +37,7 @@ export function sentenceFromBody(body: unknown): string | null {
   return parts.length > 0 ? parts.join(' ') : null
 }
 
-export type WriteVerb = 'saved' | 'deleted' | 'changed' | 'removed' | 'revoked' | 'created' | 'logged'
+export type WriteVerb = 'saved' | 'deleted' | 'changed' | 'removed' | 'revoked' | 'created' | 'logged' | 'started' | 'connected' | 'synced'
 
 /** The engine's refusals say what did not happen somewhere in the sentence
  * ("Nothing was ...", "Nobody was removed", "No account was created", "Your

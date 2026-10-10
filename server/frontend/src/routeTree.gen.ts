@@ -28,6 +28,7 @@ import { Route as AuthedBoughtLogRouteImport } from './routes/_authed.bought.log
 import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed.settings.index'
 import { Route as AuthedSettingsAccountRouteImport } from './routes/_authed.settings.account'
 import { Route as AuthedSettingsAppearanceRouteImport } from './routes/_authed.settings.appearance'
+import { Route as AuthedSettingsBankRouteImport } from './routes/_authed.settings.bank'
 import { Route as AuthedSettingsDevicesRouteImport } from './routes/_authed.settings.devices'
 import { Route as AuthedSettingsHouseholdRouteImport } from './routes/_authed.settings.household'
 import { Route as AuthedSettingsNotificationsRouteImport } from './routes/_authed.settings.notifications'
@@ -127,6 +128,11 @@ const AuthedSettingsAppearanceRoute =
     path: '/appearance',
     getParentRoute: () => AuthedSettingsRoute,
   } as any)
+const AuthedSettingsBankRoute = AuthedSettingsBankRouteImport.update({
+  id: '/bank',
+  path: '/bank',
+  getParentRoute: () => AuthedSettingsRoute,
+} as any)
 const AuthedSettingsDevicesRoute = AuthedSettingsDevicesRouteImport.update({
   id: '/devices',
   path: '/devices',
@@ -161,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/bought/log': typeof AuthedBoughtLogRoute
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
+  '/settings/bank': typeof AuthedSettingsBankRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
@@ -183,6 +190,7 @@ export interface FileRoutesByTo {
   '/bought/log': typeof AuthedBoughtLogRoute
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
+  '/settings/bank': typeof AuthedSettingsBankRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
@@ -208,6 +216,7 @@ export interface FileRoutesById {
   '/_authed/bought/log': typeof AuthedBoughtLogRoute
   '/_authed/settings/account': typeof AuthedSettingsAccountRoute
   '/_authed/settings/appearance': typeof AuthedSettingsAppearanceRoute
+  '/_authed/settings/bank': typeof AuthedSettingsBankRoute
   '/_authed/settings/devices': typeof AuthedSettingsDevicesRoute
   '/_authed/settings/household': typeof AuthedSettingsHouseholdRoute
   '/_authed/settings/notifications': typeof AuthedSettingsNotificationsRoute
@@ -233,6 +242,7 @@ export interface FileRouteTypes {
     | '/bought/log'
     | '/settings/account'
     | '/settings/appearance'
+    | '/settings/bank'
     | '/settings/devices'
     | '/settings/household'
     | '/settings/notifications'
@@ -255,6 +265,7 @@ export interface FileRouteTypes {
     | '/bought/log'
     | '/settings/account'
     | '/settings/appearance'
+    | '/settings/bank'
     | '/settings/devices'
     | '/settings/household'
     | '/settings/notifications'
@@ -279,6 +290,7 @@ export interface FileRouteTypes {
     | '/_authed/bought/log'
     | '/_authed/settings/account'
     | '/_authed/settings/appearance'
+    | '/_authed/settings/bank'
     | '/_authed/settings/devices'
     | '/_authed/settings/household'
     | '/_authed/settings/notifications'
@@ -428,6 +440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedSettingsAppearanceRouteImport
       parentRoute: typeof AuthedSettingsRoute
     }
+    '/_authed/settings/bank': {
+      id: '/_authed/settings/bank'
+      path: '/bank'
+      fullPath: '/settings/bank'
+      preLoaderRoute: typeof AuthedSettingsBankRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
     '/_authed/settings/devices': {
       id: '/_authed/settings/devices'
       path: '/devices'
@@ -455,6 +474,7 @@ declare module '@tanstack/react-router' {
 interface AuthedSettingsRouteChildren {
   AuthedSettingsAccountRoute: typeof AuthedSettingsAccountRoute
   AuthedSettingsAppearanceRoute: typeof AuthedSettingsAppearanceRoute
+  AuthedSettingsBankRoute: typeof AuthedSettingsBankRoute
   AuthedSettingsDevicesRoute: typeof AuthedSettingsDevicesRoute
   AuthedSettingsHouseholdRoute: typeof AuthedSettingsHouseholdRoute
   AuthedSettingsNotificationsRoute: typeof AuthedSettingsNotificationsRoute
@@ -464,6 +484,7 @@ interface AuthedSettingsRouteChildren {
 const AuthedSettingsRouteChildren: AuthedSettingsRouteChildren = {
   AuthedSettingsAccountRoute: AuthedSettingsAccountRoute,
   AuthedSettingsAppearanceRoute: AuthedSettingsAppearanceRoute,
+  AuthedSettingsBankRoute: AuthedSettingsBankRoute,
   AuthedSettingsDevicesRoute: AuthedSettingsDevicesRoute,
   AuthedSettingsHouseholdRoute: AuthedSettingsHouseholdRoute,
   AuthedSettingsNotificationsRoute: AuthedSettingsNotificationsRoute,

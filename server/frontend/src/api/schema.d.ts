@@ -1958,6 +1958,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ingest/plaid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's bank connection. Never the access token. */
+        get: operations["api_ingest_plaid_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/plaid/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Turns Link's public token into the household's connection. The access token is sealed by the session vault and never returned. The first sync runs on the next schedule, or with POST /api/ingest/plaid/sync. */
+        post: operations["api_ingest_plaid_exchange_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/plaid/link-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_ingest_plaid_link_token_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/plaid/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Runs the bank sync now, recorded like a scheduled run. `sentence` says what happened; a run that could not sync says so with outcome failed or needs_login. */
+        post: operations["api_ingest_plaid_sync_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/plaid/update-link-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description A Link token in update mode: the person signs in to the bank again on the SAME connection. No new connection is made and none of Plaid's 10 is spent. */
+        post: operations["api_ingest_plaid_update_link_token_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ingest/receipt": {
         parameters: {
             query?: never;
@@ -3161,6 +3245,34 @@ export interface components {
             /** @description The result in words, for the model. */
             text: string;
         };
+        BankAccount: {
+            name: string | null;
+            mask: string | null;
+            type: string | null;
+            subtype: string | null;
+        };
+        BankStatus: {
+            /** @description The server has Plaid keys. False means nothing here can be linked. */
+            configured: boolean;
+            configuration_problem: string | null;
+            /** @description `sandbox` or `production`. */
+            environment: string;
+            /** @description Which Plaid environment is active, in words. Sandbox is Plaid's test bank: show this so a test link is never mistaken for real bank data. */
+            environment_sentence: string;
+            connected: boolean;
+            institution_name: string | null;
+            accounts: components["schemas"]["BankAccount"][];
+            /** Format: date-time */
+            last_synced_at: string | null;
+            /** Format: date-time */
+            consent_expires_at: string | null;
+            /** @description The bank wants the person again (or its consent ends within 14 days). */
+            needs_sign_in: boolean;
+            /** @description The bank connection's freshness line. */
+            sentence: string;
+            slot_warning: string;
+            is_owner: boolean;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -3728,6 +3840,10 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        Exchange: {
+            /** @description What Plaid Link's onSuccess returned. */
+            public_token: string;
+        };
         Freshness: {
             sources: components["schemas"]["FreshnessSource"][];
         };
@@ -3739,6 +3855,8 @@ export interface components {
             last_error: string | null;
             stale: boolean;
             sentence: string;
+            /** @description The page that fixes what `sentence` describes, when a person has to act (the bank connection's Sign in again). Null otherwise. */
+            action_url: string | null;
         };
         /**
          * @description Field-for-field `RemoteGroceryStaple` / `GroceryStapleFields`
@@ -4020,18 +4138,21 @@ export interface components {
             readonly category_source: (components["schemas"]["CategorySourceEnum"] | components["schemas"]["NullEnum"]) | null;
             /** Format: date-time */
             readonly pending_logged_at: string | null;
+            /** @description True while the bank has not posted this transaction yet (a BANK_API row only). The bank may still change its amount or drop it. */
+            readonly pending: boolean;
             /**
              * Format: uuid
              * @description The id of the row this one reverses, or null. A gated row is never edited; it is corrected by posting a reversal and a replacement.
              */
             readonly reversal_of: string | null;
             /**
-             * @description DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER. **UNRECONCILED is provisional** (CLAUDE.md section 4 rule 7): the source stated no anchor, the figure is unverified, and any surface showing it - or any total containing it - must say so in words, never by colour or a glyph alone.
+             * @description DETERMINISTIC / LLM_RECONCILED / UNRECONCILED / USER / BANK_API. **UNRECONCILED is provisional** (CLAUDE.md section 4 rule 7): the source stated no anchor, the figure is unverified, and any surface showing it - or any total containing it - must say so in words, never by colour or a glyph alone. **BANK_API is the bank's own feed (ADR 0057) and is fact**: render it exactly like a verified row, with no tag.
              *
              *     * `DETERMINISTIC` - Deterministic
              *     * `LLM_RECONCILED` - Llm Reconciled
              *     * `UNRECONCILED` - Unreconciled
              *     * `USER` - User
+             *     * `BANK_API` - Bank Api
              */
             readonly provenance: components["schemas"]["ProvenanceEnum"];
             /** @description A sentence beginning 'Unverified' on every UNRECONCILED row (section 4 rule 7: the source stated no anchor, so the row is provisional). Null on a row that passed the gate. A surface showing the row, or a total containing it, shows this. */
@@ -4071,6 +4192,13 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid?: string | null;
+        };
+        LinkToken: {
+            /** @description Short-lived; hand it to Plaid Link. */
+            link_token: string;
+            /** Format: date-time */
+            expiration: string | null;
+            mode: components["schemas"]["ModeEnum"];
         };
         LoginRequest: {
             /** Format: email */
@@ -4324,6 +4452,12 @@ export interface components {
             /** Format: uuid */
             origin_guid: string;
         };
+        /**
+         * @description * `create` - create
+         *     * `update` - update
+         * @enum {string}
+         */
+        ModeEnum: "create" | "update";
         /** @enum {unknown} */
         NullEnum: null;
         /**
@@ -5095,9 +5229,10 @@ export interface components {
          *     * `LLM_RECONCILED` - Llm Reconciled
          *     * `UNRECONCILED` - Unreconciled
          *     * `USER` - User
+         *     * `BANK_API` - Bank Api
          * @enum {string}
          */
-        ProvenanceEnum: "DETERMINISTIC" | "LLM_RECONCILED" | "UNRECONCILED" | "USER";
+        ProvenanceEnum: "DETERMINISTIC" | "LLM_RECONCILED" | "UNRECONCILED" | "USER" | "BANK_API";
         Purchase: {
             /** Format: uuid */
             readonly id: string;
@@ -5177,6 +5312,7 @@ export interface components {
              *     * `LLM_RECONCILED` - Llm Reconciled
              *     * `UNRECONCILED` - Unreconciled
              *     * `USER` - User
+             *     * `BANK_API` - Bank Api
              */
             readonly provenance: components["schemas"]["ProvenanceEnum"];
             /** Format: date-time */
@@ -5454,9 +5590,10 @@ export interface components {
          *     * `obd_rollup` - OBD roll-up
          *     * `heartbeat` - Heartbeat
          *     * `push` - Notifications
+         *     * `plaid` - Bank connection
          * @enum {string}
          */
-        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push";
+        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push" | "plaid";
         Spend: {
             /** @description YYYY-MM, the budget month these figures are for. */
             month: string;
@@ -5612,6 +5749,23 @@ export interface components {
             updated_at: string;
             /** Format: date-time */
             deleted_at: string | null;
+        };
+        SyncReport: {
+            added: number;
+            modified: number;
+            removed: number;
+            unchanged: number;
+            pending_posted: number;
+            replaced_older: number;
+            categories_moved: number;
+            kept_older: number;
+            notes: string[];
+        };
+        SyncResult: {
+            /** @description ok, failed, needs_login, skipped or skipped_locked. */
+            outcome: string;
+            sentence: string;
+            report: components["schemas"]["SyncReport"] | null;
         };
         /**
          * @description `POST /api/checklists/<id>/items/<item>/tick` body - `{day, value?,
@@ -9477,6 +9631,191 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Detail"];
                 };
+            };
+        };
+    };
+    api_ingest_plaid_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankStatus"];
+                };
+            };
+        };
+    };
+    api_ingest_plaid_exchange_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Exchange"];
+                "application/x-www-form-urlencoded": components["schemas"]["Exchange"];
+                "multipart/form-data": components["schemas"]["Exchange"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankStatus"];
+                };
+            };
+            /** @description Not an owner. Nothing was stored. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A bank is already connected. Nothing was stored. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Plaid refused. Nothing was stored. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Plaid keys or no vault key. Nothing was stored. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    api_ingest_plaid_link_token_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkToken"];
+                };
+            };
+            /** @description Not an owner. Nothing was changed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A bank is already connected; use update mode. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Plaid refused. `detail` says what it said. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The server has no Plaid keys. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    api_ingest_plaid_sync_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+        };
+    };
+    api_ingest_plaid_update_link_token_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkToken"];
+                };
+            };
+            /** @description Not an owner. Nothing was changed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No bank is connected. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Plaid refused. `detail` says what it said. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The server has no Plaid keys, or no vault key. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
