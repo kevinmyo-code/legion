@@ -186,6 +186,11 @@ class LedgerTransaction(models.Model):
     provenance = models.TextField(choices=Provenance.choices)
     created_at = models.DateTimeField()
     origin_guid = models.TextField(null=True)
+    # ADR 0057: the bank feed's own transaction id and whether the bank has
+    # posted it yet. Set only on a `BANK_API` row, by check constraint
+    # (`ingest/bank_api_sql.py`, migration 0021).
+    bank_transaction_id = models.TextField(null=True)
+    bank_pending = models.BooleanField(default=False)
 
     household = household_field()
 

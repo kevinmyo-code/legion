@@ -29,13 +29,20 @@ from django.db import models
 
 class Provenance(models.TextChoices):
     """`public.provenance`. CLAUDE.md section 4 rule 4: every row that
-    carries this column tags one of these four. Labels match
-    `pg_enum.enumlabel` in the live schema (`enumsortorder` 1-4)."""
+    carries this column tags one of these. Labels match
+    `pg_enum.enumlabel` in the live schema (`enumsortorder` 1-5).
+
+    `BANK_API` (ADR 0057, Kevin 2026-10-09): a ledger row from the bank's own
+    transaction feed (Plaid). Stored and shown as fact with no reconciliation;
+    the value exists so the source stays traceable, and no surface renders it
+    differently from a verified row. Added by
+    `ingest/migrations/0020_provenance_bank_api.py`."""
 
     DETERMINISTIC = "DETERMINISTIC"
     LLM_RECONCILED = "LLM_RECONCILED"
     UNRECONCILED = "UNRECONCILED"
     USER = "USER"
+    BANK_API = "BANK_API"
 
 
 class IngestState(models.TextChoices):

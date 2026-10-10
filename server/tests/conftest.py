@@ -328,6 +328,16 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = create_suggestion_pins(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0020` and `0021` (ADR 0057, bank-feed rows),
+            # the same way. 0020 first and on its own statement: the enum value
+            # must commit before 0021's constraint can name it. AFTER tenancy:
+            # 0021's unique index leads with `household_id`.
+            from ingest.bank_api_sql import apply_ledger_bank_rows, ensure_provenance_value
+
+            skipped = ensure_provenance_value(cursor)
+            assert skipped is None, skipped
+            skipped = apply_ledger_bank_rows(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:
