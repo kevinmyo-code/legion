@@ -141,6 +141,9 @@ class AriaForegroundService : Service() {
         // process cache before anything builds a session that needs it.
         GeminiKeyProvider.init(this)
         ProactivePreferences.init(this)
+        // Service start re-mutes the System volume (Kevin, 2026-10-11): Application.onCreate only
+        // runs on a cold process, and this service is restarted inside a living one.
+        com.kevin.legion.quiet.QuietMode.muteSystemSounds(this)
 
         // voice-notes ticket 04: closes ticket 01's own flagged gap - "nothing calls
         // [VoiceNoteRecorder.reconcileAfterProcessDeath] yet... wiring a call into app startup is

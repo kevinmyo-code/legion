@@ -1,9 +1,14 @@
 package com.kevin.legion.quiet
 
 import android.app.Application
+import android.app.AutomaticZenRule
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.media.AudioManager
+import android.net.Uri
+import android.service.notification.ZenPolicy
+import com.kevin.legion.ui.MainActivity
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -87,6 +92,91 @@ class QuietModeTest {
         assertEquals("a stream at 0 comes back at half", QuietState.volumeToRestore(0, notifMax),
             audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION))
         assertTrue(audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION) > 0)
+    }
+
+    @Test
+    fun `on puts media at half and off puts it back when untouched`() {
+        // Kevin, 2026-10-11: "i want media volume to be half".
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 12, 0)
+        QuietMode.enable(app)
+        assertEquals(QuietState.halfOf(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)),
+            audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+        QuietMode.disable(app)
+        assertEquals(12, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+    }
+
+    @Test
+    fun `off leaves media alone when the user moved it during quiet`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 12, 0)
+        QuietMode.enable(app)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 2, 0)
+        QuietMode.disable(app)
+        assertEquals(2, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+    }
+
+    @Test
+    fun `system volume ends up muted whichever way quiet goes and is never put back`() {
+        // Kevin, 2026-10-11: "not quiet mode > i want system volume muted". The old Quiet remembered
+        // System on and restored it on off, which is how the key-press sounds came back.
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        audio.setStreamVolume(AudioManager.STREAM_SYSTEM, 7, 0)
+        QuietMode.enable(app)
+        assertEquals("muted while Quiet is on", 0, audio.getStreamVolume(AudioManager.STREAM_SYSTEM))
+        QuietMode.disable(app)
+        assertEquals("not restored on off", 0, audio.getStreamVolume(AudioManager.STREAM_SYSTEM))
+    }
+
+    @Test
+    fun `the policy lets media through and keeps system silenced`() {
+        // Kevin, 2026-10-11: "Yes, music at half". Without allowMedia the rule muted music outright.
+        val policy = QuietMode.quietPolicy()
+        assertEquals(ZenPolicy.STATE_ALLOW, policy.priorityCategoryMedia)
+        assertEquals(ZenPolicy.STATE_ALLOW, policy.priorityCategoryAlarms)
+        assertEquals(ZenPolicy.STATE_ALLOW, policy.priorityCategoryCalls)
+        assertEquals(ZenPolicy.STATE_DISALLOW, policy.priorityCategorySystem)
+        assertEquals(ZenPolicy.STATE_DISALLOW, policy.priorityCategoryMessages)
+    }
+
+    @Test
+    fun `a new rule is created with the media-allowing policy`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        QuietMode.enable(app)
+        val rule = nm.getAutomaticZenRule(savedRuleId())
+        assertEquals(ZenPolicy.STATE_ALLOW, rule.zenPolicy?.priorityCategoryMedia)
+    }
+
+    @Test
+    fun `a rule an older build installed is updated in place to allow media`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        val old = AutomaticZenRule(
+            "LEGION Quiet", null, ComponentName(app, MainActivity::class.java),
+            Uri.parse("condition://com.kevin.legion/quiet"),
+            ZenPolicy.Builder().disallowAllSounds().allowCalls(ZenPolicy.PEOPLE_TYPE_ANYONE).allowAlarms(true).build(),
+            NotificationManager.INTERRUPTION_FILTER_PRIORITY, true,
+        )
+        val oldId = nm.addAutomaticZenRule(old)
+        app.getSharedPreferences("quiet_mode", Context.MODE_PRIVATE).edit().putString("rule_id", oldId).commit()
+        assertEquals(ZenPolicy.STATE_DISALLOW, nm.getAutomaticZenRule(oldId).zenPolicy?.priorityCategoryMedia)
+
+        QuietMode.enable(app)
+
+        assertEquals("the same rule, not a second one", oldId, savedRuleId())
+        assertEquals(ZenPolicy.STATE_ALLOW, nm.getAutomaticZenRule(oldId).zenPolicy?.priorityCategoryMedia)
+        assertEquals(ZenPolicy.STATE_DISALLOW, nm.getAutomaticZenRule(oldId).zenPolicy?.priorityCategorySystem)
+    }
+
+    private fun savedRuleId(): String =
+        app.getSharedPreferences("quiet_mode", Context.MODE_PRIVATE).getString("rule_id", null)!!
+
+    @Test
+    fun `app and service start mute system volume without touching media`() {
+        audio.setStreamVolume(AudioManager.STREAM_SYSTEM, 7, 0)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 12, 0)
+        QuietMode.muteSystemSounds(app)
+        assertEquals(0, audio.getStreamVolume(AudioManager.STREAM_SYSTEM))
+        assertEquals(12, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
     }
 
     @Test
