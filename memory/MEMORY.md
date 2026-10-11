@@ -25,7 +25,12 @@ believed.
 ## Where we stopped - 2026-10-11 (session 8d51fa39)
 
 - **`dev` = `main` = `ff3a824f`, pushed.** Android 4609 / 0 (JUnit XML, 11:25). Server suite NOT
-  run this session; no engine deploy done by this session either.
+  run this session.
+- **Engine live, checked 2026-10-11 14:00 CDT:** revision `legion-00031-2d5` (deployed 07:22 CDT).
+  Scheduler `legion-worker-plaid-sync` runs `30 */3 * * *` UTC; runs at 12:30, 15:30 and 18:30 UTC all
+  exited 0. First run: 835 new rows, 783 older file rows replaced; later runs 0 new. 5 older rows
+  kept each run (categorised file rows with no bank match, four of them $0 interest lines).
+  The ledger-mirror freeze (`b25d8ec8`, `de3bec26`) is phone code; unknown whether the A25 has it.
 - **Merged since 10-09:** Plaid as ledger truth (ADR 0057), bank sync every 3 h, ledger mirror
   freezes when a pass refuses any row, Quiet (media at half, DND lets media through),
   `home-calendar`, `suggestion-tap`, `perf/home-calendar` (HOME calendar off the main thread).
