@@ -170,6 +170,11 @@ class MidnightApplication : Application() {
         // failure repeats across restarts rather than being a one-off.
         KeyHealth.init(this)
         ProactivePreferences.init(this)
+        // The System ("wrench") volume stays muted (Kevin, 2026-10-11). Process start is "app
+        // start" for the assistant service and the tile as much as for the launcher, and none of
+        // them can raise it back, so this is one cheap read on a phone where it is already 0.
+        // Gated off under Robolectric: every test runs this onCreate and would write the shadow.
+        if (!isRunningUnderRobolectric()) com.kevin.legion.quiet.QuietMode.muteSystemSounds(this)
         // backend-erp ticket 25: LedgerFolderPreferences.init/LedgerAccountMappingPreferences.init
         // used to seed here too - both classes are gone along with the rest of phone-side
         // statement ingestion (Kevin: "kill ledger ingestion from phone").

@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.service.notification.Condition
 import android.service.notification.ZenPolicy
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.kevin.legion.ui.MainActivity
 
@@ -25,6 +26,10 @@ import com.kevin.legion.ui.MainActivity
  * user's own DND policy, and a toggle that quietly clobbers someone's DND setup is worse than no
  * toggle. An [AutomaticZenRule] is LEGION's own mode with its own policy. Turning it on and off
  * never touches his.
+ *
+ * **Media and System volume (Kevin, 2026-10-11)** belong to [QuietVolumes], not to the loop below:
+ * on, media goes to half of its range; off, it goes back if the user did not move it; System
+ * (the "wrench" slider) is muted in both states and never restored. See that class for the rules.
  */
 object QuietMode {
 
@@ -40,6 +45,7 @@ object QuietMode {
     private const val KEY_PREVIOUS_RINGER = "previous_ringer"
     private const val KEY_RULE_ID = "rule_id"
     private const val KEY_VOLUME_PREFIX = "volume_"
+    private const val TAG = "QuietMode"
 
     /**
      * Every stream Quiet puts back on "off" (2026-09-27). Kevin: *"when i toggle it off, the phone
@@ -47,13 +53,16 @@ object QuietMode {
      * Switching the ringer to vibrate makes Android zero the ring and notification volumes, and
      * restoring the ringer mode never restored them. Alarm is included deliberately: an alarm left
      * at 0 after Quiet is the one failure here that costs more than annoyance.
+     *
+     * **MUSIC and SYSTEM left this list on 2026-10-11** and are handled by [QuietVolumes]. MUSIC
+     * used to be put back unconditionally (and to half if it was at 0); it is now put back only if
+     * the user did not move it. SYSTEM used to be put back too, which is how the key-press sounds
+     * came back on every "off"; Kevin wants it muted in both states.
      */
     internal val RESTORED_STREAMS = intArrayOf(
         AudioManager.STREAM_RING,
         AudioManager.STREAM_NOTIFICATION,
-        AudioManager.STREAM_MUSIC,
         AudioManager.STREAM_ALARM,
-        AudioManager.STREAM_SYSTEM,
     )
     private val CONDITION: Uri = Uri.parse("condition://com.kevin.legion/quiet")
 
@@ -84,6 +93,9 @@ object QuietMode {
             for (stream in RESTORED_STREAMS) e.putInt(KEY_VOLUME_PREFIX + stream, audio.getStreamVolume(stream))
             e.apply()
         }
+        // Media to half, System to 0. Before vibrate and the Do Not Disturb rule, because both mute
+        // the media stream and a muted stream reads back as 0 whatever its real level is.
+        withVolumes(context, "Quiet on") { it.onQuietOn() }
         audio.ringerMode = AudioManager.RINGER_MODE_VIBRATE
         setRuleActive(context, nm, true)
         p.edit().putBoolean(KEY_ON, true).apply()
@@ -109,8 +121,29 @@ object QuietMode {
             runCatching { audio.setStreamVolume(stream, target, 0) }
             e.remove(KEY_VOLUME_PREFIX + stream)
         }
+        // Keys the pre-2026-10-11 build wrote for the two streams that moved to QuietVolumes. A
+        // phone that upgraded while Quiet was on still carries them, and nothing else reads them.
+        e.remove(KEY_VOLUME_PREFIX + AudioManager.STREAM_MUSIC).remove(KEY_VOLUME_PREFIX + AudioManager.STREAM_SYSTEM)
         e.putBoolean(KEY_ON, false).remove(KEY_PREVIOUS_RINGER).apply()
+        withVolumes(context, "Quiet off") { it.onQuietOff() }
         return Result.Off
+    }
+
+    /**
+     * Mute the System ("wrench") volume without touching Quiet's state. Called from app start and
+     * service start, not on a timer, so it does not fight a slider the user raises by hand.
+     * Never throws: a start-up path must not be able to crash on a volume.
+     */
+    fun muteSystemSounds(context: Context) = withVolumes(context, "start-up") { it.muteSystem() }
+
+    private fun volumes(context: Context) = QuietVolumes(
+        audio = AndroidQuietAudio(context.getSystemService(AudioManager::class.java)),
+        memory = PrefsQuietMediaMemory(prefs(context)),
+    )
+
+    /** [QuietVolumes] already swallows SecurityException; this catches whatever else a tap must survive. */
+    private fun withVolumes(context: Context, what: String, block: (QuietVolumes) -> Unit) {
+        runCatching { block(volumes(context)) }.onFailure { Log.w(TAG, "Quiet volumes failed ($what)", it) }
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -164,5 +197,8 @@ object QuietState {
     /** A stream's volume on switch-off: what it was before Quiet, or half of its range if it was
      * at 0 or never recorded, so "off" never leaves the phone silent. Kevin asked for 50%. */
     fun volumeToRestore(saved: Int, max: Int): Int =
-        if (saved > 0) saved.coerceAtMost(max) else ((max + 1) / 2).coerceAtLeast(1)
+        if (saved > 0) saved.coerceAtMost(max) else halfOf(max).coerceAtLeast(1)
+
+    /** Half of a stream's range, rounded up on a tie: 15 steps give 8, which is what "half" looks like. */
+    fun halfOf(max: Int): Int = (max + 1) / 2
 }

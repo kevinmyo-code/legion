@@ -90,6 +90,49 @@ class QuietModeTest {
     }
 
     @Test
+    fun `on puts media at half and off puts it back when untouched`() {
+        // Kevin, 2026-10-11: "i want media volume to be half".
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 12, 0)
+        QuietMode.enable(app)
+        assertEquals(QuietState.halfOf(audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)),
+            audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+        QuietMode.disable(app)
+        assertEquals(12, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+    }
+
+    @Test
+    fun `off leaves media alone when the user moved it during quiet`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 12, 0)
+        QuietMode.enable(app)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 2, 0)
+        QuietMode.disable(app)
+        assertEquals(2, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+    }
+
+    @Test
+    fun `system volume ends up muted whichever way quiet goes and is never put back`() {
+        // Kevin, 2026-10-11: "not quiet mode > i want system volume muted". The old Quiet remembered
+        // System on and restored it on off, which is how the key-press sounds came back.
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        audio.setStreamVolume(AudioManager.STREAM_SYSTEM, 7, 0)
+        QuietMode.enable(app)
+        assertEquals("muted while Quiet is on", 0, audio.getStreamVolume(AudioManager.STREAM_SYSTEM))
+        QuietMode.disable(app)
+        assertEquals("not restored on off", 0, audio.getStreamVolume(AudioManager.STREAM_SYSTEM))
+    }
+
+    @Test
+    fun `app and service start mute system volume without touching media`() {
+        audio.setStreamVolume(AudioManager.STREAM_SYSTEM, 7, 0)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 12, 0)
+        QuietMode.muteSystemSounds(app)
+        assertEquals(0, audio.getStreamVolume(AudioManager.STREAM_SYSTEM))
+        assertEquals(12, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+    }
+
+    @Test
     fun `volume rule - what it was, or half, never zero`() {
         assertEquals(6, QuietState.volumeToRestore(saved = 6, max = 15))
         assertEquals(8, QuietState.volumeToRestore(saved = 0, max = 15))
