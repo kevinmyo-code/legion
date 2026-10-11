@@ -18,9 +18,16 @@ import com.kevin.legion.ui.MainActivity
  * toggle button to mute all notifications and put the phone on vibrate only."*
  *
  * On: the ringer goes to vibrate, and LEGION's OWN Do Not Disturb mode comes on. It lets calls
- * (from anyone) and alarms through, so they vibrate, and silences everything else: no sound, no
- * buzz, but notifications still land in the shade, so nothing is lost. Off: the ringer goes back to
- * whatever it was before, not to a default.
+ * (from anyone), alarms and media through, so calls and alarms vibrate or ring and music plays, and
+ * silences everything else (including System sounds): no sound, no buzz, but notifications still
+ * land in the shade, so nothing is lost. Off: the ringer goes back to whatever it was before, not
+ * to a default.
+ *
+ * **Media is allowed through (Kevin, 2026-10-11: "Yes, music at half").** The rule used to call
+ * `disallowAllSounds()` and allow only calls and alarms, which also muted music: the A25 showed
+ * `media=disallow` and `getStreamVolume(MUSIC)` reading 0 with Quiet on. Half volume would have been
+ * set and silent. [quietPolicy] now allows media, and [ruleId] pushes it onto a rule an older build
+ * already installed.
  *
  * **Why a separate mode instead of the system DND switch.** `setNotificationPolicy` rewrites the
  * user's own DND policy, and a toggle that quietly clobbers someone's DND setup is worse than no
@@ -93,8 +100,8 @@ object QuietMode {
             for (stream in RESTORED_STREAMS) e.putInt(KEY_VOLUME_PREFIX + stream, audio.getStreamVolume(stream))
             e.apply()
         }
-        // Media to half, System to 0. Before vibrate and the Do Not Disturb rule, because both mute
-        // the media stream and a muted stream reads back as 0 whatever its real level is.
+        // Media to half, System to 0. Read and written before vibrate and the rule go on, so the
+        // level remembered is the user's own and nothing of ours has touched it yet.
         withVolumes(context, "Quiet on") { it.onQuietOn() }
         audio.ringerMode = AudioManager.RINGER_MODE_VIBRATE
         setRuleActive(context, nm, true)
@@ -159,20 +166,25 @@ object QuietMode {
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun ruleId(context: Context, nm: NotificationManager): String {
         val p = prefs(context)
-        p.getString(KEY_RULE_ID, null)?.let { if (nm.getAutomaticZenRule(it) != null) return it }
-        val policy = ZenPolicy.Builder()
-            .disallowAllSounds()
-            .allowCalls(ZenPolicy.PEOPLE_TYPE_ANYONE)
-            .allowAlarms(true)
-            // Silent, not hidden: every notification still reaches the shade.
-            .showAllVisualEffects()
-            .build()
+        val saved = p.getString(KEY_RULE_ID, null)
+        val existing = saved?.let { nm.getAutomaticZenRule(it) }
+        if (saved != null && existing != null) {
+            // A rule installed before 2026-10-11 still says media=disallow. Update it in place so
+            // his phone does not need the rule deleted; a failed update leaves Quiet working, just
+            // with media muted as before.
+            if (existing.zenPolicy?.priorityCategoryMedia != ZenPolicy.STATE_ALLOW) {
+                existing.zenPolicy = quietPolicy()
+                runCatching { nm.updateAutomaticZenRule(saved, existing) }
+                    .onFailure { Log.w(TAG, "Could not update the Quiet rule to allow media", it) }
+            }
+            return saved
+        }
         val rule = AutomaticZenRule(
             "LEGION Quiet",
             null,
             ComponentName(context, MainActivity::class.java),
             CONDITION,
-            policy,
+            quietPolicy(),
             NotificationManager.INTERRUPTION_FILTER_PRIORITY,
             true,
         )
@@ -180,6 +192,20 @@ object QuietMode {
         p.edit().putString(KEY_RULE_ID, id).apply()
         return id
     }
+
+    /**
+     * What Quiet lets through: calls from anyone, alarms and media. System sounds, notifications and
+     * everything else stay silenced; every notification still reaches the shade.
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    internal fun quietPolicy(): ZenPolicy = ZenPolicy.Builder()
+        .disallowAllSounds()
+        .allowCalls(ZenPolicy.PEOPLE_TYPE_ANYONE)
+        .allowAlarms(true)
+        .allowMedia(true)
+        // Silent, not hidden: every notification still reaches the shade.
+        .showAllVisualEffects()
+        .build()
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

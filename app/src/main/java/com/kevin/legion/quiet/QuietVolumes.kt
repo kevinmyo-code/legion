@@ -14,9 +14,10 @@ interface QuietAudio {
 
     /**
      * True when Android reports the stream muted. A muted stream reads back as volume 0 whatever
-     * its stored level is (observed on the A25 with Quiet on: `cmd media_session volume --get
-     * --stream 3` said 0 while `dumpsys audio` held index 4), so a read taken while this is true
-     * says nothing about what the user has set.
+     * its stored level is (observed on the A25 while Quiet's old rule muted media: `cmd
+     * media_session volume --get --stream 3` said 0 while `dumpsys audio` held index 4), so a read
+     * taken while this is true says nothing about what the user has set. Quiet's own rule no
+     * longer mutes media; this still catches the user's muting it by hand or another DND mode.
      */
     fun isMuted(stream: Int): Boolean
     fun setVolume(stream: Int, index: Int)
@@ -152,12 +153,8 @@ class QuietVolumes(
 
     private fun restoreMedia(media: QuietMedia) {
         val stream = AudioManager.STREAM_MUSIC
-        if (audio.isMuted(stream)) {
-            // Same unreadable-while-muted rule as halveMedia. The usual cause is Quiet's own Do Not
-            // Disturb mode, still lifting a moment after the rule went off.
-            log("Media is muted, so whether the user moved it cannot be read; leaving it alone", null)
-            return
-        }
+        // A stream the user has muted reads 0 here, which differs from what we left, so it falls
+        // out as "moved" and is left alone with no special case.
         val now = audio.volume(stream)
         if (now != media.applied) {
             log("Media is $now (we left ${media.applied}); not restoring over it", null)

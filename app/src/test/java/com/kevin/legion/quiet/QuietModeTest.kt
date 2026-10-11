@@ -1,9 +1,14 @@
 package com.kevin.legion.quiet
 
 import android.app.Application
+import android.app.AutomaticZenRule
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.media.AudioManager
+import android.net.Uri
+import android.service.notification.ZenPolicy
+import com.kevin.legion.ui.MainActivity
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -122,6 +127,48 @@ class QuietModeTest {
         QuietMode.disable(app)
         assertEquals("not restored on off", 0, audio.getStreamVolume(AudioManager.STREAM_SYSTEM))
     }
+
+    @Test
+    fun `the policy lets media through and keeps system silenced`() {
+        // Kevin, 2026-10-11: "Yes, music at half". Without allowMedia the rule muted music outright.
+        val policy = QuietMode.quietPolicy()
+        assertEquals(ZenPolicy.STATE_ALLOW, policy.priorityCategoryMedia)
+        assertEquals(ZenPolicy.STATE_ALLOW, policy.priorityCategoryAlarms)
+        assertEquals(ZenPolicy.STATE_ALLOW, policy.priorityCategoryCalls)
+        assertEquals(ZenPolicy.STATE_DISALLOW, policy.priorityCategorySystem)
+        assertEquals(ZenPolicy.STATE_DISALLOW, policy.priorityCategoryMessages)
+    }
+
+    @Test
+    fun `a new rule is created with the media-allowing policy`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        QuietMode.enable(app)
+        val rule = nm.getAutomaticZenRule(savedRuleId())
+        assertEquals(ZenPolicy.STATE_ALLOW, rule.zenPolicy?.priorityCategoryMedia)
+    }
+
+    @Test
+    fun `a rule an older build installed is updated in place to allow media`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        val old = AutomaticZenRule(
+            "LEGION Quiet", null, ComponentName(app, MainActivity::class.java),
+            Uri.parse("condition://com.kevin.legion/quiet"),
+            ZenPolicy.Builder().disallowAllSounds().allowCalls(ZenPolicy.PEOPLE_TYPE_ANYONE).allowAlarms(true).build(),
+            NotificationManager.INTERRUPTION_FILTER_PRIORITY, true,
+        )
+        val oldId = nm.addAutomaticZenRule(old)
+        app.getSharedPreferences("quiet_mode", Context.MODE_PRIVATE).edit().putString("rule_id", oldId).commit()
+        assertEquals(ZenPolicy.STATE_DISALLOW, nm.getAutomaticZenRule(oldId).zenPolicy?.priorityCategoryMedia)
+
+        QuietMode.enable(app)
+
+        assertEquals("the same rule, not a second one", oldId, savedRuleId())
+        assertEquals(ZenPolicy.STATE_ALLOW, nm.getAutomaticZenRule(oldId).zenPolicy?.priorityCategoryMedia)
+        assertEquals(ZenPolicy.STATE_DISALLOW, nm.getAutomaticZenRule(oldId).zenPolicy?.priorityCategorySystem)
+    }
+
+    private fun savedRuleId(): String =
+        app.getSharedPreferences("quiet_mode", Context.MODE_PRIVATE).getString("rule_id", null)!!
 
     @Test
     fun `app and service start mute system volume without touching media`() {

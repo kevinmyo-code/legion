@@ -119,7 +119,7 @@ class QuietVolumesTest {
     }
 
     @Test
-    fun `media that reads muted is neither halved nor restored`() {
+    fun `media the user has muted is neither halved nor restored over`() {
         // A muted stream reads 0 whatever its level, so remembering that 0 would destroy the real one.
         audio.muted += music
         volumes.onQuietOn()
@@ -130,10 +130,9 @@ class QuietVolumesTest {
         audio.levels[music] = 11
         volumes.onQuietOn()
         assertEquals(QuietMedia(11, 8), memory.held)
-        audio.muted += music // Do Not Disturb has not finished lifting when "off" runs
+        audio.muted += music // the user muted media by hand while Quiet was on
         volumes.onQuietOff()
-        assertEquals("not overwritten while unreadable", 8, audio.levels[music])
-        assertTrue(logged.any { it.first.contains("muted") })
+        assertEquals("a muted media stream reads 0, which is not what we left", 8, audio.levels[music])
     }
 
     @Test
