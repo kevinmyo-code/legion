@@ -838,11 +838,11 @@ object MidnightEvents {
      * be zero on every real pull, and non-zero here is a signal worth looking at directly, not just
      * logging past. */
     fun ledgerTransactionsAutoPullSucceeded(inserted: Int, alreadyPresent: Int, unrecognizedProvenance: Int) = safe {
-        Log.d(
-            TAG,
-            "ledger_transactions_auto_pull inserted=$inserted alreadyPresent=$alreadyPresent " +
-                "unrecognizedProvenance=$unrecognizedProvenance",
-        )
+        val line = "ledger_transactions_auto_pull inserted=$inserted alreadyPresent=$alreadyPresent " +
+            "unrecognizedProvenance=$unrecognizedProvenance"
+        // A refusal is a warning, not a debug line (2026-10-11): rows this build cannot store are
+        // missing from the figures, and Log.d is stripped from the logs anyone ends up reading.
+        if (unrecognizedProvenance > 0) Log.w(TAG, line) else Log.d(TAG, line)
     }
 
     /** A foreground [com.kevin.legion.backend.LedgerTransactionsSync.mirror] pass on the Django
@@ -862,6 +862,21 @@ object MidnightEvents {
             "ledger_transactions_mirror inserted=$inserted categoriesFilled=$categoriesFilled " +
                 "deleted=$deleted deletionsSkipped=$deletionsSkipped " +
                 "unrecognizedProvenance=$unrecognizedProvenance rulesApplied=$rulesApplied",
+        )
+    }
+
+    /** A [com.kevin.legion.backend.LedgerTransactionsSync.mirror] pass refused [refusedRows] rows
+     * whose `provenance` this build does not know ([values], distinct). Logged at WARN: the pass
+     * stored none of them and, because it cannot tell what they replaced, removed nothing
+     * ([deletionsSkipped]). The Money surfaces say the same in words
+     * ([com.kevin.legion.backend.ledgerMirrorStatusLine]); this is the trace for whoever reads the
+     * log. Written after 2026-10-11, when the only trace of 906 refused rows and 842 deletions was
+     * a debug line. */
+    fun ledgerTransactionsMirrorRefusedRows(refusedRows: Int, values: Set<String>, deletionsSkipped: Boolean) = safe {
+        Log.w(
+            TAG,
+            "ledger_transactions_mirror_refused rows=$refusedRows provenance=$values " +
+                "deletionsSkipped=$deletionsSkipped - update the app to store them",
         )
     }
 
@@ -895,11 +910,10 @@ object MidnightEvents {
      * addition: a receipt-level count alone would hide whether the lines that ride along with a
      * newly-inserted receipt actually landed. */
     fun pantryReceiptsAutoPullSucceeded(inserted: Int, alreadyPresent: Int, unrecognizedProvenance: Int, linesInserted: Int) = safe {
-        Log.d(
-            TAG,
-            "pantry_receipts_auto_pull inserted=$inserted alreadyPresent=$alreadyPresent " +
-                "unrecognizedProvenance=$unrecognizedProvenance linesInserted=$linesInserted",
-        )
+        val line = "pantry_receipts_auto_pull inserted=$inserted alreadyPresent=$alreadyPresent " +
+            "unrecognizedProvenance=$unrecognizedProvenance linesInserted=$linesInserted"
+        // Warn when a receipt was refused: it is not in the pantry and the log is the only trace.
+        if (unrecognizedProvenance > 0) Log.w(TAG, line) else Log.d(TAG, line)
     }
 
     /** [com.kevin.legion.backend.PantryReceiptsSync.maybeAutoPull] threw outright - degraded to this

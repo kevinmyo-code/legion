@@ -49,6 +49,7 @@ class MoneyMonthViewModel(application: Application) : AndroidViewModel(applicati
                         monthTitle = monthTitleFor(month), month = month, today = LocalDate.now(),
                         loading = false, readFailed = false, accounts = data.accounts,
                         newestOverall = data.newestOverall, newestByAccount = data.newestByAccount,
+                        syncLine = LedgerMirrorStatus.line(getApplication()),
                     )
                 }
             } catch (e: Exception) {

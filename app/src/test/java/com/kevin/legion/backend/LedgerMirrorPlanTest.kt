@@ -167,10 +167,10 @@ class LedgerMirrorPlanTest {
     }
 
     @Test
-    fun `UNRECONCILED and USER both land UNRECONCILED, an unknown provenance is refused`() {
+    fun `UNRECONCILED and USER both land UNRECONCILED`() {
         val plan = planLedgerMirror(
             emptyList(),
-            listOf(remote("s-1", "UNRECONCILED"), remote("s-2", "USER"), remote("s-3", "MYSTERY")),
+            listOf(remote("s-1", "UNRECONCILED"), remote("s-2", "USER")),
             complete = true,
         )
 
@@ -178,8 +178,20 @@ class LedgerMirrorPlanTest {
             listOf(IngestMethod.UNRECONCILED, IngestMethod.UNRECONCILED),
             plan.toInsert.map { it.ingestMethod },
         )
+        assertTrue(plan.unrecognizedProvenance.isEmpty())
+    }
+
+    @Test
+    fun `an unknown provenance is refused and freezes the pass`() {
+        val plan = planLedgerMirror(
+            emptyList(),
+            listOf(remote("s-1", "UNRECONCILED"), remote("s-2", "USER"), remote("s-3", "MYSTERY")),
+            complete = true,
+        )
+
         assertEquals(1, plan.unrecognizedProvenance.size)
         assertTrue(plan.unrecognizedProvenance.single().contains("s-3"))
+        assertTrue("a refusal freezes the pass: not even the known rows land", plan.toInsert.isEmpty())
     }
 
     @Test
@@ -279,5 +291,78 @@ class LedgerMirrorPlanTest {
         )
         assertEquals("Not synced - this phone's last copy", ledgerMirrorStatusLine(10L, 20L, short = true))
         assertEquals("Not synced - this phone only", ledgerMirrorStatusLine(0L, 20L, short = true))
+    }
+
+    // ---- 2026-10-11: never delete what this pass refused to replace -----------------------------
+
+    /**
+     * The exact shape from Kevin's phone, at small scale: a build that does not know the engine's new
+     * provenance. On the phone it was 906 refused rows and 842 deletions; here 9 and 8. Every
+     * listed row is refused, the 8 old server-origin rows are not listed any more (the engine
+     * replaced them), and the plan must keep all 8.
+     */
+    @Test
+    fun `a pass that refuses every row removes nothing - the 906 refused and 842 deleted shape`() {
+        val old = (1..8).map { local(it.toLong(), "old-$it") }
+        val replacements = (1..9).map { remote("new-$it", provenance = "PLAID_V2") }
+
+        val plan = planLedgerMirror(old, replacements, complete = true)
+
+        assertEquals(9, plan.unrecognizedProvenance.size)
+        assertTrue("nothing could be stored", plan.toInsert.isEmpty())
+        assertTrue("and so nothing may be removed", plan.toDeleteSyncIds.isEmpty())
+        assertTrue(plan.deletionsSkipped)
+        assertEquals(setOf("PLAID_V2"), plan.unrecognizedValues)
+    }
+
+    @Test
+    fun `one refused row freezes the pass - nothing inserted, nothing deleted`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "gone")),
+            listOf(remote("new-1", "DETERMINISTIC"), remote("new-2", "FROM_THE_FUTURE")),
+            complete = true,
+        )
+
+        // Kevin, 2026-10-11 "freeze the pass": a known replacement stored beside the row it
+        // replaced would double count.
+        assertTrue(plan.toInsert.isEmpty())
+        assertTrue(plan.toDeleteSyncIds.isEmpty())
+        assertTrue(plan.deletionsSkipped)
+        assertEquals(1, plan.unrecognizedProvenance.size)
+    }
+
+    @Test
+    fun `the same list with the value known deletes as before`() {
+        val plan = planLedgerMirror(
+            listOf(local(1, "gone")),
+            listOf(remote("new-1", "BANK_API")),
+            complete = true,
+        )
+
+        assertEquals(listOf("gone"), plan.toDeleteSyncIds)
+        assertFalse(plan.deletionsSkipped)
+        assertTrue(plan.unrecognizedProvenance.isEmpty())
+    }
+
+    @Test
+    fun `refused rows are said in words, and a failure still leads`() {
+        assertEquals(
+            "Some bank rows need a newer app (906 not shown). Update LEGION.",
+            ledgerMirrorStatusLine(lastSuccessAtMs = 20L, lastFailureAtMs = 10L, refusedRows = 906),
+        )
+        assertEquals(
+            "Some bank rows need a newer app - update LEGION",
+            ledgerMirrorStatusLine(20L, 10L, short = true, refusedRows = 906),
+        )
+        assertNull(ledgerMirrorStatusLine(20L, 10L, refusedRows = 0))
+        assertEquals(
+            "Not synced: the server couldn't be read just now, so this shows what this phone last had " +
+                "Some bank rows need a newer app (3 not shown). Update LEGION.",
+            ledgerMirrorStatusLine(10L, 20L, refusedRows = 3),
+        )
+        assertEquals(
+            "Not synced - this phone's last copy",
+            ledgerMirrorStatusLine(10L, 20L, short = true, refusedRows = 3),
+        )
     }
 }

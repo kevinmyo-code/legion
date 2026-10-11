@@ -82,6 +82,9 @@ fun MoneyMonthContent(
                     }
                 }
             }
+            // Said before any figure: a mirror that could not read or could not store the server's
+            // rows qualifies every number below it (CLAUDE.md section 7).
+            if (!state.loading) state.syncLine?.let { StatusCard(it, alert = false) }
             when {
                 state.loading -> StatusCard("Loading this month.", alert = false)
                 state.readFailed -> StatusCard("Couldn't read your accounts.", alert = true)

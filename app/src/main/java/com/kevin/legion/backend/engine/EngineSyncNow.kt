@@ -59,17 +59,18 @@ class EngineSyncNow(
             // Drain-then-pull, like every other line here: queued category choices first.
             val drained = com.kevin.legion.backend.LedgerTransactionCategoryOutboxDrain.drain(app, backend)
             val r = LedgerTransactionsSync.runMirror(app, backend)
-            val removed = if (r.deletionsSkipped) {
-                "none removed (the engine's list could not be confirmed complete)"
-            } else {
-                "${r.deleted} removed"
-            }
             val refused = r.unrecognizedProvenance.size
+            val removed = when {
+                // A refusal is the reason to say, since it is the one the person can act on.
+                r.deletionsSkipped && refused > 0 -> "none removed"
+                r.deletionsSkipped -> "none removed (the engine's list could not be confirmed complete)"
+                else -> "${r.deleted} removed"
+            }
             "Money: pulled ${r.inserted} new, ${r.categoriesFilled} categories from the engine, " +
                 "$removed; ${r.rulesApplied} categorised by your rules on this phone; " +
                 "sent ${drained.succeeded} category choices, ${drained.stillPending} still queued, " +
                 "${drained.poisoned} stuck." +
-                if (refused == 0) "" else " $refused refused: unknown provenance."
+                if (refused == 0) "" else " $refused bank rows need a newer app and were not stored. Update LEGION."
         }
         return (line ?: "Money: $failed") + note
     }
