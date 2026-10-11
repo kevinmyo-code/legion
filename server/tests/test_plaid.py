@@ -722,9 +722,9 @@ def test_a_dbs_statement_still_ingests_through_the_gate(drive_connected, househo
 # =============================================================================
 
 
-def test_the_crontab_runs_plaid_sync_every_six_hours():
+def test_the_crontab_runs_plaid_sync_every_three_hours():
     crontab = Path(__file__).resolve().parents[2] / "deploy" / "crontab"
-    assert "30 */6 * * * python manage.py plaid_sync" in crontab.read_text().splitlines()
+    assert "30 */3 * * * python manage.py plaid_sync" in crontab.read_text().splitlines()
 
 
 def test_the_plaid_keys_are_cloud_run_secrets_and_the_environment_defaults_to_production():

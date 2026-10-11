@@ -1,5 +1,5 @@
 """`manage.py plaid_sync` - the bank's own transaction feed into the ledger
-(ADR 0057). `deploy/crontab` runs it every six hours.
+(ADR 0057). `deploy/crontab` runs it every three hours (Kevin, 2026-10-11).
 
 Everything it decides lives in `ingest/plaid_sync.py`. Like every `JobCommand`
 it exits 0 for a failed run: the failure is written down where

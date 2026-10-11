@@ -27,7 +27,7 @@
 
 # ADR 0057: the bank's own transaction feed (Plaid) into the ledger, for every
 # household with a bank connected. Every six hours, offset from drive_statements.
-30 */6 * * * python manage.py plaid_sync
+30 */3 * * * python manage.py plaid_sync
 
 # web-revamp ticket 15: Web Push - list changes, event reminders and the
 # morning list, deduped in public.push_sent. Every five minutes. With the

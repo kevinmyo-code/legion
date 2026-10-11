@@ -37,7 +37,7 @@ to verify. automate both checking and cards, all of it"*. Asked how such rows sh
 - **`BANK_API` provenance**, a fifth value of `public.provenance`. It exists so the source stays
   traceable in the database; no surface (web, phone, engine MCP, voice) renders it differently from a
   verified row. Money stays `Long` cents, converted from Plaid's float with `Decimal(str(x))`.
-- **The engine pulls it**: `manage.py plaid_sync` every six hours, `/transactions/sync` with a stored
+- **The engine pulls it**: `manage.py plaid_sync` every three hours (Kevin, 2026-10-11), `/transactions/sync` with a stored
   cursor; added, changed, removed and pending-to-posted are applied in one transaction. The access
   token is sealed by the session vault (`LEGION_VAULT_KEY`) and never served.
 - **The feed replaces the file-derived rows it covers.** Per account, from the earliest date Plaid
