@@ -228,6 +228,44 @@ class LedgerTransactionsMirrorTest {
     }
 
     /**
+     * "Freeze the pass" (Kevin, 2026-10-11): a PARTIAL pass, known rows beside a refused one, stores
+     * nothing and removes nothing, so the phone never holds both a replacement and the row it
+     * replaced. The known rows appear once a build that knows the value runs the same list.
+     */
+    @Test
+    fun `a partial pass inserts 0 and deletes 0, and the known rows appear after the update`() = runBlocking {
+        val engine = FakeEngine()
+        engine.rows += remote("old-1", "CARD 1", -100L, "UNRECONCILED")
+        engine.rows += remote("old-2", "CARD 2", -200L, "UNRECONCILED")
+        LedgerTransactionsSync.runMirror(context, engine)
+        val before = db.ledgerTransactionDao().getAll()
+
+        engine.rows.clear()
+        engine.rows += remote("new-1", "CARD 1", -100L, "DETERMINISTIC")
+        engine.rows += remote("new-2", "CARD 2", -200L, "FROM_THE_FUTURE")
+        val report = LedgerTransactionsSync.runMirror(context, engine)
+
+        assertEquals(0, report.inserted)
+        assertEquals(0, report.deleted)
+        assertEquals(1, report.unrecognizedProvenance.size)
+        assertEquals("the previous snapshot, whole", before, db.ledgerTransactionDao().getAll())
+        assertEquals(
+            "Some bank rows need a newer app (1 not shown). Update LEGION.",
+            LedgerMirrorStatus.line(context),
+        )
+
+        engine.rows.clear()
+        engine.rows += remote("new-1", "CARD 1", -100L, "DETERMINISTIC")
+        engine.rows += remote("new-2", "CARD 2", -200L, "BANK_API")
+        val repaired = LedgerTransactionsSync.runMirror(context, engine)
+
+        assertEquals(2, repaired.inserted)
+        assertEquals(2, repaired.deleted)
+        assertEquals(setOf("new-1", "new-2"), db.ledgerTransactionDao().getAll().map { it.syncId }.toSet())
+        assertNull(LedgerMirrorStatus.line(context))
+    }
+
+    /**
      * Kevin's phone, 2026-10-11, end to end at small scale: a build that does not know the engine's
      * new provenance meets a list where the old rows are gone and every replacement carries it.
      * It used to delete the old rows, store none, and say nothing. Now Room keeps every row, the

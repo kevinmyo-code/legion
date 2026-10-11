@@ -167,10 +167,10 @@ class LedgerMirrorPlanTest {
     }
 
     @Test
-    fun `UNRECONCILED and USER both land UNRECONCILED, an unknown provenance is refused`() {
+    fun `UNRECONCILED and USER both land UNRECONCILED`() {
         val plan = planLedgerMirror(
             emptyList(),
-            listOf(remote("s-1", "UNRECONCILED"), remote("s-2", "USER"), remote("s-3", "MYSTERY")),
+            listOf(remote("s-1", "UNRECONCILED"), remote("s-2", "USER")),
             complete = true,
         )
 
@@ -178,8 +178,20 @@ class LedgerMirrorPlanTest {
             listOf(IngestMethod.UNRECONCILED, IngestMethod.UNRECONCILED),
             plan.toInsert.map { it.ingestMethod },
         )
+        assertTrue(plan.unrecognizedProvenance.isEmpty())
+    }
+
+    @Test
+    fun `an unknown provenance is refused and freezes the pass`() {
+        val plan = planLedgerMirror(
+            emptyList(),
+            listOf(remote("s-1", "UNRECONCILED"), remote("s-2", "USER"), remote("s-3", "MYSTERY")),
+            complete = true,
+        )
+
         assertEquals(1, plan.unrecognizedProvenance.size)
         assertTrue(plan.unrecognizedProvenance.single().contains("s-3"))
+        assertTrue("a refusal freezes the pass: not even the known rows land", plan.toInsert.isEmpty())
     }
 
     @Test
@@ -304,16 +316,19 @@ class LedgerMirrorPlanTest {
     }
 
     @Test
-    fun `one refused row blocks every deletion in the pass but the known rows still land`() {
+    fun `one refused row freezes the pass - nothing inserted, nothing deleted`() {
         val plan = planLedgerMirror(
             listOf(local(1, "gone")),
             listOf(remote("new-1", "DETERMINISTIC"), remote("new-2", "FROM_THE_FUTURE")),
             complete = true,
         )
 
-        assertEquals(listOf("new-1"), plan.toInsert.map { it.syncId })
+        // Kevin, 2026-10-11 "freeze the pass": a known replacement stored beside the row it
+        // replaced would double count.
+        assertTrue(plan.toInsert.isEmpty())
         assertTrue(plan.toDeleteSyncIds.isEmpty())
         assertTrue(plan.deletionsSkipped)
+        assertEquals(1, plan.unrecognizedProvenance.size)
     }
 
     @Test

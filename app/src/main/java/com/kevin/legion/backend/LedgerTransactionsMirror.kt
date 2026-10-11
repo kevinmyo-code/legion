@@ -154,6 +154,9 @@ internal fun RemoteLedgerTransaction.toLocalRow(ingestMethod: IngestMethod): Led
  *   this path would otherwise wipe the phone's copy on the strength of it. **And not when this
  *   pass refused any row** ([LedgerMirrorPlan.unrecognizedProvenance]): the rows it could not
  *   store may be exactly the ones that replaced what the server stopped listing.
+ * - **A pass that refuses any row inserts nothing and deletes nothing** ("freeze the pass",
+ *   Kevin 2026-10-11): the phone keeps its previous snapshot rather than a half-applied one that
+ *   double counts. Category fills still apply.
  *
  * Rows with any other [LedgerTransaction.sourceFile] are never touched.
  */
@@ -198,11 +201,18 @@ fun planLedgerMirror(
     // ones leaves the phone with neither: a pre-BANK_API build deleted 842 rows and stored none of
     // 906, then still said "Synced". A refusal therefore blocks every deletion in the pass.
     val deletable = complete && !emptyAgainstHeld && unrecognized.isEmpty()
+    // **And the pass inserts nothing either** (Kevin, 2026-10-11, "freeze the pass"). Storing the
+    // rows this build does recognise while leaving the old ones in place would double count
+    // whatever the engine superseded: the replacements land and the rows they replaced stay. With
+    // any refusal the phone keeps its previous snapshot whole, says so in words, and the first
+    // build that knows the value stores the full set in one pass. Category fills are updates to
+    // rows already held and cannot double count, so they still apply.
+    val insertable = if (unrecognized.isEmpty()) toInsert else emptyList()
     val listed = remote.mapTo(HashSet()) { it.serverId }
     val toDelete = if (deletable) localSynced.map { it.syncId }.filterNot { it in listed } else emptyList()
 
     return LedgerMirrorPlan(
-        toInsert = toInsert,
+        toInsert = insertable,
         categoryFills = fills,
         toDeleteSyncIds = toDelete,
         deletionsSkipped = !deletable,
