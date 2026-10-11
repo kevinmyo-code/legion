@@ -1,3 +1,4 @@
+@file:Suppress("MatchingDeclarationName") // the derive functions are the file's point; MonthRead is their input
 package com.kevin.legion.ui.home
 
 import com.kevin.legion.backend.EventKind
