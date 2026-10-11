@@ -30,7 +30,13 @@ believed.
   Scheduler `legion-worker-plaid-sync` runs `30 */3 * * *` UTC; runs at 12:30, 15:30 and 18:30 UTC all
   exited 0. First run: 835 new rows, 783 older file rows replaced; later runs 0 new. 5 older rows
   kept each run (categorised file rows with no bank match, four of them $0 interest lines).
-  The ledger-mirror freeze (`b25d8ec8`, `de3bec26`) is phone code; unknown whether the A25 has it.
+- **A25 on `bb8e8dd9`, installed 2026-10-11 14:10, hash-verified, HOME + ASSISTANT roles kept.** It had
+  been on the 10-09 20:45 `perf/home-calendar` build, which predates the phone half of Plaid, so no
+  bank rows showed. After install: 906 `BANK_API` rows in Room (2025-04-14 to 2026-10-10), Money
+  renders both accounts with "Bank data through Oct 11" (screenshot-verified). The pull happened on
+  app launch with no button pressed; which code path runs it was not traced.
+- **adb is not on the Bash PATH here:** use `$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe`.
+  A bare `adb devices` printing nothing is "command not found", not "no phone".
 - **Merged since 10-09:** Plaid as ledger truth (ADR 0057), bank sync every 3 h, ledger mirror
   freezes when a pass refuses any row, Quiet (media at half, DND lets media through),
   `home-calendar`, `suggestion-tap`, `perf/home-calendar` (HOME calendar off the main thread).
