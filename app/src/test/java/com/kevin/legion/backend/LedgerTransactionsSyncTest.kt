@@ -212,4 +212,41 @@ class LedgerTransactionsSyncTest {
         assertEquals(-123_456_789L, stored.amountCents)
         assertNotNull(stored.amountCents)
     }
+
+    @Test
+    fun `the cursor never passes a refused row, so a build that knows the value fetches it later`() = runBlocking {
+        val backend = FakeLedgerBackend()
+        backend.rows += remoteTxn("txn-ok-1", "DETERMINISTIC", 1_000L)
+        backend.rows += remoteTxn("txn-new", "FROM_THE_FUTURE", 2_000L)
+        backend.rows += remoteTxn("txn-ok-2", "DETERMINISTIC", 3_000L)
+
+        val first = LedgerTransactionsSync.pull(context, backend)
+
+        assertEquals(2, first.inserted)
+        assertEquals(1, first.unrecognizedProvenance.size)
+        assertEquals(
+            "stopped just short of the refused row",
+            1_999L,
+            LedgerTransactionsPullCursor.lastPulledAtMs(context),
+        )
+
+        // Next pull: the refused row is offered again (the stored one after it comes back as
+        // alreadyPresent) and is still refused in words rather than silently passed over.
+        val second = LedgerTransactionsSync.pull(context, backend)
+        assertEquals(0, second.inserted)
+        assertEquals(1, second.alreadyPresent)
+        assertEquals(1, second.unrecognizedProvenance.size)
+        assertEquals(1_999L, LedgerTransactionsPullCursor.lastPulledAtMs(context))
+    }
+
+    @Test
+    fun `with nothing refused the cursor advances to the newest row as before`() = runBlocking {
+        val backend = FakeLedgerBackend()
+        backend.rows += remoteTxn("txn-ok-1", "DETERMINISTIC", 1_000L)
+        backend.rows += remoteTxn("txn-ok-2", "DETERMINISTIC", 3_000L)
+
+        LedgerTransactionsSync.pull(context, backend)
+
+        assertEquals(3_000L, LedgerTransactionsPullCursor.lastPulledAtMs(context))
+    }
 }

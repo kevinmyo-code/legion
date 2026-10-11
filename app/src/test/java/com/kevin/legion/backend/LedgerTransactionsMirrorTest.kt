@@ -226,4 +226,49 @@ class LedgerTransactionsMirrorTest {
             moneyTileDisclosure(budget, "Not synced - this phone's last copy")!!.startsWith("Not synced"),
         )
     }
+
+    /**
+     * Kevin's phone, 2026-10-11, end to end at small scale: a build that does not know the engine's
+     * new provenance meets a list where the old rows are gone and every replacement carries it.
+     * It used to delete the old rows, store none, and say nothing. Now Room keeps every row, the
+     * line says so in words, and a build that knows the value later repairs it from the same list.
+     */
+    @Test
+    fun `refused replacements keep the old rows and the Money line says to update`() = runBlocking {
+        val engine = FakeEngine()
+        (1..4).forEach { engine.rows += remote("old-$it", "CARD $it", -100L * it, "UNRECONCILED") }
+        LedgerTransactionsSync.runMirror(context, engine)
+        assertNull(LedgerMirrorStatus.line(context))
+        val before = db.ledgerTransactionDao().getAll()
+        assertEquals(4, before.size)
+
+        engine.rows.clear()
+        (1..5).forEach { engine.rows += remote("new-$it", "CARD $it", -100L * it, "PLAID_V2") }
+        val report = LedgerTransactionsSync.runMirror(context, engine)
+
+        assertEquals(5, report.unrecognizedProvenance.size)
+        assertEquals(0, report.inserted)
+        assertEquals(0, report.deleted)
+        assertTrue(report.deletionsSkipped)
+        assertEquals("not one row lost", before, db.ledgerTransactionDao().getAll())
+        assertEquals(
+            "Some bank rows need a newer app (5 not shown). Update LEGION.",
+            LedgerMirrorStatus.line(context),
+        )
+        assertEquals("Some bank rows need a newer app - update LEGION", LedgerMirrorStatus.line(context, short = true))
+
+        // The first build that knows the value: same list, now recognised. The old rows are
+        // replaced and the line clears - the refusal did not make the repair impossible.
+        engine.rows.clear()
+        (1..5).forEach { engine.rows += remote("new-$it", "CARD $it", -100L * it, "BANK_API") }
+        val repaired = LedgerTransactionsSync.runMirror(context, engine)
+
+        assertEquals(5, repaired.inserted)
+        assertEquals(4, repaired.deleted)
+        assertNull("a clean pass clears the line", LedgerMirrorStatus.line(context))
+        assertEquals(
+            (1..5).map { "new-$it" }.toSet(),
+            db.ledgerTransactionDao().getAll().map { it.syncId }.toSet(),
+        )
+    }
 }

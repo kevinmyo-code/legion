@@ -33,6 +33,20 @@ internal object LedgerTransactionsPullCursor {
 }
 
 /**
+ * Where a created_at-cursored pull may advance to: the newest row seen, but never past the oldest
+ * row the pull REFUSED ([oldestRefusedAtMs], [Long.MAX_VALUE] when none), and never backwards from
+ * [sinceMs]. Stopping one millisecond short of the refused row means the next pull fetches it again
+ * whether the endpoint's `since` is inclusive or not; rows after it that were stored come back as
+ * `alreadyPresent`, a no-op. Shared by the ledger and pantry pulls (2026-10-11): both used to
+ * advance to the newest row regardless, so a row refused for a value this build did not know was
+ * skipped for good and updating the app did not bring it back.
+ */
+internal fun pullCursorTarget(newestSeenMs: Long, sinceMs: Long, oldestRefusedAtMs: Long = Long.MAX_VALUE): Long {
+    val capped = if (oldestRefusedAtMs == Long.MAX_VALUE) newestSeenMs else minOf(newestSeenMs, oldestRefusedAtMs - 1)
+    return maxOf(capped, sinceMs)
+}
+
+/**
  * Live-sync's ledger-TRANSACTIONS pull (the map's own ticket "give LEGION's pantry and ledger
  * transactions a pull" - see `.scratch/live-sync/map.md`). Follows
  * [LedgerConfigSync]/[LedgerConfigBackfill]/[LedgerConfigRealtime]'s shape, the newest template with
@@ -88,8 +102,11 @@ object LedgerTransactionsSync {
     )
 
     /** What one [mirror] pass did. [deletionsSkipped] true means nothing was removed because the
-     * engine's list was not known to be the whole set. [rulesApplied] is how many rows the phone's
-     * own categorisation rules then filled ([com.kevin.legion.ledger.LedgerController.applyCategoryRules]). */
+     * engine's list was not known to be the whole set, or because the pass refused a row it could
+     * not store ([unrecognizedProvenance]) and so could not tell what that row replaced.
+     * [unrecognizedValues] is the distinct raw provenance strings, for the log. [rulesApplied] is
+     * how many rows the phone's own categorisation rules then filled
+     * ([com.kevin.legion.ledger.LedgerController.applyCategoryRules]). */
     data class MirrorReport(
         val inserted: Int,
         val categoriesFilled: Int,
@@ -98,6 +115,7 @@ object LedgerTransactionsSync {
         val alreadyPresent: Int,
         val unrecognizedProvenance: List<String>,
         val rulesApplied: Int,
+        val unrecognizedValues: Set<String> = emptySet(),
     )
 
     /**
@@ -116,6 +134,9 @@ object LedgerTransactionsSync {
         var alreadyPresent = 0
         val unrecognized = mutableListOf<String>()
         val toInsert = mutableListOf<LedgerTransaction>()
+        // Oldest created_at among the rows refused below. The cursor must not pass it: see the
+        // advance at the end of this function.
+        var oldestRefusedAtMs = Long.MAX_VALUE
 
         for (r in remote) {
             val seenByServerId = r.serverId in known
@@ -128,6 +149,7 @@ object LedgerTransactionsSync {
             val ingestMethod = ledgerIngestMethodFor(r.provenance)
             if (ingestMethod == null) {
                 unrecognized.add("${r.description} (${r.serverId}): unrecognised provenance '${r.provenance}' - not inserted")
+                oldestRefusedAtMs = minOf(oldestRefusedAtMs, r.createdAtMs)
                 continue
             }
 
@@ -141,7 +163,15 @@ object LedgerTransactionsSync {
             db.ledgerTransactionDao().insertAll(toInsert)
         }
 
-        remote.maxOfOrNull { it.createdAtMs }?.let { LedgerTransactionsPullCursor.advance(context, it) }
+        // **The cursor never passes a refused row** (2026-10-11): advancing to the newest created_at
+        // seen meant a row this build could not store was skipped for good - updating the app
+        // later would not fetch it again, because the cursor was already beyond it. Stopping just
+        // short of the oldest refused row re-fetches it on the next pull; the rows after it that
+        // were inserted come back as `alreadyPresent`, which is a no-op. The cursor still never
+        // moves backwards.
+        remote.maxOfOrNull { it.createdAtMs }?.let { newest ->
+            LedgerTransactionsPullCursor.advance(context, pullCursorTarget(newest, sinceMs, oldestRefusedAtMs))
+        }
         return PullReport(inserted, alreadyPresent, unrecognized)
     }
 
@@ -199,6 +229,7 @@ object LedgerTransactionsSync {
             alreadyPresent = plan.alreadyPresent,
             unrecognizedProvenance = plan.unrecognizedProvenance,
             rulesApplied = rulesApplied,
+            unrecognizedValues = plan.unrecognizedValues,
         )
     }
 
@@ -221,11 +252,20 @@ object LedgerTransactionsSync {
             throw e
         }
         val changedRoom = report.inserted + report.categoriesFilled + report.deleted + report.rulesApplied > 0
-        LedgerMirrorStatus.recordSuccess(context, changedRoom)
+        // The count goes into the status so the Money surfaces stop saying nothing is wrong: this
+        // pass reached the server and still did not store everything it listed.
+        LedgerMirrorStatus.recordSuccess(context, changedRoom, refusedRows = report.unrecognizedProvenance.size)
         MidnightEvents.ledgerTransactionsMirrorSucceeded(
             report.inserted, report.categoriesFilled, report.deleted, report.deletionsSkipped,
             report.unrecognizedProvenance.size, report.rulesApplied,
         )
+        if (report.unrecognizedProvenance.isNotEmpty()) {
+            // A warning, not a debug line: this is the only trace a background pass leaves, and the
+            // 2026-10-11 incident was readable only by pulling a debug log off the phone.
+            MidnightEvents.ledgerTransactionsMirrorRefusedRows(
+                report.unrecognizedProvenance.size, report.unrecognizedValues, report.deletionsSkipped,
+            )
+        }
         return report
     }
 

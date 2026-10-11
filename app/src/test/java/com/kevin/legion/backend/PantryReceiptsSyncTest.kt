@@ -204,4 +204,39 @@ class PantryReceiptsSyncTest {
         val afterSecond = db.pantryReceiptDao().getAll()
         assertEquals(beforeSecond, afterSecond)
     }
+
+    @Test
+    fun `the cursor never passes a refused receipt, so a build that knows the value fetches it later`() = runBlocking {
+        val backend = FakePantryBackend()
+        backend.rows += remoteReceipt("rcpt-ok-1", "LLM_RECONCILED", 1_000L)
+        backend.rows += remoteReceipt("rcpt-new", "FROM_THE_FUTURE", 2_000L)
+        backend.rows += remoteReceipt("rcpt-ok-2", "UNRECONCILED", 3_000L)
+
+        val first = PantryReceiptsSync.pull(context, backend)
+
+        assertEquals(2, first.inserted)
+        assertEquals(1, first.unrecognizedProvenance.size)
+        assertEquals(
+            "stopped just short of the refused receipt",
+            1_999L,
+            PantryReceiptsPullCursor.lastPulledAtMs(context),
+        )
+
+        val second = PantryReceiptsSync.pull(context, backend)
+        assertEquals(0, second.inserted)
+        assertEquals(1, second.alreadyPresent)
+        assertEquals("still refused in words, not passed over", 1, second.unrecognizedProvenance.size)
+        assertEquals(1_999L, PantryReceiptsPullCursor.lastPulledAtMs(context))
+    }
+
+    @Test
+    fun `with nothing refused the receipts cursor advances to the newest row as before`() = runBlocking {
+        val backend = FakePantryBackend()
+        backend.rows += remoteReceipt("rcpt-ok-1", "LLM_RECONCILED", 1_000L)
+        backend.rows += remoteReceipt("rcpt-ok-2", "UNRECONCILED", 3_000L)
+
+        PantryReceiptsSync.pull(context, backend)
+
+        assertEquals(3_000L, PantryReceiptsPullCursor.lastPulledAtMs(context))
+    }
 }

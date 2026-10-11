@@ -110,6 +110,7 @@ object PantryReceiptsSync {
         var alreadyPresent = 0
         var linesInserted = 0
         val unrecognized = mutableListOf<String>()
+        var oldestRefusedAtMs = Long.MAX_VALUE // the cursor must not pass it: see [pullCursorTarget]
 
         for (r in remote) {
             val seenByServerId = r.serverId in known
@@ -121,6 +122,7 @@ object PantryReceiptsSync {
 
             if (r.provenance !in VALID_PROVENANCE) {
                 unrecognized.add("${r.store} (${r.serverId}): unrecognised provenance '${r.provenance}' - not inserted")
+                oldestRefusedAtMs = minOf(oldestRefusedAtMs, r.createdAtMs)
                 continue
             }
 
@@ -147,32 +149,36 @@ object PantryReceiptsSync {
             )
             if (r.lines.isNotEmpty()) {
                 db.pantryLineItemDao().insertAll(
-                    r.lines.map { line ->
-                        PantryLineItem(
-                            receiptId = localReceiptId,
-                            name = line.name,
-                            quantity = line.quantity,
-                            unitPriceCents = line.unitPriceCents,
-                            totalPriceCents = line.totalPriceCents,
-                            // Estimates, never fact - CLAUDE.md section 4 rule 5. caloriesKcal is
-                            // stored as Int locally (PantryLineItem's own long-standing shape); the
-                            // server's estimated_calories_kcal is numeric, so this rounds rather
-                            // than truncates.
-                            caloriesKcal = line.estimatedCaloriesKcal?.roundToInt(),
-                            proteinG = line.estimatedProteinG,
-                            carbsG = line.estimatedCarbsG,
-                            fatG = line.estimatedFatG,
-                        )
-                    },
+                    r.lines.map { it.toLocalLine(localReceiptId) },
                 )
                 linesInserted += r.lines.size
             }
             inserted++
         }
 
-        remote.maxOfOrNull { it.createdAtMs }?.let { PantryReceiptsPullCursor.advance(context, it) }
+        // The cursor never passes a refused receipt (2026-10-11): see [pullCursorTarget].
+        remote.maxOfOrNull { it.createdAtMs }?.let { newest ->
+            PantryReceiptsPullCursor.advance(context, pullCursorTarget(newest, sinceMs, oldestRefusedAtMs))
+        }
         return PullReport(inserted, alreadyPresent, unrecognized, linesInserted)
     }
+
+    /** One server line as a local row. Extracted from [pull] (2026-10-11) when the refused-receipt
+     * cursor guard pushed it over detekt's method length; the mapping itself is unchanged. */
+    private fun RemoteReceiptLine.toLocalLine(receiptId: Long) = PantryLineItem(
+        receiptId = receiptId,
+        name = name,
+        quantity = quantity,
+        unitPriceCents = unitPriceCents,
+        totalPriceCents = totalPriceCents,
+        // Estimates, never fact - CLAUDE.md section 4 rule 5. caloriesKcal is stored as Int locally
+        // (PantryLineItem's own long-standing shape); the server's estimated_calories_kcal is
+        // numeric, so this rounds rather than truncates.
+        caloriesKcal = estimatedCaloriesKcal?.roundToInt(),
+        proteinG = estimatedProteinG,
+        carbsG = estimatedCarbsG,
+        fatG = estimatedFatG,
+    )
 
     private val autoPullScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

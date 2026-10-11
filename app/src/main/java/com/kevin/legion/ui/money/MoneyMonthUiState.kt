@@ -32,6 +32,12 @@ data class MoneyMonthUiState(
     val readFailed: Boolean = false,
     val accounts: List<AccountMonthResult> = emptyList(),
     val drilldown: MoneyDrilldownUiState? = null,
+    /**
+     * [com.kevin.legion.backend.LedgerMirrorStatus.line]: non-null when the last read of the engine
+     * failed, or succeeded but refused rows this build cannot store. Without it the page said
+     * "Bank data through Sep 5" over a server holding October, and nothing explained why.
+     */
+    val syncLine: String? = null,
 )
 
 /** One category's transactions for one account this month, opened by tapping a category row. */
