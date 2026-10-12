@@ -63,11 +63,15 @@ class DrilldownSoftScreenshotTest {
     @Test
     fun `body mass drilldown`() = shot("drill-body-mass.png") {
         BodyMassDrilldown(
-            latest = BodyweightLog(id = 3, weightValue = 183.5, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED),
-            series = (0 until 10).map { i -> if (i == 3) null else DeckPoint(xMs = now - (9 - i) * day, y = 186f - i * 0.3f) },
+            latest = BodyweightLog(id = 3, weightValue = 183.5, weightUnit = "lbs", loggedAt = now,
+                trustTier = TrustTier.REPORTED),
+            series = (0 until 10).map { i -> if (i == 3) null else DeckPoint(xMs = now - (9 - i) * day,
+                y = 186f - i * 0.3f) },
             history = listOf(
-                BodyweightLog(id = 3, weightValue = 183.5, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED),
-                BodyweightLog(id = 2, weightValue = 184.0, weightUnit = "lbs", loggedAt = now - day, trustTier = TrustTier.REPORTED),
+                BodyweightLog(id = 3, weightValue = 183.5, weightUnit = "lbs", loggedAt = now,
+                    trustTier = TrustTier.REPORTED),
+                BodyweightLog(id = 2, weightValue = 184.0, weightUnit = "lbs", loggedAt = now - day,
+                    trustTier = TrustTier.REPORTED),
             ),
             range = DeckRange.THIRTY_DAY,
             loading = false,
@@ -81,7 +85,8 @@ class DrilldownSoftScreenshotTest {
     @Test
     fun `body training exercises`() = shot("drill-body-exercises.png") {
         BodyTrainingExerciseListDrilldown(
-            exercises = listOf(WorkoutSetLogDao.ExerciseRecency("Squat", now), WorkoutSetLogDao.ExerciseRecency("Bench Press", now - 2 * day)),
+            exercises = listOf(WorkoutSetLogDao.ExerciseRecency("Squat", now),
+                WorkoutSetLogDao.ExerciseRecency("Bench Press", now - 2 * day)),
             loading = false,
             onSelect = {},
             onBack = {},
@@ -94,8 +99,10 @@ class DrilldownSoftScreenshotTest {
             exercise = "Squat",
             series = (0 until 6).map { i -> DeckPoint(xMs = now - (5 - i) * day, y = 205f + i * 5f) },
             sets = listOf(
-                WorkoutSetLog(id = 1, exercise = "Squat", sets = 3, reps = 5, weightValue = 225.0, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED),
-                WorkoutSetLog(id = 2, exercise = "Squat", sets = 5, reps = null, weightValue = null, weightUnit = null, loggedAt = now - day, trustTier = TrustTier.REPORTED),
+                WorkoutSetLog(id = 1, exercise = "Squat", sets = 3, reps = 5, weightValue = 225.0, weightUnit = "lbs",
+                    loggedAt = now, trustTier = TrustTier.REPORTED),
+                WorkoutSetLog(id = 2, exercise = "Squat", sets = 5, reps = null, weightValue = null, weightUnit = null,
+                    loggedAt = now - day, trustTier = TrustTier.REPORTED),
             ),
             range = DeckRange.THIRTY_DAY,
             loading = false,

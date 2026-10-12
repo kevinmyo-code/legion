@@ -3540,6 +3540,7 @@ object LiveToolbox {
      * already-done row, dated within the last 30 days. Success is reported per row, only for rows
      * setDone returned from.
      */
+    @Suppress("CyclomaticComplexMethod") // one dispatch; a split scatters the decision
     private suspend fun completeTask(context: Context, args: JSONObject): JSONObject {
         val target = args.optBoolean("done", true)
         val dateArg = args.optString("date").trim()
@@ -3643,6 +3644,7 @@ object LiveToolbox {
      * [Event.structuredMeta] (a JSON object string). This function just decodes that column
      * straight into the `meta` field below - same shape the model always saw, sourced differently.
      */
+    @Suppress("CyclomaticComplexMethod") // one dispatch; a split scatters the decision
     private suspend fun readCalendar(context: Context, args: JSONObject): JSONObject {
         val zone = java.time.ZoneId.systemDefault()
         val window = parseCalendarWindow(
@@ -3716,7 +3718,8 @@ object LiveToolbox {
         val o = JSONObject().put("success", true).put("count", arr.length()).put("events", arr)
         // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
         // user could do, not plans, and `count` and the empty-window sentence below stay about plans.
-        com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone, args.optString("city"))
+        com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone,
+            args.optString("city"))
         // Says what was actually looked at. "Nothing on the calendar" invited the model to answer a
         // question about DEADLINES with a sentence about appointments, which is how a window that
         // excluded every task still sounded authoritative.
@@ -7586,6 +7589,7 @@ object LiveToolbox {
      * for the IDENTICAL reasons - they are the same resolve step with two different things done
      * to the result.
      */
+    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one resolution cascade; a split scatters it
     private suspend fun resolveSpotifyUri(
         context: Context,
         query: String,
@@ -7758,6 +7762,7 @@ object LiveToolbox {
      * If Spotify isn't connected, this fails with an actionable message rather
      * than falling back to launching another app.
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private suspend fun playMusic(
         context: Context,
         query: String,

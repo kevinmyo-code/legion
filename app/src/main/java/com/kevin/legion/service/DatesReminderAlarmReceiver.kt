@@ -144,7 +144,8 @@ class DatesReminderAlarmReceiver : BroadcastReceiver() {
 
         /** The "when" phrase for a fired reminder: "at 7:00 PM" for a timed item, a date phrase
          * ("today") with no clock time for an all-day one. `internal` for direct unit testing. */
-        internal fun dueClause(item: DatesAgenda.AgendaItem, zone: ZoneId, today: java.time.LocalDate = java.time.LocalDate.now(zone)): String =
+        internal fun dueClause(item: DatesAgenda.AgendaItem, zone: ZoneId,
+            today: java.time.LocalDate = java.time.LocalDate.now(zone)): String =
             if (item.allDay) {
                 AllDayTime.dateWords(Instant.ofEpochMilli(item.dueAt).atZone(zone).toLocalDate(), today)
             } else {

@@ -104,7 +104,13 @@ internal fun AssistantReplyPanel(
         Column(
             modifier = Modifier
                 .padding(top = 8.dp)
-                .then(if (maxTranscriptHeight != null) Modifier.heightIn(max = maxTranscriptHeight) else Modifier.weight(1f))
+                .then(
+                    if (maxTranscriptHeight != null) {
+                        Modifier.heightIn(max = maxTranscriptHeight)
+                    } else {
+                        Modifier.weight(1f)
+                    },
+                )
                 .fillMaxWidth()
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -194,4 +200,5 @@ private fun PreviewReplyPanel() = SoftTheme { AssistantReplyPanel(PreviewChat) }
 
 @Preview(name = "Typed field", widthDp = 384)
 @Composable
-private fun PreviewTypedField() = SoftTheme { TypedMessageField("Dorothy", onSend = {}, focusRequester = remember { FocusRequester() }) }
+private fun PreviewTypedField() = SoftTheme { TypedMessageField("Dorothy", onSend = {},
+    focusRequester = remember { FocusRequester() }) }

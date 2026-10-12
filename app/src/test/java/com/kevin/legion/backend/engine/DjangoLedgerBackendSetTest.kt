@@ -69,7 +69,8 @@ class DjangoLedgerBackendSetTest {
 
     @Test
     fun `an unreachable engine is a failure, never an empty complete set`() = runBlocking {
-        val backend = DjangoLedgerBackend(EngineHttp(EngineTestSupport.signedInConfig(context), EngineTestSupport.unreachableClient()))
+        val backend = DjangoLedgerBackend(EngineHttp(EngineTestSupport.signedInConfig(context),
+            EngineTestSupport.unreachableClient()))
         assertTrue(backend.fetchTransactionSet().isFailure)
     }
 }

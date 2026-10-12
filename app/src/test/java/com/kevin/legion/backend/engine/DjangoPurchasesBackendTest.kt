@@ -119,7 +119,9 @@ class DjangoPurchasesBackendTest {
         assertEquals("DELETE", ok.requests.single().method.value)
         assertEquals("/api/purchases/p1", ok.requests.single().url.encodedPath)
 
-        val gone = EngineTestSupport.RecordingEngine { json("""{"detail": "No such entry"}""", HttpStatusCode.NotFound) }
+        val gone = EngineTestSupport.RecordingEngine {
+            json("""{"detail": "No such entry"}""", HttpStatusCode.NotFound)
+        }
         assertTrue(backend(gone).delete("p1") is PurchaseOutcome.Refused)
 
         val down = DjangoPurchasesBackend(

@@ -33,7 +33,8 @@ class HomeOutstandingHeadlineTest {
     fun `names the most overdue thing when anything is late`() {
         val line = HomeDigestBuilder.outstandingHeadline(
             listOf(
-                item("d1", "WK02: Bio Video Presentation", OutstandingKind.DEADLINE, 1L, overdue = true, source = "MKTG 3303"),
+                item("d1", "WK02: Bio Video Presentation", OutstandingKind.DEADLINE, 1L, overdue = true,
+                    source = "MKTG 3303"),
                 item("d2", "Chapter 2 Quiz", OutstandingKind.DEADLINE, 9L, source = "MATH 3391"),
                 item("l1", "walk", OutstandingKind.CHECKLIST_LINE, source = "bio"),
             ),

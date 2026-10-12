@@ -59,6 +59,7 @@ object TaskDoneMatcher {
      * nearest titles when the window held no match. Non-TASK and deleted rows are ignored here as
      * well as by the caller - an EVENT "just passes" and must never be completable.
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun resolve(
         scoped: List<Event>,
         all: List<Event>,

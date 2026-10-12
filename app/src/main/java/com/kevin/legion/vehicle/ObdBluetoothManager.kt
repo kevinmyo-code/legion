@@ -66,6 +66,7 @@ object ObdBluetoothManager {
     private const val TAG = "ObdBluetoothManager"
     internal const val BASE_RECONNECT_DELAY_MS = 5_000L
     internal const val MAX_RECONNECT_DELAY_MS = 120_000L
+    private const val MAX_BACKOFF_SHIFT = 10
 
     enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, ERROR }
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -183,7 +184,7 @@ object ObdBluetoothManager {
     private var consecutiveFailures = 0
 
     internal fun reconnectDelayMs(failures: Int): Long {
-        val shift = (failures - 1).coerceIn(0, 10)
+        val shift = (failures - 1).coerceIn(0, MAX_BACKOFF_SHIFT)
         return (BASE_RECONNECT_DELAY_MS shl shift).coerceAtMost(MAX_RECONNECT_DELAY_MS)
     }
 

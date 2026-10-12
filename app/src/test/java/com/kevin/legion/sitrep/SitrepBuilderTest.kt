@@ -224,7 +224,8 @@ class SitrepBuilderTest {
     fun `feedResultSentence names the feed and reports headlines verbatim`() {
         val sentence = SitrepBuilder.feedResultSentence(
             "HN frontpage",
-            FeedFetchResult.Success(listOf(FeedHeadline("Rust 2.0 released", null), FeedHeadline("A new database", null))),
+            FeedFetchResult.Success(listOf(FeedHeadline("Rust 2.0 released", null), FeedHeadline("A new database",
+                null))),
         )
         assertTrue(sentence.startsWith("HN frontpage:"))
         assertTrue(sentence.contains("Rust 2.0 released"))
@@ -236,7 +237,8 @@ class SitrepBuilderTest {
         val items = (1..10).map { FeedHeadline("Headline $it", null) }
         val sentence = SitrepBuilder.feedResultSentence("Big feed", FeedFetchResult.Success(items))
         assertTrue(sentence.contains("Headline 5"))
-        assertTrue("a feed's own headline cap must not let a busy feed dump every item", !sentence.contains("Headline 6"))
+        assertTrue("a feed's own headline cap must not let a busy feed dump every item",
+            !sentence.contains("Headline 6"))
     }
 
     // Ticket 07's four RSS sentences must stay four after composition, not flatten into three -
@@ -304,7 +306,8 @@ class SitrepBuilderTest {
             SitrepBuilder.NewsOutcome.Summarized("Two stories on AI chips."),
             listOf("HN frontpage" to FeedFetchResult.Unreachable("HTTP 404")),
         )
-        assertTrue("the newsletter summary must still arrive despite a dead feed", block.contains("Two stories on AI chips."))
+        assertTrue("the newsletter summary must still arrive despite a dead feed",
+            block.contains("Two stories on AI chips."))
         assertTrue("the dead feed must be named, not silently dropped", block.contains("HN frontpage"))
         assertTrue(block.contains("unreachable - HTTP 404"))
     }

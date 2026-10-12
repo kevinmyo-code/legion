@@ -233,7 +233,8 @@ object DatesAgenda {
         val dueIsInferred = event.startsAt == null
         val startsAt = event.startsAt
         val allDay = event.allDay && startsAt != null
-        val dueAt = if (startsAt == null) nowMs + INFERRED_DUE_OFFSET_MS else AllDayTime.anchorMs(startsAt, allDay, zone)
+        val dueAt = if (startsAt == null) nowMs + INFERRED_DUE_OFFSET_MS else AllDayTime.anchorMs(startsAt, allDay,
+            zone)
         val remindAt = if (startsAt == null) dueAt else AllDayTime.reminderMs(startsAt, allDay, zone)
         return AgendaItem(
             recordId = event.id,

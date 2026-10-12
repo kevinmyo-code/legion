@@ -26,7 +26,8 @@ class AssistActivityTest {
     private val app: Application = ApplicationProvider.getApplicationContext()
     private val keyguard get() = shadowOf(app.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager)
 
-    private fun press() = Robolectric.buildActivity(AssistActivity::class.java, Intent(Intent.ACTION_ASSIST)).setup().get()
+    private fun press() = Robolectric.buildActivity(AssistActivity::class.java,
+        Intent(Intent.ACTION_ASSIST)).setup().get()
 
     @Test
     fun `unlocked, the one-shot conversation starts at once`() {

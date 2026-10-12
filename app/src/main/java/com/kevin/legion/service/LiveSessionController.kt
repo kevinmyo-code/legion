@@ -297,6 +297,7 @@ class LiveSessionController(context: Context) {
         onTap(oneShot = true)
     }
 
+    @Suppress("ReturnCount") // one early exit per tap state; folding them is riskier than the rule is worth
     fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false) {
         // Ticket 24: a tap (or a wake-word trigger, which calls this with fromWakeWord=true) IS
         // the genuine signal [shouldAutoReconnectAfterClose] waits for. Recorded unconditionally,

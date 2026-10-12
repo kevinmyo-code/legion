@@ -362,7 +362,8 @@ class DatesAgendaTest {
         assertTrue(item.allDay)
         // Start of Oct 6 in Chicago, NOT Oct 5 7 PM.
         assertEquals(chicago(zone, 10, 6, 0), item.dueAt)
-        assertEquals(java.time.LocalDate.of(2026, 10, 6), java.time.Instant.ofEpochMilli(item.dueAt).atZone(zone).toLocalDate())
+        assertEquals(java.time.LocalDate.of(2026, 10, 6),
+            java.time.Instant.ofEpochMilli(item.dueAt).atZone(zone).toLocalDate())
         assertEquals(chicago(zone, 10, 6, 9), item.remindAtMs)
     }
 
