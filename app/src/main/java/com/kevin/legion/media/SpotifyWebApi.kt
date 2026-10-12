@@ -590,6 +590,7 @@ object SpotifyWebApi {
      * just takes Spotify's own top relevance hit rather than re-deriving a ranking Spotify
      * already computed.
      */
+    @Suppress("CyclomaticComplexMethod") // one request-and-classify flow
     suspend fun search(
         context: Context,
         query: String,
@@ -658,6 +659,7 @@ object SpotifyWebApi {
         data class Error(val outcome: SearchOutcome) : RawSearch
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private fun fetchCandidates(q: String, type: String, token: String): RawSearch {
         var (code, body) = getWithToken(searchUrlFor(q, type), token)
         // Self-heal a tightened limit ceiling. SEARCH_LIMIT is a measured value, not a

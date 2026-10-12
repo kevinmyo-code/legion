@@ -27,6 +27,7 @@ import org.json.JSONObject
  *  - Artist match (when an artist is known): some candidate artist's tokens contain the wanted
  *    artist's tokens as a whole sequence, or vice versa, after normalisation.
  */
+@Suppress("TooManyFunctions") // one pure helper per pipeline step
 internal object SpotifyMatch {
 
     const val TOKEN_OVERLAP_THRESHOLD = 0.6
@@ -63,6 +64,7 @@ internal object SpotifyMatch {
 
     private fun fold(token: String): String = token.replace("ck", "kk").replace('c', 'k')
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     internal fun tokensMatch(a: String, b: String): Boolean {
         if (a == b) return true
         val x = fold(a)
@@ -87,6 +89,7 @@ internal object SpotifyMatch {
     // ---------------------------------------------------------------- the checks
 
     /** Does the candidate TITLE (already raw from Spotify) fit the wanted title? */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun titleMatches(candidateTitle: String, wantedTitle: String, artistConfirmed: Boolean = false): Boolean {
         val c = tokens(normalizeCandidateTitle(candidateTitle))
         val w = tokens(normalize(wantedTitle))
@@ -191,6 +194,7 @@ internal object SpotifyMatch {
      * accepted hit is an exact title match: then the most popular exact match wins (first on a
      * tie, or when Spotify sent no popularity at all).
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun pick(
         candidates: List<JSONObject>,
         query: String,

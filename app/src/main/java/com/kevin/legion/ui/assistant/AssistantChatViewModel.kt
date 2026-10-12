@@ -54,7 +54,8 @@ class AssistantChatViewModel(application: Application) : AndroidViewModel(applic
         SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
         // The store's current value, not empty: ChatPanelState's first observation is its baseline,
         // and an empty first value would make an old conversation look like a reply that just arrived.
-        AssistantChatStore.transcript.value.let { AssistantChatUiState(companionName.value, it.entries, it.pendingTypedReply) },
+        AssistantChatStore.transcript.value.let { AssistantChatUiState(companionName.value, it.entries,
+            it.pendingTypedReply) },
     )
 
     /** The companion can change in Settings while this ViewModel lives; re-read on ON_RESUME. */

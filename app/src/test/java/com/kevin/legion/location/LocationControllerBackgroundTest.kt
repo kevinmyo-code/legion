@@ -30,7 +30,8 @@ class LocationControllerBackgroundTest {
         LocationController.resetForTest()
         shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
             .grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
-        for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)) {
+        for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER)) {
             shadowOf(lm).setProviderEnabled(p, true)
         }
     }

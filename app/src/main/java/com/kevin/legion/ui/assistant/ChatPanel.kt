@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName") // ChatPanelState is the one class; the file is named for the panel
+
 package com.kevin.legion.ui.assistant
 
 import androidx.compose.foundation.background
@@ -232,6 +234,7 @@ internal fun ChatPanelContent(
  * (`rememberSaveable`) and is cleared only when a message is handed off. [focusRequester] is the
  * panel's, so only the panel decides when this takes focus.
  */
+@Suppress("LongMethod") // one screen composable; a split threads its state
 @Composable
 internal fun TypedMessageField(
     companionName: String,

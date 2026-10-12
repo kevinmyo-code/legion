@@ -103,7 +103,8 @@ object OpenerCalendarBriefing {
      * an inferred one says so; a timed one gets its time. Shared with the sitrep so the opener and
      * the sitrep cannot disagree about the same event. [today] is the device-local date.
      */
-    fun describe(event: BriefingEvent, zone: ZoneId, today: java.time.LocalDate = java.time.LocalDate.now(zone)): String {
+    fun describe(event: BriefingEvent, zone: ZoneId,
+        today: java.time.LocalDate = java.time.LocalDate.now(zone)): String {
         val title = event.title.trim().ifEmpty { "(untitled)" }
         return when {
             // Ticket 01 ruling 2: an inferred date is spoken as what it is, in words, never as
@@ -124,6 +125,7 @@ object OpenerCalendarBriefing {
      * this class's own doc comment for exactly what [hasPermission] means now that the source is
      * the merged central store rather than Google directly.
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun forOpener(
         events: List<BriefingEvent>,
         nowMs: Long,
@@ -142,7 +144,8 @@ object OpenerCalendarBriefing {
             else "Their calendar, read just now, has no appointments in the next $WINDOW_HOURS " +
                 "hours. Do not mention any appointment or plan. $due"
         }
-        return appointmentsSentence(upcoming, zone, Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()) + (due ?: "")
+        return appointmentsSentence(upcoming, zone,
+            Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()) + (due ?: "")
     }
 
     /**

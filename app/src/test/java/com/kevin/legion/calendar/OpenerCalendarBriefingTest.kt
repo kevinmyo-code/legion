@@ -55,7 +55,8 @@ class OpenerCalendarBriefingTest {
     fun `a deadline tonight is stated, and the opener may not call the day free`() {
         // The 2026-09-27 case exactly: 10 AM, no appointments, COSC 4320 due 11:59 PM.
         val due = listOf(event(1, "COSC 4320 · Assignment 3", at(23, 59), at(23, 59)))
-        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = true, deadlines = due)
+        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = true,
+            deadlines = due)
 
         assertFalse(briefing == OpenerCalendarBriefing.NOTHING_SCHEDULED)
         assertTrue(briefing.contains("COSC 4320 · Assignment 3"))
@@ -76,14 +77,16 @@ class OpenerCalendarBriefingTest {
     @Test
     fun `no permission still forbids the subject even with deadlines passed`() {
         val due = listOf(event(4, "X", at(23, 59), at(23, 59)))
-        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = false, deadlines = due)
+        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = false,
+            deadlines = due)
         assertEquals(OpenerCalendarBriefing.NO_PERMISSION, briefing)
     }
 
     @Test
     fun `more deadlines than the cap are counted, not silently dropped`() {
         val due = (1..6).map { event(it.toLong(), "Task $it", at(20, it), at(20, it)) }
-        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = true, deadlines = due)
+        val briefing = OpenerCalendarBriefing.forOpener(emptyList(), at(10), zone, hasPermission = true,
+            deadlines = due)
         assertTrue(briefing.contains("(and 2 more)"))
     }
 

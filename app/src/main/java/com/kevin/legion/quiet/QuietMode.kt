@@ -82,6 +82,7 @@ object QuietMode {
 
     fun toggle(context: Context): Result = if (isOn(context)) disable(context) else enable(context)
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun enable(context: Context): Result {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return Result.Refused(NEEDS_ANDROID_10)
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -109,6 +110,7 @@ object QuietMode {
         return Result.On
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun disable(context: Context): Result {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return Result.Refused(NEEDS_ANDROID_10)
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -158,7 +160,8 @@ object QuietMode {
         val id = ruleId(context, nm)
         nm.setAutomaticZenRuleState(
             id,
-            Condition(CONDITION, if (active) "Quiet on" else "Quiet off", if (active) Condition.STATE_TRUE else Condition.STATE_FALSE),
+            Condition(CONDITION, if (active) "Quiet on" else "Quiet off",
+                if (active) Condition.STATE_TRUE else Condition.STATE_FALSE),
         )
     }
 

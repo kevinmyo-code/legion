@@ -36,7 +36,8 @@ class MeterReadingsTest {
             month = YearMonth.of(2026, 8),
             lines = lines,
             uncategorized = uncategorized,
-            coverage = listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L)),
+            coverage = listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L,
+                coveredThroughMs = 1L)),
             excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),
         )
 
@@ -170,7 +171,8 @@ class MeterReadingsTest {
 
     @Test
     fun `multiple overdue maintenance rows breach FLEET, plural wording, one row per breach not per item`() {
-        val breaches = buildMeterBreaches(null, listOf(dueRow(overdue = true), dueRow(overdue = true), dueRow(overdue = false)))
+        val breaches = buildMeterBreaches(null, listOf(dueRow(overdue = true), dueRow(overdue = true),
+            dueRow(overdue = false)))
         assertEquals(1, breaches.size)
         assertEquals("2 items overdue", breaches[0].reason)
     }
@@ -209,7 +211,10 @@ class MeterReadingsTest {
             uncategorized = UncategorizedSpend(spentCents = 4_250L, hasProvisionalRows = false),
         )
         val sentence = moneyUncategorizedSentence(budget)
-        assertTrue(sentence != null && sentence.contains("not assigned to a category") && sentence.contains("NOT counted in spend"))
+        assertTrue(
+            sentence != null && sentence.contains("not assigned to a category") &&
+                sentence.contains("NOT counted in spend"),
+        )
     }
 
     @Test

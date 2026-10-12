@@ -66,6 +66,7 @@ object FeedFetcher {
      * doc comment describes: production omits it and gets the lazily-built real client, a test
      * passes an [HttpClient] built on [io.ktor.client.engine.mock.MockEngine] so no socket ever
      * opens. */
+    @Suppress("ReturnCount", "TooGenericExceptionCaught") // distinct worded failures; broad catch documented below
     suspend fun fetch(url: String, client: HttpClient = defaultClient): FeedFetchResult {
         val response: HttpResponse = try {
             client.get(url)
@@ -142,5 +143,7 @@ object FeedFetcher {
         return text
     }
 
-    private val SUCCESS_RANGE = 200..299
+    private const val HTTP_OK_FIRST = 200
+    private const val HTTP_OK_LAST = 299
+    private val SUCCESS_RANGE = HTTP_OK_FIRST..HTTP_OK_LAST
 }

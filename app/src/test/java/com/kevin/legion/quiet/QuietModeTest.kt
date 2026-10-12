@@ -69,7 +69,8 @@ class QuietModeTest {
         assertEquals(AudioManager.RINGER_MODE_SILENT,
             QuietState.ringerToRemember(isOn = false, current = AudioManager.RINGER_MODE_SILENT, alreadySaved = -1))
         assertEquals(AudioManager.RINGER_MODE_NORMAL,
-            QuietState.ringerToRemember(isOn = true, current = AudioManager.RINGER_MODE_VIBRATE, alreadySaved = AudioManager.RINGER_MODE_NORMAL))
+            QuietState.ringerToRemember(isOn = true, current = AudioManager.RINGER_MODE_VIBRATE,
+                alreadySaved = AudioManager.RINGER_MODE_NORMAL))
         assertEquals(AudioManager.RINGER_MODE_NORMAL, QuietState.ringerToRestore(-1))
     }
 

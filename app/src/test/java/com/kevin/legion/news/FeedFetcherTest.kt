@@ -32,7 +32,8 @@ import org.robolectric.RobolectricTestRunner
 class FeedFetcherTest {
 
     private fun clientRespondingText(body: String, status: HttpStatusCode = HttpStatusCode.OK): HttpClient =
-        HttpClient(MockEngine { respond(content = body, status = status, headers = headersOf(HttpHeaders.ContentType, "application/xml")) })
+        HttpClient(MockEngine { respond(content = body, status = status, headers = headersOf(HttpHeaders.ContentType,
+            "application/xml")) })
 
     private val rss2Items = """
         <?xml version="1.0"?>
@@ -87,7 +88,8 @@ class FeedFetcherTest {
 
     @Test
     fun `a 404 is Unreachable, never Empty - a quiet feed and a missing one are not the same fact`() = runBlocking {
-        val result = FeedFetcher.fetch("https://example.com/missing.xml", clientRespondingText("", HttpStatusCode.NotFound))
+        val result = FeedFetcher.fetch("https://example.com/missing.xml", clientRespondingText("",
+            HttpStatusCode.NotFound))
         assertTrue(result is FeedFetchResult.Unreachable)
         assertTrue((result as FeedFetchResult.Unreachable).detail.contains("404"))
         assertTrue("a 404 must not read as the empty-feed sentence", result != FeedFetchResult.Empty)
@@ -99,7 +101,8 @@ class FeedFetcherTest {
         val result = FeedFetcher.fetch("https://example.com/down.xml", failingClient)
         assertTrue(result is FeedFetchResult.Unreachable)
         val detail = (result as FeedFetchResult.Unreachable).detail
-        assertTrue("network failure and HTTP 404 share the Unreachable category but not the sentence", !detail.contains("404"))
+        assertTrue("network failure and HTTP 404 share the Unreachable category but not the sentence",
+            !detail.contains("404"))
     }
 
     @Test

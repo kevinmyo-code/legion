@@ -31,6 +31,7 @@ object FeedSubscriptionController {
         data class Refused(val reason: String) : AddResult
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     suspend fun add(context: Context, url: String, title: String?): AddResult {
         val trimmed = url.trim()
         if (trimmed.isBlank()) {
@@ -49,7 +50,7 @@ object FeedSubscriptionController {
                 ),
             )
             AddResult.Added
-        } catch (e: SQLiteConstraintException) {
+        } catch (expected: SQLiteConstraintException) {
             AddResult.Refused("Already subscribed to that feed.")
         }
     }

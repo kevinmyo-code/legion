@@ -187,6 +187,7 @@ import kotlinx.coroutines.launch
  * `ui/NotesScreen.kt`/`InboxScreen.kt` pair - see [ui.MainActivity]'s own `EXTRA_ROUTE` comment for
  * the repoint.
  */
+@Suppress("LongMethod", "CyclomaticComplexMethod") // one screen composable; a split threads its state
 @Composable
 fun CalendarScreen(
     /** The notification-tap deep link's item id (`ui/MainActivity.kt`'s own `openItemId`,

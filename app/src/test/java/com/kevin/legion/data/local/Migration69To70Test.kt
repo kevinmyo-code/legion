@@ -29,7 +29,8 @@ class Migration69To70Test {
     private data class SchemaIndex(val createSql: String)
 
     @Serializable
-    private data class SchemaEntity(val tableName: String, val createSql: String, val indices: List<SchemaIndex> = emptyList())
+    private data class SchemaEntity(val tableName: String, val createSql: String,
+        val indices: List<SchemaIndex> = emptyList())
 
     @Serializable
     private data class SchemaDatabaseBody(val entities: List<SchemaEntity>)
@@ -145,7 +146,8 @@ class Migration69To70Test {
         try {
             MIGRATION_69_70.migrate(db)
             db.execSQL(
-                "INSERT INTO `feed_subscriptions` (`url`, `title`, `addedAtMs`) VALUES ('https://example.com/feed.xml', NULL, 1000)",
+                "INSERT INTO `feed_subscriptions` (`url`, `title`, `addedAtMs`) " +
+                    "VALUES ('https://example.com/feed.xml', NULL, 1000)",
             )
             db.query("SELECT `url`, `title`, `addedAtMs` FROM `feed_subscriptions`").use { c ->
                 assertTrue(c.moveToNext())
@@ -165,14 +167,16 @@ class Migration69To70Test {
         try {
             MIGRATION_69_70.migrate(db)
             db.execSQL(
-                "INSERT INTO `feed_subscriptions` (`url`, `title`, `addedAtMs`) VALUES ('https://example.com/feed.xml', NULL, 1000)",
+                "INSERT INTO `feed_subscriptions` (`url`, `title`, `addedAtMs`) " +
+                    "VALUES ('https://example.com/feed.xml', NULL, 1000)",
             )
             var threw = false
             try {
                 db.execSQL(
-                    "INSERT INTO `feed_subscriptions` (`url`, `title`, `addedAtMs`) VALUES ('https://example.com/feed.xml', 'again', 2000)",
+                    "INSERT INTO `feed_subscriptions` (`url`, `title`, `addedAtMs`) " +
+                        "VALUES ('https://example.com/feed.xml', 'again', 2000)",
                 )
-            } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            } catch (expected: android.database.sqlite.SQLiteConstraintException) {
                 threw = true
             }
             assertTrue("the unique index on url must reject a duplicate", threw)

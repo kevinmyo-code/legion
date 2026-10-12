@@ -54,7 +54,8 @@ class DrilldownMoneyFleetScreenshotTest {
                         ),
                     ),
                     onOpenGroceries = {}, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
-                    onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
+                    onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {},
+                    onOpenTrend = {},
                 )
             }
         }
@@ -74,7 +75,8 @@ class DrilldownMoneyFleetScreenshotTest {
                     PantryUiState(
                         loading = false,
                         receipts = listOf(receipt to items),
-                        currencyTotals = listOf(PantryCurrencyTotal(LedgerCurrency.USD, 17_670, hasUnreconciled = true)),
+                        currencyTotals = listOf(PantryCurrencyTotal(LedgerCurrency.USD, 17_670,
+                            hasUnreconciled = true)),
                         allReceiptSummaries = listOf(
                             PantryReceiptSummary(now - 60 * day, 5_000, LedgerCurrency.USD),
                             PantryReceiptSummary(now - 30 * day, 10_227, LedgerCurrency.USD),

@@ -156,7 +156,8 @@ class HomeContentScreenshotTest {
     @Test
     fun `fallback - too small for the fixed grid, scrolls instead of clipping, dock included`() {
         val app = installedApp("com.whatsapp", "WhatsApp")
-        val loaded = Loaded(apps = listOf(app), icons = emptyMap(), handles = emptyMap(), workProfile = null, workPaused = false)
+        val loaded = Loaded(apps = listOf(app), icons = emptyMap(), handles = emptyMap(), workProfile = null,
+            workPaused = false)
         val dockSlots = buildDockSlots(listOf(DockPin(app.packageName, app.profileKey)), loaded)
         val state = HomeUiState(
             loading = false,
@@ -197,7 +198,8 @@ class HomeContentScreenshotTest {
 
     private val noopDock = DockCallbacks(onLaunch = {}, onUnpin = {}, onMoveLeft = {}, onMoveRight = {})
 
-    private fun installedApp(pkg: String, label: String) = DrawerApp(label, pkg, "$pkg.Main", isWork = false, profileKey = 0)
+    private fun installedApp(pkg: String, label: String) = DrawerApp(label, pkg, "$pkg.Main", isWork = false,
+        profileKey = 0)
 
     @Config(qualifiers = "w384dp-h636dp")
     @Test
@@ -210,9 +212,11 @@ class HomeContentScreenshotTest {
             installedApp("com.google.android.apps.maps", "Maps"),
         )
         val pins = apps.map { DockPin(it.packageName, it.profileKey) }
-        val loaded = Loaded(apps = apps, icons = emptyMap(), handles = emptyMap(), workProfile = null, workPaused = false)
+        val loaded = Loaded(apps = apps, icons = emptyMap(), handles = emptyMap(), workProfile = null,
+            workPaused = false)
         val state = fallbackState()
-        capture("home-dock-full.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins, loaded))
+        capture("home-dock-full.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins,
+            loaded))
     }
 
     @Config(qualifiers = "w384dp-h636dp")
@@ -227,9 +231,11 @@ class HomeContentScreenshotTest {
     fun `dock - one pin no longer installed, dimmed and worded, never dropped`() {
         val installed = installedApp("com.whatsapp", "WhatsApp")
         val pins = listOf(DockPin(installed.packageName, installed.profileKey), DockPin("com.gone.app", 0))
-        val loaded = Loaded(apps = listOf(installed), icons = emptyMap(), handles = emptyMap(), workProfile = null, workPaused = false)
+        val loaded = Loaded(apps = listOf(installed), icons = emptyMap(), handles = emptyMap(), workProfile = null,
+            workPaused = false)
         val state = fallbackState()
-        capture("home-dock-not-installed.png", state, recording = false, recordRefusal = null, dockSlots = buildDockSlots(pins, loaded))
+        capture("home-dock-not-installed.png", state, recording = false, recordRefusal = null,
+            dockSlots = buildDockSlots(pins, loaded))
     }
 
     @Config(qualifiers = "w384dp-h636dp")
@@ -317,7 +323,8 @@ class HomeContentScreenshotTest {
             uncategorizedCents = 0L, unverifiedTotalCents = 0L, unreadableNames = emptyList(),
             hasActivity = false, newest = LocalDate.of(2026, 9, 26),
         )
-        capture("home-money-stale.png", fallbackState().copy(moneyMonth = stale), recording = false, recordRefusal = null)
+        capture("home-money-stale.png", fallbackState().copy(moneyMonth = stale), recording = false,
+            recordRefusal = null)
     }
 
     private fun alertsState(): HomeUiState {

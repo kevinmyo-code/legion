@@ -108,7 +108,7 @@ data class HomeCallbacks(
  * The six area tiles live in the More sheet (Kevin, 2026-10-09: "4th button: More").
  */
 @Composable
-@Suppress("LongParameterList") // one callback per screen HOME can open
+@Suppress("LongMethod", "LongParameterList") // one screen composable; one callback per screen HOME can open
 fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenLists: () -> Unit,
@@ -568,6 +568,7 @@ private fun TodayChip(text: String, alert: Boolean) {
 /** The 2 x 4 grid, order fixed by ticket 01: Calendar, Lists, Money, Body, Fleet, Recordings,
  * News, Reports. [fillRemaining] picks weighted rows (fits the content box, no scroll) or
  * natural-height rows (the scrolling fallback) - see [HomeContent]'s own doc comment. */
+@Suppress("LongMethod") // one screen composable; a split threads its state
 @Composable
 internal fun TileGrid(
     state: HomeUiState,

@@ -149,7 +149,7 @@ class AdvisorCreateChecklistTest {
     }
 
     @Test
-    fun `the key identifies the checklist, not its name - a hand-made list of the same name is untouched`() = runBlocking {
+    fun `the key identifies the checklist, not its name - a hand-made list of that name is untouched`() = runBlocking {
         // The property that makes this a real key rather than a prefix by another spelling. A
         // checklist Kevin made himself carries a null sourceKey, and the advisor must neither adopt
         // it nor overwrite it, no matter what it is called.
@@ -158,7 +158,8 @@ class AdvisorCreateChecklistTest {
 
         AdvisorProposalExecutor.execute(context, brief, proposal("Training", "Squat day"))
 
-        assertNull("a hand-made checklist must not be adopted", ChecklistController.getChecklist(context, mine.id)?.sourceKey)
+        assertNull("a hand-made checklist must not be adopted", ChecklistController.getChecklist(context,
+            mine.id)?.sourceKey)
         assertEquals(
             "the hand-made list's own items must be untouched",
             listOf("something I typed myself"),

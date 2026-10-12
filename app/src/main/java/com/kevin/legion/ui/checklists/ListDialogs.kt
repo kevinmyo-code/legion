@@ -52,7 +52,8 @@ fun CreateChecklistDialog(onDismiss: () -> Unit, onCreate: (String, String?, Str
                 // dialog closing on a failed create, so what did not happen is legible right where
                 // the attempt was made.
                 if (error != null) {
-                    Text(error, style = MaterialTheme.typography.bodySmall, color = SoftColors.onAlert, modifier = Modifier.padding(top = 8.dp))
+                    Text(error, style = MaterialTheme.typography.bodySmall, color = SoftColors.onAlert,
+                        modifier = Modifier.padding(top = 8.dp))
                 }
             }
         },

@@ -58,3 +58,12 @@ complexity:
     ignoreInternal: false
     ignoreOverridden: false
     ignoreAnnotatedFunctions: []
+
+naming:
+  FunctionNaming:
+    active: true
+    # Compose's own convention: a @Composable that emits UI is named like a type (PascalCase).
+    # The baseline already carries 661 FunctionNaming entries and every one is a @Composable, so
+    # the intent at adoption was to exempt them; new composables kept tripping it because baseline
+    # ids include the signature. Non-composable functions stay under the default pattern.
+    ignoreAnnotated: ['Composable']

@@ -42,6 +42,7 @@ internal fun iconKey(profileKey: Int, packageName: String, className: String) = 
  */
 internal object AppDrawerCache {
     private const val TAG = "AppDrawerCache"
+    private const val ICON_PX = 96
 
     @Volatile private var cached: Loaded? = null
     private val icons = ConcurrentHashMap<String, ImageBitmap>()
@@ -66,18 +67,24 @@ internal object AppDrawerCache {
         load(app).also { cached = it }
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private fun registerCallback(context: Context) {
         if (callbackRegistered) return
         synchronized(this) {
             if (callbackRegistered) return
             val launcherApps = context.getSystemService(LauncherApps::class.java) ?: return
             launcherApps.registerCallback(object : LauncherApps.Callback() {
-                override fun onPackageRemoved(packageName: String, user: UserHandle) = changed(context, listOf(packageName))
-                override fun onPackageAdded(packageName: String, user: UserHandle) = changed(context, listOf(packageName))
-                override fun onPackageChanged(packageName: String, user: UserHandle) = changed(context, listOf(packageName))
-                override fun onPackagesAvailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) =
+                override fun onPackageRemoved(packageName: String, user: UserHandle) = changed(context,
+                    listOf(packageName))
+                override fun onPackageAdded(packageName: String, user: UserHandle) = changed(context,
+                    listOf(packageName))
+                override fun onPackageChanged(packageName: String, user: UserHandle) = changed(context,
+                    listOf(packageName))
+                override fun onPackagesAvailable(packageNames: Array<out String>, user: UserHandle,
+                    replacing: Boolean) =
                     changed(context, packageNames.toList())
-                override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) =
+                override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle,
+                    replacing: Boolean) =
                     changed(context, packageNames.toList())
             }, Handler(Looper.getMainLooper()))
             callbackRegistered = true
@@ -111,7 +118,8 @@ internal object AppDrawerCache {
                 val k = iconKey(key, component.packageName, component.className)
                 // The slow part, and now only done for icons not already held.
                 if (!icons.containsKey(k)) {
-                    runCatching { info.getBadgedIcon(0).toBitmap(96, 96).asImageBitmap() }.getOrNull()?.let { icons[k] = it }
+                    runCatching { info.getBadgedIcon(0).toBitmap(ICON_PX, ICON_PX).asImageBitmap() }
+                        .getOrNull()?.let { icons[k] = it }
                 }
             }
         }

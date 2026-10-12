@@ -100,6 +100,7 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(page = it.page.copy(showCreateDialog = show, createError = null)) }
     }
 
+    @Suppress("TooGenericExceptionCaught") // crash guard, failure is surfaced in words
     fun createList(name: String, scheduleKind: String?, scheduleDaysOfWeek: String?) {
         viewModelScope.launch {
             // "Groceries" belongs to the household's built-in list (2026-10-05): a second one made
@@ -444,6 +445,7 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
      * any detail screen exists to carry [ListDetailState.writeError], so it carries its own
      * [ListsPageState.createError] instead, same shape, different home.
      */
+    @Suppress("TooGenericExceptionCaught") // crash guard, failure is surfaced in words
     private suspend fun guardedWrite(actionName: String, block: suspend () -> Unit) {
         try {
             block()
