@@ -3,6 +3,7 @@ type: decision
 status: resolved
 blocked_by: []
 map: backend-erp
+ticket: "12"
 ---
 
 # The verified ledger history cannot be uploaded, because its anchors were never stored

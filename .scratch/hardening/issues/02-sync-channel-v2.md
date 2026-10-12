@@ -9,6 +9,7 @@ blockers: []
 blocked-by: []
 open-blockers: 0
 ready: false
+no-build-needed: true
 tags: [ticket]
 ---
 # Sync channel v2: op-log journal or a BYO backend
@@ -44,3 +45,5 @@ audit/export surface; outage degrades to local, said in words. Azure SQL rejecte
 an API tier); op-log rejected in favor of real CAS. This supersedes ticket 13's xlsx-as-channel
 ruling once built - the mirror merge machinery retires from sync duty at that cutover. Build
 ticket owed at planning time; this is a decision record, nothing is built.
+
+**No build needed (2026-10-11):** superseded before it was built. `.scratch/backend-erp/map.md` replaced this sync-only scope with Supabase as the system of record (ADR 0038), which ADR 0044 then superseded with the Django engine; cross-device push lives on as `.scratch/web-revamp/issues/15-push-notifications.md`.

@@ -1,6 +1,7 @@
 ---
 type: decision
 status: closed
+no-build-needed: true
 blocked_by: []
 map: backend-erp
 ---
@@ -94,3 +95,5 @@ no question pending them today.
 how a month gets spent arriving back where it started. That UI was device-verified and corrected
 against real use over weeks. Adding a shortcut to it costs one feature; rebuilding it costs the
 weeks again.
+
+**No build needed (2026-10-11):** withdrawn by Kevin on 2026-08-28 (section above) before any option was chosen; `engine/` stays per ticket 18 (`f418318`), so nothing here authorises code.

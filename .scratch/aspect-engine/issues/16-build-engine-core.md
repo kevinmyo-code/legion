@@ -5,8 +5,8 @@ title: "Build the engine core"
 type: task
 status: resolved
 status-detail: "Resolved 2026-08-23. Senior-reviewed (cascade fix), 37 tests green both key ways, and the v33-to-v34 migration VERIFIED on the A25: user_version 34, all five engine tables present in the pulled DB."
-blockers: []
-blocked-by: []
+blockers: ["04"]
+blocked-by: ["[[04-computed-fields]]"]
 open-blockers: 0
 ready: false
 tags: [ticket]

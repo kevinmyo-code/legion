@@ -3,6 +3,7 @@ type: decision
 status: resolved
 blocked_by: []
 map: backend-erp
+ticket: "07"
 ---
 
 # An undated note has no shape in the merged events table

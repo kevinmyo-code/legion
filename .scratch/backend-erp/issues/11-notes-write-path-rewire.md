@@ -2,6 +2,7 @@
 type: build
 status: built
 blocked_by: []
+blockers: ["07"]
 map: backend-erp
 ---
 

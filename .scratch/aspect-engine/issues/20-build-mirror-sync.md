@@ -5,8 +5,8 @@ title: "Build the mirror and sync"
 type: task
 status: resolved
 status-detail: "Resolved 2026-08-23. Kevin ran the probe on the A25: folder picked, Sync now, last export stamped, no quarantine - SAF create, rwt rewrite, and read-back hash verify all passed against a real Drive folder. v37 guid backfill verified against the pulled device DB."
-blockers: ["16"]
-blocked-by: ["[[16-build-engine-core]]"]
+blockers: ["13", "16"]
+blocked-by: ["[[13-two-phone-sync]]", "[[16-build-engine-core]]"]
 open-blockers: 0
 ready: false
 tags: [ticket]

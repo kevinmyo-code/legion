@@ -5,8 +5,8 @@ title: "The engine's MCP endpoint, read and write tools, and the tenancy leak te
 type: build
 status: built
 status-detail: "Built and suite green 2026-10-02; owes LEGION_MCP=on on Cloud Run and a real Claude Code query against it"
-blockers: ["01", "03", "05", "06"]
-blocked-by: ["[[01-where-the-mcp-server-lives]]", "[[03-one-source-for-tool-definitions]]", "[[05-auth-per-caller]]", "[[06-which-tools-and-the-honesty-contract]]"]
+blockers: ["01", "03", "05", "06", "07"]
+blocked-by: ["[[01-where-the-mcp-server-lives]]", "[[03-one-source-for-tool-definitions]]", "[[05-auth-per-caller]]", "[[06-which-tools-and-the-honesty-contract]]", "[[07-can-an-mcp-client-feed-the-gate]]"]
 open-blockers: 0
 ready: false
 tags: [ticket]
