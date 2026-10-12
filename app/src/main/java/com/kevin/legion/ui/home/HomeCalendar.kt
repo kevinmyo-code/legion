@@ -42,6 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -83,6 +85,8 @@ private const val SUB_ALPHA = 0.8f
 
 /** The Games chip carries a hairline of its own tone, as prototype A draws it. */
 private const val GAMES_BORDER_ALPHA = 0.35f
+/** Smallest a panel-button label shrinks to before it would clip. */
+private const val LABEL_MIN_SP = 11
 private val GRID_GAP = 2.dp
 private val ROW_MIN = 40.dp
 
@@ -636,7 +640,7 @@ fun HomePanelButtons(
     modifier: Modifier = Modifier,
     onMore: () -> Unit = {},
     /** Retro-games ticket 03: the Games chip beside Ideas, its subtitle in words. */
-    gamesSub: String = "pick folder",
+    gamesSub: String = "set up",
     onGames: () -> Unit = {},
 ) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -694,11 +698,14 @@ private fun PanelButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(
+        // Five chips share 384dp: at a large font scale a fixed size clipped "To-dos" to "To-do".
+        // The label steps down to fit instead.
+        val labelStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = content)
+        BasicText(
             label,
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = content,
+            style = labelStyle,
             maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = LABEL_MIN_SP.sp, maxFontSize = labelStyle.fontSize),
         )
         if (sub.isNotEmpty()) Text(
             sub,

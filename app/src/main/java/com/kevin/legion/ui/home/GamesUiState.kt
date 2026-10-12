@@ -59,7 +59,7 @@ data class GamesUiState(
             folder is GamesFolderState.Granted && cachedCount != null -> countLabel(cachedCount + androidGames.size)
             folder is GamesFolderState.Granted -> "looking"
             androidGames.isNotEmpty() -> countLabel(androidGames.size)
-            else -> "pick folder"
+            else -> "set up"
         }
 }
 
