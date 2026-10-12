@@ -55,7 +55,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
-| [[.scratch/retro-games/map\|retro-games]] | [[03-build-home-games\|03]] | build | Build: Games chip on HOME, shelves sheet, ROM scan, cached box art, launch |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
@@ -140,6 +139,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[13-silent-after-focus-loss\|13]] | bug | It speaks and you hear nothing, once Spotify takes audio focus |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[06-server\|06]] | build | Server: table, API, tenancy, the Groceries hook, /mcp tools |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
+| [[.scratch/retro-games/map\|retro-games]] | [[03-build-home-games\|03]] | build | Build: Games chip on HOME, shelves sheet, ROM scan, cached box art, launch |
 | [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it |
 | [[.scratch/wake-word/map\|wake-word]] | [[15-see-a-deaf-mic\|15]] | build | Make a deaf microphone visible |
 | [[.scratch/wake-word/map\|wake-word]] | [[17-follow-up-window\|17]] | build | An 8 second follow-up window closes a conversation nobody continues |

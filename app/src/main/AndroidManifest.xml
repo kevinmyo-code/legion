@@ -130,6 +130,11 @@
         </intent>
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.spotify.music" />
+        <!-- Retro-games ticket 03: the three emulators LEGION hands a game to; without these the
+             "is it installed" check reads every one as missing on API 30+. -->
+        <package android:name="com.retroarch.aarch64" />
+        <package android:name="me.magnum.melonds" />
+        <package android:name="org.ppsspp.ppsspp" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />

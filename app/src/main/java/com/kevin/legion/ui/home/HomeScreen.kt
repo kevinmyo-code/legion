@@ -134,6 +134,10 @@ fun HomeScreen(
     val recordingState by VoiceNoteController.recordingState(context).collectAsStateWithLifecycle()
     val recording = recordingState is VoiceNoteRecordingState.Recording
     var recordRefusal by remember { mutableStateOf<String?>(null) }
+    // Retro-games ticket 03: the Games chip and sheet. The picker is launched here, where an activity exists.
+    val gamesViewModel: GamesViewModel = viewModel()
+    val gamesState by gamesViewModel.state.collectAsStateWithLifecycle()
+    val pickRomFolder = rememberRomFolderPicker(gamesViewModel)
 
     // Home-launcher ticket 06's own dock - pins are read fresh on every resume (a pin/unpin made
     // from Apps must show up here without a process restart), and against AppDrawerCache's own
@@ -153,6 +157,7 @@ fun HomeScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         calendarViewModel.refresh()
         tilesViewModel.refresh()
+        gamesViewModel.refresh()
         pins = DockPinsStore.read(context)
         categoryPicks = CategoryPicksStore.readAll(context)
         drawerSnapshot = AppDrawerCache.peek()
@@ -223,6 +228,17 @@ fun HomeScreen(
             },
             onAddIdea = calendarViewModel::addIdeaToPlans,
             onDropIdea = calendarViewModel::dropIdea,
+        ),
+        games = GamesHome(
+            state = gamesState,
+            callbacks = GamesCallbacks(
+                onPlay = gamesViewModel::play,
+                onPlayResume = gamesViewModel::playResume,
+                onPlayApp = gamesViewModel::playApp,
+                onPickFolder = pickRomFolder,
+            ),
+            cover = gamesViewModel::cover,
+            appIcon = gamesViewModel::appIcon,
         ),
         tiles = tiles,
         recording = recording,
@@ -306,14 +322,21 @@ fun HomeContent(
     categories: List<CategoryUi> = emptyList(),
     chooserRows: List<ChooserRow> = emptyList(),
     categoryCallbacks: CategoryCallbacks = CategoryCallbacks(onLaunch = {}, onSave = { _, _ -> }),
+    games: GamesHome = GamesHome(),
 ) {
     var moreOpen by remember { mutableStateOf(false) }
+    var gamesOpen by remember { mutableStateOf(false) }
+    // A launch that started closes the sheet, so the "Opening ..." toast on HOME is what is left to see.
+    val launched = games.state.notice?.takeIf { !it.failed }
+    androidx.compose.runtime.LaunchedEffect(launched) { if (launched != null) gamesOpen = false }
     SoftTheme {
         Column(Modifier.fillMaxSize().background(SoftColors.ground).padding(12.dp)) {
             HomeCalendarArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth())
             HomePanelButtons(
                 calendar, calendarCallbacks, Modifier.padding(top = 6.dp, bottom = 4.dp),
                 onMore = { moreOpen = true },
+                gamesSub = games.state.chipSub,
+                onGames = { gamesOpen = true },
             )
             AppDock(slots = dockSlots, callbacks = dock)
             CategoryRow(categories = categories, chooserRows = chooserRows, callbacks = categoryCallbacks)
@@ -328,6 +351,10 @@ fun HomeContent(
             NowPlayingRow(nowPlaying = nowPlaying, onOpenMedia = onOpenMedia)
         }
         HomePanelSheet(calendar, calendarCallbacks)
+        if (gamesOpen) GamesSheet(games, onDismiss = { gamesOpen = false })
+        Box(Modifier.fillMaxSize().padding(bottom = 28.dp), contentAlignment = Alignment.BottomCenter) {
+            GamesToast(launched)
+        }
         if (moreOpen) {
             // A tile that navigates closes the sheet first; the record button does not.
             fun closing(go: () -> Unit): () -> Unit = { moreOpen = false; go() }

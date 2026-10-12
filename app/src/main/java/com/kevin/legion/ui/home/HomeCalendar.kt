@@ -80,6 +80,9 @@ private const val AGENDA_TITLE_DP = 15
 
 /** A panel button's second line is the label colour at this opacity. */
 private const val SUB_ALPHA = 0.8f
+
+/** The Games chip carries a hairline of its own tone, as prototype A draws it. */
+private const val GAMES_BORDER_ALPHA = 0.35f
 private val GRID_GAP = 2.dp
 private val ROW_MIN = 40.dp
 
@@ -632,8 +635,11 @@ fun HomePanelButtons(
     callbacks: HomeCalendarCallbacks,
     modifier: Modifier = Modifier,
     onMore: () -> Unit = {},
+    /** Retro-games ticket 03: the Games chip beside Ideas, its subtitle in words. */
+    gamesSub: String = "pick folder",
+    onGames: () -> Unit = {},
 ) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         PanelButton(
             "To-dos",
             if (state.todosNote != null) "can't read" else "${state.openTodoCount} open",
@@ -657,8 +663,13 @@ fun HomePanelButtons(
             },
             AreaAccent.NEWS.container, AreaAccent.NEWS.onContainer, Modifier.weight(1f),
         ) { callbacks.onOpenSheet(PanelSheet.IDEAS) }
+        PanelButton(
+            "Games", gamesSub, AreaAccent.CALENDAR.container, AreaAccent.CALENDAR.onContainer,
+            Modifier.weight(1f), onClick = onGames,
+            border = AreaAccent.CALENDAR.onContainer.copy(alpha = GAMES_BORDER_ALPHA),
+        )
         // Kevin, 2026-10-09: "4th button: More" - the six area tiles that used to fill this screen.
-        PanelButton("More", "", SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f), onMore)
+        PanelButton("More", "", SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f), onClick = onMore)
     }
 }
 
@@ -669,6 +680,7 @@ private fun PanelButton(
     container: Color,
     content: Color,
     modifier: Modifier,
+    border: Color? = null,
     onClick: () -> Unit,
 ) {
     Column(
@@ -676,6 +688,7 @@ private fun PanelButton(
             .heightIn(min = 52.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(container)
+            .let { if (border != null) it.border(1.5.dp, border, RoundedCornerShape(16.dp)) else it }
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

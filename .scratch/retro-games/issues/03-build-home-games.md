@@ -3,11 +3,12 @@ map: retro-games
 ticket: "03"
 title: "Build: Games chip on HOME, shelves sheet, ROM scan, cached box art, launch"
 type: build
-status: open
+status: built
+status-detail: "Built and suite green; owed a run on the A25 (step 4 below)"
 blockers: ["01", "02"]
 blocked-by: ["[[01-launcher-storage-boxart]]", "[[02-emulator-launch-intents]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -44,3 +45,21 @@ The spec is prototype A, `research/Main.dc.html`, rulings in ticket 01, intents 
    system, box-art URL building and filename escaping.
 3. Screenshot test of the sheet with sample games and with no grant.
 4. On the A25: grant `/sdcard/ROMs`, tap Games, see Harvest Moon, tap it, it renders in RetroArch.
+
+## Scope addition: native Android games (Kevin, relayed 2026-10-11)
+
+The sheet also has an "Android games" shelf: installed apps with `ApplicationInfo.CATEGORY_GAME`
+that have a launcher intent, found on every resume with no registration (first one expected: a Godot
+app, `com.flowdrive.phone`). Tiles use the app's own icon from PackageManager, no box-art fetch.
+Launch is `getLaunchIntentForPackage` + `FLAG_ACTIVITY_NEW_TASK`; a throw or a missing launch intent is
+said in words. They count toward last played and Continue. No game-category app installed: the shelf
+is hidden, not shown empty. Package visibility needed no change: the manifest's MAIN/LAUNCHER
+`<queries>` (the app drawer's) already exposes every app with a launcher. Caveat: an app that declares
+no category (some engine exports) is not listed, by design. Unit-tested (filter: game with launcher
+shown, game without launcher hidden, non-game hidden); one Android tile in the sample screenshot.
+
+## Built 2026-10-11
+
+Code in `games/` (system table, scan, launch specs, box-art URL and cache, last played, native
+games) and `ui/home/Games*.kt`. Unverified on the phone: melonDS `uri` extra and PPSSPP VIEW (ticket 02
+marks both reasoned), n64 core stem, which genesis_plus_gx variant is installed.
