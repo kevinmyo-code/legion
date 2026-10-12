@@ -28,8 +28,20 @@ object AndroidGames {
     /** The last-played key for an app, kept apart from ROM document ids (`primary:...`). */
     private const val KEY_PREFIX = "android:"
 
+    /**
+     * Emulators file themselves under games too: melonDS and PPSSPP showed as "Android games" on
+     * the A25 (2026-10-11), and a tap opened PPSSPP's first-run setup instead of a game. An emulator
+     * is how a ROM is played, never a game of its own, so the ones LEGION launches (and Lemuroid,
+     * dropped as a target) are left off this shelf.
+     */
+    private val EMULATOR_PACKAGES: Set<String> =
+        Emulator.entries.map { it.packageName }.toSet() + "com.swordfish.lemuroid"
+
     fun select(apps: List<InstalledApp>, ownPackage: String? = null): List<AndroidGame> =
-        apps.filter { it.isGameCategory && it.hasLauncher && it.packageName != ownPackage }
+        apps.filter {
+            it.isGameCategory && it.hasLauncher && it.packageName != ownPackage &&
+                it.packageName !in EMULATOR_PACKAGES
+        }
             .map { AndroidGame(it.packageName, it.label) }
             .sortedBy { it.label.lowercase() }
 

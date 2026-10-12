@@ -259,6 +259,18 @@ class GamesLogicTest {
     }
 
     @Test
+    fun `emulators that file themselves under games are not listed as games`() {
+        val apps = listOf(
+            InstalledApp("me.magnum.melonds", "melonDS", isGameCategory = true, hasLauncher = true),
+            InstalledApp("org.ppsspp.ppsspp", "PPSSPP", isGameCategory = true, hasLauncher = true),
+            InstalledApp("com.retroarch.aarch64", "RetroArch", isGameCategory = true, hasLauncher = true),
+            InstalledApp("com.swordfish.lemuroid", "Lemuroid", isGameCategory = true, hasLauncher = true),
+            InstalledApp("com.flowdrive.phone", "Flowdrive", isGameCategory = true, hasLauncher = true),
+        )
+        assertEquals(listOf("Flowdrive"), AndroidGames.select(apps).map { it.label })
+    }
+
+    @Test
     fun `no game apps gives an empty list so the shelf is hidden`() {
         assertTrue(AndroidGames.select(listOf(InstalledApp("a", "A", false, true))).isEmpty())
     }

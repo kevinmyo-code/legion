@@ -3,8 +3,8 @@ map: retro-games
 ticket: "03"
 title: "Build: Games chip on HOME, shelves sheet, ROM scan, cached box art, launch"
 type: build
-status: built
-status-detail: "Built and suite green; owed a run on the A25 (step 4 below)"
+status: resolved
+status-detail: "Run on the A25 2026-10-11: folder granted, Harvest Moon launched from the sheet and rendered"
 blockers: ["01", "02"]
 blocked-by: ["[[01-launcher-storage-boxart]]", "[[02-emulator-launch-intents]]"]
 open-blockers: 0
@@ -63,3 +63,15 @@ shown, game without launcher hidden, non-game hidden); one Android tile in the s
 Code in `games/` (system table, scan, launch specs, box-art URL and cache, last played, native
 games) and `ui/home/Games*.kt`. Unverified on the phone: melonDS `uri` extra and PPSSPP VIEW (ticket 02
 marks both reasoned), n64 core stem, which genesis_plus_gx variant is installed.
+
+## On the A25, 2026-10-11 (L11 step 4)
+
+- Folder grant: picked `/sdcard/ROMs` in the system picker; the chip then read "6 games" (on-device).
+- Box art: Harvest Moon's libretro cover downloaded and rendered on its tile (on-device).
+- Launch: a tap on Harvest Moon in the sheet started RetroArch with `pcsx_rearmed` and
+  `/storage/emulated/0/ROMs/psx/Harvest Moon - Back to Nature (USA).cue`; the title screen rendered
+  (on-device, logcat plus screenshot).
+- Found on the phone and fixed the same day: melonDS and PPSSPP declare the game category, so they
+  were listed as Android games and a tap opened PPSSPP's first-run setup. Emulators are now excluded.
+- Not run from the sheet: GBA (Emerald and Emerald++ boot in RetroArch's mGBA by intent, on-device),
+  Flowdrive (shelf only), nds, psp, n64, genesis.
