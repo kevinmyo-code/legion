@@ -30,7 +30,9 @@ believed.
   Scheduler `legion-worker-plaid-sync` runs `30 */3 * * *` UTC; runs at 12:30, 15:30 and 18:30 UTC all
   exited 0. First run: 835 new rows, 783 older file rows replaced; later runs 0 new. 5 older rows
   kept each run (categorised file rows with no bank match, four of them $0 interest lines).
-- **A25 on `bb8e8dd9`, installed 2026-10-11 14:10, hash-verified, HOME + ASSISTANT roles kept.** It had
+- **A25 on `fast` (85879b1e, same code as below), AOT-compiled, 2026-10-11 19:05:** launch 2.76 s to
+  ~0.6 s. Not debuggable: no `run-as`/`DEBUG_SAY` until `debug` goes over it (`device.md`).
+- **Before that, `bb8e8dd9`, installed 2026-10-11 14:10, hash-verified, HOME + ASSISTANT roles kept.** It had
   been on the 10-09 20:45 `perf/home-calendar` build, which predates the phone half of Plaid, so no
   bank rows showed. After install: 906 `BANK_API` rows in Room (2025-04-14 to 2026-10-10), Money
   renders both accounts with "Bank data through Oct 11" (screenshot-verified). The pull happened on

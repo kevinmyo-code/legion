@@ -22,6 +22,18 @@ and a broken app are perfectly consistent, and have been, repeatedly.
 
 `adb devices -l` tells you what is attached and what it is. Never name a model from memory or from
 a document — that has been wrong here before, and every agent that repeated it sounded certain.
+More than one phone may be attached at once: then every `adb` call needs `-s <serial>`, and you
+pick the serial by its model from `adb devices -l`.
+
+## Which build is on the phone
+
+The daily driver is the `fast` build (CLAUDE.md §6): non-debuggable, so `run-as` is refused and the
+`DEBUG_SAY` broadcast does nothing. Check before relying on either:
+`adb shell dumpsys package com.kevin.legion | grep -m1 'flags=\['` (no `DEBUGGABLE` = `fast`).
+To pull a database or drive a voice turn, `adb install -r` the debug APK over it (same key, data
+kept). When done, put `fast` back with `adb install -r` and run
+`adb shell cmd package compile -m speed -f com.kevin.legion`, because a reinstall drops the compile.
+Say in your report which build you left on the phone.
 
 ## Rules paid for in lost data
 
