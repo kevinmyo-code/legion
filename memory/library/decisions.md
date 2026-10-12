@@ -6296,3 +6296,20 @@ screen, he chose *"Plain, no tag at all"*.
   `production` and picks the secret, so switching to the test bank is `PLAID_ENV=sandbox` alone.
   The page states the environment in words ("Test mode (Plaid sandbox): no real bank data").
 - ADR: [[0057-the-bank-feed-is-the-ledgers-truth]].
+
+## 2026-10-11 - Retro games launch from HOME (prototype A): a launcher, not an aspect
+
+Kevin wants retro games on the A25, launched from LEGION. Three home layouts were prototyped
+(`.scratch/retro-games/research/*.dc.html`); he picked **A**: a fifth chip, Games, beside To-dos,
+Lists, Ideas and More, opening a bottom sheet with a Continue card and one shelf per system.
+- **Launcher, not a seventh aspect.** No records, no engine, no server. It lists ROM files and starts
+  an emulator, the way the app dock starts apps. The six-aspect ruling stands.
+- **Storage is a folder grant (SAF tree on `/sdcard/ROMs`)**, not All-files access. LEGION sees only
+  that folder.
+- **Box art is fetched once per game from libretro-thumbnails and cached on the phone.** A scoped
+  exception to section 7's bundled-assets rule; offline or unmatched shows title and system in words.
+- Phone side, verified on the A25 the same day: RetroArch 1.22.2 with seven cores, launched by
+  explicit intent with `ROM` (a filesystem path) and `LIBRETRO` (short name or full `.so` path both
+  work); Harvest Moon (PS1) renders. melonDS (DS) and PPSSPP (PSP) resolve; their ROM hand-off is
+  untested. Lemuroid has no ROM-path launch and is dropped.
+- ADR: [[0058-retro-games-launcher]]. Map: `.scratch/retro-games/`.

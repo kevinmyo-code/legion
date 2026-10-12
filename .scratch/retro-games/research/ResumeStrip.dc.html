@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>C: Resume strip and quick list</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b0c0e}
+a{color:#9cc0ff}a:hover{color:#c4dbff}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="position: relative; width: 384px; height: 832px; overflow: hidden; background: #121317; color: #e9e9ec; font-family: Figtree, system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px 20px">
+    <div style="font-size: 26px; font-weight: 700">October</div>
+    <div style="display: flex; gap: 8px">
+      <button aria-label="Previous month" style="width: 40px; height: 40px; border-radius: 20px; border: 0; background: #2a2c33; color: #e9e9ec; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></button>
+      <button aria-label="Next month" style="width: 40px; height: 40px; border-radius: 20px; border: 0; background: #2a2c33; color: #e9e9ec; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 0 8px; font-size: 11px; color: #8a8d96; text-align: center">
+    <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
+  </div>
+  <sc-for list="{{weeks}}" as="w" hint-placeholder-count="6">
+    <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 0 8px; height: 32px; align-items: center; text-align: center">
+      <sc-for list="{{w.days}}" as="d" hint-placeholder-count="7">
+        <div style="display: flex; justify-content: center"><div style="width: 34px; height: 26px; line-height: 24px; border-radius: 8px; font-size: 13px; font-weight: 600; box-sizing: border-box; color: {{d.c}}; background: {{d.bg}}; border: 1.5px solid {{d.b}}">{{d.n}}</div></div>
+      </sc-for>
+    </div>
+  </sc-for>
+
+  <div style="margin: 10px 12px 0; background: #1c1d22; border-radius: 16px; padding: 12px 14px; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><div style="font-size: 16px; font-weight: 700">Today · Fri, Oct 9</div><div style="font-size: 12px; color: #8a8d96">1 plan, 2 suggestions</div></div>
+    <div style="display: flex; gap: 12px; align-items: stretch"><div style="width: 78px; font-size: 12px; color: #a9abb3; padding-top: 2px">Due 11:59 PM</div><div style="width: 3px; border-radius: 2px; background: #f2c84b"></div><div><div style="font-size: 14px; font-weight: 600">Ch. 6 quiz · Python</div><div style="font-size: 12px; color: #f2c84b">To-do</div></div></div>
+  </div>
+
+  <div style="margin: 10px 12px 0; background: #1b2436; border-radius: 16px; padding: 8px 8px 8px 10px; display: flex; align-items: center; gap: 10px; box-shadow: inset 0 0 0 1px #2d4269">
+    <div style="width: 40px; height: 52px; border-radius: 8px; background: {{resume.color}}; flex: none"></div>
+    <div style="flex: 1 1 auto; min-width: 0">
+      <div style="font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{resume.title}}</div>
+      <div style="font-size: 12px; color: #9fb3d6">{{resume.sys}} · {{resume.last}}</div>
+    </div>
+    <button aria-label="Show all games" onClick="{{openList}}" style="height: 44px; padding: 0 12px; border-radius: 22px; border: 0; background: #26324a; color: #c4dbff; font-size: 13px; font-weight: 600">All {{gameCount}}</button>
+    <button onClick="{{resume.launch}}" style="height: 44px; padding: 0 14px; border-radius: 22px; border: 0; background: #9cc0ff; color: #0f1a2e; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"></path></svg>Play</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 10px 12px 8px">
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #3d3112; color: #f2c84b; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span style="font-size: 15px; font-weight: 700">To-dos</span><span style="font-size: 11px">3 open</span></button>
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #262830; color: #e9e9ec; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span style="font-size: 15px; font-weight: 700">Lists</span><span style="font-size: 11px; color: #b4b6bd">4 lists</span></button>
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #4a2c17; color: #f5a46b; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span style="font-size: 15px; font-weight: 700">Ideas</span><span style="font-size: 11px">4 ideas</span></button>
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #262830; color: #e9e9ec; font-size: 15px; font-weight: 700">More</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 4px 8px 6px; text-align: center">
+    <sc-for list="{{dock}}" as="app" hint-placeholder-count="5">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 15px; background: {{app.color}}"></div><div style="font-size: 11px; color: #c9cad0">{{app.name}}</div></div>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 2px 8px 12px; text-align: center; border-top: 1px solid #1f2026">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="5">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 8px"><div style="width: 36px; height: 36px; border-radius: 18px; border: 1.5px solid #3a3c44; box-sizing: border-box"></div><div style="font-size: 11px; color: #8a8d96">{{n}}</div></div>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{listOpen}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.55)">
+      <button aria-label="Close games" onClick="{{closeList}}" style="position: absolute; left: 0; right: 0; top: 0; height: 240px; background: transparent; border: 0"></button>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 592px; background: #1a1b20; border-radius: 26px 26px 0 0; display: flex; flex-direction: column">
+        <div style="display: flex; justify-content: center; padding-top: 8px"><div style="width: 36px; height: 4px; border-radius: 2px; background: #45474f"></div></div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px 10px 20px">
+          <div style="font-size: 20px; font-weight: 700">Games</div>
+          <div role="group" aria-label="Sort" style="display: flex; background: #23252d; border-radius: 20px; padding: 3px">
+            <sc-for list="{{sorts}}" as="s" hint-placeholder-count="3">
+              <button onClick="{{s.pick}}" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 0; font-size: 13px; font-weight: 600; background: {{s.bg}}; color: {{s.fg}}">{{s.label}}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="flex: 1 1 auto; overflow-y: auto; padding: 0 8px 20px">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+            <sc-if value="{{r.header}}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 12px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #8a8d96">{{r.label}}</div>
+            </sc-if>
+            <sc-if value="{{r.game}}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{r.launch}}" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 6px 12px; min-height: 60px; background: none; border: 0; border-radius: 12px; color: #e9e9ec; text-align: left">
+                <span style="width: 36px; height: 48px; border-radius: 6px; background: {{r.color}}; flex: none"></span>
+                <span style="flex: 1 1 auto; min-width: 0"><span style="display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="display: block; font-size: 12px; color: #8a8d96">{{r.sub}}</span></span>
+                <span style="width: 36px; height: 36px; border-radius: 18px; background: #26324a; color: #9cc0ff; display: flex; align-items: center; justify-content: center; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"></path></svg></span>
+              </button>
+            </sc-if>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{launching}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 16px; right: 16px; bottom: 28px; background: #e9e9ec; color: #121317; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5)">
+      <div style="width: 10px; height: 10px; border-radius: 5px; background: #2f6fe0; flex: none"></div>
+      <div style="font-size: 14px; line-height: 1.3"><b>Opening {{launchTitle}}</b><br>in {{launchEmu}}</div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { listOpen: false, sort: 'Recent', launching: null }; }
+  games() {
+    return [
+      { id: 'hm', title: 'Harvest Moon: Back to Nature', sys: 'PS1', color: '#3f6a3b', last: 'played 2h ago', rank: 1 },
+      { id: 'pe', title: 'Pokémon Emerald', sys: 'GBA', color: '#1d6b5a', last: 'yesterday', rank: 2 },
+      { id: 'smw', title: 'Super Mario World', sys: 'SNES', color: '#6d3a86', last: '3 days ago', rank: 3 },
+      { id: 'mz', title: 'Metroid: Zero Mission', sys: 'GBA', color: '#7a4a1e', last: '', rank: 9 },
+      { id: 'k3', title: "Kirby's Dream Land 3", sys: 'SNES', color: '#a24a73', last: '', rank: 9 },
+      { id: 'la', title: "Link's Awakening DX", sys: 'GBC', color: '#3f6a2b', last: '', rank: 9 },
+      { id: 's2', title: 'Sonic the Hedgehog 2', sys: 'Genesis', color: '#2a55a0', last: '', rank: 9 },
+      { id: 'mk', title: 'Mario Kart 64', sys: 'N64', color: '#a2382c', last: '', rank: 9 },
+      { id: 'pp', title: 'Pokémon Platinum', sys: 'DS', color: '#5a5d6c', last: '', rank: 9 },
+      { id: 'cc', title: 'Crisis Core', sys: 'PSP', color: '#2e3b55', last: '', rank: 9 },
+    ];
+  }
+  emu(sys) { return sys === 'DS' ? 'melonDS' : sys === 'PSP' ? 'PPSSPP' : 'RetroArch'; }
+  sysName(sys) { return { PS1: 'PLAYSTATION', GBA: 'GAME BOY ADVANCE', GBC: 'GAME BOY COLOR', SNES: 'SUPER NINTENDO', Genesis: 'GENESIS', N64: 'NINTENDO 64', DS: 'NINTENDO DS', PSP: 'PSP' }[sys]; }
+  launch(g) {
+    this.setState({ listOpen: false, launching: { title: g.title, emu: this.emu(g.sys) } });
+    clearTimeout(this.t);
+    this.t = setTimeout(() => this.setState({ launching: null }), 2400);
+  }
+  weeks() {
+    const days = [];
+    const dim = { c: '#55585f', bg: 'transparent', b: 'transparent' };
+    [27, 28, 29, 30].forEach((n) => days.push({ n, ...dim }));
+    for (let n = 1; n <= 31; n++) days.push({ n, c: '#e9e9ec', bg: n === 9 ? '#24324d' : 'transparent', b: n === 9 ? '#9cc0ff' : 'transparent' });
+    for (let n = 1; n <= 7; n++) days.push({ n, ...dim });
+    const w = [];
+    for (let i = 0; i < 6; i++) w.push({ days: days.slice(i * 7, i * 7 + 7) });
+    return w;
+  }
+  row(g) {
+    return { game: true, header: false, title: g.title, color: g.color, sub: g.sys + ' · ' + (g.last || this.emu(g.sys)), launch: () => this.launch(g) };
+  }
+  renderVals() {
+    const all = this.games();
+    const sort = this.state.sort;
+    let rows = [];
+    if (sort === 'Recent') {
+      const recent = all.filter((g) => g.last).sort((a, b) => a.rank - b.rank);
+      const rest = all.filter((g) => !g.last).sort((a, b) => a.title.localeCompare(b.title));
+      rows = [{ header: true, game: false, label: 'RECENT' }, ...recent.map((g) => this.row(g)), { header: true, game: false, label: 'EVERYTHING ELSE' }, ...rest.map((g) => this.row(g))];
+    } else if (sort === 'A–Z') {
+      rows = [...all].sort((a, b) => a.title.localeCompare(b.title)).map((g) => this.row(g));
+    } else {
+      ['PS1', 'GBA', 'GBC', 'SNES', 'Genesis', 'N64', 'DS', 'PSP'].forEach((sys) => {
+        const gs = all.filter((g) => g.sys === sys);
+        if (gs.length) rows.push({ header: true, game: false, label: this.sysName(sys) + ' · ' + this.emu(sys) }, ...gs.map((g) => this.row(g)));
+      });
+    }
+    const l = this.state.launching;
+    const r0 = all[0];
+    return {
+      weeks: this.weeks(),
+      dock: [{ name: 'WhatsApp', color: '#25d366' }, { name: 'Spotify', color: '#1db954' }, { name: 'Gmail', color: '#ea4335' }, { name: 'Chrome', color: '#4285f4' }, { name: 'Maps', color: '#34a853' }],
+      nav: ['Bank', 'Music', 'Maps', 'Mail', 'Chat'],
+      resume: { ...r0, launch: () => this.launch(r0) },
+      gameCount: all.length,
+      listOpen: this.state.listOpen,
+      openList: () => this.setState({ listOpen: true }),
+      closeList: () => this.setState({ listOpen: false }),
+      sorts: ['Recent', 'A–Z', 'System'].map((label) => {
+        const on = label === sort;
+        return { label, bg: on ? '#9cc0ff' : 'transparent', fg: on ? '#0f1a2e' : '#c9cad0', pick: () => this.setState({ sort: label }) };
+      }),
+      rows,
+      launching: !!l,
+      launchTitle: l ? l.title : '',
+      launchEmu: l ? l.emu : '',
+    };
+  }
+}
+</script>
+</body>
+</html>

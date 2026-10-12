@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>B: Games tab and grid</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b0c0e}
+a{color:#9cc0ff}a:hover{color:#c4dbff}
+button,input{font-family:inherit}
+button{cursor:pointer}
+.chips::-webkit-scrollbar{display:none}
+input::placeholder{color:#7c7f88}
+</style>
+</helmet>
+<div style="position: relative; width: 384px; height: 832px; overflow: hidden; background: #121317; color: #e9e9ec; font-family: Figtree, system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px 20px">
+    <div style="font-size: 26px; font-weight: 700">October</div>
+    <div style="display: flex; gap: 8px">
+      <button aria-label="Previous month" style="width: 40px; height: 40px; border-radius: 20px; border: 0; background: #2a2c33; color: #e9e9ec; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></button>
+      <button aria-label="Next month" style="width: 40px; height: 40px; border-radius: 20px; border: 0; background: #2a2c33; color: #e9e9ec; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 0 8px; font-size: 11px; color: #8a8d96; text-align: center">
+    <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
+  </div>
+  <sc-for list="{{weeks}}" as="w" hint-placeholder-count="6">
+    <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 0 8px; height: 32px; align-items: center; text-align: center">
+      <sc-for list="{{w.days}}" as="d" hint-placeholder-count="7">
+        <div style="display: flex; justify-content: center"><div style="width: 34px; height: 26px; line-height: 24px; border-radius: 8px; font-size: 13px; font-weight: 600; box-sizing: border-box; color: {{d.c}}; background: {{d.bg}}; border: 1.5px solid {{d.b}}">{{d.n}}</div></div>
+      </sc-for>
+    </div>
+  </sc-for>
+
+  <div style="margin: 10px 12px 0; background: #1c1d22; border-radius: 16px; padding: 12px 14px; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><div style="font-size: 16px; font-weight: 700">Today · Fri, Oct 9</div><div style="font-size: 12px; color: #8a8d96">1 plan, 2 suggestions</div></div>
+    <div style="display: flex; gap: 12px; align-items: stretch"><div style="width: 78px; font-size: 12px; color: #a9abb3; padding-top: 2px">Due 11:59 PM</div><div style="width: 3px; border-radius: 2px; background: #f2c84b"></div><div><div style="font-size: 14px; font-weight: 600">Ch. 6 quiz · Python</div><div style="font-size: 12px; color: #f2c84b">To-do</div></div></div>
+    <div style="display: flex; gap: 12px; align-items: stretch"><div style="width: 78px; font-size: 12px; color: #a9abb3; padding-top: 2px">All day</div><div style="width: 3px; border-radius: 2px; background: #f5a46b"></div><div><div style="font-size: 14px; font-weight: 600">Cuero Turkeyfest</div><div style="font-size: 12px; color: #f5a46b">Suggestion · not a plan</div></div></div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 10px 12px 8px">
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #3d3112; color: #f2c84b; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span style="font-size: 15px; font-weight: 700">To-dos</span><span style="font-size: 11px">3 open</span></button>
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #262830; color: #e9e9ec; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span style="font-size: 15px; font-weight: 700">Lists</span><span style="font-size: 11px; color: #b4b6bd">4 lists</span></button>
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #4a2c17; color: #f5a46b; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span style="font-size: 15px; font-weight: 700">Ideas</span><span style="font-size: 11px">4 ideas</span></button>
+    <button style="height: 50px; border: 0; border-radius: 14px; background: #262830; color: #e9e9ec; font-size: 15px; font-weight: 700">More</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 4px 8px 6px; text-align: center">
+    <sc-for list="{{dock}}" as="app" hint-placeholder-count="5">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 15px; background: {{app.color}}"></div><div style="font-size: 11px; color: #c9cad0">{{app.name}}</div></div>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 2px 6px 12px; text-align: center; border-top: 1px solid #1f2026">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 8px"><div style="width: 36px; height: 36px; border-radius: 18px; border: 1.5px solid #3a3c44; box-sizing: border-box"></div><div style="font-size: 11px; color: #8a8d96">Bank</div></div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 8px"><div style="width: 36px; height: 36px; border-radius: 18px; border: 1.5px solid #3a3c44; box-sizing: border-box"></div><div style="font-size: 11px; color: #8a8d96">Music</div></div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 8px"><div style="width: 36px; height: 36px; border-radius: 18px; border: 1.5px solid #3a3c44; box-sizing: border-box"></div><div style="font-size: 11px; color: #8a8d96">Maps</div></div>
+    <button onClick="{{openLib}}" style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0 0; background: none; border: 0; color: #9cc0ff"><span style="width: 36px; height: 36px; border-radius: 18px; background: #1e2c48; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1.5px #3b5a92"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"></path><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6l-.7 6.6A2.6 2.6 0 0 0 4.6 18c.9 0 1.7-.5 2.1-1.3L8 14h8l1.3 2.7c.4.8 1.2 1.3 2.1 1.3a2.6 2.6 0 0 0 2.6-2.8l-.7-6.6A4 4 0 0 0 17.3 5z"></path></svg></span><span style="font-size: 11px; font-weight: 600">Games</span></button>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 8px"><div style="width: 36px; height: 36px; border-radius: 18px; border: 1.5px solid #3a3c44; box-sizing: border-box"></div><div style="font-size: 11px; color: #8a8d96">Mail</div></div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 8px"><div style="width: 36px; height: 36px; border-radius: 18px; border: 1.5px solid #3a3c44; box-sizing: border-box"></div><div style="font-size: 11px; color: #8a8d96">Chat</div></div>
+  </div>
+
+  <sc-if value="{{libOpen}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: #121317; display: flex; flex-direction: column">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 12px 12px 8px">
+        <button aria-label="Back to home" onClick="{{closeLib}}" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: transparent; color: #e9e9ec; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></button>
+        <div style="font-size: 22px; font-weight: 700; flex: 1 1 auto">Games</div>
+        <div style="font-size: 12px; color: #8a8d96; padding-right: 8px">{{shownCount}} of {{gameCount}}</div>
+      </div>
+      <div style="padding: 0 16px 10px">
+        <label style="display: flex; align-items: center; gap: 10px; height: 46px; border-radius: 23px; background: #22242b; padding: 0 16px; color: #8a8d96">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search games</span>
+          <input value="{{q}}" onInput="{{onQ}}" placeholder="Search games" style="flex: 1 1 auto; background: transparent; border: 0; outline: none; color: #e9e9ec; font-size: 15px">
+        </label>
+      </div>
+      <div class="chips" style="display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 12px; scrollbar-width: none">
+        <sc-for list="{{filters}}" as="f" hint-placeholder-count="6">
+          <button onClick="{{f.pick}}" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; font-size: 13px; font-weight: 600; border: 1.5px solid {{f.border}}; background: {{f.bg}}; color: {{f.fg}}">{{f.label}}</button>
+        </sc-for>
+      </div>
+      <div style="flex: 1 1 auto; overflow-y: auto; padding: 0 16px 24px">
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px">
+          <sc-for list="{{shown}}" as="g" hint-placeholder-count="9">
+            <button onClick="{{g.launch}}" style="background: none; border: 0; padding: 0; text-align: left; color: #e9e9ec">
+              <div style="aspect-ratio: 3 / 4; border-radius: 12px; background: {{g.color}}; position: relative; display: flex; align-items: flex-end; padding: 8px; box-sizing: border-box"><span style="position: absolute; left: 6px; top: 6px; font-size: 9px; font-weight: 700; background: rgba(0,0,0,0.55); color: #fff; padding: 2px 5px; border-radius: 5px">{{g.sys}}</span><span style="font-size: 10px; color: rgba(255,255,255,0.7); font-weight: 600">box art</span></div>
+              <div style="font-size: 12px; font-weight: 600; margin-top: 6px; line-height: 1.25; height: 30px; overflow: hidden">{{g.title}}</div>
+              <div style="font-size: 11px; color: #8a8d96">{{g.sub}}</div>
+            </button>
+          </sc-for>
+        </div>
+        <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 40px 12px; text-align: center; color: #8a8d96; font-size: 14px">No game matches that. Games come from /sdcard/ROMs.</div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{launching}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 16px; right: 16px; bottom: 28px; background: #e9e9ec; color: #121317; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5)">
+      <div style="width: 10px; height: 10px; border-radius: 5px; background: #2f6fe0; flex: none"></div>
+      <div style="font-size: 14px; line-height: 1.3"><b>Opening {{launchTitle}}</b><br>in {{launchEmu}}</div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { libOpen: false, filter: 'Recent', q: '', launching: null }; }
+  games() {
+    return [
+      { id: 'hm', title: 'Harvest Moon: Back to Nature', sys: 'PS1', color: '#3f6a3b', last: 'played 2h ago', rank: 1 },
+      { id: 'pe', title: 'Pokémon Emerald', sys: 'GBA', color: '#1d6b5a', last: 'yesterday', rank: 2 },
+      { id: 'smw', title: 'Super Mario World', sys: 'SNES', color: '#6d3a86', last: '3 days ago', rank: 3 },
+      { id: 'mz', title: 'Metroid: Zero Mission', sys: 'GBA', color: '#7a4a1e', last: '', rank: 9 },
+      { id: 'k3', title: "Kirby's Dream Land 3", sys: 'SNES', color: '#a24a73', last: '', rank: 9 },
+      { id: 'la', title: "Link's Awakening DX", sys: 'GBC', color: '#3f6a2b', last: '', rank: 9 },
+      { id: 's2', title: 'Sonic the Hedgehog 2', sys: 'Genesis', color: '#2a55a0', last: '', rank: 9 },
+      { id: 'mk', title: 'Mario Kart 64', sys: 'N64', color: '#a2382c', last: '', rank: 9 },
+      { id: 'pp', title: 'Pokémon Platinum', sys: 'DS', color: '#5a5d6c', last: '', rank: 9 },
+      { id: 'cc', title: 'Crisis Core', sys: 'PSP', color: '#2e3b55', last: '', rank: 9 },
+    ];
+  }
+  emu(sys) { return sys === 'DS' ? 'melonDS' : sys === 'PSP' ? 'PPSSPP' : 'RetroArch'; }
+  launch(g) {
+    this.setState({ launching: { title: g.title, emu: this.emu(g.sys) } });
+    clearTimeout(this.t);
+    this.t = setTimeout(() => this.setState({ launching: null }), 2400);
+  }
+  weeks() {
+    const days = [];
+    const dim = { c: '#55585f', bg: 'transparent', b: 'transparent' };
+    [27, 28, 29, 30].forEach((n) => days.push({ n, ...dim }));
+    for (let n = 1; n <= 31; n++) days.push({ n, c: '#e9e9ec', bg: n === 9 ? '#24324d' : 'transparent', b: n === 9 ? '#9cc0ff' : 'transparent' });
+    for (let n = 1; n <= 7; n++) days.push({ n, ...dim });
+    const w = [];
+    for (let i = 0; i < 6; i++) w.push({ days: days.slice(i * 7, i * 7 + 7) });
+    return w;
+  }
+  renderVals() {
+    const all = this.games();
+    const f = this.state.filter;
+    const q = this.state.q.trim().toLowerCase();
+    let shown = f === 'Recent' ? [...all].sort((a, b) => a.rank - b.rank) : f === 'A–Z' ? [...all].sort((a, b) => a.title.localeCompare(b.title)) : all.filter((g) => g.sys === f);
+    if (q) shown = shown.filter((g) => g.title.toLowerCase().includes(q));
+    const labels = ['Recent', 'A–Z', 'PS1', 'GBA', 'GBC', 'SNES', 'N64', 'Genesis', 'DS', 'PSP'];
+    const l = this.state.launching;
+    return {
+      weeks: this.weeks(),
+      dock: [{ name: 'WhatsApp', color: '#25d366' }, { name: 'Spotify', color: '#1db954' }, { name: 'Gmail', color: '#ea4335' }, { name: 'Chrome', color: '#4285f4' }, { name: 'Maps', color: '#34a853' }],
+      libOpen: this.state.libOpen,
+      openLib: () => this.setState({ libOpen: true }),
+      closeLib: () => this.setState({ libOpen: false }),
+      q: this.state.q,
+      onQ: (e) => this.setState({ q: e.target.value }),
+      filters: labels.map((label) => {
+        const on = label === f;
+        return { label, bg: on ? '#9cc0ff' : 'transparent', fg: on ? '#0f1a2e' : '#c9cad0', border: on ? '#9cc0ff' : '#3a3c44', pick: () => this.setState({ filter: label }) };
+      }),
+      shown: shown.map((g) => ({ ...g, sub: g.last ? g.sys + ' · ' + g.last : g.sys + ' · ' + this.emu(g.sys), launch: () => this.launch(g) })),
+      shownCount: shown.length,
+      gameCount: all.length,
+      empty: shown.length === 0,
+      launching: !!l,
+      launchTitle: l ? l.title : '',
+      launchEmu: l ? l.emu : '',
+    };
+  }
+}
+</script>
+</body>
+</html>

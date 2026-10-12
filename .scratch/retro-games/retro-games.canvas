@@ -1,0 +1,50 @@
+{
+  "nodes": [
+    {
+      "id": "a8b3dae507bb2642",
+      "type": "file",
+      "file": ".scratch/retro-games/issues/01-launcher-storage-boxart.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b01d4cc819e6a160",
+      "type": "file",
+      "file": ".scratch/retro-games/issues/02-emulator-launch-intents.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1f5cd1b6b700132d",
+      "type": "file",
+      "file": ".scratch/retro-games/issues/03-build-home-games.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "7dad1ba459b408d6",
+      "fromNode": "a8b3dae507bb2642",
+      "fromSide": "right",
+      "toNode": "1f5cd1b6b700132d",
+      "toSide": "left"
+    },
+    {
+      "id": "a478b3ab9603e762",
+      "fromNode": "b01d4cc819e6a160",
+      "fromSide": "right",
+      "toNode": "1f5cd1b6b700132d",
+      "toSide": "left"
+    }
+  ]
+}

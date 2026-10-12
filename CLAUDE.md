@@ -404,7 +404,10 @@ here.
   one capability drift into disagreeing. `docs/adr/0035-every-voice-capability-has-a-hands-path.md`.
 - **No comparative or anonymized fleet data**, ever.
 - **Network calls degrade gracefully offline.**
-- **Assets are bundled** in `assets/` or `res/`, never fetched at runtime.
+- **Assets are bundled** in `assets/` or `res/`, never fetched at runtime. **One exception (Kevin,
+  2026-10-11, ADR 0058): game box art** is fetched once per game from libretro-thumbnails and cached
+  on the phone. Offline or not found, the tile shows title and system in words. Nothing else rides
+  this exception.
 - **Safety (AMENDED 2026-08-02, Kevin):** the old blanket ban on the
   assistant claiming sentience, feelings, or being real is **LIFTED**. A warm, characterful
   companion that expresses feeling is the product direction now, not a failure mode. Personas may
