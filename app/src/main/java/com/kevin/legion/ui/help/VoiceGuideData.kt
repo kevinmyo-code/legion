@@ -6,6 +6,8 @@
 // and, if it diverges first, `voice_guide.py --check` fails the build and names the drift - same
 // posture as the tool-list check this file's generator already enforces.
 
+@file:Suppress("MaxLineLength") // generated prose literals; the copy file owns the wording
+
 package com.kevin.legion.ui.help
 
 /**
@@ -31,7 +33,7 @@ object VoiceGuideData {
         val entries: List<Entry>,
     )
 
-    val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"hey\" and your companion's name if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
+    const val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"hey\" and your companion's name if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
 
     val GROUPS: List<Group> = listOf(
         Group(
@@ -255,5 +257,5 @@ object VoiceGuideData {
     )
 
     /** Total entries across every group above - 128 as of the last regeneration. */
-    val TOOL_COUNT: Int = 128
+    const val TOOL_COUNT: Int = 128
 }
