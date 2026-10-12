@@ -139,6 +139,18 @@ android {
                 "proguard-rules.pro"
             )
         }
+        // The production build, signed with the DEBUG key. A debuggable app is never
+        // AOT-compiled (`cmd package compile -m speed` leaves it at `verify` - observed on the
+        // A25 2026-10-11), so a debug build runs interpreted/JIT and Compose crawls. This is
+        // release's code, non-debuggable, so ART compiles it; the debug key lets it install over
+        // a debug build with data intact and keeps the SHA-1 Spotify and Drive already accept.
+        // It drops what release drops: run-as, DEBUG_SAY, the debug-only rows, cleartext HTTP.
+        // Install `debug` over it for an agent debugging session.
+        create("fast") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
     }
 
     // A shareable APK must not carry the owner's own life in it.

@@ -326,6 +326,13 @@ For structure, read the tree. For how it fits together and what is binding, read
 `./gradlew testDebugUnitTest`, `./gradlew assembleDebug`. Read test totals from the JUnit XML under
 `app/build/test-results/`, never the console summary.
 
+**The phone's daily driver is `./gradlew assembleFast` (Kevin, 2026-10-11).** `fast` is release
+signed with the debug key: non-debuggable, so ART compiles it, and it installs over a debug build
+with data intact. A debuggable build is never AOT-compiled and launched about 4x slower on the A25.
+After each install run `adb shell cmd package compile -m speed -f com.kevin.legion`, because a
+reinstall drops the compile. `fast` has no `run-as`, no `DEBUG_SAY`, and no debug-only rows, so a
+device-agent debugging session installs `debug` over it first and puts `fast` back after.
+
 **Setup:** `local.properties` needs `sdk.dir`. Export `JAVA_HOME` per shell and **never commit
 `org.gradle.java.home`** - Midnight AI's did, and it broke on any machine without Android Studio at
 that exact path, violating clone-and-run. Machine-specific paths live in `memory/MEMORY.md`, not
