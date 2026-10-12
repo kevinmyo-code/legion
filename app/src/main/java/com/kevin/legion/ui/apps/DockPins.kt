@@ -29,6 +29,7 @@ object DockPins {
         data class Full(val pins: List<DockPin>) : PinOutcome
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun pin(current: List<DockPin>, app: DockPin): PinOutcome {
         if (app in current) return PinOutcome.Ok(current)
         if (current.size >= MAX_SLOTS) return PinOutcome.Full(current)
@@ -41,6 +42,7 @@ object DockPins {
      * [com.kevin.legion.ui.checklists.ListsViewModel.moveUp]/`moveDown`'s own convention. Out of
      * range (already leftmost/rightmost) clamps to a no-op rather than wrapping around. Not
      * pinned at all is also a no-op - nothing to move. */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun move(current: List<DockPin>, app: DockPin, delta: Int): List<DockPin> {
         val index = current.indexOf(app)
         if (index < 0) return current

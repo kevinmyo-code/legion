@@ -517,6 +517,7 @@ class AriaForegroundService : Service() {
     }
 
     /** Assembles the spoken-context the opener is phrased from. */
+    @Suppress("LongMethod") // one linear prompt assembly
     private suspend fun buildOpenerSituation(): String {
         val sb = StringBuilder()
         val now = LocalTime.now()
@@ -575,7 +576,8 @@ class AriaForegroundService : Service() {
                 .filter { !it.done && it.startsAt != null }
                 .map {
                     val start = com.kevin.legion.calendar.AllDayTime.anchorMs(it.startsAt!!, it.allDay, zone)
-                    OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = start, endMs = start, allDay = it.allDay)
+                    OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = start, endMs = start,
+                        allDay = it.allDay)
                 }
         }
         sb.append(OpenerCalendarBriefing.forOpener(events, nowMs, zone, hasCalendar, deadlines))
@@ -678,6 +680,7 @@ class AriaForegroundService : Service() {
      * coolant crosses the overheat threshold. Pre-existing codes are the
      * baseline (surfaced once in the opener), so this never nags.
      */
+    @Suppress("CyclomaticComplexMethod") // one watchdog loop over every health signal
     private fun startHealthMonitor() {
         serviceScope.launch {
             // Persisted-baseline tracker (voice audit finding 5): seeded from code_events, ignores

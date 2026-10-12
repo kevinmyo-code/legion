@@ -16,7 +16,8 @@ class AppDrawerCacheTest {
     fun `an updated app loses its icons in every profile, and nothing else does`() {
         val m = icons()
         evictIcons(m, listOf("com.whatsapp"))
-        assertEquals(setOf(iconKey(0, "com.spotify.music", "com.spotify.Main"), iconKey(0, "com.whatsapp.w4b", "com.whatsapp.w4b.Main")), m.keys)
+        assertEquals(setOf(iconKey(0, "com.spotify.music", "com.spotify.Main"), iconKey(0, "com.whatsapp.w4b",
+            "com.whatsapp.w4b.Main")), m.keys)
     }
 
     @Test

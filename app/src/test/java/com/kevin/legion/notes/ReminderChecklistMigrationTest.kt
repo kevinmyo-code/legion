@@ -108,13 +108,15 @@ class ReminderChecklistMigrationTest {
     @Test
     fun `a goal's own Plan line is untouched`() = runBlocking {
         val list = NotesController.theList(context)
-        val plan = NotesController.addItem(context, list.id, AdvisorChecklistMigration.RETIRED_ITEM_PREFIX + "run 2 miles")
+        val plan = NotesController.addItem(context, list.id,
+            AdvisorChecklistMigration.RETIRED_ITEM_PREFIX + "run 2 miles")
 
         val result = ReminderChecklistMigration.migrateIfNeeded(context)
 
         assertEquals(0, result.migrated)
         assertTrue(ChecklistController.allChecklists(context).isEmpty())
-        assertEquals(AdvisorChecklistMigration.RETIRED_ITEM_PREFIX + "run 2 miles", NotesController.itemById(context, plan.id)?.text)
+        assertEquals(AdvisorChecklistMigration.RETIRED_ITEM_PREFIX + "run 2 miles", NotesController.itemById(context,
+            plan.id)?.text)
     }
 
     @Test

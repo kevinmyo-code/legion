@@ -338,8 +338,9 @@ object AdvisorProposalExecutor {
      * `name` (the checklist's title) and `items` (a JSON array of line texts, e.g. "3 sets x 10
      * reps - Goblet squat") - the advisor's own composed list, matching Kevin's ask verbatim
      * ("the advisor would tell me what would be a good daily todo list... and populate it that
-     * way"), never derived here from [com.kevin.legion.data.local.MealTarget]/[com.kevin.legion.data.local.SleepTarget]/
-     * [com.kevin.legion.data.local.WorkoutPlanItem] rows - those already have their own accept
+     * way"), never derived here from [com.kevin.legion.data.local.MealTarget]/
+     * [com.kevin.legion.data.local.SleepTarget]/[com.kevin.legion.data.local.WorkoutPlanItem] rows -
+     * those already have their own accept
      * step (`set_meal_target`/`set_sleep_target`/`create_workout_plan`) and this op is a distinct,
      * separately-accepted proposal, per rule 3 below.
      *
@@ -366,6 +367,7 @@ object AdvisorProposalExecutor {
      * implements). The checklist's schedule is set once, at creation, and never rewritten by a
      * later call - only its name and items update.
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private suspend fun createChecklist(context: Context, brief: AdvisorBrief, obj: JSONObject): ExecuteResult {
         val name = obj.optString("name").trim()
         if (name.isBlank()) return ExecuteResult.Refused("That proposal didn't include a checklist name.")
@@ -420,7 +422,9 @@ object AdvisorProposalExecutor {
         return if (landedTexts == wantedTexts) {
             ExecuteResult.Ok("Checklist \"$name\" set with ${wantedTexts.size} item(s).")
         } else {
-            ExecuteResult.WriteFailed("That checklist didn't fully land - some items may be missing. Try proposing again.")
+            ExecuteResult.WriteFailed(
+                "That checklist didn't fully land - some items may be missing. Try proposing again.",
+            )
         }
     }
 

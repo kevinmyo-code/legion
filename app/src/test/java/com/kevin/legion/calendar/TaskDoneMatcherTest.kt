@@ -120,7 +120,8 @@ class TaskDoneMatcherTest {
 
     // Voice audit finding 6 (S46, 2026-10-03). manage_item tick of "Chapter 5 Quiz (WebAssign)"
     // answered "Which one?" with eight OTHER quizzes because the intended one was already done.
-    private val stats = (5..13).map { task("MATH 3391 Probability & Statistics – Chapter $it Quiz (WebAssign)", done = it == 5) }
+    private val stats = (5..13).map { task("MATH 3391 Probability & Statistics – Chapter $it Quiz (WebAssign)",
+        done = it == 5) }
 
     @Test fun anAlreadyDoneQuizIsReportedAsDoneNotReplacedByEightOtherQuizzes() {
         val r = resolve("MATH 3391 Probability & Statistics Chapter 5 Quiz (WebAssign)", list = stats)

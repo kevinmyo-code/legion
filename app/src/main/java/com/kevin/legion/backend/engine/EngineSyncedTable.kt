@@ -178,11 +178,10 @@ internal class EngineSyncedTable<ROW>(
             )
             page.results.forEach { collected[idOf(it)] = it }
             val next = page.next
-            if (next == null) {
-                complete = true
-                break
-            }
-            if (next == cursor && page.nextAfter == after) break
+            complete = next == null
+            // One exit for both ways out: the feed ended (complete), or the cursor did not move
+            // (stuck; the fetch reports itself incomplete rather than looping forever).
+            if (next == null || (next == cursor && page.nextAfter == after)) break
             cursor = next
             after = page.nextAfter
             pages++

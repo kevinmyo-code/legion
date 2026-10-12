@@ -12,7 +12,8 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Pins the Live `setup` fields added 2026-10-02: VAD sensitivity and explicit
- * context-compression thresholds; proactivity and affective dialog are pinned OUT. The field names and placements are what
+ * context-compression thresholds; proactivity and affective dialog are pinned OUT. The field names and
+ * placements are what
  * the server parses; a wrong one closes the socket (proactivity did, on the A25), so they are asserted literally.
  * Runs under Robolectric for `org.json`.
  */

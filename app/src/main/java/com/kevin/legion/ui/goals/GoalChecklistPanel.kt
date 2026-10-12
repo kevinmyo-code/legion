@@ -67,6 +67,7 @@ import kotlinx.coroutines.launch
  * [compact] switches between the full rendering and an at-a-glance one; both call the same loader,
  * rather than two composables that could drift on what "today's items" means.
  */
+@Suppress("LongMethod", "CyclomaticComplexMethod") // one screen composable; a split threads its state
 @Composable
 fun GoalChecklistPanel(
     compact: Boolean = false,

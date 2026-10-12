@@ -67,6 +67,7 @@ import kotlinx.coroutines.withContext
  * off Gmail's own classification rather than refusing. Read-through and the message cap below are
  * unaffected either way - the only thing the default changes is which `q` string gets built.
  */
+@Suppress("TooManyFunctions") // one pure builder per sitrep block, tested one by one; the count is the block count
 object SitrepBuilder {
 
     /** How far ahead the CALENDAR module looks - matches [com.kevin.legion.calendar
@@ -272,7 +273,8 @@ object SitrepBuilder {
      */
     internal fun feedsSection(results: List<Pair<String, FeedFetchResult>>): String? {
         if (results.isEmpty()) return null
-        return DigestText.line("NEWS FEEDS", results.joinToString(" | ") { (name, result) -> feedResultSentence(name, result) })
+        return DigestText.line("NEWS FEEDS", results.joinToString(" | ") { (name, result) -> feedResultSentence(name,
+            result) })
     }
 
     /**
@@ -372,7 +374,9 @@ object SitrepBuilder {
                         else NewsOutcome.Summarized(summary)
                     }
                     is GmailClient.FetchResult.Failed ->
-                        NewsOutcome.CouldNotCheck(GmailToolLogic.message(GmailToolLogic.causeForFailure(page.networkFailure)))
+                        NewsOutcome.CouldNotCheck(
+                            GmailToolLogic.message(GmailToolLogic.causeForFailure(page.networkFailure)),
+                        )
                 }
             }
             is GmailAuth.TokenResult.NeedsConsent ->
@@ -380,7 +384,11 @@ object SitrepBuilder {
                     GmailToolLogic.message(GmailToolLogic.causeForNeedsConsent(CompanionProfile.isGmailEnabled(context))),
                 )
             is GmailAuth.TokenResult.Failed ->
-                NewsOutcome.CouldNotCheck(GmailToolLogic.message(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error))))
+                NewsOutcome.CouldNotCheck(
+                    GmailToolLogic.message(
+                        GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error)),
+                    ),
+                )
         }
     }
 

@@ -232,7 +232,15 @@ def kotlin_source(tools) -> str:
     intentionally dumb (a flat object literal, no logic) so a diff against the previous run is
     exactly a diff of the copy that changed.
     """
-    lines = [KOTLIN_HEADER, 'package com.kevin.legion.ui.help', '']
+    lines = [
+        KOTLIN_HEADER,
+        # Prose copy is one string literal per field, so its line length is the copy's, not a
+        # style choice; wrapping it would mean concatenation noise in every generated entry.
+        '@file:Suppress("MaxLineLength") // generated prose literals; the copy file owns the wording',
+        '',
+        'package com.kevin.legion.ui.help',
+        '',
+    ]
     lines.append('/**')
     lines.append(' * Data for the in-app "What can I do" screen (`ui/help/VoiceGuideScreen.kt`).')
     lines.append(' * See the header above: this whole file is generated, never hand edit it.')
@@ -256,7 +264,7 @@ def kotlin_source(tools) -> str:
     lines.append('        val entries: List<Entry>,')
     lines.append('    )')
     lines.append('')
-    lines.append(f'    val INTRO: String = "{_kt_string(INTRO)}"')
+    lines.append(f'    const val INTRO: String = "{_kt_string(INTRO)}"')
     lines.append('')
     lines.append('    val GROUPS: List<Group> = listOf(')
     total = 0
@@ -282,7 +290,7 @@ def kotlin_source(tools) -> str:
     lines.append('    )')
     lines.append('')
     lines.append(f'    /** Total entries across every group above - {total} as of the last regeneration. */')
-    lines.append(f'    val TOOL_COUNT: Int = {total}')
+    lines.append(f'    const val TOOL_COUNT: Int = {total}')
     lines.append('}')
     lines.append('')
     return '\n'.join(lines)

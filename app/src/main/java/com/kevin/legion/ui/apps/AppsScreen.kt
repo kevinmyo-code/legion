@@ -49,6 +49,7 @@ private const val SEARCH_COLUMNS = 4
  * `UserManager.requestQuietModeEnabled`. That's the thing Kevin asked for on 2026-09-27 that a
  * shell could not do, because Intune refuses `am stop-user` on a managed profile.
  */
+@Suppress("LongMethod", "CyclomaticComplexMethod") // one screen composable; a split threads its state
 @Composable
 fun AppsScreen() {
     val context = LocalContext.current
@@ -104,7 +105,8 @@ fun AppsScreen() {
                 // Never an empty list that reads as "you have no apps". If LauncherApps returned
                 // nothing, the app couldn't read them, and it says so.
                 Text(
-                    "Couldn't read the installed apps. Nothing is listed because nothing was readable, not because nothing is installed.",
+                    "Couldn't read the installed apps. Nothing is listed because nothing was readable, " +
+                        "not because nothing is installed.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             else -> {
@@ -208,6 +210,7 @@ private fun PinMenuSheet(app: DrawerApp, pinned: Boolean, onDismiss: () -> Unit,
  * reads as a broken screen. `internal` (not `private`) so [com.kevin.legion.ui.home.AppDock]'s own
  * launch callback is the SAME `LauncherApps` call and the same failure sentence, per ticket 06's
  * own "Tap launches it exactly the way the drawer does". */
+@Suppress("ReturnCount") // guard clauses, one worded exit each
 internal fun launchDrawerApp(context: Context, app: DrawerApp, state: Loaded): String? {
     val handle = state.handles[app.profileKey] ?: return "Couldn't find the profile ${app.label} belongs to."
     if (app.isWork && state.workPaused) {

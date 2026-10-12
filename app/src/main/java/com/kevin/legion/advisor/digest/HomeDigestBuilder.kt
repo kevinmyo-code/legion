@@ -48,6 +48,7 @@ import kotlin.math.abs
  * calling out that the plain goal listing doesn't itself say in words: an ACTIVE goal whose own
  * stated [Goal.deadlineEpoch] has already passed.
  */
+@Suppress("TooManyFunctions") // one pure builder per digest block, tested one by one; the count is the block count
 object HomeDigestBuilder : DigestBuilder {
     override val aspect = AdvisorAspect.HOME
 

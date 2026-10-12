@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.Query
 
 /** Data Access Object for [Checklist]. */
+@Suppress("TooManyFunctions") // a Room DAO: one method per query by design
 @Dao
 interface ChecklistDao {
     @Insert

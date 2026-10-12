@@ -46,14 +46,16 @@ class SpotifyMatchTest {
 
     @Test
     fun `censored spellings compare equal but near words do not`() {
-        for (w in listOf("fukk", "f*kk", "f**k", "fuck", "F*ck")) assertTrue(w, SpotifyMatch.tokensMatch(SpotifyMatch.normalize("fuck"), SpotifyMatch.normalize(w)))
+        for (w in listOf("fukk", "f*kk", "f**k", "fuck", "F*ck")) assertTrue(w,
+            SpotifyMatch.tokensMatch(SpotifyMatch.normalize("fuck"), SpotifyMatch.normalize(w)))
         assertFalse(SpotifyMatch.tokensMatch("bike", "bake"))
         assertFalse(SpotifyMatch.tokensMatch("fuck", "fork"))
     }
 
     @Test
     fun `X by Y splits on the last by`() {
-        assertEquals(SpotifyMatch.Wanted("Stand by Me", "Ben E. King"), SpotifyMatch.splitByArtist("Stand by Me by Ben E. King"))
+        assertEquals(SpotifyMatch.Wanted("Stand by Me", "Ben E. King"),
+            SpotifyMatch.splitByArtist("Stand by Me by Ben E. King"))
         assertNull(SpotifyMatch.splitByArtist("Mask Off"))
         assertNull(SpotifyMatch.splitByArtist("by Future"))
     }
@@ -101,13 +103,15 @@ class SpotifyMatchTest {
     @Test
     fun `fielded query is built for track and album`() {
         assertEquals("track:\"Mask Off\" artist:\"Future\"", SpotifyMatch.fieldedQuery("track", "Mask Off", "Future"))
-        assertEquals("album:\"Discovery\" artist:\"Daft Punk\"", SpotifyMatch.fieldedQuery("album", "Discovery", "Daft Punk"))
+        assertEquals("album:\"Discovery\" artist:\"Daft Punk\"", SpotifyMatch.fieldedQuery("album", "Discovery",
+            "Daft Punk"))
         assertEquals("track:\"a b\" artist:\"c\"", SpotifyMatch.fieldedQuery("track", "a \"b\"", "c"))
     }
 
     @Test
     fun `an explicit artist trims a trailing by artist left in the title`() {
-        assertEquals(listOf(SpotifyMatch.Wanted("Mask Off", "Future")), SpotifyMatch.readings("Mask Off by Future", "Future"))
+        assertEquals(listOf(SpotifyMatch.Wanted("Mask Off", "Future")), SpotifyMatch.readings("Mask Off by Future",
+            "Future"))
     }
 
     @Test
@@ -116,12 +120,15 @@ class SpotifyMatchTest {
         val second = track("Mask Off Remix Extended Edit", "Future", "spotify:track:second", 99)
         // first is not exact? "Mask Off (Live)" normalises to "mask off" which IS exact; use a non-exact first.
         val nonExact = track("Mask Off Part Two", "Future", "spotify:track:first", 10)
-        assertEquals("spotify:track:first", SpotifyMatch.pick(listOf(nonExact, second), "Mask Off", "Future")?.optString("uri"))
+        assertEquals("spotify:track:first", SpotifyMatch.pick(listOf(nonExact, second), "Mask Off",
+            "Future")?.optString("uri"))
         // exact tie: popularity decides among exact matches
         val exactLow = track("Mask Off", "Future", "spotify:track:low", 10)
         val exactHigh = track("Mask Off", "Future", "spotify:track:high", 80)
-        assertEquals("spotify:track:high", SpotifyMatch.pick(listOf(exactLow, exactHigh), "Mask Off", "Future")?.optString("uri"))
-        assertEquals("spotify:track:low", SpotifyMatch.pick(listOf(exactLow, track("Mask Off", "Future", "spotify:track:t", 10)), "Mask Off", "Future")?.optString("uri"))
+        assertEquals("spotify:track:high", SpotifyMatch.pick(listOf(exactLow, exactHigh), "Mask Off",
+            "Future")?.optString("uri"))
+        assertEquals("spotify:track:low", SpotifyMatch.pick(listOf(exactLow, track("Mask Off", "Future",
+            "spotify:track:t", 10)), "Mask Off", "Future")?.optString("uri"))
         assertEquals("spotify:track:first", SpotifyMatch.pick(listOf(first), "Mask Off", "Future")?.optString("uri"))
     }
 
@@ -129,8 +136,11 @@ class SpotifyMatchTest {
     fun `imposters are filtered, but honoured when they are all there is`() {
         val karaoke = track("Mask Off", "Karaoke Hits", "spotify:track:k", 5)
         val orig = track("Mask Off", "Future", "spotify:track:o", 5)
-        val isImp = { c: JSONObject -> c.optJSONArray("artists")!!.getJSONObject(0).optString("name").contains("Karaoke") }
-        assertEquals("spotify:track:o", SpotifyMatch.pick(listOf(karaoke, orig), "Mask Off", null, isImp)?.optString("uri"))
+        val isImp = { c: JSONObject ->
+            c.optJSONArray("artists")!!.getJSONObject(0).optString("name").contains("Karaoke")
+        }
+        assertEquals("spotify:track:o", SpotifyMatch.pick(listOf(karaoke, orig), "Mask Off", null,
+            isImp)?.optString("uri"))
         assertEquals("spotify:track:k", SpotifyMatch.pick(listOf(karaoke), "Mask Off", null, isImp)?.optString("uri"))
     }
 
@@ -156,12 +166,14 @@ class SpotifyMatchTest {
         )
         assertNull(SpotifyMatch.pick(wrong, "Wakare Michi by The Gazette", null))
         val real = track("Wakare Michi", "the GazettE", "spotify:track:wm", 30)
-        assertEquals("spotify:track:wm", SpotifyMatch.pick(wrong + real, "Wakare Michi by The Gazette", null)?.optString("uri"))
+        assertEquals("spotify:track:wm", SpotifyMatch.pick(wrong + real, "Wakare Michi by The Gazette",
+            null)?.optString("uri"))
     }
 
     @Test
     fun `queue query Ugly by The Gazette does not accept an unrelated top hit`() {
-        val wrong = listOf(track("Ugly Duckling", "Danny Kaye", "spotify:track:u1", 70), track("Pretty Ugly", "Jhene", "spotify:track:u2", 50))
+        val wrong = listOf(track("Ugly Duckling", "Danny Kaye", "spotify:track:u1", 70), track("Pretty Ugly", "Jhene",
+            "spotify:track:u2", 50))
         assertNull(SpotifyMatch.pick(wrong, "Ugly by The Gazette", null))
         val real = track("UGLY", "the GazettE", "spotify:track:ug", 20)
         assertEquals("spotify:track:ug", SpotifyMatch.pick(wrong + real, "Ugly by The Gazette", null)?.optString("uri"))

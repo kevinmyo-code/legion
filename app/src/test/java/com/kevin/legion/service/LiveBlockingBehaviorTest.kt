@@ -29,7 +29,8 @@ class LiveBlockingBehaviorTest {
     @Test
     fun `an explicit behavior is left alone`() {
         val input = JSONArray().put(decl("a").put("behavior", "NON_BLOCKING"))
-        assertEquals("NON_BLOCKING", GeminiLiveSession.withBlockingBehavior(input).getJSONObject(0).getString("behavior"))
+        assertEquals("NON_BLOCKING",
+            GeminiLiveSession.withBlockingBehavior(input).getJSONObject(0).getString("behavior"))
     }
 
     @Test

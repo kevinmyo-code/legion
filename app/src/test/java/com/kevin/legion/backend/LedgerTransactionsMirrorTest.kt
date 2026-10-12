@@ -118,7 +118,8 @@ class LedgerTransactionsMirrorTest {
         assertEquals(1, report.deleted)
         assertFalse(report.deletionsSkipped)
         val stored = db.ledgerTransactionDao().getAll()
-        assertEquals(setOf("s-2", "s-3"), stored.filter { it.sourceFile == SYNCED_SOURCE_FILE }.map { it.syncId }.toSet())
+        assertEquals(setOf("s-2", "s-3"),
+            stored.filter { it.sourceFile == SYNCED_SOURCE_FILE }.map { it.syncId }.toSet())
         assertEquals("Groceries", stored.single { it.syncId == "s-2" }.category)
         assertTrue("the voice-logged row survives", stored.any { it.sourceFile == "voice" })
     }
@@ -202,15 +203,18 @@ class LedgerTransactionsMirrorTest {
     @Test
     fun `September 2026 on the Money tile - spent of budget, uncategorised excluded, unverified said`() = runBlocking {
         val sept = epoch(2026, 9, 1)
-        db.budgetTargetDao().upsert(BudgetTarget(category = "Groceries", currency = LedgerCurrency.USD, amountCents = 50_000L, effectiveFromMonthEpoch = sept, updatedAt = 1L))
-        db.budgetTargetDao().upsert(BudgetTarget(category = "Dining", currency = LedgerCurrency.USD, amountCents = 20_000L, effectiveFromMonthEpoch = sept, updatedAt = 1L))
+        db.budgetTargetDao().upsert(BudgetTarget(category = "Groceries", currency = LedgerCurrency.USD,
+            amountCents = 50_000L, effectiveFromMonthEpoch = sept, updatedAt = 1L))
+        db.budgetTargetDao().upsert(BudgetTarget(category = "Dining", currency = LedgerCurrency.USD,
+            amountCents = 20_000L, effectiveFromMonthEpoch = sept, updatedAt = 1L))
 
         val engine = FakeEngine()
         engine.rows += remote("s-1", "HEB GROCERY", -6_000L, category = "Groceries")
         engine.rows += remote("s-2", "TACO PLACE", -1_200L, "UNRECONCILED", category = "Dining")
         engine.rows += remote("s-3", "MYSTERY MERCHANT", -300L, "UNRECONCILED")
         // August: must not count toward September.
-        engine.rows += remote("s-4", "HEB GROCERY", -9_900L, category = "Groceries").copy(txnDateEpochMs = epoch(2026, 8, 31))
+        engine.rows += remote("s-4", "HEB GROCERY", -9_900L, category = "Groceries").copy(txnDateEpochMs = epoch(2026,
+            8, 31))
         LedgerTransactionsSync.mirror(context, engine, noRules)
 
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, YearMonth.of(2026, 9))
