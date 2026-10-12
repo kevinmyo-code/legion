@@ -13,6 +13,8 @@ data class Game(
     val title: String,
     val fileName: String,
     val documentId: String,
+    /** A cover image kept beside the ROM under the same name (`Game.png`), or null. Wins over box art. */
+    val coverDocumentId: String? = null,
 )
 
 /** The user-facing title of a ROM file: its name without the last extension. Also the box-art key. */
@@ -30,9 +32,13 @@ fun extensionOf(fileName: String): String =
  * A `.bin` is hidden when a `.cue` in the same folder set has the same name, or the same name plus a
  * ` (Track N)` suffix (the usual multi-track dump). A `.bin` with no cue is a game in its own right
  * (RetroArch's pcsx_rearmed opens it), so it stays listed; this is also why a Genesis `.bin` is a
- * game, not a track, and the collapse applies to PSX only. Sorted by title, case-insensitively.
+ * game, not a track, and the collapse applies to PSX only. An image with a game's name (any of
+ * [COVER_EXTENSIONS]) becomes its cover and is never listed itself. Sorted by title, case-insensitively.
  */
 object RomScan {
+    /** Image extensions a cover kept beside a ROM may use. */
+    val COVER_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp")
+
     private val trackSuffix = Regex("""\s*\(track\s*\d+\)$""", RegexOption.IGNORE_CASE)
 
     fun games(system: GameSystem, entries: List<RomEntry>): List<Game> {
@@ -42,9 +48,15 @@ object RomScan {
         } else {
             emptySet()
         }
+        // A romhack or homebrew has no libretro cover, so an image beside it with the same name is used.
+        val covers = entries.filter { extensionOf(it.fileName) in COVER_EXTENSIONS }
+            .associate { titleOf(it.fileName).lowercase() to it.documentId }
         return accepted
             .filterNot { system == GameSystem.PSX && extensionOf(it.fileName) == "bin" && coveredByCue(it, cueTitles) }
-            .map { Game(system, titleOf(it.fileName), it.fileName, it.documentId) }
+            .map {
+                val title = titleOf(it.fileName)
+                Game(system, title, it.fileName, it.documentId, covers[title.lowercase()])
+            }
             .sortedBy { it.title.lowercase() }
     }
 

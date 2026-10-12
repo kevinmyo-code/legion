@@ -1,7 +1,6 @@
 package com.kevin.legion.ui.home
 
 import android.app.Application
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.core.graphics.drawable.toBitmap
@@ -47,7 +46,11 @@ class GamesViewModel(app: Application) : AndroidViewModel(app) {
     private val folders = GamesFolderStore(app)
     private val lastPlayed = LastPlayedStore(app)
     private val launcher = GameLauncher.forContext(app)
-    private val covers = BoxArtCache(File(app.filesDir, "boxart"), HttpBoxArtFetcher)
+    private val coverImages = CoverImages(
+        app.contentResolver,
+        BoxArtCache(File(app.filesDir, "boxart"), HttpBoxArtFetcher),
+        COVER_MAX_PX,
+    )
 
     private val _state = MutableStateFlow(GamesUiState(cachedCount = folders.cachedCount()))
     val state: StateFlow<GamesUiState> = _state.asStateFlow()
@@ -159,20 +162,11 @@ class GamesViewModel(app: Application) : AndroidViewModel(app) {
         }.getOrNull()
     }
 
-    /** The decoded cover, or null: not cached, a recorded miss, offline, or unreadable. */
-    suspend fun cover(game: Game): ImageBitmap? {
-        val file = covers.get(game) ?: return null
-        return withContext(Dispatchers.Default) {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(file.path, bounds)
-            var sample = 1
-            while (bounds.outWidth / sample > COVER_MAX_PX * 2) sample *= 2
-            val bitmap = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
-            // A file that will not decode is dropped so the next open fetches it again.
-            if (bitmap == null) file.delete()
-            bitmap?.asImageBitmap()
-        }
-    }
+    /**
+     * The decoded cover, or null: not cached, a recorded miss, offline, or unreadable. A cover image
+     * kept beside the ROM wins over box art, so a romhack with no libretro cover can still have one.
+     */
+    suspend fun cover(game: Game): ImageBitmap? = coverImages.load(folders.treeUri(), game)
 }
 
 /** The system folder picker (`OPEN_DOCUMENT_TREE`) wired to [GamesViewModel]; call the result to open it. */

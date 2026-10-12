@@ -55,6 +55,24 @@ class GamesLogicTest {
         assertEquals(listOf("Emerald", "Fire"), games.map { it.title })
     }
 
+    // ---- cover beside the ROM
+
+    @Test
+    fun `an image named for a game is its cover and is not listed itself`() {
+        val games = RomScan.games(
+            GameSystem.GBA,
+            listOf(
+                entry("Emerald++ (v10.1).gba"),
+                entry("emerald++ (V10.1).PNG"),
+                entry("Fire.gba"),
+                entry("Other.jpg"),
+            ),
+        )
+        assertEquals(listOf("Emerald++ (v10.1)", "Fire"), games.map { it.title })
+        assertEquals("primary:ROMs/x/emerald++ (V10.1).PNG", games[0].coverDocumentId)
+        assertNull(games[1].coverDocumentId)
+    }
+
     // ---- cue/bin collapsing
 
     @Test
