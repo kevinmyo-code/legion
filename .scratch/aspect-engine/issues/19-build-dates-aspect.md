@@ -5,8 +5,8 @@ title: "Build the Dates aspect"
 type: task
 status: built
 status-detail: "Built 2026-08-23, senior-approved, merged to dev (v36). VERIFIED on the A25: aspect seeded, 160 records imported from Google Calendar. Owes: an alarm actually firing, permission flow."
-blockers: ["16"]
-blocked-by: ["[[16-build-engine-core]]"]
+blockers: ["05", "16"]
+blocked-by: ["[[05-central-date-database]]", "[[16-build-engine-core]]"]
 open-blockers: 0
 ready: false
 tags: [ticket]

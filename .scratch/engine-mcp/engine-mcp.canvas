@@ -94,8 +94,8 @@
       "id": "4b04abd00b4ec707",
       "type": "file",
       "file": ".scratch/engine-mcp/issues/10-the-engine-mcp-endpoint.md",
-      "x": 1040,
-      "y": 450,
+      "x": 1560,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -104,7 +104,7 @@
       "id": "c1cc00d89f10ef94",
       "type": "file",
       "file": ".scratch/engine-mcp/issues/11-the-phone-bridges-engine-tools.md",
-      "x": 1560,
+      "x": 2080,
       "y": 0,
       "width": 320,
       "height": 110,
@@ -114,7 +114,7 @@
       "id": "e0977c1a0014699a",
       "type": "file",
       "file": ".scratch/engine-mcp/issues/12-oauth-for-third-party-clients.md",
-      "x": 1560,
+      "x": 2080,
       "y": 150,
       "width": 320,
       "height": 110,
@@ -202,6 +202,13 @@
     {
       "id": "ee4a7037fb795613",
       "fromNode": "d91af6ed002d493c",
+      "fromSide": "right",
+      "toNode": "4b04abd00b4ec707",
+      "toSide": "left"
+    },
+    {
+      "id": "f955eaf8bf18e797",
+      "fromNode": "1c8b6b4404efa78c",
       "fromSide": "right",
       "toNode": "4b04abd00b4ec707",
       "toSide": "left"

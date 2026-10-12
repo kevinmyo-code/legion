@@ -81,6 +81,16 @@
       "color": "1"
     },
     {
+      "id": "49a993c924c76eb7",
+      "type": "file",
+      "file": ".scratch/django-engine/issues/18-the-rule-7-provisional-writer.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
       "id": "629dfd815d254e20",
       "type": "file",
       "file": ".scratch/django-engine/issues/04-domain-api-and-changes-feed.md",
@@ -241,6 +251,13 @@
       "fromNode": "9d369a5c38235c96",
       "fromSide": "right",
       "toNode": "16544da7be932be3",
+      "toSide": "left"
+    },
+    {
+      "id": "fe126ad1c3e27b3c",
+      "fromNode": "1edcbe87032fbadb",
+      "fromSide": "right",
+      "toNode": "49a993c924c76eb7",
       "toSide": "left"
     }
   ]

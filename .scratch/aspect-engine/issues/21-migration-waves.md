@@ -5,8 +5,8 @@ title: "Migration waves: every aspect onto the engine"
 type: task
 status: resolved
 status-detail: "Resolved 2026-08-24. All four waves merged and verified on the A25 against real data: Notes 12/12, Places 3/3, Pantry 3+26 all LLM_RECONCILED, Ledger 161+7 provenance 1:1, Fleet 5 vehicles + 52 schedules + 1 OBSERVED + 4 ASSERTED with the Jeep drift case preserved. Cutover and deferred fleet entities live in tickets 22 and 23."
-blockers: ["17", "18", "19", "20"]
-blocked-by: ["[[17-build-voice-surface]]", "[[18-build-widget-pager]]", "[[19-build-dates-aspect]]", "[[20-build-mirror-sync]]"]
+blockers: ["14", "17", "18", "19", "20"]
+blocked-by: ["[[14-migration-order]]", "[[17-build-voice-surface]]", "[[18-build-widget-pager]]", "[[19-build-dates-aspect]]", "[[20-build-mirror-sync]]"]
 open-blockers: 2
 ready: false
 tags: [ticket]

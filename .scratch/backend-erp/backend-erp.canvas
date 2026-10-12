@@ -61,31 +61,11 @@
       "color": "1"
     },
     {
-      "id": "215e1fd56e088624",
-      "type": "file",
-      "file": ".scratch/backend-erp/issues/10-fleet-cutover.md",
-      "x": 0,
-      "y": 900,
-      "width": 320,
-      "height": 110,
-      "color": "1"
-    },
-    {
-      "id": "d0857da6bfa8c158",
-      "type": "file",
-      "file": ".scratch/backend-erp/issues/11-notes-write-path-rewire.md",
-      "x": 0,
-      "y": 1050,
-      "width": 320,
-      "height": 110,
-      "color": "1"
-    },
-    {
       "id": "4937b91d9cc8cc3f",
       "type": "file",
       "file": ".scratch/backend-erp/issues/12-ledger-rows-have-no-statement-header.md",
       "x": 0,
-      "y": 1200,
+      "y": 900,
       "width": 320,
       "height": 110,
       "color": "4"
@@ -95,7 +75,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/14-a-vehicle-row-is-co-owned.md",
       "x": 0,
-      "y": 1350,
+      "y": 1050,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -105,7 +85,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/15-engine-retirement-sequence.md",
       "x": 0,
-      "y": 1500,
+      "y": 1200,
       "width": 320,
       "height": 110,
       "color": "4"
@@ -115,7 +95,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/16-fleet-service-history-is-not-a-configured-split.md",
       "x": 0,
-      "y": 1650,
+      "y": 1350,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -125,7 +105,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/17-dates-is-engine-only.md",
       "x": 0,
-      "y": 1800,
+      "y": 1500,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -135,27 +115,17 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/18-the-generic-ui-still-runs-on-the-engine.md",
       "x": 0,
-      "y": 1950,
+      "y": 1650,
       "width": 320,
       "height": 110,
       "color": "1"
-    },
-    {
-      "id": "b4aa3e1db024f0ea",
-      "type": "file",
-      "file": ".scratch/backend-erp/issues/19-re-ingest-historical-statements.md",
-      "x": 0,
-      "y": 2100,
-      "width": 320,
-      "height": 110,
-      "color": "4"
     },
     {
       "id": "adfe58154daafea7",
       "type": "file",
       "file": ".scratch/backend-erp/issues/20-the-reminder-default-made-the-retraction-delete-appointments.md",
       "x": 0,
-      "y": 2250,
+      "y": 1800,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -165,7 +135,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/21-the-engine-loses-its-reason-to-live.md",
       "x": 0,
-      "y": 2400,
+      "y": 1950,
       "width": 320,
       "height": 110,
       "color": "4"
@@ -175,7 +145,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/22-deterministic-parsing-comes-back-on-the-pc.md",
       "x": 0,
-      "y": 2550,
+      "y": 2100,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -185,7 +155,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/23-the-second-household-account.md",
       "x": 0,
-      "y": 2700,
+      "y": 2250,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -195,7 +165,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/24-do-the-conversation-logs-reach-the-server.md",
       "x": 0,
-      "y": 2850,
+      "y": 2400,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -205,7 +175,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/25-ledger-ingestion-leaves-the-phone.md",
       "x": 0,
-      "y": 3000,
+      "y": 2550,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -215,7 +185,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md",
       "x": 0,
-      "y": 3150,
+      "y": 2700,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -225,7 +195,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/27-the-sidecar-has-no-cross-device-channel.md",
       "x": 0,
-      "y": 3300,
+      "y": 2850,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -235,7 +205,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/28-service-history-reads-still-serve-the-legacy-table.md",
       "x": 0,
-      "y": 3450,
+      "y": 3000,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -245,7 +215,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/29-audit-rows-age-out-before-they-are-uploaded.md",
       "x": 0,
-      "y": 3600,
+      "y": 3150,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -255,7 +225,7 @@
       "type": "file",
       "file": ".scratch/backend-erp/issues/30-the-obd-cursor-cannot-get-past-a-dead-vehicle.md",
       "x": 0,
-      "y": 3750,
+      "y": 3300,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -291,6 +261,46 @@
       "color": "4"
     },
     {
+      "id": "215e1fd56e088624",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/10-fleet-cutover.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d0857da6bfa8c158",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/11-notes-write-path-rewire.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b4aa3e1db024f0ea",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/19-re-ingest-historical-statements.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "5c2c744cb6d98fbd",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/32-engine-retirement-repoints.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
       "id": "83c235c8b8170e80",
       "type": "file",
       "file": ".scratch/backend-erp/issues/05-migration-path.md",
@@ -299,6 +309,16 @@
       "width": 320,
       "height": 110,
       "color": "4"
+    },
+    {
+      "id": "7d0db84a1b25cd23",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/31-phase-6-deletions.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -349,6 +369,41 @@
       "fromNode": "0c04d268856df37b",
       "fromSide": "right",
       "toNode": "83c235c8b8170e80",
+      "toSide": "left"
+    },
+    {
+      "id": "e86cba6f680d88b1",
+      "fromNode": "0bca95ed38b262fb",
+      "fromSide": "right",
+      "toNode": "215e1fd56e088624",
+      "toSide": "left"
+    },
+    {
+      "id": "4226d57eeab37d07",
+      "fromNode": "5cbac0decd6119ec",
+      "fromSide": "right",
+      "toNode": "d0857da6bfa8c158",
+      "toSide": "left"
+    },
+    {
+      "id": "b01e6fcba90b847d",
+      "fromNode": "4937b91d9cc8cc3f",
+      "fromSide": "right",
+      "toNode": "b4aa3e1db024f0ea",
+      "toSide": "left"
+    },
+    {
+      "id": "d5bdd139cbaf83c6",
+      "fromNode": "83c235c8b8170e80",
+      "fromSide": "right",
+      "toNode": "7d0db84a1b25cd23",
+      "toSide": "left"
+    },
+    {
+      "id": "a4141c9be7fd9ece",
+      "fromNode": "1cbb06b665d5d553",
+      "fromSide": "right",
+      "toNode": "5c2c744cb6d98fbd",
       "toSide": "left"
     }
   ]

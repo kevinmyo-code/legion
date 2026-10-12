@@ -2,6 +2,7 @@
 type: build
 status: killed
 blocked_by: []
+blockers: ["12"]
 map: backend-erp
 ---
 

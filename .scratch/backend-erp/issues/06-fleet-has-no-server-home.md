@@ -3,6 +3,7 @@ type: decision
 status: resolved
 blocked_by: []
 map: backend-erp
+ticket: "06"
 ---
 
 # Fleet has no server home for most of what it is

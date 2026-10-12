@@ -5,8 +5,8 @@ title: "The projects tool surface, and its hands path"
 type: build
 status: open
 status-detail: ""
-blockers: ["05", "06", "07"]
-blocked-by: ["[[05-the-github-sync]]", "[[06-the-azure-devops-sync]]", "[[07-the-staleness-contract]]"]
+blockers: ["01", "04", "05", "06", "07"]
+blocked-by: ["[[01-seventh-aspect-on-the-engine]]", "[[04-does-the-summary-earn-its-place]]", "[[05-the-github-sync]]", "[[06-the-azure-devops-sync]]", "[[07-the-staleness-contract]]"]
 open-blockers: 1
 ready: false
 tags: [ticket]

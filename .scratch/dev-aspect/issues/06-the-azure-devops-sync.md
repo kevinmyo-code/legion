@@ -5,8 +5,8 @@ title: "The Azure DevOps read-through client"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
+blockers: ["02"]
+blocked-by: ["[[02-azure-devops-employer-boundary]]"]
 open-blockers: 0
 ready: true
 tags: [ticket]

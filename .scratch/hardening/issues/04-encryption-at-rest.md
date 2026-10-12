@@ -9,6 +9,7 @@ blockers: []
 blocked-by: []
 open-blockers: 0
 ready: false
+no-build-needed: true
 tags: [ticket]
 ---
 # Encryption at rest: decide it on the record
@@ -28,3 +29,5 @@ Kevin, 2026-08-24: **accept platform encryption.** Android FBE covers the powere
 Keystore guards keys, threat model is two adults; SQLCipher's cost (tooling, the pulled-DB
 verification workflow every wave relied on, performance) buys nothing against that model.
 Owed: a short ADR stating this acceptance and its premises, so it is a decision on the record.
+
+**No build needed (2026-10-11):** the ruling is to NOT adopt SQLCipher, so it authorises no code; the owed ADR exists as `docs/adr/0036-platform-encryption-accepted.md`.

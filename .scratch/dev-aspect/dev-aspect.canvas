@@ -54,8 +54,8 @@
       "id": "69c89307ca711240",
       "type": "file",
       "file": ".scratch/dev-aspect/issues/06-the-azure-devops-sync.md",
-      "x": 0,
-      "y": 750,
+      "x": 520,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -65,7 +65,7 @@
       "type": "file",
       "file": ".scratch/dev-aspect/issues/07-the-staleness-contract.md",
       "x": 520,
-      "y": 0,
+      "y": 150,
       "width": 320,
       "height": 110,
       "color": "4"
@@ -83,10 +83,31 @@
   ],
   "edges": [
     {
+      "id": "e3e1673df6c0b753",
+      "fromNode": "5b8c4730e716044d",
+      "fromSide": "right",
+      "toNode": "69c89307ca711240",
+      "toSide": "left"
+    },
+    {
       "id": "dce58c510d9df612",
       "fromNode": "215466a4719ad08b",
       "fromSide": "right",
       "toNode": "9d53fa129161577a",
+      "toSide": "left"
+    },
+    {
+      "id": "c6d05dd61079dc76",
+      "fromNode": "4e3f9d97da0d4b42",
+      "fromSide": "right",
+      "toNode": "3e86dd71d70aae23",
+      "toSide": "left"
+    },
+    {
+      "id": "eca0dba53987610f",
+      "fromNode": "c82ab5a9a5d40b3d",
+      "fromSide": "right",
+      "toNode": "3e86dd71d70aae23",
       "toSide": "left"
     },
     {
