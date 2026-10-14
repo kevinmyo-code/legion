@@ -147,7 +147,7 @@ Gemini key. The Setup screen says which are missing.</p>
 &ldquo;Voice only.&rdquo; when there is not yet a button for it - <a href="https://github.com/kevinmyo-code/legion/blob/main/docs/adr/0035-every-voice-capability-has-a-hands-path.md">ADR 0035</a>.
 The app's own Setup &gt; Assistant &gt; &ldquo;What can I do&rdquo; screen shows the same list,
 searchable, without leaving the app.</p>
-<p>Generated from <code>LiveToolbox.kt</code> by <code>tools/voice_guide.py</code> - if a tool exists
+<p>Generated from the <code>*Toolbox.kt</code> files in <code>service/</code> by <code>tools/voice_guide.py</code> - if a tool exists
 in the app it is on this page, because the build fails otherwise.</p>
 </footer>"""
 
@@ -187,7 +187,7 @@ def readme_block(tools):
         *rows,
         '',
         'Full list with plain-language descriptions: **[docs/voice.html](docs/voice.html)** -',
-        'generated from `LiveToolbox.kt`, so a tool that exists is on the page or the build fails.',
+        'generated from the `*Toolbox.kt` files in `service/`, so a tool that exists is on the page or the build fails.',
         '',
         README_END,
     ])

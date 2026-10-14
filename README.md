@@ -69,7 +69,7 @@ model rather than to sell the feature.
 | Your own trackers | 9 | &ldquo;What are you tracking for me?&rdquo; |
 
 Full list with plain-language descriptions: **[docs/voice.html](docs/voice.html)** -
-generated from `LiveToolbox.kt`, so a tool that exists is on the page or the build fails.
+generated from the `*Toolbox.kt` files in `service/`, so a tool that exists is on the page or the build fails.
 
 <!-- VOICE-SURFACE:END -->
 

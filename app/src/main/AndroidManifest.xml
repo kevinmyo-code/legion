@@ -262,19 +262,6 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice|dataSync|microphone" />
 
-        <!-- Ledger's folder-scan pipeline (ticket 08 Part 6). Deliberately its
-             own service rather than folded into AriaForegroundService above -
-             see LedgerIngestService's doc comment: that service's onCreate()
-             unconditionally boots the whole voice assistant, which opening
-             the Ledger tab must never do. dataSync only - no BLUETOOTH_CONNECT
-             or RECORD_AUDIO gate needed, and no new permission: the app
-             already holds FOREGROUND_SERVICE_DATA_SYNC. -->
-        <service
-            android:name=".service.LedgerIngestService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
         <!-- Android Auto probe harness wave 1 (`.scratch/android-auto/map.md`, research 02
              section 1c) - a STUB media3 MediaLibraryService, VISIBILITY PROBE ONLY, see
              LegionMediaLibraryService's own doc comment for exactly what it does and does not do.

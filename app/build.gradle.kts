@@ -96,7 +96,7 @@ android {
         // reconciliation AssistantIgnition.resumeIfEnabled relies on outright - there would be no
         // type left that BootReceiver is allowed to start with. 35 also activates the `dataSync`
         // 6h/24h foreground-service time cap and Service.onTimeout(), which neither
-        // AriaForegroundService nor LedgerIngestService implements today - an unimplemented
+        // AriaForegroundService implements today (LedgerIngestService, the other dataSync service, was deleted; its manifest entry removed 2026-10-14) - an unimplemented
         // onTimeout on a capped dataSync service is a fatal RemoteServiceException, not a soft
         // stop. Both are real work items, not a toggle to flip.
         targetSdk = 34

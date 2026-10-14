@@ -26,7 +26,8 @@
 0 */6 * * * python manage.py drive_statements
 
 # ADR 0057: the bank's own transaction feed (Plaid) into the ledger, for every
-# household with a bank connected. Every six hours, offset from drive_statements.
+# household with a bank connected. Every three hours, at :30, so it never lands on
+# drive_statements' hour (that one runs every six, on the hour).
 30 */3 * * * python manage.py plaid_sync
 
 # web-revamp ticket 15: Web Push - list changes, event reminders and the

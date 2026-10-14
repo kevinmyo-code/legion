@@ -96,7 +96,7 @@ import com.kevin.legion.ledger.sameCard
  * comment where `ingestScanner` used to be declared. Opening the Ledger tab
  * must never do that (`AssistantIgnition` promises "ledger... unaffected",
  * off by default). This screen instead binds to
- * [com.kevin.legion.service.LedgerIngestService], a small `dataSync`-only
+ * `LedgerIngestService` (DELETED, backend-erp ticket 25; the manifest entry went 2026-10-14), a small `dataSync`-only
  * service that owns nothing but the scanner - see [rememberIngestScanner]
  * and that service's own doc comment for the full reasoning. The bind is the
  * shape ticket 05 anticipated ("binding the Activity to the service"); only

@@ -215,7 +215,7 @@ class MainActivity : ComponentActivity() {
      * This is the same shape as L12 (a feature silently gated behind an
      * unrelated toggle).
      *
-     * Deliberately NOT `LedgerIngestService` either - that runs the folder
+     * Deliberately NOT `LedgerIngestService` either (deleted since; this records why) - that runs the folder
      * scan, a different lifecycle entirely, and coupling sync to it would tie
      * cross-device sync to whether the ledger scanner happens to be running.
      *
