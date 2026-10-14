@@ -24,8 +24,8 @@ believed.
 
 ## Where we stopped - 2026-10-11 (session 8d51fa39)
 
-- **`dev` = `main` = `ff3a824f`, pushed.** Android 4609 / 0 (JUnit XML, 11:25). Server suite NOT
-  run this session.
+- **2026-10-14 refs:** `origin/dev` = `768e750d`, `origin/main` = `c4b96481` (dev NOT merged to main).
+  Android 4650 / 0 at `768e750d` (JUnit XML, 482 files, 10-11 23:22). Server suite not run 10-11.
 - **Engine live, checked 2026-10-11 14:00 CDT:** revision `legion-00031-2d5` (deployed 07:22 CDT).
   Scheduler `legion-worker-plaid-sync` runs `30 */3 * * *` UTC; runs at 12:30, 15:30 and 18:30 UTC all
   exited 0. First run: 835 new rows, 783 older file rows replaced; later runs 0 new. 5 older rows
@@ -41,13 +41,12 @@ believed.
   A bare `adb devices` printing nothing is "command not found", not "no phone".
 - **Merged since 10-09:** Plaid as ledger truth (ADR 0057), bank sync every 3 h, ledger mirror
   freezes when a pass refuses any row, Quiet (media at half, DND lets media through),
-  `home-calendar`, `suggestion-tap`, `perf/home-calendar` (HOME calendar off the main thread).
+  `home-calendar`, `suggestion-tap`, `perf/home-calendar`, `fast` build, `retro-games` (ADR 0058).
 - **Kevin, 2026-10-11:** the Plaid production secret is swapped in; the HOME calendar and
   suggestions are installed on the A25. "A bunch of it is already done" - the board's `built`
   tickets (about 100) overstate what is still owed on the phone. Flip them as Kevin confirms.
-- **Red on `dev` before this session, not cleared:** detekt has 234 findings over its baseline
-  (none in today's files); `decision_debt.py` lists 18 resolved decisions with no build ticket.
-  Regenerating either baseline is Kevin's call, not a fix.
+- **Cleared 2026-10-11 (git log):** detekt findings fixed without touching the baseline
+  (`4c6dfe6a`); the 18 orphaned decisions carried or closed (`5157bf77`). `decision_debt.py` passes.
 - **Trap:** `docs_check.py` and `decision_debt.py` false-fail inside `.claude/worktrees/*`
   (`docs_check.py` skips any path containing `.claude/worktrees`). Run them on an export or the
   main checkout.
