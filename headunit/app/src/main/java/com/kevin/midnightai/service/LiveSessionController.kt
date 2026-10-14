@@ -9,7 +9,7 @@ import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.ai.KeyHealth
 import com.kevin.midnightai.ai.firstGreetingOpener
-import com.kevin.midnightai.billing.EntitlementManager
+import com.kevin.midnightai.ai.EntitlementManager
 import com.kevin.midnightai.ui.SavedPlacesActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

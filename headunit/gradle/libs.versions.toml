@@ -36,18 +36,11 @@ lifecycle = "2.8.0"
 activityCompose = "1.9.0"
 firebase-bom = "33.7.0"
 zxing-core = "3.5.3"
-billing = "7.1.1"
 playServicesAuth = "21.2.0"
 # Vosk (debug-only wake-word validation harness, .scratch/custom-wake-word/issues/04):
 # published directly to Maven Central, no JitPack needed. Verified via
 # search.maven.org (g:com.alphacephei a:vosk-android) before adding.
 vosk = "0.3.47"
-# Mapbox Navigation SDK v3 (.scratch/mapbox-embedded-nav/). Pinned deliberately
-# to v3.26.0 - the highest non-alpha/non-rc semver tag on GitHub Releases as of
-# the research pass, NOT the docs site's "current" v3.28.0-alpha.2 and NOT the
-# "Latest"-flagged v3.25.2 tag (lower semver than 3.26.0). Ambiguity is real;
-# re-check before bumping. See research-navsdk-v3-dropin.md Q2.
-mapboxNav = "3.26.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -89,7 +82,6 @@ firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashly
 # (2026-07-19) firebase-auth / appcheck-playintegrity / firestore / functions entries
 # removed - the entitlement broker they served was deleted 2026-07-16 and nothing in
 # app/src references them. Crashlytics is the only live Firebase artifact.
-billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 # Google Identity Authorization API (com.google.android.gms.auth.api.identity):
 # on-device authorization for the driver's OWN Google Drive appDataFolder, used
 # by the cross-device BYO-cloud sync (S1). NOT sign-in/OAuth for a Kevin-hosted
@@ -100,10 +92,6 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 # Debug-only offline speech recognition for the wake-word validation harness (ticket 04).
 # Pulls in net.java.dev.jna transitively (declared in vosk-android's own POM).
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
-# Core navigation engine only (routing, trip session, MapboxOptions). UI layer
-# (ui-components / ux framework) is a separate artifact, deliberately NOT added
-# yet - which one to use is still open (.scratch/mapbox-embedded-nav/issues/07-*).
-mapbox-navigation-core = { group = "com.mapbox.navigationcore", name = "android-ndk27", version.ref = "mapboxNav" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }

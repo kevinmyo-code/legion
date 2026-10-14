@@ -261,9 +261,6 @@ dependencies {
     // imports of any of those four artifacts in app/src. Crashlytics + the BOM above
     // are the only live Firebase surface.
 
-    // Play Billing: the one-time BYO-key unlock (CLAUDE.md sec 2, $10, no trial,
-    // no subscription). The app's only billing surface.
-    implementation(libs.billing.ktx)
 
     // Google Identity Authorization API: on-device authorization to the driver's
     // OWN Google Drive appDataFolder for cross-device BYO-cloud sync (S1, CLAUDE.md

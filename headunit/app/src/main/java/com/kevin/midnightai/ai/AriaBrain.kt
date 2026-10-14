@@ -222,9 +222,10 @@ class AriaBrain private constructor(context: Context) {
         val today = com.kevin.midnightai.time.TrustedClock.promptLine()
 
         val persona = CompanionProfile.persona(appContext).ifBlank { VehicleController.DEFAULT_PERSONA }
-        // Identity first and from ONE source: whether the speaker is Zero (rides
-        // along) or the driver's own car (speaks as itself) is the free/paid line,
-        // not a constant. safetyInstructions goes last: it says it overrides the
+        // Identity first and from ONE source (CompanionIdentity: Uncle Moose, who rides
+        // along). This comment used to say the identity was Zero-or-car-self, the
+        // free/paid line; that branch is gone with the commercial model.
+        // safetyInstructions goes last: it says it overrides the
         // persona's tone, and a rule that overrides another reads more reliably
         // after the thing it overrides than before it.
         val sb = StringBuilder(persona)

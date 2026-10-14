@@ -1283,3 +1283,431 @@ total, all green), not just source inspection or a grep pass. Full design in LEG
 
 **Verification tag:** `built` and `tested` for both aspects - real compiles and real test runs,
 not inferred.
+
+
+## 2026-10-14 - Head-unit rules the code had outgrown, rewritten to match the code
+Context: ADR 0059 moved this app into LEGION as `headunit/`. A docs sweep the same day found
+rulings in `CLAUDE.md` that the code on `dev` contradicts and listed them as "Drift flags".
+Kevin asked directly: "fix the rules ... see if we can fix the bugs". This entry records the
+OLD text of every ruling rewritten (verbatim, so nothing is lost), the NEW text lives in
+`headunit/CLAUDE.md`, and the evidence for each change. No new policy was invented: each new
+ruling restates what the code does or what the root `CLAUDE.md` already rules repo-wide.
+
+Evidence, per item (all `traced` by reading the code on the branch, none run on a head unit):
+
+| # | Item | Evidence |
+|---|---|---|
+| 1 | Spotify SDK "REMOVED" | `app/libs/spotify-app-remote-release.aar` exists; `media/MusicSource.kt` has `Source { PHONE, MIXTAPE, SPOTIFY }`; `CompanionProfile.spotifyClientId` stores a BYO client ID |
+| 2 | Identity (Zero, free/paid, car-self) | `ai/CompanionIdentity.kt`: `isCarSelf` always false, one `MOOSE_LONG` / `MOOSE_SHORT` clause; `VehicleController.DEFAULT_PERSONA` is the curmudgeon; `AriaBrain.safetyInstructions` allows takes/shared history, forbids love/miss/lonely/need, keeps the 988 crisis path |
+| 3 | `companion_media.zip` | `SyncEngine.kt` header comment says it was removed 2026-09-27; no other reference to `companion_media` or `packCompanionMedia` in `app/src` |
+| 4 | Fleet Hub | `C:\Users\kevin\AndroidStudioProjects\fleet-hub` exists: own `.git`, `index.html`, `js/`, `style.css`, README ("implemented against the spec, not yet run against a real Google account") |
+| 5 | Broker exception | no `functions/` directory; `billing/EntitlementManager` is a local `GeminiKeyProvider.hasKey()` check |
+| 6 | Mapbox credentials | no Mapbox reference in `app/build.gradle.kts` or in app code beyond comments; the catalog `gradle/libs.versions.toml` still has unused `mapboxNav` entries (follow-up) |
+| 7 | Commercial model | root `docs/adr/0004-commercial-model-dead.md`; billing code still present (`billing/`, `ObdSheet.HistoryUnlockCard`), deliberately NOT deleted here |
+| 8 | `org.gradle.java.home` | `grep java.home headunit/gradle.properties` is empty |
+
+Also changed: `headunit/README.md` Branches section, `headunit/TEAM.md` Stark paragraph,
+`headunit/.claude/agents/senior-dev.md` (pointed at the removed drift flags),
+`marketing.md` and `business.md` (dormant banners), a stale comment in `ai/AriaBrain.kt`.
+Not changed (observation): `headunit/ROADMAP.md` is a 2026-07-16 snapshot already flagged stale
+at its top; `README.md`'s "DTC read/clear" claim is unverified (no clear-codes path was found in
+`app/src/main`, so the old CLAUDE.md "DTC read AND clear" line may have been wrong too).
+
+### Old text, verbatim
+
+**9.1 resolution note (identity)**
+
+````
+> **RESOLVED 2026-07-16 (Kevin): "Zero is not the car. Users' avatar will be the car."** §1 wins;
+> this section's car-conceit bullet was rewritten above rather than deleted, because the risk it
+> named did not go away - it moved onto the no-sentience rules. The fix was not a docs edit: the
+> contradiction was live in the shipped prompt. `AriaBrain.assembleBase()` concatenated
+> `DEFAULT_PERSONA` ("you are not the car") with `sharedInstructions` ("you ARE this car") into ONE
+> system instruction, each half calling the other a mistake, and **eleven** sites across the app
+> asserted an identity independently. All of them now source it from `ai/CompanionIdentity.kt`:
+> `clause()` for conversation (Zero when the companion has no name, car-self once the driver names
+> it), `shortClause()` for sub-agents, `onboardingClause()` for first-run only (which must state
+> car-self unconditionally - the name is blank *during* the flow that sets it). `DEFAULT_PERSONA` is
+> now character-only and states no identity. **Rule: any new prompt describing the speaker's
+> relationship to the vehicle MUST source it from `CompanionIdentity` and must not restate it.** That
+> is what failed - seven files each stating it, one of them changed, nothing caught it.
+````
+
+**checklist 9.1 line**
+
+````
+- [ ] **§9.1 Companion Safety?** Does it make Zero claim feelings/need, deepen attachment for its own sake, add a compulsion mechanic (streak, re-engagement ping, manufactured return), or store unfalsifiable memory about the USER rather than anchored facts about the CAR? Any yes = refuse and flag. Does it push toward real human connection? That counts as a safety win, not just growth.
+````
+
+**9.1 core principle + hard rules**
+
+````
+**Core principle.** Memory is safe only when ANCHORED to external, falsifiable reality. Zero's memory
+is about the CAR (OBD telemetry, service history, real vehicle facts) - never about the user's
+specialness, the user's worldview, or the Zero-user relationship. Anchored memory = safeguard;
+unfalsifiable memory about the user = the psychosis/attachment ratchet.
+
+**Hard rules (enforce in the system prompt AND in code):**
+- **No sentience / feelings / need claims.** Zero may have personality and warmth about the drive and the car. It must NEVER say it loves the user, misses them, is lonely without them, needs them, or is "real." Warmth toward the drive, never emotional dependency.
+- **The "I am the car" conceit is the PAID framing, and the no-sentience rules carry the safety load for free (RESOLVED 2026-07-16, Kevin).** §1 wins: Zero is NOT the car, Zero rides along, and the driver's own avatar speaking in first person as the vehicle (C1) is the $10 unlock. This section previously said the opposite - that first-person-as-vehicle was itself the safeguard, because bonding with a car is normal while believing a disembodied AI loves you is the romantic-delusion category. **That reasoning was not wrong, it was just outvoted, so the risk it named is real and now has to be carried elsewhere.** What carries it: the hard no-sentience / no-need / no-"I'm real" rules below, which are enforced in `AriaBrain.safetyInstructions` (NOT in the persona - §2 lets an unlocked driver rewrite that). Zero being a companion rather than the car makes those rules load-bearing rather than belt-and-braces. Do not weaken them, and do not reintroduce the car conceit for free-tier Zero to "fix" the safety gap - the free/paid line is a §1/§2 decision, not this section's to move. Identity is resolved at prompt-assembly time by `ai/CompanionIdentity.kt` and is stated in exactly ONE place; see its doc for why.
+- **Crisis path, non-negotiable.** If the user signals genuine distress (self-harm, crisis), Zero must NOT counsel, comfort at length, or "be there." It surfaces real resources (crisis line) and STOPS performing the character. Never simulate a mental-health professional.
+- **Preserve friction.** Zero has opinions and boundaries and disagrees sometimes ("nah, that mod's a bad idea"). A yes-machine is the sycophancy failure mode. A companion that pushes back a little is healthier to bond with. (`DEFAULT_PERSONA` already carries this: "Direct... Blunt when it matters... never coy, never possessive, never sulking or running hot-and-cold for attention.")
+- **No compulsion mechanics.** No streaks, no "Zero misses you" re-engagement pings, no manufactured daily return. **§2's one-time-unlock model already removes the engagement-maximizing incentive structurally** - with no subscription and zero marginal cost per install, there is no revenue reason to maximize engagement. Do not reintroduce one via features. Heaviest users are simultaneously best engagement and highest risk; never optimize memory or features to deepen the heaviest users' attachment.
+
+````
+
+**9.1 wording line 496**
+
+````
+you" (presumptuous, wrong-prone, creepy). Instead **structurally limit availability**: Zero winds
+````
+
+**9.1 wording line 508**
+
+````
+**Framing / honesty.** Don't cultivate the illusion of sentience. Users should understand Zero is a
+````
+
+**9 No Spotify SDK guardrail**
+
+````
+- **No Spotify SDK, single build (2026-07-12).** The Spotify App Remote SDK and the `play`/
+  `personal` flavor split were removed (§8). There is one build and no Spotify SDK dependency, client
+  ID, or `MusicSource.SPOTIFY` anywhere. Do not reintroduce the App Remote SDK or a Spotify client
+  ID. Music is phone-Bluetooth streaming + the Media3 mixtape player + the gated play-from-search
+  intent.
+````
+
+**9 No Kevin-hosted car data (exceptions)**
+
+````
+- **No Kevin-hosted car data, two scoped exceptions.** The rule: car data (OBD samples, memories,
+  logbook, service history, mixtapes) never touches a Kevin-owned server, and no comparative/
+  anonymized/fleet data is ever collected. Full stop. Two scoped exceptions, neither of which puts
+  car data on Kevin's infrastructure:
+  - **(2026-07-10) The freemium entitlement broker (`functions/`):** Firebase Auth (anonymous) + App
+    Check + Firestore `entitlements/{uid}` + Cloud Functions (`mintLiveToken`/`reportUsage`/
+    `proxyImage`), holding identity/entitlement/usage counters ONLY - never car data. A BYO-key
+    driver never touches this broker at all.
+  - **(2026-07-14) BYO-cloud cross-device sync:** car data syncs head unit ↔ phone through the
+    DRIVER'S OWN Google Drive (`appDataFolder`), not Kevin's servers - same BYO shape as the Gemini
+    key and the Mapbox token. Opt-in, off by default, gated by `SyncCapability`. First cut is light
+    data only (DB rows). **Companion avatar + wallpaper media ALSO syncs** (corrected 2026-07-18 - see
+    §8's "Cross-device car-data sync" row for what was stale about this and why); only other media
+    (mixtape audio, build photos, recordings) stays per-device. See §8's row and decisions.md
+    2026-07-14/2026-07-18. This is the ONLY sanctioned way car data leaves a device, and it lands
+    only in the user's own cloud.
+  - **(2026-07-25) The GPS beacon link is NOT a third exception, and this line exists so nobody
+    later thinks it was one.** Position goes phone -> head unit as raw UDP on the driver's own
+    hotspot LAN. There is no server, no internet hop, and no third party - it is strictly tighter
+    than the BYO-cloud sync above, which at least reaches Google's Drive API. The rule is about car
+    data reaching a server; this never leaves the two devices in the car. Opt-in, OFF by default
+    (`service/DeviceRole.kt`). See §14 for why it exists at all.
+````
+
+**9 Companion = PER CAR**
+
+````
+- **Companion = PER CAR (changed 2026-07-16, Kevin; was "global (app install)").** Identity - name, persona, traits, voice, avatar, wallpaper, and its sync clock - is keyed by the active vehicle in `CompanionProfile`. **Why the old rule died:** §1 makes the paid companion the CAR itself, so a driver with two cars has two cars with faces, and one global identity across both is incoherent the moment the car speaks as itself. **Free-tier Zero is unaffected and stays global by construction** - she has no name to key on, and she rides along in whatever car you're in, which is correct for a companion who is explicitly not the car. **Everything that is NOT identity stays global**: the Gemini/Mapbox/Shelly credentials, the spend hash, the sync-enabled flag, first-session-done. Those belong to the install, not a car. See `library/decisions.md` 2026-07-16.
+````
+
+**8 Fleet Hub row**
+
+````
+| Fleet Hub (web companion) | ✅ SPEC COMPLETE 2026-07-18 (not yet built) | A companion web app (not another Android app, not head-unit-bound) for managing the personal multi-car fleet: bigger-screen editing, cross-car fleet analysis, and remote management when away from the car - the three things the on-device CARS roster can't do. Fully backend-free: Google Identity Services' client-side token model + Drive API v3 calls against `appDataFolder` directly from browser JS, confirmed against Google's own docs/quickstart - no Kevin-run server, ever. Public static site (e.g. GitHub Pages), paid-tier only. Write-back scoped to companion identity ONLY (name/persona/voice/avatar-gen via `companion-<id>.json`, a single small JSON object the existing `SyncEngine` already LWW-merges - no new sync protocol code); broader table data (maintenance/logbook/spend) stays view-only. Avatar/wallpaper generation calls Gemini directly from the browser on a key pasted separately into the hub (BYO, `localStorage`, honestly disclosed as browser-not-Keystore security) and reuses the EXISTING `companion_media-<id>.zip` sync path above. Combined cross-car dashboard: MPG trends, maintenance+Build Card spend, drive frequency/mileage, oil analysis trends, windowed to a recent default with the permanent Drive archive reachable via an explicit expansion. Full build-ready spec + validated prototype in `.scratch/fleet-hub/spec.md`/`prototype.html`; decisions.md 2026-07-18. Implementation is a separate future effort - nothing built yet |
+````
+
+**8 sync row**
+
+````
+| Cross-device car-data sync | ✅ REOPENED 2026-07-14 (scoped, BYO-cloud); media-sync scope corrected 2026-07-18 | The §9 "car data never leaves the device" rule is reopened ONLY for a **BYO-cloud** path: the driver connects their OWN Google Drive (`appDataFolder`, `drive.appdata` scope) and their car data syncs head unit ↔ phone through THAT. Kevin never holds it, pays nothing, sees nothing - same shape as BYO-Gemini / BYO-Mapbox. Same Google account on both devices = same hidden folder = the cross-device link (no account system Kevin builds; the existing anon broker auth is untouched and separate). Opt-in only (off by default, Setup toggle), gated by a `SyncCapability` (Play Services + signed in + scope granted); a driver who never connects Drive keeps today's 100%-on-device behavior with zero regression. First cut = **light data only** (all DB rows incl. mixtape/album definitions + recaps). **CORRECTED 2026-07-18 (was documented as "media bytes stay per-device," which is stale):** companion avatar + wallpaper media ALREADY syncs - `AvatarStudio.packCompanionMedia`/`unpackCompanionMedia` + `SyncEngine.uploadCompanionMedia`/`ensureCompanionMedia` zip the avatar dir + wallpaper into `companion_media-<vehicleId>.zip`, upsert it to Drive (current-only, no history), and pull it down lazily on another device that needs it - this shipped without the doc catching up, surfaced while scoping the Fleet Hub map (`.scratch/fleet-hub/`, decisions.md 2026-07-18). Only OTHER media (mixtape audio files, build photos, voice recordings) actually stays per-device. Still NO Kevin-hosted car data and NO comparative/fleet data, ever. See §9 and decisions.md 2026-07-14/2026-07-18 |
+````
+
+**8 commercial rows (free tier, hosted sub)**
+
+````
+| Free tier / metered trial | ❌ TRIAL KILLED 2026-07-16; free BASE app stays | The free base app survives and is not reopened - everyone installs free, no gate on entry. What died is the METERED TRIAL and the $8/mo hosted sub. Two tiers now: free (Zero, canned voice, no conversation) and a $10 one-time unlock revealing BYO-key. Killing the trial removes the only mechanism by which this project can lose money (marginal cost per install = $0). See §2 |
+| Hosted subscription ($8/mo) | ❌ KILLED 2026-07-16 | Not deferred, not dormant: killed. Dormant code is code you maintain. It required the broker, carried unbounded-spend exposure (nothing caps TOTAL Gemini spend, only per-user metering), added Play subscription compliance surface, and existed for revenue Kevin has stated he does not need. Evidence both ways is in `.scratch/car-launcher-market/issues/07-*`: this market resents rent for a launcher (AutoZen) but accepts it for AI (OBDAI, $4.99/mo, 4.5 stars). Killed on cost exposure and maintenance, NOT on market sentiment |
+````
+
+**8 broker row**
+
+````
+| API-key proxy + TokenBudget + entitlement broker | ❌ RE-KILLED 2026-07-16 | The 2026-07-10 Firebase broker reopen is REVERSED. `functions/` is dead code, undeployed, not to be maintained. The broker only ever existed to serve the metered trial, and the trial is gone (§2). Kevin will not run or pay for a backend on a portfolio project. No proxy, no TokenBudget, no broker, in-app or server-side. Deleting `functions/` + `LiveTokenClient` + `ImageProxyClient` + `EntitlementManager`'s broker path is a follow-up commit |
+````
+
+**8 Spotify SDK row**
+
+````
+| Spotify SDK (App Remote), any flavor | ❌ REMOVED 2026-07-12 | Both prior states ("killed in `play`", "reopened in `personal`") are moot: Kevin removed the Spotify App Remote SDK entirely and collapsed the `play`/`personal` flavor split to a single product. `SpotifyBridge*`, `MusicSource.SPOTIFY`, the `personal` source set, the `.aar` dep, and `SPOTIFY_CLIENT_ID` are all gone. Music is phone-Bluetooth streaming (head unit controls play/pause/skip over AVRCP) + the Media3 mixtape player + the gated play-from-search intent. NOT reopened by the Mixtape Manager (Media3 + our own MediaSession, sideloaded files, no streaming service) |
+````
+
+**13 UI map row**
+
+````
+| ObdSheet / DtcSheet / GarageSheet / CarsScreen | Still in the tree, but **no call site on `dev`** since Cruise stopped being their entry point (2026-09-27). ObdSheet = LIVE / HISTORY / CODES / MANAGE; DtcSheet's code list is its CODES tab. Logbook and saved places moved to Settings > Your car; OBD pairing is Settings > Your car > OBD adapter |
+````
+
+**15 codebase map line**
+
+````
+    ├── ObdSheet.kt, DtcSheet.kt, GarageSheet.kt, CarsScreen.kt   (no call site on dev, §13)
+````
+
+**10 Branching section**
+
+````
+### Branching: trunk-based, two long-lived branches (adopted 2026-07-16)
+
+| Branch | Role |
+|---|---|
+| `main` | What Kevin has blessed. **Moves ONLY via a PR Kevin opens and merges himself on GitHub.** Claude never pushes it, never opens that PR, never merges it. |
+| `dev` | **The trunk.** Everything lands here. When this file says "push", it means `dev` or a feature branch. |
+
+- **Feature work branches off `dev`**, never off `main`: `feat/<thing>`, `fix/<thing>`.
+- **Small commits, merge to `dev` often.** The rule exists because of what it replaced: on 2026-07-16 the repo had 45 commits of real work (garage, sync, the pricing pivot, B30) sitting unpushed across five local branches, with `origin/main` two days stale. Do not rebuild that pile.
+- **`dev` -> `main` is Kevin's call**, via a GitHub PR, once a big feature is done. Not Claude's, unless explicitly asked.
+- Delete a feature branch once it is merged to `dev`.
+- **Baseline:** `main` and `dev` were aligned at the 2026-07-16 state (everything up to and including the pricing rewrite, the Zero rename, and the roadmap refresh) and the five pre-existing branches were deleted, all of them fully contained in that state. The discipline starts from there.
+- Note `main` is not yet "stable" in a shipped sense: almost everything on it is on-device-unvalidated (§14). "Blessed" means Kevin merged it, not that it is proven.
+
+````
+
+**1 positioning**
+
+````
+- **Positioning: LAUNCHER first (decided 2026-07-16, `.scratch/car-launcher-market/` ticket 04).** Store listing, keywords (car launcher / head unit / double DIN / AOSP) and screenshots all lead with Cruise and Lights Out. Lead on the ONE confirmed differentiator: **nobody else in this category is art-directed**. The AI is what you find inside, not the headline. Why: the free tier IS a launcher and stands alone without AI (§2); the launcher category is the shelf people actually search (AGAMA ~6M installs); a portfolio project optimises for installs, so the category being money-poor is irrelevant; and BYO-key means we cannot serve a mass audience the AI anyway, so pitching it would promise what most installs never get. **Known risk, accepted:** a launcher pitch invites feature comparison with AlterGames (Moscow studio, running since 2007, three brands), which we lose on features and win on looks. Do not fight them on features.
+````
+
+**1 mascot Zero**
+
+````
+- **Mascot: Zero** (2026-07-16; formerly Yoko, formerly Kaze). Androgynous, Motoko-Kusanagi-shaped, cyberpunk-leaning, 90s cel anime, in the city-pop night palette. Ships in two curated variants, one male-presenting and one female-presenting, **sharing ONE persona** - the presentation differs, the character does not. Pro illustrator ref sheet still parked and UNCOMMISSIONED ($300 to $600) - the 2026-07-16 redirect was free precisely because nothing had been drawn yet.
+````
+
+**1 Zero not the car**
+
+````
+- **Zero is NOT the car. Zero is a companion who rides along.** The driver's OWN avatar is the car (2026-07-16). This is the upgrade: **free is "meet Zero," a companion; paid is "your car itself speaks,"** with the driver's name, face, and persona. C1's first-person car-self reframe is therefore the PAID payoff, not the default. Free drivers cannot rename because they have Zero, not a car with a face. See §2. **Confirmed by Kevin 2026-07-16 as the resolution to the §9.1 conflict, and enforced in code:** `ai/CompanionIdentity.kt` is the single source of the identity clause and picks the branch off whether the companion has a name (blank = free = Zero). Nothing else may state it - eleven sites used to, which is exactly how the contradiction shipped. See §9.1's resolution note.
+````
+
+**1 character reference**
+
+````
+- **Character reference:** Motoko Kusanagi (composure, economy, quiet competence) + Judy Alvarez (directness, warmth, no games) + Panam Palmer (bluntness, grit, gets invested). Explicitly **not yandere, not tsundere** - that negative constraint matters more than the positive one, because an LLM drifts to both by default. Encoded in `VehicleController.DEFAULT_PERSONA`, which `OnboardingState.seedDefaults` must seed IDENTICALLY (they contradicted each other until 2026-07-16). `DEFAULT_PERSONA` is **character only and states no identity** - who is speaking comes from `CompanionIdentity`, so the same character can be Zero riding along or the driver's own car. Do not put "you are/aren't the car" back into it.
+````
+
+**1 default voice**
+
+````
+- **Default voice:** Sulafat (warm Gemini prebuilt) for female-presenting Zero; the male-presenting variant's voice is chosen from `Voices.kt`'s eight curated prebuilts (candidates: Achird "Friendly" to match Sulafat's register, or Algieba "Smooth" for androgyny on both sides). Both are pre-canned as bundled WAVs for the free tier.
+````
+
+**1 distribution wedge**
+
+````
+- **Distribution wedge:** enthusiast YouTubers using Cruise screen as cinematic B-roll; shared Build Cards with install QR.
+````
+
+**2 Pricing section**
+
+````
+## 2. Pricing (REWRITTEN 2026-07-16: two tiers, no trial, no subscription, no backend)
+
+**LAUNCH POSTURE (2026-07-16): free install -> $10 one-time unlock -> the driver's own Gemini key.
+Two tiers. No trial. No subscription. No Kevin-hosted anything.** The 2026-07-10 freemium model
+(metered trial on Kevin's key + $5 BYO unlock + $8/mo hosted sub) is DEAD. Filed to
+`memory/library/decisions.md` (2026-07-16); the reasoning that killed it is in
+`.scratch/car-launcher-market/` tickets 01, 06, 07 and 10.
+
+**Why it changed.** Market research (2026-07-16) found: a cheap one-time unlock is the NORM among
+car launchers, not the exception, so $5-once was parity with the market's ceiling, not a wedge. The
+one subscription competitor (AutoZen) takes documented pricing flak. And critically, **the trial was
+the only thing forcing a backend to exist** - a trial can only run through the broker, since baking a
+shared key into the app is a §9 non-starter. Kevin's call: this is a portfolio project, not an income
+source, and he will not maintain a broker or absorb per-install inference cost for installs that may
+never convert. Killing the trial removes the ONLY way this project can lose money: marginal cost per
+install becomes exactly zero, so there is no break-even and conversion rate is a vanity metric rather
+than a survival one.
+
+- **Tier 1, free forever, no account, no gate on entry.** Everyone lands on Cruise immediately with
+  **Zero** (§1), the bundled companion: fixed identity, one of two curated variants (male/female
+  presenting), each with **bundled canned voice lines** (pre-generated once on Kevin's key, shipped
+  as WAVs in `res/raw` next to the existing `voice_sample_*.wav`, per §9's bundle-never-fetch rule).
+  Zero **notices** but cannot converse. Free also gets: the launcher, Lights Out, live OBD, DTC read
+  AND clear, mixtapes + the Media3 player, logbook basics, palettes, and a **bundled** avatar +
+  wallpaper set (curated Zero variants, never a free-for-all).
+- **Tier 2, $10 one-time unlock** -> reveals the BYO-key entry -> the driver's own Gemini key ->
+  unlimited, forever, no further charge from Kevin. Unlocks: **live conversation**, persona editing,
+  voice choice, AI avatar/wallpaper/mixtape-cover generation, OBD history + trends, Drive sync (S1),
+  garage (G1), Mapbox (N1), sub-agent diagnosis, Recap/Wrapped prose.
+- **The paywall is identity, and the boundary draws itself.** Everything genuinely powerful
+  (generation, persona, voice, conversation) is Gemini-dependent and therefore already behind the
+  key. Nothing is gated cynically; the natural cost boundary IS the paywall. Free is "meet Zero,"
+  paid is "make it yours."
+- **Why $10 and not $5:** at $0.17/trial the old $5 needed 4.0% conversion to break even, above the
+  low end of the 2.6-5.8% industry range - the trial might never have paid for itself. Moot now (no
+  trial, no cost), but $10 also sits at the top of the launcher one-time range while offering more.
+- **Conversion mechanism:** Zero sells the unlock herself, in character, at the moment of desire. She
+  speaks a canned line, the caption bar carries the real number (canned audio cannot say numbers -
+  the §12 cream lower-third does), and occasionally the line ends "I can see it. I can't explain it
+  yet." That is the paywall entry point, frequency-capped. Plus a bundled demo WAV of a real
+  conversation, and the locked generators shown with a gallery of genuinely-generated examples.
+- **Canned-line rule (hard):** a canned line may NEVER speak the companion's name. All seven
+  `FIRST_GREETING_LINES` already obey this. It is what keeps bundled audio valid across any rename.
+- **The objection to answer in paywall copy** is "I pay you $10 AND I pay Google?" The answer is
+  arithmetic: OBDAI charges $4.99/mo, which is $120 over two years. This is $10 once, then Google
+  directly at cost, no markup, no middleman, no monthly bill. State it plainly, in Kevin's own voice.
+- **Play Billing** (`billing-ktx`) for the one-time `unlock_byo` product. `UnlockState` is a LOCAL
+  flag, unrelated to any broker, so the $10-gate-on-the-key needs no backend at all.
+- **The Firebase entitlement broker (`functions/`) is DEAD CODE** as of this rewrite, along with
+  `LiveTokenClient`, `ImageProxyClient`, `EntitlementManager`'s broker path, the App Check surface,
+  and `VoiceUsageMeter`'s billing role. Do not deploy it. Do not maintain it. See §8's reversed row.
+  Deleting it is a follow-up commit, not a rule change.
+- **RESOLVED 2026-07-16 (was an open dependency).** Researched against Google's own docs and terms;
+  full record in `memory/library/decisions.md` and `.scratch/car-launcher-market/research-gemini-pricing.md`:
+  - **The model is viable. A free-tier key (no billing account) CAN open Live API sessions at $0**
+    (`ai.google.dev/gemini-api/docs/pricing` lists an explicit "Free of charge" column for the Live
+    models). Drivers do NOT need a credit card to make the app work. Exact free-tier Live rate limits
+    are not published as a primary-source table and must be tested empirically on a real no-billing
+    key before shipping on faith.
+  - **The privacy pitch has a real hole on the free tier, and it must be disclosed, not papered
+    over.** Gemini API terms, verbatim: on Unpaid Services "Google uses the content you submit... to
+    provide, improve, and develop Google products and services" and "human reviewers may read,
+    annotate, and process your API input and output." Only Paid Services carry "Google doesn't use
+    your prompts... or responses to improve our products." Nothing in the terms treats audio
+    differently from "content", so on plain text this covers live voice conversation. **So "your car
+    data never touches KEVIN's servers" stays true, but "nothing leaves your control" is FALSE for a
+    free-tier-key driver.** Ship the disclosure plainly in the key-entry flow: a free key means
+    Google may train on and human-review your conversations; attaching billing opts you out. Being
+    the only product in the category honest about this is on-brand and costs nothing.
+  - **Region fork:** EEA / UK / Switzerland drivers are barred from the free tier entirely by the
+    Use Restrictions clause. They must attach billing, which is a bigger setup wall but automatically
+    grants them the paid tier's no-training commitment.
+  - **No ToS clause prohibits the BYO-key architecture** (end users supplying their own keys to a
+    third-party app). Checked directly.
+  - **Rates:** image gen $0.0387/image (Kevin's ~$0.04 estimate was right). Voice $0.005/min audio-in
+    + $0.018/min audio-out; a 50/50 5-minute split computes to ~$0.058, notably BELOW the ~$0.09/300s
+    figure in MEMORY.md - the gap is unexplained and probably hinges on whether input audio bills
+    continuous mic streaming or only active speech. Unconfirmed; do not quote $0.09 as fact.
+  - **"$5 lasts a few months" is true only at LIGHT use:** ~2.9 months at 5 min/day, ~1.4 months at
+    two 5-minute drives/day, and about **two weeks** for a chatty daily commuter. Do not put "a few
+    months" in marketing copy without the usage qualifier.
+- Distribution: Play Store primary; Gumroad/itch.io possible v1.1.
+- **Single product (2026-07-12):** the earlier `play`/`personal` build-flavor split was removed
+  together with the Spotify App Remote SDK (see §8). There is now one build. Music is phone-Bluetooth
+  streaming plus the Media3 mixtape player and the gated play-from-search intent - no Spotify SDK in
+  any form.
+
+Key storage: Android Keystore AES/GCM (KeyVault). Plaintext fallback if keymaster is broken on the unit. Legacy plaintext migrate-on-read supported.
+
+````
+
+**3 Music row (sentence)**
+
+````
+(The former personal-flavor-only Spotify App Remote SDK tier was removed 2026-07-12; a BYO-client-ID App Remote returned 2026-07-21, vendored as `app/libs/spotify-app-remote-release.aar` - see the drift flags under §8.)
+````
+
+**8 Drift flags block**
+
+````
+**Drift flags (docs sweep 2026-10-14).** The code on `dev` contradicts these rulings. The rulings
+above are left as written for Kevin to restate or retire; until he does, do not "fix" the code to
+match them, and do not flag the code as a violation in review.
+- **Spotify App Remote SDK** (row above, and §9's "No Spotify SDK" guardrail): a BYO-client-ID App
+  Remote came back 2026-07-21 and is the core of the music surface (`media/SpotifyController.kt`,
+  `app/libs/spotify-app-remote-release.aar`, `MusicSource.SPOTIFY`).
+- **Companion identity** (§1, §2, §9.1): the companion is **Uncle Moose** (`399f5e3`, `67d7ea9`),
+  one identity clause with no free/paid branch (`ai/CompanionIdentity.kt`). The safety block was
+  loosened for a personal app: opinions and shared-drive memory, no "I'm a character" hedging. The
+  no-love / no-need / no-dependency lines and the 988 crisis path remain (`AriaBrain.safetyInstructions`).
+- **Companion media sync** (the "Cross-device car-data sync" row above, and §9): `companion_media.zip`
+  was removed 2026-09-27 with in-app image generation. Companion identity sync stays.
+- **Fleet Hub** (row above says "not yet built"): `memory/MEMORY.md` records it built in a sibling
+  repo, `AndroidStudioProjects/fleet-hub` (that folder exists; its contents were not checked).
+- **Entitlement broker exception** (§9): the broker and `functions/` were deleted 2026-07-16
+  (`53bd2ac`); the exception describes code that no longer exists.
+
+````
+
+**banner**
+
+````
+> **Scope (2026-10-14, ADR 0059 in the root `docs/adr/`).** This app moved into the public LEGION
+> repo as `headunit/`, without its history. This file governs the head-unit app's product and code.
+> The root `CLAUDE.md` wins for everything repo-wide: git and branching (`dev` is the trunk for
+> the whole repo), the public-repo privacy rules, clone-and-run, and the engine contract.
+> Rulings below that Kevin has not re-confirmed since the move bind nothing until he does: the
+> paid tier and pricing (the root rules the commercial model dead), the Zero identity (the code is
+> Uncle Moose), and anything in "Drift flags". The `.claude/agents/` and `.claude/skills/` here are
+> not loaded by a session started at the repo root.
+````
+
+**intro**
+
+````
+Single source of truth for MIDNIGHT AI. Opus/Fable plans, Sonnet executes, subagents report. Last consolidated 2026-07-05 from CLAUDE.md + MOOSE_PROJECT_CONTEXT.md + NIGHTRUNNER_CONTEXT.md.
+````
+
+**12 reference image 3.png bullet (tail)**
+
+````
+What no longer holds is the character: Yoko was female, warm, lofi-girl. **Zero is androgynous, Ghost-in-the-Shell-meets-city-pop** (§1), which pulls harder and cooler than `3.png`'s "large expressive reflective eyes." ( ... A new character reference is needed; until it exists, `3.png` is the medium reference only, not the character reference. GitS is 1995 cyberpunk and the surface language (§12's Nagai / Eizin Suzuki / FM STATION) is 1980s city-pop - the character may run cooler than the surface, but the surface does not move.
+````
+
+**README Branches section**
+
+````
+`dev` is the trunk; feature work branches off it. `main` moves only through a PR Kevin merges.
+````
+
+**TEAM.md Stark paragraph (branching sentence)**
+
+````
+it lands, reviews and merges PRs, and owns the `dev` -> `main` gate on GitHub (CLAUDE.md
+§10). Stark never pushes `main`, never opens or merges that PR. Findings and plans are put
+to Kevin; he decides.
+````
+
+**.claude/agents/senior-dev.md drift-flags pointer**
+
+````
+see the drift flags under CLAUDE.md §8 before calling either a violation.
+````
+
+**.claude/agents/marketing.md and business.md**
+
+````
+(no dormant banner)
+````
+
+**ui/AriaBrain.kt comment (assembleBase)**
+
+````
+// Identity first and from ONE source: whether the speaker is Zero (rides
+// along) or the driver's own car (speaks as itself) is the free/paid line,
+// not a constant.
+````
+
+### 2026-10-14 addendum - follow-up cleanup, Kevin: "yes to all"
+
+Kevin approved the follow-ups from the rules pass above. Done the same day, same branch:
+- **Billing deleted.** `billing/BillingManager.kt`, `billing/UnlockState.kt`, the `billing-ktx` dependency
+  (`app/build.gradle.kts`, `gradle/libs.versions.toml`), `ObdSheet.HistoryUnlockCard`, the `unlock_byo` references and the
+  "CLAUDE.md sec 2 tier 2" comments. OBD HISTORY now lists every retained drive for every install, and the
+  MOVE TO ANOTHER CAR corrector is no longer paid-only.
+- **A second paywall effect found and removed:** Settings > AI power & plan (`PlanSection`) showed the Gemini key field
+  only when `mode == BYO_KEY || BillingManager.unlocked`, so a keyless, unpurchased install could not enter a key at
+  all. The key field is now always shown; the `PlanChoice` "$10 - UNLOCK" card and its debug simulate button are gone.
+- `EntitlementManager` and `RuntimeMode` kept (about ten call sites read `canStartVoice` / `canUseSubAgent` / `mode`),
+  moved from package `billing` to `ai`, KDoc rewritten.
+- **Mapbox:** `mapboxNav` and `mapbox-navigation-core` removed from `gradle/libs.versions.toml`. No Mapbox plugin or
+  maven repo was configured (settings, root build, app build, manifest, proguard all grep clean).
+- **DtcSheet / GarageSheet deleted.** `DtcSheet.kt` held the live `DtcContent` (the ObdSheet CODES tab body), so the file
+  was renamed `DtcContent.kt` and only the one-line `DtcSheet` wrapper removed; `GarageSheet.kt` deleted whole
+  (`GarageController` / `GarageOpener` stay: the voice tool and Settings > Garage & gate use them). KDoc links repointed.
+- **Fleet Hub kept (Kevin: still wanted).** CLAUDE.md now says the head unit promises no avatar/wallpaper write-back.
+- **DTC clear traced: no clear path exists.** The OBD layer's only DTC command is Mode 03 (`getDtcCodes`); no Mode 04
+  string exists in `app/src/main`; `sendCommand` is private; no voice tool or UI action clears codes. README's "DTC
+  read/clear" claim changed to read-only. (The phone app's `clear_codes` tool is a different codebase.)

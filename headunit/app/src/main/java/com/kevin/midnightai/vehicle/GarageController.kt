@@ -8,7 +8,7 @@ import com.kevin.midnightai.ai.CompanionProfile
  * [GaragePreferences] (what's configured), [GarageOpener] (how a pulse is
  * actually sent), and the two call sites that trigger one:
  * [com.kevin.midnightai.service.LiveToolbox]'s activate_garage voice tool and
- * [com.kevin.midnightai.ui.GarageSheet]'s tap-to-activate UI.
+ * [com.kevin.midnightai.ui.GarageSettings]'s tap-to-activate UI.
  *
  * [activate] itself has no confirm gate - it just pulses. Confirmation is
  * each call site's own responsibility (the voice tool's confirmed=false/true
@@ -31,7 +31,7 @@ object GarageController {
             !GaragePreferences.serverHost(context).isNullOrBlank() &&
             configuredDoors(context).isNotEmpty()
 
-    /** Enabled doors only - what the voice tool and [com.kevin.midnightai.ui.GarageSheet] offer. */
+    /** Enabled doors only - what the voice tool and [com.kevin.midnightai.ui.GarageSettings] offer. */
     fun configuredDoors(context: Context): List<GarageDoorConfig> =
         GaragePreferences.doors(context).filter { it.enabled }
 

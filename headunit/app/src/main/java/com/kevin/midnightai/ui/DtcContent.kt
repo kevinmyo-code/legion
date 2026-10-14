@@ -43,9 +43,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * The visual DTC reader: instead of only hearing Zero talk through the codes,
- * the driver can pull this sheet up over the Cruise screen and read them —
- * each stored code with its official name and a plain-English description.
+ * The visual DTC reader body, shown as [ObdSheet]'s CODES tab: each stored code with its
+ * official name and a plain-English description, read-only (see the note on clearing below).
  *
  * Descriptions are looked up in this order: a bundled seed dictionary of
  * common generic codes (assets/dtc_descriptions_seed.json, free, offline,
@@ -57,18 +56,15 @@ import kotlinx.coroutines.withContext
  * for every install; only rare manufacturer-specific codes fall through to
  * the metered agent, and each of those is still asked at most once per
  * install. The "ASK <name>" button hands off to the spoken deep-dive via [ProactiveBus].
- */
-@Composable
-internal fun DtcSheet(context: Context, onDismiss: () -> Unit) {
-    DtcContent(context = context, onDismiss = onDismiss)
-}
-
-/**
- * The DTC reader body: header (title/re-scan/close), scan, describe, list, "ASK <name>" handoff.
- * Extracted from [DtcSheet] so [com.kevin.midnightai.ui.ObdSheet]'s CODES tab can reuse it without
- * duplicating the lookup logic (bundled seed -> disk cache -> [DiagnosticAgent.describeCodes], see
- * the class kdoc above). [DtcSheet] itself is left compiling as a standalone entry point until
- * Cruise fully points at [ObdSheet] (see B30 brief).
+ *
+ * (This file was DtcSheet.kt until 2026-10-14; the standalone `DtcSheet` wrapper had no call
+ * site since the 2026-09-27 Cruise slim pass and was deleted. Only this body remains.)
+ *
+ * **Read-only: there is no clear-codes path anywhere in this app.** The
+ * only DTC command the OBD layer sends is Mode 03 (`ObdBluetoothManager.getDtcCodes`); no Mode 04
+ * is ever sent, and no voice tool or button clears codes (traced 2026-10-14).
+ *
+ * Layout: header (title/re-scan/close), scan, describe, list, "ASK <name>" handoff.
  */
 @Composable
 internal fun DtcContent(context: Context, onDismiss: () -> Unit) {

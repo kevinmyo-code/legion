@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.kevin.midnightai.ai.CompanionIdentity
 import com.kevin.midnightai.ai.SubAgent
-import com.kevin.midnightai.billing.EntitlementManager
+import com.kevin.midnightai.ai.EntitlementManager
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.data.local.DailyDriveLog
 import java.util.Calendar

@@ -12,7 +12,7 @@ import com.kevin.midnightai.ai.GeminiKeyProvider
  * Shared by [LiveSessionController] (the app's main voice loop) and the
  * onboarding manager's per-field voice capture, so both pick the same auth path
  * and neither hardcodes the raw key. No user-facing notice here; callers gate on
- * the fast synchronous [com.kevin.midnightai.billing.EntitlementManager.canStartVoice]
+ * the fast synchronous [com.kevin.midnightai.ai.EntitlementManager.canStartVoice]
  * pre-check first.
  */
 internal fun resolveLiveConnectionMode(): ConnectionMode? {
