@@ -6366,3 +6366,15 @@ had outgrown. Every change below makes a text describe what is true; none is a n
   MAIN checkout (now `cd` to the git toplevel of the hook payload's `cwd`). Also corrected:
   `deploy/crontab` said Plaid runs every six hours (schedule is `30 */3`), and the voice-guide
   footer said "generated from LiveToolbox.kt" (tools live in four `*Toolbox.kt` files).
+
+## 2026-10-14 - Three loose ends from the rules sweep (Kevin: "yes to all")
+
+- ADR 0003's Drive OAuth blocker is CLOSED. It was open since 2026-07-31; Drive stopped being the
+  store with ADR 0044, so it binds only the phone's optional Drive backup.
+- CLAUDE.md section 4 rule 7: its first example was BofA's mid-cycle CSV, which ADR 0057 retired. It
+  now says so, and names `server/ingest/parsers/bofa_activity.py` as the worked example. The rule
+  itself is unchanged.
+- The commit hook still regenerates in the session's directory when a commit is typed as
+  `cd <worktree> && git commit`; accepted as is (rare, and committing from the worktree avoids it).
+- headunit: the unused Vosk catalog entries are removed (the wake word went 2026-10-11).
+  `LegacyCleanup` still deletes the old on-device model and stays.

@@ -13,7 +13,9 @@ tags: [adr]
 **RESTATED 2026-09-05 by [[0044-django-is-the-engine]]:** clone, `docker compose up`, make two users,
 point the app at the URL. The household hosts its own server; nothing Kevin-hosted is needed.
 
-LOCKED, and partly BLOCKED. The Drive OAuth finding below is unresolved.
+LOCKED. **The Drive OAuth blocker below is CLOSED (Kevin, 2026-10-14):** Drive stopped being the
+store when the engine took over ([[0044-django-is-the-engine]]), so a stranger's build failing
+Drive authorization no longer stops clone-and-run. It touches only the phone's optional Drive backup.
 
 ## Context
 
@@ -26,5 +28,5 @@ A stranger clones the repo, sideloads, signs in with their own account and their
 ## Consequences
 
 - `gradle.properties` must never hardcode `org.gradle.java.home`. Midnight AI's did, and it broke on any machine without Android Studio at that exact path.
-- **Open blocker:** Drive's Android OAuth client is keyed to package plus SHA-1 signing cert, so a stranger's own build fails authorization. Unresolved since 2026-07-31.
+- **Blocker, closed 2026-10-14:** Drive's Android OAuth client is keyed to package plus SHA-1 signing cert, so a stranger's own build fails authorization. Open from 2026-07-31 until the engine replaced Drive as the store; see Standing.
 - Every feature must be checkable against this: if it needs something only Kevin has, it is wrong.

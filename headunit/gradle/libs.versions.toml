@@ -37,10 +37,6 @@ activityCompose = "1.9.0"
 firebase-bom = "33.7.0"
 zxing-core = "3.5.3"
 playServicesAuth = "21.2.0"
-# Vosk (debug-only wake-word validation harness, .scratch/custom-wake-word/issues/04):
-# published directly to Maven Central, no JitPack needed. Verified via
-# search.maven.org (g:com.alphacephei a:vosk-android) before adding.
-vosk = "0.3.47"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -89,9 +85,6 @@ firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashly
 # play-services-auth (CLAUDE.md sec 8 had it removed as "not needed" for the
 # dropped Calendar idea; it IS needed for the approved sync).
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
-# Debug-only offline speech recognition for the wake-word validation harness (ticket 04).
-# Pulls in net.java.dev.jna transitively (declared in vosk-android's own POM).
-vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }

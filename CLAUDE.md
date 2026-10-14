@@ -244,8 +244,9 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    is the same sin as accepting one you could not verify.**
 
 7. **A source that states NO anchor may be stored PROVISIONALLY, never as fact.** Some documents
-   print nothing to reconcile against - no balances, no total, nothing (Bank of America's mid-cycle
-   card CSV export is the first). Rules 1-6 are unchanged and such a document can never pass them.
+   print nothing to reconcile against - no balances, no total, nothing. Bank of America's mid-cycle
+   card CSV export was the first; ADR 0057 retired BofA files, so no live source takes this path
+   today, and `server/ingest/parsers/bofa_activity.py` stays as its worked example. Rules 1-6 are unchanged and such a document can never pass them.
    It may still be ingested, on four conditions, all of which are load-bearing together and none of
    which is optional: extraction is **deterministic** (an LLM adds cost and nondeterminism to rows
    that are already unverifiable, and cannot manufacture an anchor); every row is tagged
