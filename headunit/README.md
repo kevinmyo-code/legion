@@ -127,4 +127,4 @@ Room schema version: read `version =` in `app/src/main/java/com/kevin/midnightai
 
 ## Branches
 
-`dev` is the trunk; feature work branches off it. `main` moves only through a PR Kevin merges.
+Branching is the LEGION repo's, not this app's own: see the root `CLAUDE.md` "Branching" section (`dev` is the trunk).

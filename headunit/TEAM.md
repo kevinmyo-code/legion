@@ -5,8 +5,9 @@ owns the plan, makes calls, writes code (or dispatches `coding`), and is the onl
 commits. Specialists are dispatched via the Agent tool and report back; they never commit.
 
 **Kevin is in the loop, not above it.** He sets direction, checks and chimes in on work as
-it lands, reviews and merges PRs, and owns the `dev` -> `main` gate on GitHub (CLAUDE.md
-§10). Stark never pushes `main`, never opens or merges that PR. Findings and plans are put
+it lands, and reviews work. Git and branching follow the root LEGION `CLAUDE.md`
+"Branching" section (this app lives in `headunit/` of that repo; the MIDNIGHT_AI-era
+`dev` -> `main` PR gate no longer applies as written here). Findings and plans are put
 to Kevin; he decides.
 
 ## Roster

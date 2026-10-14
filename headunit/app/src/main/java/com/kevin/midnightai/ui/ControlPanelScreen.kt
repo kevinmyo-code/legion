@@ -153,6 +153,10 @@ private enum class Section {
     CAR_DETAILS, ABOUT_YOU, LOGBOOK, PLACES,
     APPEARANCE_WALLPAPER, APPEARANCE_COLORS, APPEARANCE_GAUGES, APPEARANCE_SCREEN_DECK,
     OBD_DEVICES, PLAN, VOICE_STYLE,
+    // Re-homed 2026-10-14: CarsScreen and ObdSheet lost their only (Cruise) entry points in the
+    // 2026-09-27 slim pass, which left the car roster, OBD history and the drive corrector
+    // unreachable by hand. They are full-screen leaves like LOGBOOK.
+    CARS, OBD_DATA,
     CONN_SPOTIFY, CONN_SYNC, CONN_GARAGE, CONN_ENGINE,
     SYSTEM_PERMISSIONS, SYSTEM_PREFERENCES, SYSTEM_CLOCK,
     // Both reachable from Cruise's dock too (long-press REAR for the picker;
@@ -245,6 +249,8 @@ fun ControlPanel(
             Section.APPEARANCE_GAUGES -> AppearanceGaugesSection(context) { section = null }
             Section.APPEARANCE_SCREEN_DECK -> AppearanceScreenDeckSection(context) { section = null }
             Section.OBD_DEVICES -> ObdDeviceScreen { section = null }
+            Section.CARS -> CarsScreen(onBack = { section = null })
+            Section.OBD_DATA -> ObdSheet(context = context, onDismiss = { section = null })
             Section.PLAN -> PlanSection { section = null }
             Section.VOICE_STYLE -> VoiceStylePicker(
                 initial = CompanionProfile.voiceStyleSelections(context),
@@ -404,7 +410,9 @@ private fun settingsRows(
         }
         SettingsCategory.CAR -> listOf(
             openRow("Car details", "Photo, make/model/year, odometer, VIN", Section.CAR_DETAILS),
+            openRow("Cars", "Switch, add or archive cars", Section.CARS),
             openRow("OBD adapter", "Pair & select OBD dongles", Section.OBD_DEVICES),
+            openRow("OBD data", "Live readouts, drive history & fault codes", Section.OBD_DATA),
             openRow("Logbook", "Service & build history & mods", Section.LOGBOOK),
             openRow("Saved places", "Home, work, and other tagged spots", Section.PLACES),
             openRow("Garage & gate", "Optional Shelly relay control", Section.CONN_GARAGE),

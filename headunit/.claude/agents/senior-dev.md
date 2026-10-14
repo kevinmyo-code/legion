@@ -14,8 +14,8 @@ verbatim additive-only Room SQL, frame-clock motion only (no tween/AnimatedVisib
 infiniteTransition in ui/), AriaColors/AriaPalette tokens (no ad-hoc hex in screens),
 no StateFlow Bitmaps, no Kevin-hosted backend for car data, one lean orchestrator prompt.
 The LEGION engine client (`backend/engine/`, `service/AskEngine.kt`) and the BYO Spotify App
-Remote are on `dev` by Kevin's choice; see the drift flags under CLAUDE.md §8 before calling
-either a violation.
+Remote are on `dev` by Kevin's choice (CLAUDE.md §4.3, §8 and §9 describe them as they are now);
+neither is a violation.
 
 Given a diff or commit range (`git diff`, `git show`), check: (1) hard-rule violations,
 (2) drift from the plan spec you're given — exact values, file names, behavior, (3)
