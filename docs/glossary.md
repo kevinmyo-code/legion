@@ -21,7 +21,7 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 | **companion** | the thing you talk to. User-named per profile. Never hardcode a name | [[0020-companion-identity-per-profile]] |
 | **register band** | "Alfred/JARVIS" names a *tone*, not a character. `ai/Personas.kt` holds the copy | CLAUDE.md §1 |
 | **clone-and-run** | a stranger clones, sideloads with their own cert and key, and it works | [[0003-clone-and-run]] |
-| **BYO key** | the driver's own Gemini API key, direct to Google, no proxy | [[0002-no-hosted-backend]] |
+| **BYO key** | the user's own Gemini API key, direct to Google, no proxy. The web assistant is the exception: it runs on the household's key, held by the engine | [[0002-no-hosted-backend]], [[0056-the-household-key-serves-the-web-assistant]] |
 | **appDataFolder** | the private per-app area of the user's own Drive. Backup and restore only. **Not** the system of record | [[0044-django-is-the-engine]] |
 | **the engine** | the Django server over Postgres. The system of record and the only writer of it | [[0044-django-is-the-engine]] |
 | **limb** | anything that talks to the engine over HTTPS JSON: the phone, the web app, a future device | [[0044-django-is-the-engine]] |
@@ -36,6 +36,7 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 | **quarantine** | a document that failed the gate and was written **nowhere**. Not "error", not "partial import" | CLAUDE.md §4 rule 2 |
 | **anchor** | the total a document prints about itself, which the gate checks against | [[0009-provisional-unreconciled-tier]] |
 | **provenance** | `DETERMINISTIC` or `LLM_RECONCILED`. Both passed the same gate. **Not a trust discount** | CLAUDE.md §4 rule 4 |
+| **`BANK_API`** | a ledger row from a linked bank's own feed (Plaid). Stored as fact with no gate, by ruling: the one exempt ingestion source | CLAUDE.md §4 rule 1, [[0057-the-bank-feed-is-the-ledgers-truth]] |
 | **`UNRECONCILED`** | a provisional row from a source with no anchor. Transient, and said in words on every surface | [[0009-provisional-unreconciled-tier]] |
 | **estimate** | a value the source never stated. Pantry macros are the canonical case. Never presented as fact | [[0008-estimates-are-not-facts]] |
 | **spend gate** | **two different things.** The LLM cost prompt ([[0016-llm-spend-gate-after-deterministic]]), and a retired Midnight AI access gate ([[0030-retired-carry-overs]]). Say which |
@@ -50,7 +51,7 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 | **field def** | one typed field on a record type (13 field types v1: text, number, money-cents, date, etc.) | `memory/library/decisions.md` 2026-08-23 |
 | **`RecordStore`** | `engine/RecordStore.kt`. The single write door for every engine record - reference integrity, delete policy, trash, computed fields | [[0037-the-aspect-engine-is-the-spine]] |
 | **provenance** *(engine sense)* | tagged per engine record same as ledger/pantry provenance, but the write path is now `RecordStore` rather than a per-aspect DAO | CLAUDE.md §4 rule 4, [[0037-the-aspect-engine-is-the-spine]] |
-| **widget pager / dashboard** | `ui/widgets/`, `LegionRoute.DASHBOARD`. The app's home screen since the 2026-08-24 home-flip cutover; "Classic" reaches the old per-aspect screens | [[0037-the-aspect-engine-is-the-spine]], `docs/architecture/cutover5-2026-08-24.md` |
+| **widget pager / dashboard** | `ui/widgets/`, `LegionRoute.DASHBOARD`. Was the app's home screen from the 2026-08-24 home-flip cutover. **It is not HOME any more**: HOME is the calendar (`ui/home/`) | [[0037-the-aspect-engine-is-the-spine]], `docs/architecture/cutover5-2026-08-24.md` |
 | **mirror** | the xlsx-per-aspect export into the user's own Drive folder (`engine/mirror/`) - the audit surface and the two-phone sync channel, not the legacy `sync/` mechanism | `memory/library/decisions.md` 2026-08-23 ticket 12/13 |
 | **meta-tools** | the nine generic voice tools (`service/EngineToolbox.kt`) that do CRUD/query over any record type, replacing most per-feature tools | `memory/library/decisions.md` 2026-08-23 ticket 06 |
 | **clerk** | the bounded Flash sub-agent behind the meta-tools that turns a loose voice request into a structured engine call. An executor, not a router | `memory/library/decisions.md` 2026-08-23 ticket 06 |
@@ -77,7 +78,7 @@ which makes them more dangerous than terms that were simply deleted.
 |---|---|---|
 | **Midnight AI** | the predecessor product, a commercial head-unit car launcher | Frozen archive. Read-only |
 | **Zero** | the mascot | Dead. [[0021-city-pop-retired]] |
-| **city-pop** | the old design language | Dead. Replaced by [[0023-design-language-mission-control]] |
+| **city-pop** | the old design language | Dead. Replaced by mission control ([[0023-design-language-mission-control]]), itself superseded by soft Material ([[0051-design-language-soft-material]]) |
 | **Instrument** | the first replacement design language | Superseded. [[0022-design-language-instrument]] |
 | **cyberdeck** | the second one. Shipped, then partly superseded | See `.scratch/cyberdeck-ui/map.md` |
 | **Moose, Aria, Kaze, Nightrunner, Yoko** | former assistant names | Dead. See the register-band rule |

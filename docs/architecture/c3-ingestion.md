@@ -2,7 +2,7 @@
 title: C3 Ingestion
 level: c3
 tags: [architecture]
-verified: 2026-09-16
+verified: 2026-10-14
 ---
 
 # C3: Ingestion and the gate
@@ -21,9 +21,19 @@ one aspect left that runs it on-device.
 the old folder scanner, the five statement parsers plus `StatementDispatcher`,
 the LLM statement fallback, `LedgerFolderPreferences`, `LedgerIngestService`, and
 `ledger/IngestPipeline.kt`'s `stage`/`commit` machinery are all deleted. Bank statements are
-ingested off the phone now, against a CSV the user's own LLM produces (masked, then uploaded).
-CLAUDE.md §4's amendment on this is the source of truth for that side; this doc no longer tracks it
-because there is nothing left on the phone to diagram.
+ingested off the phone now. CLAUDE.md §4's amendments are the source of truth for that side; this
+doc no longer diagrams it because there is nothing left on the phone to draw. In one paragraph, as
+of 2026-10-14:
+
+- **Statements** are dropped in the household's Drive statements folder and read on a schedule by
+  `manage.py drive_statements` (`server/ingest/statements.py`). A Python parser runs first where one
+  exists (`server/ingest/parsers/`); otherwise Gemini on the household's own key emits LEGION's
+  statement CSV, which must meet three anchors. Bank of America files are now skipped as retired.
+  (This paragraph used to say the user's own LLM masked a CSV before upload. That ruling was
+  replaced on 2026-09-27; raw documents reach the server.)
+- **A linked bank's own feed** (Plaid, `server/ingest/plaid_sync.py`) is the ledger's truth for the
+  accounts it covers, stored as `BANK_API` with no gate, by ruling
+  ([[0057-the-bank-feed-is-the-ledgers-truth]]). It is the one exception to everything below.
 
 **The gate now runs in Python, not in plpgsql.** This paragraph used to say statements were committed
 against `public.commit_statement`, a Postgres RPC implementing the same rules in SQL. Since
@@ -43,7 +53,8 @@ receipt hashing happens to want the exact same primitive - see that file's own d
 2. **Rows must reconcile against the document's own stated total, exactly.** Not within a tolerance.
    Sum equals printed total, or the whole document quarantines. Nothing partial is ever written.
 3. **Money is `Long` cents.** [[0007-money-as-long-cents]]. The equality in rule 2 is why.
-4. **Every row is tagged** `DETERMINISTIC` or `LLM_RECONCILED`.
+4. **Every row is tagged** `DETERMINISTIC` or `LLM_RECONCILED` (or `UNRECONCILED` under rule 7;
+   `BANK_API` is the ruled exception above, not a gate outcome).
 5. **Anything the document does not state is an estimate**, excluded from the check and labelled.
    [[0008-estimates-are-not-facts]].
 6. **A check that passes when nothing parsed is not a gate.** Inside a recognised section, every

@@ -2,7 +2,7 @@
 title: C1 Context
 level: c1
 tags: [architecture]
-verified: 2026-09-16
+verified: 2026-10-14
 ---
 
 # C1: System context
@@ -40,11 +40,20 @@ graph TB
         Gmail["Gmail<br/>readonly, read-through"]
         Spotify["Spotify<br/>App Remote + Web API"]
         Shelly["Shelly Cloud<br/>garage relay"]
+        Mapbox["Mapbox<br/>Navigation SDK, household token"]
+    end
+
+    subgraph EngineOut["Called by the engine, on the household's own credentials"]
+        Plaid["Plaid<br/>bank transaction feed"]
+        EDrive["Google Drive<br/>statements folder + nightly backup"]
+        Canvas["Canvas<br/>coursework poll"]
+        EGemini["Gemini<br/>statement fallback + web assistant"]
     end
 
     subgraph Keyless["Keyless public APIs"]
         Meteo["Open-Meteo<br/>weather"]
         NHTSA["NHTSA<br/>VIN + recalls"]
+        Libretro["libretro-thumbnails<br/>game box art, cached once"]
     end
 
     subgraph Local["On the device, no network"]
@@ -63,6 +72,12 @@ graph TB
     Android -->|"auth_key in query"| Shelly
     Android -->|"no auth"| Meteo
     Android -->|"no auth"| NHTSA
+    Android -->|"access token"| Mapbox
+    Android -->|"no auth"| Libretro
+    Django --> Plaid
+    Django --> EDrive
+    Django --> Canvas
+    Django --> EGemini
     Android <-->|"AT commands"| OBD
     Android --> Vosk
 ```
@@ -77,6 +92,12 @@ graph TB
 | Checklists | `server/checklists/models.py` | The first tables Django owns end to end, with no legacy shape to honour |
 | Identity and tenancy | `server/household/models.py`, `server/household/authentication.py`, `server/household/tenancy.py` | `Household`, `User`, `DeviceToken`, `Invite`; the token auth class; `TENANT_TABLES` |
 | The §4 gate | `server/ingest/gate.py`, `server/ingest/views.py` | The reconciliation arithmetic in pure Python, behind `POST /api/ingest/statement` and `/api/ingest/receipt` |
+| Scheduled jobs | `deploy/crontab`, `server/ingest/management/commands/` | The one schedule. Canvas polling, the Drive statements watcher, the Plaid sync, the nightly backup to Drive and Web Push dispatch, each a `manage.py` command. Compose's `worker` runs it under supercronic; `deploy/cloudrun/install_schedule.py` turns each line into a Cloud Scheduler entry |
+| Bank feed | `server/ingest/plaid_client.py`, `server/ingest/plaid_sync.py`, `server/ingest/plaid_views.py` | Plaid link and sync. Rows land as `BANK_API`, ungated by ruling ([[0057-the-bank-feed-is-the-ledgers-truth]]) |
+| Bought log | `server/purchases/` | The household's purchases, and the Groceries tick hook ([[0055-a-groceries-tick-is-a-purchase]]) |
+| Web assistant | `server/assistant/` | The Gemini Live token mint, the session-authenticated tool door, each member's companion ([[0056-the-household-key-serves-the-web-assistant]]) |
+| MCP server | `server/engine_mcp/` | The engine's tools at `/mcp`, with an audit table. Answers 404 in words until `LEGION_MCP` is on |
+| Web Push | `server/push/` | Subscriptions, preferences and the dedupe ledger behind `manage.py push_dispatch` |
 | Legacy mirrors | `server/legacy/models/` | `managed = False` models over the pre-existing `public` schema. Django does not migrate these |
 | Web client | `server/frontend/`, `server/web/views.py` | React 19, Vite, TanStack Router and Query, built into the image and served at the site root by a catch-all view |
 
@@ -144,8 +165,10 @@ Absences worth knowing, because each was a choice and each gets proposed again o
   customer ([[0045-households-are-tenants]]).
 - **No Postgres row-level security**, despite [[0045-households-are-tenants]] describing it. Said
   again here because an absence that an ADR implies is present is the dangerous kind.
-- **No scheduled job.** The worker container and its cron runner are built and its crontab is empty.
-  Nothing runs on a timer today.
+- **One schedule, not a job framework.** `deploy/crontab` is a plain list of `manage.py` commands;
+  there is no Celery or other task queue in `server/requirements.txt`. (This
+  bullet said "no scheduled job, the crontab is empty" until 2026-10-14; the backend-etl map filled
+  it.)
 - **No object storage.** `MEDIA_ROOT` is a filesystem path with the default Django storage backend.
   `server/legion/settings.py` names this as an open gap, not a design.
 - **No WorkManager, JobScheduler, or CoroutineWorker.** `androidx.work` is not a dependency.
@@ -153,8 +176,9 @@ Absences worth knowing, because each was a choice and each gets proposed again o
 - **No embedding API call.** `data/local/CompanionMemory.kt` has `embeddingVector` and
   `embeddingModel` columns and nothing populates them. Memory recall in `ai/AriaBrain.kt` is lexical,
   written so one term can be swapped for cosine similarity later.
-- **No FusedLocationProvider**, despite `play-services-auth` being present.
-  `location/LocationController.kt` uses raw `LocationManager` GPS and NETWORK providers.
+- **No FusedLocationProvider.** `location/LocationController.kt` uses raw `LocationManager` GPS and
+  NETWORK providers. `play-services-location` is in the build only for geofencing
+  (`location/GeofenceManager.kt`).
 - **No comparative or anonymised fleet data**, ever.
 
 ## Related

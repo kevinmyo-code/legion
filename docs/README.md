@@ -13,11 +13,11 @@ stranger. `README.md` at the repo root is the public face; this is the working r
 | | Answers |
 |---|---|
 | [[c1-context\|Architecture: context]] | What LEGION talks to, and what it deliberately does not |
-| [[c2-containers\|Architecture: containers]] | What runs inside the one Android process |
+| [[c2-containers\|Architecture: containers]] | What runs on the household's host, and inside the one Android process |
 | [[c3-voice-loop\|Architecture: voice loop]] | One utterance end to end, and which piece sits where |
 | [[c3-ingestion\|Architecture: ingestion]] | The reconciliation gate, drawn |
 | [[c3-music\|Architecture: music]] | How a spoken music request becomes sound, and why App Remote is the spine |
-| [[c3-data\|Architecture: data]] | Room, the entity roster, the 28 controllers, sync |
+| [[c3-data\|Architecture: data]] | Room, the entity roster, the controllers, sync |
 | [[adr-index\|Decisions (ADRs)]] | What is binding right now, and what superseded what |
 | [[glossary]] | The vocabulary, with pointers to where each term is actually defined |
 
@@ -43,7 +43,7 @@ An **ADR** says what is binding now. The **log** says what happened when.
 
 - `docs/adr/NNNN-slug.md` - one file per standing decision. Superseded ADRs keep their original
   text and get `status: superseded`, so you can see what was believed before and why it changed.
-- `memory/library/decisions.md` - append-only, dated, 198 entries, mostly frozen Midnight AI
+- `memory/library/decisions.md` - append-only and dated; the older entries are frozen Midnight AI
   history. Every decision still gets an entry here. Only standing ones also get an ADR.
 
 Format and the rule for when to write one: `.claude/skills/domain-modeling/ADR-FORMAT.md`.

@@ -2,7 +2,7 @@
 title: C3 Data
 level: c3
 tags: [architecture]
-verified: 2026-09-16
+verified: 2026-10-14
 ---
 
 # C3: Data layer and controllers
@@ -50,7 +50,7 @@ Grouped by what they are for:
 | **Events** (dates) | `Event`, `EventSkip` |
 | **Checklists** (notes) | `Checklist`, `ChecklistItem`, `ChecklistTick`, `ItemList`, `ListItem`, `ListItemSkip` |
 | **Fleet** | `Vehicle`, `VehicleSpec`, `VehicleCapability`, `ServiceRecord`, `MaintenanceItem`, `BuildEntry`, `OdbSample`, `CodeEvent`, `CodeClearEvent`, `OilAnalysis`, `ChassisQuirk`, `ForesightNote`, `MonthlyRecap`, `DailyDriveLog`, `YearlyWrapped`, `Drive`, `DriveReassignment` |
-| **Ledger** | `LedgerTransaction`, `Category`, `CategoryRule`, `BudgetTarget`, `IngestedFile` |
+| **Ledger** | `LedgerTransaction`, `Category`, `CategoryRule`, `BudgetTarget`, `IngestedFile`, `MerchantAlias` |
 | **Pantry, grocery, meals** | `PantryReceipt`, `PantryLineItem`, `GroceryItem`, `GroceryStaple`, `MealTarget`, `MealLog` |
 | **Body** | `WorkoutPlan`, `WorkoutPlanItem`, `WorkoutSetLog`, `BodyweightLog`, `SleepTarget`, `SleepLog` |
 | **Places** | `TaggedPlace`, `PlaceReminder` *(tombstone)* |
@@ -92,8 +92,10 @@ Both shapes still have code and rows. Do not delete either on the strength of th
 
 ## Controllers
 
-Almost all are Kotlin `object` singletons. No DI container, no ViewModel layer; Compose reads them
-directly. `LiveSessionController` is a `class` instantiated once by `AriaForegroundService`.
+Almost all are Kotlin `object` singletons. No DI container; most screens read them directly, and the
+few with a hand-built ViewModel read them through it ([[c2-containers]]). Three are classes:
+`LiveSessionController`, instantiated once by `AriaForegroundService`; `MapboxNavController`, the live
+navigation trip; and `PurchasesController`, the bought log over the engine.
 `engine/RecordStore.kt` is a second `class`, instantiated and threaded with a `CarDatabase` rather
 than reaching for one, which is why it is not in this roster: it is storage, not a domain controller.
 
@@ -101,24 +103,31 @@ than reaching for one, which is why it is not in this roster: it is storage, not
 `VehicleSpecController`, `BuildSheetController`, `DailyDriveLogController`, `MonthlyRecapController`,
 `YearlyWrappedController`, `FleetSpendController` (the fleet-to-ledger seam), `DtcClearController`,
 `GarageController`, `WeatherController`, `LocationController`, `PlaceController`,
-`ReminderController`.
+`ArrivalController`, `ReminderController`.
 
 **Ledger** - `LedgerController`.
 
-**Pantry and food** - `PantryController`, `GroceryController`, `MealController`.
+**Pantry and food** - `PantryController`, `GroceryController`, `MealController`,
+`PurchasesController`.
 
 **Body and goals** - `WorkoutController`, `SleepController`, `GoalController`.
 
-**Checklists and notes** - `ChecklistController`, `TickHistoryController`, `NotesController`.
+**Checklists and notes** - `ChecklistController`, `TickHistoryController`, `NotesController`,
+`OutstandingController`, `VoiceNoteController`.
 
 **Media** - `MusicController`, `SpotifyController`, `NowPlayingController`, `VolumeController`.
 
-**Platform** - `LiveSessionController`, `TelephonyController`, `GlanceCardController`.
+**Navigation** - `MapboxNavController`.
+
+**News** - `FeedSubscriptionController`.
+
+**Platform** - `LiveSessionController`, `TelephonyController`, `GlanceCardController`,
+`VoiceModalController`, `GeneratedViewController`.
 
 To recount rather than trust the roster above:
 
 ```
-grep -rn "^object [A-Za-z]*Controller" app/src/main/java/
+grep -rnE "^(internal )?(object|class) [A-Za-z]*Controller" app/src/main/java/
 ```
 
 ## Sync

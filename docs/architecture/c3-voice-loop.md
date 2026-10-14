@@ -2,7 +2,7 @@
 title: C3 Voice loop
 level: c3
 tags: [architecture]
-verified: 2026-09-16
+verified: 2026-10-14
 ---
 
 # C3: The voice loop
@@ -70,7 +70,9 @@ it breaks, and the retired pair is the worked example of what guarding it looks 
 **Sub-agent tools recurse through the same dispatcher.** `LiveToolbox.dispatch()` is called by the
 live session *and* by every sub-agent tool call. It has to be safe to re-enter. Five dispatcher
 tools exist: fleet, body, goals, pantry, mail. Each hands a domain-specific grounding prompt and a
-filtered tool set to `SubAgent`.
+filtered tool set to `SubAgent`. Not every `ask_*` tool is one of these five: `ask_engine` sends the
+question to the engine's `/mcp` endpoint instead (`backend/engine/EngineMcpClient.kt`), and
+`ask_maintenance` and `ask_advisor` have their own handlers.
 
 ## Where a spoken write lands
 

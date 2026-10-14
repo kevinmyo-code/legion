@@ -2,7 +2,7 @@
 title: C2 Containers
 level: c2
 tags: [architecture]
-verified: 2026-09-16
+verified: 2026-10-14
 ---
 
 # C2: Containers
@@ -15,7 +15,7 @@ page used to describe only the phone's.
 graph TB
     subgraph Host["The household's own host"]
         Web["web<br/>gunicorn + Django<br/>serves API and the SPA"]
-        Worker["worker<br/>supercronic<br/>crontab is empty today"]
+        Worker["worker<br/>supercronic<br/>runs deploy/crontab"]
         PG[("postgres<br/>system of record")]
         Caddy["caddy<br/>TLS front"]
         Caddy --> Web
@@ -28,7 +28,7 @@ graph TB
     end
 
     subgraph Phone["Android phone - ONE OS process"]
-        MA["MainActivity<br/>the only Activity"]
+        MA["MainActivity<br/>the NavHost, and HOME"]
         AFS["AriaForegroundService<br/>the voice loop"]
         Svc["LegionMediaLibraryService<br/>LegionConnectionService<br/>MediaNotificationListener"]
         RX["Broadcast receivers"]
@@ -54,7 +54,7 @@ From `deploy/docker-compose.yml`, all built from the one `server/Dockerfile`:
 | Container | What it runs | Note |
 |---|---|---|
 | `web` | `server/entrypoint.sh` migrates, then gunicorn on `${PORT:-8000}` | Serves the JSON API **and** the built SPA at the site root |
-| `worker` | supercronic over a crontab | **The crontab is empty.** Nothing is scheduled today |
+| `worker` | supercronic over `deploy/crontab` | The one schedule: Canvas poll, Drive statements, Plaid sync, nightly backup, Web Push. On Cloud Run the same lines become Cloud Scheduler entries (`deploy/cloudrun/install_schedule.py`) |
 | `postgres` | The system of record | Only Django writes it |
 | `caddy` | TLS termination, per `deploy/Caddyfile` | |
 
@@ -71,11 +71,14 @@ lifecycle.
 | Container | Entry point | Why it exists separately |
 |---|---|---|
 | `MidnightApplication` | `MidnightApplication.kt` | Process entry. Owns `appScope`, a `SupervisorJob` on IO that lives as long as the process. Runs the one-time `data/MidnightImport.kt` |
-| `MainActivity` | `ui/MainActivity.kt` | The **only** Activity. One `NavHost`, routes as string constants in `ui/LegionRoute.kt`. Also hosts the Spotify OAuth token exchange, deliberately above the NavHost so a recomposition cannot lose it |
+| `MainActivity` | `ui/MainActivity.kt` | The app's one `NavHost`, routes as string constants in `ui/LegionRoute.kt`. Declares `CATEGORY_HOME`, so it is selectable as the phone's home app ([[0050-legion-may-be-the-home-app]]). Also hosts the Spotify OAuth token exchange, deliberately above the NavHost so a recomposition cannot lose it |
+| `AssistActivity` | `ui/AssistActivity.kt` | A translucent Activity for `ASSIST` and `VOICE_COMMAND`, so the phone's assistant gesture starts a conversation. Shows over the lock screen and finishes itself |
+| `MirrorSyncActivity` | `ui/mirror/MirrorSyncActivity.kt` | Not exported; reached only by `adb shell am start` until it folds into the NavHost |
 | `AriaForegroundService` | `service/AriaForegroundService.kt` | The voice loop. Owns `LiveSessionController`, starts Vosk, runs the health, arrival, drive and recap monitors. Also holds the Spotify App Remote connection for its whole life, deliberately - see [[0032-spotify-app-remote-spine]] |
 | `LegionMediaLibraryService` | `car/LegionMediaLibraryService.kt` | Exported media3 stub. Android Auto binds it cross-process. Probe stage |
 | `LegionConnectionService` | `car/LegionConnectionService.kt` | Exported Telecom self-managed ConnectionService. Probe stage |
 | `MediaNotificationListener` | `service/MediaNotificationListener.kt` | Exists purely so the OS will hand over `MediaSessionManager`. Parses no notifications |
+| `QuietTileService` | `quiet/QuietTileService.kt` | The Quick Settings tile for Quiet mode |
 
 ## How a write reaches the engine
 
@@ -113,8 +116,8 @@ not finished retiring. Do not write "Supabase is gone" into a doc or a comment w
 
 ## Coroutine scopes, and which ones never die
 
-This matters more than usual here, because there is still no DI container and no ViewModel layer to
-bound anything.
+This matters more than usual here, because there is still no DI container, and only a handful of
+screens have a ViewModel to bound anything.
 
 **Process-lifetime, never cancelled:**
 
@@ -151,9 +154,14 @@ reads them directly.** If you are looking for the layer that mediates, there isn
 
 **CLAUDE.md §8 rules that this changes** - Hilt on KSP, constructor injection, a ViewModel per
 screen. Step 1 of its migration order is done: Room's annotation processor is KSP and the kapt plugin
-is gone from `app/build.gradle.kts`. Steps 2 onward are not: there is no `@HiltAndroidApp`, no
-`@Inject`, and no `ViewModel` subclass in `app/`. Read the rule as the direction, and this page as
-the state.
+is gone from `app/build.gradle.kts`. Hilt is not: there is no `@HiltAndroidApp` and no `@Inject`.
+A few screens (HOME, its calendar and Games, Lists, Money, Bought, navigation, the assistant chat)
+have plain `ViewModel` or `AndroidViewModel` subclasses built by hand, without Hilt. Read the rule as the direction, and
+this page as the state. To list them:
+
+```
+grep -rlE ": (Android)?ViewModel\(" app/src/main/java/
+```
 
 ## Related
 

@@ -2,14 +2,16 @@
 title: C3 Music
 level: c3
 tags: [architecture]
-verified: 2026-08-19
+verified: 2026-10-14
 ---
 
 # C3: The music path
 
 How a spoken music request becomes sound. Built across `.scratch/spotify-voice/` (ten tickets,
-2026-08-19); everything here is `built`+`tested`, **nothing is `on-device` yet** - the stale
-Spotify grant must be re-approved in Setup before any of it can run.
+2026-08-19). **On-device since 2026-08-22**: that map's ship-pass ticket 12 closed with Kevin's
+"verified on a real drive - all Spotify functions work". (This page said "nothing is on-device yet"
+until 2026-10-14.) Since then `play_music` refuses a search hit that does not match the request and
+names the closest hits instead of falling back to popularity (`media/SpotifyMatch.kt`).
 
 ```mermaid
 sequenceDiagram
