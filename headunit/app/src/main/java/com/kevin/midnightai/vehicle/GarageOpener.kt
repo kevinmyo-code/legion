@@ -67,7 +67,7 @@ interface GarageOpener {
      * [GarageException] on failure. Has no notion of confirmation - the
      * confirm gate belongs to each call site (see
      * [com.kevin.midnightai.service.LiveToolbox]'s activate_garage tool and
-     * [com.kevin.midnightai.ui.GarageSheet]'s confirm dialog), not here.
+     * [com.kevin.midnightai.ui.GarageSettings]'s confirm dialog), not here.
      */
     suspend fun activate(context: Context, door: GarageDoorConfig)
 }

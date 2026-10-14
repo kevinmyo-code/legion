@@ -88,12 +88,10 @@ class MainActivity : ComponentActivity() {
         // setContent, so the onboarding screen's key check is correct on first run.
         StartupTrace.span("main_gemini_key_init") { com.kevin.midnightai.ai.GeminiKeyProvider.init(this) }
         StartupTrace.span("main_palette_init") { com.kevin.midnightai.ui.theme.AriaPalette.init(this) }
-        // Free-forever base + metered AI layer (CLAUDE.md sec 2, 2026-07-16
-        // rewrite: two tiers, no trial, no subscription, no broker): resolves
-        // whether this install is on a BYO key or paused. Only Gemini-billed
-        // actions (and retained OBD history) consult it.
-        StartupTrace.span("main_entitlement_init") { com.kevin.midnightai.billing.EntitlementManager.init(this) }
-        StartupTrace.span("main_billing_init") { com.kevin.midnightai.billing.BillingManager.init(this) }
+        // Resolves whether this install has a Gemini key saved (BYO_KEY) or is
+        // paused. Only Gemini-billed actions consult it. (Used to be framed as
+        // the free/unlock tier check; the commercial model is dead.)
+        StartupTrace.span("main_entitlement_init") { com.kevin.midnightai.ai.EntitlementManager.init(this) }
 
         // Make the app "edge-to-edge" and hide system bars for a total OS takeover look.
         window.setFlags(

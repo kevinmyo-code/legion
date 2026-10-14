@@ -78,7 +78,7 @@ import kotlinx.coroutines.withContext
  * once it does.
  *
  * **Named CARS, not GARAGE.** That word is already taken twice: Cruise's GARAGE tab
- * opens the Shelly door relay ([GarageSheet]), and ticket 11 wants it too. Three
+ * opened the Shelly door relay (GarageSheet, deleted 2026-10-14; now Settings > Garage & gate), and ticket 11 wants it too. Three
  * claimants on one noun is how you get a confusing dash.
  */
 @Composable

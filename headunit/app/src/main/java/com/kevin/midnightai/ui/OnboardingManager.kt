@@ -47,7 +47,7 @@ import com.kevin.midnightai.ai.DEFAULT_VOICE
 import com.kevin.midnightai.ai.DriverProfile
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.ai.PersonaSelection
-import com.kevin.midnightai.billing.EntitlementManager
+import com.kevin.midnightai.ai.EntitlementManager
 import com.kevin.midnightai.service.GeminiLiveSession
 import com.kevin.midnightai.service.LiveEvent
 import com.kevin.midnightai.service.LiveToolbox
@@ -64,9 +64,9 @@ import org.json.JSONObject
  * with a single per-step manager: at each field the driver can speak (the
  * companion asks in its chosen voice and captures the answer via the onboarding
  * tools), tap, or type. Voice is offered only when it can actually run
- * ([EntitlementManager.canStartVoice] and mic granted), so a free-trial driver
- * with no broker deployed completes the whole flow by tap/type and the mic
- * lights up on a BYO key.
+ * ([EntitlementManager.canStartVoice] and mic granted), so a driver with no
+ * Gemini key saved completes the whole flow by tap/type and the mic lights up
+ * once a key is saved.
  *
  * Reuses the existing step composables ([VoicePicker], [PersonaPicker],
  * [ObdPairOnboardingStep]) and only adds the per-field voice layer over the

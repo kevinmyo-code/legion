@@ -17,7 +17,7 @@ import com.kevin.midnightai.ai.SpendGate
 import com.kevin.midnightai.backend.engine.EngineConfig
 import com.kevin.midnightai.backend.engine.EngineHttp
 import com.kevin.midnightai.backend.engine.EngineMcpClient
-import com.kevin.midnightai.billing.EntitlementManager
+import com.kevin.midnightai.ai.EntitlementManager
 import com.kevin.midnightai.location.LocationController
 import com.kevin.midnightai.location.PlaceController
 import com.kevin.midnightai.util.shortDate
@@ -1001,7 +1001,7 @@ object LiveToolbox {
     /**
      * Fast, offline read of the stored codes themselves - no causal reasoning,
      * no sub-agent call. Names come from the SAME two-tier lookup
-     * [DtcDescriptions] gives [com.kevin.midnightai.ui.DtcSheet] (bundled seed
+     * [DtcDescriptions] gives [com.kevin.midnightai.ui.DtcContent] (bundled seed
      * dictionary, then this install's disk cache of previously agent-answered
      * codes) - but unlike [diagnoseCodes], a code missing from BOTH never
      * escalates to the diagnostics sub-agent here. That escalation is what
@@ -1135,9 +1135,8 @@ object LiveToolbox {
      * tool-response JSON, phrasing each failure kind in character and recording
      * key health for the Setup screen. [call] is only invoked (spending a real
      * Gemini call) once [EntitlementManager.canUseSubAgent] confirms a key is
-     * saved - per CLAUDE.md sec 2 (2026-07-16 rewrite), sub-agent diagnosis is
-     * a Gemini-billed action gated behind the $10 BYO-key unlock like every
-     * other metered call.
+     * saved - sub-agent diagnosis is a Gemini-billed action gated on the
+     * driver's own key like every other metered call.
      */
     private suspend fun agentResult(failMessage: String, call: suspend () -> AgentResult): JSONObject {
         if (!EntitlementManager.canUseSubAgent()) {

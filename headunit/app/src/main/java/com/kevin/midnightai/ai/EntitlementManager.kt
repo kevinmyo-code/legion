@@ -1,28 +1,19 @@
-package com.kevin.midnightai.billing
+package com.kevin.midnightai.ai
 
 import android.content.Context
-import com.kevin.midnightai.ai.GeminiKeyProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Single source of truth for the app's [RuntimeMode].
+ * Single source of truth for the app's [RuntimeMode]: purely a local function of whether a Gemini
+ * key has been saved ([GeminiKeyProvider.hasKey]). No purchase, tier, trial or network call is
+ * involved; the commercial model is dead (root ADR 0004). This file lived in `billing/` until
+ * 2026-10-14, when the Play Billing unlock, `UnlockState` and the OBD-history paywall were
+ * deleted; what is left is only the key check the AI gates read.
  *
- * Per CLAUDE.md sec 2 (2026-07-16 pricing rewrite): two tiers, no trial, no
- * subscription, no broker, no network calls of any kind. Mode is purely a
- * local function of whether a Gemini key has been saved
- * ([GeminiKeyProvider.hasKey]).
- *
- * "The base app is never gated by this" is NOT true: per sec 2, **OBD
- * history** is behind the $10 unlock (free sees its last drive in full). That
- * gate is value capture, not a serving cost - the data is local and free to
- * serve - and it is the one deliberate exception to "the natural cost
- * boundary IS the paywall."
- *
- * Call [init] once at app start (alongside [GeminiKeyProvider.init]). Call
- * [refresh] after anything that could change the key (key saved) so mode
- * updates immediately.
+ * Call [init] once at app start (alongside [GeminiKeyProvider.init]). Call [refresh] after
+ * anything that could change the key (key saved) so mode updates immediately.
  */
 object EntitlementManager {
     private val _mode = MutableStateFlow(RuntimeMode.AI_PAUSED)

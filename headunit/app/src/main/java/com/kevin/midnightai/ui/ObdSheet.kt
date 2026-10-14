@@ -1,6 +1,5 @@
 package com.kevin.midnightai.ui
 
-import android.app.Activity
 import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -42,9 +41,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kevin.midnightai.billing.BillingManager
-import com.kevin.midnightai.billing.EntitlementManager
-import com.kevin.midnightai.billing.RuntimeMode
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.data.local.PidSummary
 import com.kevin.midnightai.ui.theme.AriaColors
@@ -65,16 +61,12 @@ internal enum class ObdSheetTab { LIVE, HISTORY, CODES, MANAGE }
  * The unified OBD sheet (B30): LIVE readouts, retained HISTORY (the moat table nobody could
  * previously see - [com.kevin.midnightai.data.local.OdbSampleDao] had zero UI callers before
  * this), the DTC reader (CODES, wraps [DtcContent]), and MANAGE (pairing + the gauge picker).
- * Mirrors [DtcSheet]'s sheet chrome - this absorbs that sheet's Cruise entry point; DtcSheet
- * itself stays compiling standalone until a later commit retires it.
+ * It absorbed the old DTC sheet's Cruise entry point (the standalone DtcSheet wrapper
+ * was deleted 2026-10-14; the reader body is [DtcContent]).
  *
- * LIVE, CODES, and MANAGE are unconditionally free - the natural cost boundary is the paywall
- * (nothing here costs Kevin anything to serve). HISTORY is the one deliberate exception: per
- * CLAUDE.md sec 2 (tier 2, $10 one-time unlock) the free tier sees its most recent drive in full,
- * and the retained history beyond that - every other drive, trends over weeks, drive-to-drive
- * comparison - is behind the same unlock that reveals BYO-key entry. See [HistoryTab]'s kdoc for
- * why (a deliberate value-capture decision, not a serving-cost one) and [HistoryUnlockCard] for
- * the copy rule that keeps it from ever reading as "pay to see your own data."
+ * Every tab is open to every install. HISTORY used to hide all but the latest drive behind the
+ * $10 unlock (a value-capture gate, not a serving cost); the commercial model is dead (root ADR
+ * 0004) and that gate was removed 2026-10-14, so HISTORY shows the full retained drive list.
  */
 @Composable
 internal fun ObdSheet(context: Context, onDismiss: () -> Unit, initialTab: ObdSheetTab = ObdSheetTab.LIVE) {
@@ -215,14 +207,9 @@ private data class HistoryState(
 )
 
 /**
- * The B30 payload: everything obd_samples has been quietly recording for a year with zero UI
- * callers. Free sees its last drive, in full, no restrictions. The $10 unlock (same one that
- * reveals BYO-key entry, CLAUDE.md sec 2, tier 2) adds the rest of the retained history - every
- * other drive, trends over weeks, drive-to-drive comparison. This is the one deliberate value-
- * capture gate in the product (see [com.kevin.midnightai.billing.RuntimeMode]'s kdoc): it is NOT
- * a serving-cost boundary, the data is local and free to store and read. That is why the locked
- * state below describes what the unlock ADDS rather than withholding what's already on the
- * driver's own device - the last drive is never a teaser, it is the complete thing.
+ * The B30 payload: everything obd_samples has been quietly recording for a year, now reachable.
+ * Every drive in the retained window is listed, newest first, with every PID chart. (Until
+ * 2026-10-14 only the latest drive was shown without the $10 unlock; that gate is gone.)
  */
 @Composable
 private fun HistoryTab(context: Context) {
@@ -230,9 +217,6 @@ private fun HistoryTab(context: Context) {
     var selectedDrive by remember { mutableStateOf<ObdHistory.DriveWindow?>(null) }
     var movingDrive by remember { mutableStateOf<ObdHistory.DriveWindow?>(null) }
     var reload by remember { mutableStateOf(0) }
-    val mode by EntitlementManager.mode.collectAsState()
-    val boughtUnlock by BillingManager.unlocked.collectAsState()
-    val paid = mode == RuntimeMode.BYO_KEY || boughtUnlock
 
     LaunchedEffect(reload) {
         val vehicle = VehicleController.currentVehicle(context)
@@ -255,9 +239,7 @@ private fun HistoryTab(context: Context) {
             sub = "Telemetry records every 30s once the engine's running and the adapter's connected.",
         )
         else -> {
-            // Free sees only the newest drive (never a teaser - the full drive, every PID, every
-            // chart). Paid (BYO key or the $10 unlock) sees the whole drive list.
-            val visibleDrives = if (paid) state.drives else state.drives.take(1)
+            val visibleDrives = state.drives
             Column(Modifier.fillMaxSize()) {
                 Text(
                     state.firstSampleMs?.let { "${formatCount(state.totalCount)} readings since ${shortDate(it)}" }
@@ -274,7 +256,7 @@ private fun HistoryTab(context: Context) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     // Only worth showing a picker list when there's more than one drive to pick
-                    // from - a free driver with just the latest drive gets straight to the data.
+                    // from - a single drive gets straight to the data.
                     if (visibleDrives.size > 1) {
                         LazyColumn(
                             modifier = Modifier.width(150.dp),
@@ -304,17 +286,11 @@ private fun HistoryTab(context: Context) {
                             // The corrector (car manager, 2026-07-16). Lives here, not
                             // on CARS: the drive list, selection and charts already
                             // exist here, and CARS manages cars while HISTORY manages
-                            // drives. Only offered to paid, inheriting §2's existing
-                            // history gate rather than inventing a new boundary.
-                            if (paid) {
-                                TextButton(onClick = { movingDrive = drive }) {
-                                    Text("MOVE TO ANOTHER CAR", fontSize = 11.sp)
-                                }
+                            // drives. (It was paid-only until the 2026-10-14 removal of
+                            // the unlock gate.)
+                            TextButton(onClick = { movingDrive = drive }) {
+                                Text("MOVE TO ANOTHER CAR", fontSize = 11.sp)
                             }
-                        }
-                        if (!paid) {
-                            Spacer(Modifier.height(10.dp))
-                            HistoryUnlockCard(context)
                         }
                     }
                 }
@@ -403,47 +379,6 @@ private fun MoveDriveDialog(
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } },
     )
-}
-
-/**
- * What the $10 unlock ADDS, not what's being withheld. The drive above this card is already the
- * complete last drive - nothing here should ever read as "pay to see your own data" (CLAUDE.md
- * sec 2, tier 2 is a value-capture decision Kevin made with that exact risk in mind).
- */
-@Composable
-private fun HistoryUnlockCard(context: Context) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(AriaColors.Panel.copy(alpha = 0.8f))
-            .border(1.dp, AriaColors.PanelBorder, RoundedCornerShape(8.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        Text("MORE THAN ONE DRIVE", style = AriaType.neonLabel.copy(fontSize = 12.sp), color = AriaColors.TextPrimary)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "You're seeing your last drive above, complete - nothing held back. Unlocking (\$10 once, " +
-                "then it's your own Gemini key, free after that) opens every other drive you've " +
-                "recorded: the full retained history, trends over weeks, drive-to-drive comparison. " +
-                "It also turns on live voice, image generation, and diagnosis.",
-            style = AriaType.readout.copy(fontSize = 12.sp, letterSpacing = 0.sp, lineHeight = 17.sp),
-            color = AriaColors.TextDim,
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "\$10 - UNLOCK",
-            style = AriaType.neonLabel,
-            color = AriaColors.Background,
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .background(AriaColors.Amber)
-                .clickable {
-                    (context as? Activity)?.let { BillingManager.launchPurchase(it) }
-                }
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-        )
-    }
 }
 
 private fun formatCount(n: Int): String {

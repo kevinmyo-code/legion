@@ -27,7 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.ai.GeminiKeyProvider
-import com.kevin.midnightai.billing.EntitlementManager
+import com.kevin.midnightai.ai.EntitlementManager
 import com.kevin.midnightai.ui.theme.AriaColors
 
 private const val AI_STUDIO_URL = "https://aistudio.google.com/apikey"
@@ -36,7 +36,7 @@ private const val AI_STUDIO_URL = "https://aistudio.google.com/apikey"
  * Reusable Gemini API-key field: lets the driver paste their own key (the BYO-key
  * model - see the pricing/distribution plan), saves it to [CompanionProfile],
  * refreshes the process-wide [GeminiKeyProvider] cache, and flips
- * [com.kevin.midnightai.billing.EntitlementManager] to BYO_KEY so it takes effect
+ * [com.kevin.midnightai.ai.EntitlementManager] to BYO_KEY so it takes effect
  * on the next session/sub-agent/image call without a restart. Rendered inside the
  * "AI & Plan" settings section, gated to drivers entitled to bring their own key
  * (already on one, or bought the one-time unlock).

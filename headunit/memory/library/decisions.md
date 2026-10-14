@@ -1689,3 +1689,25 @@ see the drift flags under CLAUDE.md §8 before calling either a violation.
 // along) or the driver's own car (speaks as itself) is the free/paid line,
 // not a constant.
 ````
+
+### 2026-10-14 addendum - follow-up cleanup, Kevin: "yes to all"
+
+Kevin approved the follow-ups from the rules pass above. Done the same day, same branch:
+- **Billing deleted.** `billing/BillingManager.kt`, `billing/UnlockState.kt`, the `billing-ktx` dependency
+  (`app/build.gradle.kts`, `gradle/libs.versions.toml`), `ObdSheet.HistoryUnlockCard`, the `unlock_byo` references and the
+  "CLAUDE.md sec 2 tier 2" comments. OBD HISTORY now lists every retained drive for every install, and the
+  MOVE TO ANOTHER CAR corrector is no longer paid-only.
+- **A second paywall effect found and removed:** Settings > AI power & plan (`PlanSection`) showed the Gemini key field
+  only when `mode == BYO_KEY || BillingManager.unlocked`, so a keyless, unpurchased install could not enter a key at
+  all. The key field is now always shown; the `PlanChoice` "$10 - UNLOCK" card and its debug simulate button are gone.
+- `EntitlementManager` and `RuntimeMode` kept (about ten call sites read `canStartVoice` / `canUseSubAgent` / `mode`),
+  moved from package `billing` to `ai`, KDoc rewritten.
+- **Mapbox:** `mapboxNav` and `mapbox-navigation-core` removed from `gradle/libs.versions.toml`. No Mapbox plugin or
+  maven repo was configured (settings, root build, app build, manifest, proguard all grep clean).
+- **DtcSheet / GarageSheet deleted.** `DtcSheet.kt` held the live `DtcContent` (the ObdSheet CODES tab body), so the file
+  was renamed `DtcContent.kt` and only the one-line `DtcSheet` wrapper removed; `GarageSheet.kt` deleted whole
+  (`GarageController` / `GarageOpener` stay: the voice tool and Settings > Garage & gate use them). KDoc links repointed.
+- **Fleet Hub kept (Kevin: still wanted).** CLAUDE.md now says the head unit promises no avatar/wallpaper write-back.
+- **DTC clear traced: no clear path exists.** The OBD layer's only DTC command is Mode 03 (`getDtcCodes`); no Mode 04
+  string exists in `app/src/main`; `sendCommand` is private; no voice tool or UI action clears codes. README's "DTC
+  read/clear" claim changed to read-only. (The phone app's `clear_codes` tool is a different codebase.)

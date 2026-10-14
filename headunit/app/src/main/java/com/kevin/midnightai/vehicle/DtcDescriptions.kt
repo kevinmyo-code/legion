@@ -11,9 +11,9 @@ import java.io.File
  * manufacturer-specific codes not in the seed). Seed entries never touch the
  * disk cache, so the file only grows with genuinely agent-answered codes.
  *
- * Extracted from [com.kevin.midnightai.ui.DtcSheet] (2026-07-23,
+ * Extracted from [com.kevin.midnightai.ui.DtcContent] (then DtcSheet.kt; 2026-07-23,
  * `.scratch/glance-cards/`) so a background voice tool (no Compose context)
- * can do the same fast, offline lookup [com.kevin.midnightai.ui.DtcSheet]
+ * can do the same fast, offline lookup [com.kevin.midnightai.ui.DtcContent]
  * already does - neither [loadSeed] nor [loadLearned] ever calls the
  * diagnostics sub-agent; that escalation stays the caller's decision.
  */

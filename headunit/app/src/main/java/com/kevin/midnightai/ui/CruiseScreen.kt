@@ -647,8 +647,8 @@ fun CruiseScreen(
         // longer opened from Cruise (2026-09-27 slim pass) - ObdSheet.kt and
         // GarageSheet.kt are untouched, they just lost their Cruise entry point.
         // (2026-10-14: ObdSheet and CarsScreen are reachable again from Settings > Your car;
-        // the garage relay lives in Settings > Your car > Garage & gate, so GarageSheet.kt and
-        // DtcSheet.kt remain without a call site.)
+        // the garage relay lives in Settings > Your car > Garage & gate. GarageSheet.kt and the
+        // DtcSheet wrapper were deleted that day.)
 
         // --- App tray overlay (frame-clock slide-up, same reason) ---
         if (showAppTray) {
@@ -1038,7 +1038,8 @@ private fun ConsoleTile(
 // 2026-09-27 - none of them have a Cruise call site any more. The screens
 // they used to open (ObdSheet.kt, GarageSheet.kt, CarsScreen.kt,
 // LogbookScreen.kt) are untouched; Cruise just stopped being their door.
-// (Corrected 2026-10-14: ObdSheet and CarsScreen now have Settings > Your car rows.)
+// (Corrected 2026-10-14: ObdSheet and CarsScreen now have Settings > Your car rows;
+// GarageSheet.kt was deleted, its job is Settings > Garage & gate.)
 
 /**
  * The companion, in a tall portrait window (waist-up city-pop illustration, not

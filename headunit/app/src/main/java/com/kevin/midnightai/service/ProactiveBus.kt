@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.SharedFlow
  * The floating button drives push-to-talk (and starting a session) by calling
  * the controller directly, so there's no event for that here.
  *
- * Not the mute choke point on purpose: [DtcSheet]'s "ASK" button is driver-
+ * Not the mute choke point on purpose: [DtcContent]'s "ASK" button is driver-
  * tapped (an explicit request, not chatter) and calls this directly, so the
  * [ProactivePreferences] mute check lives at each unsolicited caller instead
  * (`AriaForegroundService.speakProactive`, `TelephonyController`'s call

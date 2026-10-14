@@ -1,7 +1,6 @@
 ﻿package com.kevin.midnightai.ui
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -112,9 +111,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import com.kevin.midnightai.BuildConfig
 import com.kevin.midnightai.ai.AvatarStudio
-import com.kevin.midnightai.billing.BillingManager
-import com.kevin.midnightai.billing.EntitlementManager
-import com.kevin.midnightai.billing.RuntimeMode
+import com.kevin.midnightai.ai.EntitlementManager
+import com.kevin.midnightai.ai.RuntimeMode
 import com.kevin.midnightai.ui.theme.AriaDimens
 import com.kevin.midnightai.ui.theme.AriaTheme
 import com.kevin.midnightai.ui.theme.AriaType
@@ -225,7 +223,7 @@ fun ControlPanel(
     val planMode by EntitlementManager.mode.collectAsState()
     val planSubtitle = when (planMode) {
         RuntimeMode.BYO_KEY -> "Your own key - full access, no limits from us"
-        RuntimeMode.AI_PAUSED -> "Unlock once, bring your own key"
+        RuntimeMode.AI_PAUSED -> "Add your own Gemini key"
     }
 
     // Snapshot into a val: `when` on a delegated `var` captured by the onClick
@@ -1699,23 +1697,13 @@ private fun ResetRow(title: String, subtitle: String, onClick: () -> Unit) {
 }
 
 /**
- * The single home for how the AI is powered: current plan/mode AND the Gemini
- * key entry. Per CLAUDE.md sec 2 (2026-07-16 rewrite): two tiers, no trial, no
- * subscription, no broker. The base app (dashboard, OBD history's last drive,
- * customization) is free; the $10 unlock adds retained OBD history and BYO-key
- * access to the metered AI layer (Live voice, image gen, sub-agent diagnosis).
- *
- * The key field is deliberately shown ONLY to drivers entitled to bring their
- * own key: those already on one (BYO_KEY), or who've bought the one-time $10
- * unlock ([BillingManager] / [UnlockState]). Everyone else sees the offer
- * instead. That's what makes the $10 real - before this, the key field lived
- * openly in Setup, so the unlock gated nothing.
+ * The single home for how the AI is powered: the current mode and the Gemini key entry. The
+ * key field is always shown (the commercial model is dead, root ADR 0004; until 2026-10-14 it
+ * was hidden behind a $10 unlock, which also meant a keyless install could not enter a key).
  */
 @Composable
 private fun PlanSection(onBack: () -> Unit) {
-    val context = LocalContext.current
     val mode by EntitlementManager.mode.collectAsState()
-    val unlocked by BillingManager.unlocked.collectAsState()
 
     SectionScaffold("AI power & plan", onBack) {
         when (mode) {
@@ -1733,7 +1721,7 @@ private fun PlanSection(onBack: () -> Unit) {
                 Text("${CompanionProfile.DEFAULT_NAME} is quiet", style = RowTitle, color = AriaColors.TextPrimary)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "${CompanionProfile.DEFAULT_NAME} notices things and says them out loud. To ask him why, unlock once and " +
+                    "${CompanionProfile.DEFAULT_NAME} notices things and says them out loud. To ask him why, " +
                         "bring your own Gemini key.",
                     style = RowSubtitle,
                     color = AriaColors.TextDim,
@@ -1743,78 +1731,33 @@ private fun PlanSection(onBack: () -> Unit) {
 
         Spacer(Modifier.height(AriaDimens.s4))
 
-        // Entitled to bring your own key (already on one, or bought the unlock) ->
-        // the key field. Otherwise -> the $10 offer.
-        if (mode == RuntimeMode.BYO_KEY || unlocked) {
-            Text("Your Gemini key", style = RowTitle, color = AriaColors.TextPrimary)
-            Spacer(Modifier.height(AriaDimens.s1))
-            Text(
-                "Stored encrypted on this device, sent only to Google. Powers voice and diagnostics.",
-                style = RowSubtitle,
-                color = AriaColors.TextDim,
-            )
-            Spacer(Modifier.height(10.dp))
-            ApiKeyEntry()
-
-            // Quiet heads-up if a recent Gemini call hit a key problem (rate limit /
-            // invalid). Polled from KeyHealth, which the sub-agent + session paths set.
-            val keyProblem by produceState(initialValue = KeyHealth.lastProblem) {
-                while (true) {
-                    value = KeyHealth.lastProblem
-                    kotlinx.coroutines.delay(1000)
-                }
-            }
-            keyProblem?.let { p ->
-                Spacer(Modifier.height(AriaDimens.s2))
-                Text(
-                    "Key issue seen recently: $p",
-                    style = Label,
-                    color = AriaColors.Amber,
-                )
-            }
-        } else {
-            PlanChoice(context)
-        }
-    }
-}
-
-@Composable
-private fun PlanChoice(context: Context) {
-    Text(
-        "It's \$10 once. After that you bring your own Gemini key and pay Google directly for what " +
-            "you use, usually pennies. No subscription, no monthly bill, nothing through me.",
-        style = RowSubtitle,
-        color = AriaColors.TextDim,
-    )
-    Spacer(Modifier.height(16.dp))
-    PlanCta("\$10 - UNLOCK") {
-        (context as? Activity)?.let { BillingManager.launchPurchase(it) }
-    }
-    // Debug-only: simulate the $10 unlock without Play Billing so the flow is
-    // testable on an emulator / sideloaded build. Compiled out of release builds.
-    if (BuildConfig.DEBUG) {
+        Text("Your Gemini key", style = RowTitle, color = AriaColors.TextPrimary)
+        Spacer(Modifier.height(AriaDimens.s1))
+        Text(
+            "Stored encrypted on this device, sent only to Google. Powers voice and diagnostics.",
+            style = RowSubtitle,
+            color = AriaColors.TextDim,
+        )
         Spacer(Modifier.height(10.dp))
-        PlanCta("DEBUG: SIMULATE \$10 UNLOCK") {
-            BillingManager.debugGrantUnlock(context)
+        ApiKeyEntry()
+
+        // Quiet heads-up if a recent Gemini call hit a key problem (rate limit /
+        // invalid). Polled from KeyHealth, which the sub-agent + session paths set.
+        val keyProblem by produceState(initialValue = KeyHealth.lastProblem) {
+            while (true) {
+                value = KeyHealth.lastProblem
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+        keyProblem?.let { p ->
+            Spacer(Modifier.height(AriaDimens.s2))
+            Text(
+                "Key issue seen recently: $p",
+                style = Label,
+                color = AriaColors.Amber,
+            )
         }
     }
-}
-
-/** Amber CTA button matching the app's Text-as-button convention (see DtcSheet's SheetAction). */
-@Composable
-private fun PlanCta(label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Text(
-        label,
-        style = AriaType.neonLabel,
-        color = if (enabled) AriaColors.Background else AriaColors.TextDim,
-        textAlign = TextAlign.Center,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (enabled) AriaColors.Amber else AriaColors.Panel)
-            .clickable(enabled = enabled) { onClick() }
-            .padding(vertical = 14.dp),
-    )
 }
 
 // GaugeSurface / GaugePickerSection moved to ui/GaugePicker.kt (2026-07-16, B30) so

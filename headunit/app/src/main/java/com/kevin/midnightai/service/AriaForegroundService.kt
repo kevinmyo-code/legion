@@ -381,7 +381,7 @@ class AriaForegroundService : Service() {
         if (TelephonyController.isInCall) return
         // Mute toggle: like Google Maps' turn-announcement mute, this only
         // silences unsolicited chatter - driver-initiated speech (tap avatar,
-        // PTT, DtcSheet's "ASK" button) skips speakProactive and is unaffected.
+        // PTT, DtcContent's "ASK" button) skips speakProactive and is unaffected.
         if (ProactivePreferences.muted.value) return
         ProactiveBus.requestSpeak(prompt)
     }
