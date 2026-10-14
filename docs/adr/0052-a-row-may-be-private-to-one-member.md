@@ -10,7 +10,7 @@ tags: [adr]
 
 ## Standing
 
-ACCEPTED, not built (`.scratch/web-revamp/issues/06-private-rows-on-the-engine.md`). Amends
+ACCEPTED, BUILT and live (`.scratch/web-revamp/issues/06-private-rows-on-the-engine.md`; engine side in `ed3542ee` 2026-10-03, deployed to live that evening with 251 school rows made private to Kevin; the Android side is that map's handoff ticket 18, still open). Amends
 [[0045-households-are-tenants]]: a member sees everything **shared** in their household, plus their
 own private rows. Tenancy is still by household; privacy is a filter inside it, not a second tenant.
 

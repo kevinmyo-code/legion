@@ -10,7 +10,7 @@ tags: [adr]
 
 ## Standing
 
-ACCEPTED, built on `feat/plaid-ledger`, owing a first real link. For every account a household links
+ACCEPTED, BUILT and live (on `dev`: `f570c90d`, `8a83bd83`; first real link made and syncing on the engine since 2026-10-11, scheduled every three hours per README; BofA files retired from the Drive watcher in `026aa1f1`). For every account a household links
 through Plaid (today: Kevin's Bank of America checking and cards), the rows Plaid returns are stored
 **as fact with no verification**, provenance `BANK_API`, and shown exactly like a verified row. This
 supersedes CLAUDE.md section 4 for those accounts only; section 4 still binds every other ingestion

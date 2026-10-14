@@ -15,6 +15,7 @@ tags: [adr]
 anything was bought, done, consumed, or delivered.** Every surface built on tick history says
 "ticked", never "bought" or any other outcome verb, and reports an absent tick as an absent
 RECORD, never as an absent event.
+Related: [[0055-a-groceries-tick-is-a-purchase]] - a tick on the Groceries list alone may say "bought"; every other tick still says "ticked" (not a supersession).
 
 This binds voice tool descriptions, tool result messages, UI labels, advisor lines, and any report
 or figure computed from ticks.

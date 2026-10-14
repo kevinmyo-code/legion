@@ -35,7 +35,7 @@ structure and the reasoning; do not reproduce a brand's look, its wording, or it
 
 ## The stack is decided; use it rather than re-litigating it
 
-React, TypeScript strict, Tailwind, shadcn/ui, TanStack Router and Query, Recharts, FullCalendar.
+React, TypeScript strict, Tailwind, shadcn/ui, TanStack Router and Query, Recharts. The calendar is hand-built, not a library (FullCalendar was named here but never a dependency): `components/month-calendar.tsx` and `screens/calendar-family.tsx` / `calendar-workbench.tsx`, with `lib/week-layout.ts` and `lib/recurrence.ts` doing the layout and repeat expansion.
 The `shadcn` MCP browses and installs components — search it before hand-rolling a primitive,
 because a hand-rolled dropdown is a hand-rolled accessibility bug.
 

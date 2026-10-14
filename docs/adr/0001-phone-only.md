@@ -12,6 +12,7 @@ tags: [adr]
 
 LOCKED. Not reopenable without Kevin. **Narrowed 2026-10-14 by [[0059-headunit-is-a-limb-in-this-repo]]:**
 phone-only binds `app/`; the head unit has its own client, `headunit/`.
+Related: [[0050-legion-may-be-the-home-app]] - `app/` stays phone-only and may now also be the phone's home app (not a supersession).
 
 ## Context
 

@@ -10,7 +10,7 @@ tags: [adr]
 
 ## Standing
 
-ACCEPTED, not built (`.scratch/web-revamp/`). The household web client uses a **soft Material light**
+ACCEPTED, BUILT and live (`.scratch/web-revamp/`: all 17 build tickets on `dev`, soft Material in `c2e9823e`, deployed 2026-10-03 as revision `legion-00023-ggf`; the map's open questions for Kevin are small defaults, not this decision). The household web client uses a **soft Material light**
 look with a dark mode that follows the system, and renders two different surfaces by viewport: a
 family view below 1024 px and a workbench from 1024 px up. Refines [[0040-pc-is-the-primary-surface-phone-is-voice-first]]'s
 "one codebase, responsive": one codebase, two rendered trees, not one page reflowed. The web was

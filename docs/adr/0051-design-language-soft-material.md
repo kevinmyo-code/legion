@@ -11,7 +11,7 @@ tags: [adr]
 
 ## Standing
 
-ACCEPTED, being built (`.scratch/home-launcher/`). The phone's design language is a soft,
+ACCEPTED, BUILT for the first surfaces and converting the rest as each is touched (`.scratch/home-launcher/`: shell chrome `c429820d`, Lists `51a1dd97`, HOME `09e9236f`, Money page `093a2f17`, all on `dev`). The phone's design language is a soft,
 dark Material look. It supersedes [[0023-design-language-mission-control]] **surface by surface**:
 HOME, the Lists screens and the shell chrome (status line, talk bar) move first, and every other
 screen keeps mission control until it is next touched, then converts. The web client is not
