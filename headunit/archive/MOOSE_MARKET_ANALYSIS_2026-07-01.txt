@@ -1,0 +1,349 @@
+MOOSE — MARKET ANALYSIS, SWOT, MONETIZATION & STARDEW PLAYBOOK
+Date: 2026-07-01
+Research: Business agent (live web sources). Strategy: synthesized inline.
+
+================================================================================
+ONE-LINER VERDICT
+================================================================================
+
+Real, unoccupied wedge: no Android head-unit-native AI companion with OBD
+integration and per-car memory exists as of mid-2026. ChatGPT-on-CarPlay and
+Gemini-on-Android-Auto only run on OEM head units in newer cars — they cannot
+serve aftermarket Chinese double-DIN hardware. Carly/FIXD/OBDeleven are scan
+tools with apps, brand-siloed, no memory, no soul. The gap is real. But two
+bets made this week need immediate correction.
+
+================================================================================
+TWO URGENT FINDINGS
+================================================================================
+
+1. SPOTIFY COMMERCIAL-QUOTA BET IS DEAD (verified 2026-07-01)
+   Source: developer.spotify.com/blog/2026-02-06-update-on-developer-access-and-platform-security
+           developer.spotify.com/documentation/web-api/concepts/quota-modes
+
+   - Dev Mode: 5 manually-allowlisted users (was 25, cut Feb 2026).
+   - Extended Quota Mode: requires registered business entity + 250k MAU.
+     Individuals have been ineligible since May 2025.
+   - App Remote SDK hits the same wall — quota is per Client ID, not per SDK.
+   - The 2026-06-30 reopening was based on the stale 25-user regime.
+
+   Translation: play_music / play_vibe / make_playlist work for you and 4
+   friends, then HTTP 403 for everyone else. The code committed yesterday is
+   the right architecture for a post-scale future (250k MAU + LLC). Until then:
+   MediaSession / AVRCP is the only shippable music path. Do not advertise
+   Spotify curation tools to users you cannot manually allowlist.
+
+2. $5-8/MONTH HOSTED TIER IS ZERO-MARGIN OR UNDERWATER
+   Source: ai.google.dev/gemini-api/docs/pricing
+
+   - Gemini Live audio: ~$0.037/minute (25 tokens/sec at current 2026 pricing).
+   - 5-min/day user: ~$5.60/month raw API cost.
+   - 10-min/day user: ~$11.10/month raw API cost.
+   - At $5-8/mo subscription you are paying the median active user to use it.
+
+   Fix options: price hosted at $12-15/month + hard daily voice-minute cap,
+   OR invert — BYO-key becomes the primary SKU, hosted is the premium
+   convenience tier. The TokenBudget already built is the right instinct;
+   make it the business model, not just a safety net.
+
+================================================================================
+COMPETITOR TEARDOWN
+================================================================================
+
+App           Hardware      Software           Model                Notes
+------------- ------------- ------------------ -------------------- -------------------------
+Carly         ~€80-95       ~€50-90/yr (brand) Hardware + sub       ~1.8M downloads, brand-
+                                                                    siloed (BMW/VAG/etc),
+                                                                    TUV Nord endorsed
+OBDeleven     ~€40-50       €80-150/yr PRO     Hardware + sub/      Credits model. VAG-heavy.
+                            or credits         credits
+FIXD          ~$20          Free basic /        Freemium + hardware  Full-system scan, repair
+                            $8.99/mo or         cost estimates,
+                            $99/yr Premium      mechanic hotline
+BlueDriver    ~$90          Free               Hardware only        Strong ABS/SRS/trans.
+                                                                    No recurring revenue.
+Torque Pro    None          ~$5 one-time       Paid Android app     1M+ downloads. Generic
+              (any ELM327)                                          gauge cluster. Budget floor.
+DashCommand   None          Unclear            One-time/freemium    iOS-primary. No verified
+                                                                    current pricing.
+
+Key observation: every serious OBD app requires proprietary hardware OR is a
+generic gauge cluster with no character or persistence. None offer AI reasoning
+over time or a per-car memory. None are companions — they are scan tools.
+
+IN-CAR AI COMPANIONS (emerging)
+- ChatGPT on Apple CarPlay: launched March 2026 via iOS 26.4. Voice-only, no
+  vehicle control, no OBD, no memory. General LLM bolted onto CarPlay.
+- Gemini replacing Google Assistant on Android Auto: rolling out 2025-2026.
+  No OBD integration, no per-car history.
+- DriveSpeak (iOS/CarPlay): voice-first AI driving assistant. No Android, no OBD.
+
+None of these run on aftermarket Chinese double-DIN Android head units.
+That hardware context is Moose's unclaimed territory.
+
+================================================================================
+MARKET SIZING (directional)
+================================================================================
+
+Signal                                  Number
+--------------------------------------- ----------------------------------------
+Aftermarket head unit market            ~$20B (2025); double-DIN = 55% of it
+OBD dongle market                       $1.4-2.8B; ~10-12% CAGR
+Classic car market                      ~$37.5B global; under-40 collectors growing
+In-category competitors on Android      ZERO
+head units (AI + OBD + per-car memory)
+
+Caveat: ATOTO/Joying/Eonon don't publish unit shipments. "Classic car market"
+figures are auction-weighted, not XJ/E46-weighted. Use these as momentum
+signals. Real TAM question is cheaper to answer via forum counts:
+r/projectcar alone has 174k members.
+
+================================================================================
+SWOT
+================================================================================
+
+STRENGTHS
+- Unoccupied category. First-mover on head-unit AI + OBD + memory.
+- Compounding moat: per-car history gets more valuable every month. Competitor
+  can copy features, not two years of logged services and memories.
+- Aesthetic is a moat, not decoration. Carly cannot ship a cassette deck with a
+  city-pop avatar — it's off-brand for them, it's the whole brand for Moose.
+- Solo-dev economics: BYO-key tier = near-zero marginal cost per user.
+- Cruise screen is inherently filmable — the marketing artifact is inside
+  the product.
+
+WEAKNESSES
+- Nothing hardware-validated beyond voice loop + OBD codes on one Cherokee.
+  Every YouTuber demo risk lives here.
+- Sideload-only distribution: every install is a 10-minute manual funnel
+  with an APK warning screen.
+- Gemini dependency: pricing, deprecation, key management are someone else's
+  decisions.
+- BYO-key onboarding filters out a large fraction of otherwise-ideal users.
+  ("Get an API key from Google AI Studio" is a step most people won't take.)
+
+OPPORTUNITIES
+- Photo diagnosis (Wave 3) = the strongest unshipped moat feature. Carly/FIXD
+  can't do it. Generic AI can't ground it to this specific car.
+- Logbook export share card = organic acquisition loop. QR footer at car meets
+  and in video descriptions.
+- Head unit OEM partnership long-shot: ATOTO has no software differentiation.
+  "Comes with Moose" is a conceivable 2027 conversation.
+- Resale story: a car with a complete Moose logbook is worth more. No OBD app
+  makes this pitch.
+- B-roll flywheel is unclaimed. No precedent for an app going viral in car
+  communities — that's an opportunity, not a warning.
+
+THREATS
+- Google could ship Gemini on AOSP head units. Mitigation: no OBD grounding,
+  no memory, no character, no incentive to serve $200 hardware. Speed matters.
+- Spotify-style platform rug-pulls (already happened, this week).
+- Subscription math is brutal at the median:
+  RevenueCat 2026 (n=115k apps): median = $492/mo, 57.7% never reach $1k
+  total, top 10% capture 94.5% of all subscription revenue. Only the flywheel
+  gets you to the top decile.
+
+================================================================================
+WHAT'S MISSING / WHAT TO ADD (by impact tier)
+================================================================================
+
+BLOCKERS — before any creator outreach
+1. Hardware validation sprint: BT music, launcher, Lights Out, nav GPS follow.
+   A YouTuber's first stutter is the whole video.
+2. Re-price. Structure in Monetization section below.
+3. 60-second demoable killer moment from cold app open.
+
+HIGH-LEVERAGE ADDS
+4. Photo diagnosis — promote from Wave 3. It's the "show your friend" feature
+   and it's entirely self-contained.
+5. Logbook export share card (already priority #5) — QR footer is the install
+   funnel.
+6. Install experience that doesn't feel like contraband: one-page site, QR,
+   clear APK instructions. Eventually Play Store for the phone "garage mode"
+   companion (head unit can stay sideload).
+
+DELIBERATELY SKIP (soul preservation)
+- No feature-matrix war with Carly. You will not out-scan a scan tool. Depth
+  of character and compounding history beats breadth of PIDs.
+- No social network, accounts, or cloud sync at launch. Stardew shipped a
+  complete single-player loop first.
+
+WHAT TO TAKE AWAY
+- Spotify curation tools from the advertised Live toolset at launch. Keep the
+  code, gate it behind allowlist. The model should not offer play_music to
+  users who will get a 403.
+- Any remaining assumption that hosted-key is the default path.
+
+================================================================================
+MONETIZATION — RECOMMENDED STRUCTURE
+================================================================================
+
+Tier              Price              Who                     Your marginal cost
+----------------- ------------------ ----------------------- ------------------
+Moose (BYO key)   $79 one-time       The tribe: enthusiasts  ~$0
+                                     who install head units
+                                     can paste an API key
+Moose Hosted      $12-15/month with  Convenience buyers,     Capped by
+                  daily voice-min    gift installs           TokenBudget
+                  budget
+Free updates      —                  Everyone                Stardew retention
+forever                                                      mechanism
+
+RATIONALE
+- $79 one-time matches how this tribe already buys (a coilover set, a scan
+  tool, a head unit — parts, not subscriptions). Tasker/Poweramp prove premium
+  one-time works on Android for tools. Your buyer installs car hardware for fun,
+  so an API key is a mod, not a barrier.
+- The hosted tier exists for the mainstream margin, priced above your API cost
+  floor, protected by TokenBudget. Never sell an uncapped hosted tier.
+- Free named updates are the retention mechanism (see Stardew section).
+
+PRICING COMPS
+- Torque Pro: $5 one-time (commodity floor, no AI, no memory)
+- Carly: €80 hw + €50-90/yr (brand-locked, no character)
+- FIXD: $20 hw + $99/yr (AI triage, mass market)
+- Tasker (Android power tool): $3.49 one-time — too cheap for Moose
+- Poweramp (Android audiophile app): $5.49 one-time — still too cheap
+- FL Studio Mobile: ~$14.99 — one-time, premium tool
+- OBDeleven credits + hardware: €130+ up front for VAG-specific users
+- $79 one-time for an AI companion that knows your specific car is defensible.
+
+================================================================================
+STARDEW PLAYBOOK — TRANSLATED TO MOOSE
+================================================================================
+
+THE NUMBERS (actual, verified)
+- Stardew Valley: 4.5yr solo dev, $14.99 one-time, zero paid marketing.
+  1M copies month 1 (Feb 2016). 41M copies / ~$518M gross by Dec 2024.
+  Version 1.6 alone drove ~10M copies in 2024.
+- Balatro (solo, LocalThunk): Feb 2024. Expected "maybe 10 copies."
+  1M copies month 1. 5M by Jan 2025. $9M+ mobile IAP in 11 months.
+- Vampire Survivors (primarily solo, poncle): ~$57M gross Steam alone.
+  ~2M copies in first month at $3-5.
+
+ZERO PAID MARKETING, ALL THREE. Flywheel was: demonstrable first-session hook
++ streamer/creator pick-up + visible solo human + no feature bloat.
+
+THE FOUR ELEMENTS (and Moose's equivalent)
+
+1. DEMONSTRABLE FIRST-SESSION HOOK — the content creates itself
+   Stardew: the farm montage. Balatro: "one more hand." VS: "just one more run."
+   MOOSE: the first night drive. Lights Out, cassette spinning, Moose chimes in
+   about coolant temp in character. Cinematic B-roll exists inside the product.
+   Every engineering hour should route through: "does this make the night drive
+   more reliable, beautiful, or shareable?"
+
+2. FAN FORUM PRESENCE A YEAR BEFORE LAUNCH
+   Barone posted in Harvest Moon forums 1yr pre-launch. Found people starving
+   for exactly his game before a line of marketing copy existed.
+   MOOSE EQUIVALENT:
+   - r/projectcar (174k members)
+   - XJ forums (Jeep Cherokee Talk, XJ Owners Club)
+   - E46Fanatics
+   - JDM YouTube mid-tier: Dustin Williams (741k), SAMMIT (690k),
+     Noriyaro (690k) — not Donut Media (9.26M, too broad, save for later)
+   Post NOW as "I'm building an AI companion for my '98 XJ." That IS a project-
+   car post. The Cherokee is the dev blog protagonist. The clock starts when
+   you post.
+
+3. THE DEV IS VISIBLY ONE HUMAN WHO CARES
+   Barone's Twitter/Reddit presence WAS the brand. Solo dev is not your weakness
+   in this playbook — it's the marketing. The story is: one person, one car,
+   four years, the app that knows itself.
+
+4. FREE NAMED UPDATES AS THE RETENTION/SALES FLYWHEEL
+   Stardew 1.6 drove ~10M copies in 2024, 8 years after launch.
+   Each free update = press cycle + forum posts + re-engagement spike.
+   MOOSE EQUIVALENT: ship 1.0 lean (voice + OBD + logbook + Cruise screen),
+   then named free updates:
+   - "The Photo Diagnosis Update"
+   - "The Fuel Log Update"
+   - "The Mods Binder Update"
+   Each one justifies the $79 forever and keeps the community posting.
+
+ONE HONEST DISANALOGY
+Stardew: zero marginal cost per player, frictionless Steam distribution.
+Moose: per-user LLM costs (solved by BYO-key primary SKU), sideloading friction
+(solved by share-card QR funnel + eventual Play Store garage-mode app).
+The playbook still applies — it has two extra bosses.
+
+================================================================================
+DISTRIBUTION CHANNELS
+================================================================================
+
+YOUTUBE — TARGETS (mid-tier for high engagement, not vanity reach)
+Channel             Subs        Angle
+------------------- ----------- -------------------------------------------
+Dustin Williams     741k        JDM builds, EG Civic, Skylines, 280Z
+SAMMIT              690k        JDM lifestyle, drifting
+Noriyaro            690k        Japan-based, drift events, tuners
+ALBOmedia           493k        JDM enthusiast lifestyle, Japan
+Larry Chen          477k        Photography, JDM culture
+
+(Donut Media 9.26M, Hoonigan 5.89M — save for post-traction press wave)
+
+Strategy: seed 5-10 channels in 50k-700k range where engagement is high and
+audience is specific. The Cruise screen needs to look great on camera before
+a single pitch email goes out. The pitch is "use our dash footage as B-roll."
+
+REDDIT
+Community           Size
+------------------- --------
+r/cars              7.4M
+r/projectcar        174k
+r/JDM               39.6k
+r/E46               ~50-100k (unverified, check directly)
+r/Jeep              ~300-500k (unverified, check directly)
+
+================================================================================
+THE OPEN QUESTION
+================================================================================
+
+When a YouTuber's viewer clicks the QR in the video description, what happens
+in the next five minutes?
+
+Landing page → APK download → APK warning screen → install → key setup →
+first conversation
+
+This funnel is currently undesigned. It is where the flywheel either spins
+or dies. The BYO-key onboarding is the hardest step in that funnel — "go to
+Google AI Studio and create an API key" will lose 70%+ of otherwise-interested
+users. Either make that step dramatically easier (deeplink, guided video, copy
+that frames it as a mod/unlock), or make the hosted $12-15/mo tier the path
+of least resistance for the mass audience.
+
+================================================================================
+IF YOU ONLY DO THREE THINGS
+================================================================================
+
+1. RE-PRICE THIS WEEK
+   BYO-key $79 one-time as primary SKU. Hosted $12-15/month capped by
+   TokenBudget. Strip un-allowlistable Spotify tools from the launch toolset.
+
+2. HARDWARE VALIDATION SPRINT
+   Until the 60-second night-drive demo is bulletproof on the real head unit,
+   no creator outreach. A YouTuber's first stutter is the whole video.
+
+3. START FORUM PRESENCE NOW
+   Post build-log updates on r/projectcar and the XJ/E46 forums.
+   The Stardew flywheel takes a year of being a known human before launch day.
+   That clock only starts when you post.
+
+================================================================================
+SOURCES
+================================================================================
+
+- developer.spotify.com/blog/2026-02-06-update-on-developer-access-and-platform-security
+- developer.spotify.com/documentation/web-api/concepts/quota-modes
+- ai.google.dev/gemini-api/docs/pricing
+- revenuecat.com/state-of-subscription-apps/ (2026, n=115k apps)
+- gamingonlinux.com — Stardew Valley 41M sales, Dec 2024
+- dlcompare.com — Balatro 5M copies, Jan 2025
+- gamalytic.com — Vampire Survivors Steam stats
+- theinsightpartners.com — Car Audio Head Units Market
+- marketresearchfuture.com — OBD Dongle Market 2035
+- marketresearchfuture.com — Classic Car Market 2035
+- socialblade.com — YouTube channel subscriber counts
+- gummysearch.com, subbed.org — subreddit member counts
+- skanyx.com — Carly, OBDeleven, Torque Pro pricing 2026
+- obdadvisor.com — FIXD vs BlueDriver 2026

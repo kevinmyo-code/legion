@@ -10,7 +10,8 @@ tags: [adr]
 
 ## Standing
 
-LOCKED. Not reopenable without Kevin.
+LOCKED. Not reopenable without Kevin. **Narrowed 2026-10-14 by [[0059-headunit-is-a-limb-in-this-repo]]:**
+phone-only binds `app/`; the head unit has its own client, `headunit/`.
 
 ## Context
 

@@ -1,0 +1,47 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+build/
+app/build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Build artifacts / caches
+*.apk
+*.aab
+.kotlin/
+/.idea/
+
+# Signing key - personal sideload keystore, never commit
+app/release.jks
+*.jks
+*.keystore
+
+# OS / editor
+Thumbs.db
+
+# Firebase CLI local project link (no firebase.json/backend in use yet)
+.firebaserc
+
+# Wayfinder / to-spec working state (short-lived; decisions get filed to memory/library)
+.scratch/
+
+# Background-agent worktree scratch space (EnterWorktree isolation) - never project source,
+# and the prior single-named-worktree exclusion left every OTHER worktree unignored, which
+# `git add -A` then swept in wholesale (2026-07-22). Match the whole directory as a pattern.
+.claude/worktrees/
+
+
+# Moved into LEGION (public) 2026-10-14: per-machine and secret files stay local
+app/google-services.json
+.claude/settings.local.json

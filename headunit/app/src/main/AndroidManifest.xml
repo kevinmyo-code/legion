@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Bluetooth Permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <!-- neverForLocation: we scan only to find an OBD dongle, never to derive the
+         user's location. Without this flag, Android 12+ treats a BT scan as
+         location-capable and silently requires ACCESS_FINE_LOCATION to be granted
+         too before returning ANY scan result - but ObdDeviceScreen's S+ permission
+         request is [BLUETOOTH_SCAN, BLUETOOTH_CONNECT] only, so on a modern head
+         unit the scan came back empty. The flag decouples the scan from location so
+         BLUETOOTH_SCAN alone is enough. (Pre-S units don't use BLUETOOTH_SCAN; they
+         still need FINE_LOCATION for classic discovery, which is requested there.) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 2026-07-08: these were never declared at all, despite MainActivity's
+         checkAndRequestPermissions() requesting several of them at runtime and
+         AriaForegroundService using all three specialized FGS types below. An
+         undeclared runtime permission can't be granted - the OS denies it
+         immediately with no dialog ever shown, which is what looked like
+         "permissions required, but no request comes up". FOREGROUND_SERVICE
+         itself (a normal, install-time permission, not requested at runtime
+         at all) was also missing, which crashed startForeground() outright
+         regardless of any other permission's state - see AriaForegroundService.kt. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- GPS beacon link (2026-07-25). The Cherokee's head unit cannot use its own
+         GPS - connecting the antenna browns out the shared WiFi/BT rail - so a
+         phone on the same hotspot supplies the fix over UDP. See service/DeviceRole.
+         INTERNET/ACCESS_NETWORK_STATE previously arrived only by manifest merge from
+         Firebase; declared here now that this app opens its own sockets rather than
+         relying on a dependency to keep declaring them. ACCESS_WIFI_STATE is what
+         allows reading the DHCP gateway, i.e. the phone's address on the hotspot.
+         FOREGROUND_SERVICE_LOCATION is for the phone-role BeaconService only. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Mixtape playback (Media3 ExoPlayer + our own MediaSession) runs inside
+         AriaForegroundService so it survives backgrounding. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- Floating companion badge: a small overlay window (avatar tap-to-talk +
+         music transport, TYPE_APPLICATION_OVERLAY) shown while a nav/music app
+         the driver opened has the foreground. Opt-in; the Setup screen sends
+         the driver to grant it. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Needed on Android 11+ to enumerate installed apps for the launcher app tray.
+         The Maps/Waze package queries and the geo: intent query (for the old nav-app
+         picker) were removed 2026-07-25, and navigation itself 2026-10-11 - the head
+         unit has no navigation, so there is no app to hand off to or enumerate. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Spotify packages App Remote's own aar manifest does not declare, so Settings can
+             say "only Spotify Lite is installed" (App Remote cannot bind Lite) instead of
+             "not installed". com.spotify.music/.partners/.canary come from the aar. -->
+        <package android:name="com.spotify.lite" />
+    </queries>
+
+    <application
+        android:name=".MidnightApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AiApp">
+
+        <!-- Dual-target (2026-07-12): the app now also runs as a normal phone
+             app (portrait + landscape), not just the fixed-landscape head
+             unit. screenOrientation is "unspecified" so the OS/window manager
+             follows the device's actual rotation - a head unit that only ever
+             reports landscape still always lands in EXPANDED (today's layout,
+             byte-for-byte); a phone reflows to COMPACT (see ui/WindowSize.kt).
+             configChanges stays EXACTLY as it was: this is what protects the
+             live Gemini session (the Activity is never recreated on rotate,
+             so a stray reconfigure - including a phone's real rotation - only
+             recomposes Compose into the new size bucket, socket untouched).
+             resizeableActivity lets the OS treat this as a normal resizable
+             app (multi-window, split-screen) instead of a fixed-size one. -->
+        <!-- singleTask (2026-07-29): this is the HOME activity, and it also owns the
+             Spotify OAuth redirect filter below. Without a launchMode it defaulted to
+             "standard", so the browser coming back from Spotify consent built a SECOND
+             MainActivity instance (a second launcher, with its own onCreate) stacked in
+             the browser's task instead of delivering to the running one via onNewIntent
+             - which MainActivity's own doc comment already claimed was happening.
+             singleTask, not singleTop: singleTop only routes to onNewIntent when the
+             instance is at the TOP of the target task, so a redirect landing while
+             SavedPlacesActivity was showing would still have
+             stacked a duplicate. singleTask keeps exactly one instance system-wide and
+             routes every incoming intent to it. Also the conventional launcher launch
+             mode (AOSP Launcher3 uses it) for the same single-instance reason. -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:screenOrientation="unspecified"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|navigation|uiMode"
+            android:theme="@style/Theme.AiApp">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Spotify App Remote's app-fixed OAuth redirect (SpotifyController.REDIRECT_URI,
+                 2026-07-21 BYO-client-ID reopen). Must match this scheme+host verbatim, and the
+                 driver must enter the same URI as the Redirect URI in their own Spotify dev app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.kevin.midnightai" android:host="spotify-callback" />
+            </intent-filter>
+        </activity>
+
+        <!-- On-demand list of voice-tagged places, launched by the
+             show_saved_places tool now that there's no dashboard to flip. -->
+        <activity
+            android:name=".ui.SavedPlacesActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.AiApp" />
+
+        <service
+            android:name=".service.AriaForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|dataSync|microphone|mediaPlayback" />
+
+        <!-- Phone-role GPS beacon. Separate from AriaForegroundService because in
+             this role the device is a GPS puck, not a car - no OBD, no Gemini. -->
+        <service
+            android:name=".service.BeaconService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <service
+            android:name=".service.MediaNotificationListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".service.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- FileProvider for sharing logbook export PNGs via ACTION_SEND.
+             Authority = packageName + ".provider", matching LogbookExporter.
+             Not exported; the OS broker grants read-URI permission to the
+             receiving app for the duration of the share session only. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths" />
+        </provider>
+
+    </application>
+
+</manifest>

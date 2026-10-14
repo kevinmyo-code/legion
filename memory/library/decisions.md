@@ -6313,3 +6313,18 @@ Lists, Ideas and More, opening a bottom sheet with a Continue card and one shelf
   work); Harvest Moon (PS1) renders. melonDS (DS) and PPSSPP (PSP) resolve; their ROM hand-off is
   untested. Lemuroid has no ROM-path launch and is dropped.
 - ADR: [[0058-retro-games-launcher]]. Map: `.scratch/retro-games/`.
+
+## 2026-10-14 - Midnight moves into LEGION as headunit/, a head-unit-only limb
+
+Kevin: *"midnight is a part of legion, its a limb of the django engine"* and *"move it, one repo.
+its a head unit only limb. phone we alr have the android app"*. Offered the trade-offs (public vs
+private, the phone-only and single-module rulings, ~10 open branches) he chose: copy without
+history, its own Gradle project under `headunit/`, and close out the open branches first.
+- MIDNIGHT_AI's unmerged work went to its `dev` first: `integrate/car-fixes` (39 commits) and
+  `fix/now-playing-reconnect`, 670 unit tests green, debug and fast builds pass. Not run on the head
+  unit. Its `dev` was `68b9883` when copied.
+- Privacy scan of the copy: no VIN, real MAC, coordinate or key. One work email redacted. Firebase
+  `google-services.json` and `.claude/settings.local.json` left out; `org.gradle.java.home` removed.
+- Phone-only (ADR 0001) now binds `app/` only. The old "MIDNIGHT_AI is a frozen archive" bullet is
+  replaced.
+- ADR: [[0059-headunit-is-a-limb-in-this-repo]].

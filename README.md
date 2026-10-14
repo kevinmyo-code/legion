@@ -6,9 +6,9 @@ LEGION is a study in trusted autonomy: a voice-commanded agent system that acts 
 real vehicle data, and real sensors, engineered so that every claim it makes is either verified,
 labelled as an estimate, or refused.
 
-It is a **personal-life ERP** with two clients over one engine. A household runs its own Django
-server; an Android app is the voice limb, a React web app is the desk surface, and a Postgres
-database is the single system of record. Aspects are the modules, records are the transactions,
+It is a **personal-life ERP** with three clients over one engine. A household runs its own Django
+server; an Android app is the voice limb, a React web app is the desk surface, a car head-unit app
+(`headunit/`) rides in the car, and a Postgres database is the single system of record. Aspects are the modules, records are the transactions,
 and the primary user interface is a Gemini Live speech socket bound by honesty rules.
 
 Solo-developer project. Public repo, private-use scale (one household, a handful of people). Read
@@ -112,7 +112,8 @@ tool call that came back successful in that turn. A tool that failed is treated 
 
 ## Architecture
 
-Two clients, one engine, one database. The household hosts it; nothing is hosted for strangers.
+Three clients, one engine, one database. The household hosts it; nothing is hosted for strangers.
+The diagram shows the phone and the web app; the third client, the car head unit, is below it.
 
 ```
    Android app                         Web app (React, Vite, TanStack)
@@ -163,6 +164,15 @@ Two clients, one engine, one database. The household hosts it; nothing is hosted
   capability drift into disagreeing.
 - **Keys:** the Gemini API key is pasted by the user, validated with a one-token ping, and sealed
   in the Android Keystore. There is no shared or hosted key anywhere in this repo.
+
+### The head unit (`headunit/`)
+
+The car's Android head unit runs its own app, formerly Midnight AI and moved into this repo on
+2026-10-14 (ADR 0059). It is head-unit only (the phone is `app/`): OBD over an ELM327, a Cruise
+screen with a music deck and Spotify, a voice companion, and the household's records reached by
+signing in to the same engine and asking it over MCP (`ask_engine`). It is a separate Gradle
+project with its own rules (`headunit/CLAUDE.md`) and its own README (`headunit/README.md`), so
+building one app never builds the other. Its history before the move stays in a private repo.
 
 ## Safety posture
 
@@ -258,6 +268,9 @@ memory. Last swept 2026-10-14.
 | Crash reporting | Absent by design. Logging goes through `Log.d`; a swallowed exception is invisible off-device |
 
 ## Build / run
+
+**The head unit** is its own Gradle project: `cd headunit` and see `headunit/README.md`. It needs
+its own `local.properties` and a Firebase `app/google-services.json`, neither of which is committed.
 
 **The phone app:**
 

@@ -37,7 +37,12 @@ graph TB
         OB["Outboxes<br/>durable write queue"]
     end
 
+    subgraph Car["Car head unit (headunit/, ADR 0059)"]
+        HU["Head-unit app<br/>com.kevin.midnightai<br/>own Gradle project"]
+    end
+
     SPA -->|"session"| Caddy
+    HU -->|"token: /api/auth, /mcp ask_engine"| Caddy
     MA --> Ctl
     AFS --> Ctl
     RX --> Ctl
@@ -46,6 +51,10 @@ graph TB
     OB -->|"Authorization: Token"| Caddy
     Room -.->|"reads never leave"| MA
 ```
+
+The head unit is drawn as one box on purpose: it is a separate app with its own rules
+(`headunit/CLAUDE.md`), and from the engine's side it is one more authenticated client. Its inside
+is not documented here.
 
 ## Server-side containers
 

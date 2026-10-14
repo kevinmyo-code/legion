@@ -60,8 +60,11 @@ device model in a prompt had three separate agents reporting work on a phone tha
 
 ## 1. Identity
 
-- **Product:** LEGION, one **Android phone app**. A single voice assistant orchestrating
-  **aspects** of life. Not a head-unit product, not a commercial product. **It MAY be the phone's
+- **Product:** LEGION, an **Android phone app** (`app/`). A single voice assistant orchestrating
+  **aspects** of life. Not a commercial product. **The car head unit has its own client in this
+  repo, `headunit/` (Kevin, 2026-10-14, ADR 0059):** the former Midnight AI app, a head-unit-only
+  limb of the engine. It is a separate Gradle project with its own rules in `headunit/CLAUDE.md`;
+  it shares nothing with `app/` but the engine's API. **It MAY be the phone's
   home app** (Kevin, 2026-09-27, ADR 0050), opt-in through Android's own Settings. A home app owes
   the user every other app and never a dead tap.
 - **The one-line identity (Kevin, 2026-08-24): a personal-life ERP, queryable and CRUD-able by a
@@ -109,11 +112,13 @@ device model in a prompt had three separate agents reporting work on a phone tha
 - **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.
-- **MIDNIGHT_AI (`C:\Users\Kwin\StudioProjects\MIDNIGHT_AI`; second machine:
-  `C:\Users\kevin\AndroidStudioProjects\AiApp`) is a FROZEN ARCHIVE.** Private, read
-  only, historical reference for what was ported. Never build there. Never write LEGION's project
-  history into its memory files, which is what happened during the 2026-07-31 port session.
-- **RUN SESSIONS FROM THIS DIRECTORY, not from MIDNIGHT_AI.** On 2026-08-01 a session did all its
+- **The MIDNIGHT_AI repo is retired; its app lives at `headunit/` (ADR 0059).** It was copied in
+  on 2026-10-14 WITHOUT its history, because this repo is public and that one is private; its
+  history stays in the private repo (`C:\Users\Kwin\StudioProjects\MIDNIGHT_AI`; second
+  machine: `C:\Users\kevin\AndroidStudioProjects\AiApp`). Never build or commit there again.
+  `headunit/app/google-services.json` and `headunit/local.properties` are gitignored and copied
+  in by hand on each machine.
+- **RUN SESSIONS FROM THIS DIRECTORY (the repo root), not from the old MIDNIGHT_AI folder.** On 2026-08-01 a session did all its
   work here with its working directory set to the archive. Three things broke silently: `/wayfinder`,
   `/prototype` and every other slash-command resolved to the ARCHIVE's skills (the un-adapted copies
   that still enforce the dead frame-clock motion ban and head-unit preview sizes), the agent roster
@@ -134,7 +139,7 @@ None of these is re-openable without Kevin. Full record in `memory/library/decis
 
 | Decision | Consequence |
 |---|---|
-| **Phone-only** | Head units may still install it; they no longer constrain design. The AOSP 8-10 ceiling, the frame-clock-only motion ban, and the ADB blackout are all LIFTED. Normal Compose animation is allowed. |
+| **Phone-only** (for `app/`; the head unit is `headunit/`, ADR 0059) | Head units may still install the phone app; they no longer constrain its design. The AOSP 8-10 ceiling, the frame-clock-only motion ban, and the ADB blackout are all LIFTED. Normal Compose animation is allowed. |
 | **Commercial model is DEAD** | No billing, tiers, broker, trial, store listing, pricing, or positioning work. `billing/` was dropped entirely. Do not reintroduce it or reason about conversion. |
 | **Clone-and-run is a HARD requirement** | A stranger clones, sideloads, signs in, and it works. This, not cost, is what rules out Firestore. It is also why `gradle.properties` must never hardcode `org.gradle.java.home`. |
 | **Drive-BYO is the only store** | SUPERSEDED 2026-08-25 (Supabase, ADR 0038), 2026-09-05 morning (Django as second client, ADR 0043), and 2026-09-05 evening (**Django is the engine, ADR 0044**: one household-hosted server owns the data, Android and a web app are its clients, Supabase retires). Kept here because the row's REASON survives: nothing Kevin-hosted for other people. The household hosts its own. No Firestore, ever. |
@@ -580,7 +585,8 @@ as touched, reachable in the meantime through an `@EntryPoint` shim so old `obje
 compiling; (6) modules on the trigger above. The ticket is `.scratch/architecture/`.
 
 **Still never for this app:** Circuit, Decompose, MVI frameworks, Flutter, React Native, KMP.
-Phone-only is a ruling and there is no second platform to share with.
+`app/` is phone-only. `headunit/` is a separate Gradle project that talks to the engine, not to
+`app/`'s code, so there is still nothing to share through KMP or a module.
 
 **Code health, decided the same day:** **detekt joins the build** (Kevin: *"1000 lines, add
 detekt"*), with a baseline for what exists today so the build goes red only on new debt. A hook
@@ -637,7 +643,8 @@ banner at the top and `INDEX.md` carries a status column. Read the banner before
   `session-*.md`.
 
 Do not act on a FROZEN shelf's blockers, sprints, or backlog items. They describe a head-unit car
-launcher with a commercial model. The head unit and the commercial model are dead. LEGION may be
+launcher with a commercial model. The commercial model is dead. The head unit is `headunit/`
+(ADR 0059), governed by `headunit/CLAUDE.md`, not by these shelves. LEGION may be
 the phone's home app (ADR 0050), but that shares nothing with the car launcher those shelves plan.
 Its rules are in the ADR, not in them.
 

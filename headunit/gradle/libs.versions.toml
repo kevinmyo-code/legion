@@ -1,0 +1,125 @@
+[versions]
+agp = "9.2.1"
+kotlin = "2.1.0"
+coreKtx = "1.13.1"
+junit = "4.13.2"
+junitVersion = "1.1.5"
+espressoCore = "3.5.1"
+appcompat = "1.7.0"
+material = "1.12.0"
+room = "2.8.4"
+media3 = "1.4.1"
+composeBom = "2024.05.00"
+okhttp = "4.12.0"
+coroutines = "1.8.1"
+# Test-only, backend/engine's transport tests: kotlinx-coroutines-test for runTest,
+# okhttp3.mockwebserver (same 4.12.0 family as the runtime okhttp dependency above)
+# to exercise EngineHttp/EngineAuth against a real local HTTP server instead of a
+# hand-rolled fake Interceptor.
+coroutinesTest = "1.8.1"
+# EngineConfig's constructor takes a real android.content.Context (for
+# SharedPreferences) - Robolectric is the only way to exercise it in a JVM unit test
+# without a device, the same reason LEGION's own EngineConfigTest needs it. No
+# Keystore path is exercised through it (encrypt/decrypt are injected fakes in
+# every test); it exists purely to satisfy the Context requirement.
+robolectric = "4.14.1"
+# The Django-engine client (backend/engine/, third "limb" client per ADR 0044). The
+# openapi-generator "kotlin" generator's kotlinx_serialization templates need this at
+# runtime to decode the generated model classes.
+kotlinxSerialization = "1.8.1"
+# openapi-generator-gradle-plugin: generates the 35 model classes for the Django
+# engine's OpenAPI 3 contract (openapi/legion-schema.yaml) into a build directory -
+# never committed, see build.gradle.kts's openApiGenerate task wiring. 7.18.0 verified
+# working against this project's Gradle 9.4.1.
+openapiGenerator = "7.18.0"
+lifecycle = "2.8.0"
+activityCompose = "1.9.0"
+firebase-bom = "33.7.0"
+zxing-core = "3.5.3"
+billing = "7.1.1"
+playServicesAuth = "21.2.0"
+# Vosk (debug-only wake-word validation harness, .scratch/custom-wake-word/issues/04):
+# published directly to Maven Central, no JitPack needed. Verified via
+# search.maven.org (g:com.alphacephei a:vosk-android) before adding.
+vosk = "0.3.47"
+# Mapbox Navigation SDK v3 (.scratch/mapbox-embedded-nav/). Pinned deliberately
+# to v3.26.0 - the highest non-alpha/non-rc semver tag on GitHub Releases as of
+# the research pass, NOT the docs site's "current" v3.28.0-alpha.2 and NOT the
+# "Latest"-flagged v3.25.2 tag (lower semver than 3.26.0). Ambiguity is real;
+# re-check before bumping. See research-navsdk-v3-dropin.md Q2.
+mapboxNav = "3.26.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+ui = { group = "androidx.compose.ui", name = "ui" }
+ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+material3 = { group = "androidx.compose.material3", name = "material3" }
+# Dual-target responsive infra (2026-07-12): WindowWidthSizeClass drives the
+# COMPACT/MEDIUM/EXPANDED reflow in ui/WindowSize.kt. BOM-managed (see
+# platform(libs.compose.bom) below), no version.ref needed. Alias can't
+# contain the literal word "class" - Gradle's version-catalog accessor
+# generator reserves it and refuses to build (InvalidUserDataException:
+# "reserved alias"), so the alias is "material3-windowsizeclass" even
+# though the artifact's actual Maven name still has the hyphens.
+material3-windowsizeclass = { group = "androidx.compose.material3", name = "material3-window-size-class" }
+activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing-core" }
+# Firebase: BOM pins all Firebase library versions together so individual
+# library entries below don't need their own version.ref.
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
+firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics-ktx" }
+# (2026-07-19) firebase-auth / appcheck-playintegrity / firestore / functions entries
+# removed - the entitlement broker they served was deleted 2026-07-16 and nothing in
+# app/src references them. Crashlytics is the only live Firebase artifact.
+billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
+# Google Identity Authorization API (com.google.android.gms.auth.api.identity):
+# on-device authorization for the driver's OWN Google Drive appDataFolder, used
+# by the cross-device BYO-cloud sync (S1). NOT sign-in/OAuth for a Kevin-hosted
+# backend - the app talks straight to the user's Drive. Reintroduces
+# play-services-auth (CLAUDE.md sec 8 had it removed as "not needed" for the
+# dropped Calendar idea; it IS needed for the approved sync).
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+# Debug-only offline speech recognition for the wake-word validation harness (ticket 04).
+# Pulls in net.java.dev.jna transitively (declared in vosk-android's own POM).
+vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
+# Core navigation engine only (routing, trip session, MapboxOptions). UI layer
+# (ui-components / ux framework) is a separate artifact, deliberately NOT added
+# yet - which one to use is still open (.scratch/mapbox-embedded-nav/issues/07-*).
+mapbox-navigation-core = { group = "com.mapbox.navigationcore", name = "android-ndk27", version.ref = "mapboxNav" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version = "3.0.2" }
+# kotlin-android/compose-compiler above are applied to :app via a hardcoded "2.2.10"
+# id(...) call, not this catalog alias (see app/build.gradle.kts) - the catalog's
+# kotlin = "2.1.0" version.ref is stale relative to what actually builds this module.
+# This plugin must match whichever Kotlin version the compiler plugin classpath
+# resolves to at apply time, so it is declared the same hardcoded way in build.gradle.kts
+# rather than through this alias, to avoid a second, silently-drifting Kotlin version.
+openapi-generator = { id = "org.openapi.generator", version.ref = "openapiGenerator" }
+

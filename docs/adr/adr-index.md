@@ -65,6 +65,7 @@ Format and the test for whether something deserves an ADR:
 | 0056 | [[0056-the-household-key-serves-the-web-assistant\|The household's key serves the web assistant, and never reaches a browser]] | accepted | 2026-10-04 | - |
 | 0057 | [[0057-the-bank-feed-is-the-ledgers-truth\|The bank's own feed is the ledger's truth for the accounts it covers]] | accepted | 2026-10-09 | - |
 | 0058 | [[0058-retro-games-launcher\|Retro games are a HOME launcher, read through a folder grant, with cached box art]] | accepted | 2026-10-11 | - |
+| 0059 | [[0059-headunit-is-a-limb-in-this-repo\|The head unit is a limb of the engine, and it lives in this repo]] | accepted | 2026-10-14 | - |
 
 ## Superseded
 

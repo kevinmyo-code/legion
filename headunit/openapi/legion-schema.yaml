@@ -1,0 +1,3431 @@
+openapi: 3.0.3
+info:
+  title: LEGION
+  version: 0.1.0
+  description: The engine. One Django server, every limb a client of it.
+paths:
+  /api/auth/login:
+    post:
+      operationId: api_auth_login_create
+      description: |-
+        `POST /api/auth/login`. Rate-limited 5/min per IP so a leaked email
+        cannot be brute-forced into a working password - the household is two
+        people, not a userbase, so five attempts a minute is generous, not
+        tight.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/auth/logout:
+    post:
+      operationId: api_auth_logout_create
+      description: |-
+        `POST /api/auth/logout`. Revokes only the token making the request -
+        every other device this user owns keeps working.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/auth/me:
+    get:
+      operationId: api_auth_me_retrieve
+      description: |-
+        `GET /api/auth/me`. This is the phone's membership check - if this
+        call succeeds, the calling token is live and its user is a household
+        member; if it 401s or 403s, the phone knows to ask for a new token.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+          description: ''
+  /api/body/bodyweight_logs/:
+    get:
+      operationId: api_body_bodyweight_logs_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BodyweightLog'
+          description: ''
+  /api/body/bodyweight_logs/{identity}/:
+    put:
+      operationId: api_body_bodyweight_logs_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BodyweightLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BodyweightLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BodyweightLog'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BodyweightLog'
+          description: ''
+    delete:
+      operationId: api_body_bodyweight_logs_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/body/meal_logs/:
+    get:
+      operationId: api_body_meal_logs_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MealLog'
+          description: ''
+  /api/body/meal_logs/{identity}/:
+    put:
+      operationId: api_body_meal_logs_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MealLog'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+          description: ''
+    delete:
+      operationId: api_body_meal_logs_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/body/meal_targets/:
+    get:
+      operationId: api_body_meal_targets_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MealTarget'
+          description: ''
+  /api/body/meal_targets/{identity}/:
+    put:
+      operationId: api_body_meal_targets_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealTarget'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MealTarget'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MealTarget'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealTarget'
+          description: ''
+    delete:
+      operationId: api_body_meal_targets_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/body/sleep_logs/:
+    get:
+      operationId: api_body_sleep_logs_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SleepLog'
+          description: ''
+  /api/body/sleep_logs/{identity}/:
+    put:
+      operationId: api_body_sleep_logs_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SleepLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SleepLog'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SleepLog'
+          description: ''
+    delete:
+      operationId: api_body_sleep_logs_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/body/sleep_targets/:
+    get:
+      operationId: api_body_sleep_targets_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SleepTarget'
+          description: ''
+  /api/body/sleep_targets/{identity}/:
+    put:
+      operationId: api_body_sleep_targets_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepTarget'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SleepTarget'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SleepTarget'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SleepTarget'
+          description: ''
+    delete:
+      operationId: api_body_sleep_targets_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/body/workout_plan_items/:
+    get:
+      operationId: api_body_workout_plan_items_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutPlanItem'
+          description: ''
+  /api/body/workout_plan_items/{identity}/:
+    put:
+      operationId: api_body_workout_plan_items_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlanItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlanItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlanItem'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutPlanItem'
+          description: ''
+    delete:
+      operationId: api_body_workout_plan_items_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/body/workout_plans/:
+    get:
+      operationId: api_body_workout_plans_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutPlan'
+          description: ''
+  /api/body/workout_plans/{identity}/:
+    put:
+      operationId: api_body_workout_plans_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlan'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlan'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlan'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutPlan'
+          description: ''
+    delete:
+      operationId: api_body_workout_plans_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/body/workout_set_logs/:
+    get:
+      operationId: api_body_workout_set_logs_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutSetLog'
+          description: ''
+  /api/body/workout_set_logs/{identity}/:
+    put:
+      operationId: api_body_workout_set_logs_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutSetLog'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WorkoutSetLog'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WorkoutSetLog'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSetLog'
+          description: ''
+    delete:
+      operationId: api_body_workout_set_logs_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/changes:
+    get:
+      operationId: api_changes_retrieve
+      parameters:
+      - in: query
+        name: aspects
+        schema:
+          type: string
+        description: 'Comma-separated aspect names, e.g. `events,checklists`. Missing
+          or blank means every known aspect: events, checklists, body, memory, places,
+          voice_notes.'
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO-8601 watermark. Rows with updated_at >= since are returned.
+          Missing or unparsable means fetch everything, never fetch nothing.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangesResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/checklists/:
+    get:
+      operationId: api_checklists_list
+      description: '`GET /api/checklists?since=<iso>` and `POST /api/checklists`.'
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO-8601 watermark. Rows with updated_at >= since are returned.
+          Missing or unparsable means fetch everything, never fetch nothing.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistPage'
+          description: ''
+    post:
+      operationId: api_checklists_create
+      description: '`GET /api/checklists?since=<iso>` and `POST /api/checklists`.'
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Checklist'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Checklist'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Checklist'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checklist'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checklist'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/checklists/{checklist_id}:
+    get:
+      operationId: api_checklists_retrieve
+      description: '`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checklist'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+    patch:
+      operationId: api_checklists_partial_update
+      description: '`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklist'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklist'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklist'
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checklist'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+    delete:
+      operationId: api_checklists_destroy
+      description: '`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/checklists/{checklist_id}/items:
+    get:
+      operationId: api_checklists_items_list
+      description: '`GET`/`POST /api/checklists/<checklist_id>/items`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO-8601 watermark. Rows with updated_at >= since are returned.
+          Missing or unparsable means fetch everything, never fetch nothing.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItemPage'
+          description: ''
+    post:
+      operationId: api_checklists_items_create
+      description: '`GET`/`POST /api/checklists/<checklist_id>/items`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChecklistItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChecklistItem'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItem'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItem'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/checklists/{checklist_id}/items/{item_id}:
+    get:
+      operationId: api_checklists_items_retrieve
+      description: '`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>/items/<item_id>`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItem'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+    patch:
+      operationId: api_checklists_items_partial_update
+      description: '`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>/items/<item_id>`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistItem'
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItem'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+    delete:
+      operationId: api_checklists_items_destroy
+      description: '`GET`/`PATCH`/`DELETE /api/checklists/<checklist_id>/items/<item_id>`.'
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/checklists/{checklist_id}/items/{item_id}/tick:
+    post:
+      operationId: api_checklists_items_tick_create
+      description: |-
+        `POST /api/checklists/<checklist_id>/items/<item_id>/tick` -
+        `{day, value?, source?}`. See `checklists/serializers.py`'s
+        `TickRequestSerializer` for the measured-item refusal, reused verbatim
+        from `ChecklistController.tick`.
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TickRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TickRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TickRequest'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTick'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTick'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/checklists/{checklist_id}/items/{item_id}/tick/{day}:
+    delete:
+      operationId: api_checklists_items_tick_destroy
+      description: |-
+        `DELETE /api/checklists/<checklist_id>/items/<item_id>/tick/<day>` -
+        soft-deletes the tick for that day, matching `ChecklistController.untick`.
+        Idempotent: no tick on that day is still a 204, not a 404 - "already
+        untouched" and "just unticked" read the same to a caller that does not
+        care which happened.
+      parameters:
+      - in: path
+        name: checklist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: day
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/events:
+    get:
+      operationId: api_events_retrieve
+      description: '`GET /api/events?since=<iso>` and `POST /api/events`.'
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO-8601 watermark. Rows with updated_at >= since are returned.
+          Missing or unparsable means fetch everything, never fetch nothing.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+          description: ''
+    post:
+      operationId: api_events_create
+      description: '`GET /api/events?since=<iso>` and `POST /api/events`.'
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Event'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Event'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/events/{id}:
+    patch:
+      operationId: api_events_partial_update
+      description: '`PATCH`/`DELETE /api/events/<id>`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEvent'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEvent'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEvent'
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+    delete:
+      operationId: api_events_destroy
+      description: '`PATCH`/`DELETE /api/events/<id>`.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+  /api/memory/companion_memories/:
+    get:
+      operationId: api_memory_companion_memories_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompanionMemory'
+          description: ''
+  /api/memory/companion_memories/{identity}/:
+    put:
+      operationId: api_memory_companion_memories_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanionMemory'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CompanionMemory'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CompanionMemory'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanionMemory'
+          description: ''
+    delete:
+      operationId: api_memory_companion_memories_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/memory/memories/:
+    get:
+      operationId: api_memory_memories_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Memory'
+          description: ''
+  /api/memory/memories/{identity}/:
+    put:
+      operationId: api_memory_memories_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Memory'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Memory'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Memory'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+          description: ''
+    delete:
+      operationId: api_memory_memories_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/memory/memory_audit/:
+    get:
+      operationId: api_memory_memory_audit_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemoryAudit'
+          description: ''
+  /api/memory/memory_audit/{identity}/:
+    put:
+      operationId: api_memory_memory_audit_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryAudit'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MemoryAudit'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MemoryAudit'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryAudit'
+          description: ''
+  /api/places/:
+    get:
+      operationId: api_places_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Place'
+          description: ''
+  /api/places/{identity}/:
+    put:
+      operationId: api_places_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Place'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Place'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Place'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+          description: ''
+    delete:
+      operationId: api_places_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/voice_notes/:
+    get:
+      operationId: api_voice_notes_list
+      description: |-
+        `?since=<iso>` (tombstones included) and `?active=1` (live rows
+        only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+        feed, and `?active=1` alone is every live row since the epoch.
+
+        A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+        holds that rule for the whole API and quotes the phone-side cursor
+        comment it comes from.
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VoiceNote'
+          description: ''
+    post:
+      operationId: api_voice_notes_create
+      description: |-
+        `POST <table>/`. Routed only where the identity IS the primary
+        key (voice notes) - everywhere else the client mints the identity
+        and PUT is both create and update, so a second create path would be
+        a second way to do one thing.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoiceNote'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VoiceNote'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VoiceNote'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceNote'
+          description: ''
+  /api/voice_notes/{identity}/:
+    put:
+      operationId: api_voice_notes_update
+      description: |-
+        `PUT <table>/<identity>/`. Idempotent by construction: the
+        identity comes from the URL, so a retry cannot make a second row.
+        200 whether the row was created or updated - the caller asked for
+        the row to exist in this state and it does, and which of the two
+        happened is not something a retrying client can act on.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoiceNote'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VoiceNote'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VoiceNote'
+        required: true
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceNote'
+          description: ''
+    delete:
+      operationId: api_voice_notes_destroy
+      description: |-
+        `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+        stays, because a phone that has not synced since still needs to
+        learn the row is gone. Idempotent - a second delete is still a 204,
+        matching `EventsBackend.softDelete`'s own contract.
+      parameters:
+      - in: path
+        name: identity
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - deviceTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /health:
+    get:
+      operationId: health_retrieve
+      description: |-
+        `GET /healthz`. Unauthenticated on purpose - a load balancer or an
+        uptime check has no device token - and it says exactly what it checked:
+        whether the database answered a query, nothing more. Section 7's
+        outcome-verb rule applies here too: 'ok' is never returned unless the
+        query actually ran.
+      tags:
+      - health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthzOk'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthzError'
+          description: ''
+  /healthz:
+    get:
+      operationId: healthz_retrieve
+      description: |-
+        `GET /healthz`. Unauthenticated on purpose - a load balancer or an
+        uptime check has no device token - and it says exactly what it checked:
+        whether the database answered a query, nothing more. Section 7's
+        outcome-verb rule applies here too: 'ok' is never returned unless the
+        query actually ran.
+      tags:
+      - healthz
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthzOk'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthzError'
+          description: ''
+components:
+  schemas:
+    BodyweightLog:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        weight_value:
+          type: number
+          format: double
+        weight_unit:
+          type: string
+        logged_at:
+          type: string
+          format: date-time
+        trust_tier:
+          type: string
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - logged_at
+      - origin_guid
+      - provenance
+      - trust_tier
+      - updated_at
+      - weight_unit
+      - weight_value
+    ChangesResponse:
+      type: object
+      properties:
+        server_time:
+          type: string
+          format: date-time
+          description: Postgres's own clock at the moment this response was built
+            - store this as the next `since`, never a value derived from the rows
+            in this response.
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        checklists:
+          type: array
+          items:
+            $ref: '#/components/schemas/Checklist'
+        checklist_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistItem'
+        checklist_ticks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistTick'
+        places:
+          type: array
+          items:
+            $ref: '#/components/schemas/Place'
+        voice_notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/VoiceNote'
+        bodyweight_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/BodyweightLog'
+        meal_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealLog'
+        meal_targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealTarget'
+        sleep_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SleepLog'
+        sleep_targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SleepTarget'
+        workout_plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutPlan'
+        workout_plan_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutPlanItem'
+        workout_set_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSetLog'
+        memories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        companion_memories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanionMemory'
+        memory_audit:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryAudit'
+      required:
+      - server_time
+    Checklist:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        schedule_kind:
+          type: string
+          nullable: true
+        schedule_every:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        schedule_days_of_week:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - name
+      - updated_at
+    ChecklistItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        checklist:
+          type: string
+          format: uuid
+        text:
+          type: string
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
+        measure_unit:
+          type: string
+          nullable: true
+          maxLength: 64
+        measure_target:
+          type: number
+          format: double
+          nullable: true
+        measure_direction:
+          type: string
+          nullable: true
+          maxLength: 16
+      required:
+      - checklist
+      - created_at
+      - deleted_at
+      - id
+      - text
+      - updated_at
+    ChecklistItemPage:
+      type: object
+      description: Same page shape as `ChecklistPageSerializer`, over checklist items.
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistItem'
+        next:
+          type: string
+          nullable: true
+      required:
+      - next
+      - results
+    ChecklistPage:
+      type: object
+      description: |-
+        Documentation-only shape for `{results, next}` - the page
+        `paginate_since` returns. See that function's own doc comment for what
+        `next` means (null on the last page, an ISO watermark otherwise).
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Checklist'
+        next:
+          type: string
+          nullable: true
+      required:
+      - next
+      - results
+    ChecklistTick:
+      type: object
+      description: |-
+        Read/representation shape only - a tick is never created or edited
+        through this serializer directly; `ChecklistItemTickView` builds
+        `ChecklistTick` rows itself so it can apply the revive-on-retick
+        semantics `ChecklistController.tick`/`ChecklistTickDao.retick` describe,
+        which a plain `ModelSerializer.create()` cannot express (it does not
+        know to look for a soft-deleted row occupying the same `(item, day)`
+        slot first).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        item:
+          type: string
+          format: uuid
+        day:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        ticked_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
+        value:
+          type: number
+          format: double
+          nullable: true
+        source:
+          type: string
+      required:
+      - day
+      - deleted_at
+      - id
+      - item
+      - ticked_at
+      - updated_at
+    CompanionMemory:
+      type: object
+      description: |-
+        Field-for-field `RemoteCompanionMemory`. See this module's own doc
+        comment for the embedding columns that exist on neither side.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vehicle_id:
+          type: string
+        text:
+          type: string
+        category:
+          type: string
+        source:
+          type: string
+        importance:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          default: 5
+        logged_at:
+          type: string
+          format: date-time
+        last_accessed_at:
+          type: string
+          format: date-time
+          nullable: true
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - category
+      - created_at
+      - deleted_at
+      - id
+      - logged_at
+      - origin_guid
+      - provenance
+      - source
+      - text
+      - updated_at
+      - vehicle_id
+    DetailError:
+      type: object
+      description: |-
+        The one shape every 400/401/404 in this API returns:
+        `{"detail": "<human-readable reason>"}`.
+      properties:
+        detail:
+          type: string
+      required:
+      - detail
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        all_day:
+          type: boolean
+        location:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        source:
+          type: string
+        google_event_id:
+          type: string
+          nullable: true
+        done:
+          type: boolean
+        done_at:
+          type: string
+          format: date-time
+          nullable: true
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        trigger_place_label:
+          type: string
+          nullable: true
+        repeat_kind:
+          type: string
+          nullable: true
+        repeat_every:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        repeat_days_of_week:
+          type: string
+          nullable: true
+        repeat_day:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        repeat_month:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        repeat_end_kind:
+          type: string
+          nullable: true
+        repeat_end_date:
+          type: string
+          format: date
+          nullable: true
+        repeat_end_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        exact:
+          type: boolean
+        exact_downgraded:
+          type: boolean
+        missed_at:
+          type: string
+          format: date-time
+          nullable: true
+        missed_dismissed_at:
+          type: string
+          format: date-time
+          nullable: true
+        logged_at:
+          type: string
+          format: date-time
+          nullable: true
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+          nullable: true
+        structured_meta:
+          nullable: true
+        kind:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - provenance
+      - title
+      - updated_at
+    EventPage:
+      type: object
+      description: |-
+        Documentation-only shape for `{results, next}` - see
+        `api/sync.paginate_since`'s own doc comment for what `next` means.
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        next:
+          type: string
+          nullable: true
+      required:
+      - next
+      - results
+    HealthzError:
+      type: object
+      properties:
+        db:
+          $ref: '#/components/schemas/HealthzErrorDbEnum'
+        detail:
+          type: string
+      required:
+      - db
+      - detail
+    HealthzErrorDbEnum:
+      enum:
+      - error
+      type: string
+      description: '* `error` - error'
+    HealthzOk:
+      type: object
+      description: |-
+        Documentation-only - see `api/errors.py`'s own doc comment. `healthz`
+        builds its `Response(...)` by hand; this just types what it sends.
+      properties:
+        db:
+          $ref: '#/components/schemas/HealthzOkDbEnum'
+      required:
+      - db
+    HealthzOkDbEnum:
+      enum:
+      - ok
+      type: string
+      description: '* `ok` - ok'
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+        device_name:
+          type: string
+          maxLength: 255
+      required:
+      - device_name
+      - email
+      - password
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+      required:
+      - token
+      - user_id
+    MeResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        device_name:
+          type: string
+      required:
+      - device_name
+      - email
+      - user_id
+    MealLog:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        description:
+          type: string
+        calories_kcal:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            meal description. Never gated and never treated as a reconciled figure
+            (CLAUDE.md section 4 rule 5).'
+        protein_g:
+          type: number
+          format: double
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            meal description. Never gated and never treated as a reconciled figure
+            (CLAUDE.md section 4 rule 5).'
+        carbs_g:
+          type: number
+          format: double
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            meal description. Never gated and never treated as a reconciled figure
+            (CLAUDE.md section 4 rule 5).'
+        fat_g:
+          type: number
+          format: double
+          nullable: true
+          description: 'An estimate, not a measurement: the model''s guess from the
+            meal description. Never gated and never treated as a reconciled figure
+            (CLAUDE.md section 4 rule 5).'
+        logged_at:
+          type: string
+          format: date-time
+        source_image_path:
+          type: string
+          nullable: true
+        trust_tier:
+          type: string
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - description
+      - id
+      - logged_at
+      - origin_guid
+      - provenance
+      - trust_tier
+      - updated_at
+    MealTarget:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        calories_kcal:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        protein_g:
+          type: number
+          format: double
+        carbs_g:
+          type: number
+          format: double
+        fat_g:
+          type: number
+          format: double
+        effective_from_date:
+          type: string
+          format: date
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - calories_kcal
+      - carbs_g
+      - created_at
+      - deleted_at
+      - effective_from_date
+      - fat_g
+      - id
+      - origin_guid
+      - protein_g
+      - provenance
+      - updated_at
+    Memory:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        text:
+          type: string
+        logged_at:
+          type: string
+          format: date-time
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - logged_at
+      - origin_guid
+      - provenance
+      - text
+      - updated_at
+    MemoryAudit:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        event:
+          type: string
+        store:
+          type: string
+        detail:
+          type: string
+        ref_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+        vehicle_id:
+          type: string
+          nullable: true
+        logged_at:
+          type: string
+          format: date-time
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - detail
+      - event
+      - id
+      - logged_at
+      - origin_guid
+      - provenance
+      - store
+      - updated_at
+    PatchedChecklist:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        schedule_kind:
+          type: string
+          nullable: true
+        schedule_every:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        schedule_days_of_week:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
+    PatchedChecklistItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        checklist:
+          type: string
+          format: uuid
+        text:
+          type: string
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        sync_id:
+          type: string
+          nullable: true
+          maxLength: 64
+        measure_unit:
+          type: string
+          nullable: true
+          maxLength: 64
+        measure_target:
+          type: number
+          format: double
+          nullable: true
+        measure_direction:
+          type: string
+          nullable: true
+          maxLength: 16
+    PatchedEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        all_day:
+          type: boolean
+        location:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        source:
+          type: string
+        google_event_id:
+          type: string
+          nullable: true
+        done:
+          type: boolean
+        done_at:
+          type: string
+          format: date-time
+          nullable: true
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        trigger_place_label:
+          type: string
+          nullable: true
+        repeat_kind:
+          type: string
+          nullable: true
+        repeat_every:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        repeat_days_of_week:
+          type: string
+          nullable: true
+        repeat_day:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        repeat_month:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        repeat_end_kind:
+          type: string
+          nullable: true
+        repeat_end_date:
+          type: string
+          format: date
+          nullable: true
+        repeat_end_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        exact:
+          type: boolean
+        exact_downgraded:
+          type: boolean
+        missed_at:
+          type: string
+          format: date-time
+          nullable: true
+        missed_dismissed_at:
+          type: string
+          format: date-time
+          nullable: true
+        logged_at:
+          type: string
+          format: date-time
+          nullable: true
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+          nullable: true
+        structured_meta:
+          nullable: true
+        kind:
+          type: string
+    Place:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - label
+      - latitude
+      - longitude
+      - provenance
+      - updated_at
+    ProvenanceEnum:
+      enum:
+      - DETERMINISTIC
+      - LLM_RECONCILED
+      - UNRECONCILED
+      - USER
+      type: string
+      description: |-
+        * `DETERMINISTIC` - Deterministic
+        * `LLM_RECONCILED` - Llm Reconciled
+        * `UNRECONCILED` - Unreconciled
+        * `USER` - User
+    SleepLog:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sleep_date:
+          type: string
+          format: date
+        duration_minutes:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        quality:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        logged_at:
+          type: string
+          format: date-time
+        trust_tier:
+          type: string
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - duration_minutes
+      - id
+      - logged_at
+      - origin_guid
+      - provenance
+      - sleep_date
+      - trust_tier
+      - updated_at
+    SleepTarget:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        target_minutes:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        effective_from_date:
+          type: string
+          format: date
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - effective_from_date
+      - id
+      - origin_guid
+      - provenance
+      - target_minutes
+      - updated_at
+    TickRequest:
+      type: object
+      description: |-
+        `POST /api/checklists/<id>/items/<item>/tick` body - `{day, value?,
+        source?}`. Deliberately a plain `Serializer`, not a `ModelSerializer`
+        over `ChecklistTick`: the measured-item refusal (`validate`) needs the
+        ITEM's own `measure_unit`, which is not a field on this request body at
+        all (the item is named in the URL, not the payload) - so the check is
+        written by hand rather than leaning on a field-level `validate_<name>`
+        that has no access to a sibling object.
+      properties:
+        day:
+          type: integer
+        value:
+          type: number
+          format: double
+          nullable: true
+        source:
+          type: string
+          default: USER_REPORTED
+      required:
+      - day
+    VoiceNote:
+      type: object
+      description: |-
+        Field-for-field `RemoteVoiceNote`. See this module's doc comment for
+        the audio column that is absent from both.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          nullable: true
+        transcript:
+          type: string
+          nullable: true
+        kind:
+          type: string
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/VoiceNoteProvenanceEnum'
+          readOnly: true
+        interrupted:
+          type: boolean
+          default: false
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - deleted_at
+      - id
+      - kind
+      - provenance
+      - started_at
+      - updated_at
+    VoiceNoteProvenanceEnum:
+      enum:
+      - LLM_DERIVED
+      type: string
+      description: '* `LLM_DERIVED` - LLM_DERIVED'
+    WorkoutPlan:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        sessions_per_week:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        effective_from_week:
+          type: string
+          format: date
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - effective_from_week
+      - id
+      - origin_guid
+      - provenance
+      - sessions_per_week
+      - updated_at
+    WorkoutPlanItem:
+      type: object
+      description: |-
+        Base for every serializer this viewset drives.
+
+        Two behaviours, both ticket 04's own text:
+
+        1. **Unknown fields are refused, never dropped.** "A limb sending a
+           column the server does not know is a version skew, and it says so
+           with a 400 naming the field, never a silent drop." A phone one
+           release ahead, writing a column this server has never heard of,
+           must be told - a silent drop would look exactly like a successful
+           write and lose the value.
+        2. **The server facts are the server's.** `id`, `provenance`,
+           `created_at`, `updated_at` and `deleted_at` are read-only on every
+           subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+           the `touch_updated_at` trigger.
+
+        Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+        `provenance` column is not the shared `USER` default,
+        `default_provenance`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        exercise:
+          type: string
+        target_sets_per_week:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        effective_from_week:
+          type: string
+          format: date
+        reps_per_set:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - effective_from_week
+      - exercise
+      - id
+      - origin_guid
+      - provenance
+      - target_sets_per_week
+      - updated_at
+    WorkoutSetLog:
+      type: object
+      description: |-
+        No `source_list_item_id`. `WorkoutSetLog.sourceListItemId` names a
+        phone-local Room row id from a table that has no server counterpart, so
+        it would be a dangling reference here - the body migration's own comment
+        on that table, and `RemoteWorkoutSetLog`'s, both say so.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        exercise:
+          type: string
+        sets:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        reps:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        weight_value:
+          type: number
+          format: double
+          nullable: true
+        weight_unit:
+          type: string
+          nullable: true
+        logged_at:
+          type: string
+          format: date-time
+        trust_tier:
+          type: string
+        provenance:
+          allOf:
+          - $ref: '#/components/schemas/ProvenanceEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        origin_guid:
+          type: string
+      required:
+      - created_at
+      - deleted_at
+      - exercise
+      - id
+      - logged_at
+      - origin_guid
+      - provenance
+      - sets
+      - trust_tier
+      - updated_at
+  securitySchemes:
+    deviceTokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'One token per device, never per user - revoking a lost phone does
+        not sign out any other device. Send as `Authorization: Token <key>`, the literal
+        word `Token` followed by a space then the raw key returned by `POST /api/auth/login`.'
