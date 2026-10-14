@@ -8,9 +8,10 @@ tools/obsidian_sync.py maintains, so it cannot drift from the board: run
 
 after resolving anything. A map with no open tickets disappears from the page entirely.
 
-Palette and type are the app's own mission-control system (ui/theme/Color.kt) rather than
-a second visual language: mint for values, amber for what needs Kevin, chrome red for a
-fault, on the same near-black ground.
+Palette and type are the app's FORMER mission-control scheme (the Deck* literals in
+ui/theme/Color.kt, copied here as hex, not read from it): mint for values, amber for what
+needs Kevin, chrome red for a fault, on a near-black ground. The app moved to soft Material
+(ADR 0051); this page did not follow.
 """
 import json, html, re, glob, os
 

@@ -6328,3 +6328,41 @@ history, its own Gradle project under `headunit/`, and close out the open branch
 - Phone-only (ADR 0001) now binds `app/` only. The old "MIDNIGHT_AI is a frozen archive" bullet is
   replaced.
 - ADR: [[0059-headunit-is-a-limb-in-this-repo]].
+
+## 2026-10-14 - Rules brought level with the code: nine stale rulings corrected, no new policy
+
+Kevin: *"fix the rules ... see if we can fix the bugs"*, after a docs sweep found rulings the code
+had outgrown. Every change below makes a text describe what is true; none is a new decision.
+- **CLAUDE.md section 4 rule 1** said `DbsStatementParser` and `BofaStatementParser` are primary,
+  `StatementDispatcher` falls to `LedgerStatementAgent`, and "the phone's parsers are still live".
+  Now: statements are extracted on the server (`server/ingest/statements.py`, parsers in
+  `server/ingest/parsers/`); a CSV is never sent to Gemini; a PDF no parser recognises goes to Gemini.
+  Evidence: the Kotlin classes were deleted in `ad2d68f5` (2026-08-29) and `find app/src -name
+  '*StatementParser*'` is empty; BofA files are retired by ADR 0057 (`statements.py` skips them).
+- **Section 4, fewer than three anchors.** It said such a statement "falls to rule 7 provisional".
+  Now: it is QUARANTINED with the missing anchors named. Evidence: `missing_anchors` /
+  `three_anchor_reason` in `server/ingest/statements.py` return a quarantine reason; rule 7's
+  provisional path is only reachable from a deterministic parser's `provisional=True` result.
+- **Section 2, the two open findings.** Finding 2 (Drive has no compare-and-swap) is closed as a
+  false blocker (ADR 0011, 2026-08-02) and Drive is no longer the store. Finding 1 (Drive OAuth keyed
+  to SHA-1) is still true of the phone's Drive appDataFolder backup (`sync/DriveAuth.kt`) but no
+  longer blocks clone-and-run, because the engine, not Drive, holds the data (ADR 0044).
+- **Section 13, wiki palette.** It said the wiki "uses the app's own mission-control palette
+  (`ui/theme/Color.kt`)". Now: it uses the FORMER mission-control colours as hex literals in
+  `tools/pending_wiki.py`; the app moved to soft Material (ADR 0051) and the wiki did not follow.
+- **ADR Standing lines**: 0052 "not built" is built and live (`ed3542ee`, deployed 2026-10-03);
+  0053 "not built" is built and live (web-revamp, `legion-00023-ggf`); 0057 "built on a branch,
+  owing a first link" is live (syncing since 2026-10-11, README); 0051 "being built" is built for
+  shell chrome, Lists, HOME and Money, converting the rest as touched. Related back-links added: 0001
+  to 0050, 0049 to 0055. ADR bodies untouched.
+- **`.claude/agents/frontend.md`** named FullCalendar as the decided stack; it was never in
+  `server/frontend/package.json`. The calendar is hand-built (`month-calendar.tsx`,
+  `week-layout.ts`, `recurrence.ts`).
+- **Left as written:** section 1's first-machine path (not checkable from the second machine);
+  section 1's MIDNIGHT_AI bullet was already replaced by ADR 0059 earlier today.
+- **Bugs fixed in the same pass:** the manifest declared `.service.LedgerIngestService`, a class
+  deleted in backend-erp ticket 25 (entry removed); the `git commit` hooks in `.claude/settings.json`
+  `cd` to `$CLAUDE_PROJECT_DIR`, so a commit from a worktree regenerated and staged the wiki in the
+  MAIN checkout (now `cd` to the git toplevel of the hook payload's `cwd`). Also corrected:
+  `deploy/crontab` said Plaid runs every six hours (schedule is `30 */3`), and the voice-guide
+  footer said "generated from LiveToolbox.kt" (tools live in four `*Toolbox.kt` files).

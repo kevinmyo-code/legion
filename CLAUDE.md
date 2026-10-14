@@ -148,11 +148,15 @@ None of these is re-openable without Kevin. Full record in `memory/library/decis
 | **LLM ingestion is ALLOWED, behind a reconciliation gate** | See §4. This reverses Midnight AI's "no LLM extraction" posture. |
 | **Carry-over inventory ruled on (5 calls, 2026-07-31)** | Music: Spotify App Remote kept, no UI, mixtapes retired. Garage: kept, voice-only. Spend gate: retired, no ledger replacement yet. Fleet build/mod photos: retired (photo storage is pantry-ingestion-only). Tagged places: kept as-is. |
 
-**Two findings that still threaten plans, both open:**
+**Two findings from the pivot, both closed as threats to the data path:**
 1. **Drive's Android OAuth client is keyed to package + SHA-1 signing cert**, so a stranger's own
-   build fails authorization. This directly threatens clone-and-run. Unresolved.
-2. **Drive has no compare-and-swap**, so today's shared-file last-write-wins sync will silently
-   lose rows. Sync must become append-only. Unresolved.
+   build fails Drive authorization. This is still true, but Drive is no longer the store (ADR 0044:
+   the household's engine is), so it no longer blocks clone-and-run; a stranger's build loses the
+   phone's Drive appDataFolder backup (`sync/DriveAuth.kt`) until they register their own client.
+   ADR 0003 still carries it as the open caveat on that backup.
+2. **"Drive has no compare-and-swap, so last-write-wins sync silently loses rows" was a FALSE
+   blocker** (ADR 0011, 2026-08-02: append-only was already in use by eight tables, and ledger
+   transactions sync `UNION`). With Drive no longer the store it has no bearing on the data path.
 
 **Do not assume the old wayfinder map applies.** The original
 `.scratch/multi-aspect-assistant/map.md` (15 tickets, 12 contested calls) did not survive a
@@ -185,25 +189,29 @@ native navigation on the household's own token, Mapbox only, no hand-off to anot
 **LLM extraction is allowed only behind a deterministic reconciliation gate.** This is the rule
 that makes ingestion trustworthy, and it is not negotiable per-feature.
 
-1. **Deterministic first where a deterministic path exists.** Ledger: `DbsStatementParser` and
-   `BofaStatementParser` are primary. `StatementDispatcher` falls to `LedgerStatementAgent` (LLM)
-   **only** when neither recognizes the layout. Pantry has no deterministic path (receipts are
-   photographed, not born-digital), so LLM vision is primary there by necessity, not preference.
+1. **Deterministic first where a deterministic path exists.** Ledger statements are extracted
+   **on the server, from the raw document**: Kevin drops bank PDFs/CSVs in a Drive folder and the
+   server's `drive_statements` job (`server/ingest/statements.py`) reads them. A registered Python
+   parser (`server/ingest/parsers/`) is offered the file first; **a CSV is never sent to Gemini**
+   (one no parser recognises quarantines as `CSV_NOT_RECOGNISED`); a **PDF** no parser recognises
+   goes to Gemini on the household's own key, which fills LEGION's statement format. The phone's
+   Kotlin parsers (`DbsStatementParser`, `BofaStatementParser`), `StatementDispatcher` and
+   `LedgerStatementAgent` were deleted 2026-08-29 (`ad2d68f5`); nothing on the phone ingests a
+   statement now. Pantry has no deterministic path (receipts are photographed, not born-digital),
+   so LLM vision is primary there by necessity, not preference.
 
-   **AMENDED 2026-09-27 (Kevin), DECIDED BUT NOT YET BUILT - the phone's parsers above are still
-   live.** Ledger statements are extracted **on the server, from the raw document**: Kevin drops
-   bank PDFs/CSVs in a Drive folder (BofA's are fetched there by the login script) and the server's
-   `drive_statements` job extracts them. **Deterministic first still binds**: a Python parser where
-   one exists (BofA is ported first), otherwise Gemini on the household's own key emitting LEGION's
-   statement CSV. **Raw documents reach the server and Gemini unmasked, knowingly** - this replaces
-   the 2026-08-25 ruling that the user's own LLM masks before upload (history in
+   **Raw documents reach the server and Gemini unmasked, knowingly** - this replaced the
+   2026-08-25 ruling that the user's own LLM masks before upload (history in
    `library/decisions.md` 2026-09-27).
    **Rules 2 through 8 bind in full, and the LLM path keeps the stronger gate:** an LLM-produced
    CSV has its lines AND its total from one nondeterministic process, so a single anchor could be
    satisfied by a self-consistent hallucination (rule 6's failure shape in a new place). It demands
-   **three** independent anchors - printed total, opening balance, closing balance - and a statement
-   that prints fewer falls to rule 7 provisional. LLM rows are `LLM_RECONCILED`, parser rows
-   `DETERMINISTIC`. Tickets: `.scratch/backend-etl/issues/06-*.md`, `09-*.md`, `10-*.md`.
+   **three** independent anchors - printed total, opening balance, closing balance - and **a
+   statement the model reads with any of the three missing is QUARANTINED, with the missing ones
+   named** (`missing_anchors` / `three_anchor_reason` in `statements.py`); it does not fall to rule
+   7 provisional, which is open only to a deterministic parser for a document that prints no
+   anchor. LLM rows are `LLM_RECONCILED`, parser rows `DETERMINISTIC`. Tickets:
+   `.scratch/backend-etl/issues/06-*.md`, `09-*.md`, `10-*.md`.
 
    **AMENDED 2026-10-09 (Kevin): a bank's own transaction feed is fact, with no gate.** *"everything
    from plaid becomes truth, we retire manual parsers and csvs and statements etc. no need to
@@ -211,7 +219,7 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    stored **as fact with no verification**, provenance `BANK_API`, and every surface shows them
    exactly like a verified row: no "unverified" wording, no tag (*"Plain, no tag at all"*). From
    the earliest date Plaid returns per account they replace the CSV- and statement-derived rows;
-   the BofA files are no longer read. **This is the only exception, and it is narrow: rules 1
+   the BofA files are no longer read (`statements.py` skips a `bofa_*` file or any file a BofA parser recognises, and never sends it to Gemini). **This is the only exception, and it is narrow: rules 1
    through 8 still bind every other ingestion path** - pantry receipts, DBS statements, and
    anything new. **Money stays `Long` cents** (Plaid's float goes through `Decimal(str(x))`, never
    float arithmetic). ADR 0057; reopens locked ADR 0006 for this one source.
@@ -745,8 +753,10 @@ documentation surface and the boundaries matter:
   grouped by map, filterable by ready / blocked / decision / buildable / test / KIV. Generated by
   `python tools/pending_wiki.py` from the SAME ticket frontmatter `obsidian_sync.py` maintains, so
   it cannot drift from `vault/Board.md`; re-run it after resolving anything. Do not hand-edit it.
-  A map with no open tickets vanishes from the page entirely. It uses the app's own mission-control
-  palette (`ui/theme/Color.kt`) rather than a second visual language.
+  A map with no open tickets vanishes from the page entirely. Its palette (near-black ground, mint, amber and chrome-red accents,
+  monospace type) is the app's former mission-control scheme, copied as literals from `ui/theme/Color.kt`
+  (the `Deck*` colours). The app itself moved to soft Material (ADR 0051); the wiki did not follow
+  and is not tied to `Color.kt`, so a change there does not reach it.
 - **`docs/voice.html` is the USER-facing guide** - what LEGION can do by voice, in plain language,
   linked from the top of the wiki. `docs/index.html` is for whoever is building LEGION; this is for
   whoever is using it, and a visitor landing on a wall of tickets has no other way to find out what
