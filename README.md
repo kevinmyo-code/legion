@@ -21,18 +21,22 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 | Domain | Concrete capability |
 |---|---|
 | Fleet | Live OBD-II telemetry over Bluetooth (ELM327), DTC read plus a real write-path clear-codes flow with a refusal protocol, maintenance schedules, per-drive logging, oil-analysis and fault-trace views |
-| Ledger | Bank-statement ingestion parsed deterministically first, LLM fallback only when no parser recognizes the layout, every row reconciled against the statement's own printed total |
-| Pantry | Grocery receipt photo to Gemini vision extraction (no deterministic path exists for photographs), reconciled against the receipt's printed total, per-item macros carried as explicit estimates |
+| Ledger | A linked bank's own transaction feed (Plaid) synced on the engine every three hours and stored as fact, the one deliberate exception to the gate (ADR 0057). Every other statement is dropped in a Drive folder and extracted on the server: a Python parser first, Gemini only when none recognizes the layout, every row reconciled against the statement's own printed figures. Household merchant aliases change what a row displays, never what it is |
+| Pantry | Grocery receipt photo to Gemini vision extraction (no deterministic path exists for photographs), reconciled against the receipt's printed total, per-item macros carried as explicit estimates. A household bought log: ticking an item on the built-in Groceries list records a purchase (ADR 0055) |
 | Body | Meal and workout logging, sleep tracking, macro and calorie estimation surfaced as estimates |
 | Checklists | Recurring and one-off lists, ticked per day. A tick records both the day it counts for and the instant of the tap, so "when did I last tick toothpaste" is answerable from history that deleting the list does not take with it |
 | Events | Reminders, appointments, and coursework deadlines imported from Canvas. An event passes whether or not you engage with it; a task is due and can be done, and the two are different row kinds on purpose |
 | Places / Voice notes / Memory | Tagged places with arrival triggers, recorded audio with its transcript and summary kept together, durable facts anchored to things outside the conversation |
 | Goals / Advisors | Budget and habit targets with a structured, schema-constrained LLM advisor pass, and a cross-aspect daily digest |
 | Music | Spotify voice control on the user's own client ID: play by name resolved against their own library before the catalogue, a 20-action control surface, now-playing read from Spotify's own pushed player state |
+| Navigation | In-app turn-by-turn on the Mapbox Navigation SDK and the household's own token (ADR 0054), with turn cues spoken in LEGION's own voice and voice tools over the live trip. No hand-off to another map app |
+| Companions | A named companion picked per profile. One of them, Marcus Aurelius, answers from a bundled public-domain translation of the Meditations, searched deterministically and cited by book and section |
+| Games | A launcher on HOME, not an aspect (ADR 0058): ROMs read through a folder grant, launched in the emulator, with box art fetched once and cached |
 
-Six life domains, one voice loop, two clients. The Android shell opens on HOME, a single surface
-holding the day, what needs doing, and folded per-aspect rows that tap through to their own
-screens.
+Six life domains, one voice loop, two clients. LEGION may also be the phone's home app (ADR 0050,
+opt-in through Android's own Settings). HOME is the calendar: a month grid and the chosen day's
+agenda, a row of chips that open panel sheets (Games among them), and a More button for the
+weather and the per-area tiles that tap through to their own screens.
 
 (The sync layer keys off nine `ASPECT_*` names, which is a different and wider sense of the word
 than the six domains `CLAUDE.md` section 1 rules on. The two lists have never been reconciled and
@@ -74,9 +78,9 @@ generated from `LiveToolbox.kt`, so a tool that exists is on the page or the bui
 The reconciliation gate is the core rule (full text: `CLAUDE.md` section 4). It is what makes LLM
 extraction safe to use for money and health data at all, rather than a liability.
 
-1. **Deterministic first, where a deterministic path exists.** Ledger tries its hand-written PDF
-   parsers before ever calling an LLM. Pantry has no born-digital source (a receipt is a
-   photograph), so LLM vision is primary there by necessity, not preference.
+1. **Deterministic first, where a deterministic path exists.** The server's statement watcher tries
+   its hand-written parsers before ever calling an LLM. Pantry has no born-digital source (a receipt
+   is a photograph), so LLM vision is primary there by necessity, not preference.
 2. **Extracted rows must reconcile against the document's own stated total, exactly.** Sum of
    line items equals the printed total, or the whole document quarantines. Nothing partial is
    ever written as fact.
@@ -96,6 +100,12 @@ extraction safe to use for money and health data at all, rather than a liability
 7. **A gate that discards its own inputs leaves rows nobody can re-verify.** Every ingestion path
    stores the numbers it checked against, in their own columns, beside the rows they gated. A
    provenance tag records the verdict; it is not evidence.
+
+**One exception, narrow and on purpose** (ADR 0057, Kevin, 2026-10-09): rows a bank's own feed
+returns for an account the household linked through Plaid are stored as fact, tagged `BANK_API`,
+and replace the statement-derived rows for that account from the earliest date the feed covers.
+Every other ingestion path, pantry receipts and other banks' statements included, is still gated in
+full.
 
 The same posture governs speech. An outcome verb - done, sent, booked, played - may follow only a
 tool call that came back successful in that turn. A tool that failed is treated as no tool at all.
@@ -126,13 +136,23 @@ Two clients, one engine, one database. The household hosts it; nothing is hosted
   so in words. Freshness is lost when the server is down; function is not.
 - **Households are the tenancy boundary** (ADR 0045), and membership is the only authorization.
   One engine may hold more than one family, each all-or-nothing to its members. There are no
-  approval workflows and exactly one role, which exists only to invite and remove people.
+  approval workflows and exactly one role, which exists only to invite and remove people. Inside a
+  household a row is shared unless it is private to one member (ADR 0052), enforced on the engine,
+  never by a client hiding it.
+- **The engine also works while the phone sleeps.** One schedule, `deploy/crontab`, drives Canvas
+  coursework polling, the Drive statements watcher, the Plaid bank sync, a nightly database backup
+  to Drive, and Web Push.
+- **The web assistant runs on the engine's key, not the browser's** (ADR 0056). The engine mints a
+  short-lived Gemini Live token and runs the tools; the household's key never reaches a browser.
+  The engine can also serve its tools as an MCP server at `/mcp`, off until the operator sets
+  `LEGION_MCP`; the phone's `ask_engine` voice tool bridges to it.
 - **Voice loop:** `service/GeminiLiveSession.kt` (the Live socket),
   `service/LiveSessionController.kt` (turn state machine), `service/AriaForegroundService.kt`
   (keeps it alive as a foreground service).
-- **Tool layer:** `service/LiveToolbox.kt` declares every tool Gemini can call and dispatches each
-  one. Several domains hide their read tools behind a single `ask_<domain>` tool that hands the
-  question to a bounded sub-agent loop, because Gemini Live re-sends its entire tool block every
+- **Tool layer:** `service/LiveToolbox.kt` declares the tools Gemini can call and dispatches each
+  one, with a few domains in their own `service/*Toolbox.kt` files beside it. Several domains hide
+  their read tools behind a single `ask_<domain>` tool that hands the question to a bounded
+  sub-agent loop, because Gemini Live re-sends its entire tool block every
   turn with no incremental update and no context caching, so tool count is a measured cost rather
   than a code-quality concern. Write tools were deliberately pulled back OUT of that split after
   two real mis-routed writes: a mis-routed read costs a worse answer, a mis-routed write either
@@ -204,26 +224,31 @@ rather than maintained by hand.
 
 ## Honest status
 
-Verified 2026-09-16 unless stated. Numbers here are counted from build output, not from memory.
+Rows carry the date they were last checked. Numbers here are counted from build output, not from
+memory. Last swept 2026-10-14.
 
 | Area | Status |
 |---|---|
-| Android unit suite | **3,549 tests, 0 failures, 0 errors, 0 skipped**, counted from the JUnit XML across 376 result files |
-| Web client suite | **52 tests across 6 files**, green; `tsc --noEmit` and the production build both clean |
-| Server suite | **718 passed, 42 skipped**, run against a real Postgres rather than SQLite (22 minutes) |
-| Room schema | **v70**, additive-only migrations, `exportSchema` on, no destructive fallback anywhere |
-| Voice surface | **120 tools across 15 groups**, every one carrying user-facing copy or the build fails |
-| Django engine | Deployed to Cloud Run and serving the web client. All nine sync aspects default to it, but **only four were run end to end on a phone** (events, checklists, body, memory); places and voice notes had their pull path exercised and nothing more; **ledger, pantry and fleet have never run against Django on hardware at all**. They were flipped because the Supabase path now fails a `household_id NOT NULL` constraint, not because they were proven |
+| Android unit suite | **4,650 tests, 0 failures, 0 errors, 0 skipped**, counted from the JUnit XML across 482 result files (2026-10-11, at `768e750d`) |
+| Web client suite | **52 tests across 6 files**, green; `tsc --noEmit` and the production build both clean (2026-09-16; not recounted since, and the web client has grown a lot) |
+| Server suite | **718 passed, 42 skipped**, run against a real Postgres rather than SQLite (22 minutes) (2026-09-16; not recounted since) |
+| Room schema | **v75**, additive-only migrations, `exportSchema` on, no destructive fallback anywhere (2026-10-14) |
+| Voice surface | **128 tools across 15 groups**, every one carrying user-facing copy or the build fails (2026-10-14) |
+| Django engine | Deployed to Cloud Run and serving the web client; its Postgres is the existing Supabase-hosted database (`deploy/cloudrun/README.md`). All nine sync aspects default to it. As of 2026-09-16 **only four had run end to end on a phone** (events, checklists, body, memory) and places and voice notes had their pull path exercised and nothing more. Ledger's pull path has since run on the A25: 906 bank-feed rows mirrored into Room and rendered (2026-10-11). **Pantry and fleet have never run against Django on hardware.** They were flipped because the Supabase path now fails a `household_id NOT NULL` constraint, not because they were proven |
+| Plaid bank feed | Live on the engine since 2026-10-11, scheduled every three hours. First run 835 new rows and 783 older file rows replaced; later runs added nothing new (2026-10-11) |
+| Mapbox navigation | Built; device-run fixes recorded on `.scratch/mapbox-nav/` ticket 10. **A real drive (ticket 12) is still open** (2026-10-14) |
+| HOME as the calendar | Built and installed on the A25 (Kevin, 2026-10-11). A home app is opt-in through Android's Settings |
+| Retro games | Games chip, ROM scan, launch and box art built; ticket 03 resolved on the A25 (2026-10-11) |
 | Tenancy | One Python choke point (`SyncedModelViewSet`). **ADR 0045 describes Postgres row-level security as the backstop under it; that does not exist** - no `CREATE POLICY` or `ENABLE ROW LEVEL SECURITY` anywhere in `server/`. A missed filter is currently a leak, not a no-op |
 | Supabase | Not retired, mid-cutover. `supabase-kt` is still in the build, 12 `Supabase*Backend.kt` files remain, and an install with no engine address or token falls back to Supabase for everything |
-| Web client | Live: sign-in, today, month calendar, lists with optimistic ticks and list deletion |
+| Web client | The web-revamp went live 2026-10-03: a family view and a desk workbench rendered by viewport (ADR 0053), shared and private rows, calendar, lists, money, pantry, body, fleet, places and notes. Web Push is built and paused until VAPID keys exist. The bought log and the web assistant are built after it and **owe their live runs** (`.scratch/purchase-log/`, `.scratch/web-assistant/`). What ran on live and what is owed is recorded in each map |
 | Fleet OBD read, maintenance, drive logging | Verified on-device against a real 1998 Jeep XJ over ELM327 |
 | DTC clear-codes write path and REFUSED protocol | Built, installed, hash-verified, `REFUSED` produced for real on-device. **Never exercised on an actual car** - no fault present to clear |
 | Ledger ingestion | Unit-tested against generated fixture PDFs. Real device data has surfaced bugs the suite missed, since fixed |
 | Pantry receipt ingestion | Unit-tested against canned model output; the DB write path is not covered by the suite (Robolectric content-resolver gap) |
 | Canvas coursework import | 145 task rows on the real device. A bug that made every one of them invisible to the voice layer shipped and survived three weeks, because `read_calendar` filtered on the wrong row kind |
 | Checklist tick history | Built and tested, including a live-engine round trip proving a tick outlives the list being deleted. **The voice question has never been asked on the phone** |
-| Spotify voice control | Built and unit-tested. **Never run on a phone, and nothing in the Spotify layer has ever run against a real account** - the headline claim (playback with Spotify closed) is unverified |
+| Spotify voice control | Verified on a real drive on the A25 (Kevin, 2026-08-22, `.scratch/spotify-voice/` ticket 12: "all Spotify functions work"). Relinked on the second development machine 2026-09-05 after registering its signing fingerprint |
 | Eval harness | First real report exists: clerk/honesty/quarantine/grounding suites at 100% (N=1), tone-judge honestly WEAK at 73% on a genuine rubric ambiguity |
 | Screenshot tests | Roborazzi baselines at the device's own profile, verifying inside the ordinary JVM suite |
 | Onboarding UI | Not built. The identity and system-prompt plumbing exists; no screen hosts it |
@@ -242,10 +267,26 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew compileDebugKotlin -Pnokey   # compiles with no baked-in key, the honest first-run path
 ./gradlew testDebugUnitTest            # read totals from app/build/test-results, not the console
 ./gradlew assembleDebug
+./gradlew assembleFast                 # the daily driver on a phone, see below
 ```
+
+`fast` is the release build signed with the debug key. It is not debuggable, so ART compiles it
+ahead of time (a debuggable build never is, and launched about four times slower on the test
+phone), and it installs over a debug build with data kept. A reinstall drops the compile, so after
+each install run:
+
+```
+adb shell cmd package compile -m speed -f com.kevin.legion
+```
+
+`fast` has no `run-as` and no debug-only hooks; install `debug` over it to debug, then put it back.
+APKs are built for `arm64-v8a` only.
 
 `local.properties` needs `sdk.dir`. `GEMINI_API_KEY` there is optional and convenience-only: the
 app is designed to run without one and prompt the user for their own key on first launch.
+`MAPBOX_ACCESS_TOKEN` (a Gradle property or `local.properties`) is the same kind of developer
+convenience for navigation; the product path is the user's own token pasted in Setup, and with
+neither, navigation says it is not set up.
 `gradle.properties` deliberately never hardcodes a JDK path, so a stranger's machine is not
 required to match this one.
 
