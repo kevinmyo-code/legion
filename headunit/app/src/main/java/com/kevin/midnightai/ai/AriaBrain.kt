@@ -11,7 +11,9 @@ import com.kevin.midnightai.data.local.MemoryEntry
 import com.kevin.midnightai.vehicle.ActiveVehicle
 import com.kevin.midnightai.location.LocationController
 import com.kevin.midnightai.location.PlaceController
+import com.kevin.midnightai.media.MusicSource
 import com.kevin.midnightai.media.NowPlayingController
+import com.kevin.midnightai.media.SpotifyVoiceLogic
 import com.kevin.midnightai.vehicle.ObdBluetoothManager
 import com.kevin.midnightai.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
@@ -457,7 +459,7 @@ class AriaBrain private constructor(context: Context) {
         if (nowPlaying != null && nowPlaying.title.isNotBlank()) {
             val artist = if (nowPlaying.artist.isNotBlank()) " by ${nowPlaying.artist}" else ""
             val verb = if (nowPlaying.isPlaying) "is currently playing" else "is paused"
-            sb.appendSection("Right now \"${nowPlaying.title}\"$artist $verb on the head unit. " +
+            sb.appendSection("Right now \"${nowPlaying.title}\"$artist $verb ${SpotifyVoiceLogic.sourcePhrase(MusicSource.current.value)}. " +
                 "If the driver asks what's playing, answer from this.")
         }
 

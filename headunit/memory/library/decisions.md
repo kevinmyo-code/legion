@@ -1711,3 +1711,50 @@ Kevin approved the follow-ups from the rules pass above. Done the same day, same
 - **DTC clear traced: no clear path exists.** The OBD layer's only DTC command is Mode 03 (`getDtcCodes`); no Mode 04
   string exists in `app/src/main`; `sendCommand` is private; no voice tool or UI action clears codes. README's "DTC
   read/clear" claim changed to read-only. (The phone app's `clear_codes` tool is a different codebase.)
+
+## 2026-10-15 - Head-unit Spotify is App Remote only
+
+**Ruling (Kevin, 2026-10-15):** "lets remove all capability of the voice ai to control the spotify app on the head unit
+itself. and just fully run app remote." App Remote is the ONLY playback and transport path for head-unit Spotify. The Web
+API stays for reads (search that resolves "Mask Off by Future" to a URI, `SpotifyMatch`, playlists and the pin picker,
+`browse_my_music`, `get_music_queue`, PKCE auth). Nothing launches the Spotify app.
+
+**Why.**
+- Once, the voice AI started a song on Kevin's PHONE instead of the head unit: the Web API fallback's `pickDevice` fell
+  through from "name matches this unit" to "whatever is active", then "first phone-class device", then "first device".
+  A device list is not an address; picking from it is a guess about where sound should come out.
+- Cold start (2026-10-15 report): the song played but Spotify stayed in front and Kevin had to tap HOME.
+- Fable audit finding F1: `SpotifyAppRemote.connect` was called from whatever thread the caller was on. The SDK's
+  `ConnectionTask.onPreExecute` creates a `Handler()` on the calling thread, so from `Dispatchers.IO` (the reconnect
+  schedule, the consent retry, every `withContext(IO) { ensureConnected }`) it threw "Can't create handler inside thread
+  that has not called Looper.prepare()" synchronously, the attempt failed in about 0 ms, `lastConnectFailure` was set, and
+  App Remote was then skipped for 60 s. Auto-reconnect never worked off the main thread. Fixed by posting the connect to
+  the main looper (`media/MainThreadHop.kt`); **confirmed only by a JVM test that the call is handed to the main looper,
+  the SDK no longer throwing needs the head unit.**
+
+**Removed.** `media/SpotifyConnect.kt` (Web API play, transport `command()`, `pickDevice`, the UI-less wake,
+`openSpotify`/`returnToMidnight`, the now-playing poll, `recoverNowPlaying`); in `SpotifyConnectLogic` the device, failure,
+command, caller and launch-policy parts and their tests; `SpotifyController.playViaWebApi`, `outcomeForWebFailure`,
+`setWebPlayingContext`, `PlayOutcome.WebFailed`, `Started.viaWebApi`; `MusicRouter`'s Web API transport fall-through; the
+`webFallback` branch and the `playMusicVia` / `MUSIC_FALLBACKS` intent tier in `LiveToolbox.playMusic`; the `open_music`
+tool (its only behaviour was launching an app); `MusicPreferences` and both "Open music apps by voice" Settings rows; the
+"Web API playback" Settings status line. A pinned tile no longer has any path that opens the Spotify app.
+
+**Kept on purpose.** The `user-modify-playback-state` scope stays in `SpotifyScopes`: dropping it would force a re-consent
+for no gain. `AppTray`'s launch of an app the driver taps by hand is the driver's own action, not voice or a tile, and is
+unchanged. `MidnightEvents.spotifyUiLessWake` / `spotifyAppLaunchRefused` are now unused breadcrumbs, left because that file
+belongs to another change in flight.
+
+**Consequence worth knowing.** The Companion Badge (CLAUDE.md section 7) was only ever shown by `open_music`; nothing sends
+`ACTION_SHOW_PANEL` now, so the badge is intact and unreachable until a ruling names a trigger. Likewise a Spotify that is
+already playing on the unit while App Remote is down no longer marks a pinned tile (the Web poll that did it is gone).
+
+**Fixed in the same pass (Fable audit).** F4 transport awaits the `CallResult` (3 s) on the voice path and speaks failure;
+F5 Spotify-only actions bound their connect at 4 s; F6 a play inside the 60 s recent-failure window fails fast; F7 the
+pending line no longer says "ask me again" and a repeat of the same request joins the play in flight; F8 the phone or
+mixtape is paused only after the link is confirmed and resumed if the play fails; F9 a connect no longer takes
+`MusicSource` from a playing phone; F10 `set_music_source head_unit` does a bounded connect then the switch, like the
+RECONNECT tap; F11 a Keystore decrypt failure says "I can't read the saved Spotify setup" (client ID and Web grant) instead
+of "never set up"; F12 phone transport acts only on non-Spotify sessions; F13 a 401 forces one token refresh and one retry;
+F14 the live context names the real source. New: `get_now_playing`. New: after a play that started, if Midnight was in front
+and Spotify's UI took the screen, Midnight is brought back (`SpotifyController.returnToFrontIfStolen`).

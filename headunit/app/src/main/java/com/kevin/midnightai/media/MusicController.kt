@@ -47,7 +47,21 @@ object MusicController {
      */
     private const val SPOTIFY_PACKAGE = "com.spotify.music"
 
-    fun play(context: Context): Boolean = withController(context) { it.transportControls.play() }
+    // play/pause/next/previous below are the PHONE branch of [MusicRouter] and act ONLY on a
+    // non-Spotify session (F12, 2026-10-15). They used to take "the playing session, else any", so
+    // with head-unit Spotify holding a session a PHONE "play" could land on Spotify's session, and a
+    // failure then blamed the phone. Head-unit Spotify transport goes through App Remote, never here.
+    fun play(context: Context): Boolean =
+        withPhoneController(context, requirePlaying = false) { it.transportControls.play() }
+
+    /**
+     * True when a non-Spotify (phone) session reports PLAYING. A Bluetooth bridge that reports
+     * STATE_NONE while it plays reads as not playing here; callers that act on a "no" must tolerate it.
+     */
+    fun phoneSessionPlaying(context: Context): Boolean =
+        activeSessions(context).any {
+            it.packageName != SPOTIFY_PACKAGE && it.playbackState?.state == PlaybackState.STATE_PLAYING
+        }
 
     /**
      * Package of the session that is playing right now: a PLAYING one, else the one the Cruise
@@ -87,11 +101,14 @@ object MusicController {
         }
     }
 
-    fun pause(context: Context): Boolean = withController(context) { it.transportControls.pause() }
+    fun pause(context: Context): Boolean =
+        withPhoneController(context, requirePlaying = false) { it.transportControls.pause() }
 
-    fun next(context: Context): Boolean = withController(context) { it.transportControls.skipToNext() }
+    fun next(context: Context): Boolean =
+        withPhoneController(context, requirePlaying = false) { it.transportControls.skipToNext() }
 
-    fun previous(context: Context): Boolean = withController(context) { it.transportControls.skipToPrevious() }
+    fun previous(context: Context): Boolean =
+        withPhoneController(context, requirePlaying = false) { it.transportControls.skipToPrevious() }
 
     /**
      * Pauses the driver's PHONE stream specifically (not Spotify on the head
@@ -110,17 +127,6 @@ object MusicController {
      */
     fun resumePhone(context: Context): Boolean =
         withPhoneController(context, requirePlaying = false) { it.transportControls.play() }
-
-    private inline fun withController(context: Context, action: (MediaController) -> Unit): Boolean {
-        val c = activeController(context) ?: return false
-        return try {
-            action(c)
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "transport command failed: ${e.message}")
-            false
-        }
-    }
 
     /**
      * Same shape as [withController] but scoped to non-Spotify (phone)
@@ -150,13 +156,6 @@ object MusicController {
             Log.w(TAG, "phone transport command failed: ${e.message}")
             false
         }
-    }
-
-    /** The currently-playing media session, else any active one, or null if none. */
-    private fun activeController(context: Context): MediaController? {
-        val all = activeSessions(context)
-        return all.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-            ?: all.firstOrNull()
     }
 
     private fun activeSessions(context: Context): List<MediaController> {

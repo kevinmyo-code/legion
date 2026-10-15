@@ -1,6 +1,8 @@
 package com.kevin.midnightai.media
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Routes transport commands to whichever player [MusicSource] says is active:
@@ -9,54 +11,81 @@ import android.content.Context
  * over Bluetooth) otherwise. This is the one thing CruiseScreen, CompanionBadge,
  * and LiveToolbox call for play/pause/next/previous - it's a drop-in swap for the
  * old direct MusicController calls, same signatures.
+ *
+ * Head-unit Spotify transport is App Remote ONLY (Kevin, 2026-10-15). With the link down a
+ * Spotify command fails and says so; it no longer falls through to a Web API player call, which
+ * once started a song on the driver's phone instead of the head unit.
  */
 object MusicRouter {
     fun play(context: Context): Boolean = when (MusicSource.current.value) {
         Source.MIXTAPE -> { MixtapePlayer.resume(); true }
-        Source.SPOTIFY -> spotify(context, SpotifyConnectLogic.Command.RESUME)
+        Source.SPOTIFY -> SpotifyController.play()
         Source.PHONE -> MusicController.play(context)
     }
 
     fun pause(context: Context): Boolean = when (MusicSource.current.value) {
         Source.MIXTAPE -> { MixtapePlayer.pause(); true }
-        Source.SPOTIFY -> spotify(context, SpotifyConnectLogic.Command.PAUSE)
+        Source.SPOTIFY -> SpotifyController.pause()
         Source.PHONE -> MusicController.pause(context)
     }
 
     fun next(context: Context): Boolean = when (MusicSource.current.value) {
         Source.MIXTAPE -> { MixtapePlayer.next(); true }
-        Source.SPOTIFY -> spotify(context, SpotifyConnectLogic.Command.NEXT)
+        Source.SPOTIFY -> SpotifyController.next()
         Source.PHONE -> MusicController.next(context)
     }
 
     fun previous(context: Context): Boolean = when (MusicSource.current.value) {
         Source.MIXTAPE -> { MixtapePlayer.previous(); true }
-        Source.SPOTIFY -> spotify(context, SpotifyConnectLogic.Command.PREVIOUS)
+        Source.SPOTIFY -> SpotifyController.previous()
         Source.PHONE -> MusicController.previous(context)
     }
 
     /**
-     * One head-unit Spotify transport command: App Remote while it is connected, else the Web
-     * API ([SpotifyConnect], fire-and-forget like App Remote's own transport calls), so play,
-     * pause and skip keep working when music was started through the Web API fallback.
+     * The voice path's transport (F4, 2026-10-15): [message] is null on success, else a sentence
+     * naming the source that failed and what did not happen. Head-unit Spotify awaits Spotify's own
+     * answer ([SpotifyController.transport]); the phone and the mixtape are dispatch-only by nature
+     * (AVRCP gives no result), so for them `ok` means "dispatched to a session that exists".
+     * Runs the main-looper parts on Main itself; call from any dispatcher.
      */
-    private fun spotify(context: Context, cmd: SpotifyConnectLogic.Command): Boolean {
-        if (SpotifyController.isConnected) {
-            return when (cmd) {
-                SpotifyConnectLogic.Command.RESUME -> SpotifyController.play()
-                SpotifyConnectLogic.Command.PAUSE -> SpotifyController.pause()
-                SpotifyConnectLogic.Command.NEXT -> SpotifyController.next()
-                SpotifyConnectLogic.Command.PREVIOUS -> SpotifyController.previous()
+    data class VoiceTransport(val ok: Boolean, val message: String?)
+
+    suspend fun voiceTransport(context: Context, cmd: SpotifyController.TransportCmd): VoiceTransport =
+        when (MusicSource.current.value) {
+            Source.SPOTIFY -> {
+                val outcome = SpotifyController.transport(context, cmd)
+                val message = SpotifyController.transportMessage(outcome, cmd)
+                VoiceTransport(message == null, message)
+            }
+            Source.MIXTAPE -> withContext(Dispatchers.Main) {
+                when (cmd) {
+                    SpotifyController.TransportCmd.PLAY -> MixtapePlayer.resume()
+                    SpotifyController.TransportCmd.PAUSE -> MixtapePlayer.pause()
+                    SpotifyController.TransportCmd.NEXT -> MixtapePlayer.next()
+                    SpotifyController.TransportCmd.PREVIOUS -> MixtapePlayer.previous()
+                }
+                VoiceTransport(true, null)
+            }
+            Source.PHONE -> {
+                val ok = withContext(Dispatchers.Main) {
+                    when (cmd) {
+                        SpotifyController.TransportCmd.PLAY -> MusicController.play(context)
+                        SpotifyController.TransportCmd.PAUSE -> MusicController.pause(context)
+                        SpotifyController.TransportCmd.NEXT -> MusicController.next(context)
+                        SpotifyController.TransportCmd.PREVIOUS -> MusicController.previous(context)
+                    }
+                }
+                VoiceTransport(ok, if (ok) null else phoneFailureMessage(cmd))
             }
         }
-        SpotifyConnect.command(context, cmd)
-        return true
-    }
 
-    /** Pauses head-unit Spotify over whichever channel is up (App Remote, else the Web API). */
-    fun pauseSpotify(context: Context) {
-        spotify(context, SpotifyConnectLogic.Command.PAUSE)
-    }
+    /** Names the PHONE as the thing that could not be reached (F12: it used to blame the phone for Spotify). */
+    internal fun phoneFailureMessage(cmd: SpotifyController.TransportCmd): String =
+        "I couldn't reach your phone's music to ${cmd.verb} - make sure it's connected over Bluetooth " +
+            "and has something playing."
+
+    /** Pauses head-unit Spotify over App Remote; false when the link is down (nothing was paused). */
+    fun pauseSpotify(context: Context): Boolean = SpotifyController.pause()
 
     /**
      * Gracefully switches TO head-unit Spotify (acct B): pauses whatever's
@@ -65,7 +94,8 @@ object MusicRouter {
      * resumes Spotify if it had something queued (a no-op if not) and flips
      * [MusicSource]. Requires an existing App Remote connection - this is a
      * source switch, not a connect flow; if Spotify isn't connected, this
-     * fails and the driver stays on their current source.
+     * fails and the driver stays on their current source. Callers that want
+     * the connect step too use [switchToSpotifyConnecting].
      */
     fun switchToSpotify(context: Context): Boolean {
         if (!SpotifyController.isConnected) return false
@@ -80,6 +110,18 @@ object MusicRouter {
     }
 
     /**
+     * [switchToSpotify] after a bounded connect (F10, 2026-10-15): the voice `set_music_source` and
+     * the RECONNECT tap are one capability and call the same thing (ADR 0035). Returns the gate
+     * that failed, or null when the switch happened. Main-thread work is marshalled here.
+     */
+    suspend fun switchToSpotifyConnecting(context: Context): SpotifyController.Gate? {
+        val gate = SpotifyController.connectGate(context)
+        if (gate != SpotifyController.Gate.Connected) return gate
+        val switched = withContext(Dispatchers.Main) { switchToSpotify(context) }
+        return if (switched) null else SpotifyController.Gate.Failed(SpotifyController.lastFailure)
+    }
+
+    /**
      * Gracefully switches back TO the driver's phone: pauses head-unit
      * Spotify (acct B) first, flips [MusicSource], then best-effort resumes
      * whatever the phone (acct A) was doing over Bluetooth. Always flips the
@@ -88,7 +130,7 @@ object MusicRouter {
      */
     fun switchToPhone(context: Context): Boolean {
         PlayRequests.supersede()
-        // The Web API pause only when Spotify had the speakers: on an idle account it is a wasted call.
+        // Pause only when Spotify had the speakers: on an idle account it is a wasted call.
         if (SpotifyController.isConnected || MusicSource.current.value == Source.SPOTIFY) pauseSpotify(context)
         MusicSource.set(Source.PHONE)
         return MusicController.resumePhone(context)

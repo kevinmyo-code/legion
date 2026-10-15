@@ -502,12 +502,42 @@ object CompanionProfile {
      * not set - Spotify stays disconnected and music routing keeps to phone BT /
      * mixtape. See [com.kevin.midnightai.media.SpotifyController].
      */
-    fun spotifyClientId(context: Context): String {
+    fun spotifyClientId(context: Context): String = when (val r = spotifyClientIdRead(context)) {
+        is SecretRead.Value -> r.value
+        SecretRead.Absent, SecretRead.Unreadable -> ""
+    }
+
+    /**
+     * What a stored secret read came back as. [spotifyClientId] flattened all three to a String, so
+     * a Keystore decrypt failure (blob survives, key gone after an OS wipe or a broken keymaster)
+     * read as "never set up" and the driver was told to set up what they had already set up (F11,
+     * 2026-10-15). [Unreadable] is that case: something IS stored and cannot be opened.
+     */
+    sealed interface SecretRead {
+        data object Absent : SecretRead
+        data object Unreadable : SecretRead
+        data class Value(val value: String) : SecretRead
+    }
+
+    /** Tri-state read of the Spotify client ID; see [SecretRead]. */
+    fun spotifyClientIdRead(context: Context): SecretRead {
         val p = prefs(context)
-        p.getString(KEY_SPOTIFY_CLIENT_ID_ENC, null)?.let { enc ->
-            KeyVault.decrypt(enc)?.let { return it }
-        }
-        return p.getString(KEY_SPOTIFY_CLIENT_ID, "").orEmpty()
+        val enc = p.getString(KEY_SPOTIFY_CLIENT_ID_ENC, null)
+        if (enc != null) KeyVault.decrypt(enc)?.takeIf { it.isNotBlank() }?.let { return SecretRead.Value(it) }
+        val plain = p.getString(KEY_SPOTIFY_CLIENT_ID, "").orEmpty()
+        if (plain.isNotBlank()) return SecretRead.Value(plain)
+        return if (enc != null) SecretRead.Unreadable else SecretRead.Absent
+    }
+
+    /**
+     * Tri-state read of the Spotify Web API refresh token (the grant). [SecretRead.Unreadable]
+     * means a grant is stored but the Keystore will not open it, which is "re-authorize" for the
+     * driver and not "never connected".
+     */
+    fun spotifyRefreshTokenRead(context: Context): SecretRead {
+        val enc = prefs(context).getString(KEY_SPOTIFY_REFRESH_TOKEN_ENC, null) ?: return SecretRead.Absent
+        val plain = KeyVault.decrypt(enc)
+        return if (plain.isNullOrBlank()) SecretRead.Unreadable else SecretRead.Value(plain)
     }
 
     /**

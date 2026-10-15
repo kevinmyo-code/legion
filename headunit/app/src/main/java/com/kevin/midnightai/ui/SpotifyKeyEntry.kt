@@ -36,8 +36,6 @@ import com.kevin.midnightai.ai.CompanionProfile
 import android.widget.Toast
 import com.kevin.midnightai.media.AppRemoteLink
 import com.kevin.midnightai.media.SpotifyAppProbe
-import com.kevin.midnightai.media.SpotifyConnect
-import com.kevin.midnightai.media.SpotifyConnectLogic
 import com.kevin.midnightai.media.SpotifyController
 import com.kevin.midnightai.media.SpotifyPlaylists
 import com.kevin.midnightai.media.SpotifyScopes
@@ -124,7 +122,6 @@ fun SpotifyKeyEntry(modifier: Modifier = Modifier, onSaved: () -> Unit = {}) {
                     appRemoteFailure = SpotifyController.failureDetail(SpotifyController.lastFailure),
                     // Which Spotify app App Remote would bind to, only while it is not connected.
                     spotifyApp = if (appRemoteConnected) null else SpotifyAppProbe.describe(SpotifyAppProbe.probe(context)),
-                    webPlaybackFailure = SpotifyConnect.lastFailure?.let { SpotifyConnectLogic.shortReason(it) },
                 )
             }
             lines.forEach {
@@ -250,7 +247,6 @@ internal fun spotifyStatusLines(
     lastError: String?,
     appRemoteFailure: String? = null,
     spotifyApp: String? = null,
-    webPlaybackFailure: String? = null,
 ): List<String> = buildList {
     add(
         "App Remote (playback): " + when {
@@ -271,16 +267,8 @@ internal fun spotifyStatusLines(
                 "Permissions missing: " + missing.joinToString(", ")
             },
         )
-        // Playback without App Remote goes through the Web API and needs its two player scopes.
-        val playbackMissing = SpotifyConnectLogic.missingPlaybackScopes(grantedScope)
-        add(
-            "Web API playback (used when App Remote is off): " + when {
-                playbackMissing.isNotEmpty() ->
-                    "needs RE-AUTHORIZE SPOTIFY (missing ${playbackMissing.joinToString(", ")})"
-                webPlaybackFailure != null -> "last try failed - $webPlaybackFailure"
-                else -> "ready"
-            },
-        )
+        // (Until 2026-10-15 a "Web API playback (used when App Remote is off)" line sat here. The
+        // Web API no longer plays anything: App Remote is the only playback path.)
         add(
             when {
                 playlistCount > 0 -> "$playlistCount playlists loaded"

@@ -9,6 +9,43 @@ package com.kevin.midnightai.media
 object SpotifyVoiceLogic {
 
     /**
+     * Where the sound is coming from, as a phrase for "<track> is playing <phrase>". The live
+     * context used to say "on the head unit" for every source, including a phone streaming over
+     * Bluetooth (F14, 2026-10-15), so the assistant told the driver their phone's song was the
+     * head unit's own.
+     */
+    fun sourcePhrase(source: Source): String = when (source) {
+        Source.PHONE -> "on the driver's phone over Bluetooth"
+        Source.MIXTAPE -> "from a mixtape on the head unit"
+        Source.SPOTIFY -> "on Spotify on the head unit"
+    }
+
+    /** What `get_now_playing` knows: all strings as the player reported them, blank when it did not say. */
+    data class NowPlayingFacts(
+        val title: String,
+        val artist: String,
+        val album: String,
+        val source: Source,
+        val playing: Boolean,
+    )
+
+    /**
+     * The `get_now_playing` sentence, or null when there is no track to report (the caller then says
+     * nothing is playing). States only what the player reported; a blank artist or album is left
+     * out rather than guessed.
+     */
+    fun nowPlayingMessage(facts: NowPlayingFacts?): String? {
+        if (facts == null || facts.title.isBlank()) return null
+        val by = facts.artist.takeIf { it.isNotBlank() }?.let { " by $it" }.orEmpty()
+        val on = facts.album.takeIf { it.isNotBlank() }?.let { ", from the album \"$it\"" }.orEmpty()
+        val state = if (facts.playing) "is playing" else "is paused"
+        return "\"${facts.title}\"$by$on $state ${sourcePhrase(facts.source)}."
+    }
+
+    /** Spoken when nothing reported a track. Does not claim silence, only that no player reported one. */
+    const val NOTHING_REPORTED = "I can't see anything playing right now: no player is reporting a track."
+
+    /**
      * The `control_music` actions. The first four are the long-standing transport and keep
      * routing through [MusicRouter] for PHONE / MIXTAPE / SPOTIFY exactly as before. Every other
      * entry is [spotifyOnly]: it acts on head-unit Spotify through App Remote and has no meaning

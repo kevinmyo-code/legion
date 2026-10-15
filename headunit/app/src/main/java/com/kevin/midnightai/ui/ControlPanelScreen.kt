@@ -82,7 +82,6 @@ import com.kevin.midnightai.media.NowPlayingController
 import com.kevin.midnightai.service.AriaForegroundService
 import com.kevin.midnightai.service.DebugSettings
 import com.kevin.midnightai.service.LauncherSettings
-import com.kevin.midnightai.service.MusicPreferences
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaPalette
 import com.kevin.midnightai.ui.theme.LightsOutSwatch
@@ -360,7 +359,6 @@ private fun settingsRows(
             )
             val reauth = spotifyAction == SpotifyRowAction.HOT_REAUTHORIZE
             val broken = spotifyAction != SpotifyRowAction.QUIET_OPEN
-            var headUnitApp by remember { mutableStateOf(MusicPreferences.headUnitAppEnabled(context)) }
             listOf(
                 SettingsRowSpec(
                     title = "Spotify",
@@ -378,14 +376,6 @@ private fun settingsRows(
                         }
                     },
                     chip = settingsChip(spotifyStatus),
-                ),
-                SettingsRowSpec(
-                    title = "Open music apps by voice",
-                    subtitle = "Off by default. When on, asking to open or play something launches a music app installed on this head unit instead of just controlling your phone",
-                    action = RowAction.Toggle(headUnitApp) {
-                        headUnitApp = it
-                        MusicPreferences.setHeadUnitAppEnabled(context, it)
-                    },
                 ),
                 openRow("Media check", "Raw MediaSession read - settle what the phone is actually sending", Section.SYSTEM_MEDIA_DIAGNOSTICS),
             )
@@ -1212,29 +1202,6 @@ private fun SystemPreferencesSection(context: Context, onBack: () -> Unit) {
     }
 
     SectionScaffold("Preferences", onBack) {
-        var headUnitMusicApp by remember { mutableStateOf(MusicPreferences.headUnitAppEnabled(context)) }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(
-                checked = headUnitMusicApp,
-                onCheckedChange = {
-                    headUnitMusicApp = it
-                    MusicPreferences.setHeadUnitAppEnabled(context, it)
-                },
-            )
-            Spacer(Modifier.width(AriaDimens.s2))
-            Column(Modifier.weight(1f)) {
-                Text("Music app on this head unit", style = RowTitle, color = AriaColors.TextPrimary)
-                Text(
-                    "Off by default. When on, asking to open or play something launches a music app " +
-                        "installed here on the head unit instead of just controlling your phone's playback.",
-                    style = RowSubtitle,
-                    color = AriaColors.TextDim,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(AriaDimens.s4))
-
         // Launcher mode - not a toggle. An app can't make itself the system HOME;
         // Android only lets the user pick in system settings. So this is a
         // tap-through that opens that screen, and the label reflects live state
@@ -1765,7 +1732,7 @@ private fun PlanSection(onBack: () -> Unit) {
 
 // --- Previews (head-unit size) -------------------------------------------
 // The two-pane previews call the real, stateless SettingsTwoPane with hand-built
-// statuses and rows (settingsRows itself reads MusicPreferences / companion name
+// statuses and rows (settingsRows itself reads the companion name
 // and the live statuses read BT, Spotify, and the engine, none of which belong in
 // the preview JVM). AriaPalette.current can only be set through AriaPalette.set,
 // which resolves ActiveVehicle -> ObdBluetoothManager (static init throws in a
@@ -1790,10 +1757,6 @@ private fun previewRows(category: SettingsCategory): List<SettingsRowSpec> = whe
             "Spotify", "Optional BYO Spotify developer app",
             RowAction.Button("RE-AUTHORIZE", ButtonWeight.HOT) {},
             SettingsChip("ACTION NEEDED", SettingsDot.ERROR),
-        ),
-        SettingsRowSpec(
-            "Open music apps by voice", "Off by default. Launches a music app installed on this head unit",
-            RowAction.Toggle(true) {},
         ),
         SettingsRowSpec("Media check", "Raw MediaSession read", RowAction.Button("OPEN", ButtonWeight.QUIET) {}),
     )

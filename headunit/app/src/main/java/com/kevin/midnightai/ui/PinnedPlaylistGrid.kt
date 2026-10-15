@@ -58,7 +58,6 @@ import com.kevin.midnightai.media.MusicDeckLogic
 import com.kevin.midnightai.media.MusicSource
 import com.kevin.midnightai.media.PinSlot
 import com.kevin.midnightai.media.PlayRequests
-import com.kevin.midnightai.media.SpotifyConnectLogic
 import com.kevin.midnightai.media.SpotifyController
 import com.kevin.midnightai.media.SpotifyPinLogic
 import com.kevin.midnightai.media.SpotifyPins
@@ -286,10 +285,11 @@ private fun reconnect(context: Context) {
  * switch playback to this head unit, then play. The tile is marked playing by App Remote's
  * player context, not by this call. Returns the short reason when it did not start (shown on
  * the tile and in a toast); null when it started or was superseded. With App Remote down the
- * play goes through the Web API fallback ([com.kevin.midnightai.media.SpotifyConnect]).
+ * play fails with the specific reason: App Remote is the only playback path (2026-10-15).
  */
 private suspend fun playPlaylist(context: Context, p: SpotifyPlaylist): String? {
-    // Captured before any connect: connecting flips MusicSource to SPOTIFY by itself.
+    // Captured before any connect: a connect can flip MusicSource to SPOTIFY by itself when the
+    // phone is idle, and the outgoing mixtape/phone to quiet is judged from what it was before.
     val sourceBefore = MusicSource.current.value
     val token = PlayRequests.begin(sourceBefore)
     val outcome = SpotifyVoice.playResolvedUri(
@@ -299,8 +299,6 @@ private suspend fun playPlaylist(context: Context, p: SpotifyPlaylist): String? 
         sourceBeforeConnect = sourceBefore,
         stillWanted = { PlayRequests.shouldProceed(token) },
         shuffle = true,
-        // The one caller allowed to open the Spotify app, and only as a last resort.
-        caller = SpotifyConnectLogic.PlayCaller.PINNED_TILE,
     )
     return tileFailureMessage(outcome, p.name)
 }
@@ -318,8 +316,12 @@ private suspend fun playPlaylistBounded(context: Context, p: SpotifyPlaylist): S
     }
 }
 
-/** Upper bound on one tile tap: App Remote wait, opening Spotify and waiting for it, the play itself. */
-private const val TILE_PLAY_TIMEOUT_MS = 30_000L
+/**
+ * Upper bound on one tile tap: the bounded App Remote connect (4s), the device switch (5s), shuffle
+ * and the play itself (8s each at worst, 25s in total). It used to also cover opening the Spotify app and waiting
+ * for it to register; that path is gone (2026-10-15), so the bound dropped from 30s to just over the worst case.
+ */
+private const val TILE_PLAY_TIMEOUT_MS = 26_000L
 
 /** How long a tile shows its failure line before going back to the track count. */
 private const val TILE_FAILURE_SHOW_MS = 6_000L
@@ -328,7 +330,9 @@ private const val TILE_FAILURE_SHOW_MS = 6_000L
 private fun tileFailureMessage(outcome: SpotifyController.PlayOutcome, name: String): String? = when (outcome) {
     is SpotifyController.PlayOutcome.Started, SpotifyController.PlayOutcome.Superseded -> null
     SpotifyController.PlayOutcome.PlayRejected -> "Spotify wouldn't start $name"
-    is SpotifyController.PlayOutcome.WebFailed -> SpotifyConnectLogic.shortReason(outcome.failure)
+    SpotifyController.PlayOutcome.StillConnecting -> "Spotify is still connecting - try again"
+    SpotifyController.PlayOutcome.NotSetUp -> "Spotify isn't set up - add the client ID in Settings"
+    SpotifyController.PlayOutcome.ClientIdUnreadable -> "Can't read the saved Spotify setup - re-enter the client ID"
     else -> "Can't reach Spotify: ${SpotifyController.playbackReasonShort(SpotifyController.lastFailure)}"
 }
 

@@ -1,11 +1,7 @@
 ﻿package com.kevin.midnightai.service
 
-import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import com.kevin.midnightai.MidnightEvents
 import com.kevin.midnightai.ai.AgentResult
 import com.kevin.midnightai.ai.AriaBrain
@@ -35,6 +31,8 @@ import com.kevin.midnightai.media.MixtapePlayer
 import com.kevin.midnightai.media.MusicController
 import com.kevin.midnightai.media.MusicRouter
 import com.kevin.midnightai.media.MusicSource
+import com.kevin.midnightai.media.NowPlayingController
+import com.kevin.midnightai.media.PlayJoinLogic
 import com.kevin.midnightai.media.PlayRequests
 import com.kevin.midnightai.media.Source
 import com.kevin.midnightai.media.SpotifyController
@@ -332,18 +330,6 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "open_music",
-            description = "Open a music app (Spotify by default) beside Midnight AI so the driver can " +
-                "stream. Use when they ask to open Spotify, open music, or start streaming with no " +
-                "specific track in mind. Note: music also plays from the phone over Bluetooth without " +
-                "opening anything - for play/pause/skip of whatever's already playing, use " +
-                "control_music instead. If the driver names something specific to play, use " +
-                "play_music instead of this.",
-            params = obj(),
-            required = listOf(),
-        ))
-
-        fns.put(fn(
             name = "play_music",
             description = "Play something specific by name - a song, artist, album or playlist. With " +
                 "the driver's Spotify connected (Setup) it plays in place on the head unit without " +
@@ -358,8 +344,9 @@ object LiveToolbox {
                 "nothing there matches - when it falls back the result says so; pass that on, since " +
                 "it may not be what they meant. If Spotify has no acceptable match it plays NOTHING " +
                 "and names the closest hits - relay those and ask which was meant, never claim " +
-                "something is playing. Without Spotify it only opens a music app when the driver " +
-                "enabled that in Setup, best-effort, else it says to pick it on the phone. Once " +
+                "something is playing. It plays only through Spotify on the head unit; if that is not " +
+                "connected it fails and says why, and it never opens an app - relay that, and the driver " +
+                "can pick on their phone instead. Once " +
                 "something's playing, control_music handles play/pause/skip. To play a NAMED album " +
                 "from the current artist's own catalogue (browse_my_music's artist_albums, e.g. " +
                 "'play his album Discovery'), pass its spotifyUri exactly as returned - this skips " +
@@ -423,6 +410,17 @@ object LiveToolbox {
             params = obj(
                 "limit" to schema("integer", "How many upcoming tracks to return. Defaults to 5."),
             ),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "get_now_playing",
+            description = "What is playing right now: title, artist, album, which player it is on " +
+                "(the driver's phone over Bluetooth, a mixtape, or Spotify on the head unit) and " +
+                "whether it is playing or paused. Use for 'what's this song?', 'who sings this?', " +
+                "'what album is this?' mid-conversation. Read-only. If it says nothing is reported, " +
+                "say so; never guess a title.",
+            params = obj(),
             required = listOf(),
         ))
 
@@ -751,7 +749,7 @@ object LiveToolbox {
             "control_volume" -> controlVolume(context, args)
             "get_current_location" -> getCurrentLocation()
             "get_time" -> result(success = true, message = com.kevin.midnightai.time.TrustedClock.promptLine())
-            "open_music" -> openMusic(context)
+            "get_now_playing" -> getNowPlaying()
             "play_music" -> playMusic(
                 context,
                 args.optString("query"),
@@ -1605,18 +1603,19 @@ object LiveToolbox {
      * [SpotifyVoice], which refuses unless head-unit Spotify is the source.
      *
      * The media framework expects a thread with a Looper; Live tool dispatch runs on a worker, so
-     * every MusicRouter call is marshalled to [Dispatchers.Main] (a bare worker thread threw
-     * "Can't create handler ...", crashing the app on next/play).
+     * [MusicRouter.voiceTransport] marshals its phone and mixtape calls to [Dispatchers.Main] itself
+     * (a bare worker thread threw "Can't create handler ...", crashing the app on next/play).
+     * Head-unit Spotify transport awaits Spotify's own answer and fails in words (F4, 2026-10-15).
      */
     private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject {
         val raw = args.optString("action")
         val action = SpotifyVoiceLogic.MusicAction.fromWire(raw)
             ?: return result(success = false, message = "Unknown music action: $raw")
         return when (action) {
-            SpotifyVoiceLogic.MusicAction.PLAY -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.play(context) })
-            SpotifyVoiceLogic.MusicAction.PAUSE -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.pause(context) })
-            SpotifyVoiceLogic.MusicAction.NEXT -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.next(context) })
-            SpotifyVoiceLogic.MusicAction.PREVIOUS -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.previous(context) })
+            SpotifyVoiceLogic.MusicAction.PLAY -> transportResult(context, SpotifyController.TransportCmd.PLAY)
+            SpotifyVoiceLogic.MusicAction.PAUSE -> transportResult(context, SpotifyController.TransportCmd.PAUSE)
+            SpotifyVoiceLogic.MusicAction.NEXT -> transportResult(context, SpotifyController.TransportCmd.NEXT)
+            SpotifyVoiceLogic.MusicAction.PREVIOUS -> transportResult(context, SpotifyController.TransportCmd.PREVIOUS)
             else -> SpotifyVoice.controlSpotify(context, action, args)
         }
     }
@@ -1628,28 +1627,56 @@ object LiveToolbox {
      * start-incoming mechanics. Runs on the main thread; media session calls
      * need a Looper (see class doc above [controlMusic]).
      */
-    private suspend fun setMusicSource(context: Context, source: String): JSONObject = withContext(Dispatchers.Main) {
-        when (source) {
-            "phone" -> {
-                MusicRouter.switchToPhone(context)
-                result(success = true, message = "Back on your phone.")
-            }
-            "head_unit", "spotify" -> {
-                if (!SpotifyController.isConnected) {
-                    result(success = false, message = "Spotify on the head unit isn't connected — set it up in Setup first.")
-                } else {
-                    MusicRouter.switchToSpotify(context)
-                    result(success = true, message = "Switched to Spotify on the head unit.")
-                }
-            }
-            else -> result(success = false, message = "I can play from your phone or the head unit — which one?")
+    private suspend fun setMusicSource(context: Context, source: String): JSONObject = when (source) {
+        "phone" -> withContext(Dispatchers.Main) {
+            MusicRouter.switchToPhone(context)
+            result(success = true, message = "Back on your phone.")
         }
+        "head_unit", "spotify" -> {
+            // Same connect-then-switch the RECONNECT tap does (ADR 0035 spirit: one capability, one
+            // controller). Before this a dropped link answered "isn't connected" without trying.
+            val failed = MusicRouter.switchToSpotifyConnecting(context)
+            if (failed == null) result(success = true, message = "Switched to Spotify on the head unit.")
+            else result(success = false, message = SpotifyController.gateMessage(failed, "switch to Spotify on the head unit"))
+        }
+        else -> result(success = false, message = "I can play from your phone or the head unit. Which one?")
     }
 
-    private fun simpleMusicResult(ok: Boolean): JSONObject =
-        if (ok) result(success = true, message = null)
-        else result(success = false,
-            message = "I couldn't reach the music — make sure your phone's connected and playing over Bluetooth.")
+    /** One transport command, answered from what the player actually said (see [MusicRouter.voiceTransport]). */
+    private suspend fun transportResult(context: Context, cmd: SpotifyController.TransportCmd): JSONObject {
+        val t = MusicRouter.voiceTransport(context, cmd)
+        return result(success = t.ok, message = t.message)
+    }
+
+    /**
+     * `get_now_playing`: the track, from App Remote's pushed player state when head-unit Spotify is
+     * the source and it has one, else the media-session read the Cruise card uses. Says only what a
+     * player reported; with nothing reported it says that, and never infers a title.
+     */
+    private fun getNowPlaying(): JSONObject {
+        val source = MusicSource.current.value
+        val spotify = if (source == Source.SPOTIFY) SpotifyController.playerState.value?.track else null
+        val facts = if (spotify != null && !spotify.name.isNullOrBlank()) {
+            SpotifyVoiceLogic.NowPlayingFacts(
+                title = spotify.name.orEmpty(),
+                artist = spotify.artist?.name.orEmpty(),
+                album = spotify.album?.name.orEmpty(),
+                source = source,
+                playing = SpotifyController.playerState.value?.isPaused == false,
+            )
+        } else {
+            NowPlayingController.state.value?.takeIf { it.title.isNotBlank() }?.let {
+                SpotifyVoiceLogic.NowPlayingFacts(
+                    title = it.title, artist = it.artist, album = it.album, source = source, playing = it.isPlaying,
+                )
+            }
+        }
+        val message = SpotifyVoiceLogic.nowPlayingMessage(facts)
+        return if (message == null) result(success = false, message = SpotifyVoiceLogic.NOTHING_REPORTED)
+        else result(success = true, message = message)
+            .put("title", facts?.title).put("artist", facts?.artist).put("album", facts?.album)
+            .put("source", facts?.source?.name?.lowercase()).put("playing", facts?.playing)
+    }
 
     /**
      * Adjusts the head unit's media volume on-device ([VolumeController]) - no
@@ -1699,74 +1726,32 @@ object LiveToolbox {
     }
 
     /**
-     * Opens [intent] full-screen (a normal app launch, no split-screen attempt -
-     * that was removed 2026-07-08, see CompanionBadgeController), then shows the
-     * floating companion badge over it so Midnight AI stays reachable
-     * (tap-to-talk, transport) without the driver needing to switch back.
+     * One `play_music` Spotify attempt still running, so a repeat of the SAME request joins it
+     * instead of restarting (F7, 2026-10-15). [claimed] makes sure its ending is told once: by the
+     * joiner that got the result, or by the late report, never both.
      */
-    private fun openFullscreenWithBadge(context: Context, intent: Intent) {
-        val target = intent.`package` ?: intent.component?.packageName
-        if (target in com.kevin.midnightai.media.SpotifyAppProbe.CANDIDATE_PACKAGES) {
-            com.kevin.midnightai.MidnightEvents.spotifyAppLaunched("voice_open_music", "driver asked to open/play in the app")
-        }
-        context.startActivity(intent.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-        val badgeIntent = Intent(context, AriaForegroundService::class.java)
-            .setAction(AriaForegroundService.ACTION_SHOW_PANEL)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(badgeIntent)
-        else context.startService(badgeIntent)
-    }
+    private class InFlightPlay(
+        val key: String,
+        val deferred: kotlinx.coroutines.Deferred<SpotifyVoice.PlayAttempt>,
+        val claimed: java.util.concurrent.atomic.AtomicBoolean = java.util.concurrent.atomic.AtomicBoolean(false),
+    )
+
+    @Volatile private var inFlightPlay: InFlightPlay? = null
 
     /**
-     * Opens the first installed music app from [MUSIC_FALLBACKS] (Spotify
-     * first), with the floating companion badge over it. Phone-Bluetooth
-     * streaming is untouched; this is purely the "launch a music app" path.
-     * Gated on [MusicPreferences.headUnitAppEnabled] (off by default) - a
-     * driver who only ever streams from their phone over Bluetooth shouldn't
-     * have Zero unexpectedly launch a separate, possibly logged-out local
-     * install onto the head unit's own screen.
-     */
-    private fun openMusic(context: Context): JSONObject {
-        if (!MusicPreferences.headUnitAppEnabled(context)) {
-            return result(
-                success = false,
-                message = "You can stream music from your phone over Bluetooth, and I'll control playback " +
-                    "from here. Turn on \"${SpotifyController.HEAD_UNIT_APP_ROW}\" in Settings, Music if you'd rather I open one.",
-            )
-        }
-        val pm = context.packageManager
-        val pkg = MUSIC_FALLBACKS.firstOrNull { pm.getLaunchIntentForPackage(it) != null }
-            ?: return result(
-                success = false,
-                message = "I couldn't find a music app to open — you can still stream from your phone over Bluetooth.",
-            )
-        val intent = pm.getLaunchIntentForPackage(pkg)
-            ?: return result(success = false, message = "I couldn't open that music app.")
-        return try {
-            openFullscreenWithBadge(context, intent)
-            result(success = true, message = "Opening ${appLabel(context, pkg)}.")
-        } catch (_: Exception) {
-            result(success = false, message = "I couldn't open the music app.")
-        }
-    }
-
-    /**
-     * "Play something specific by name". Two tiers:
+     * "Play something specific by name". App Remote is the ONLY playback path (Kevin, 2026-10-15):
+     * there is no Web API fallback, no play-from-search intent and no Spotify app launch, and a play
+     * that cannot connect fails fast and says why.
      *
-     *  1. **Spotify connected** ([SpotifyController.ensureConnected]; a silent reconnect first,
-     *     since App Remote drops on its own): [SpotifyVoice.playOnSpotify] resolves the name through
-     *     the Web API, rejects hits that do not match the request, and plays IN PLACE - the Spotify
-     *     app stays in the background and the driver never leaves Cruise. If any step fails the
-     *     driver gets a spoken reason; we do NOT fall back to foregrounding Spotify, because a
-     *     connected driver leaving the launcher is the failure this path exists to eliminate.
-     *  2. **Not connected**: with a client ID saved, the specific reason App Remote failed is
-     *     spoken ([SpotifyController.playMusicUnavailableMessage]) - not installed, signed out, not
-     *     approved, offline. Without one, the public play-from-search intent at an installed music app, gated on
-     *     [MusicPreferences.headUnitAppEnabled] (off by default). No SDK, no credentials; whether
-     *     it plays is up to the target app. A [knownUri] means nothing here - it is only valid
-     *     through App Remote.
+     *  1. **Connect, bounded** ([SpotifyController.connectGate], [PLAY_CONNECT_BUDGET_MS]). The gate
+     *     skips a fresh attempt inside the recent-failure window (F6) and kicks a silent reconnect on
+     *     a miss. Not connected: the specific reason is spoken
+     *     ([SpotifyController.playMusicUnavailableMessage]).
+     *  2. **Play**: [SpotifyVoice.playOnSpotifyAttempt] resolves the name through the Web API (a
+     *     READ; App Remote has no search), rejects hits that do not match the request, and plays IN
+     *     PLACE through App Remote.
      *
-     * The App Remote SDK has no free-text search, so even connected, a name only becomes a URI via
-     * the Web API; that is why tier 1 needs the Web API grant as well as the connection.
+     * A [knownUri] skips the search; it is only valid through App Remote, which is the only path.
      */
     private suspend fun playMusic(
         context: Context,
@@ -1777,143 +1762,107 @@ object LiveToolbox {
     ): JSONObject {
         if (query.isBlank()) return result(success = false, message = "What should I play?")
 
-        // ensureConnected, not isConnected: App Remote drops on its own (Spotify
-        // killed/backgrounded) and nothing used to bring it back, so a driver who
-        // had set Spotify up got told to enable an unrelated head-unit toggle.
-        // Only attempts a reconnect when a client ID is actually saved, so a
-        // driver who never set Spotify up pays nothing here.
-        // Captured BEFORE ensureConnected: a fresh connect flips MusicSource to SPOTIFY itself, so
-        // reading it afterwards would see SPOTIFY and skip pausing the phone/mixtape that is
-        // actually still playing.
+        // F7: the same request asked again while it is still running joins it. Beginning a NEW play
+        // here would supersede the running one (PlayRequests) and silence it, which is what "ask me
+        // again" used to cause.
+        val key = PlayJoinLogic.key(query, type, artist, knownUri)
+        inFlightPlay?.takeIf { it.key == key && it.deferred.isActive }?.let { joined ->
+            val settled = withTimeoutOrNull(PLAY_TOTAL_BUDGET_MS) { joined.deferred.await() }
+            if (settled != null) {
+                // Claim so the late report does not say it again; if it already did, saying the real
+                // ending twice beats telling the driver "hasn't confirmed" about a play that ended.
+                joined.claimed.set(true)
+                MidnightEvents.playMusicResult(spotifyOutcomeTag(settled.result), query)
+                return settled.result
+            }
+            MidnightEvents.playMusicResult("spotify_pending_joined", query)
+            return result(success = false, message = SpotifyController.playStillPendingMessage(query))
+        }
+
+        // Captured BEFORE the connect: a connect can flip MusicSource to SPOTIFY by itself when the
+        // phone is idle (SpotifyController.shouldClaimSourceOnConnect), which would hide a mixtape
+        // that is still the source. (Until 2026-10-15 EVERY connect flipped it.)
         val sourceBeforeConnect = MusicSource.current.value
         // Taken before anything slow: a newer play_music, a source switch or a mixtape started
         // while this one runs supersedes it (PlayRequests), so a late play never overrides them.
         val token = PlayRequests.begin(sourceBeforeConnect)
-        // Budgeted against LiveSessionController's 10s tool cap: an unbounded connect plus search,
-        // switch (5s), play (8s) and capabilities (3s) could blow it and the driver heard only
-        // "that took too long". The connect gets PLAY_CONNECT_BUDGET_MS; whatever is left of
-        // PLAY_TOTAL_BUDGET_MS goes to the play itself.
+        // Budgeted against LiveSessionController's 10s tool cap: the connect gets
+        // PLAY_CONNECT_BUDGET_MS; whatever is left of PLAY_TOTAL_BUDGET_MS goes to search + play.
         val startedAt = android.os.SystemClock.elapsedRealtime()
-        val connected = withTimeoutOrNull(PLAY_CONNECT_BUDGET_MS) { SpotifyController.ensureConnected(context) }
-        // App Remote down: with a Web API grant on file the play still goes ahead - playUriOutcome
-        // falls back to Spotify Connect over the Web API (SpotifyConnect) and reports its own reason.
-        val webFallback = connected != true && withContext(Dispatchers.IO) {
-            CompanionProfile.hasSpotifyClientId(context) && SpotifyWebApi.isAuthorized(context)
-        }
-        if (connected == true || webFallback) {
-            // Detached: its blocking App Remote awaits cannot be interrupted by a timeout, and a
-            // play that lands late must still flip MusicSource. We stop WAITING at the budget and
-            // say so honestly; we never claim playback started unless it did.
-            // appRemoteAlreadyTried: the connect above already spent its budget on App Remote
-            // (2026-10-15 car report). Without this a timed-out attempt, still in flight, was
-            // joined a SECOND time inside playUriOutcome (up to 6s more) before the Web API leg
-            // even started, so the play could not settle inside the tool budget.
-            val play = playScope.async {
-                SpotifyVoice.playOnSpotifyAttempt(
-                    context, query, type, artist, knownUri, sourceBeforeConnect, token,
-                    appRemoteAlreadyTried = connected != true,
-                )
+        val gate = SpotifyController.connectGate(context, PLAY_CONNECT_BUDGET_MS)
+        if (gate != SpotifyController.Gate.Connected) {
+            // The client ID and Web grant decrypt through the Keystore, and tool dispatch can be on
+            // the main thread. The Web grant is read only for the Crashlytics key.
+            withContext(Dispatchers.IO) {
+                val has = gate != SpotifyController.Gate.NotSetUp
+                MidnightEvents.spotifyClientIdSet(has)
+                if (has) MidnightEvents.spotifyWebAuthorized(SpotifyWebApi.isAuthorized(context))
             }
-            val remaining = (PLAY_TOTAL_BUDGET_MS - (android.os.SystemClock.elapsedRealtime() - startedAt))
-                .coerceAtLeast(PLAY_MIN_WAIT_MS)
-            val settled = withTimeoutOrNull(remaining) { play.await() }
-            if (settled != null) {
-                MidnightEvents.playMusicResult(spotifyOutcomeTag(settled.result), query)
-                return settled.result
-            }
-            // The driver was told "pending", so this is the only place that promise can be kept:
-            // record how the play really ended AND say so out loud (LatePlayReporter; a superseded
-            // play stays silent there). runCatching: a throw in the late play must end as a
-            // breadcrumb and a spoken failure, never a crash and never silence.
-            playScope.launch {
-                val late = runCatching { play.await() }
-                MidnightEvents.playMusicResult(
-                    late.fold(onSuccess = { spotifyOutcomeTag(it.result) }, onFailure = { "spotify_threw_${it.javaClass.simpleName}" }),
-                    query,
-                    late = true,
-                )
-                val report = late.fold(
-                    onSuccess = {
-                        LatePlayReportLogic.classify(it.outcome, it.result.optString("message").takeIf { m -> m.isNotBlank() })
-                    },
-                    onFailure = { LatePlayReportLogic.Late.Failed(LatePlayReporter.threwReason(query)) },
-                )
-                runCatching { LatePlayReporter.report(context, token, report) }
-                    .onFailure { MidnightEvents.recordError("play_music_late_report", it) }
-            }
-            MidnightEvents.playMusicResult("spotify_pending", query)
-            return result(success = false, message = SpotifyController.playStillPendingMessage(query))
-        }
-
-        // The client ID and Web grant decrypt through the Keystore, and tool dispatch runs on the
-        // main thread. The Web grant is read only for the Crashlytics key.
-        val hasClientId = withContext(Dispatchers.IO) {
-            val has = CompanionProfile.hasSpotifyClientId(context)
-            MidnightEvents.spotifyClientIdSet(has)
-            if (has) MidnightEvents.spotifyWebAuthorized(SpotifyWebApi.isAuthorized(context))
-            has
-        }
-        val failure = SpotifyController.lastFailure
-        SpotifyController.playMusicUnavailableMessage(
-            hasClientId = hasClientId,
-            failure = failure,
-            headUnitAppEnabled = MusicPreferences.headUnitAppEnabled(context),
-            description = query,
-            connectTimedOut = connected == null,
-        )?.let {
-            val why = when {
-                !hasClientId -> "no_client_id"
-                connected == null -> "connect_timeout"
+            val failure = (gate as? SpotifyController.Gate.Failed)?.failure
+            val message = SpotifyController.playMusicUnavailableMessage(
+                hasClientId = gate != SpotifyController.Gate.NotSetUp,
+                failure = failure,
+                description = query,
+                connectTimedOut = gate == SpotifyController.Gate.TimedOut,
+                clientIdUnreadable = gate == SpotifyController.Gate.Unreadable,
+            )
+            val why = when (gate) {
+                SpotifyController.Gate.NotSetUp -> "no_client_id"
+                SpotifyController.Gate.Unreadable -> "client_id_unreadable"
+                SpotifyController.Gate.TimedOut -> "connect_timeout"
                 else -> failure?.javaClass?.simpleName ?: "unknown"
             }
             MidnightEvents.playMusicResult("unavailable_$why", query)
-            return result(success = false, message = it)
+            return result(success = false, message = message)
         }
 
-        val pkg = MUSIC_FALLBACKS.firstOrNull { context.packageManager.getLaunchIntentForPackage(it) != null }
-            ?: return result(
-                success = false,
-                message = "I couldn't find a music app to open — you can still stream from your phone over Bluetooth.",
-            ).also { MidnightEvents.playMusicResult("intent_no_app", query) }
-        return playMusicVia(context, query, pkg) {}
-            .also { MidnightEvents.playMusicResult(if (it.optBoolean("success")) "intent_launched" else "intent_failed", query) }
+        // Detached: its blocking App Remote awaits cannot be interrupted by a timeout, and a
+        // play that lands late must still flip MusicSource. We stop WAITING at the budget and
+        // say so honestly; we never claim playback started unless it did.
+        val play = playScope.async {
+            SpotifyVoice.playOnSpotifyAttempt(context, query, type, artist, knownUri, sourceBeforeConnect, token)
+        }
+        val flight = InFlightPlay(key, play)
+        inFlightPlay = flight
+        play.invokeOnCompletion { if (inFlightPlay === flight) inFlightPlay = null }
+
+        val remaining = (PLAY_TOTAL_BUDGET_MS - (android.os.SystemClock.elapsedRealtime() - startedAt))
+            .coerceAtLeast(PLAY_MIN_WAIT_MS)
+        val settled = withTimeoutOrNull(remaining) { play.await() }
+        if (settled != null) {
+            flight.claimed.set(true)
+            MidnightEvents.playMusicResult(spotifyOutcomeTag(settled.result), query)
+            return settled.result
+        }
+        // The driver was told "pending", so this is the only place that promise can be kept:
+        // record how the play really ended AND say so out loud (LatePlayReporter; a superseded
+        // play stays silent there). runCatching: a throw in the late play must end as a
+        // breadcrumb and a spoken failure, never a crash and never silence.
+        playScope.launch {
+            val late = runCatching { play.await() }
+            MidnightEvents.playMusicResult(
+                late.fold(onSuccess = { spotifyOutcomeTag(it.result) }, onFailure = { "spotify_threw_${it.javaClass.simpleName}" }),
+                query,
+                late = true,
+            )
+            // A repeat ask that joined this play and got the result has already told the driver.
+            if (!flight.claimed.compareAndSet(false, true)) return@launch
+            val report = late.fold(
+                onSuccess = {
+                    LatePlayReportLogic.classify(it.outcome, it.result.optString("message").takeIf { m -> m.isNotBlank() })
+                },
+                onFailure = { LatePlayReportLogic.Late.Failed(LatePlayReporter.threwReason(query)) },
+            )
+            runCatching { LatePlayReporter.report(context, token, report) }
+                .onFailure { MidnightEvents.recordError("play_music_late_report", it) }
+        }
+        MidnightEvents.playMusicResult("spotify_pending", query)
+        return result(success = false, message = SpotifyController.playStillPendingMessage(query))
     }
 
     /** Outcome class for the play_music breadcrumb: never the spoken text (closest hits, error bodies). */
     private fun spotifyOutcomeTag(result: JSONObject): String =
         if (result.optBoolean("success")) "spotify_started" else "spotify_not_started"
-
-    private fun playMusicVia(context: Context, query: String, pkg: String, onLaunched: () -> Unit): JSONObject {
-        val pm = context.packageManager
-        if (pm.getLaunchIntentForPackage(pkg) == null) {
-            return result(
-                success = false,
-                message = "I couldn't find a music app to open — you can still stream from your phone over Bluetooth.",
-            )
-        }
-        val searchIntent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-            setPackage(pkg)
-            putExtra(SearchManager.QUERY, query)
-            putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
-        }
-        val intent = if (pm.resolveActivity(searchIntent, 0) != null) searchIntent
-            else pm.getLaunchIntentForPackage(pkg)
-                ?: return result(success = false, message = "I couldn't open that music app.")
-        return try {
-            openFullscreenWithBadge(context, intent)
-            onLaunched()
-            result(success = true, message = "Trying to play \"$query\" on ${appLabel(context, pkg)}.")
-        } catch (_: Exception) {
-            result(success = false, message = "I couldn't start that.")
-        }
-    }
-
-    /** Best-effort human label for an installed package, for spoken confirmation. */
-    private fun appLabel(context: Context, pkg: String): String =
-        runCatching {
-            val pm = context.packageManager
-            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-        }.getOrDefault("your music app")
 
     /** Brings our own app (the Cruise HUD) to the foreground on request. */
     private fun showApp(context: Context): JSONObject {
@@ -1998,8 +1947,6 @@ object LiveToolbox {
         return fns
     }
 
-    private const val SPOTIFY_PACKAGE = "com.spotify.music"
-
     // play_music's budget inside LiveSessionController.TOOL_TIMEOUT_MS (10s), leaving headroom for
     // the off-main client-ID read and the tool response itself.
     private const val PLAY_CONNECT_BUDGET_MS = 4_000L
@@ -2015,16 +1962,6 @@ object LiveToolbox {
             CoroutineExceptionHandler { _, e ->
                 MidnightEvents.recordError("play_music_scope", e)
             },
-    )
-
-    // Music apps open_music tries when the preferred pick isn't installed, in order.
-    private val MUSIC_FALLBACKS = listOf(
-        SPOTIFY_PACKAGE,
-        "com.google.android.apps.youtube.music",
-        "com.amazon.mp3",
-        "deezer.android.app",
-        "com.apple.android.music",
-        "com.soundcloud.android",
     )
 
     private fun result(success: Boolean, message: String?): JSONObject =

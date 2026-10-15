@@ -44,7 +44,11 @@ internal object SpotifyVoice {
 
     private fun unauthorized(context: Context, detail: String?, what: String): JSONObject = result(
         false,
-        if (SpotifyWebApi.needsReconnect(context)) {
+        if (SpotifyWebApi.grantUnreadable(context)) {
+            // A stored grant the Keystore will not open (F11): not "rejected", and not "never connected".
+            "I can't read the saved Spotify sign-in, so I couldn't do that for $what. Tap Reconnect " +
+                "Spotify on the home screen, or CONNECT under the Spotify client ID in Settings, and approve once."
+        } else if (SpotifyWebApi.needsReconnect(context)) {
             // The grant is older than the scope this request needs. One reconnect re-asks for the
             // whole set, so say that rather than sending the driver round in circles.
             "Spotify rejected that - your approval predates $what access. Tap Reconnect Spotify on " +
@@ -84,6 +88,7 @@ internal object SpotifyVoice {
         type: String,
         artist: String?,
     ): Resolution {
+        if (SpotifyWebApi.grantUnreadable(context)) return Resolution.Failed(unauthorized(context, null, "search"))
         if (!SpotifyWebApi.isAuthorized(context)) return Resolution.Failed(needsAuthorization())
 
         return when (val outcome = SpotifyWebApi.search(context, query, SpotifyVoiceLogic.searchType(type), artist)) {
@@ -118,6 +123,7 @@ internal object SpotifyVoice {
      * none matches - and when it falls back, [Resolution.Found.note] says so.
      */
     private suspend fun resolvePlaylist(context: Context, query: String): Resolution {
+        if (SpotifyWebApi.grantUnreadable(context)) return Resolution.Failed(unauthorized(context, null, "playlist"))
         if (!SpotifyWebApi.isAuthorized(context)) return Resolution.Failed(needsAuthorization())
 
         return when (val r = SpotifyWebApi.resolvePlaylist(context, query)) {
@@ -150,8 +156,9 @@ internal object SpotifyVoice {
      * skips resolution entirely: searching anyway could land on a different album of the same
      * name than the one the driver pointed at.
      *
-     * [sourceBeforeConnect] is [MusicSource] as it stood before the caller's `ensureConnected`,
-     * which flips it to SPOTIFY on connect and would otherwise hide a still-playing phone/mixtape.
+     * [sourceBeforeConnect] is [MusicSource] as it stood before the caller's connect. A connect can
+     * flip it to SPOTIFY (when the phone is idle; it was every connect until 2026-10-15), which would
+     * otherwise hide a mixtape that is still the source.
      */
     suspend fun playOnSpotify(
         context: Context,
@@ -161,9 +168,8 @@ internal object SpotifyVoice {
         knownUri: String?,
         sourceBeforeConnect: Source = MusicSource.current.value,
         token: PlayRequests.Token? = null,
-        appRemoteAlreadyTried: Boolean = false,
     ): JSONObject =
-        playOnSpotifyAttempt(context, query, type, artist, knownUri, sourceBeforeConnect, token, appRemoteAlreadyTried).result
+        playOnSpotifyAttempt(context, query, type, artist, knownUri, sourceBeforeConnect, token).result
 
     /** How one voice play ended, with the facts a late report needs that the tool's JSON does not carry. */
     data class PlayAttempt(
@@ -185,7 +191,6 @@ internal object SpotifyVoice {
         knownUri: String?,
         sourceBeforeConnect: Source = MusicSource.current.value,
         token: PlayRequests.Token? = null,
-        appRemoteAlreadyTried: Boolean = false,
     ): PlayAttempt {
         // [token] (play_music only): a newer choice made while this ran wins - see [PlayRequests].
         val stillWanted = { token == null || PlayRequests.shouldProceed(token) }
@@ -204,27 +209,45 @@ internal object SpotifyVoice {
             }
         }
 
+        var restoreNote: String? = null
         val outcome = playResolvedUri(
-            context, uri, label, sourceBeforeConnect, stillWanted, appRemoteAlreadyTried = appRemoteAlreadyTried,
+            context, uri, label, sourceBeforeConnect, stillWanted, onRestore = { restoreNote = it },
         )
         val ok = SpotifyController.succeeded(outcome)
         // The fallback note rides only on a success: a failed play has nothing to caveat further.
+        // The restore note rides only on a failure: it says what was done to the driver's music.
         return PlayAttempt(
-            result(ok, SpotifyController.message(outcome, query) + (note?.takeIf { ok }?.let { " $it" } ?: "")),
+            result(
+                ok,
+                SpotifyController.message(outcome, query) +
+                    (note?.takeIf { ok }?.let { " $it" } ?: "") +
+                    (restoreNote?.takeIf { !ok }?.let { " $it" } ?: ""),
+            ),
             outcome,
         )
     }
 
     /**
      * The one "play this Spotify URI now" sequence, shared by `play_music` and Cruise's pinned
-     * playlist tiles so the two cannot drift: bail if superseded, quiet the outgoing player,
-     * [SpotifyController.playUriOutcome] (connect, switch to this device, optional shuffle,
+     * playlist tiles so the two cannot drift: bail if superseded, connect (bounded), quiet the
+     * outgoing player, [SpotifyController.playUriOutcome] (switch to this device, optional shuffle,
      * play), re-check [stillWanted] after the play landed, and only then claim the speakers
      * (MusicSource -> SPOTIFY).
      *
-     * [sourceBeforeConnect] is the source captured BEFORE any connect (connecting flips it to
-     * SPOTIFY and would hide a still-playing phone/mixtape). [stillWanted] is the caller's
-     * [PlayRequests] check.
+     * The outgoing phone or mixtape is quieted only AFTER App Remote is confirmed connected
+     * ([SpotifyController.playUriOutcome]'s `beforePlay`), and put back if the play then fails
+     * (F8, 2026-10-15; it used to be paused first, so a play that could not start left the car
+     * silent). [onRestore] receives a sentence saying what was done to the driver's music, true to
+     * what happened: resumed, or paused and could not be resumed.
+     *
+     * Playback is App Remote only (Kevin, 2026-10-15). If Spotify's UI took the screen while Midnight
+     * was in front (a cold start of the Spotify app), Midnight is brought back
+     * ([SpotifyController.returnToFrontIfStolen]).
+     *
+     * [sourceBeforeConnect] is the source captured BEFORE any connect. A connect can flip it to
+     * SPOTIFY on its own when the phone is idle ([SpotifyController.shouldClaimSourceOnConnect]),
+     * which would hide a mixtape that is still the source; reading it afterwards is wrong.
+     * [stillWanted] is the caller's [PlayRequests] check.
      */
     suspend fun playResolvedUri(
         context: Context,
@@ -233,25 +256,30 @@ internal object SpotifyVoice {
         sourceBeforeConnect: Source,
         stillWanted: () -> Boolean,
         shuffle: Boolean = false,
-        // VOICE by default: a voice play never opens the Spotify app (see uiLaunchRefusal).
-        caller: com.kevin.midnightai.media.SpotifyConnectLogic.PlayCaller =
-            com.kevin.midnightai.media.SpotifyConnectLogic.PlayCaller.VOICE,
-        appRemoteAlreadyTried: Boolean = false,
+        onRestore: (String) -> Unit = {},
     ): SpotifyController.PlayOutcome {
         // Search/connect can be slow; if the driver moved on meanwhile, do not silence what they chose.
         if (!stillWanted()) return SpotifyController.PlayOutcome.Superseded
 
-        // Quiet the outgoing player so two sources do not talk over each other. Main thread: the
-        // media framework needs a Looper, and this may run on a background dispatcher.
-        when (sourceBeforeConnect) {
-            Source.PHONE -> withContext(Dispatchers.Main) { MusicController.pausePhone(context) }
-            Source.MIXTAPE -> withContext(Dispatchers.Main) { MixtapePlayer.pause() }
-            Source.SPOTIFY -> Unit
-        }
+        // Taken before anything can start the Spotify app (a cold connect can bring its UI up).
+        val midnightWasInFront = SpotifyController.activityInFront
+        var pausedPhone = false
+        var pausedMixtape = false
 
         val outcome = SpotifyController.playUriOutcome(
-            context, uri, pickedLabel = pickedLabel, stillWanted = stillWanted, shuffle = shuffle, caller = caller,
-            appRemoteAlreadyTried = appRemoteAlreadyTried,
+            context, uri, pickedLabel = pickedLabel, stillWanted = stillWanted, shuffle = shuffle,
+            beforePlay = {
+                // Quiet the outgoing player so two sources do not talk over each other. Main thread:
+                // the media framework needs a Looper, and this runs on a background dispatcher.
+                when (sourceBeforeConnect) {
+                    Source.PHONE -> pausedPhone = withContext(Dispatchers.Main) { MusicController.pausePhone(context) }
+                    Source.MIXTAPE -> withContext(Dispatchers.Main) {
+                        // Only a tape that was playing is ours to put back; a paused one stays paused.
+                        if (MixtapePlayer.isPlaying()) { MixtapePlayer.pause(); pausedMixtape = true }
+                    }
+                    Source.SPOTIFY -> Unit
+                }
+            },
         )
         val ok = SpotifyController.succeeded(outcome)
         if (ok && !stillWanted()) {
@@ -261,7 +289,22 @@ internal object SpotifyVoice {
             if (MusicSource.current.value != Source.SPOTIFY) MusicRouter.pauseSpotify(context)
             return SpotifyController.PlayOutcome.Superseded
         }
-        if (ok) MusicSource.set(Source.SPOTIFY)
+        if (ok) {
+            MusicSource.set(Source.SPOTIFY)
+            SpotifyController.returnToFrontIfStolen(context, midnightWasInFront)
+        } else if (outcome != SpotifyController.PlayOutcome.Superseded) {
+            // The play did not start: undo what was done to the driver's music for it.
+            if (pausedPhone) {
+                val back = withContext(Dispatchers.Main) { MusicController.resumePhone(context) }
+                onRestore(
+                    if (back) "I paused your phone's music for that and have resumed it."
+                    else "I paused your phone's music for that and could not resume it; press play on the phone."
+                )
+            } else if (pausedMixtape) {
+                withContext(Dispatchers.Main) { MixtapePlayer.resume() }
+                onRestore("I paused your mixtape for that and have resumed it.")
+            }
+        }
         return outcome
     }
 
