@@ -318,10 +318,10 @@ private suspend fun playPlaylistBounded(context: Context, p: SpotifyPlaylist): S
 
 /**
  * Upper bound on one tile tap: the bounded App Remote connect (4s), the device switch (5s), shuffle
- * and the play itself (8s each at worst). It used to also cover opening the Spotify app and waiting
- * for it to register; that path is gone (2026-10-15), so the bound dropped from 30s.
+ * and the play itself (8s each at worst, 25s in total). It used to also cover opening the Spotify app and waiting
+ * for it to register; that path is gone (2026-10-15), so the bound dropped from 30s to just over the worst case.
  */
-private const val TILE_PLAY_TIMEOUT_MS = 22_000L
+private const val TILE_PLAY_TIMEOUT_MS = 26_000L
 
 /** How long a tile shows its failure line before going back to the track count. */
 private const val TILE_FAILURE_SHOW_MS = 6_000L

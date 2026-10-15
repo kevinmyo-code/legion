@@ -647,7 +647,9 @@ object SpotifyController {
     private fun claimSourceIfIdle() {
         val ctx = lastAppContext ?: return
         background.launch {
-            val phonePlaying = runCatching { MusicController.phoneSessionPlaying(ctx) }.getOrDefault(false)
+            // Unknown counts as playing: a session read that throws must leave the source alone, not
+            // claim it from a phone that could not be inspected (the original F9 bug).
+            val phonePlaying = runCatching { MusicController.phoneSessionPlaying(ctx) }.getOrDefault(true)
             if (shouldClaimSourceOnConnect(MusicSource.current.value, phonePlaying)) MusicSource.set(Source.SPOTIFY)
         }
     }

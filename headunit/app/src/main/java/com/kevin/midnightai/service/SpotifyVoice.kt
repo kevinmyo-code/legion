@@ -273,7 +273,10 @@ internal object SpotifyVoice {
                 // the media framework needs a Looper, and this runs on a background dispatcher.
                 when (sourceBeforeConnect) {
                     Source.PHONE -> pausedPhone = withContext(Dispatchers.Main) { MusicController.pausePhone(context) }
-                    Source.MIXTAPE -> withContext(Dispatchers.Main) { MixtapePlayer.pause(); pausedMixtape = true }
+                    Source.MIXTAPE -> withContext(Dispatchers.Main) {
+                        // Only a tape that was playing is ours to put back; a paused one stays paused.
+                        if (MixtapePlayer.isPlaying()) { MixtapePlayer.pause(); pausedMixtape = true }
+                    }
                     Source.SPOTIFY -> Unit
                 }
             },

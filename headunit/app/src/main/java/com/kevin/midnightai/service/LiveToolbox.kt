@@ -1768,7 +1768,10 @@ object LiveToolbox {
         val key = PlayJoinLogic.key(query, type, artist, knownUri)
         inFlightPlay?.takeIf { it.key == key && it.deferred.isActive }?.let { joined ->
             val settled = withTimeoutOrNull(PLAY_TOTAL_BUDGET_MS) { joined.deferred.await() }
-            if (settled != null && joined.claimed.compareAndSet(false, true)) {
+            if (settled != null) {
+                // Claim so the late report does not say it again; if it already did, saying the real
+                // ending twice beats telling the driver "hasn't confirmed" about a play that ended.
+                joined.claimed.set(true)
                 MidnightEvents.playMusicResult(spotifyOutcomeTag(settled.result), query)
                 return settled.result
             }

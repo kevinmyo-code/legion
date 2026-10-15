@@ -688,7 +688,7 @@ app/src/main/java/com/kevin/midnightai/
 │   ├── ProactiveBus.kt                 proactive speak requests
 │   ├── DeviceRole.kt / BeaconService.kt   phone GPS beacon link, per car (§14)
 │   ├── CompanionBadgeController.kt     floating companion badge (§7)
-│   └── TelephonyController.kt, LauncherSettings.kt, MusicPreferences.kt, VoiceUsageMeter.kt, ...
+│   └── TelephonyController.kt, LauncherSettings.kt, VoiceUsageMeter.kt, ...
 ├── ai/
 │   ├── AriaBrain.kt                    system instruction (buildBaseInstruction/buildLiveContext), safetyInstructions
 │   ├── SubAgent.kt                     one-shot + investigate loop template
