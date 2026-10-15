@@ -379,7 +379,12 @@ class LiveSessionController(context: Context) {
             finishResume(s, s.beginConversation(firstGreetingOpener()), isFirst = true)
             return
         }
-        set(Phase.LISTENING, "Listening...")
+        // Not LISTENING yet: the mic is still shut until the context is in (the "showed LISTENING
+        // but heard nothing" shape). finishResume flips the phase once the mic really opens.
+        set(Phase.THINKING, "...")
+        // The tap must stop Zero NOW, not after the fetch below (beginConversation does the same
+        // flush, but it runs after the wait).
+        s.interruptForTap()
         // B2 (2026-10-15): a warm resume used to open the mic with NO live context - only a cold
         // start's greeting carried now-playing, location, the date line and trouble codes - so
         // every tap after the first talked to a model that knew what was true at socket start.
@@ -437,6 +442,9 @@ class LiveSessionController(context: Context) {
         // failure above starts a fresh conversation instead, billed from its own
         // Connected event).
         usageMeter.startSegment(System.currentTimeMillis())
+        // The mic has really been opened (beginConversation ran), so LISTENING is true now. The
+        // first-session path shows THINKING instead: Zero is about to speak the intro.
+        if (!isFirst) set(Phase.LISTENING, "Listening...")
         // Commit the one-time intro flag only after the send actually landed.
         if (isFirst) CompanionProfile.markFirstSessionDone(appContext)
     }

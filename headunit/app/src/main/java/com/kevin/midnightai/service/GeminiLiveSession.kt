@@ -455,6 +455,21 @@ class GeminiLiveSession(
     }
 
     /**
+     * Cuts off Zero's speech for a talk tap NOW (the flush half of [beginConversation]'s barge-in).
+     * The controller calls this synchronously on a warm-resume tap, because the resume itself now
+     * waits briefly for the live context (B2) and the driver must not hear Zero keep talking over
+     * their tap in the meantime. Idempotent with [beginConversation]'s own check.
+     */
+    fun interruptForTap() {
+        if (!running.get() || closed.get()) return
+        if (speakingThisTurn || playbackBacklogFrames() > 0) {
+            if (speakingThisTurn) discardModelAudioUntilTurnComplete = true
+            flushAudio()
+            speakingThisTurn = false
+        }
+    }
+
+    /**
      * Speaks [text] on a warm socket without opening the mic afterward - the
      * proactive path when a warm conversation socket already exists, so an opener
      * or alert is voiced and the socket stays warm rather than spinning up a new
@@ -1571,7 +1586,12 @@ class GeminiLiveSession(
      * focus alone isn't reliable enough on its own.
      */
     private fun restoreAudio() {
-        if (!ducked) return
+        if (!ducked) {
+            // A focus LOSS cleared the duck state (handleFocusLoss) but kept the request, which may
+            // have been re-granted since; release it so a finished session never holds focus.
+            if (audioFocusRequest != null) abandonDuckFocus()
+            return
+        }
         ducked = false
         abandonDuckFocus()
         com.kevin.midnightai.media.VolumeSync.holdForVoice(false)
@@ -1625,7 +1645,10 @@ class GeminiLiveSession(
         ducked = false
         musicWasPlayingBeforeDuck = false
         duckedPackage = null
-        audioFocusRequest = null // lost, nothing to abandon; the next duck builds a new request
+        // audioFocusRequest is deliberately KEPT. After a transient loss the system hands focus
+        // back (GAIN) when the other app abandons, so we may hold it again with no duckNow() to
+        // follow; restoreAudio abandons any request still recorded, and abandoning one we no
+        // longer hold is harmless. Nulling it here leaked focus for the rest of the session.
         // restoreAudio early-returns on !ducked, so release the volume hold here or it would leak.
         com.kevin.midnightai.media.VolumeSync.holdForVoice(false)
         MidnightEvents.audioFocus("duck_state_cleared: focus lost, next duck re-requests")
