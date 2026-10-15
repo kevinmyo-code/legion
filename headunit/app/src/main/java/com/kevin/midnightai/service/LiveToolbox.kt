@@ -543,8 +543,9 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "register_vehicle",
-            description = "Register the connected car's year, make, and model. Triggers an online " +
-                "lookup of its maintenance schedule. Use when the driver identifies the car, e.g. " +
+            description = "Register the connected car's year, make, and model. Starts an online " +
+                "lookup of its maintenance schedule in the background (the result says it has only " +
+                "started; do not announce the schedule as found). Use when the driver identifies the car, e.g. " +
                 "'this car is a 2003 BMW 330i', or to save the details after lookup_vin found them.",
             params = obj(
                 "year" to schema("integer", "Model year, e.g. 2003."),
