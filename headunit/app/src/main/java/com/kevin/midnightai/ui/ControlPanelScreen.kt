@@ -163,6 +163,7 @@ private enum class Section {
     SYSTEM_MEDIA_DIAGNOSTICS, SYSTEM_BLUETOOTH_DIAGNOSTICS, SYSTEM_REVERSE_CAMERA,
     CONN_PHONES,
     SYSTEM_RESET,
+    SYSTEM_LOGS,
 }
 
 @Composable
@@ -271,6 +272,7 @@ fun ControlPanel(
             Section.CONN_PHONES -> BluetoothManagerScreen(onBack = { section = null })
             Section.SYSTEM_REVERSE_CAMERA -> ReverseCameraPickerScreen(onBack = { section = null })
             Section.SYSTEM_RESET -> ResetSection(context, onReset) { section = null }
+            Section.SYSTEM_LOGS -> SystemLogsSection { section = null }
         }
     } else {
         // key(): the toggle rows hold remembered state, and the same slot is reused
@@ -432,6 +434,7 @@ private fun settingsRows(
             openRow("Permissions", "Microphone, media access, overlay", Section.SYSTEM_PERMISSIONS),
             openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES),
             openRow("Cross-device sync", "Optional Google Drive sync between dash and phone", Section.CONN_SYNC),
+            openRow("Drive logs", "Upload this unit's own log to your engine after each drive", Section.SYSTEM_LOGS),
             openRow("Reset", "Start over or wipe data", Section.SYSTEM_RESET),
         )
     }
@@ -1532,6 +1535,23 @@ private fun ConnectionsEngineSection(context: Context, onBack: () -> Unit) {
         )
         Spacer(Modifier.height(AriaDimens.s3))
         EngineEntry()
+    }
+}
+
+@Composable
+private fun SystemLogsSection(onBack: () -> Unit) {
+    SectionScaffold("Drive logs", onBack) {
+        Text("Drive logs", style = RowTitle, color = AriaColors.TextPrimary)
+        Spacer(Modifier.height(AriaDimens.s1))
+        Text(
+            "This unit keeps its own log and sends it to your LEGION engine after each drive, so " +
+                "what happened in the car can be read later. It goes only to your engine, and only " +
+                "when you are signed in under Engine. Offline, it waits here and tries again.",
+            style = RowSubtitle,
+            color = AriaColors.TextDim,
+        )
+        Spacer(Modifier.height(AriaDimens.s3))
+        DriveLogEntry()
     }
 }
 

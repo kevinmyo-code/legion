@@ -165,6 +165,29 @@ class EngineHttp(
             builder.build()
         }
 
+    /**
+     * `POST <base><path>` as `multipart/form-data`: [fields] as form fields plus one file part.
+     * Added 2026-10-15 for the drive-log upload (`diag/DriveLogUploader`), whose body is a gzip
+     * file the engine's `devicelogs` view takes as a multipart FILE part (a raw non-file body
+     * over 2.5 MB is refused by Django before any view runs; a file part is not). Goes through
+     * [send] like every other verb, so the 2xx-only-is-success rule and the failure classes are
+     * the same ones.
+     */
+    suspend fun postMultipart(
+        path: String,
+        fields: Map<String, String>,
+        fileField: String,
+        fileName: String,
+        fileBytes: ByteArray,
+        fileMimeType: String,
+    ): Result<EngineOk> =
+        send(path) { baseUrl ->
+            val body = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
+            fields.forEach { (name, value) -> body.addFormDataPart(name, value) }
+            body.addFormDataPart(fileField, fileName, fileBytes.toRequestBody(fileMimeType.toMediaType()))
+            Request.Builder().url(baseUrl + path).post(body.build()).authorize().build()
+        }
+
     suspend fun patch(path: String, jsonBody: String): Result<EngineOk> =
         send(path) { baseUrl ->
             Request.Builder()
