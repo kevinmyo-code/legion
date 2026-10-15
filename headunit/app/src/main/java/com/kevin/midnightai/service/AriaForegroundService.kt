@@ -250,6 +250,9 @@ class AriaForegroundService : Service() {
         startArrivalMonitor()
         startDriveMonitor()
         startRecapMonitor()
+        // Drive log (2026-10-15): periodic logcat snapshot + the startup upload; the drive-end
+        // upload is fired from startDriveMonitor's stop branch.
+        serviceScope.launch { com.kevin.midnightai.diag.DriveLogLoop.run(this@AriaForegroundService) }
 
         registerDebugTextInput()
 
@@ -663,6 +666,7 @@ class AriaForegroundService : Service() {
                     if (driveStartedAt == 0L) { driveStartedAt = now; breakAnnounced = false }
                 } else if (driveStartedAt != 0L && now - lastMovedAt >= STOP_RESET_MS) {
                     driveStartedAt = 0L // a sustained stop ends the drive
+                    com.kevin.midnightai.diag.DriveLogLoop.uploadAfterDrive(serviceScope, this@AriaForegroundService)
                     // A trivia game (.scratch/trivia-game/issues/06) auto-ends with the same
                     // drive - no lingering scoreboard once the driver's walked off.
                     TriviaController.endIfActive()?.let { game ->

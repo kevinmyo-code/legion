@@ -2317,6 +2317,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/device-logs/:
+    post:
+      operationId: api_device_logs_create
+      tags:
+      - device-logs
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Upload'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stored'
+          description: Stored.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stored'
+          description: This batch_id was already stored; nothing new.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Refused, nothing stored.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Over the size cap, nothing stored.
   /api/events:
     get:
       operationId: api_events_list
@@ -11937,6 +11976,16 @@ components:
       - message
       - results
       - truncated
+    ReasonEnum:
+      enum:
+      - drive_end
+      - startup
+      - manual
+      type: string
+      description: |-
+        * `drive_end` - drive_end
+        * `startup` - startup
+        * `manual` - manual
     Receipt:
       type: object
       description: |-
@@ -12841,6 +12890,25 @@ components:
       - provisional_superseded
       - restatements_skipped
       - statement_id
+    Stored:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        received_at:
+          type: string
+          format: date-time
+        stored_bytes:
+          type: integer
+          description: The compressed size kept.
+        detail:
+          type: string
+      required:
+      - detail
+      - id
+      - received_at
+      - stored_bytes
     Subscription:
       type: object
       description: 'What a member sees of a subscription: never the keys.'
@@ -13000,6 +13068,43 @@ components:
           default: USER_REPORTED
       required:
       - day
+    Upload:
+      type: object
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+          description: The device's idempotency key. A retry of the same batch is
+            answered 200, once.
+        device_label:
+          type: string
+          maxLength: 200
+        app_version_name:
+          type: string
+          default: ''
+          maxLength: 64
+        app_version_code:
+          type: integer
+          nullable: true
+        reason:
+          $ref: '#/components/schemas/ReasonEnum'
+        window_start_ms:
+          type: integer
+          nullable: true
+          description: Epoch milliseconds on the DEVICE's clock, which is not trusted.
+        window_end_ms:
+          type: integer
+          nullable: true
+          description: Epoch milliseconds on the DEVICE's clock, which is not trusted.
+        file:
+          type: string
+          format: uri
+          description: The log text, gzip-compressed.
+      required:
+      - batch_id
+      - device_label
+      - file
+      - reason
     VapidKey:
       type: object
       properties:

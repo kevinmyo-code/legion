@@ -16,7 +16,10 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
  * loads so every subsequent crash report is tagged with that context.
  */
 object MidnightEvents {
-    private val c get() = FirebaseCrashlytics.getInstance()
+    // 2026-10-15: was `FirebaseCrashlytics.getInstance()`. The tee forwards every call to it
+    // unchanged AND mirrors the breadcrumb into the on-disk drive log (diag/DriveLog) that is
+    // uploaded after each drive, so ADB-less audits can read what happened.
+    private val c get() = com.kevin.midnightai.diag.CrashlyticsTee
 
     /**
      * Observability must never crash the app it's observing - doubly so on a

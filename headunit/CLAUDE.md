@@ -195,6 +195,7 @@ New tool checklist: snake_case verb_noun, one responsibility, updated in this ta
 | Drive monitor | 1min | Started/stopped/10k milestone/2hr break; idle-chatter cadence (45min quiet, 60min cooldown, 30% chance) |
 | Arrival monitor | 20s | Places check-in; reminder proactives (waits up to 30s for busy conv) |
 | Weather | 30min / 60s retry | Warm cache for proactive context |
+| Drive log | 3min snapshot, 60s after start | `diag/DriveLogLoop`: logcat -> bounded on-disk log (`diag/DriveLog`, ~2 MB); uploads to the engine at service start and at drive end (the drive monitor's stop branch), and from Settings > System > Drive logs. Deleted only on a 2xx; offline keeps it (2026-10-15) |
 
 Proactive lines route through ProactiveBus. Gated on onboarding done, not busy, not in-call.
 
@@ -676,6 +677,7 @@ Rewritten 2026-10-14 from the tree on `dev`. Directories, and the files a sessio
 app/src/main/java/com/kevin/midnightai/
 ├── MidnightApplication.kt              app init (Firebase/Crashlytics first), StartupTrace, legacy cleanup
 ├── MidnightEvents.kt                   Crashlytics breadcrumbs + reported non-fatals (ADB is blocked on the head unit)
+├── diag/                               DriveLog (bounded on-disk breadcrumb+logcat log), LogRedactor, DriveLogUploader (-> engine /api/device-logs/), DriveLogLoop
 ├── StartupTrace.kt                     cold-start timings, first-frame mark, main-thread stall watchdog
 ├── service/
 │   ├── AriaForegroundService.kt        service lifecycle, background loops (§4.4)

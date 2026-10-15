@@ -16,6 +16,13 @@ import com.kevin.midnightai.ai.CompanionProfile
 class MidnightApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // First, so every MidnightEvents breadcrumb from here on lands in the on-disk drive log
+        // (diag/DriveLog) that is uploaded after each drive. Self-guarded: never throws.
+        try {
+            com.kevin.midnightai.diag.DriveLog.init(this)
+        } catch (e: Exception) {
+            android.util.Log.w("MidnightApp", "drive log failed to start: ${e.message}")
+        }
         // Captured before StartupTrace/Crashlytics exist, then recorded as spans once they do.
         val tTop = android.os.SystemClock.elapsedRealtime()
 
