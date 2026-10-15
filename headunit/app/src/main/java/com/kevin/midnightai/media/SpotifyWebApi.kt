@@ -110,6 +110,10 @@ object SpotifyWebApi {
     fun isAuthorized(context: Context): Boolean =
         CompanionProfile.spotifyRefreshToken(context).isNotBlank()
 
+    /** A grant is stored but the Keystore cannot open it: "re-authorize", not "never connected" (F11). */
+    fun grantUnreadable(context: Context): Boolean =
+        CompanionProfile.spotifyRefreshTokenRead(context) == CompanionProfile.SecretRead.Unreadable
+
     /**
      * Authorized, but the stored grant predates (or was denied) part of [SpotifyScopes.REQUIRED].
      * Distinct from "never authorized": the driver already connected once, so the fix is the
@@ -199,6 +203,13 @@ object SpotifyWebApi {
     sealed interface TokenOutcome {
         data class Token(val value: String) : TokenOutcome
 
+        /**
+         * A grant IS stored but the Keystore will not open it (F11, 2026-10-15). Not the same as
+         * [NeverAuthorized]: the fix is to re-authorize, and the driver should be told the saved
+         * sign-in is unreadable rather than that none exists.
+         */
+        object Unreadable : TokenOutcome
+
         /** No refresh token (or no client ID) on file - the browser grant was never completed. */
         object NeverAuthorized : TokenOutcome
 
@@ -214,13 +225,19 @@ object SpotifyWebApi {
      * there is none. A rejected refresh clears the stored tokens so the UI can offer a clean
      * re-connect; a network blip keeps them.
      */
-    suspend fun tokenOutcome(context: Context): TokenOutcome {
+    suspend fun tokenOutcome(context: Context, forceRefresh: Boolean = false): TokenOutcome {
         val stored = CompanionProfile.spotifyAccessToken(context)
-        if (stored.isNotBlank() && System.currentTimeMillis() < CompanionProfile.spotifyTokenExpiry(context)) {
+        // [forceRefresh] (F13, 2026-10-15): the expiry below is compared to the wall clock, which on a
+        // head unit with no RTC battery can be wrong, so a token Spotify has already expired still
+        // looked fresh and every read 401'd. After a 401 the caller asks once more with this set.
+        if (!forceRefresh && stored.isNotBlank() && System.currentTimeMillis() < CompanionProfile.spotifyTokenExpiry(context)) {
             return TokenOutcome.Token(stored)
         }
-        val refresh = CompanionProfile.spotifyRefreshToken(context)
-        if (refresh.isBlank()) return TokenOutcome.NeverAuthorized
+        val refresh = when (val r = CompanionProfile.spotifyRefreshTokenRead(context)) {
+            CompanionProfile.SecretRead.Absent -> return TokenOutcome.NeverAuthorized
+            CompanionProfile.SecretRead.Unreadable -> return TokenOutcome.Unreadable
+            is CompanionProfile.SecretRead.Value -> r.value
+        }
         val clientId = CompanionProfile.spotifyClientId(context)
         if (clientId.isBlank()) return TokenOutcome.NeverAuthorized
 
@@ -326,7 +343,8 @@ object SpotifyWebApi {
          * own `error.message`, the only thing that tells an expired token from "this dev app does
          * not list your account" - two 403s that need different fixes.
          */
-        data class Unauthorized(val detail: String?) : SearchOutcome
+        /** [status] is the HTTP status when Spotify answered (401 retries once, F13), else 0. */
+        data class Unauthorized(val detail: String?, val status: Int = 0) : SearchOutcome
 
         /** Could not reach Spotify at all - offline, DNS, timeout. */
         object Unreachable : SearchOutcome
@@ -413,9 +431,27 @@ object SpotifyWebApi {
         query: String,
         type: String = "track",
         artist: String? = null,
+    ): SearchOutcome {
+        val first = searchOnce(context, query, type, artist, forceRefresh = false)
+        // A 401 on a token that looked fresh: force ONE refresh and retry once (F13).
+        if (first is SearchOutcome.Unauthorized && first.status == 401) {
+            return searchOnce(context, query, type, artist, forceRefresh = true)
+        }
+        return first
+    }
+
+    private suspend fun searchOnce(
+        context: Context,
+        query: String,
+        type: String,
+        artist: String?,
+        forceRefresh: Boolean,
     ): SearchOutcome = withContext(Dispatchers.IO) {
-        val token = when (val outcome = tokenOutcome(context)) {
+        val token = when (val outcome = tokenOutcome(context, forceRefresh)) {
             is TokenOutcome.Token -> outcome.value
+            TokenOutcome.Unreadable -> return@withContext SearchOutcome.Unauthorized(
+                "The saved Spotify sign-in can't be read.",
+            )
             TokenOutcome.NeverAuthorized -> return@withContext SearchOutcome.NeedsAuthorization
             TokenOutcome.Rejected -> return@withContext SearchOutcome.Unauthorized(
                 "Spotify refused the stored refresh token. It has been cleared.",
@@ -492,7 +528,7 @@ object SpotifyWebApi {
             Log.w(TAG, "Search failed $code: $detail")
             return RawSearch.Error(
                 when (code) {
-                    401, 403 -> SearchOutcome.Unauthorized(detail)
+                    401, 403 -> SearchOutcome.Unauthorized(detail, code)
                     else -> SearchOutcome.Failed(code, detail, body.trim().take(300))
                 },
             )
@@ -591,7 +627,8 @@ object SpotifyWebApi {
         object NeedsAuthorization : LibraryOutcome<Nothing>
 
         /** Spotify rejected the credentials, OR the grant predates these scopes - see [needsReconnect]. */
-        data class Unauthorized(val detail: String?) : LibraryOutcome<Nothing>
+        /** [status] is the HTTP status when Spotify answered (401 retries once, F13), else 0. */
+        data class Unauthorized(val detail: String?, val status: Int = 0) : LibraryOutcome<Nothing>
 
         /** Could not reach Spotify at all. */
         object Unreachable : LibraryOutcome<Nothing>
@@ -695,9 +732,26 @@ object SpotifyWebApi {
         context: Context,
         url: String,
         parse: (JSONObject) -> List<T>,
+    ): LibraryOutcome<T> {
+        val first = libraryGetOnce(context, url, parse, forceRefresh = false)
+        // A 401 on a token that looked fresh: force ONE refresh and retry once (F13).
+        if (first is LibraryOutcome.Unauthorized && first.status == 401) {
+            return libraryGetOnce(context, url, parse, forceRefresh = true)
+        }
+        return first
+    }
+
+    private suspend fun <T> libraryGetOnce(
+        context: Context,
+        url: String,
+        parse: (JSONObject) -> List<T>,
+        forceRefresh: Boolean,
     ): LibraryOutcome<T> = withContext(Dispatchers.IO) {
-        val token = when (val outcome = tokenOutcome(context)) {
+        val token = when (val outcome = tokenOutcome(context, forceRefresh)) {
             is TokenOutcome.Token -> outcome.value
+            TokenOutcome.Unreadable -> return@withContext LibraryOutcome.Unauthorized(
+                "The saved Spotify sign-in can't be read.",
+            )
             TokenOutcome.NeverAuthorized -> return@withContext LibraryOutcome.NeedsAuthorization
             TokenOutcome.Rejected -> return@withContext LibraryOutcome.Unauthorized(
                 "Spotify refused the stored refresh token. It has been cleared.",
@@ -713,7 +767,7 @@ object SpotifyWebApi {
                     // Ambiguous between "token rejected" and "token valid but minted before these
                     // scopes existed"; callers that care check [needsReconnect] separately rather
                     // than this function guessing from an HTTP status.
-                    401, 403 -> LibraryOutcome.Unauthorized(detail)
+                    401, 403 -> LibraryOutcome.Unauthorized(detail, code)
                     else -> LibraryOutcome.Failed(code, detail, body.trim().take(300))
                 }
             }
