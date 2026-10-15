@@ -176,6 +176,34 @@ class SpotifyConnectLogicTest {
         )
     }
 
+    @Test fun `a caller that already waited on App Remote does not join the timed-out attempt again`() {
+        // play_music's own 4s connect timed out; the attempt is still in flight. Joining it a second
+        // time stacked another 6s ahead of the Web API leg (2026-10-15 car report).
+        assertFalse(
+            SpotifyConnectLogic.shouldTryAppRemote(
+                isConnected = false, attemptInFlight = true, msSinceLastFailure = null, callerAlreadyTried = true,
+            ),
+        )
+        assertFalse(
+            SpotifyConnectLogic.shouldTryAppRemote(
+                isConnected = false, attemptInFlight = false, msSinceLastFailure = null, callerAlreadyTried = true,
+            ),
+        )
+        assertFalse(
+            SpotifyConnectLogic.shouldTryAppRemote(
+                false, false, SpotifyConnectLogic.RECENT_FAILURE_MS, callerAlreadyTried = true,
+            ),
+        )
+    }
+
+    @Test fun `a link that came up meanwhile is still used even if the caller already tried`() {
+        assertTrue(
+            SpotifyConnectLogic.shouldTryAppRemote(
+                isConnected = true, attemptInFlight = false, msSinceLastFailure = null, callerAlreadyTried = true,
+            ),
+        )
+    }
+
     @Test fun `a fresh App Remote failure goes straight to the Web API`() {
         assertFalse(SpotifyConnectLogic.shouldTryAppRemote(isConnected = false, attemptInFlight = false, msSinceLastFailure = 2_000))
     }

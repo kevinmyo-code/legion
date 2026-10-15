@@ -271,6 +271,18 @@ object PhoneLinkManager {
         }
 
         val active = phones.firstOrNull { it.audioState == LinkState.CONNECTED }?.address
+        // Breadcrumb only: shows in the next Crashlytics log beside spotify_app_remote_lost, so the
+        // order of "phone left" and "App Remote dropped" is known rather than guessed (2026-10-15).
+        PhoneLinkChange.diff(
+            before = _state.value.phones.filter { it.audioState == LinkState.CONNECTED }.map { it.address }.toSet(),
+            after = phones.filter { it.audioState == LinkState.CONNECTED }.map { it.address }.toSet(),
+        )?.let {
+            com.kevin.midnightai.MidnightEvents.phoneLinkChanged(
+                PhoneLinkChange.describe(it),
+                appRemote = com.kevin.midnightai.media.SpotifyController.effectiveLink().name,
+                source = com.kevin.midnightai.media.MusicSource.current.value.name,
+            )
+        }
         _state.update {
             it.copy(
                 capability = capability,

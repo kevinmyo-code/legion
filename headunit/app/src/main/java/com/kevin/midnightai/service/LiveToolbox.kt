@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import com.kevin.midnightai.location.ReminderController
+import com.kevin.midnightai.media.LatePlayReportLogic
 import com.kevin.midnightai.media.MixtapePlayer
 import com.kevin.midnightai.media.MusicController
 import com.kevin.midnightai.media.MusicRouter
@@ -1803,25 +1804,42 @@ object LiveToolbox {
             // Detached: its blocking App Remote awaits cannot be interrupted by a timeout, and a
             // play that lands late must still flip MusicSource. We stop WAITING at the budget and
             // say so honestly; we never claim playback started unless it did.
+            // appRemoteAlreadyTried: the connect above already spent its budget on App Remote
+            // (2026-10-15 car report). Without this a timed-out attempt, still in flight, was
+            // joined a SECOND time inside playUriOutcome (up to 6s more) before the Web API leg
+            // even started, so the play could not settle inside the tool budget.
             val play = playScope.async {
-                SpotifyVoice.playOnSpotify(context, query, type, artist, knownUri, sourceBeforeConnect, token)
+                SpotifyVoice.playOnSpotifyAttempt(
+                    context, query, type, artist, knownUri, sourceBeforeConnect, token,
+                    appRemoteAlreadyTried = connected != true,
+                )
             }
             val remaining = (PLAY_TOTAL_BUDGET_MS - (android.os.SystemClock.elapsedRealtime() - startedAt))
                 .coerceAtLeast(PLAY_MIN_WAIT_MS)
             val settled = withTimeoutOrNull(remaining) { play.await() }
             if (settled != null) {
-                MidnightEvents.playMusicResult(spotifyOutcomeTag(settled), query)
-                return settled
+                MidnightEvents.playMusicResult(spotifyOutcomeTag(settled.result), query)
+                return settled.result
             }
-            // Record how the play really ended once it does, since the driver was told "pending".
-            // runCatching: a throw in the late play must end as a breadcrumb, never a crash.
+            // The driver was told "pending", so this is the only place that promise can be kept:
+            // record how the play really ended AND say so out loud (LatePlayReporter; a superseded
+            // play stays silent there). runCatching: a throw in the late play must end as a
+            // breadcrumb and a spoken failure, never a crash and never silence.
             playScope.launch {
                 val late = runCatching { play.await() }
                 MidnightEvents.playMusicResult(
-                    late.fold(onSuccess = { spotifyOutcomeTag(it) }, onFailure = { "spotify_threw_${it.javaClass.simpleName}" }),
+                    late.fold(onSuccess = { spotifyOutcomeTag(it.result) }, onFailure = { "spotify_threw_${it.javaClass.simpleName}" }),
                     query,
                     late = true,
                 )
+                val report = late.fold(
+                    onSuccess = {
+                        LatePlayReportLogic.classify(it.outcome, it.result.optString("message").takeIf { m -> m.isNotBlank() })
+                    },
+                    onFailure = { LatePlayReportLogic.Late.Failed(LatePlayReporter.threwReason(query)) },
+                )
+                runCatching { LatePlayReporter.report(context, token, report) }
+                    .onFailure { MidnightEvents.recordError("play_music_late_report", it) }
             }
             MidnightEvents.playMusicResult("spotify_pending", query)
             return result(success = false, message = SpotifyController.playStillPendingMessage(query))

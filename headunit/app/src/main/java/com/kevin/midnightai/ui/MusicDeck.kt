@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.media.AppRemoteLink
 import com.kevin.midnightai.media.MediaEmptyState
 import com.kevin.midnightai.media.MusicDeckLogic
@@ -62,14 +63,18 @@ import com.kevin.midnightai.media.MusicSource
 import com.kevin.midnightai.media.NowPlayingInfo
 import com.kevin.midnightai.media.Source
 import com.kevin.midnightai.media.SpotifyController
+import com.kevin.midnightai.media.SpotifyWebApi
 import com.kevin.midnightai.media.VolumeController
 import com.kevin.midnightai.media.openNotificationAccessSettings
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaDimens
 import com.kevin.midnightai.ui.theme.AriaPalette
 import com.kevin.midnightai.ui.theme.AriaType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 
 /**
@@ -234,7 +239,19 @@ internal fun NowPlayingCard(
     Column(modifier.deckCard(m).padding(m.npPad)) {
         // --- Label row: "NOW PLAYING ・ SOURCE", or the PHONE | SPOTIFY switch when there is
         // something to switch between (head-unit Spotify connected, no mixtape loaded).
-        val canSwitch = spotifyConnected && source != Source.MIXTAPE
+        // Stays when head-unit Spotify is set up but App Remote is momentarily down (2026-10-15 car
+        // report: it vanished on a drop, so there was no hands path back). Read off the main thread:
+        // the client ID and Web grant decrypt through the Keystore.
+        var spotifySetUp by remember { mutableStateOf(false) }
+        LaunchedEffect(link) {
+            spotifySetUp = withContext(Dispatchers.IO) {
+                CompanionProfile.hasSpotifyClientId(context) && SpotifyWebApi.isAuthorized(context) &&
+                    !SpotifyController.lastFailureIsNotInstalled()
+            }
+        }
+        var reconnecting by remember { mutableStateOf(false) }
+        val switchMode = MusicDeckLogic.switchMode(spotifyConnected, spotifySetUp, source)
+        val canSwitch = switchMode != MusicDeckLogic.SwitchMode.HIDDEN
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (canSwitch) "NOW PLAYING" else "NOW PLAYING ・ ${MusicDeckLogic.sourceLabel(source)}",
@@ -244,7 +261,31 @@ internal fun NowPlayingCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (canSwitch) SourceSwitch(m, source, context)
+            if (canSwitch) {
+                SourceSwitch(m, source, context, switchMode, reconnecting) {
+                    if (reconnecting) return@SourceSwitch
+                    scope.launch {
+                        reconnecting = true
+                        val ok = withTimeoutOrNull(MusicDeckLogic.RECONNECT_TAP_BUDGET_MS) {
+                            SpotifyController.ensureConnected(context)
+                        }
+                        reconnecting = false
+                        when {
+                            ok == true -> if (!MusicRouter.switchToSpotify(context)) {
+                                Toast.makeText(context, SpotifyController.notConnectedMessage(), Toast.LENGTH_SHORT).show()
+                            }
+                            else -> Toast.makeText(
+                                context,
+                                MusicDeckLogic.reconnectFailureMessage(
+                                    SpotifyController.playbackReasonShort(SpotifyController.lastFailure),
+                                    timedOut = ok == null,
+                                ),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(m.gap))
 
@@ -544,7 +585,15 @@ private fun IdleCaption(m: DeckMetrics, emptyState: MediaEmptyState, source: Sou
 
 /** PHONE | SPOTIFY: the graceful source switch (pause outgoing, start incoming). */
 @Composable
-private fun SourceSwitch(m: DeckMetrics, source: Source, context: Context) {
+private fun SourceSwitch(
+    m: DeckMetrics,
+    source: Source,
+    context: Context,
+    mode: MusicDeckLogic.SwitchMode,
+    connecting: Boolean,
+    onReconnect: () -> Unit,
+) {
+    val reconnect = mode == MusicDeckLogic.SwitchMode.RECONNECT
     Row(
         Modifier
             .clip(RoundedCornerShape(m.tileRadius))
@@ -552,17 +601,30 @@ private fun SourceSwitch(m: DeckMetrics, source: Source, context: Context) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SwitchLabel(m, "PHONE", active = source == Source.PHONE) { MusicRouter.switchToPhone(context) }
-        SwitchLabel(m, "SPOTIFY", active = source == Source.SPOTIFY) { MusicRouter.switchToSpotify(context) }
+        // While App Remote is down the label says RECONNECT and a tap reconnects, then switches;
+        // it stays tappable even when Spotify is the current source (the link is what is missing).
+        SwitchLabel(
+            m,
+            MusicDeckLogic.spotifySwitchLabel(mode, connecting),
+            active = source == Source.SPOTIFY,
+            tappable = if (reconnect) !connecting else source != Source.SPOTIFY,
+        ) { if (reconnect) onReconnect() else MusicRouter.switchToSpotify(context) }
     }
 }
 
 @Composable
-private fun SwitchLabel(m: DeckMetrics, label: String, active: Boolean, onClick: () -> Unit) {
+private fun SwitchLabel(
+    m: DeckMetrics,
+    label: String,
+    active: Boolean,
+    tappable: Boolean = !active,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier
             .driveTarget()
             .background(if (active) AriaColors.TextPrimary else Color.Transparent)
-            .clickable(enabled = !active, onClickLabel = "Switch to $label") { onClick() }
+            .clickable(enabled = tappable, onClickLabel = "Switch to $label") { onClick() }
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
