@@ -55,8 +55,8 @@ internal fun spotifyNeedsAttention(status: CategoryStatus): Boolean =
     status.dot == SettingsDot.WARN || status.dot == SettingsDot.ERROR
 
 /**
- * System rail status. [missing] is the count of the three grants the Permissions leaf lists
- * (mic+location, media access, overlay).
+ * System rail status. [missing] is the count of the two grants the Permissions leaf lists
+ * (mic+location, media access).
  */
 internal fun permissionsCategoryStatus(missing: Int): CategoryStatus = when {
     missing <= 0 -> CategoryStatus("All permissions granted", SettingsDot.OK)

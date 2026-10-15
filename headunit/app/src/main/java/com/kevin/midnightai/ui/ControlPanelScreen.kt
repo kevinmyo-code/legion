@@ -421,7 +421,7 @@ private fun settingsRows(
         )
         SettingsCategory.SYSTEM -> listOf(
             openRow("Clock & time zone", clockRowSubtitle(), Section.SYSTEM_CLOCK),
-            openRow("Permissions", "Microphone, media access, overlay", Section.SYSTEM_PERMISSIONS),
+            openRow("Permissions", "Microphone, media access", Section.SYSTEM_PERMISSIONS),
             openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES),
             openRow("Cross-device sync", "Optional Google Drive sync between dash and phone", Section.CONN_SYNC),
             openRow("Drive logs", "Upload this unit's own log to your engine after each drive", Section.SYSTEM_LOGS),
@@ -481,9 +481,9 @@ private fun buildSettingsStatuses(
 }
 
 /**
- * How many of the three grants the Permissions leaf lists are missing. Same three checks as
+ * How many of the two grants the Permissions leaf lists are missing. Same two checks as
  * [SystemPermissionsSection] (kept as a copy so that leaf stays untouched): mic AND location
- * count as one, media access, overlay.
+ * count as one, media access.
  */
 private fun missingPermissionCount(context: Context): Int {
     val micAndLocation = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -493,7 +493,6 @@ private fun missingPermissionCount(context: Context): Int {
     return listOf(
         micAndLocation,
         NowPlayingController.hasAccess(context),
-        Settings.canDrawOverlays(context),
     ).count { !it }
 }
 
@@ -1141,7 +1140,6 @@ private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissio
             PackageManager.PERMISSION_GRANTED
     }
     val mediaGranted = remember(refresh) { NowPlayingController.hasAccess(context) }
-    val overlayGranted = remember(refresh) { Settings.canDrawOverlays(context) }
 
     SectionScaffold("Permissions", onBack) {
         GrantRow(
@@ -1156,30 +1154,10 @@ private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissio
             actionLabel = "Enable",
             onAction = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
         )
-        GrantRow(
-            label = "Display over other apps (companion badge)",
-            granted = overlayGranted,
-            actionLabel = "Allow",
-            onAction = {
-                context.startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:${context.packageName}"),
-                    ),
-                )
-            },
-        )
         Spacer(Modifier.height(16.dp))
         Text(
             text = "Music plays from your phone over Bluetooth - play it there and your co-pilot " +
                 "controls play, pause, and skipping hands-free. Now-playing shows on the Cruise screen.",
-            style = RowSubtitle,
-            color = AriaColors.TextDim,
-        )
-        Spacer(Modifier.height(AriaDimens.s2))
-        Text(
-            text = "\"Display over other apps\" lets Midnight AI show a small floating companion " +
-                "badge (tap to talk, music transport) while music has the screen.",
             style = RowSubtitle,
             color = AriaColors.TextDim,
         )
@@ -1787,7 +1765,7 @@ private fun previewRows(category: SettingsCategory): List<SettingsRowSpec> = whe
     )
     else -> listOf(
         SettingsRowSpec(
-            "Permissions", "Microphone, media access, overlay",
+            "Permissions", "Microphone, media access",
             RowAction.Button("OPEN", ButtonWeight.QUIET) {},
             SettingsChip("ACTION NEEDED", SettingsDot.WARN),
         ),

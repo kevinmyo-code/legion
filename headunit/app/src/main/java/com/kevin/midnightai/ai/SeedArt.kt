@@ -19,7 +19,7 @@ import com.kevin.midnightai.ui.theme.AriaPalette
  * StateFlow - this is immutable bundled art, never mutated or swapped at
  * runtime, so there's none of the staleness risk CLAUDE.md sec 9's "No
  * StateFlow Bitmaps" rule guards against). Both [avatar] and [wallpaper] are
- * read on nearly every Cruise/CompanionBadge/CarsScreen recomposition
+ * read on nearly every Cruise/CarsScreen recomposition
  * (`remember(bgVersion)` re-invokes them whenever the background version
  * bumps), so decoding the resource fresh every call was real repeated work
  * for a picture that never changes.

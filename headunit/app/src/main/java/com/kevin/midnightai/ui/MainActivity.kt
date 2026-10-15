@@ -395,11 +395,6 @@ class MainActivity : ComponentActivity() {
             PackageManager.PERMISSION_GRANTED
         if (micGranted) {
             startAriaService()
-            // The floating companion badge is only meaningful while some other
-            // app is genuinely in front of us. Once we're back as the sole
-            // foreground (e.g. the driver pressed Home), any badge is stale -
-            // hide() is a no-op if none is showing.
-            startAriaService(AriaForegroundService.ACTION_HIDE_PANEL)
         }
         // Cross-device sync (S1): pull anything prepped on the other device when we
         // come to the foreground. Throttled + no-op unless Drive is connected.
