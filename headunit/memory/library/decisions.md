@@ -1791,3 +1791,21 @@ Rulings only; the mechanical fixes (B1, B2, B4, B5, B7 and so on) are in the com
   honoured.** Ducking is audio focus `MAY_DUCK` only; lowering the stream also lowers the
   assistant's own voice (same stream). Optional restore-the-index step not added: it would fight
   `VolumeSync.holdForVoice`.
+
+## 2026-10-15 - Companion Badge removed (branch `chore/headunit-drop-badge`)
+
+Kevin: "i dont need the floating badge in the head unit. remove it if its dead weight."
+
+- **Why dead weight.** The badge's only trigger was the `open_music` voice tool, removed the same
+  day (App Remote only ruling, entry above). `ACTION_SHOW_PANEL` had no sender, so the overlay was
+  unreachable. CLAUDE.md section 7 had already recorded "nothing triggers the badge".
+- **Removed.** `service/CompanionBadgeController.kt`, `ui/CompanionBadge.kt`,
+  `service/OverlayOwners.kt` (only the badge used it), `ACTION_SHOW_PANEL` / `ACTION_HIDE_PANEL`
+  and their handling in `AriaForegroundService`, the `ACTION_HIDE_PANEL` send in
+  `MainActivity.onResume`, the "display over other apps" row and explainer in Settings >
+  Permissions (missing-grant count is now two), and the `SYSTEM_ALERT_WINDOW` manifest permission.
+  No other code drew an overlay window (grep of `TYPE_APPLICATION_OVERLAY`, `addView`,
+  `WindowManager`, `canDrawOverlays`); glance cards and the trivia scoreboard are Compose layers
+  inside the app's own Activity, and the reverse camera is an app hand-off.
+- **Standing.** No floating overlay without a new ruling. CLAUDE.md section 7 is now a short
+  statement of this; the section 8 rows that mentioned the badge point at it.

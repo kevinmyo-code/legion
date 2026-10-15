@@ -85,7 +85,7 @@ tier, paywall copy, conversion line, the $0.17/trial arithmetic) is history: ful
 | Nav | **REMOVED 2026-10-11** | The head unit has no navigation (Kevin). Mapbox SDK, geocoding, Maps/Waze intents, and the `start_navigation`/`stop_navigation` voice tools are all gone. Saved places and arrival reminders stay (not navigation). See §8 |
 | Images | **No in-app generation (removed 2026-09-27)** | Art is generated in a Claude session (`art/seed/*.py`), picked by Kevin, and bundled in `res/drawable-nodpi`; `ai/SeedArt.kt` loads it. `AvatarStudio.kt` now only stores real photos (car, album, build) plus a legacy on-disk fallback |
 | Garage control | Shelly Gen2+ Cloud Control API (BYO auth_key, garage-mounted, over hotspot) | Action-only single-button toggle, no Gemini call; ShellyCloudOpener.kt. Relay lives at the garage on home WiFi, reached over the phone hotspot via Shelly's cloud (auth_key is a BYO secret, KeyVault-encrypted). ShellyBleOpener.kt retained unwired as an alternate car-local, no-cloud transport |
-| Background | AriaForegroundService (FGS types connectedDevice, dataSync, microphone, mediaPlayback); BeaconService (`location`) | No floating overlay button |
+| Background | AriaForegroundService (FGS types connectedDevice, dataSync, microphone, mediaPlayback); BeaconService (`location`) | No floating overlay button; the companion badge was removed 2026-10-15 (§7) |
 | LEGION engine | `backend/engine/` (OkHttp, hand-written) + models generated from `openapi/legion-schema.yaml` by `openApiGenerate` | Third client of Kevin's Django engine (ADR 0044/0045 in the LEGION repo). Sign-in under Settings > Engine |
 | Crash/observability | Firebase Crashlytics + breadcrumbs | ADB logcat blocked on head unit |
 | Animation | Frame-clock only via ui/Motion.kt | System animator scale = 0 on cheap units; tween = silent freeze |
@@ -268,29 +268,17 @@ Nightrunner Wrapped aggregation + poster export. Hardware validation pass. Creat
 
 ---
 
-## 7. Companion Badge (SHIPPED 2026-07-08, hardware-unvalidated)
+## 7. Companion Badge (REMOVED 2026-10-15)
 
-Replaces Split-Screen Companion Mode (killed same day - see §8 R1). That mode tried two paths:
-native multi-window (`FLAG_ACTIVITY_LAUNCH_ADJACENT`) and a full-height floating panel fallback.
-Native proved unreliable by design - the flag is a documented Android no-op from Midnight AI's
-fullscreen home-screen starting state, not a bug - and even the panel fallback only ever
-approximated a real split: the other app has no idea we exist and never reflows around us. Kevin
-called it: stop trying to fake a split, ship something honest instead.
-
-**What shipped:** `open_music` opened the target app full-screen, a completely normal app launch, then showed a small floating **companion badge**
-(`CompanionBadgeController` + `OverlayOwners`, `TYPE_APPLICATION_OVERLAY`, needs the
-`SYSTEM_ALERT_WINDOW` grant, Setup screen sends the driver to grant it). The badge is just the
-avatar in a circle (tap to talk, ring color matches Cruise's phase colors) with minimal music
-transport (prev/play-pause/next) below it - no caption, no notice, no telemetry, no in-badge
-"return" button. The driver returns to Midnight AI via Home, same as any other app switch;
-`MainActivity.onResume()` hides the badge once we're back as the sole foreground.
-
-No settings picker, no side-app assignment, no native-vs-panel choice - it was just always the
-badge when nav/music opened via voice. **Live state since 2026-10-15: nothing triggers the badge.**
-`open_music` was removed with the Spotify-app launch (the only sender of `ACTION_SHOW_PANEL`), so the
-badge code (`CompanionBadgeController`, `AriaForegroundService.showPanel`) is intact and unreachable until
-a ruling names a new trigger. Phone-BT streaming + `control_music` transport untouched.
-Driving surface: SPARE, tokens only, frame-clock only, same as everything else.
+The floating companion badge (a `TYPE_APPLICATION_OVERLAY` avatar with tap-to-talk and music
+transport, shown over a nav/music app opened by voice) no longer exists. Kevin, 2026-10-15: "i dont
+need the floating badge in the head unit. remove it if its dead weight." Its only trigger was the
+`open_music` voice tool, removed the same day with the App Remote only ruling, so the badge was
+unreachable. `CompanionBadgeController`, `CompanionBadge`, `OverlayOwners`, `ACTION_SHOW_PANEL` /
+`ACTION_HIDE_PANEL`, the "display over other apps" Setup row and the `SYSTEM_ALERT_WINDOW`
+permission went with it; nothing else on the unit draws an overlay window. Do not reintroduce a
+floating overlay without a ruling. Talk is the tap on the Cruise avatar. History in
+`memory/library/decisions.md` (2026-10-15).
 
 ---
 
@@ -309,12 +297,12 @@ Driving surface: SPARE, tokens only, frame-clock only, same as everything else.
 | Real ML (TF Lite, training) | ❌ | Gemini-as-reasoner instead |
 | Comparative anonymized fleet data / brand-enhanced PIDs | ❌ | Carly's turf |
 | Local LLM on Jetson/RK3588 | ⏸️ ROADMAP | Not current build |
-| iOS / Apple CarPlay | ❌ DROPPED | Reinterpreted 2026-07-04 as Split-Screen Companion Mode, then 2026-07-08 as the **Companion Badge** (§7) for Android apps. Apple CarPlay/iOS itself stays killed |
+| iOS / Apple CarPlay | ❌ DROPPED | Reinterpreted 2026-07-04 as Split-Screen Companion Mode, then 2026-07-08 as a floating companion badge, itself removed 2026-10-15 (§7). Apple CarPlay/iOS itself stays killed |
 | Wake word ("Hey Moose") + ambient cabin listening | ❌ REMOVED 2026-10-11 | Kevin: "we dont need wake word anymore. remove it". Supersedes the 2026-07-19 reopen. Vosk, JNA use, the bundled model, WakeWordEngine/Preferences/debug panel, and AmbientListener (the 2026-07-22 open-vocabulary cabin transcriber, which shared Vosk) are all deleted. Talk = push-to-talk only. Do not reintroduce without Kevin saying so |
 | Google Calendar / OAuth / play-services-auth | ⚠️ PARTIALLY REOPENED 2026-07-14 | Google Calendar stays killed. But `play-services-auth` is REINTRODUCED, scoped to cross-device sync (S1): the Google Identity Authorization API authorizes the driver's OWN Drive `appDataFolder` (`drive.appdata` scope) on-device - no Kevin backend, no Calendar, no login-for-a-server. The old "not needed" was about Calendar; sync needs it. See §8's "Cross-device car-data sync" row, §9, decisions.md 2026-07-14 |
 | Mood/emotion engine | ❌ REMOVED | Character lives in system prompt only |
-| Always-on floating talk button (full app, no trigger) | ❌ REMOVED 2026-07-01 | Nightrunner = home screen. Talk = tap avatar. Stays dead - the 2026-07-08 Companion Badge (§7) is a different, narrower thing: it only appears while nav/music has the foreground, not as a persistent always-on overlay |
-| Native multi-window split-screen + full-height floating panel | ❌ KILLED 2026-07-08 (R1) | `FLAG_ACTIVITY_LAUNCH_ADJACENT` is a documented no-op from our fullscreen home-screen start; the panel fallback only ever approximated a split. Replaced by the Companion Badge (§7) - no split attempt at all, just a small tap-to-talk + transport badge over the fullscreen app |
+| Always-on floating talk button (full app, no trigger) | ❌ REMOVED 2026-07-01 | Nightrunner = home screen. Talk = tap avatar. Stays dead. The narrower 2026-07-08 Companion Badge (shown only while nav/music had the foreground) was removed too on 2026-10-15 (§7) |
+| Native multi-window split-screen + full-height floating panel | ❌ KILLED 2026-07-08 (R1) | `FLAG_ACTIVITY_LAUNCH_ADJACENT` is a documented no-op from our fullscreen home-screen start; the panel fallback only ever approximated a split. Replaced by a small companion badge over the fullscreen app, itself removed 2026-10-15 (§7) |
 
 If Kevin asks to revisit any of these, remind him it's frozen and ask whether this is intentional re-opening.
 
@@ -690,7 +678,6 @@ app/src/main/java/com/kevin/midnightai/
 │   ├── GlanceCardController.kt         ephemeral glance-card state
 │   ├── ProactiveBus.kt                 proactive speak requests
 │   ├── DeviceRole.kt / BeaconService.kt   phone GPS beacon link, per car (§14)
-│   ├── CompanionBadgeController.kt     floating companion badge (§7)
 │   └── TelephonyController.kt, LauncherSettings.kt, VoiceUsageMeter.kt, ...
 ├── ai/
 │   ├── AriaBrain.kt                    system instruction (buildBaseInstruction/buildLiveContext), safetyInstructions
@@ -741,7 +728,7 @@ app/src/main/java/com/kevin/midnightai/
     ├── ReverseCameraLauncher.kt / ReverseCameraSettings.kt / ReverseCameraTarget.kt
     ├── BluetoothManagerScreen.kt, BluetoothDiagnosticsScreen.kt, MediaDiagnosticsScreen.kt
     ├── ObdSheet.kt, CarsScreen.kt                 (Settings > Your car rows, §13); DtcContent.kt = the CODES tab body
-    ├── GlanceCardOverlay.kt, TriviaScoreboard.kt, CrisisCard.kt, CompanionBadge.kt
+    ├── GlanceCardOverlay.kt, TriviaScoreboard.kt, CrisisCard.kt
     ├── AmbientWallpaper.kt, Motion.kt (animPhase/triangle/wave/rememberRamp)
     └── theme/                          AriaTheme (AriaColors), AriaTokens (AriaType/AriaDimens/AriaSounds), AriaPalette, LightsOutColors
 ```

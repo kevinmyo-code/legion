@@ -8,7 +8,7 @@ import kotlinx.coroutines.withContext
  * Routes transport commands to whichever player [MusicSource] says is active:
  * [MixtapePlayer] for a driver-assembled tape, [SpotifyController] for a live BYO
  * App Remote connection, or [MusicController] (remote AVRCP control of the phone
- * over Bluetooth) otherwise. This is the one thing CruiseScreen, CompanionBadge,
+ * over Bluetooth) otherwise. This is the one thing CruiseScreen
  * and LiveToolbox call for play/pause/next/previous - it's a drop-in swap for the
  * old direct MusicController calls, same signatures.
  *

@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class Source { PHONE, MIXTAPE, SPOTIFY }
 
 /**
- * Which player the transport row (Cruise, CompanionBadge, LiveToolbox) should
+ * Which player the transport row (Cruise, LiveToolbox) should
  * control. Defaults to PHONE (the existing MusicController remote-control
  * path); [MixtapePlayer] flips this to MIXTAPE while a tape is loaded and
  * reverts to PHONE on stop. SPOTIFY is set by a played song, an explicit switch, or a connect that

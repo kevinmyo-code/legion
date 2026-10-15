@@ -136,8 +136,8 @@ class LiveSessionController(context: Context) {
         MidnightEvents.voiceTurnDecision("proactive_dropped: $why :: ${prompt.take(60)}")
     }
 
-    // A failure the driver should see. When Midnight is not in front (the companion badge over
-    // another app, the screen saver) nothing is collecting the notice flow, so it also goes out as
+    // A failure the driver should see. When Midnight is not in front (another app in front, the
+    // screen saver) nothing is collecting the notice flow, so it also goes out as
     // a Toast (B6, 2026-10-15). It must be a Toast and not only the flow: CruiseScreen's
     // collector is the only one and an unwatched replay-0 flow loses the message.
     private fun notice(text: String) {

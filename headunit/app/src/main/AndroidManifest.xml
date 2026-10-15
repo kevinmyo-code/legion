@@ -54,12 +54,6 @@
          AriaForegroundService so it survives backgrounding. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
-    <!-- Floating companion badge: a small overlay window (avatar tap-to-talk +
-         music transport, TYPE_APPLICATION_OVERLAY) shown while a nav/music app
-         the driver opened has the foreground. Opt-in; the Setup screen sends
-         the driver to grant it. -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
     <!-- Needed on Android 11+ to enumerate installed apps for the launcher app tray.
          The Maps/Waze package queries and the geo: intent query (for the old nav-app
          picker) were removed 2026-07-25, and navigation itself 2026-10-11 - the head

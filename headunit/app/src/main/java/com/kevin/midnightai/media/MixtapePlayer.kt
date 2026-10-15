@@ -19,8 +19,8 @@ import java.io.File
  * control, since AVRCP over a phone can't carry that (see MusicController's
  * doc). This owns a real platform MediaSession under the hood (Media3's
  * MediaSession wraps one), so [NowPlayingController] - which just enumerates
- * every active session - picks it up automatically. The Cruise HUD,
- * CompanionBadge, and system-prompt now-playing text need no changes to show
+ * every active session - picks it up automatically. The Cruise HUD
+ * and system-prompt now-playing text need no changes to show
  * mixtape plays, and mixtape plays feed the [com.kevin.midnightai.vehicle.MusicHistoryRecorder]
  * taste ledger for free.
  *

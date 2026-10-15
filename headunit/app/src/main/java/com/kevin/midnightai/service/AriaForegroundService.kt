@@ -14,9 +14,7 @@ import android.content.pm.ServiceInfo
 import android.location.Location
 import android.os.Build
 import android.os.IBinder
-import android.provider.Settings
 import android.util.Log
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.kevin.midnightai.BuildConfig
@@ -67,11 +65,6 @@ class AriaForegroundService : Service() {
     // Owns the single Gemini Live session + conversation state machine. Lives in
     // the service (not a composable) so voice works while another app is in front.
     private lateinit var sessionController: LiveSessionController
-
-    // The floating companion badge shown while a nav/music app the driver
-    // opened has the foreground. Created lazily the first time it's shown so
-    // the overlay window isn't touched on units where it's never used.
-    private var companionPanel: CompanionBadgeController? = null
 
     // Highest 10k-mile milestone already celebrated, so the proactive check fires
     // only on new crossings (not retroactively). -1 = not yet seeded. Process-life.
@@ -335,36 +328,11 @@ class AriaForegroundService : Service() {
             sessionController.onTap()
         }
 
-        // Floating companion badge. Show gates on the "display over other apps"
-        // grant so a denied permission surfaces a notice instead of silently
-        // failing; hide is always safe.
         if (intent?.action == ACTION_CAR_SWITCHED) {
             sessionController.refreshIdleVoice()
         }
-        if (intent?.action == ACTION_SHOW_PANEL) showPanel()
-        if (intent?.action == ACTION_HIDE_PANEL) companionPanel?.hide()
 
         return START_STICKY
-    }
-
-    /**
-     * Shows the floating companion badge over the app the driver just opened.
-     * Requires the "display over other apps" grant; without it we bail rather
-     * than adding a window that would throw. This fires right after we've
-     * launched another app (e.g. Maps) into the foreground, so Midnight AI's own
-     * Activity is backgrounded and not collecting [CompanionPhase.notice] (a
-     * zero-replay SharedFlow) - a Toast is used alongside it so the driver
-     * actually learns why nothing docked, instead of silent failure.
-     */
-    private fun showPanel() {
-        if (!Settings.canDrawOverlays(this)) {
-            val msg = "Allow \"display over other apps\" in Setup to show the companion badge"
-            CompanionPhase.showNotice(msg)
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-            return
-        }
-        val panel = companionPanel ?: CompanionBadgeController(this).also { companionPanel = it }
-        panel.show()
     }
 
     // --- Proactive engine -------------------------------------------------
@@ -808,7 +776,6 @@ class AriaForegroundService : Service() {
         com.kevin.midnightai.location.BeaconClient.stop()
         com.kevin.midnightai.media.MixtapePlayer.release()
         TelephonyController.destroy()
-        companionPanel?.hide()
         if (this::sessionController.isInitialized) sessionController.destroy()
         serviceScope.cancel()
     }
@@ -888,10 +855,6 @@ class AriaForegroundService : Service() {
         // Start-intent action: Cruise screen's tap-avatar-to-talk.
         const val ACTION_TALK = "com.kevin.midnightai.TALK"
 
-        // Start-intent actions: show / hide the floating companion badge. Show
-        // is fired right after LiveToolbox opens nav/music fullscreen; hide is
-        // fired by MainActivity.onResume() once the driver returns to Midnight
-        // AI (e.g. via Home). Show is gated on the SYSTEM_ALERT_WINDOW grant.
         /**
          * The driver switched cars (car manager, 2026-07-16). Voice is per-car now,
          * so a warm socket is holding the PREVIOUS car's voice - the same shape as
@@ -899,8 +862,6 @@ class AriaForegroundService : Service() {
          * new car's voice.
          */
         const val ACTION_CAR_SWITCHED = "com.kevin.midnightai.CAR_SWITCHED"
-        const val ACTION_SHOW_PANEL = "com.kevin.midnightai.SHOW_PANEL"
-        const val ACTION_HIDE_PANEL = "com.kevin.midnightai.HIDE_PANEL"
 
         // Settle time after start before the opener, so it doesn't talk over
         // the engine cranking / the driver getting situated.
