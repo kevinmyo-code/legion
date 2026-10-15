@@ -25,6 +25,12 @@ object PlayRequests {
         generation.incrementAndGet()
     }
 
+    /**
+     * The current generation, read-only. A voice turn records it at duck time and compares at
+     * restore time (see [DuckResumeLogic]): a bump in between means a play or a switch happened.
+     */
+    fun currentGeneration(): Long = generation.get()
+
     fun shouldProceed(token: Token): Boolean = shouldProceed(token, generation.get(), MusicSource.current.value)
 
     /**
