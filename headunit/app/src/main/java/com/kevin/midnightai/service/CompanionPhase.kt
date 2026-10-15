@@ -63,4 +63,15 @@ object CompanionPhase {
     fun showNotice(text: String) {
         _notice.tryEmit(text)
     }
+
+    // Whether MainActivity is resumed (set by its onResume/onPause). The notice flow above is
+    // collected only by the Cruise composition, which stays composed while another app is in
+    // front, so a subscriber count cannot tell "being watched" from "backgrounded": this flag can.
+    // [LiveSessionController] adds a Toast for a failure when it is false (audit B6, 2026-10-15).
+    @Volatile var uiInFront: Boolean = false
+        private set
+
+    fun setUiInFront(inFront: Boolean) {
+        uiInFront = inFront
+    }
 }

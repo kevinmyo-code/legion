@@ -362,12 +362,14 @@ class MainActivity : ComponentActivity() {
         // Spotify's consent sheet is only retried while we are in front (SpotifyController).
         com.kevin.midnightai.media.SpotifyController.setActivityResumed(false)
         com.kevin.midnightai.MidnightEvents.launcherLifecycle("paused")
+        com.kevin.midnightai.service.CompanionPhase.setUiInFront(false)
     }
 
     override fun onResume() {
         super.onResume()
         com.kevin.midnightai.media.SpotifyController.setActivityResumed(true)
         com.kevin.midnightai.MidnightEvents.launcherLifecycle("resumed")
+        com.kevin.midnightai.service.CompanionPhase.setUiInFront(true)
         // Re-read on every resume, not once in onCreate: the driver can change the
         // setting (or set the app as HOME, which moves the default) and come
         // straight back here without the Activity being recreated - configChanges

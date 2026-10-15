@@ -4,6 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.SystemClock
+import android.util.Log
+import android.widget.Toast
+import com.kevin.midnightai.MidnightEvents
 import com.kevin.midnightai.ai.AriaBrain
 import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.ai.GeminiKeyProvider
@@ -115,6 +119,38 @@ class LiveSessionController(context: Context) {
     // LISTENING (wait for the driver) or IDLE.
     private var conversationMode = false
 
+    // Proactive lines that could not be spoken when asked for (audit B8/B11/B12, 2026-10-15).
+    // [foldIns] wait for the running or about-to-start conversation to reach a turn boundary;
+    // [carried] survive a socket that failed to connect and are spoken on the next good connect.
+    // Both are bounded and fresh-only, and every drop leaves a breadcrumb: see [HeldLines].
+    private val foldIns = HeldLines(maxAgeMs = FOLD_IN_MAX_AGE_MS, capacity = 3)
+    private val carried = HeldLines(maxAgeMs = CARRY_MAX_AGE_MS, capacity = 1, maxFailures = 1)
+
+    // True from a warm-resume tap until the live context is sent and the mic is opened (B2): the
+    // resume is asynchronous now, so a second tap or a proactive line must not start another.
+    private var resumePending = false
+
+    private val tapDebounce = TapDebounce()
+
+    private fun dropped(prompt: String, why: String) {
+        MidnightEvents.voiceTurnDecision("proactive_dropped: $why :: ${prompt.take(60)}")
+    }
+
+    // A failure the driver should see. When Midnight is not in front (the companion badge over
+    // another app, the screen saver) nothing is collecting the notice flow, so it also goes out as
+    // a Toast (B6, 2026-10-15). It must be a Toast and not only the flow: CruiseScreen's
+    // collector is the only one and an unwatched replay-0 flow loses the message.
+    private fun notice(text: String) {
+        CompanionPhase.showNotice(text)
+        if (!CompanionPhase.uiInFront) {
+            try {
+                Toast.makeText(appContext, text, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Log.w(TAG, "background notice toast failed: ${e.message}")
+            }
+        }
+    }
+
     // Status first, then phase: the service renders the overlay on phase changes
     // and reads status.value, so status must already be current when phase emits.
     private fun set(phase: Phase, status: String) {
@@ -183,6 +219,15 @@ class LiveSessionController(context: Context) {
      * no greeting); otherwise it connects a fresh conversation.
      */
     fun onTap() {
+        // A double-fired tap must not start a session and then stop it (B16, 2026-10-15). This is
+        // the single entry point for Cruise and Lights Out (both arrive as ACTION_TALK), so the
+        // debounce lives here rather than in each screen's click handler.
+        if (!tapDebounce.accept(SystemClock.elapsedRealtime())) {
+            MidnightEvents.voiceTurnDecision("tap ignored: inside the ${TapDebounce.DEFAULT_WINDOW_MS} ms debounce window")
+            return
+        }
+        // A warm resume is still fetching live context (B2): that tap already owns the session.
+        if (resumePending) return
         val s = session
         // DIAGNOSTIC (B9/B12, remove once root-caused): entry state on every tap,
         // to catch a tap racing an in-flight proactive speakOnWarm() (session
@@ -200,13 +245,13 @@ class LiveSessionController(context: Context) {
         consecutivePrewarmFailures = 0
 
         // Fast-fail with a visible reason instead of a silent 15s connect attempt.
-        if (TelephonyController.isInCall) { CompanionPhase.showNotice("ON A CALL"); return }
+        if (TelephonyController.isInCall) { notice("ON A CALL"); return }
         // Two tiers only (CLAUDE.md sec 2): a no-key install needs a key, full stop.
         if (!GeminiKeyProvider.hasKey() && !EntitlementManager.canStartVoice()) {
-            CompanionPhase.showNotice("ADD A GEMINI KEY IN SETUP TO TALK")
+            notice("ADD A GEMINI KEY IN SETUP TO TALK")
             return
         }
-        if (!isOnline()) { CompanionPhase.showNotice("NO SIGNAL OUT HERE"); return }
+        if (!isOnline()) { notice("NO SIGNAL OUT HERE"); return }
 
         if (s != null && s.isWarm()) {
             resumeWarm(s)
@@ -248,27 +293,65 @@ class LiveSessionController(context: Context) {
         // fold-in branch skips suppressMicNextTurn) - a field report of "it
         // listened after proactive speech" should show "fold-in" here.
         val branch = when {
+            resumePending || (s != null && pendingAction == Pending.CONVERSATION) ->
+                "held for the conversation that is starting (B12)"
             s != null && s.inConversation -> "fold-in (mic WILL reopen after, by design)"
             s != null && s.isWarm() -> "warm speakOnWarm (mic suppressed)"
             s != null -> "mid-connect PROACTIVE_WARM (mic suppressed)"
             else -> "cold startProactive (mic suppressed)"
         }
         android.util.Log.d("LiveSessionController", "requestSpeak branch: $branch")
+        val now = SystemClock.elapsedRealtime()
         when {
+            // A conversation is about to start: a warm resume still fetching its context, or a
+            // cold connect with the greeting queued. B12 (2026-10-15): the second case used to
+            // overwrite pendingAction = CONVERSATION with PROACTIVE_WARM, so the driver's tap
+            // became a mic-less proactive line. Hold it for the first turn boundary instead.
+            resumePending || (s != null && pendingAction == Pending.CONVERSATION) ->
+                foldIns.hold(prompt, now, onDropped = ::dropped)
             // Mid-conversation: fold the line into the ongoing turn flow (rare).
-            // The segment is already active from when the conversation started.
-            s != null && s.inConversation -> s.sendText(prompt)
+            // The segment is already active from when the conversation started. B11 (2026-10-15):
+            // only while the mic is open and the model is not speaking (LISTENING). Sent mid-reply
+            // it interrupted the answer the driver was hearing (the late Spotify report and the
+            // DTC ASK both arrive this way); otherwise it waits for the next turnComplete.
+            s != null && s.inConversation -> {
+                if (_phase.value == Phase.LISTENING) {
+                    s.sendText(prompt)
+                    set(Phase.THINKING, "...")
+                } else {
+                    foldIns.hold(prompt, now, onDropped = ::dropped)
+                }
+            }
             // Warm socket already up: speak on it and stay warm. This is a
             // proactive line spoken on an already-connected socket - it never
             // fires LiveEvent.Connected, so start the billing segment here.
             s != null && s.isWarm() -> {
                 usageMeter.startSegment(System.currentTimeMillis())
-                s.speakOnWarm(prompt)
+                if (!s.speakOnWarm(prompt)) {
+                    // B15: the "warm" socket was dead and has closed itself. Keep the line for the
+                    // fresh socket the Closed event prewarms, once; it was not spoken.
+                    usageMeter.pause(System.currentTimeMillis())
+                    carried.hold(prompt, now, failures = 1, onDropped = ::dropped)
+                }
             }
             // A socket is still connecting (prewarm): speak once it's up, warm.
-            s != null -> { pendingAction = Pending.PROACTIVE_WARM; pendingPrompt = prompt }
+            s != null && pendingPrompt == null -> { pendingAction = Pending.PROACTIVE_WARM; pendingPrompt = prompt }
+            // Two proactive lines for one connecting socket: only one slot exists, and the first
+            // is already promised. Leave a trace rather than overwrite it silently.
+            s != null -> dropped(prompt, "another proactive line already waits on this connect")
             // Nothing live: spin up a short-lived speak-only session.
             else -> startProactive(prompt)
+        }
+    }
+
+    /** Sends one held fold-in line if the conversation is at a turn boundary (B11/B12). */
+    private fun drainFoldIn() {
+        val s = session ?: return
+        val held = foldIns.takeFresh(SystemClock.elapsedRealtime(), ::dropped) ?: return
+        if (s.sendText(held.prompt)) {
+            set(Phase.THINKING, "...")
+        } else {
+            dropped(held.prompt, "socket refused the fold-in")
         }
     }
 
@@ -291,13 +374,54 @@ class LiveSessionController(context: Context) {
     private fun resumeWarm(s: GeminiLiveSession) {
         conversationMode = true
         val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
-        val ok = if (isFirst) {
+        if (isFirst) {
             set(Phase.THINKING, "...")
-            s.beginConversation(firstGreetingOpener())
-        } else {
-            set(Phase.LISTENING, "Listening...")
-            s.beginConversation(null)
+            finishResume(s, s.beginConversation(firstGreetingOpener()), isFirst = true)
+            return
         }
+        // Not LISTENING yet: the mic is still shut until the context is in (the "showed LISTENING
+        // but heard nothing" shape). finishResume flips the phase once the mic really opens.
+        set(Phase.THINKING, "...")
+        // The tap must stop Zero NOW, not after the fetch below (beginConversation does the same
+        // flush, but it runs after the wait).
+        s.interruptForTap()
+        // B2 (2026-10-15): a warm resume used to open the mic with NO live context - only a cold
+        // start's greeting carried now-playing, location, the date line and trouble codes - so
+        // every tap after the first talked to a model that knew what was true at socket start.
+        // Fetch it (bounded: a slow geocode must not hold the mic shut) and hand it over as a
+        // non-completing client turn BEFORE the mic opens. If it times out or fails, the resume
+        // goes ahead without it, as it always did, and a breadcrumb says so.
+        resumePending = true
+        scope.launch {
+            val live = try {
+                withTimeoutOrNull(LIVE_CONTEXT_TIMEOUT_MS) { brain.buildLiveContext() }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                MidnightEvents.recordError("warm_resume_context", e)
+                null
+            }
+            resumePending = false
+            // Superseded while the context was being built (socket closed, controller destroyed).
+            if (destroyed || session !== s) return@launch
+            val contextSent = when {
+                live == null -> {
+                    MidnightEvents.voiceTurnDecision("warm resume: live context skipped (timed out or failed)")
+                    true
+                }
+                live.isBlank() -> true
+                else -> s.sendContext(
+                    "(Context update, no reply needed. Current car/driver context, use naturally if " +
+                        "relevant:\n$live)",
+                )
+            }
+            finishResume(s, contextSent && s.beginConversation(null), isFirst = false)
+            // Lines that arrived while the context was being fetched wait for the first turn
+            // boundary like any other fold-in (drainFoldIn on TurnComplete).
+        }
+    }
+
+    private fun finishResume(s: GeminiLiveSession, ok: Boolean, isFirst: Boolean) {
         if (!ok) {
             // The "warm" socket was actually stale (send no-op'd). Silently tear it
             // down - cancelling its scope drops any Closed event OkHttp may still
@@ -318,6 +442,9 @@ class LiveSessionController(context: Context) {
         // failure above starts a fresh conversation instead, billed from its own
         // Connected event).
         usageMeter.startSegment(System.currentTimeMillis())
+        // The mic has really been opened (beginConversation ran), so LISTENING is true now. The
+        // first-session path shows THINKING instead: Zero is about to speak the intro.
+        if (!isFirst) set(Phase.LISTENING, "Listening...")
         // Commit the one-time intro flag only after the send actually landed.
         if (isFirst) CompanionProfile.markFirstSessionDone(appContext)
     }
@@ -344,7 +471,7 @@ class LiveSessionController(context: Context) {
             if (connectionMode == null) {
                 s.silentDestroy(); session = null
                 set(Phase.IDLE, IDLE_STATUS)
-                CompanionPhase.showNotice("VOICE PAUSED - SEE SETUP TO CONTINUE")
+                notice("VOICE PAUSED - SEE SETUP TO CONTINUE")
                 return@launch
             }
             val base = brain.buildBaseInstruction()
@@ -360,6 +487,32 @@ class LiveSessionController(context: Context) {
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
             )
+        }
+    }
+
+    /**
+     * After a connect, speaks the line [carried] kept from a failed one (B8). [connectedFor] is
+     * what the connect was for: a bare prewarm (NONE) speaks it on the warm socket; a
+     * conversation connect folds it in at the first turn boundary; anything else is a connect that
+     * already has its own line, so the carried one is dropped with a breadcrumb.
+     */
+    private fun speakCarriedLine(connectedFor: Pending) {
+        val now = SystemClock.elapsedRealtime()
+        val held = carried.takeFresh(now, ::dropped) ?: return
+        val s = session
+        when {
+            s == null -> dropped(held.prompt, "no session after connect")
+            connectedFor == Pending.NONE -> {
+                usageMeter.startSegment(System.currentTimeMillis())
+                if (!s.speakOnWarm(held.prompt)) {
+                    usageMeter.pause(System.currentTimeMillis())
+                    carried.hold(held.prompt, now, failures = held.failures + 1, onDropped = ::dropped)
+                } else {
+                    MidnightEvents.voiceTurnDecision("carried proactive spoken after reconnect")
+                }
+            }
+            connectedFor == Pending.CONVERSATION -> foldIns.hold(held.prompt, now, onDropped = ::dropped)
+            else -> dropped(held.prompt, "connect already had its own proactive line")
         }
     }
 
@@ -413,8 +566,10 @@ class LiveSessionController(context: Context) {
                     }
                     Pending.NONE -> set(Phase.IDLE, IDLE_STATUS) // warm, ready to tap
                 }
+                val connectedFor = pendingAction
                 pendingAction = Pending.NONE
                 pendingPrompt = null
+                speakCarriedLine(connectedFor)
             }
             is LiveEvent.SpeakingStarted -> set(Phase.SPEAKING, "Speaking...")
             is LiveEvent.Interrupted -> set(Phase.LISTENING, "Listening...")
@@ -447,6 +602,8 @@ class LiveSessionController(context: Context) {
                 // path, e.g. the cold speak-only session in startProactive).
                 if (conversationMode) {
                     set(Phase.LISTENING, "Listening...")
+                    // The turn boundary B11/B12 lines were waiting for.
+                    drainFoldIn()
                 } else {
                     usageMeter.pause(System.currentTimeMillis())
                     set(Phase.IDLE, IDLE_STATUS)
@@ -461,6 +618,9 @@ class LiveSessionController(context: Context) {
                 usageMeter.pause(System.currentTimeMillis())
                 conversationMode = false
                 set(Phase.IDLE, IDLE_STATUS)
+                // A fold-in still waiting when the conversation went quiet is spoken now, on the
+                // warm socket, rather than lost with the conversation.
+                foldIns.takeFresh(SystemClock.elapsedRealtime(), ::dropped)?.let { requestSpeak(it.prompt) }
             }
             is LiveEvent.Subtitle -> {
                 _subtitle.tryEmit(event.text)
@@ -475,7 +635,7 @@ class LiveSessionController(context: Context) {
                 // background proactive opener. "stopped"/"idle"/"destroyed"/"warm
                 // expired" are normal closes; anything else is a fault worth flashing.
                 if (userInitiated && event.reason !in NORMAL_CLOSE_REASONS) {
-                    CompanionPhase.showNotice(
+                    notice(
                         when {
                             event.reason == "key rejected" -> {
                                 KeyHealth.noteInvalid(); "KEY PROBLEM - CHECK SETUP"
@@ -498,6 +658,21 @@ class LiveSessionController(context: Context) {
                 // sec 2/8: broker removed 2026-07-16) - the meter stays dormant,
                 // kept for a future local spend readout.
                 usageMeter.stopAndReportSeconds(System.currentTimeMillis())
+
+                // B8 (2026-10-15): a proactive line still waiting on a socket that never connected
+                // was dropped here with no trace (the late Spotify report was the visible case).
+                // Keep it, once, for the next good connect; a second failure drops it, loudly.
+                val unspoken = pendingPrompt
+                if (unspoken != null && !everConnected &&
+                    (pendingAction == Pending.PROACTIVE_WARM || pendingAction == Pending.PROACTIVE_COLD)
+                ) {
+                    carried.hold(unspoken, SystemClock.elapsedRealtime(), failures = 1, onDropped = ::dropped)
+                } else if (unspoken != null && pendingAction != Pending.CONVERSATION) {
+                    // (A CONVERSATION pending prompt is the greeting, not a proactive line.)
+                    dropped(unspoken, "session closed (${event.reason}) before it was spoken")
+                }
+                foldIns.clear("session closed (${event.reason})", ::dropped)
+                resumePending = false
 
                 session = null
                 pendingAction = Pending.NONE
@@ -531,11 +706,7 @@ class LiveSessionController(context: Context) {
             // The investigating specialists run a multi-round agent loop (up to a
             // 30s budget plus a one-shot fallback), so they get a longer leash than
             // the snappy data/action tools.
-            val timeout = when (call.name) {
-                "ask_engine" -> ENGINE_TOOL_TIMEOUT_MS
-                in SUB_AGENT_TOOLS -> SUB_AGENT_TOOL_TIMEOUT_MS
-                else -> TOOL_TIMEOUT_MS
-            }
+            val timeout = toolTimeoutMs(call.name)
             val response: JSONObject = try {
                 withTimeoutOrNull(timeout) {
                     when (call.name) {
@@ -563,8 +734,20 @@ class LiveSessionController(context: Context) {
                             "That took too long and timed out."
                         },
                     )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // the controller is being torn down; that is not a tool fault
             } catch (e: Exception) {
+                // B10 (2026-10-15): this was swallowed with no trace, so "Something went wrong" in
+                // the car left nothing to find. Both a Crashlytics non-fatal and a log line now.
+                Log.w(TAG, "tool ${call.name} threw: ${e.javaClass.simpleName}: ${e.message}", e)
+                MidnightEvents.recordError("tool_${call.name}", e)
                 JSONObject().put("success", false).put("message", "Something went wrong running that.")
+            }
+            // B1 (2026-10-15): a music tool that really ran means the driver (or the tool) now
+            // owns the speakers; the "it was playing before this turn" snapshot used for the
+            // post-turn resume is stale and must not undo it (a spoken "pause" resumed itself).
+            if (response.optBoolean("success", false) && changesPlayback(call.name, call.args)) {
+                s.forgetDuckedMusic()
             }
             // Sending can throw if the socket died mid-tool; the close path handles
             // recovery, so don't let it crash this scope.
@@ -583,11 +766,44 @@ class LiveSessionController(context: Context) {
     }
 
     companion object {
+        private const val TAG = "LiveSessionController"
         private const val IDLE_STATUS = "Tap to talk"
 
         // Close reasons that are expected (user stop / idle timeout / teardown /
-        // warm-hold expiry) and so never flashed as an error to the driver.
-        private val NORMAL_CLOSE_REASONS = setOf("stopped", "idle", "destroyed", "warm expired")
+        // warm-hold expiry / the server's goAway on a parked socket) and so never flashed as an
+        // error to the driver.
+        private val NORMAL_CLOSE_REASONS = setOf("stopped", "idle", "destroyed", "warm expired", "go away")
+
+        // How long a bounded warm-resume context fetch may hold the mic shut (B2).
+        private const val LIVE_CONTEXT_TIMEOUT_MS = 1_500L
+        // A held proactive line is only spoken while it still describes the present (HeldLines).
+        private const val FOLD_IN_MAX_AGE_MS = 60_000L
+        private const val CARRY_MAX_AGE_MS = 120_000L
+
+        /**
+         * The leash for one tool call (B3, 2026-10-15). Tools whose work is a blocking
+         * `HttpURLConnection` that [withTimeoutOrNull] cannot interrupt (NHTSA vPIC, the Gemini
+         * music and maintenance agents) were on the 10 s default: the cut fired, the tool kept
+         * running, and its real result was discarded as "took too long". They get the 45 s tier.
+         * play_music is deliberately NOT here: it manages its own budget inside the 10 s.
+         */
+        internal fun toolTimeoutMs(name: String): Long = when {
+            name == "ask_engine" -> ENGINE_TOOL_TIMEOUT_MS
+            name in SUB_AGENT_TOOLS || name in BLOCKING_NETWORK_TOOLS -> SUB_AGENT_TOOL_TIMEOUT_MS
+            else -> TOOL_TIMEOUT_MS
+        }
+
+        private val PLAYBACK_ACTIONS = setOf("play", "pause", "next", "previous")
+        private val SOURCE_TOOLS = setOf("set_music_source", "play_music", "play_mixtape")
+
+        /**
+         * Whether a successful call to [name] changed what the speakers are doing, so a
+         * post-turn resume nudge would fight it. For control_music only the transport actions
+         * count; a like or a shuffle toggle leaves playback as it was.
+         */
+        internal fun changesPlayback(name: String, args: JSONObject): Boolean =
+            name in SOURCE_TOOLS ||
+                (name == "control_music" && args.optString("action").lowercase() in PLAYBACK_ACTIONS)
 
         // Spoken first when the driver taps to start a chat, so Zero opens the
         // conversation (then the mic opens for the driver's reply).
@@ -615,5 +831,11 @@ class LiveSessionController(context: Context) {
         private const val ENGINE_TOOL_TIMEOUT_MS = 150_000L
         private val SUB_AGENT_TOOLS =
             setOf("diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start")
+        // Not sub-agent loops, but the same shape of work: blocking HTTP that the 10 s cut cannot
+        // interrupt. recommend_music runs the music sub-agent; check_recalls and lookup_vin call
+        // NHTSA vPIC; register_vehicle now returns after its DB upsert (the maintenance lookup runs
+        // detached) but is kept on the longer tier as a safety margin.
+        private val BLOCKING_NETWORK_TOOLS =
+            setOf("recommend_music", "register_vehicle", "check_recalls", "lookup_vin")
     }
 }

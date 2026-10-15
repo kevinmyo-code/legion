@@ -8,6 +8,7 @@ import com.kevin.midnightai.data.local.DriveReassignment
 import com.kevin.midnightai.data.local.MaintenanceItem
 import com.kevin.midnightai.data.local.ServiceRecord
 import com.kevin.midnightai.data.local.Vehicle
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import kotlin.math.roundToInt
 
@@ -80,7 +81,28 @@ object VehicleController {
         "Battery" to listOf("battery"),
     )
 
-    /** Registers the car's year/make/model, triggers maintenance-interval lookup. */
+    // Owns the maintenance-interval lookup that registerDirect starts and does not wait for (B3,
+    // 2026-10-15). Its own handler: a throw in work nobody awaits must not reach the thread's
+    // default handler (which kills the process) and is not lost either - the vehicle row stays
+    // onboarded=false, so onboardPendingVehicles retries it at the next service start.
+    private val lookupScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO +
+            kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+                Log.w(TAG, "background maintenance lookup failed: ${e.message}")
+                com.kevin.midnightai.MidnightEvents.recordError("register_vehicle_lookup", e)
+            },
+    )
+
+    /**
+     * Registers the car's year/make/model and STARTS the maintenance-interval lookup.
+     *
+     * Returns as soon as the vehicle row is saved. The lookup is a blocking network call to the
+     * Gemini REST API that the tool's time cut cannot interrupt: when it ran inline and overran,
+     * the driver was told "that took too long" about a registration that had in fact been saved,
+     * and the real result was thrown away. So the lookup runs detached, and the sentence returned
+     * says only what was observed: the car is saved and the schedule lookup has begun. It does
+     * NOT claim any maintenance items were found.
+     */
     suspend fun registerDirect(context: Context, year: Int, make: String, model: String): String {
         if (year < 1900 || make.isBlank() || model.isBlank())
             return "I need a valid year, make, and model to register the car."
@@ -101,14 +123,16 @@ object VehicleController {
             confirmed = true,
         )
         dao.upsert(vehicle)
-        val found = applyServiceIntervals(context, vehicle)
-
-        return if (found > 0) {
-            "Got it, this is the $year $make $model now. Pulled up $found maintenance items so I can keep track of intervals."
-        } else {
-            "Got it, this is the $year $make $model now. Couldn't find a maintenance schedule online, but I'll track it as you log things."
-        }
+        val appContext = context.applicationContext
+        lookupScope.launch { applyServiceIntervals(appContext, vehicle) }
+        return registeredMessage(year, make, model)
     }
+
+    /** The sentence for a saved registration; deliberately silent on the lookup's outcome. */
+    internal fun registeredMessage(year: Int, make: String, model: String): String =
+        "Saved: this is the $year $make $model now. I've started looking up its maintenance " +
+            "schedule in the background and it isn't done yet, so don't say the intervals are in. " +
+            "Anything the driver logs in the meantime is tracked either way."
 
     /** Records the driver-reported odometer reading and resets the trip accumulator. */
     suspend fun setOdometer(context: Context, miles: Int): String {

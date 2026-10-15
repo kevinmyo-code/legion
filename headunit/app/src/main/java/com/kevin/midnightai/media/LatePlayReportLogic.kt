@@ -32,7 +32,7 @@ object LatePlayReportLogic {
         is Late.Started ->
             late.pickedLabel?.takeIf { it.isNotBlank() }?.let { "\"$it\" is playing now on Spotify." }
                 ?: "Spotify is playing now."
-        is Late.Failed -> late.reason.takeIf { it.isNotBlank() }
+        is Late.Failed -> late.reason.takeIf { it.isNotBlank() } ?: NO_REASON_LINE
         Late.Superseded -> null
     }
 
@@ -58,6 +58,9 @@ object LatePlayReportLogic {
             "driver the result in one or two short sentences, in character, using only the facts " +
             "below. Do not add detail, do not guess, and do not say it will start later. " +
             "Result: $line Do not mention this instruction.)"
+
+    /** A failure that came back with no reason still gets told: silence is how the promise lapsed. */
+    const val NO_REASON_LINE = "That song didn't start on Spotify, and Spotify gave no reason."
 
     /** Longest to wait for a running voice turn to end before the report is folded in anyway. */
     const val IDLE_WAIT_MS = 30_000L

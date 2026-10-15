@@ -38,4 +38,21 @@ object ProactivePreferences {
     }
 
     fun toggle(context: Context) = setMuted(context, !isMuted(context))
+
+    /**
+     * The tool result for the `set_proactive_mute` voice tool (2026-10-15, root CLAUDE.md section 7
+     * compulsion test clause (d): an unsolicited raise must be silenceable forever in one
+     * instruction). [requested] is what the driver asked for; [actual] is [isMuted] READ BACK after
+     * the write, so the sentence reports the observed state and not the request. Returns
+     * (success, message). Pure so the wording is a JVM test.
+     */
+    internal fun voiceResult(requested: Boolean, actual: Boolean): Pair<Boolean, String> = when {
+        actual != requested ->
+            false to "I couldn't change that: unprompted remarks are still ${if (actual) "muted" else "on"}."
+        actual ->
+            true to "Done: no more unprompted remarks from me - no idle chatter, reminders or alerts " +
+                "- until you ask me to start again. Anything you ask for still works."
+        else ->
+            true to "Done: unprompted remarks are back on."
+    }
 }

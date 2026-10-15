@@ -25,8 +25,8 @@ class LatePlayReportLogicTest {
         assertEquals("It did not start.", LatePlayReportLogic.spokenLine(Late.Failed("It did not start.")))
     }
 
-    @Test fun `a failure with no reason says nothing rather than something invented`() {
-        assertNull(LatePlayReportLogic.spokenLine(Late.Failed("")))
+    @Test fun `a failure with no reason still says it did not start, inventing no reason`() {
+        assertEquals(LatePlayReportLogic.NO_REASON_LINE, LatePlayReportLogic.spokenLine(Late.Failed("")))
     }
 
     @Test fun `a superseded play says nothing`() {

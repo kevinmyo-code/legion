@@ -179,6 +179,14 @@ class GeminiLiveSession(
     // voiced without turning into a listening conversation.
     @Volatile private var suppressMicNextTurn = false
 
+    // Tap barge-in (voice-pipeline audit B4, 2026-10-15): the driver tapped while Zero was mid-turn.
+    // beginConversation flushes the audio already queued, but the server does not know and keeps
+    // streaming that turn; its next chunk used to flip speakingThisTurn back on, re-mute the mic
+    // and play the rest of the sentence the driver had just cut off. While this is set, incoming
+    // model audio for the turn is dropped and the mic is left alone. Cleared by the turn's
+    // turnComplete or by a server `interrupted` (a new turn is starting), and on start().
+    @Volatile private var discardModelAudioUntilTurnComplete = false
+
     private var micJob: Job? = null
     private var idleJob: Job? = null
 
@@ -366,6 +374,7 @@ class GeminiLiveSession(
         conversationActive = false
         warm.set(false)
         suppressMicNextTurn = false
+        discardModelAudioUntilTurnComplete = false
         // A pre-connect (no conversation yet) must NOT mark the app busy - the
         // proactive engine may still speak on the warm socket. A cold session that
         // will speak/listen right away marks busy so proactive stays quiet for it.
@@ -426,6 +435,10 @@ class GeminiLiveSession(
         // audio now so the mic doesn't capture his own trailing voice. The backlog
         // check covers a tap after turnComplete while his reply is still playing out.
         if (speakingThisTurn || playbackBacklogFrames() > 0) {
+            // Only a turn still STREAMING (no turnComplete yet) keeps sending chunks; a backlog
+            // alone is the tail of a finished turn, and discarding "until turnComplete" there
+            // would swallow the NEXT turn's whole reply.
+            if (speakingThisTurn) discardModelAudioUntilTurnComplete = true
             flushAudio()
             speakingThisTurn = false
         }
@@ -438,6 +451,21 @@ class GeminiLiveSession(
         } else {
             openMicForUser()
             true
+        }
+    }
+
+    /**
+     * Cuts off Zero's speech for a talk tap NOW (the flush half of [beginConversation]'s barge-in).
+     * The controller calls this synchronously on a warm-resume tap, because the resume itself now
+     * waits briefly for the live context (B2) and the driver must not hear Zero keep talking over
+     * their tap in the meantime. Idempotent with [beginConversation]'s own check.
+     */
+    fun interruptForTap() {
+        if (!running.get() || closed.get()) return
+        if (speakingThisTurn || playbackBacklogFrames() > 0) {
+            if (speakingThisTurn) discardModelAudioUntilTurnComplete = true
+            flushAudio()
+            speakingThisTurn = false
         }
     }
 
@@ -458,12 +486,25 @@ class GeminiLiveSession(
      * turnComplete handler still transitions state correctly afterward via
      * suppressMicNextTurn -> parkWarm().
      */
-    fun speakOnWarm(text: String) {
-        if (!running.get() || closed.get()) return
+    /**
+     * @return whether the line was handed to the socket. False (B15, 2026-10-15) means it was NOT
+     * spoken: the socket is gone or refused the send. The session closes itself as a stale
+     * socket in that case (the controller re-prewarms off the Closed event) and the controller
+     * decides whether to keep the line for the next connect. This used to ignore the result, so a
+     * proactive line to a dead warm socket vanished and left the busy flag set.
+     */
+    fun speakOnWarm(text: String): Boolean {
+        if (!running.get() || closed.get()) return false
         warmHoldJob?.cancel()
         suppressMicNextTurn = true
         ConversationState.setBusy(true)
-        sendText(text)
+        val sent = sendText(text)
+        if (!sent) {
+            suppressMicNextTurn = false
+            MidnightEvents.voiceTurnDecision("speakOnWarm: send refused, closing stale warm socket")
+            closeSession("stale socket")
+        }
+        return sent
     }
 
     /** Connected and idle (warm), ready for an instant [beginConversation]. */
@@ -523,6 +564,28 @@ class GeminiLiveSession(
                 put("parts", JSONArray().put(JSONObject().put("text", text)))
             }))
             put("turnComplete", true)
+        })
+        return webSocket?.send(msg.toString()) ?: false
+    }
+
+    /**
+     * Adds [text] to the conversation as background context WITHOUT asking for a reply
+     * (`turnComplete = false`), so the model has it when the driver speaks next. Used on a warm
+     * resume (B2, 2026-10-15), which opens the mic with no greeting and so never carried the
+     * fresh live context (now-playing, location, date, trouble codes) a cold start injects.
+     * Same return contract as [sendText]: false means the socket is gone.
+     *
+     * Unverified on the wire: that the Live model accepts a non-completing client turn between
+     * sessions of realtime audio. If it ignores or rejects it, the cost is a stale-context turn
+     * (today's behaviour), not a failure; owed a check on the head unit.
+     */
+    fun sendContext(text: String): Boolean {
+        val msg = JSONObject().put("clientContent", JSONObject().apply {
+            put("turns", JSONArray().put(JSONObject().apply {
+                put("role", "user")
+                put("parts", JSONArray().put(JSONObject().put("text", text)))
+            }))
+            put("turnComplete", false)
         })
         return webSocket?.send(msg.toString()) ?: false
     }
@@ -667,7 +730,24 @@ class GeminiLiveSession(
         root.optJSONObject("serverContent")?.let { handleServerContent(it) }
         root.optJSONObject("toolCall")?.let { handleToolCall(it) }
         root.optJSONObject("toolCallCancellation")?.let { handleToolCallCancellation(it) }
-        // goAway / sessionResumptionUpdate are ignored in this version.
+        root.optJSONObject("goAway")?.let { handleGoAway(it) }
+        // sessionResumptionUpdate is ignored in this version.
+    }
+
+    /**
+     * `goAway`: the server will end this connection soon (`timeLeft`). Ignored until 2026-10-15,
+     * which let a PARKED socket die mid-reply to the next proactive line. A parked warm socket
+     * is closed now (reason "go away", a normal close the controller re-prewarms from) so the
+     * next tap or proactive finds a fresh one. A live conversation is left alone: tearing it
+     * down early would cut the driver off, and the close path covers it when the server follows
+     * through. Breadcrumbed either way.
+     */
+    private fun handleGoAway(goAway: JSONObject) {
+        val timeLeft = goAway.optString("timeLeft")
+        // suppressMicNextTurn is set while a proactive line is being spoken on the warm socket.
+        val parked = warm.get() && !conversationActive && !speakingThisTurn && !suppressMicNextTurn
+        MidnightEvents.voiceTurnDecision("goAway timeLeft=$timeLeft parked=$parked")
+        if (parked) closeSession("go away")
     }
 
     /**
@@ -762,6 +842,9 @@ class GeminiLiveSession(
             for (i in 0 until parts.length()) {
                 val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data")
                 if (!data.isNullOrEmpty()) {
+                    // B4: the driver tapped over this turn; drop its remaining audio and do NOT
+                    // re-mute the mic or announce speech (see discardModelAudioUntilTurnComplete).
+                    if (discardModelAudioUntilTurnComplete) continue
                     if (!speakingThisTurn) {
                         speakingThisTurn = true
                         // Zero is answering, so the driver is not "quiet": cancel the idle
@@ -806,9 +889,19 @@ class GeminiLiveSession(
             sessionInterruptions++
             MidnightEvents.voiceInterrupted(sessionInterruptions, speaking = speakingThisTurn, micOpen = capturing)
             turnChunks = 0
+            discardModelAudioUntilTurnComplete = false
             flushAudio()
             speakingThisTurn = false
             emit(LiveEvent.Interrupted)
+            // B9 (2026-10-15): in a conversation the mic was muted for Zero's speech, and the
+            // interrupting turn's own turnComplete is what used to reopen it - leaving the driver
+            // unheard (and the idle timer unarmed) in the gap. Reopen now; the later
+            // turnComplete's openMicForUser is near-idempotent (the mic loop is already running).
+            // Not for a proactive line spoken on a warm socket: that stays mic-less.
+            if (vadMode && conversationActive && !suppressMicNextTurn) {
+                openMicForUser()
+                armIdleTimeout()
+            }
         }
         if (content.optBoolean("turnComplete")) {
             // Releases a short reply still priming in the jitter buffer and closes the
@@ -825,6 +918,7 @@ class GeminiLiveSession(
                 turnChunks = 0
             }
             speakingThisTurn = false
+            discardModelAudioUntilTurnComplete = false
             crisisFiredThisTurn = false
             val heard = userTurnText.toString().trim()
             Log.d(TAG, "Turn transcript: \"$heard\" (forwarded $bytesThisTurn bytes)")
@@ -849,27 +943,33 @@ class GeminiLiveSession(
             // branch decision is made from, so a field-test log pull shows which path
             // fired for a given "listened when it shouldn't have" / "didn't hear my
             // reply" report instead of us guessing after the fact.
+            val toolsPending = pendingToolCalls.isNotEmpty()
             val decision = "suppressMicNextTurn=$suppressMicNextTurn vadMode=$vadMode " +
-                "conversationActive=$conversationActive warm=${warm.get()}"
+                "conversationActive=$conversationActive warm=${warm.get()} toolsPending=$toolsPending"
             Log.d(TAG, "turnComplete decision: $decision")
             MidnightEvents.voiceTurnDecision(decision)
 
-            when {
+            when (TurnEndDecision.decide(suppressMicNextTurn, toolsPending, vadMode)) {
                 // A proactive line spoken on a warm socket: Zero is done, park
                 // the socket warm again (no mic, music back up) rather than listen.
-                suppressMicNextTurn -> {
+                TurnEndDecision.Action.PARK_WARM -> {
                     suppressMicNextTurn = false
                     parkWarm()
                 }
+                // B7 (2026-10-15): a proactive that Zero answered with a tool call. This
+                // turnComplete is the call turn, not the spoken answer: keep the suppress flag so
+                // the answer's own turnComplete parks, and do not open the mic. The idle timer
+                // holds while the tool is pending and is the net if the response never comes.
+                TurnEndDecision.Action.HOLD_FOR_TOOL -> armIdleTimeout()
                 // Conversation: hand the mic back and wait for the driver's reply;
                 // stay ducked through the chat. The idle timer below either parks
                 // the socket warm (keepWarm) or closes it after the driver's quiet.
-                vadMode -> {
+                TurnEndDecision.Action.OPEN_MIC -> {
                     openMicForUser()
                     armIdleTimeout()
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
-                else -> {
+                TurnEndDecision.Action.RESTORE_AND_CLOSE -> {
                     restoreAudio()
                     armIdleTimeout()
                 }
@@ -1444,6 +1544,10 @@ class GeminiLiveSession(
         } else {
             null
         }
+        // B1 (2026-10-15): what the speakers looked like now, so restoreAudio can tell "nothing
+        // changed but our ducking" from "a tool paused it / switched source / started a play".
+        duckedSource = com.kevin.midnightai.media.MusicSource.current.value
+        duckedPlayGeneration = com.kevin.midnightai.media.PlayRequests.currentGeneration()
         // Index changes while we hold focus are the system ducking, not the driver: VolumeSync
         // must not re-assert them (see ExternalVolumeTracker.setHeld).
         com.kevin.midnightai.media.VolumeSync.holdForVoice(true)
@@ -1452,6 +1556,26 @@ class GeminiLiveSession(
 
     // Package of the session that was playing when we ducked; null when nothing was.
     @Volatile private var duckedPackage: String? = null
+
+    // Source and play-request generation at duck time (B1): the post-turn resume nudge is skipped
+    // if either moved. See [com.kevin.midnightai.media.DuckResumeLogic].
+    @Volatile private var duckedSource = com.kevin.midnightai.media.Source.PHONE
+    @Volatile private var duckedPlayGeneration = 0L
+
+    /**
+     * A music tool ran this turn (pause, play, skip, a source switch, a new play, a mixtape).
+     * The driver or the tool now owns the speakers, so the "it was playing before the turn"
+     * snapshot is stale: forget it, and restoreAudio will not send a resume. Without this a
+     * spoken "pause" was undone by the post-turn nudge a second later (B1, 2026-10-15). Called by
+     * the controller after such a tool has answered.
+     */
+    fun forgetDuckedMusic() {
+        if (musicWasPlayingBeforeDuck) {
+            MidnightEvents.audioFocus("duck_snapshot_cleared: a music tool ran this turn")
+        }
+        musicWasPlayingBeforeDuck = false
+        duckedPackage = null
+    }
 
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -1462,14 +1586,31 @@ class GeminiLiveSession(
      * focus alone isn't reliable enough on its own.
      */
     private fun restoreAudio() {
-        if (!ducked) return
+        if (!ducked) {
+            // A focus LOSS cleared the duck state (handleFocusLoss) but kept the request, which may
+            // have been re-granted since; release it so a finished session never holds focus.
+            if (audioFocusRequest != null) abandonDuckFocus()
+            return
+        }
         ducked = false
         abandonDuckFocus()
         com.kevin.midnightai.media.VolumeSync.holdForVoice(false)
         val pkg = duckedPackage
         duckedPackage = null
-        if (musicWasPlayingBeforeDuck) {
-            musicWasPlayingBeforeDuck = false
+        val wasPlaying = musicWasPlayingBeforeDuck
+        musicWasPlayingBeforeDuck = false
+        val sourceNow = com.kevin.midnightai.media.MusicSource.current.value
+        val generationNow = com.kevin.midnightai.media.PlayRequests.currentGeneration()
+        if (wasPlaying && !com.kevin.midnightai.media.DuckResumeLogic.shouldNudge(
+                wasPlaying, duckedSource, sourceNow, duckedPlayGeneration, generationNow,
+            )
+        ) {
+            MidnightEvents.audioFocus(
+                "post_turn_resume skipped: " + com.kevin.midnightai.media.DuckResumeLogic.skipReason(
+                    wasPlaying, duckedSource, sourceNow, duckedPlayGeneration, generationNow,
+                ),
+            )
+        } else if (wasPlaying) {
             // On the main looper (the media framework wants one; closeSession runs on socket and
             // io threads), and after a beat: an app that paused for the transient loss resumes
             // itself on the focus GAIN, and only one that did not gets the explicit play().
@@ -1487,9 +1628,30 @@ class GeminiLiveSession(
     }
 
     // Focus changes delivered to US while a voice turn holds it (another app grabbing focus mid
-    // turn, a call). Breadcrumb only: the turn itself is not changed by them.
+    // turn, a call). The turn itself is not changed, but on a real LOSS (B5, 2026-10-15) the duck
+    // state is: `ducked` used to stay true, so once Spotify took GAIN nothing ever asked for
+    // focus again for the rest of the conversation and later replies played over full-volume
+    // music. A LOSS now ends our duck bookkeeping, so the next duckNow() requests focus afresh.
+    // Nothing is resumed on a loss: whoever took focus owns the speakers.
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         MidnightEvents.audioFocus("voice_turn_focus_change ${focusChangeName(change)}")
+        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            handleFocusLoss()
+        }
+    }
+
+    private fun handleFocusLoss() {
+        if (!ducked) return
+        ducked = false
+        musicWasPlayingBeforeDuck = false
+        duckedPackage = null
+        // audioFocusRequest is deliberately KEPT. After a transient loss the system hands focus
+        // back (GAIN) when the other app abandons, so we may hold it again with no duckNow() to
+        // follow; restoreAudio abandons any request still recorded, and abandoning one we no
+        // longer hold is harmless. Nulling it here leaked focus for the rest of the session.
+        // restoreAudio early-returns on !ducked, so release the volume hold here or it would leak.
+        com.kevin.midnightai.media.VolumeSync.holdForVoice(false)
+        MidnightEvents.audioFocus("duck_state_cleared: focus lost, next duck re-requests")
     }
 
     private fun requestDuckFocus() {
