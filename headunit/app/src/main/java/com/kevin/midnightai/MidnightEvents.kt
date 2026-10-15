@@ -311,6 +311,15 @@ object MidnightEvents {
         c.log("play_music_result${if (late) "_late" else ""}: $outcome query=\"${query.take(60).replace('\n', ' ')}\"")
     }
 
+    /**
+     * The spoken follow-up to a play_music answered "still lining up" (2026-10-15 car report: it was
+     * never told how it ended). [spoken] false carries the reason it was dropped, so a missing
+     * report is explainable from the next Crashlytics log.
+     */
+    fun playMusicLateReport(spoken: Boolean, why: String) = safe {
+        c.log("play_music_late_report: spoken=$spoken why=$why")
+    }
+
     // --- Spotify app foregrounding + App Remote drops (2026-10-13 car report) -------------------
     // "Spotify came to the front on every voice tap, then Midnight restarted." These prove, on the
     // next drive, whether WE opened Spotify (and from where), or whether it surfaced on its own.
@@ -352,6 +361,15 @@ object MidnightEvents {
         val label = "${spotifyFailureLabel(failure)} voice_busy=$voiceBusy"
         c.log("spotify_app_remote_lost: $label")
         if (nonFatalLimiter.allow("spotify_app_remote_lost")) c.recordException(SpotifyAppRemoteLost(label))
+    }
+
+    /**
+     * The set of phones carrying Bluetooth audio changed ([change] is counts only, see
+     * [com.kevin.midnightai.bluetooth.PhoneLinkChange]). [appRemote] and [source] are what they were
+     * at that moment, so the log answers "did App Remote drop BECAUSE the phone left" (2026-10-15).
+     */
+    fun phoneLinkChanged(change: String, appRemote: String, source: String) = safe {
+        c.log("phone_link_changed: $change app_remote=$appRemote source=$source voice_busy=${voiceBusy()}")
     }
 
     /** A silent App Remote reconnect after a drop was started (or skipped, with [why]). */

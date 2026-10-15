@@ -161,7 +161,32 @@ internal object SpotifyVoice {
         knownUri: String?,
         sourceBeforeConnect: Source = MusicSource.current.value,
         token: PlayRequests.Token? = null,
-    ): JSONObject {
+        appRemoteAlreadyTried: Boolean = false,
+    ): JSONObject =
+        playOnSpotifyAttempt(context, query, type, artist, knownUri, sourceBeforeConnect, token, appRemoteAlreadyTried).result
+
+    /** How one voice play ended, with the facts a late report needs that the tool's JSON does not carry. */
+    data class PlayAttempt(
+        val result: JSONObject,
+        /** Null when the play never reached Spotify (search found nothing, no grant). */
+        val outcome: SpotifyController.PlayOutcome?,
+    )
+
+    /**
+     * [playOnSpotify] with the typed outcome kept, so `play_music` can report a play that settled
+     * after it had already answered "still lining up" (it needs to tell a superseded play from a
+     * failed one, and name what Spotify resolved, neither of which the JSON says).
+     */
+    suspend fun playOnSpotifyAttempt(
+        context: Context,
+        query: String,
+        type: String,
+        artist: String?,
+        knownUri: String?,
+        sourceBeforeConnect: Source = MusicSource.current.value,
+        token: PlayRequests.Token? = null,
+        appRemoteAlreadyTried: Boolean = false,
+    ): PlayAttempt {
         // [token] (play_music only): a newer choice made while this ran wins - see [PlayRequests].
         val stillWanted = { token == null || PlayRequests.shouldProceed(token) }
         var note: String? = null
@@ -175,14 +200,19 @@ internal object SpotifyVoice {
                     note = resolved.note
                     resolved.uri to SpotifyController.pickedLabel(resolved.name, resolved.subtitle)
                 }
-                is Resolution.Failed -> return resolved.toolResult
+                is Resolution.Failed -> return PlayAttempt(resolved.toolResult, null)
             }
         }
 
-        val outcome = playResolvedUri(context, uri, label, sourceBeforeConnect, stillWanted)
+        val outcome = playResolvedUri(
+            context, uri, label, sourceBeforeConnect, stillWanted, appRemoteAlreadyTried = appRemoteAlreadyTried,
+        )
         val ok = SpotifyController.succeeded(outcome)
         // The fallback note rides only on a success: a failed play has nothing to caveat further.
-        return result(ok, SpotifyController.message(outcome, query) + (note?.takeIf { ok }?.let { " $it" } ?: ""))
+        return PlayAttempt(
+            result(ok, SpotifyController.message(outcome, query) + (note?.takeIf { ok }?.let { " $it" } ?: "")),
+            outcome,
+        )
     }
 
     /**
@@ -206,6 +236,7 @@ internal object SpotifyVoice {
         // VOICE by default: a voice play never opens the Spotify app (see uiLaunchRefusal).
         caller: com.kevin.midnightai.media.SpotifyConnectLogic.PlayCaller =
             com.kevin.midnightai.media.SpotifyConnectLogic.PlayCaller.VOICE,
+        appRemoteAlreadyTried: Boolean = false,
     ): SpotifyController.PlayOutcome {
         // Search/connect can be slow; if the driver moved on meanwhile, do not silence what they chose.
         if (!stillWanted()) return SpotifyController.PlayOutcome.Superseded
@@ -220,6 +251,7 @@ internal object SpotifyVoice {
 
         val outcome = SpotifyController.playUriOutcome(
             context, uri, pickedLabel = pickedLabel, stillWanted = stillWanted, shuffle = shuffle, caller = caller,
+            appRemoteAlreadyTried = appRemoteAlreadyTried,
         )
         val ok = SpotifyController.succeeded(outcome)
         if (ok && !stillWanted()) {

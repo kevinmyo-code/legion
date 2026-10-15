@@ -532,20 +532,31 @@ object SpotifyController {
         reconnectPending = true
         background.launch {
             try {
-                delay(RECONNECT_DELAY_MS)
-                val deadline = android.os.SystemClock.elapsedRealtime() + RECONNECT_VOICE_WAIT_MS
-                while (com.kevin.midnightai.service.ConversationState.isBusy &&
-                    android.os.SystemClock.elapsedRealtime() < deadline
-                ) {
-                    delay(RECONNECT_POLL_MS)
-                }
-                when {
-                    isConnected -> MidnightEvents.spotifyReconnect(false, "already connected")
-                    com.kevin.midnightai.service.ConversationState.isBusy ->
-                        MidnightEvents.spotifyReconnect(false, "voice turn still running; onResume retries")
-                    else -> {
-                        MidnightEvents.spotifyReconnect(true, "after drop")
-                        connectSilently(ctx)
+                // Several attempts, not one (2026-10-15 car report): a single try 5s after the drop
+                // fails if Spotify is still restarting, and then NOTHING retried until the next
+                // onResume, so the PHONE | SPOTIFY switch and Spotify voice stayed dead. Each
+                // attempt below is the same silent, UI-less one; a connect that lands stops the loop.
+                for ((attempt, wait) in SpotifyConnectLogic.RECONNECT_SCHEDULE_MS.withIndex()) {
+                    delay(wait)
+                    val deadline = android.os.SystemClock.elapsedRealtime() + RECONNECT_VOICE_WAIT_MS
+                    while (com.kevin.midnightai.service.ConversationState.isBusy &&
+                        android.os.SystemClock.elapsedRealtime() < deadline
+                    ) {
+                        delay(RECONNECT_POLL_MS)
+                    }
+                    when {
+                        isConnected -> {
+                            MidnightEvents.spotifyReconnect(false, "already connected")
+                            return@launch
+                        }
+                        com.kevin.midnightai.service.ConversationState.isBusy -> {
+                            MidnightEvents.spotifyReconnect(false, "voice turn still running; onResume retries")
+                            return@launch
+                        }
+                        else -> {
+                            MidnightEvents.spotifyReconnect(true, "after drop, attempt ${attempt + 1}")
+                            connectSilently(ctx)
+                        }
                     }
                 }
             } finally {
@@ -577,8 +588,8 @@ object SpotifyController {
     /** How long a play waits on App Remote before using the Web API instead. */
     private const val PLAY_CONNECT_WAIT_MS = 6_000L
 
-    /** After a drop: wait before the silent reconnect (Spotify may be restarting). */
-    private const val RECONNECT_DELAY_MS = 5_000L
+    // After a drop the silent reconnect waits per SpotifyConnectLogic.RECONNECT_SCHEDULE_MS (this
+    // used to be a single RECONNECT_DELAY_MS = 5s: one try, then nothing until onResume).
 
     /** How long the reconnect waits out a running voice turn before giving up to onResume. */
     private const val RECONNECT_VOICE_WAIT_MS = 120_000L
@@ -951,6 +962,9 @@ object SpotifyController {
      * [shuffle] (the Cruise playlist tiles): shuffle is turned on before `play()` so a pinned
      * playlist does not start at track 1 every time. A shuffle failure is logged and play still
      * goes ahead - unshuffled music beats silence.
+     *
+     * [appRemoteAlreadyTried]: the caller already waited on App Remote this turn and it did not
+     * connect; go straight to the Web API leg instead of waiting on it again.
      */
     suspend fun playUriOutcome(
         context: Context,
@@ -959,11 +973,16 @@ object SpotifyController {
         stillWanted: () -> Boolean = { true },
         shuffle: Boolean = false,
         caller: SpotifyConnectLogic.PlayCaller = SpotifyConnectLogic.PlayCaller.VOICE,
+        appRemoteAlreadyTried: Boolean = false,
     ): PlayOutcome =
         withContext(Dispatchers.IO) {
             // App Remote first when it is up or worth a try; otherwise (or when it fails or is
             // slow) the Web API plays on this unit's Spotify through Spotify Connect.
-            val tryRemote = SpotifyConnectLogic.shouldTryAppRemote(isConnected, inFlight != null, msSinceLastFailure())
+            // [appRemoteAlreadyTried]: the caller just spent its own budget on App Remote, so do not
+            // wait on it a second time (see shouldTryAppRemote).
+            val tryRemote = SpotifyConnectLogic.shouldTryAppRemote(
+                isConnected, inFlight != null, msSinceLastFailure(), appRemoteAlreadyTried,
+            )
             val connected = tryRemote &&
                 withTimeoutOrNull(PLAY_CONNECT_WAIT_MS) { ensureConnected(context) } == true
             // Re-read, not captured from the boolean: a disconnect could land between the two.

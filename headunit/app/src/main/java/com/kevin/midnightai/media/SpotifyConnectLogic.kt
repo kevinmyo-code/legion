@@ -180,6 +180,13 @@ object SpotifyConnectLogic {
             "Spotify refused to play \"$description\"" + (f.detail?.let { " ($it)" } ?: "") + "."
     }
 
+    /**
+     * Waits before each silent reconnect attempt after an App Remote drop: Spotify may still be
+     * restarting at 5s, so later tries are spaced out. Bounded (three) so a Spotify that is
+     * really gone is not retried forever; MainActivity.onResume remains the backstop.
+     */
+    val RECONNECT_SCHEDULE_MS: List<Long> = listOf(5_000L, 20_000L, 60_000L)
+
     /** How long a recent App Remote failure skips a fresh App Remote attempt before a play. */
     const val RECENT_FAILURE_MS = 60_000L
 
@@ -188,9 +195,21 @@ object SpotifyConnectLogic {
      * attempt that failed seconds ago costs the driver several seconds of silence for an answer
      * already known, so a play goes straight to the Web API then. An attempt still in flight is
      * joined (it may be seconds from connecting). [msSinceLastFailure] null = no failure on record.
+     *
+     * [callerAlreadyTried] (2026-10-15 car report): the caller (`play_music`) already waited its own
+     * budget on App Remote this turn and it did not connect. An attempt still "in flight" is then
+     * the very one that just timed out, and joining it again stacked a second 6s wait ahead of the
+     * Web API leg, so the play could not settle inside the tool budget. Only an already-live link
+     * counts then.
      */
-    fun shouldTryAppRemote(isConnected: Boolean, attemptInFlight: Boolean, msSinceLastFailure: Long?): Boolean =
-        isConnected || attemptInFlight || msSinceLastFailure == null || msSinceLastFailure >= RECENT_FAILURE_MS
+    fun shouldTryAppRemote(
+        isConnected: Boolean,
+        attemptInFlight: Boolean,
+        msSinceLastFailure: Long?,
+        callerAlreadyTried: Boolean = false,
+    ): Boolean =
+        isConnected || (!callerAlreadyTried &&
+            (attemptInFlight || msSinceLastFailure == null || msSinceLastFailure >= RECENT_FAILURE_MS))
 
     /** What `GET /v1/me/player/currently-playing` said, trimmed to what Cruise uses. */
     data class CurrentlyPlaying(val isPlaying: Boolean, val contextUri: String?, val trackName: String?)
