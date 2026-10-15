@@ -34,6 +34,54 @@ object MusicDeckLogic {
     fun spotifyExtrasEnabled(source: Source, spotifyConnected: Boolean): Boolean =
         source == Source.SPOTIFY && spotifyConnected
 
+    /** What the PHONE | SPOTIFY switch in the NOW PLAYING label row shows. */
+    enum class SwitchMode {
+        /** Nothing to switch between (a mixtape is loaded, or Spotify is not set up): plain "NOW PLAYING ・ SOURCE". */
+        HIDDEN,
+
+        /** App Remote is up: SPOTIFY switches straight over. */
+        LIVE,
+
+        /**
+         * Head-unit Spotify is set up (client ID + Web grant, app installed) but App Remote is
+         * down right now, e.g. after a drop. The switch stays so a hands path exists
+         * (ADR 0035 spirit); its SPOTIFY side says RECONNECT instead of pretending to be live.
+         */
+        RECONNECT,
+    }
+
+    /**
+     * 2026-10-15 car report: the switch vanished the moment App Remote dropped, leaving no way by
+     * hand back to head-unit Spotify. A mixtape still hides it (a loaded tape owns the deck).
+     */
+    fun switchMode(spotifyConnected: Boolean, spotifySetUp: Boolean, source: Source): SwitchMode = when {
+        source == Source.MIXTAPE -> SwitchMode.HIDDEN
+        spotifyConnected -> SwitchMode.LIVE
+        spotifySetUp -> SwitchMode.RECONNECT
+        else -> SwitchMode.HIDDEN
+    }
+
+    /** The word on the SPOTIFY side of the switch: says what a tap will do, never "SPOTIFY" while it is down. */
+    fun spotifySwitchLabel(mode: SwitchMode, connecting: Boolean): String = when {
+        mode != SwitchMode.RECONNECT -> "SPOTIFY"
+        connecting -> "CONNECTING"
+        else -> "RECONNECT"
+    }
+
+    /**
+     * The toast when a RECONNECT tap ends without a live link. [timedOut]: the wait ran out with the
+     * attempt unfinished, so [reason] (the previous failure) is stale and is not spoken as the cause.
+     */
+    fun reconnectFailureMessage(reason: String, timedOut: Boolean): String =
+        if (timedOut) {
+            "Spotify on the head unit is still connecting. Try again in a few seconds."
+        } else {
+            "Spotify did not connect: $reason. Still on the current source."
+        }
+
+    /** How long a RECONNECT tap waits for App Remote before saying it is still connecting. */
+    const val RECONNECT_TAP_BUDGET_MS = 10_000L
+
     /** A progress bar needs a known length; Bluetooth AVRCP often sends none. */
     fun showProgress(durationMs: Long): Boolean = durationMs > 0
 
