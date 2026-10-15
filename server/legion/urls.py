@@ -57,6 +57,9 @@ urlpatterns = [
     # Live token per conversation, and the session-authenticated door its tool
     # calls come through (`assistant/views.py`). Session auth only; never `/mcp`.
     path("api/assistant/", include("assistant.urls")),
+    # Kevin 2026-10-15: a device (the head unit) uploads its own log after a
+    # drive; read back with `manage.py device_logs` (`devicelogs/views.py`).
+    path("api/device-logs/", include("devicelogs.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

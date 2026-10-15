@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Fifty-five names. The fifty-sixth `public` table, `household_members`, is
+# Fifty-seven names (was stale at "fifty-five" before device_logs; count it with len()). The fifty-eighth `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
 #
@@ -120,6 +120,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # (`assistant/models.py`).
     "assistant_companions",
     "assistant_calls",
+    # Kevin, 2026-10-15: a device's uploaded log batches, Django-managed and
+    # born tenanted like `push_*` (`devicelogs/models.py`).
+    "device_logs",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -164,6 +167,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "purchases",
         "assistant_companions",
         "assistant_calls",
+        "device_logs",
     }
 )
 

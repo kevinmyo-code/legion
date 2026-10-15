@@ -139,6 +139,9 @@ INSTALLED_APPS = [
     # token mint, the session-authenticated tool door, each member's companion
     # (`public.assistant_companions`) and the audit (`public.assistant_calls`).
     "assistant",
+    # Kevin 2026-10-15: the head unit uploads its own logs (`public.device_logs`)
+    # after every drive, so they can be read without ADB.
+    "devicelogs",
 ]
 
 MIDDLEWARE = [

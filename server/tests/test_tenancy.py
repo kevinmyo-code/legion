@@ -531,6 +531,43 @@ def test_push_rows_are_scoped_by_household(token_a, token_b, household_a, monkey
     assert reached == ["https://push.example.com/alpha"]
 
 
+def test_device_logs_are_scoped_by_household(token_a, token_b, household_a, household_b, capsys):
+    """Kevin 2026-10-15. An upload lands in the caller's household; the same
+    batch_id from another household is its OWN row (the idempotency key is
+    per household); and the read command, scoped to one household, never
+    prints the other's text."""
+    import gzip
+    import uuid
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from django.core.management import call_command
+
+    from devicelogs.models import DeviceLog
+
+    shared_batch = str(uuid.uuid4())
+    for client, tag in ((token_a, "alpha-line"), (token_b, "bravo-line")):
+        response = client.post(
+            "/api/device-logs/",
+            {
+                "batch_id": shared_batch,
+                "device_label": f"unit-{tag}",
+                "reason": "manual",
+                "file": SimpleUploadedFile("l.gz", gzip.compress(f"{tag}\n".encode())),
+            },
+            format="multipart",
+        )
+        assert response.status_code == 201, response.data
+    assert DeviceLog.objects.filter(household=household_a).count() == 1
+    assert DeviceLog.objects.filter(household=household_b).count() == 1
+
+    call_command("device_logs", "--last", "5", "--household", str(household_a.id))
+    out = capsys.readouterr().out
+    assert "alpha-line" in out and "bravo-line" not in out
+    call_command("device_logs", "--last", "5", "--household", str(household_b.id))
+    out = capsys.readouterr().out
+    assert "bravo-line" in out and "alpha-line" not in out
+
+
 def test_purchases_are_scoped_by_household(token_a, token_b):
     """purchase-log ticket 06. `purchases` has no synced route, so this is its
     leak test: B's list, detail, edit, delete, "last bought" and Groceries hook
