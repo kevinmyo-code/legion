@@ -84,26 +84,14 @@ class SpotifyAppRemoteDiagnosticsTest {
         assertEquals("Spotify app: not installed on this unit", lines[1])
     }
 
-    @Test fun `Web API playback is ready on a full grant`() {
+    @Test fun `the playlist count closes the block on a full grant`() {
         val lines = spotifyStatusLines(false, true, SpotifyScopes.ALL, 3, null)
-        assertTrue(lines.contains("Web API playback (used when App Remote is off): ready"))
         assertEquals("3 playlists loaded", lines.last())
     }
 
-    @Test fun `Web API playback asks to re-authorize when its scopes are missing`() {
-        val line = spotifyStatusLines(false, true, "playlist-read-private", 3, null)
-            .single { it.startsWith("Web API playback") }
-        assertTrue(line.contains("RE-AUTHORIZE SPOTIFY"))
-        assertTrue(line.contains("user-modify-playback-state"))
-    }
-
-    @Test fun `Web API playback shows its last failure`() {
-        val line = spotifyStatusLines(false, true, SpotifyScopes.ALL, 3, null, webPlaybackFailure = "Spotify Premium required")
-            .single { it.startsWith("Web API playback") }
-        assertTrue(line.endsWith("last try failed - Spotify Premium required"))
-    }
-
-    @Test fun `no Web API playback line without a Web grant`() {
+    @Test fun `there is no Web API playback line any more, with or without a grant`() {
+        // Removed 2026-10-15 with the Web API playback fallback: the Web API reads, App Remote plays.
+        assertFalse(spotifyStatusLines(false, true, SpotifyScopes.ALL, 3, null).any { it.startsWith("Web API playback") })
         assertFalse(spotifyStatusLines(false, false, "", 0, null).any { it.startsWith("Web API playback") })
     }
 }

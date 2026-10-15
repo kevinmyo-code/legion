@@ -32,6 +32,11 @@ object PlayRequests {
      * speakers elsewhere since it began. A move TO Spotify is not a change of mind - connecting
      * App Remote flips the source to SPOTIFY by itself - so only a move to some other source
      * counts.
+     *
+     * Still needed after F9 (2026-10-15), but for a narrower reason. Until then EVERY connect flipped
+     * the source to SPOTIFY; now a connect does so only when the phone is the source and is not
+     * playing ([SpotifyController.shouldClaimSourceOnConnect]). A play that starts from an idle phone
+     * can therefore still see the source become SPOTIFY under it, and that is not a change of mind.
      */
     internal fun shouldProceed(token: Token, latestGeneration: Long, sourceNow: Source): Boolean =
         token.generation == latestGeneration &&

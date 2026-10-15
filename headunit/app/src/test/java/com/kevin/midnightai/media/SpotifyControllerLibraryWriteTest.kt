@@ -68,9 +68,9 @@ class SpotifyControllerLibraryWriteTest {
     }
 
     @Test
-    fun `NotConnected points at Setup, same wording family as the rest of the Spotify tools`() {
+    fun `NotConnected points at Settings and says whether it is reconnecting, same wording family as the rest of the Spotify tools`() {
         val message = SpotifyController.message(LibraryWriteOutcome.NotConnected, LibraryAction.FOLLOW_ARTIST)
-        assertTrue(message.contains("Setup"))
+        assertTrue(message.contains("Settings, Music, Spotify"))
     }
 
     @Test

@@ -65,4 +65,17 @@ class LiveToolboxMusicDeclarationsTest {
         println("LiveToolbox.declarations() JSON length: $size chars")
         assertTrue("declarations grew to $size chars", size < 60_000)
     }
+
+    @Test fun `open_music is gone and get_now_playing is declared with no required arguments`() {
+        val all = LiveToolbox.declarations()
+        val names = (0 until all.length()).map { all.getJSONObject(it).getString("name") }
+        assertTrue("open_music launched the Spotify app; App Remote is the only path", "open_music" !in names)
+        assertEquals(0, decl("get_now_playing").getJSONObject("parameters").getJSONArray("required").length())
+    }
+
+    @Test fun `play_music and set_music_source descriptions promise no app launch`() {
+        val text = decl("play_music").getString("description").lowercase()
+        assertTrue(text.contains("never opens an app"))
+        assertTrue(!text.contains("enabled that in setup"))
+    }
 }

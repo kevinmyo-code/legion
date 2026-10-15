@@ -108,4 +108,38 @@ class SpotifyVoiceLogicTest {
     @Test fun `a fallback with no name still reads cleanly`() {
         assertFalse(SpotifyVoiceLogic.playlistFallbackNote("Roadtrip", null, libraryChecked = true).contains("null"))
     }
+
+    // --- get_now_playing and the live-context source phrase (2026-10-15) -------------------------
+
+    @Test fun `now playing names title, artist, album, state and the real source`() {
+        val m = SpotifyVoiceLogic.nowPlayingMessage(
+            SpotifyVoiceLogic.NowPlayingFacts("Mask Off", "Future", "FUTURE", Source.SPOTIFY, playing = true),
+        )!!
+        assertTrue(m.contains("\"Mask Off\" by Future"))
+        assertTrue(m.contains("album \"FUTURE\""))
+        assertTrue(m.contains("is playing"))
+        assertTrue(m.contains("Spotify on the head unit"))
+    }
+
+    @Test fun `a paused phone track says paused and over Bluetooth, never the head unit`() {
+        val m = SpotifyVoiceLogic.nowPlayingMessage(
+            SpotifyVoiceLogic.NowPlayingFacts("Plastic Love", "", "", Source.PHONE, playing = false),
+        )!!
+        assertTrue(m.contains("is paused"))
+        assertTrue(m.contains("phone over Bluetooth"))
+        assertFalse(m.contains(" by "))
+        assertFalse(m.contains("album"))
+    }
+
+    @Test fun `no track reported yields no sentence rather than an invented one`() {
+        assertNull(SpotifyVoiceLogic.nowPlayingMessage(null))
+        assertNull(SpotifyVoiceLogic.nowPlayingMessage(SpotifyVoiceLogic.NowPlayingFacts(" ", "x", "y", Source.PHONE, true)))
+        assertFalse(SpotifyVoiceLogic.NOTHING_REPORTED.contains('\u2014'))
+    }
+
+    @Test fun `the source phrase is different for every source (F14)`() {
+        val phrases = Source.entries.map { SpotifyVoiceLogic.sourcePhrase(it) }
+        assertEquals(Source.entries.size, phrases.toSet().size)
+        assertFalse(SpotifyVoiceLogic.sourcePhrase(Source.PHONE).contains("head unit"))
+    }
 }

@@ -34,7 +34,7 @@ class LatePlayReportLogicTest {
     }
 
     @Test fun `only a Started outcome is classified as a success`() {
-        val started = SpotifyController.PlayOutcome.Started(pickedLabel = "Mask Off, Future", viaWebApi = true)
+        val started = SpotifyController.PlayOutcome.Started(pickedLabel = "Mask Off, Future")
         assertEquals(Late.Started("Mask Off, Future"), LatePlayReportLogic.classify(started, "Playing it."))
         assertEquals(Late.Superseded, LatePlayReportLogic.classify(SpotifyController.PlayOutcome.Superseded, "x"))
         assertEquals(
@@ -48,11 +48,6 @@ class LatePlayReportLogicTest {
             Late.Failed("I couldn't find it."),
             LatePlayReportLogic.classify(null, "I couldn't find it."),
         )
-    }
-
-    @Test fun `every web failure outcome is a failure, never a success`() {
-        val web = SpotifyController.PlayOutcome.WebFailed(SpotifyConnectLogic.Failure.Unreachable)
-        assertTrue(LatePlayReportLogic.classify(web, "Cannot reach.") is Late.Failed)
     }
 
     @Test fun `the prompt carries the line, forbids guessing and has no em dash`() {
