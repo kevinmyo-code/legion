@@ -24,7 +24,7 @@ is compile-and-test verified only, not run on the head unit. `CLAUDE.md` §14 tr
 | Cruise home, Lights Out night HUD, screen saver | Cruise is the HOME activity. Split music deck (`ui/MusicDeck.kt`, `ui/PinnedPlaylistGrid.kt`) replaced the cassette deck 2026-10-13; the console fits 800x480 with 11sp label floors and 56dp touch targets. Dock: lights out, day/night, mute, REAR camera, apps, setup |
 | Voice loop | Push-to-talk only. Tap the Cruise avatar, or long-press in Lights Out |
 | OBD (ELM327, Bluetooth classic and BLE) | Live PIDs, DTC read (Mode 03; there is no clear-codes path), freeze frames, 30s telemetry to Room, MPG, readiness |
-| Music | Phone over Bluetooth (MediaSession/AVRCP), Media3 mixtape player, BYO Spotify (App Remote + Web API, with a Web API playback fallback; voice never opens the Spotify app) with voice parity: play by type, queue, like, shuffle, repeat, seek, browse. Now-playing listens to every media session. Up to 10 pinned playlists |
+| Music | Phone over Bluetooth (MediaSession/AVRCP), Media3 mixtape player, BYO Spotify (App Remote is the only playback path; the Web API only reads; nothing opens the Spotify app) with voice parity: play by type, queue, like, shuffle, repeat, seek, browse. Now-playing listens to every media session. Up to 10 pinned playlists |
 | Trusted clock | `time/TrustedClock`: own network UTC and zone behind every now/today, never the head unit's clock |
 | Voice playback | Jitter-buffer feeder and backlog-aware drain watch (choppy Live audio fix); a failing voice turn no longer crashes the launcher; hardware volume keys re-applied through the app's own path |
 | Themes | Night mode is a purple palette with light text; Summer coast uses near-black text. `PaletteContrastTest` guards contrast |
