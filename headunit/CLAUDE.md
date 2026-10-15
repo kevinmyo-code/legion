@@ -106,7 +106,7 @@ WebSocket -> Gemini Live STS
   └─ On silence/end: cleanup or idle-warm 3min for instant resume
 ```
 
-Half-duplex. Server VAD ends turns. Talk = tap Cruise avatar (or long-press in Lights Out). Cooperative audio ducking on PTT turns (drop STREAM_MUSIC to ~15%).
+Half-duplex. Server VAD ends turns. Talk = tap Cruise avatar (or long-press in Lights Out). Cooperative audio ducking on PTT turns: audio focus `GAIN_TRANSIENT_MAY_DUCK` only, so the music app lowers (or pauses) itself. **CORRECTED 2026-10-15:** this line used to say the turn drops `STREAM_MUSIC` to ~15%; the code never did that (it would also lower Moose's own voice, which plays on the same stream - see `GeminiLiveSession.duckNow`'s doc) and an optional restore-the-index step was deliberately NOT added because it would fight `VolumeSync.holdForVoice`. After the turn the session sends a resume `play()` only if the music was playing at duck time AND neither the source nor a play request changed during the turn AND no music tool ran (`media/DuckResumeLogic.kt`); a focus LOSS mid-turn clears the duck state so the next reply requests focus again.
 
 ### 4.2 Sub-agent template (SubAgent.kt)
 
@@ -148,6 +148,7 @@ Actions (side effects, zero tokens):
 |---|---|
 | control_music | `play`/`pause`/`next`/`previous` via `MusicRouter` for whichever source owns the speakers (phone BT, mixtape, head-unit Spotify). Also `queue` (named track, via search), `like`/`unlike`, `follow_artist`/`unfollow_artist`, `shuffle`/`shuffle_on`/`shuffle_off`, `repeat_off`/`repeat_track`/`repeat_context`, `seek_forward`/`seek_back` (+ `seconds`), `restart`, `more_from_artist`: these are Spotify-only (App Remote) and refuse with a sentence unless `MusicSource` is SPOTIFY. Ported from LEGION 2026-10-11; handlers in `service/SpotifyVoice.kt`, pure logic in `media/SpotifyVoiceLogic.kt`. Shuffle/repeat speak the state Spotify read back, not the request |
 | control_volume | VolumeController |
+| set_proactive_mute | `muted` true/false -> `ProactivePreferences.setMuted` (2026-10-15). Silences everything Moose says UNPROMPTED (idle chatter, milestones, arrival/reminders, health and recall alerts, call announcements) until the driver says to resume; anything the driver asks for, including a late `play_music` report, still speaks. This is root CLAUDE.md section 7 compulsion-test clause (d), "silenceable forever in one instruction". It is not `control_volume`'s mute. Answers from the value read back after the write. Hands path: the MUTE tile on Cruise (same preference) |
 | get_music_queue | Spotify up-next queue (`GET /me/player/queue`); Spotify-source only; read-only |
 | browse_my_music | `saved_albums` / `recently_played` / `top_artists` / `top_tracks` (account-level, any source) and `artist_albums` (current artist, Spotify source only). saved_albums and artist_albums rows carry a `spotifyUri` for `play_music`. No `legion_history` source: `music_plays` has no URI, see `get_music_taste` |
 | set_music_source | Graceful phone (Bluetooth) ↔ head-unit Spotify switch via `MusicRouter.switchToPhone`/`switchToSpotify` - pauses the outgoing source before starting the incoming one; fails cleanly if head-unit Spotify isn't connected |
@@ -159,7 +160,7 @@ Actions (side effects, zero tokens):
 | log_past_service | Backfills when a service was LAST done: absolute mileage, rough miles-ago, a date, or a confirmed never-done. Writes ONLY the maintenance item, never a `service_record` - a remembered approximation must not enter the precise ledger. Future dates rejected. **If the driver says they don't know, the tool is not called at all** and the item stays UNKNOWN; guessing an anchor is worse than having none |
 | tag_place / forget_place / set_reminder | PlaceController |
 | unlock_spend / set_spend_passphrase | SpendGate (hashed passphrase + 5min unlock) |
-| register_vehicle / set_odometer | VehicleController |
+| register_vehicle / set_odometer | VehicleController. `register_vehicle` returns after the vehicle row is saved and says the maintenance lookup has only STARTED (it runs detached; `onboardPendingVehicles` retries it at service start while the row is `onboarded=false`) |
 | show_saved_places | UI-scoped; `visible` true/false shows or hides the list (`hide_saved_places` no longer exists; `restyle_avatar`/`restyle_background` were removed 2026-09-27 with in-app image generation) |
 | play_mixtape | Name-resolve to MixtapePlayer.play (starts a saved mixtape) |
 | activate_garage | Confirm-gated (confirmed=false then true) single-pulse trigger to a BYO Shelly Gen2+ relay over the Shelly Cloud Control API (garage-mounted, reached over the phone hotspot); action-only, no status - never "opening"/"closing", always "triggering" |

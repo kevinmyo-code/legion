@@ -1711,3 +1711,36 @@ Kevin approved the follow-ups from the rules pass above. Done the same day, same
 - **DTC clear traced: no clear path exists.** The OBD layer's only DTC command is Mode 03 (`getDtcCodes`); no Mode 04
   string exists in `app/src/main`; `sendCommand` is private; no voice tool or UI action clears codes. README's "DTC
   read/clear" claim changed to read-only. (The phone app's `clear_codes` tool is a different codebase.)
+
+## 2026-10-15 - voice-pipeline audit fixes (branch `fix/headunit-voice-pipeline`)
+
+Rulings only; the mechanical fixes (B1, B2, B4, B5, B7 and so on) are in the commit messages.
+
+- **A voice way to silence unprompted speech: `set_proactive_mute`.** Root CLAUDE.md section 7's
+  compulsion test clause (d) says every unsolicited raise must be silenceable forever in one
+  instruction, and the head unit had only a Cruise tile for it (no voice path, and a driver with
+  both hands on the wheel is exactly who says "stop chiming in"). The tool writes
+  `ProactivePreferences` (the same flag the MUTE tile flips), answers from the value read back, and
+  covers everything `speakProactive` and the call announcement route; driver-requested speech is
+  untouched. Not `control_volume`'s mute.
+- **The continuity note no longer tells the model how long the driver was away.** `AriaBrain`
+  used to inject "Your last conversation with the driver was about a day ago / N days ago / over a
+  month ago" with a "reference this naturally" instruction, on the reasoning that a factual gap
+  without "I missed you" framing was not a re-engagement ping. That is the exact route by which
+  clause (c) ("never reference his absence, his streak, or his engagement") erodes by increments.
+  Superseded: the gap sentence is deleted, the stored memories stay, and the elapsed time is used
+  only as a gate (a few minutes since the last talk injects nothing). `AriaBrain.continuityText`
+  has a test that fails if gap wording returns.
+- **A proactive prompt states its facts or forbids its subject (root section 1), applied to the
+  idle-chatter line.** `speakQuietLine` invited "something you remember about the driver" with no
+  memory supplied. It now pre-fetches up to two real memories and quotes them as the only things
+  that may be claimed as remembered, or, with none, says in words that nothing may be claimed
+  (`QuietLinePrompt`).
+- **Held proactive lines are spoken only while fresh, and retried once.** A line that cannot be
+  spoken at once (a connecting socket, a conversation mid-reply, a dead warm socket) is held up to
+  60 s (fold-in) or 120 s (carried across a failed connect), retried at most once, and every drop
+  leaves a breadcrumb. A stale report would be an assertion about a present nobody observed.
+- **The 2026-07 line "ducking drops STREAM_MUSIC to ~15%" was wrong and is corrected, not
+  honoured.** Ducking is audio focus `MAY_DUCK` only; lowering the stream also lowers the
+  assistant's own voice (same stream). Optional restore-the-index step not added: it would fight
+  `VolumeSync.holdForVoice`.
