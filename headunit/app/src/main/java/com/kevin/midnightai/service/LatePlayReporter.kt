@@ -31,7 +31,15 @@ internal object LatePlayReporter {
             MidnightEvents.playMusicLateReport(spoken = false, why = "superseded")
             return
         }
-        val line = LatePlayReportLogic.spokenLine(late) ?: return
+        // Past the Superseded return above, the only way this is null is a Failed with a blank
+        // reason: there is no sentence to speak, and the driver was told "still lining up". Say
+        // nothing (inventing a sentence is not this class's call) but leave the breadcrumb, so a
+        // report that never came is explainable (B13, 2026-10-15).
+        val line = LatePlayReportLogic.spokenLine(late)
+        if (line == null) {
+            MidnightEvents.playMusicLateReport(spoken = false, why = "blank_failure_reason")
+            return
+        }
         if (!OnboardingState.isComplete(context)) {
             MidnightEvents.playMusicLateReport(spoken = false, why = "onboarding")
             return

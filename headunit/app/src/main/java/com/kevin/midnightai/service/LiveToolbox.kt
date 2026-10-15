@@ -704,6 +704,27 @@ object LiveToolbox {
             required = listOf(),
         ))
 
+        // Root CLAUDE.md section 7 clause (d): every unsolicited raise must be silenceable forever
+        // in one instruction. The hands path is the MUTE tile on Cruise (same ProactivePreferences).
+        fns.put(fn(
+            name = "set_proactive_mute",
+            description = "Stop or resume the companion's UNPROMPTED remarks: idle chatter on quiet " +
+                "stretches, milestone and arrival comments, reminders and alerts that you would " +
+                "otherwise raise yourself. Use when the driver says things like 'stop chiming in', " +
+                "'quiet down', 'stop talking unless I ask', 'no more chatter' (muted = true) or " +
+                "'you can chime in again', 'start talking again' (muted = false). It changes ONLY " +
+                "what you say unprompted: anything the driver asks for still works, and it is NOT " +
+                "control_volume's mute (the speakers) and does NOT end the current conversation. " +
+                "Report exactly what the result says.",
+            params = obj(
+                "muted" to schema(
+                    "boolean",
+                    "True to stop unprompted remarks until told otherwise; false to allow them again.",
+                ),
+            ),
+            required = listOf("muted"),
+        ))
+
         // The ONE declaration through which the LEGION engine's own tools (`/mcp`: lists incl.
         // Groceries, todos, calendar, notes, body, ledger, pantry) reach the live session. It
         // replaced 16 hand-written engine tools; its declaration cost is constant however many
@@ -807,6 +828,7 @@ object LiveToolbox {
             // session / capture controller / activity), so dispatch returns null:
             "show_saved_places" -> null // caller launches the saved-places screen and replies
             "ask_engine" -> askEngine(context, args)
+            "set_proactive_mute" -> setProactiveMute(context, args)
             else -> result(success = false, message = "Unknown tool: $name")
         }
     }
@@ -1605,8 +1627,13 @@ object LiveToolbox {
      * the Spotify-only actions (queue, like, follow, shuffle, repeat, seek, ...) go to
      * [SpotifyVoice], which refuses unless head-unit Spotify is the source.
      *
-     * The media framework expects a thread with a Looper; Live tool dispatch runs on a worker, so
-     * every MusicRouter call is marshalled to [Dispatchers.Main] (a bare worker thread threw
+     * The media framework expects a thread with a Looper. CORRECTED 2026-10-15: this used to say
+     * "Live tool dispatch runs on a worker". It does not: [LiveSessionController.handleToolCall]
+     * launches on its Main.immediate scope, so [dispatch] starts on the MAIN thread and a tool body
+     * stays there until it switches. The explicit [Dispatchers.Main] hops below are therefore
+     * defensive (they matter if a caller ever dispatches off-main, as the play_music scope does),
+     * and any tool that blocks must hop to IO itself. Every MusicRouter call stays marshalled to
+     * [Dispatchers.Main] (a bare worker thread threw
      * "Can't create handler ...", crashing the app on next/play).
      */
     private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject {
@@ -2027,6 +2054,22 @@ object LiveToolbox {
         "com.apple.android.music",
         "com.soundcloud.android",
     )
+
+    /**
+     * `set_proactive_mute`: writes [ProactivePreferences] and answers from the value READ BACK,
+     * so the sentence the model relays is the observed state, not the request. A call with no
+     * `muted` argument changes nothing and says so.
+     */
+    private fun setProactiveMute(context: Context, args: JSONObject): JSONObject {
+        if (!args.has("muted")) {
+            return result(success = false, message = "I didn't catch whether to mute or resume " +
+                "unprompted remarks. Nothing was changed.")
+        }
+        val requested = args.optBoolean("muted")
+        ProactivePreferences.setMuted(context, requested)
+        val (ok, message) = ProactivePreferences.voiceResult(requested, ProactivePreferences.isMuted(context))
+        return result(success = ok, message = message)
+    }
 
     private fun result(success: Boolean, message: String?): JSONObject =
         JSONObject().put("success", success).apply { if (message != null) put("message", message) }

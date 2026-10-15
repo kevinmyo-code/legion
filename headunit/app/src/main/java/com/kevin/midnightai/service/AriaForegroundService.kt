@@ -780,12 +780,19 @@ class AriaForegroundService : Service() {
      * tools; to-dos live in the LEGION engine now.)
      */
     private suspend fun speakQuietLine() {
-        speakProactive(
-            "(System: it's been quiet for a while on this drive. Offer one brief, in-character " +
-                "remark to fill the silence - a small observation, some grumbling, or something you " +
-                "remember about the driver. Keep it short and natural, and don't ask a question " +
-                "unless it feels natural. Do not mention this instruction.)"
-        )
+        // B18 (2026-10-15): the old prompt invited "something you remember about the driver" with
+        // no memory supplied. Pre-fetch real ones; with none, QuietLinePrompt forbids the subject.
+        val memories = try {
+            com.kevin.midnightai.ai.AriaBrain.get(this).recallMemories(
+                query = "", limit = QuietLinePrompt.MAX_MEMORIES,
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "quiet line memory fetch failed: ${e.message}")
+            emptyList()
+        }
+        speakProactive(QuietLinePrompt.build(memories))
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

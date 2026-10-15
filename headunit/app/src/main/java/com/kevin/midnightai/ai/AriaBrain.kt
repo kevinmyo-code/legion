@@ -353,16 +353,25 @@ class AriaBrain private constructor(context: Context) {
      * couple of the highest-scored memories (ticket 03's ranking, blank query
      * so it's recency+importance only, no relevance term to satisfy).
      *
-     * **§9.1 discipline (kept even with guardrails off for the experimental
-     * phase, per the map's own rule):** the note states a plain time gap as
-     * fact and instructs natural, non-emotional reference to it - explicitly
-     * NOT "I missed you" / "where have you been" framing. That framing is the
-     * re-engagement-ping class §9.1 forbids; a factual gap anchored to real
-     * conversation history is not.
+     * **CORRECTED 2026-10-15 (voice-pipeline audit B20, root CLAUDE.md section 7
+     * compulsion test clause (c)).** This note used to TELL the model the gap
+     * ("Your last conversation with the driver was about a day ago / 3 days ago /
+     * over a month ago") on the reasoning that a factual gap, referenced without
+     * "I missed you" framing, was not a re-engagement ping. That reasoning was
+     * wrong: handing the model the length of the driver's absence is the raw
+     * material of "you haven't talked to me in three days", and clause (c) says an
+     * unsolicited raise may never reference the driver's absence or engagement -
+     * the model needs no help crossing that line by increments. The gap sentence
+     * is gone. The memories stay: they are anchored facts about the car and the
+     * drives, which is exactly what section 9.1 wants remembered.
+     *
+     * The time gap is still READ, but only as a gate: a few minutes since the last
+     * talk is the same outing continuing, and re-injecting the same memories on
+     * every warm resume would be noise. It is never put in the text.
      *
      * Returns null when there's no prior history at all (first-ever session -
-     * nothing to reference) or when the gap is trivially small (a few minutes
-     * ago is not a "continuity" moment, just the same outing continuing).
+     * nothing to reference), when the last talk was only minutes ago, or when
+     * there are no memories to offer (no gap sentence is left to carry the note).
      */
     private suspend fun buildContinuityNote(): String? {
         val vehicleId = ActiveVehicle.current(appContext)
@@ -376,21 +385,7 @@ class AriaBrain private constructor(context: Context) {
         val gapMs = com.kevin.midnightai.time.TrustedClock.nowMs() - lastTalkedAt
         if (gapMs < CONTINUITY_MIN_GAP_MS) return null
 
-        val gapDescription = when {
-            gapMs < 24 * 3_600_000L -> "earlier today"
-            gapMs < 2 * 24 * 3_600_000L -> "about a day ago"
-            gapMs < 7 * 24 * 3_600_000L -> "${gapMs / (24 * 3_600_000L)} days ago"
-            gapMs < 30 * 24 * 3_600_000L -> "about ${gapMs / (7 * 24 * 3_600_000L)} week(s) ago"
-            else -> "over a month ago"
-        }
-
-        val topMemories = recallMemories(query = "", limit = CONTINUITY_MEMORY_COUNT)
-        val memoryLine = if (topMemories.isEmpty()) "" else
-            " A couple of things worth keeping in mind: ${topMemories.joinToString("; ")}."
-
-        return "Your last conversation with the driver was $gapDescription.$memoryLine Reference " +
-            "this naturally if it fits the moment - as a factual continuity note, never as having " +
-            "missed them or needed them (you don't have needs)."
+        return continuityText(recallMemories(query = "", limit = CONTINUITY_MEMORY_COUNT))
     }
 
     private fun formatMemory(c: Candidate): String {
@@ -545,6 +540,18 @@ class AriaBrain private constructor(context: Context) {
     }
 
     companion object {
+        /**
+         * The continuity note's text, or null when there are no memories (B20). States memories
+         * only: no gap, no "last time we talked", nothing about how long the driver was away.
+         */
+        internal fun continuityText(memories: List<String>): String? {
+            if (memories.isEmpty()) return null
+            return "A couple of things worth keeping in mind from earlier drives: " +
+                "${memories.joinToString("; ")}. Bring one up only if it fits the moment, as a plain " +
+                "fact about the car or the drives - never as having missed the driver or needed them " +
+                "(you don't have needs), and never by commenting on how long it has been."
+        }
+
         @Volatile
         private var INSTANCE: AriaBrain? = null
 
