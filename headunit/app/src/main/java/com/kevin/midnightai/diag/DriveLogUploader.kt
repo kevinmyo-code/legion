@@ -136,9 +136,13 @@ class DriveLogUploader(
         /** The production wiring: the shared store, the device's engine sign-in, prefs-backed status. */
         fun create(context: Context): DriveLogUploader? {
             val store = DriveLog.store() ?: return null
+            val config = EngineConfig(context)
+            // A token saved after boot was not known at DriveLog.init; register it before any
+            // batch is redacted for upload.
+            LogRedactor.addLiteral(config.token())
             return DriveLogUploader(
                 store = store,
-                http = EngineHttp(EngineConfig(context)),
+                http = EngineHttp(config),
                 meta = UploadMeta(
                     deviceLabel = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
                     versionName = BuildConfig.VERSION_NAME,

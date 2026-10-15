@@ -30,8 +30,16 @@ object DriveLogLoop {
         val app = context.applicationContext
         delay(STARTUP_DELAY_MS)
         runCatching { DriveLogUploader.create(app)?.upload(UploadReason.STARTUP) }
+        var saidUnreadable = false
         while (true) { // ends when the service scope cancels: delay() throws
-            withContext(Dispatchers.IO) { DriveLog.snapshotLogcat() }
+            val added = withContext(Dispatchers.IO) { DriveLog.snapshotLogcat() }
+            // Unreadable and empty are different sentences: a ROM that hands the app no logcat
+            // would otherwise upload batches that look like "nothing happened". Said once per
+            // process, into the log itself, so the reader of the batch knows.
+            if (added < 0 && !saidUnreadable) {
+                saidUnreadable = true
+                DriveLog.breadcrumb("logcat unreadable on this unit; only breadcrumbs follow")
+            }
             delay(SNAPSHOT_INTERVAL_MS)
         }
     }
