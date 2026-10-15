@@ -6378,3 +6378,33 @@ had outgrown. Every change below makes a text describe what is true; none is a n
   `cd <worktree> && git commit`; accepted as is (rare, and committing from the worktree avoids it).
 - headunit: the unused Vosk catalog entries are removed (the wake word went 2026-10-11).
   `LegacyCleanup` still deletes the old on-device model and stays.
+
+## 2026-10-15 - The head unit uploads its own logs after every drive (Kevin)
+
+Kevin: "can we add some kind of logging that the head unit can upload when it has internet, so u
+can read exactly whats happening there? since we cant get adb ... like after every drive, so u can
+audit it." ADB is impossible on the unit; Crashlytics breadcrumbs only ride along with a crash or
+non-fatal, and Claude cannot read the Firebase console. Built on `feat/headunit-drive-logs`.
+
+- **Head unit** (`headunit/.../diag/`): a bounded rolling log (~2 MB, oldest dropped) of every
+  `MidnightEvents` breadcrumb (a one-line tee in place of `FirebaseCrashlytics.getInstance()`) plus
+  the app's own `logcat -d -v threadtime`, snapshotted every 3 minutes because the ring buffer is
+  small. Logcat is filtered on the PID column in Kotlin (no `--pid`, so one code path on API 24-29)
+  against a persisted SET of this install's pids, so a crashed process's last lines are still
+  captured; new lines are found by an anchor line, not a timestamp (the unit's clock resets).
+- **Triggers:** drive end (the drive monitor's sustained-stop branch), service start, and a
+  Settings > System > Drive logs button. A batch is deleted only on a 2xx; offline or refused it
+  stays and the next trigger retries. No engine token: nothing is sent and nothing is lost.
+- **Redaction** before disk and again before upload: `Authorization: Token/Bearer`, `key=`,
+  `client_id`, Gemini `AIza...`, JWTs, long hex/base64 runs, plus the engine token as a literal.
+  Voice transcripts in logs are acceptable (the household's own server); no new logging of them.
+- **Engine** (`server/devicelogs/`): `POST /api/device-logs/` (multipart: gzip file part + fields,
+  device-token auth, household-scoped), table `public.device_logs` in `TENANT_TABLES`, 5 MB cap on
+  compressed AND decompressed size, `batch_id` idempotency, 60-day retention pruned inline on upload
+  (no new crontab line: Cloud Scheduler bills per job). Read path for Claude:
+  `python manage.py device_logs --last N [--grep X] [--reason R] [--household ID]`.
+- **Not an ADR:** it adds one table and one endpoint inside ADR 0044/0045's existing shape and
+  decides nothing a future agent could not read off the code.
+- **Known limits, stated:** the window timestamps are the device's untrusted clock; breadcrumbs and
+  logcat lines are appended in two streams so a batch is not strictly time-ordered (every line
+  carries its own `MM-dd HH:mm:ss.SSS`); nothing was run on the head unit.

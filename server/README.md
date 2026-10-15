@@ -96,6 +96,24 @@ else (CLAUDE.md section 4/5). Point `DATABASE_URL` at a role with
 point it at a database you cannot afford pytest to create a throwaway
 sibling of.
 
+## Device logs: reading what the head unit did
+
+The head unit has no ADB, so it uploads its own rolling log after every drive
+(`POST /api/device-logs/`, `devicelogs/`, stored gzipped in `public.device_logs`, 60 days kept,
+pruned on upload). To read it:
+
+```
+python manage.py device_logs --last 3                      # newest 3 batches, in time order
+python manage.py device_logs --last 10 --grep spotify      # only matching lines
+python manage.py device_logs --last 1 --reason drive_end --household <uuid>
+```
+
+Each batch prints under a header with the device, app version, reason (`drive_end`, `startup`,
+`manual`) and the DEVICE's clock window (untrusted: the unit's clock has reset itself). Against the
+deployed engine, run it as a Cloud Run Job execution (`deploy/cloudrun/README.md`):
+`gcloud run jobs execute legion-worker --region us-south1 --wait --args=manage.py,device_logs,--last,3`
+and read the execution's log output.
+
 ## The OpenAPI contract: `server/openapi.yaml`
 
 **A client generates from this file. It does not hand-write what it thinks
