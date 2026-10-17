@@ -57,7 +57,7 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
  * lack a portable natural key, so the cross-device BYO-cloud sync (S1) can
  * recognise the same logical row on both devices (the local autoincrement `id`
  * is per-device and can't). A UUID is assigned at row creation going forward;
- * [SyncEngine] backfills the blank legacy rows before the first export. Each
+ * SyncEngine (retired 2026-10-17) backfilled the blank legacy rows before the first export. Each
  * ADD COLUMN's `DEFAULT ''` must match the entity's `@ColumnInfo(defaultValue =
  * "''")` exactly, or MigrationTest's schema validation fails. Tables with a
  * stable natural key (vehicles/obdMac, places/label, obd_samples' composite,

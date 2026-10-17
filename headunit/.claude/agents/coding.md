@@ -28,7 +28,7 @@ before touching code. It is your map of this codebase.
     NowPlayingController (MediaSession), MixtapePlayer (Media3), SpotifyController (BYO App Remote),
     SpotifyWebApi, VolumeController
   - `backend/engine/`: LEGION engine client (OkHttp); models generated from `openapi/legion-schema.yaml`
-  - `bluetooth/`, `location/`, `sync/`, `weather/`: phone switcher, places + GPS beacon, Drive sync
+  - `bluetooth/`, `location/`, `fleetupload/`, `weather/`: phone switcher, places + GPS beacon, engine upload of car data (the Drive sync was retired 2026-10-17)
   - `ui/`: Compose screens: CruiseScreen (home), LightsOutScreen, ControlPanelScreen +
     SettingsTwoPane (settings), OnboardingManager (guided setup), LogbookScreen, MainActivity
   - `vehicle/`: OBD, maintenance, diagnostics, garage relay, build sheet

@@ -32,7 +32,6 @@ import com.kevin.midnightai.ui.OnboardingState
 import com.kevin.midnightai.vehicle.ObdBluetoothManager
 import com.kevin.midnightai.vehicle.VehicleController
 import com.kevin.midnightai.vehicle.VehicleSpecController
-import com.kevin.midnightai.sync.SyncEngine
 import com.kevin.midnightai.weather.WeatherController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -139,30 +138,6 @@ class AriaForegroundService : Service() {
             while (isActive) {
                 val weather = WeatherController.refresh()
                 delay(if (weather == null) WEATHER_RETRY_MS else WEATHER_REFRESH_MS)
-            }
-        }
-
-        // Cross-device sync while the engine is running (2026-07-16, Kevin's field
-        // report). Sync used to fire ONLY from MainActivity.onResume, which on a
-        // head unit means "when you start the car" - so a drive's telemetry, all of
-        // it recorded after that resume, never left the device until the NEXT time
-        // the car started. "Drive, get home, check the phone" could not work.
-        //
-        // Deliberately NOT hooked to drive-end: that needs the drive monitor, which
-        // needs GPS (Kevin's XJ has no antenna wired), and even with it he cuts the
-        // key on arrival and the unit powers down before any end-of-drive work could
-        // run. A periodic push while the engine turns is the only trigger that
-        // survives both. Worst case he loses the last few minutes, not the drive.
-        //
-        // Gated on engine-on so a parked car doesn't sync all day on the driver's
-        // hotspot data. maybeAutoSync is itself a no-op unless Drive is connected
-        // and its own throttle has elapsed, so this loop is cheap when idle.
-        serviceScope.launch {
-            while (isActive) {
-                delay(DRIVE_SYNC_INTERVAL_MS)
-                if (com.kevin.midnightai.vehicle.TelemetryRecorder.isEngineRunning) {
-                    SyncEngine.maybeAutoSync(this@AriaForegroundService, serviceScope)
-                }
             }
         }
 
@@ -894,12 +869,6 @@ class AriaForegroundService : Service() {
         private const val LOW_BATTERY_VOLTS = 12.0
 
         // Weather cache: retry fast until the first fetch lands, then refresh slowly.
-        // How often to push a snapshot to Drive while the engine is running. Short
-        // enough that cutting the key on arrival costs only the last few minutes;
-        // long enough not to hammer the driver's hotspot. maybeAutoSync's own
-        // throttle is the real floor.
-        private const val DRIVE_SYNC_INTERVAL_MS = 5 * 60 * 1000L
-
         private const val WEATHER_RETRY_MS = 60 * 1000L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
 

@@ -41,7 +41,7 @@ object TelemetryRecorder {
     /**
      * How long the DEVICE keeps telemetry. The driver's Drive keeps everything as a
      * permanent archive (Kevin, 2026-07-16), so this bounds the head unit's eMMC,
-     * not the moat. Read by SyncEngine.monthsToSync, which must not pull back a
+     * not the moat. Was read by SyncEngine.monthsToSync (retired 2026-10-17), which must not pull back a
      * month this has purged - that is what silently undid the purge on every sync.
      */
     const val RETENTION_MS = 365L * 24 * 60 * 60 * 1000

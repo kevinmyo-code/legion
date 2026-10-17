@@ -3,7 +3,7 @@ package com.kevin.midnightai.vehicle
 /**
  * Pure Kotlin history-shaping logic for the HISTORY tab of [com.kevin.midnightai.ui.ObdSheet].
  * No Android imports, no Room - kept separate from the DAO/Compose layers so it can be reasoned
- * about and unit-tested on the plain JVM, same pattern as SyncMerge/SyncCodec.
+ * about and unit-tested on the plain JVM, the same pure-logic pattern as the other JVM-tested helpers.
  */
 object ObdHistory {
 

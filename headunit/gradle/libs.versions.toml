@@ -36,7 +36,6 @@ lifecycle = "2.8.0"
 activityCompose = "1.9.0"
 firebase-bom = "33.7.0"
 zxing-core = "3.5.3"
-playServicesAuth = "21.2.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -78,13 +77,7 @@ firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashly
 # (2026-07-19) firebase-auth / appcheck-playintegrity / firestore / functions entries
 # removed - the entitlement broker they served was deleted 2026-07-16 and nothing in
 # app/src references them. Crashlytics is the only live Firebase artifact.
-# Google Identity Authorization API (com.google.android.gms.auth.api.identity):
-# on-device authorization for the driver's OWN Google Drive appDataFolder, used
-# by the cross-device BYO-cloud sync (S1). NOT sign-in/OAuth for a Kevin-hosted
-# backend - the app talks straight to the user's Drive. Reintroduces
-# play-services-auth (CLAUDE.md sec 8 had it removed as "not needed" for the
-# dropped Calendar idea; it IS needed for the approved sync).
-play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+# (2026-10-17) play-services-auth entry removed with the Drive sync (retired); nothing else used it.
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }

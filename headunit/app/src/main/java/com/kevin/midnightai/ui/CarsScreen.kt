@@ -204,7 +204,7 @@ fun CarsScreen(onBack: () -> Unit) {
  *    the surfaces need telling to re-read.
  *
  * There used to be a lazy per-car avatar/wallpaper Drive fetch here too
- * (SyncEngine.ensureCompanionMedia) - removed 2026-09-27 with in-app image
+ * (the retired SyncEngine.ensureCompanionMedia) - removed 2026-09-27 with in-app image
  * generation. Every car now shows the same bundled art (see SeedArt), so
  * there is nothing per-car left to fetch.
  */
