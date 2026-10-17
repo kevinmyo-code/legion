@@ -176,3 +176,26 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
         db.execSQL("ALTER TABLE `maintenance_items` ADD COLUMN `neverDone` INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * v12 -> v13 (fleet upload, 2026-10-17). One brand-new, additive table; no ALTER on anything
+ * existing. `drives` holds one row per finished drive with its recorded start (see [Drive]).
+ * It starts EMPTY: drives before this version are not reconstructed from marker samples.
+ *
+ * SQL copied verbatim from the generated `app/schemas/.../13.json`.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `drives` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`vehicleId` TEXT NOT NULL, " +
+                "`startedAt` INTEGER NOT NULL, " +
+                "`endedAt` INTEGER NOT NULL, " +
+                "`miles` REAL NOT NULL, " +
+                "`gallons` REAL, " +
+                "`endReason` TEXT NOT NULL, " +
+                "`syncId` TEXT NOT NULL)"
+        )
+    }
+}

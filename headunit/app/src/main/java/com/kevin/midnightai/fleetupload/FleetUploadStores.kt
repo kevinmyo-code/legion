@@ -5,6 +5,7 @@ import com.kevin.midnightai.backend.engine.EngineConfig
 import com.kevin.midnightai.backend.engine.EngineHttp
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.data.local.CodeEvent
+import com.kevin.midnightai.data.local.Drive
 import com.kevin.midnightai.data.local.OdbSample
 import com.kevin.midnightai.data.local.Vehicle
 import com.kevin.midnightai.diag.UploadStatusSink
@@ -27,6 +28,12 @@ class RoomFleetUploadSource(context: Context) : FleetUploadSource {
 
     override suspend fun codeEventCountAfter(vehicleId: String, afterId: Long): Int =
         db.codeEventDao().countAfter(vehicleId, afterId)
+
+    override suspend fun drivesAfter(vehicleId: String, afterId: Long, limit: Int): List<Drive> =
+        db.driveDao().pendingAfter(vehicleId, afterId, limit)
+
+    override suspend fun driveCountAfter(vehicleId: String, afterId: Long): Int =
+        db.driveDao().countAfter(vehicleId, afterId)
 }
 
 /** SharedPreferences-backed [FleetCursorStore]. Not synced to Drive and not part of the Room
@@ -46,6 +53,12 @@ class PrefsFleetCursorStore(context: Context) : FleetCursorStore {
         prefs.edit().putLong("$CODE_PREFIX$vehicleId", id).apply()
     }
 
+    override fun driveCursor(vehicleId: String): Long = prefs.getLong("$DRIVE_PREFIX$vehicleId", 0L)
+
+    override fun setDriveCursor(vehicleId: String, id: Long) {
+        prefs.edit().putLong("$DRIVE_PREFIX$vehicleId", id).apply()
+    }
+
     override fun engineVehicleId(vehicleId: String): String? =
         prefs.getString("$ENGINE_PREFIX$vehicleId", null)?.takeIf { it.isNotBlank() }
 
@@ -61,6 +74,7 @@ class PrefsFleetCursorStore(context: Context) : FleetCursorStore {
         const val PREFS = "fleet_upload_cursors"
         const val SAMPLE_PREFIX = "sample_cursor_"
         const val CODE_PREFIX = "code_cursor_"
+        const val DRIVE_PREFIX = "drive_cursor_"
         const val ENGINE_PREFIX = "engine_vehicle_"
     }
 }
@@ -115,12 +129,12 @@ object FleetUpload {
         if (!EngineHttp(EngineConfig(app)).isUsable()) return
         val uploader = create(app)
         val pending = uploader.pending()
-        if (pending.samples == 0 && pending.codeEvents == 0) return
+        if (pending.samples == 0 && pending.codeEvents == 0 && pending.drives == 0) return
         val sinceLast = System.currentTimeMillis() - FleetUploadStatus(app).lastAttemptMs()
         if (shouldFlush(pending, sinceLast)) uploader.upload(FleetUploadReason.PERIODIC)
     }
 
     fun shouldFlush(pending: FleetPending, msSinceLastAttempt: Long): Boolean =
-        pending.codeEvents > 0 || pending.samples >= FLUSH_SAMPLE_THRESHOLD ||
+        pending.codeEvents > 0 || pending.drives > 0 || pending.samples >= FLUSH_SAMPLE_THRESHOLD ||
             (pending.samples > 0 && msSinceLastAttempt >= FLUSH_INTERVAL_MS)
 }

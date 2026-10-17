@@ -1502,8 +1502,8 @@ private fun SystemLogsSection(onBack: () -> Unit) {
         Spacer(Modifier.height(AriaDimens.s1))
         Text(
             "OBD readings and trouble codes recorded on this unit are sent to your engine's fleet " +
-                "records, on the car the engine already knows. Drives are not sent yet. Nothing " +
-                "leaves while you are signed out; it waits here and goes when you are back.",
+                "records, on the car the engine already knows. Drives recorded from this version on are " +
+                "sent too. Nothing leaves while you are signed out; it waits here and goes when you are back.",
             style = RowSubtitle,
             color = AriaColors.TextDim,
         )

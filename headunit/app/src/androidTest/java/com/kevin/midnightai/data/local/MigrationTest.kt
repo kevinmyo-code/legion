@@ -277,4 +277,25 @@ class MigrationTest {
             assert(it.getInt(2) == 0) { "neverDone should default to 0 for migrated rows" }
         }
     }
+
+    @Test
+    fun migrate12To13_addsEmptyDrivesTable() {
+        val dbName = "migration-test-12-13"
+        helper.createDatabase(dbName, 12).apply { close() }
+
+        // Validates the CREATE TABLE against the exported 13.json schema.
+        val migrated = helper.runMigrationsAndValidate(dbName, 13, true, MIGRATION_12_13)
+
+        // Empty at upgrade (no backfill), writable, and gallons may be NULL.
+        migrated.query("SELECT COUNT(*) FROM drives").use {
+            assert(it.moveToFirst() && it.getInt(0) == 0) { "drives must start empty" }
+        }
+        migrated.execSQL(
+            "INSERT INTO drives (vehicleId, startedAt, endedAt, miles, gallons, endReason, syncId) " +
+                "VALUES ('car:abc', 1000, 2000, 3.5, NULL, 'ENGINE_OFF', 'sync-1')"
+        )
+        migrated.query("SELECT gallons FROM drives WHERE syncId = 'sync-1'").use {
+            assert(it.moveToFirst() && it.isNull(0)) { "gallons must be nullable" }
+        }
+    }
 }

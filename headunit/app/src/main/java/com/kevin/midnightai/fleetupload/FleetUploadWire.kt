@@ -1,6 +1,7 @@
 package com.kevin.midnightai.fleetupload
 
 import com.kevin.midnightai.data.local.CodeEvent
+import com.kevin.midnightai.data.local.Drive
 import com.kevin.midnightai.data.local.OdbSample
 import com.kevin.midnightai.data.local.Vehicle
 import java.time.Instant
@@ -98,6 +99,25 @@ internal object FleetUploadWire {
             put("mileage", e.mileage?.takeIf { it >= 0 })
             put("codes", codes)
             put("freeze_frame", freeze)
+        }.toString()
+    }
+
+    /**
+     * The body of `PUT /api/fleet/drives/<sync_id>/` (`DriveSerializer`), or null when the server
+     * would refuse it: negative or non-finite miles or gallons, or an end before its start
+     * (`drives_ends_after_start`). Gallons stay null when the drive has none; never 0.0.
+     */
+    fun drive(engineVehicleId: String, d: Drive): String? {
+        if (!d.miles.isFinite() || d.miles < 0 || d.endedAt < d.startedAt) return null
+        val gallons = d.gallons
+        if (gallons != null && (!gallons.isFinite() || gallons < 0)) return null
+        return buildJsonObject {
+            put("vehicle_id", engineVehicleId)
+            put("started_at", ts(d.startedAt))
+            put("ended_at", ts(d.endedAt))
+            put("miles", d.miles)
+            put("gallons", gallons)
+            put("end_reason", d.endReason)
         }.toString()
     }
 

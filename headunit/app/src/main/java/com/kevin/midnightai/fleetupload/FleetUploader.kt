@@ -4,6 +4,7 @@ import com.kevin.midnightai.backend.engine.EngineFailure
 import com.kevin.midnightai.backend.engine.EngineHttp
 import com.kevin.midnightai.backend.engine.EngineHttpException
 import com.kevin.midnightai.data.local.CodeEvent
+import com.kevin.midnightai.data.local.Drive
 import com.kevin.midnightai.data.local.OdbSample
 import com.kevin.midnightai.data.local.Vehicle
 import com.kevin.midnightai.diag.DriveLog
@@ -40,10 +41,12 @@ sealed interface FleetUploadOutcome {
         val codeEvents: Int,
         val moreWaiting: Boolean,
         val notes: List<String>,
+        val drives: Int = 0,
     ) : FleetUploadOutcome {
         override val sentence: String get() = buildString {
             append("Uploaded $samples OBD sample${if (samples == 1) "" else "s"}")
-            append(" and $codeEvents code event${if (codeEvents == 1) "" else "s"}.")
+            append(", $codeEvents code event${if (codeEvents == 1) "" else "s"}")
+            append(" and $drives drive${if (drives == 1) "" else "s"}.")
             if (moreWaiting) append(" More is still waiting and will go on the next upload.")
             notes.forEach { append(' ').append(it) }
         }
@@ -64,7 +67,7 @@ sealed interface FleetUploadOutcome {
 }
 
 /** How much is waiting, for the Settings row. */
-data class FleetPending(val samples: Int, val codeEvents: Int)
+data class FleetPending(val samples: Int, val codeEvents: Int, val drives: Int = 0)
 
 /** The head unit's own tables, behind a seam so the logic runs on the plain JVM. */
 interface FleetUploadSource {
@@ -73,6 +76,8 @@ interface FleetUploadSource {
     suspend fun sampleCountAfter(vehicleId: String, afterId: Long): Int
     suspend fun codeEventsAfter(vehicleId: String, afterId: Long, limit: Int): List<CodeEvent>
     suspend fun codeEventCountAfter(vehicleId: String, afterId: Long): Int
+    suspend fun drivesAfter(vehicleId: String, afterId: Long, limit: Int): List<Drive>
+    suspend fun driveCountAfter(vehicleId: String, afterId: Long): Int
 }
 
 /**
@@ -88,6 +93,8 @@ interface FleetCursorStore {
     fun setSampleCursor(vehicleId: String, id: Long)
     fun codeEventCursor(vehicleId: String): Long
     fun setCodeEventCursor(vehicleId: String, id: Long)
+    fun driveCursor(vehicleId: String): Long
+    fun setDriveCursor(vehicleId: String, id: Long)
     fun engineVehicleId(vehicleId: String): String?
     fun setEngineVehicleId(vehicleId: String, engineId: String)
     fun clearEngineVehicleId(vehicleId: String)
@@ -127,11 +134,12 @@ sealed interface VehicleResolution {
  * `(vehicle_id, pid, recorded_at)` and code events are a PUT keyed by `sync_id`, so a 2xx lost on
  * the way back and a retry store each row once.
  *
- * **Drives are NOT uploaded.** The server's `drives` table wants a start time, an end time and an
- * end reason; the head unit records none of them (its per-drive output is the `TRIP_MILES` and
- * `MPG_TRIP` marker samples, which DO go up as ordinary samples). Deriving a start or a reason
- * would be inventing a fact. The daily drive log is a narrative rollup and is not a drive. Code
- * clear events do not exist on the head unit: it never sends Mode 04.
+ * **Drives** come from the head unit's own `drives` table (v13), written by
+ * `TelemetryRecorder.finalizeDrive` with the start time the recorder actually saw, and go up as
+ * `PUT /api/fleet/drives/<sync_id>/`. Drives before v13 are not backfilled: reconstructing them
+ * from the `TRIP_MILES` marker samples would need an inferred start. The daily drive log is a
+ * narrative rollup and is not a drive. Code clear events do not exist on the head unit: it never
+ * sends Mode 04.
  *
  * Offline or not signed in sends nothing, loses nothing, and says so in the drive log.
  */
@@ -147,11 +155,13 @@ class FleetUploader(
     suspend fun pending(): FleetPending {
         var samples = 0
         var codes = 0
+        var drives = 0
         for (v in source.vehicles()) {
+            drives += source.driveCountAfter(v.obdMac, cursors.driveCursor(v.obdMac))
             samples += source.sampleCountAfter(v.obdMac, cursors.sampleCursor(v.obdMac))
             codes += source.codeEventCountAfter(v.obdMac, cursors.codeEventCursor(v.obdMac))
         }
-        return FleetPending(samples, codes)
+        return FleetPending(samples, codes, drives)
     }
 
     suspend fun upload(reason: FleetUploadReason): FleetUploadOutcome = lock.withLock {
@@ -175,7 +185,8 @@ class FleetUploader(
         val vehicles = source.vehicles()
         val waiting = vehicles.filter {
             source.sampleCountAfter(it.obdMac, cursors.sampleCursor(it.obdMac)) > 0 ||
-                source.codeEventCountAfter(it.obdMac, cursors.codeEventCursor(it.obdMac)) > 0
+                source.codeEventCountAfter(it.obdMac, cursors.codeEventCursor(it.obdMac)) > 0 ||
+                source.driveCountAfter(it.obdMac, cursors.driveCursor(it.obdMac)) > 0
         }
         if (waiting.isEmpty()) return FleetUploadOutcome.NothingToSend
         if (!http.isUsable()) {
@@ -184,6 +195,7 @@ class FleetUploader(
         }
         var samplesSent = 0
         var codesSent = 0
+        var drivesSent = 0
         var moreWaiting = false
         val notes = mutableListOf<String>()
         var listing: List<EngineVehicle>? = null
@@ -206,16 +218,17 @@ class FleetUploader(
                     val sent = sendCar(vehicle, resolution.engineId)
                     samplesSent += sent.samples
                     codesSent += sent.codeEvents
+                    drivesSent += sent.drives
                     moreWaiting = moreWaiting || sent.moreWaiting
                     sent.failure?.let { return failed(it, samplesSent, codesSent) }
                 }
             }
         }
-        if (samplesSent == 0 && codesSent == 0) {
+        if (samplesSent == 0 && codesSent == 0 && drivesSent == 0) {
             return if (notes.isEmpty()) FleetUploadOutcome.NothingToSend else FleetUploadOutcome.Skipped(notes)
         }
-        log("car data upload (${reason.name.lowercase()}): sent $samplesSent samples, $codesSent code events")
-        return FleetUploadOutcome.Sent(samplesSent, codesSent, moreWaiting, notes)
+        log("car data upload (${reason.name.lowercase()}): sent $samplesSent samples, $codesSent code events, $drivesSent drives")
+        return FleetUploadOutcome.Sent(samplesSent, codesSent, moreWaiting, notes, drivesSent)
     }
 
     private fun failed(reason: String, samples: Int, codes: Int): FleetUploadOutcome {
@@ -333,6 +346,7 @@ class FleetUploader(
     private class CarResult(
         val samples: Int,
         val codeEvents: Int,
+        val drives: Int,
         val moreWaiting: Boolean,
         val failure: String?,
     )
@@ -359,7 +373,7 @@ class FleetUploader(
                     val failure = failureOf(result.exceptionOrNull())
                     // A 4xx that names the vehicle means the cached mapping is stale; re-resolve next run.
                     if (failure is EngineFailure.Refused && failure.status in 400..499) cursors.clearEngineVehicleId(key)
-                    return CarResult(samples, 0, more, failure.sentence)
+                    return CarResult(samples, 0, 0, more, failure.sentence)
                 }
             }
             // Only here, after the 2xx (or a batch that was entirely unsendable), does the cursor move.
@@ -380,13 +394,29 @@ class FleetUploader(
                 val result = http.put(path, body)
                 if (result.isFailure) {
                     val failure = failureOf(result.exceptionOrNull())
-                    return CarResult(samples, codes, more, failure.sentence)
+                    return CarResult(samples, codes, 0, more, failure.sentence)
                 }
                 codes++
             }
             cursors.setCodeEventCursor(key, event.id)
         }
-        return CarResult(samples, codes, more, null)
+        var drivesSent = 0
+        val drives = source.drivesAfter(key, cursors.driveCursor(key), DRIVE_LIMIT)
+        if (drives.size >= DRIVE_LIMIT) more = true
+        for (drive in drives) {
+            val body = FleetUploadWire.drive(engineId, drive)
+            if (body == null) {
+                log("car data upload: skipped a drive the engine would refuse (bad miles or end before start)")
+            } else {
+                val result = http.put("/api/fleet/drives/${drive.syncId.pathSafe()}/", body)
+                if (result.isFailure) {
+                    return CarResult(samples, codes, drivesSent, more, failureOf(result.exceptionOrNull()).sentence)
+                }
+                drivesSent++
+            }
+            cursors.setDriveCursor(key, drive.id)
+        }
+        return CarResult(samples, codes, drivesSent, more, null)
     }
 
     private fun String.pathSafe(): String = java.net.URLEncoder.encode(this, "UTF-8").replace("+", "%20")
@@ -405,6 +435,7 @@ class FleetUploader(
          * minutes; the rest goes on later runs (`Sent.moreWaiting`). */
         const val MAX_BATCHES_PER_RUN = 40
         private const val CODE_EVENT_LIMIT = 500
+        private const val DRIVE_LIMIT = 500
         private const val MAX_PAGES = 50
         private const val MAX_REASON_CHARS = 200
         private val lock = Mutex()

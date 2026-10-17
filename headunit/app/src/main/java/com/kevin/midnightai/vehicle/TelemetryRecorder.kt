@@ -3,6 +3,7 @@ package com.kevin.midnightai.vehicle
 import android.content.Context
 import android.util.Log
 import com.kevin.midnightai.data.local.CarDatabase
+import com.kevin.midnightai.data.local.Drive
 import com.kevin.midnightai.data.local.OdbSample
 import com.kevin.midnightai.location.LocationController
 import com.kevin.midnightai.service.ConversationState
@@ -77,6 +78,10 @@ object TelemetryRecorder {
     @Volatile private var driveMiles = 0.0
     @Volatile private var driveGallons = 0.0
 
+    /** Epoch ms the engine came on for the drive in progress; 0 when none. Process state like the
+     * accumulators above: a drive never spans a restart that matters. */
+    @Volatile private var driveStartedAt = 0L
+
     /** MPG of the drive in progress, or null until it has accumulated a real mile. */
     fun currentDriveMpg(): Double? =
         if (driveMiles > MIN_TRIP_MILES && driveGallons > MIN_TRIP_GALLONS) driveMiles / driveGallons else null
@@ -131,6 +136,7 @@ object TelemetryRecorder {
             if (!engineWasOn) {
                 engineWasOn = true
                 isEngineRunning = true
+                driveStartedAt = System.currentTimeMillis()
                 val coolant = ObdBluetoothManager.getCoolantTemp()
                 if (coolant != null && coolant < COLD_START_C) {
                     coldStartBurst(context, coolant)
@@ -228,8 +234,17 @@ object TelemetryRecorder {
     private suspend fun finalizeDrive(context: Context) {
         val miles = driveMiles
         val gallons = driveGallons
+        val startedAt = driveStartedAt
         driveMiles = 0.0
         driveGallons = 0.0
+        driveStartedAt = 0L
+        // The fleet-upload drive row (v13). Written on a looser gate than the markers below: a
+        // real mile is enough, and a drive with no usable MAF still happened - its gallons are
+        // just null.
+        driveRow(vehicleId(context), startedAt, System.currentTimeMillis(), miles, gallons)?.let { row ->
+            runCatching { CarDatabase.getDatabase(context).driveDao().insert(row) }
+                .onFailure { Log.w(TAG, "drive row insert failed: ${it.message}") }
+        }
         if (miles <= MIN_TRIP_MILES || gallons <= MIN_TRIP_GALLONS) return
 
         runCatching {
@@ -306,4 +321,23 @@ object TelemetryRecorder {
     // connected dongle. NOT the dongle MAC directly any more - one dongle moved
     // between two cars used to make them the same vehicle. See ActiveVehicle.
     private fun vehicleId(context: Context): String = ActiveVehicle.current(context)
+
+    /**
+     * The [Drive] row for a finished drive, or null when it should not be recorded: under a
+     * real mile, or with no recorded start (the recorder never saw the engine come on, so any
+     * start would be invented). Gallons only when the drive's own MPG figure exists - miles and
+     * gallons both past their minimums, the gate `MPG_TRIP` uses - otherwise null. Pure, so the
+     * rule is tested on the JVM.
+     */
+    internal fun driveRow(vehicleId: String, startedAt: Long, endedAt: Long, miles: Double, gallons: Double): Drive? {
+        if (startedAt <= 0L || endedAt < startedAt || miles <= MIN_TRIP_MILES) return null
+        val haveMpg = gallons > MIN_TRIP_GALLONS
+        return Drive(
+            vehicleId = vehicleId,
+            startedAt = startedAt,
+            endedAt = endedAt,
+            miles = miles,
+            gallons = if (haveMpg) gallons else null,
+        )
+    }
 }

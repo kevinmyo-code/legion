@@ -1,6 +1,7 @@
 package com.kevin.midnightai.fleetupload
 
 import com.kevin.midnightai.data.local.CodeEvent
+import com.kevin.midnightai.data.local.Drive
 import com.kevin.midnightai.data.local.OdbSample
 import com.kevin.midnightai.data.local.Vehicle
 import kotlinx.serialization.json.Json
@@ -65,6 +66,24 @@ class FleetUploadWireTest {
         assertEquals(JsonNull, o["mileage"])
         assertNull(FleetUploadWire.codeEvent("e", noFf.copy(codesJson = "\"P0420\"")))
         assertNull(FleetUploadWire.codeEvent("e", noFf.copy(codesJson = "not json")))
+    }
+
+    @Test fun `a drive uses the drives field names and keeps null gallons null`() {
+        val d = Drive(id = 1, vehicleId = "v", startedAt = 1_700_000_000_000L, endedAt = 1_700_000_600_000L, miles = 4.2, gallons = null, syncId = "s")
+        val o = Json.parseToJsonElement(FleetUploadWire.drive("engine-uuid", d)!!).jsonObject
+        assertEquals(setOf("vehicle_id", "started_at", "ended_at", "miles", "gallons", "end_reason"), o.keys)
+        assertEquals("2023-11-14T22:13:20Z", o["started_at"]!!.jsonPrimitive.content)
+        assertEquals("2023-11-14T22:23:20Z", o["ended_at"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, o["gallons"])
+        assertEquals("ENGINE_OFF", o["end_reason"]!!.jsonPrimitive.content)
+        assertEquals("0.25", Json.parseToJsonElement(FleetUploadWire.drive("e", d.copy(gallons = 0.25))!!).jsonObject["gallons"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `a drive the server would refuse is left out`() {
+        val d = Drive(id = 1, vehicleId = "v", startedAt = 2000L, endedAt = 1000L, miles = 4.2, syncId = "s")
+        assertNull(FleetUploadWire.drive("e", d))
+        assertNull(FleetUploadWire.drive("e", d.copy(startedAt = 1000L, endedAt = 2000L, miles = -1.0)))
+        assertNull(FleetUploadWire.drive("e", d.copy(startedAt = 1000L, endedAt = 2000L, gallons = Double.NaN)))
     }
 
     @Test fun `a blank sync id gets a stable stand-in`() {

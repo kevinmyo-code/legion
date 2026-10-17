@@ -3,6 +3,7 @@ package com.kevin.midnightai.fleetupload
 import com.kevin.midnightai.backend.engine.EngineConfig
 import com.kevin.midnightai.backend.engine.EngineHttp
 import com.kevin.midnightai.data.local.CodeEvent
+import com.kevin.midnightai.data.local.Drive
 import com.kevin.midnightai.data.local.OdbSample
 import com.kevin.midnightai.data.local.Vehicle
 import com.kevin.midnightai.diag.UploadStatusSink
@@ -43,6 +44,7 @@ class FleetUploaderTest {
     /** Route -> response; swapped per test. */
     private var vehicleListBody = emptyList<String>()
     private var batchResponse: () -> MockResponse = { MockResponse().setResponseCode(201).setBody(RESULT) }
+    private var drivePutResponse: () -> MockResponse = { MockResponse().setResponseCode(200).setBody("{}") }
     private var codePutResponse: () -> MockResponse = { MockResponse().setResponseCode(200).setBody("{}") }
     private var createResponse: () -> MockResponse = {
         MockResponse().setResponseCode(200).setBody("""{"id":"$engineId"}""")
@@ -58,11 +60,14 @@ class FleetUploaderTest {
     private class MemCursors : FleetCursorStore {
         val samples = mutableMapOf<String, Long>()
         val codes = mutableMapOf<String, Long>()
+        val drives = mutableMapOf<String, Long>()
         val engine = mutableMapOf<String, String>()
         override fun sampleCursor(vehicleId: String) = samples[vehicleId] ?: 0L
         override fun setSampleCursor(vehicleId: String, id: Long) { samples[vehicleId] = id }
         override fun codeEventCursor(vehicleId: String) = codes[vehicleId] ?: 0L
         override fun setCodeEventCursor(vehicleId: String, id: Long) { codes[vehicleId] = id }
+        override fun driveCursor(vehicleId: String) = drives[vehicleId] ?: 0L
+        override fun setDriveCursor(vehicleId: String, id: Long) { drives[vehicleId] = id }
         override fun engineVehicleId(vehicleId: String) = engine[vehicleId]
         override fun setEngineVehicleId(vehicleId: String, engineId: String) { engine[vehicleId] = engineId }
         override fun clearEngineVehicleId(vehicleId: String) { engine.remove(vehicleId) }
@@ -72,6 +77,7 @@ class FleetUploaderTest {
         val cars: List<Vehicle>,
         val samples: List<OdbSample> = emptyList(),
         val events: List<CodeEvent> = emptyList(),
+        val driveRows: List<Drive> = emptyList(),
     ) : FleetUploadSource {
         override suspend fun vehicles() = cars
         override suspend fun samplesAfter(vehicleId: String, afterId: Long, limit: Int) =
@@ -82,6 +88,10 @@ class FleetUploaderTest {
             events.filter { it.vehicleId == vehicleId && it.id > afterId }.sortedBy { it.id }.take(limit)
         override suspend fun codeEventCountAfter(vehicleId: String, afterId: Long) =
             events.count { it.vehicleId == vehicleId && it.id > afterId }
+        override suspend fun drivesAfter(vehicleId: String, afterId: Long, limit: Int) =
+            driveRows.filter { it.vehicleId == vehicleId && it.id > afterId }.sortedBy { it.id }.take(limit)
+        override suspend fun driveCountAfter(vehicleId: String, afterId: Long) =
+            driveRows.count { it.vehicleId == vehicleId && it.id > afterId }
     }
 
     private val sink = Sink()
@@ -100,6 +110,7 @@ class FleetUploaderTest {
                     path.startsWith("/api/fleet/vehicles/") && request.method == "PUT" -> createResponse()
                     path == "/api/fleet/obd_samples/batch/" -> batchResponse()
                     path.startsWith("/api/fleet/code_events/") -> codePutResponse()
+                    path.startsWith("/api/fleet/drives/") -> drivePutResponse()
                     else -> MockResponse().setResponseCode(404)
                 }
             }
@@ -365,6 +376,33 @@ class FleetUploaderTest {
         assertEquals(1L, cursors.codes[mac])
     }
 
+    // --- drives --------------------------------------------------------------------------------
+
+    private fun drive(id: Long, gallons: Double? = 0.2) =
+        Drive(id = id, vehicleId = mac, startedAt = 1_700_000_000_000L, endedAt = 1_700_000_600_000L, miles = 4.2, gallons = gallons, syncId = "drive-$id")
+
+    @Test fun `drives are PUT by sync id with the recorded start and the cursor follows the 2xx`() = runTest {
+        vehicleListBody = listOf(engineRow(engineId, guid = FleetUploader.vehicleGuid(mac)))
+        val outcome = uploader(Source(listOf(car()), driveRows = listOf(drive(1), drive(2, gallons = null))))
+            .upload(FleetUploadReason.MANUAL)
+
+        val puts = requests.filter { it.method == "PUT" }
+        assertEquals(listOf("/api/fleet/drives/drive-1/", "/api/fleet/drives/drive-2/"), puts.map { it.path })
+        val first = Json.parseToJsonElement(puts[0].body.readUtf8()).jsonObject
+        assertEquals("2023-11-14T22:13:20Z", first["started_at"]!!.jsonPrimitive.content)
+        assertEquals(engineId, first["vehicle_id"]!!.jsonPrimitive.content)
+        assertEquals(2, (outcome as FleetUploadOutcome.Sent).drives)
+        assertEquals(2L, cursors.drives[mac])
+    }
+
+    @Test fun `a refused drive is not marked sent`() = runTest {
+        vehicleListBody = listOf(engineRow(engineId, guid = FleetUploader.vehicleGuid(mac)))
+        drivePutResponse = { MockResponse().setResponseCode(500) }
+        val outcome = uploader(Source(listOf(car()), driveRows = listOf(drive(1)))).upload(FleetUploadReason.MANUAL)
+        assertTrue(outcome is FleetUploadOutcome.Failed)
+        assertNull(cursors.drives[mac])
+    }
+
     // --- flush rule ----------------------------------------------------------------------------
 
     @Test fun `the mid-drive flush fires on size, on age, and on any waiting code event`() {
@@ -372,6 +410,7 @@ class FleetUploaderTest {
         assertTrue(FleetUpload.shouldFlush(FleetPending(FleetUpload.FLUSH_SAMPLE_THRESHOLD, 0), 0L))
         assertTrue(FleetUpload.shouldFlush(FleetPending(1, 0), FleetUpload.FLUSH_INTERVAL_MS))
         assertTrue(FleetUpload.shouldFlush(FleetPending(0, 1), 0L))
+        assertTrue(FleetUpload.shouldFlush(FleetPending(0, 0, 1), 0L))
         assertEquals(false, FleetUpload.shouldFlush(FleetPending(10, 0), 60_000L))
         assertEquals(false, FleetUpload.shouldFlush(FleetPending(0, 0), day))
     }

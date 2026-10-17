@@ -71,7 +71,7 @@ fun FleetUploadEntry(modifier: Modifier = Modifier) {
             )
         }
         Text(
-            text = pending?.let { "Waiting on this unit: ${it.samples} OBD samples, ${it.codeEvents} code events." }
+            text = pending?.let { "Waiting on this unit: ${it.samples} OBD samples, ${it.codeEvents} code events, ${it.drives} drives." }
                 ?: "Waiting on this unit: could not be counted.",
             style = MaterialTheme.typography.bodySmall,
             color = AriaColors.TextDim,
