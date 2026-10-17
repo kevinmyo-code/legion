@@ -60,7 +60,9 @@ internal object FleetUploadWire {
         put("trim", v.trim.ifBlank { null })
         put("engine", null as String?)
         put("confirmed", v.confirmed)
-        put("archived", false)
+        // Carry the driver's own flag: archived cars are uploaded too (their history belongs on
+        // the engine), and a PUT states the whole row, so false here would un-archive the car.
+        put("archived", v.archived)
         put("last_obd_mac", lastObdMac)
     }.toString()
 

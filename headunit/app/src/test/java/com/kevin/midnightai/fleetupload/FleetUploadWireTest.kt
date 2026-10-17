@@ -82,6 +82,10 @@ class FleetUploadWireTest {
         )
         assertEquals("1998", o["year"]!!.jsonPrimitive.content)
         assertEquals("AA:BB:CC:DD:EE:FF", o["last_obd_mac"]!!.jsonPrimitive.content)
+        assertEquals("false", o["archived"]!!.jsonPrimitive.content)
+        val archived = Json.parseToJsonElement(FleetUploadWire.vehicleCreate(v.copy(archived = true), null)).jsonObject
+        assertEquals("true", archived["archived"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, archived["last_obd_mac"])
     }
 
     @Test fun `only a confirmed, fully named, in range car may be created`() {
