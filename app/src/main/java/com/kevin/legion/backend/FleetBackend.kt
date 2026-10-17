@@ -618,6 +618,14 @@ data class RemoteObdSample(
     val lng: Double?,
 )
 
+/**
+ * ONE page of [RemoteObdSample] rows, for [FleetBackend.fetchObdSamplesPage]. [nextSinceMs] is the
+ * `recorded_at` of the page's last row when more may follow (the engine's `next`), or null on the
+ * last page. It is INCLUSIVE - the next request re-serves the boundary instant - so a caller
+ * dedupes on the natural key, which [ObdSamplePull] does.
+ */
+data class RemoteObdSamplePage(val samples: List<RemoteObdSample>, val nextSinceMs: Long?)
+
 data class RemoteDriveReassignment(
     val serverId: String,
     val syncId: String,
@@ -934,6 +942,15 @@ interface FleetBackend {
      * materialise every car's rows in memory at once. Same default as [fetchChangedVehiclesSince].
      */
     suspend fun fetchObdSamplesSince(vehicleServerId: String, sinceMs: Long): Result<List<RemoteObdSample>> = Result.success(emptyList())
+
+    /**
+     * One PAGE of [fetchObdSamplesSince]'s feed, so [ObdSamplePull] can store a page and move its
+     * cursor before asking for the next, instead of holding a year of rows in memory and losing the
+     * lot to one failure on page 40. The default wraps [fetchObdSamplesSince] as a single final
+     * page, which is exactly right for a backend that has no paging of its own.
+     */
+    suspend fun fetchObdSamplesPage(vehicleServerId: String, sinceMs: Long): Result<RemoteObdSamplePage> =
+        fetchObdSamplesSince(vehicleServerId, sinceMs).map { RemoteObdSamplePage(it, null) }
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseFleetBackend] for every failure branch - owned

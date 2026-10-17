@@ -124,6 +124,22 @@ internal class EngineSyncedTable<ROW>(
         extraQuery: Map<String, String> = emptyMap(),
     ): List<ROW> = fetchPages(sinceIso, activeOnly = false, extraQuery = extraQuery)
 
+    /**
+     * EXACTLY ONE page of `GET <table>/?since=<iso>`, envelope intact so the caller sees `next`.
+     * For a caller that must store each page before asking for the next (the OBD pull: a year of
+     * telemetry is too large to hold, and a failure on page 40 must not cost pages 1-39).
+     */
+    suspend fun fetchPage(sinceIso: String?, extraQuery: Map<String, String> = emptyMap()): EnginePage<ROW> {
+        val query = buildMap {
+            putAll(extraQuery)
+            sinceIso?.let { put("since", it) }
+        }
+        return engineSyncedJson.decodeFromString(
+            EnginePage.serializer(rowSerializer),
+            http.get(path, query).getOrThrow().body,
+        )
+    }
+
     /** `GET <table>/?active=1` - live rows only. Narrowed SERVER-side (unlike
      * [DjangoEventsBackend.fetchActive], which has to filter tombstones in the client because
      * `/api/events` is the older hand-written view and takes no `active` parameter). */

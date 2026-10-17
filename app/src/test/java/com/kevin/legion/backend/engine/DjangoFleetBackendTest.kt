@@ -66,6 +66,38 @@ class DjangoFleetBackendTest {
     }
 
     @Test
+    fun `one OBD page carries the engine's next cursor as milliseconds and nothing else is fetched`() = runBlocking {
+        val page = """
+            {"results": [{
+              "vehicle_id": "$vehicleId", "pid": "010C", "value": 900.0, "unit": "rpm",
+              "recorded_at": "2026-09-02T14:03:02.500000Z", "lat": null, "lng": null,
+              "created_at": "2026-09-02T14:03:03Z"
+            }], "next": "2026-09-02T14:03:02.500000Z"}
+        """.trimIndent()
+        val engine = EngineTestSupport.RecordingEngine { json(page) }
+
+        val result = backend(engine).fetchObdSamplesPage(vehicleId, 1_788_357_600_000L).getOrThrow()
+
+        assertEquals(1, result.samples.size)
+        // `next` present means more may follow; it is handed back, not followed - the caller stores
+        // this page before deciding to ask for another.
+        assertEquals(1, engine.requests.size)
+        assertEquals(1_788_357_782_500L, result.nextSinceMs)
+        assertEquals(vehicleId, engine.requests.single().url.parameters["vehicle"])
+    }
+
+    @Test
+    fun `an unreachable engine fails the OBD page in words and returns no rows`() = runBlocking {
+        val backend = DjangoFleetBackend(
+            EngineHttp(EngineTestSupport.signedInConfig(context), EngineTestSupport.unreachableClient()),
+        )
+
+        val result = backend.fetchObdSamplesPage(vehicleId, 0L)
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
     fun `a re-posted OBD batch is a normal 200 with nothing inserted, never an error`() = runBlocking {
         // Idempotent on the natural key `(vehicle_id, pid, recorded_at)` by construction - the
         // insert names the unique index as its `on conflict` target - and ObdSampleReconcile

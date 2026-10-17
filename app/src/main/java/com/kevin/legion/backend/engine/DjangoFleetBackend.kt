@@ -20,6 +20,7 @@ import com.kevin.legion.backend.RemoteDrive
 import com.kevin.legion.backend.RemoteDriveReassignment
 import com.kevin.legion.backend.RemoteMaintenanceSchedule
 import com.kevin.legion.backend.RemoteObdSample
+import com.kevin.legion.backend.RemoteObdSamplePage
 import com.kevin.legion.backend.RemoteOilAnalysis
 import com.kevin.legion.backend.RemoteServiceHistory
 import com.kevin.legion.backend.RemoteVehicle
@@ -518,6 +519,18 @@ class DjangoFleetBackend(private val http: EngineHttp) : FleetBackend {
             obdSamples
                 .fetchChangedSince(fleetTs(sinceMs), mapOf("vehicle" to vehicleServerId))
                 .map { it.toRemote() }
+        }
+
+    /** One page of the same feed - see [FleetBackend.fetchObdSamplesPage]. `next` is parsed to ms
+     * (truncating any microseconds DOWN, so the next `since` can only re-serve rows, never skip
+     * one). */
+    override suspend fun fetchObdSamplesPage(
+        vehicleServerId: String,
+        sinceMs: Long,
+    ): Result<RemoteObdSamplePage> =
+        translatingEngineCall("load that car's OBD samples") {
+            val page = obdSamples.fetchPage(fleetTs(sinceMs), mapOf("vehicle" to vehicleServerId))
+            RemoteObdSamplePage(page.results.map { it.toRemote() }, page.next?.let(::fleetParseTs))
         }
 
     // --- Plumbing ------------------------------------------------------------------------------

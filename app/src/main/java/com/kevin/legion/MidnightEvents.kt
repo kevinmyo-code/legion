@@ -239,6 +239,12 @@ object MidnightEvents {
         Log.w(TAG, "obd_sample_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** [com.kevin.legion.backend.ObdSamplePull] skipped an engine vehicle that has no local twin
+     * (never auto-created there). The sentence is the breadcrumb. */
+    fun obdPullSkippedVehicle(why: String) = safe {
+        Log.w(TAG, "obd_pull_skipped_vehicle $why")
+    }
+
     /**
      * A foreground [com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun] pass
      * completed - same "only evidence this ran" role as [ledgerAutoReconcileSucceeded].
