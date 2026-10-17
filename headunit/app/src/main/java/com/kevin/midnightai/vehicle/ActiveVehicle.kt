@@ -19,7 +19,7 @@ import java.util.UUID
  * being the identity; the driver's explicit choice is.
  *
  * **This is per-device state and MUST NOT sync.** It is deliberately absent from
- * [com.kevin.midnightai.sync.SyncEngine]'s registry. The phone can be in the
+ * the (since retired) Drive sync's registry. The phone can be in the
  * Outlander at the same moment the head unit is bolted in the Cherokee - they
  * legitimately disagree, and that disagreement is correct. If this synced,
  * choosing a car on the phone would flip the head unit mid-drive.

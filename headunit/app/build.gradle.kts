@@ -262,13 +262,8 @@ dependencies {
     // are the only live Firebase surface.
 
 
-    // Google Identity Authorization API: on-device authorization to the driver's
-    // OWN Google Drive appDataFolder for cross-device BYO-cloud sync (S1, CLAUDE.md
-    // sec 8/9's 2026-07-14 scoped reopen). The app talks straight to the user's
-    // Drive with the drive.appdata scope - Kevin never holds the data, same shape
-    // as the BYO Gemini key. Identified by package + SHA-1 (the
-    // Android OAuth client in the Firebase project), so no client-id string ships.
-    implementation(libs.play.services.auth)
+    // (2026-10-17) play-services-auth (Google Identity Authorization for the driver's Drive
+    // appDataFolder) was REMOVED with the Drive sync, which Kevin retired; nothing else used it.
 
     // Spotify App Remote SDK (BYO client ID, 2026-07-21 reopen of the CLAUDE.md
     // sec 8 freeze - see memory/library/decisions.md). Optional power-user add-on:

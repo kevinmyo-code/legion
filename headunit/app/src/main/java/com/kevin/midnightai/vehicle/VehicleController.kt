@@ -384,7 +384,7 @@ object VehicleController {
      * them - cloning the drive onto both cars instead of moving it, permanently, on
      * every device. See [com.kevin.midnightai.data.local.DriveReassignment].
      *
-     * The local apply here is just for immediacy; [com.kevin.midnightai.sync.SyncEngine]
+     * The local apply here is just for immediacy; the retired Drive sync
      * re-applies the rule on every pass, which is what makes it converge.
      */
     suspend fun reassignDrive(

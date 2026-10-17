@@ -32,7 +32,7 @@ is compile-and-test verified only, not run on the head unit. `CLAUDE.md` §14 tr
 | Maintenance, logbook, saved places, Shelly garage relay | Logbook and places are reached from Settings, Your car |
 | Two-pane Settings | Rail: Phones & audio, Music, Engine, Companion, Your car, Look, System |
 | Reverse camera tile | Hands off to the vendor camera activity; no camera code here |
-| Cross-device sync | Opt-in, the driver's own Google Drive `appDataFolder` |
+| Off-device copy | OBD samples, code events and drives upload to the household LEGION engine (`fleetupload/`); the Google Drive sync was retired 2026-10-17 |
 | LEGION engine client | `backend/engine/`: sign-in, models generated from `openapi/legion-schema.yaml` |
 | Seeded art | Bundled in `res/drawable-nodpi`, made with `art/seed/*.py`. The app generates no images |
 
@@ -110,7 +110,7 @@ app/src/main/java/com/kevin/midnightai/
   media/           now-playing, MusicRouter, mixtape player, Spotify App Remote and Web API
   bluetooth/       phone link and the two-phone switcher
   location/        location, saved places, reminders, phone GPS beacon
-  sync/            Drive appDataFolder sync
+  fleetupload/     OBD samples, code events and drives -> LEGION engine
   backend/engine/  LEGION engine auth, HTTP, MCP client
   data/local/      Room database, entities, DAOs, migrations
   ui/              Compose screens; ui/theme/ holds the AriaColors/AriaType/AriaDimens tokens

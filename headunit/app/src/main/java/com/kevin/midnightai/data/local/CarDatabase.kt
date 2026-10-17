@@ -33,6 +33,7 @@ import androidx.room.RoomDatabase
         LibraryTrack::class, Mixtape::class, MixtapeTrack::class,
         DriveReassignment::class,
         EpisodicTurn::class, CompanionMemory::class,
+        Drive::class,
     ],
     // v7: added `updatedAt` to the mutable tables for cross-device sync
     // last-write-wins (S1). v8: added `syncId` (portable UUID identity) to the
@@ -53,7 +54,9 @@ import androidx.room.RoomDatabase
     // (INTEGER DEFAULT 0). Distinguishes a driver-confirmed "never done"
     // fact from an unknown anchor (both lastDone* null); see MaintenanceItem's
     // doc comment for why the two must not be conflated.
-    version = 12,
+    // v13: `drives` (2026-10-17) - one row per finished drive with its RECORDED start, written by
+    // TelemetryRecorder.finalizeDrive for the fleet upload. Empty at upgrade, no backfill.
+    version = 13,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -81,6 +84,7 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun driveReassignmentDao(): DriveReassignmentDao
     abstract fun episodicTurnDao(): EpisodicTurnDao
     abstract fun companionMemoryDao(): CompanionMemoryDao
+    abstract fun driveDao(): DriveDao
 
     companion object {
         @Volatile
@@ -93,7 +97,7 @@ abstract class CarDatabase : RoomDatabase() {
                     CarDatabase::class.java,
                     "midnight_ai_database",
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()
                 INSTANCE = instance

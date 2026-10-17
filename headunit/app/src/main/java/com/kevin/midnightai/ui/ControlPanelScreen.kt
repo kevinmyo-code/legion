@@ -154,7 +154,7 @@ private enum class Section {
     // 2026-09-27 slim pass, which left the car roster, OBD history and the drive corrector
     // unreachable by hand. They are full-screen leaves like LOGBOOK.
     CARS, OBD_DATA,
-    CONN_SPOTIFY, CONN_SYNC, CONN_GARAGE, CONN_ENGINE,
+    CONN_SPOTIFY, CONN_GARAGE, CONN_ENGINE,
     SYSTEM_PERMISSIONS, SYSTEM_PREFERENCES, SYSTEM_CLOCK,
     // Both reachable from Cruise's dock too (long-press REAR for the picker;
     // there is no in-Cruise path to diagnostics) - this is the discoverable
@@ -260,7 +260,6 @@ fun ControlPanel(
                 onBack = { section = null },
             )
             Section.CONN_SPOTIFY -> ConnectionsSpotifySection { section = null }
-            Section.CONN_SYNC -> ConnectionsSyncSection { section = null }
             Section.CONN_GARAGE -> ConnectionsGarageSection { section = null }
             Section.CONN_ENGINE -> ConnectionsEngineSection(context) { section = null }
             Section.SYSTEM_PERMISSIONS -> SystemPermissionsSection(context, onRequestRuntimePermissions) { section = null }
@@ -423,7 +422,6 @@ private fun settingsRows(
             openRow("Clock & time zone", clockRowSubtitle(), Section.SYSTEM_CLOCK),
             openRow("Permissions", "Microphone, media access", Section.SYSTEM_PERMISSIONS),
             openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES),
-            openRow("Cross-device sync", "Optional Google Drive sync between dash and phone", Section.CONN_SYNC),
             openRow("Drive logs", "Upload this unit's own log to your engine after each drive", Section.SYSTEM_LOGS),
             openRow("Reset", "Start over or wipe data", Section.SYSTEM_RESET),
         )
@@ -1427,7 +1425,7 @@ private fun SystemPreferencesSection(context: Context, onBack: () -> Unit) {
     }
 }
 
-// --- Connections: Spotify, cross-device sync, garage --------
+// --- Connections: Spotify, garage --------
 
 @Composable
 private fun ConnectionsSpotifySection(onBack: () -> Unit) {
@@ -1446,23 +1444,6 @@ private fun ConnectionsSpotifySection(onBack: () -> Unit) {
         SpotifyKeyEntry()
         Spacer(Modifier.height(AriaDimens.s4))
         SpotifyPinPicker()
-    }
-}
-
-@Composable
-private fun ConnectionsSyncSection(onBack: () -> Unit) {
-    SectionScaffold("Cross-device sync", onBack) {
-        Text("Cross-device sync", style = RowTitle, color = AriaColors.TextPrimary)
-        Spacer(Modifier.height(AriaDimens.s1))
-        Text(
-            "Optional: connect your own Google Drive so your car data rides between this dash and " +
-                "your phone - review OBD history and prep mixtapes from the couch, ready when you drive. " +
-                "It goes to your Drive, never our servers. Skip this and everything stays on this device.",
-            style = RowSubtitle,
-            color = AriaColors.TextDim,
-        )
-        Spacer(Modifier.height(10.dp))
-        DriveSyncEntry()
     }
 }
 
@@ -1497,6 +1478,18 @@ private fun SystemLogsSection(onBack: () -> Unit) {
         )
         Spacer(Modifier.height(AriaDimens.s3))
         DriveLogEntry()
+        Spacer(Modifier.height(AriaDimens.s4))
+        Text("Car data to engine", style = RowTitle, color = AriaColors.TextPrimary)
+        Spacer(Modifier.height(AriaDimens.s1))
+        Text(
+            "OBD readings and trouble codes recorded on this unit are sent to your engine's fleet " +
+                "records, on the car the engine already knows. Drives recorded from this version on are " +
+                "sent too. Nothing leaves while you are signed out; it waits here and goes when you are back.",
+            style = RowSubtitle,
+            color = AriaColors.TextDim,
+        )
+        Spacer(Modifier.height(AriaDimens.s3))
+        FleetUploadEntry()
     }
 }
 

@@ -57,7 +57,7 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
  * lack a portable natural key, so the cross-device BYO-cloud sync (S1) can
  * recognise the same logical row on both devices (the local autoincrement `id`
  * is per-device and can't). A UUID is assigned at row creation going forward;
- * [SyncEngine] backfills the blank legacy rows before the first export. Each
+ * SyncEngine (retired 2026-10-17) backfilled the blank legacy rows before the first export. Each
  * ADD COLUMN's `DEFAULT ''` must match the entity's `@ColumnInfo(defaultValue =
  * "''")` exactly, or MigrationTest's schema validation fails. Tables with a
  * stable natural key (vehicles/obdMac, places/label, obd_samples' composite,
@@ -174,5 +174,28 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
 val MIGRATION_11_12 = object : Migration(11, 12) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `maintenance_items` ADD COLUMN `neverDone` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/**
+ * v12 -> v13 (fleet upload, 2026-10-17). One brand-new, additive table; no ALTER on anything
+ * existing. `drives` holds one row per finished drive with its recorded start (see [Drive]).
+ * It starts EMPTY: drives before this version are not reconstructed from marker samples.
+ *
+ * SQL copied verbatim from the generated `app/schemas/.../13.json`.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `drives` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`vehicleId` TEXT NOT NULL, " +
+                "`startedAt` INTEGER NOT NULL, " +
+                "`endedAt` INTEGER NOT NULL, " +
+                "`miles` REAL NOT NULL, " +
+                "`gallons` REAL, " +
+                "`endReason` TEXT NOT NULL, " +
+                "`syncId` TEXT NOT NULL)"
+        )
     }
 }

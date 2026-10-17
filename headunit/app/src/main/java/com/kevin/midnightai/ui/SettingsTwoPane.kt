@@ -74,7 +74,7 @@ internal enum class SettingsCategory(
     COMPANION("Companion", "コンパニオン", "Who you are talking to, how they sound, and what they know.", SettingsIcon.COMPANION),
     CAR("Your car", "クルマ", "The car itself: details, adapter, logbook, places, garage.", SettingsIcon.CAR),
     LOOK("Look", "ルック", "Colors, wallpaper, gauges, and the screen.", SettingsIcon.LOOK),
-    SYSTEM("System", "システム", "Permissions, preferences, sync, and starting over.", SettingsIcon.SYSTEM),
+    SYSTEM("System", "システム", "Permissions, preferences, and starting over.", SettingsIcon.SYSTEM),
 }
 
 internal enum class SettingsIcon { PHONE, MUSIC, ENGINE, COMPANION, CAR, LOOK, SYSTEM }

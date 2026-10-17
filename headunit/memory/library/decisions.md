@@ -1809,3 +1809,30 @@ Kevin: "i dont need the floating badge in the head unit. remove it if its dead w
   inside the app's own Activity, and the reverse camera is an app hand-off.
 - **Standing.** No floating overlay without a new ruling. CLAUDE.md section 7 is now a short
   statement of this; the section 8 rows that mentioned the badge point at it.
+
+## 2026-10-17 - Google Drive sync retired from the head unit (branch `feat/headunit-fleet-upload`)
+
+Kevin ruled to retire ALL of the head unit's Google Drive sync. He was told first what that costs,
+and confirmed that the Outlander spare phone no longer runs `com.kevin.midnightai`, so no other
+device reads that Drive folder.
+
+- **Supersedes the 2026-07-14 "Cross-device car-data sync (BYO Drive)" ruling** (and the
+  `play-services-auth` reintroduction that came with it). That entry is left as written above; this
+  one replaces it as the standing decision.
+- **Why.** The LEGION engine is now the off-device home for car data. The head unit uploads OBD
+  samples, code events and drives to `/api/fleet/` (`fleetupload/`, same session), so the Drive
+  archive no longer has a job.
+- **The loss Kevin accepted.** The tables that are NOT part of the fleet upload lose their off-device
+  copy: memories, places, place reminders, music plays, monthly recaps, yearly wrapped, and the
+  companion profile (name, persona, traits, voice). They now live only on the head unit.
+- **Removed.** `sync/` (`SyncEngine`, `DriveClient`, `DriveAuth`, `DriveConflict`, `SyncCodec`,
+  `SyncMerge`, `SyncCapability`, `CompanionSync`) and its four tests, `ui/DriveSyncEntry.kt`, the
+  Settings > Connections "Cross-device sync" row, the service's engine-on sync loop, the
+  `MainActivity` foreground sync and the "two companions found" clash dialog, the sync-only
+  `CompanionProfile` accessors (`companionIdentity*`, `saveCompanionIdentity*`,
+  `isCompanionReconciled`, `isSyncEnabled`), and the `play-services-auth` dependency.
+- **Kept, unused.** Room's `syncId` and `updatedAt` columns and the `companion_updated_at` prefs key
+  stay: dropping them is a destructive schema change and buys nothing.
+- **Same session, related.** Room v12 -> v13 adds an empty `drives` table (start time recorded by
+  `TelemetryRecorder`, not inferred); drives before v13 are not backfilled.
+

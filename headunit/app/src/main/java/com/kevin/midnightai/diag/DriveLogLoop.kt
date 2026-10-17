@@ -1,6 +1,8 @@
 package com.kevin.midnightai.diag
 
 import android.content.Context
+import com.kevin.midnightai.fleetupload.FleetUpload
+import com.kevin.midnightai.fleetupload.FleetUploadReason
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -19,6 +21,9 @@ import kotlinx.coroutines.withContext
  * - [uploadAfterDrive] - called by the drive monitor when a sustained stop ends a drive
  *   (`drive_end`).
  *
+ * Car data (OBD samples and DTC events) is uploaded on the same three triggers plus a size-or-time
+ * flush on the snapshot tick (`fleetupload/FleetUpload`).
+ *
  * Offline is not an error here: a failed upload leaves the batch on disk and the next trigger
  * (the next drive end, the next start, or the Settings button) retries it.
  */
@@ -30,6 +35,8 @@ object DriveLogLoop {
         val app = context.applicationContext
         delay(STARTUP_DELAY_MS)
         runCatching { DriveLogUploader.create(app)?.upload(UploadReason.STARTUP) }
+        // Car data rides the same triggers (2026-10-17): no second scheduler.
+        runCatching { FleetUpload.create(app).upload(FleetUploadReason.STARTUP) }
         var saidUnreadable = false
         while (true) { // ends when the service scope cancels: delay() throws
             val added = withContext(Dispatchers.IO) { DriveLog.snapshotLogcat() }
@@ -40,6 +47,8 @@ object DriveLogLoop {
                 saidUnreadable = true
                 DriveLog.breadcrumb("logcat unreadable on this unit; only breadcrumbs follow")
             }
+            // Mid-drive flush of OBD samples and code events, on a size-or-time threshold.
+            runCatching { FleetUpload.flushIfDue(app) }
             delay(SNAPSHOT_INTERVAL_MS)
         }
     }
@@ -48,6 +57,7 @@ object DriveLogLoop {
         val app = context.applicationContext
         scope.launch {
             runCatching { DriveLogUploader.create(app)?.upload(UploadReason.DRIVE_END) }
+            runCatching { FleetUpload.create(app).upload(FleetUploadReason.DRIVE_END) }
         }
     }
 }

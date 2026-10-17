@@ -36,7 +36,6 @@ import androidx.lifecycle.lifecycleScope
 import com.kevin.midnightai.StartupTrace
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.service.AriaForegroundService
-import com.kevin.midnightai.sync.SyncEngine
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaTheme
 import kotlinx.coroutines.launch
@@ -228,41 +227,6 @@ class MainActivity : ComponentActivity() {
                             onStartVoiceSetup = { startCompanionSetup() },
                         )
                     }
-                    // Cross-device sync (S1): a genuine "two different companions
-                    // met for the first time" moment - see
-                    // SyncEngine.CompanionSync.decideCompanion. Non-blocking: the
-                    // rest of the app (and sync itself) keeps working while this
-                    // sits open; it only ever appears once per real mismatch.
-                    val companionClash by SyncEngine.pendingCompanionClash.collectAsState()
-                    companionClash?.let { clash ->
-                        AlertDialog(
-                            onDismissRequest = { /* Requires an explicit choice - no free dismiss. */ },
-                            title = { Text("Two companions found") },
-                            text = {
-                                Text(
-                                    "This device: ${clash.local.name}. Your other device: " +
-                                        "${clash.remote.name}. Keep which one everywhere?",
-                                )
-                            },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    lifecycleScope.launch {
-                                        SyncEngine.resolveCompanionClash(this@MainActivity, keepLocal = true)
-                                    }
-                                }) { Text("KEEP ${clash.local.name}") }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = {
-                                    lifecycleScope.launch {
-                                        SyncEngine.resolveCompanionClash(this@MainActivity, keepLocal = false)
-                                    }
-                                }) { Text("SWITCH TO ${clash.remote.name}") }
-                            },
-                            containerColor = AriaColors.Panel,
-                            titleContentColor = AriaColors.TextPrimary,
-                            textContentColor = AriaColors.TextPrimary,
-                        )
-                    }
                 }
                 }
             }
@@ -396,9 +360,6 @@ class MainActivity : ComponentActivity() {
         if (micGranted) {
             startAriaService()
         }
-        // Cross-device sync (S1): pull anything prepped on the other device when we
-        // come to the foreground. Throttled + no-op unless Drive is connected.
-        SyncEngine.maybeAutoSync(this, lifecycleScope)
     }
 
     private fun checkAndRequestPermissions() {

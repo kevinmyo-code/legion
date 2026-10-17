@@ -1,7 +1,6 @@
 ﻿package com.kevin.midnightai.ai
 
 import android.content.Context
-import com.kevin.midnightai.sync.CompanionSync.CompanionIdentity
 import com.kevin.midnightai.vehicle.ActiveVehicle
 
 /**
@@ -38,10 +37,8 @@ object CompanionProfile {
     // 2026-07-22) and their assembled "Delivery notes" text - layered on top of
     // KEY_VOICE (the preset name) to steer HOW that preset speaks, not which
     // preset. Per-car like persona/voice (same identityString/k(context,...)
-    // pattern), but deliberately NOT yet added to CompanionSync's
-    // CompanionIdentity data class - cross-device sync for a new identity
-    // field is its own schema/LWW-clock decision, not a side effect of adding
-    // a picker. Known gap: this does not sync across devices yet.
+    // pattern). Never synced anywhere (the Drive sync that once carried the identity was retired
+    // 2026-10-17).
     private const val KEY_VOICE_STYLE = "voice_style"
     private const val KEY_VOICE_STYLE_TRAITS = "voice_style_traits"
     // SHA-256 hash of the owner's spend passphrase (never the plaintext). Blank =
@@ -81,11 +78,9 @@ object CompanionProfile {
     // Flipped to true the moment the very first Live session successfully connects,
     // so one-time first-run behaviours (the spoken introduction) fire exactly once.
     private const val KEY_FIRST_SESSION_DONE = "first_session_done"
-    // Cross-device BYO-cloud sync (S1): true once the driver has connected their
-    // own Google Drive (authorized the drive.appdata scope). Opt-in, off by
-    // default; gates all sync work via [com.kevin.midnightai.sync.SyncCapability].
-    // No token is stored here - the Google Identity Authorization API mints/refreshes
-    // the Drive access token on demand (see [com.kevin.midnightai.sync.DriveAuth]).
+    // (2026-10-17) The Drive sync these keys served was retired. KEY_SYNC_ENABLED and the
+    // two companion-clock keys below are no longer read or written by any feature; they are
+    // kept only so a pre-retirement install's stale values are cleared by [clear].
     private const val KEY_SYNC_ENABLED = "sync_enabled"
     // Companion identity sync (S1, last piece): bumped to now() on every identity
     // write (name/persona/traits/voice) so cross-device last-write-wins has a
@@ -243,12 +238,9 @@ object CompanionProfile {
 
     /**
      * Assembles and saves the voice-style picks (mirrors [savePersona]'s shape).
-     * Deliberately does NOT bump [KEY_COMPANION_UPDATED_AT] - that clock backs
-     * CompanionIdentity's cross-device LWW merge, and voice style isn't part of
-     * that synced payload (see the field's own doc comment). Bumping it here
-     * would make this device's clock look newer for name/persona/traits/voice
-     * even though none of those changed, and could wrongly win a merge against
-     * a real edit made on another device.
+     * Deliberately does NOT bump [KEY_COMPANION_UPDATED_AT], which stamps the
+     * name/persona/traits/voice edits only (the clock once backed the retired Drive sync's
+     * last-write-wins merge).
      */
     fun saveVoiceStyle(context: Context, selections: Map<String, PersonaSelection>) {
         prefs(context).edit()
@@ -281,36 +273,10 @@ object CompanionProfile {
     /** [avatarId] for an explicit car. */
     fun avatarIdFor(vehicleId: String): String = "$AVATAR_ID:$vehicleId"
 
-    /** [companionIdentity] for an explicit car, for the roster + eager identity pull. */
-    fun companionIdentityFor(context: Context, vehicleId: String): CompanionIdentity =
-        CompanionIdentity(
-            name = identityString(context, KEY_NAME, vehicleId),
-            persona = identityString(context, KEY_PERSONA, vehicleId),
-            traits = identityString(context, KEY_TRAITS, vehicleId),
-            voice = identityString(context, KEY_VOICE, vehicleId),
-            updatedAt = companionUpdatedAtFor(context, vehicleId),
-        )
-
     /** [companionUpdatedAt] for an explicit car. */
     fun companionUpdatedAtFor(context: Context, vehicleId: String): Long {
         val p = prefs(context)
         return p.getLong(k(KEY_COMPANION_UPDATED_AT, vehicleId), p.getLong(KEY_COMPANION_UPDATED_AT, 0L))
-    }
-
-    /**
-     * [saveCompanionIdentity] for an explicit car - used by the eager identity pull
-     * to fill in cars this device isn't currently in. Preserves the remote clock for
-     * the same reason the active-car version does: re-stamping would make every
-     * device think its own adopt was the freshest edit and LWW would never settle.
-     */
-    fun saveCompanionIdentityFor(context: Context, vehicleId: String, identity: CompanionIdentity) {
-        prefs(context).edit()
-            .putString(k(KEY_NAME, vehicleId), sanitizeAdoptedName(identity.name))
-            .putString(k(KEY_PERSONA, vehicleId), identity.persona)
-            .putString(k(KEY_TRAITS, vehicleId), identity.traits)
-            .putString(k(KEY_VOICE, vehicleId), identity.voice)
-            .putLong(k(KEY_COMPANION_UPDATED_AT, vehicleId), identity.updatedAt)
-            .apply()
     }
 
     /**
@@ -368,55 +334,12 @@ object CompanionProfile {
             .apply()
     }
 
-    /** Raw last-edit clock for the companion identity, used by cross-device sync's LWW. */
+    /** Raw last-edit clock for the companion identity (once used by the retired Drive sync's LWW). */
     fun companionUpdatedAt(context: Context): Long {
         val p = prefs(context)
         // Per-car clock, falling back to the legacy flat one for the same reason
         // identityString does - an existing profile must keep its edit history.
         return p.getLong(k(context, KEY_COMPANION_UPDATED_AT), p.getLong(KEY_COMPANION_UPDATED_AT, 0L))
-    }
-
-    /** The full companion identity as of this device's last local edit, for [saveCompanionIdentity]/sync. */
-    fun companionIdentity(context: Context): CompanionIdentity =
-        // Reads through the per-car accessors (which fall back to the legacy flat
-        // keys), so what syncs is the ACTIVE car's identity - not a global one.
-        CompanionIdentity(
-            name = name(context),
-            persona = persona(context),
-            traits = identityString(context, KEY_TRAITS),
-            voice = voice(context),
-            updatedAt = companionUpdatedAt(context),
-        )
-
-    /**
-     * Writes a full companion identity as-is (name/persona/traits/voice AND
-     * [CompanionIdentity.updatedAt]) - used when cross-device sync adopts the
-     * remote copy wholesale. Deliberately does NOT re-stamp `updatedAt` to
-     * now(): the remote's clock has to survive the write so this device's next
-     * sync compares correctly (re-stamping here would make every device think
-     * its own adopt was the freshest edit, defeating LWW).
-     */
-    fun saveCompanionIdentity(context: Context, identity: CompanionIdentity) {
-        prefs(context).edit()
-            .putString(k(context, KEY_NAME), sanitizeAdoptedName(identity.name))
-            .putString(k(context, KEY_PERSONA), identity.persona)
-            .putString(k(context, KEY_TRAITS), identity.traits)
-            .putString(k(context, KEY_VOICE), identity.voice)
-            .putLong(k(context, KEY_COMPANION_UPDATED_AT), identity.updatedAt)
-            .apply()
-    }
-
-    /**
-     * True once this device's companion identity has been reconciled at least
-     * once against the driver's Drive (uploaded, adopted, or a clash resolved).
-     * Gates whether the next content mismatch is a silent LWW edit or a
-     * one-time "two companions met" prompt - see [com.kevin.midnightai.sync.CompanionSync.decideCompanion].
-     */
-    fun isCompanionReconciled(context: Context): Boolean =
-        prefs(context).getBoolean(k(context, KEY_COMPANION_SYNC_RECONCILED), false)
-
-    fun markCompanionReconciled(context: Context) {
-        prefs(context).edit().putBoolean(k(context, KEY_COMPANION_SYNC_RECONCILED), true).apply()
     }
 
     /** Hashed spend passphrase (blank if none set). Storage only - logic in [SpendGate]. */
@@ -626,18 +549,6 @@ object CompanionProfile {
 
     fun markFirstSessionDone(context: Context) {
         prefs(context).edit().putBoolean(KEY_FIRST_SESSION_DONE, true).apply()
-    }
-
-    /**
-     * True once the driver has connected their own Google Drive for cross-device
-     * sync (S1). Off by default; a driver who never connects keeps every byte
-     * on-device. See [com.kevin.midnightai.sync.SyncCapability].
-     */
-    fun isSyncEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_SYNC_ENABLED, false)
-
-    fun setSyncEnabled(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_SYNC_ENABLED, enabled).apply()
     }
 
     /**

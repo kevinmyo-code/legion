@@ -58,4 +58,13 @@ interface OdbSampleDao {
             "WHERE vehicleId=:vehicleId AND pid=:pid AND timestamp>=:fromMs AND timestamp<=:toMs"
     )
     suspend fun summarize(vehicleId: String, pid: String, fromMs: Long, toMs: Long): PidSummary?
+
+    /** Fleet upload (2026-10-17): the next [limit] samples for a car past the last row the engine
+     * acknowledged. Keyed on the autoincrement id, which only ever grows, so the cursor is a
+     * single number and a purge or a restore cannot make it skip a row. */
+    @Query("SELECT * FROM obd_samples WHERE vehicleId = :vehicleId AND id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun pendingAfter(vehicleId: String, afterId: Long, limit: Int): List<OdbSample>
+
+    @Query("SELECT COUNT(*) FROM obd_samples WHERE vehicleId = :vehicleId AND id > :afterId")
+    suspend fun countAfter(vehicleId: String, afterId: Long): Int
 }

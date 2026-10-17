@@ -6,8 +6,8 @@ import com.kevin.midnightai.data.local.DriveReassignment
  * Applies "this drive belongs to a different car" corrections (car manager,
  * 2026-07-16).
  *
- * Split into a pure [plan] and a DB-touching applier (in `SyncEngine`/the DAO
- * caller) for the same reason [com.kevin.midnightai.sync.SyncMerge] is: the part
+ * Split into a pure [plan] and a DB-touching applier (in the DAO
+ * caller) for the same reason the retired SyncMerge was: the part
  * with the sharp edges - ordering, chaining, self-cancelling rules - unit-tests
  * without a device or a live Drive.
  *
