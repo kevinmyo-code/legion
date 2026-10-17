@@ -29,4 +29,11 @@ interface CodeEventDao {
             "AND timestamp >= :fromMs AND timestamp <= :toMs"
     )
     suspend fun countInRange(vehicleId: String, fromMs: Long, toMs: Long): Int
+
+    /** Fleet upload (2026-10-17): events past the last row the engine acknowledged, oldest first. */
+    @Query("SELECT * FROM code_events WHERE vehicleId = :vehicleId AND id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun pendingAfter(vehicleId: String, afterId: Long, limit: Int): List<CodeEvent>
+
+    @Query("SELECT COUNT(*) FROM code_events WHERE vehicleId = :vehicleId AND id > :afterId")
+    suspend fun countAfter(vehicleId: String, afterId: Long): Int
 }
