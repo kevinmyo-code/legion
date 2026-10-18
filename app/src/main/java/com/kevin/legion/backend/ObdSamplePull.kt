@@ -9,6 +9,7 @@ import com.kevin.legion.data.local.OdbSample
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.Date
 import java.util.Locale
 
@@ -72,6 +73,40 @@ internal object ObdPullStatus {
 }
 
 /**
+ * Per-vehicle ARRIVAL cursor and backfill state for [ObdSamplePull], as the engine's own strings.
+ * Install-scoped [android.content.SharedPreferences], beside [FleetPullCursor].
+ *
+ * `arrival_at` is set once, BEFORE the first backfill page is requested, and is not touched again
+ * until the backfill is done: that is the handover mark. `arrival_id` is the tiebreak half of the
+ * keyset (null until a full page has been walked).
+ */
+internal object ObdArrivalCursors {
+    private const val PREFS = "obd_arrival_cursor"
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun arrivalAt(context: Context, serverId: String): String? = prefs(context).getString("$serverId.at", null)
+
+    fun arrivalId(context: Context, serverId: String): String? = prefs(context).getString("$serverId.id", null)
+
+    fun backfillDone(context: Context, serverId: String): Boolean = prefs(context).getBoolean("$serverId.done", false)
+
+    fun beginHandover(context: Context, serverId: String, atIso: String) {
+        prefs(context).edit().putString("$serverId.at", atIso).remove("$serverId.id").apply()
+    }
+
+    fun markBackfillDone(context: Context, serverId: String) {
+        prefs(context).edit().putBoolean("$serverId.done", true).apply()
+    }
+
+    /** Called only after the page this cursor points past has been stored in Room. */
+    fun advance(context: Context, serverId: String, atIso: String, afterId: String?) {
+        prefs(context).edit().putString("$serverId.at", atIso).putString("$serverId.id", afterId).apply()
+    }
+}
+
+/**
  * The DOWNLOAD half of `obd_samples`: samples recorded by ANY device (the head unit's OBD dongle is
  * the case that motivated it, Kevin 2026-10-17) are pulled from the household engine into this
  * phone's Room table, and the Telemetry screen keeps reading Room. [ObdSampleReconcile] is the
@@ -82,6 +117,12 @@ internal object ObdPullStatus {
  * 40 keeps pages 1-39 and resumes from them. The engine's `since` is inclusive and the cursor is
  * the newest `recorded_at` stored, so the boundary instant is re-served every time; the dedupe
  * below is what makes that correct.
+ *
+ * **Two phases: a bounded `recorded_at` backfill, then the ARRIVAL feed.** `recorded_at` alone cannot
+ * see a head unit that uploads a drive hours late (its rows land behind any `recorded_at` cursor),
+ * so once the backfill reaches the end, each run asks the engine only for what it has STORED since,
+ * keyed on `(created_at, id)` and persisted as the engine's own strings in [ObdArrivalCursors].
+ * See [pullVehicle] for why the handover cannot miss a row.
  *
  * **Dedupe is read-then-skip, not INSERT-IGNORE.** `obd_samples` has a composite index on
  * `(vehicleId, pid, timestamp)` but it is NOT unique, and making it unique would be a Room
@@ -112,19 +153,21 @@ object ObdSamplePull {
     internal const val BACKFILL_WINDOW_MS = BACKFILL_WINDOW_DAYS * 24 * 60 * 60 * 1000L
 
     /**
-     * Each run re-asks from this far BEFORE the cursor. `since` filters `recorded_at` (when the
-     * reading was taken), not when the engine received it, so a head unit that uploads a drive a
-     * few hours late would otherwise land BEHIND the cursor and never be fetched. The engine has no
-     * `created_at` filter, so overlap plus dedupe is the cheapest honest mitigation; a head unit
-     * offline for longer than this can still be missed.
+     * The arrival cursor starts this far BEFORE the moment a vehicle's first backfill began. The
+     * phone's clock and the engine's can differ, and the arrival feed is keyed on the ENGINE's
+     * `created_at`; ten minutes of margin makes any realistic skew harmless, and the rows it
+     * re-fetches are deduped. See [pullVehicle] for why this closes the backfill-to-arrival gap.
      */
-    internal const val OVERLAP_MS = 24 * 60 * 60 * 1000L
+    internal const val HANDOVER_MARGIN_MS = 10 * 60 * 1000L
 
     /** Pages per vehicle per run (500 rows each): a year of backfill resumes over several runs
      *  rather than holding the foreground for one enormous one. Hitting it is reported, not hidden. */
     internal const val MAX_PAGES_PER_VEHICLE = 100
 
-    internal const val CURSOR_PREFIX = "obd_samples_pull:"
+    /** The `recorded_at` BACKFILL cursor. A new key (the previous `obd_samples_pull:` one is
+     *  abandoned) so an install that held the old cursor runs the bounded backfill once more,
+     *  which the dedupe makes harmless. */
+    internal const val CURSOR_PREFIX = "obd_samples_backfill:"
 
     private val runLock = Mutex()
 
@@ -227,9 +270,57 @@ object ObdSamplePull {
         val repostPending: Int,
         val moreToFetch: Boolean,
         val failure: String?,
-    )
+    ) {
+        operator fun plus(other: VehicleOutcome) = VehicleOutcome(
+            inserted + other.inserted,
+            repostPending + other.repostPending,
+            moreToFetch || other.moreToFetch,
+            failure ?: other.failure,
+        )
+    }
 
+    /**
+     * Two phases per vehicle.
+     *
+     * 1. **Backfill** (`recorded_at`, bounded to [BACKFILL_WINDOW_MS]): walks the old feed from its
+     *    own cursor to the end. A backend without an arrival feed stays in this phase forever.
+     * 2. **Arrival** (`created_at`, `(created_at, id)` keyset): once the backfill reaches the end,
+     *    every later run asks only for what the engine has STORED since, which finds a head unit's
+     *    late upload whatever its `recorded_at`.
+     *
+     * **The handover cannot miss a row.** The arrival cursor is fixed at (backfill start minus
+     * [HANDOVER_MARGIN_MS]) BEFORE the first backfill request and does not move until the backfill
+     * is done. A row stored after that mark is therefore either inside the backfill's
+     * `recorded_at` walk or found by the arrival walk (or both, deduped); a row stored before the
+     * mark was already on the engine when the backfill started, so the backfill sees it if it is
+     * inside the window, and the window is all this phone keeps. The only assumption is that the
+     * two clocks agree to within the margin.
+     */
     private suspend fun pullVehicle(
+        app: Context,
+        db: CarDatabase,
+        backend: FleetBackend,
+        serverId: String,
+        mac: String,
+        nowMs: Long,
+    ): VehicleOutcome {
+        if (ObdArrivalCursors.arrivalAt(app, serverId) == null) {
+            ObdArrivalCursors.beginHandover(app, serverId, Instant.ofEpochMilli(nowMs - HANDOVER_MARGIN_MS).toString())
+        }
+        val arrivalMode = backend.supportsArrivalFeed && ObdArrivalCursors.backfillDone(app, serverId)
+        val backfill = if (arrivalMode) EMPTY_OUTCOME else backfill(app, db, backend, serverId, mac, nowMs)
+        val backfillFinished = backfill.failure == null && !backfill.moreToFetch
+        if (backend.supportsArrivalFeed && backfillFinished) ObdArrivalCursors.markBackfillDone(app, serverId)
+        return if (backend.supportsArrivalFeed && backfillFinished) {
+            backfill + arrivalWalk(app, db, backend, serverId, mac)
+        } else {
+            backfill
+        }
+    }
+
+    private val EMPTY_OUTCOME = VehicleOutcome(0, 0, false, null)
+
+    private suspend fun backfill(
         app: Context,
         db: CarDatabase,
         backend: FleetBackend,
@@ -239,7 +330,7 @@ object ObdSamplePull {
     ): VehicleOutcome {
         val key = CURSOR_PREFIX + serverId
         var cursor = FleetPullCursor.lastPulledAtMs(app, key)
-        var nextSince: Long? = maxOf(nowMs - BACKFILL_WINDOW_MS, if (cursor > 0L) cursor - OVERLAP_MS else 0L)
+        var nextSince: Long? = maxOf(nowMs - BACKFILL_WINDOW_MS, cursor)
         var inserted = 0
         var repost = 0
         var pages = 0
@@ -267,12 +358,65 @@ object ObdSamplePull {
                     }
                     nextSince = page.nextSinceMs
                     if (nextSince != null && nextSince <= since) {
-                        failure = "The engine kept returning the same page of samples, so the download stopped there."
+                        failure = STUCK_MESSAGE
                     }
                 }
             }
         }
         return VehicleOutcome(inserted, repost, more, failure)
+    }
+
+    private data class Cursor(val at: String, val afterId: String?)
+
+    private class Step(val outcome: VehicleOutcome, val hasMore: Boolean, val cursor: Cursor)
+
+    private const val STUCK_MESSAGE =
+        "The engine kept returning the same page of samples, so the download stopped there."
+
+    private suspend fun arrivalWalk(
+        app: Context,
+        db: CarDatabase,
+        backend: FleetBackend,
+        serverId: String,
+        mac: String,
+    ): VehicleOutcome {
+        val start = ObdArrivalCursors.arrivalAt(app, serverId) ?: return EMPTY_OUTCOME
+        var cursor = Cursor(start, ObdArrivalCursors.arrivalId(app, serverId))
+        var total = EMPTY_OUTCOME
+        var pages = 0
+        var walking = true
+        while (walking && total.failure == null && pages < MAX_PAGES_PER_VEHICLE) {
+            val step = arrivalStep(app, db, backend, serverId, mac, cursor)
+            total += step.outcome
+            cursor = step.cursor
+            walking = step.hasMore
+            pages++
+        }
+        val capped = walking && total.failure == null
+        return if (capped) total + VehicleOutcome(0, 0, true, null) else total
+    }
+
+    /** One arrival page: fetch, store, and only then persist the cursor it leads to. */
+    private suspend fun arrivalStep(
+        app: Context,
+        db: CarDatabase,
+        backend: FleetBackend,
+        serverId: String,
+        mac: String,
+        current: Cursor,
+    ): Step {
+        val result = backend.fetchObdSamplesArrivalPage(serverId, current.at, current.afterId)
+        val page = result.getOrNull()
+        if (page == null) {
+            val why = result.exceptionOrNull()?.message ?: "The engine could not be reached."
+            return Step(VehicleOutcome(0, 0, false, why), false, current)
+        }
+        val stored = storePage(app, db, mac, page.samples)
+        val next = page.cursorReceivedAfter?.let { Cursor(it, page.cursorAfterId) } ?: current
+        val stuck = page.hasMore && next == current
+        if (!stuck) ObdArrivalCursors.advance(app, serverId, next.at, next.afterId)
+        val outcome = VehicleOutcome(stored.inserted, stored.repostPending, false, if (stuck) STUCK_MESSAGE else null)
+        return Step(outcome, page.hasMore, if (stuck) current else next)
     }
 
     private class Stored(val inserted: Int, val repostPending: Int)

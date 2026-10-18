@@ -87,6 +87,52 @@ class DjangoFleetBackendTest {
     }
 
     @Test
+    fun `the arrival page sends its keyset and keeps the cursor as the engine's strings`() = runBlocking {
+        val page = """
+            {"results": [{
+              "vehicle_id": "$vehicleId", "pid": "010C", "value": 900.0, "unit": "rpm",
+              "recorded_at": "2026-09-01T10:00:00Z", "lat": null, "lng": null,
+              "created_at": "2026-09-02T14:03:02.123456Z"
+            }], "next": "2026-09-02T14:03:02.123456Z", "next_after": "aaaa1111-0000-4000-8000-000000000001"}
+        """.trimIndent()
+        val engine = EngineTestSupport.RecordingEngine { json(page) }
+
+        val result = backend(engine).fetchObdSamplesArrivalPage(
+            vehicleId, "2026-09-02T00:00:00Z", "bbbb2222-0000-4000-8000-000000000002",
+        ).getOrThrow()
+
+        val url = engine.requests.single().url
+        assertEquals("/api/fleet/obd_samples/", url.encodedPath)
+        assertEquals(vehicleId, url.parameters["vehicle"])
+        assertEquals("2026-09-02T00:00:00Z", url.parameters["received_after"])
+        assertEquals("bbbb2222-0000-4000-8000-000000000002", url.parameters["after_id"])
+        assertNull(url.parameters["since"])
+        assertTrue(result.hasMore)
+        // Microseconds survive: a millisecond cursor would no longer match the tie it steps past.
+        assertEquals("2026-09-02T14:03:02.123456Z", result.cursorReceivedAfter)
+        assertEquals("aaaa1111-0000-4000-8000-000000000001", result.cursorAfterId)
+    }
+
+    @Test
+    fun `a final arrival page cursors on the last row's created_at with no id`() = runBlocking {
+        val page = """
+            {"results": [{
+              "vehicle_id": "$vehicleId", "pid": "010C", "value": 900.0, "unit": "rpm",
+              "recorded_at": "2026-09-01T10:00:00Z", "lat": null, "lng": null,
+              "created_at": "2026-09-02T14:03:02.123456Z"
+            }], "next": null, "next_after": null}
+        """.trimIndent()
+        val engine = EngineTestSupport.RecordingEngine { json(page) }
+
+        val result = backend(engine).fetchObdSamplesArrivalPage(vehicleId, "2026-09-02T00:00:00Z", null).getOrThrow()
+
+        assertEquals(false, result.hasMore)
+        assertEquals("2026-09-02T14:03:02.123456Z", result.cursorReceivedAfter)
+        assertNull(result.cursorAfterId)
+        assertNull(engine.requests.single().url.parameters["after_id"])
+    }
+
+    @Test
     fun `an unreachable engine fails the OBD page in words and returns no rows`() = runBlocking {
         val backend = DjangoFleetBackend(
             EngineHttp(EngineTestSupport.signedInConfig(context), EngineTestSupport.unreachableClient()),

@@ -7,6 +7,7 @@ import com.kevin.legion.engine.fleet.FleetRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import com.kevin.legion.ui.fleet.TelemetryRange
 import com.kevin.legion.vehicle.TelemetryRecorder
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,7 +35,7 @@ class ObdSamplePullTest {
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
-        listOf("fleet_pull_cursor", "obd_sample_upload_cursor", "obd_pull_status").forEach {
+        listOf("fleet_pull_cursor", "obd_sample_upload_cursor", "obd_pull_status", "obd_arrival_cursor").forEach {
             context.getSharedPreferences(it, 0).edit().clear().commit()
         }
     }
@@ -137,7 +138,7 @@ class ObdSamplePullTest {
     }
 
     @Test
-    fun `first run asks for a year, a later run overlaps the cursor`() = runBlocking {
+    fun `first run asks for a year, a later run on a recorded_at-only backend resumes at the cursor`() = runBlocking {
         insertVehicle()
         val backend = backendWith(3)
 
@@ -147,8 +148,94 @@ class ObdSamplePullTest {
         backend.requestedSince.clear()
         val later = nowMs + 10 * 24 * 3_600_000L
         ObdSamplePull.pull(context, backend, listOf(serverId), macs, later)
-        // Cursor is remote(3); the window start has moved on a lot less than the overlap allows.
-        assertEquals(remote(3).recordedAtMs - ObdSamplePull.OVERLAP_MS, backend.requestedSince.first())
+        // Cursor is remote(3); no overlap any more - late uploads are the arrival feed's job.
+        assertEquals(remote(3).recordedAtMs, backend.requestedSince.first())
+    }
+
+    // --- arrival feed -----------------------------------------------------------------------------
+
+    private fun arrivalBackend() = FakePullFleetBackend(5).apply { arrivalSupported = true }
+
+    private fun arrived(i: Int, createdAtMs: Long, id: String) =
+        FakePullFleetBackend.Arrived(remote(i), createdAtMs, id)
+
+    @Test
+    fun `an arrival walk crosses pages inside one tied batch without dropping or repeating`() = runBlocking {
+        insertVehicle()
+        val backend = arrivalBackend()
+        val tied = nowMs - 1_000L
+        backend.arrivals[serverId] = (1..12).map { arrived(it, tied, "id%02d".format(it)) }.toMutableList()
+
+        val report = ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs)
+
+        assertEquals(12, report.inserted)
+        assertEquals(12, rows().size)
+        assertEquals(Instant.ofEpochMilli(tied).toString(), ObdArrivalCursors.arrivalAt(context, serverId))
+        // Page two was asked for strictly after page one's last id, not from the timestamp alone.
+        assertEquals("id05", backend.requestedArrival[1].second)
+    }
+
+    @Test
+    fun `the arrival cursor moves only after a page is stored`() = runBlocking {
+        insertVehicle()
+        val backend = arrivalBackend()
+        val tied = nowMs - 1_000L
+        backend.arrivals[serverId] = (1..12).map { arrived(it, tied, "id%02d".format(it)) }.toMutableList()
+        // One request for the (empty) backfill, two arrival pages, then the engine goes away.
+        backend.failAfterPages = 3
+
+        val failed = ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs)
+
+        assertFalse(failed.succeeded)
+        assertEquals(10, rows().size)
+        assertEquals("id10", ObdArrivalCursors.arrivalId(context, serverId)) // sits on the last STORED row
+
+        backend.failAfterPages = null
+        backend.resetServed()
+        val resumed = ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs)
+
+        assertEquals(2, resumed.inserted)
+        assertEquals(12, rows().size)
+        assertTrue(backend.requestedSince.size == 1) // the finished backfill is not walked again
+    }
+
+    @Test
+    fun `a late row with an old recorded_at is pulled after the backfill is done`() = runBlocking {
+        insertVehicle()
+        val backend = arrivalBackend()
+        (1..3).forEach { backend.store(serverId, remote(it), nowMs - 1_000L, "id%02d".format(it)) }
+        ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs)
+        assertEquals(3, rows().size)
+        backend.requestedSince.clear()
+
+        // The head unit uploads a drive recorded long before the phone's recorded_at position.
+        val old = RemoteObdSample(serverId, "010C", 5.0, "rpm", nowMs - 40L * 24 * 3_600_000L, null, null)
+        backend.store(serverId, old, nowMs + 60_000L, "zz01")
+        val report = ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs + 120_000L)
+
+        assertEquals(1, report.inserted)
+        assertEquals(4, rows().size)
+        assertTrue(backend.requestedSince.isEmpty()) // found through the arrival feed alone
+    }
+
+    @Test
+    fun `a row that arrives during the backfill is not lost at the handover`() = runBlocking {
+        insertVehicle()
+        val backend = arrivalBackend()
+        (1..12).forEach { backend.store(serverId, remote(it), nowMs - 1_000L, "id%02d".format(it)) }
+        val old = RemoteObdSample(serverId, "010C", 5.0, "rpm", remote(1).recordedAtMs - 1_000L, null, null)
+        // Stored while page one is in flight, and recorded BEFORE where the backfill is by then.
+        backend.afterFirstRecordedPage = { backend.store(serverId, old, nowMs + 5L, "zz01") }
+
+        ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs)
+
+        assertEquals(13, rows().size)
+        assertTrue(rows().any { it.timestamp == old.recordedAtMs })
+        // The arrival cursor started before the backfill did.
+        assertEquals(
+            Instant.ofEpochMilli(nowMs - ObdSamplePull.HANDOVER_MARGIN_MS).toString(),
+            backend.requestedArrival.first().first,
+        )
     }
 
     @Test

@@ -31,7 +31,62 @@ internal class FakePullFleetBackend(private val pageSize: Int = 5) : FleetBacken
             .sortedBy { it.recordedAtMs }
         val page = matching.take(pageSize)
         val next = if (matching.size > pageSize) page.last().recordedAtMs else null
+        afterFirstRecordedPage?.let {
+            afterFirstRecordedPage = null
+            it()
+        }
         return Result.success(RemoteObdSamplePage(page, next))
+    }
+
+    /** A sample as the engine holds it: when it was STORED and under which row id. */
+    class Arrived(val sample: RemoteObdSample, val createdAtMs: Long, val id: String)
+
+    val arrivals = mutableMapOf<String, MutableList<Arrived>>() // by vehicleServerId
+    val requestedArrival = mutableListOf<Pair<String, String?>>()
+    var arrivalSupported = false
+    override val supportsArrivalFeed: Boolean get() = arrivalSupported
+
+    /** Runs once, right after the first `recorded_at` page is served: lets a test make a row
+     *  arrive DURING the backfill. */
+    var afterFirstRecordedPage: (() -> Unit)? = null
+
+    /** Stores a sample in both feeds, the way the engine's one table serves both. */
+    fun store(vehicleServerId: String, sample: RemoteObdSample, createdAtMs: Long, id: String) {
+        samples.getOrPut(vehicleServerId) { mutableListOf() }.add(sample)
+        arrivals.getOrPut(vehicleServerId) { mutableListOf() }.add(Arrived(sample, createdAtMs, id))
+    }
+
+    override suspend fun fetchObdSamplesArrivalPage(
+        vehicleServerId: String,
+        receivedAfter: String,
+        afterId: String?,
+    ): Result<RemoteObdArrivalPage> {
+        requestedArrival.add(receivedAfter to afterId)
+        if (failAfterPages != null && served >= failAfterPages!!) {
+            return Result.failure(FleetBackendException("simulated: the engine is unreachable"))
+        }
+        served++
+        val from = java.time.Instant.parse(receivedAfter).toEpochMilli()
+        val matching = (arrivals[vehicleServerId] ?: mutableListOf())
+            .filter {
+                if (afterId == null) {
+                    it.createdAtMs >= from
+                } else {
+                    it.createdAtMs > from || (it.createdAtMs == from && it.id > afterId)
+                }
+            }
+            .sortedWith(compareBy({ it.createdAtMs }, { it.id }))
+        val page = matching.take(pageSize)
+        val hasMore = matching.size > pageSize
+        val last = page.lastOrNull()
+        return Result.success(
+            RemoteObdArrivalPage(
+                samples = page.map { it.sample },
+                hasMore = hasMore,
+                cursorReceivedAfter = last?.let { java.time.Instant.ofEpochMilli(it.createdAtMs).toString() },
+                cursorAfterId = if (hasMore) last?.id else null,
+            ),
+        )
     }
 
     override suspend fun fetchActiveVehicles(): Result<List<RemoteVehicle>> = Result.success(vehicles.values.toList())

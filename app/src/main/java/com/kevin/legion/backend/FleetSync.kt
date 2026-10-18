@@ -158,7 +158,7 @@ object FleetSync {
          * or synthetic id) - equal to [vehicles]' own `inserted`, named separately so a caller never
          * has to know that equivalence to read the number that matters most for this ticket. */
         val vehiclesReconstructed: Int,
-        /** Rows actually downloaded and inserted this run, inside the ~30-day window - see
+        /** Rows actually downloaded and inserted this run, inside the 365-day window - see
          * [pullObdSamples]'s own doc comment. **Never confused with the whole history**: the phone is
          * a cache for this table. */
         val obdSamplesPulled: Int,

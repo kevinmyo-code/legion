@@ -6408,3 +6408,31 @@ non-fatal, and Claude cannot read the Firebase console. Built on `feat/headunit-
 - **Known limits, stated:** the window timestamps are the device's untrusted clock; breadcrumbs and
   logcat lines are appended in two streams so a batch is not strictly time-ordered (every line
   carries its own `MM-dd HH:mm:ss.SSS`); nothing was run on the head unit.
+
+## 2026-10-17 - The phone's OBD window is 365 days, and late uploads are found by arrival (Kevin)
+
+The OBD dongle is moving from the phone to the car's head unit, so the phone's Telemetry screen has
+to show samples recorded by any device. The head unit uploads `obd_samples` to the engine; the phone
+now pulls them into Room (`backend/ObdSamplePull.kt`) and the screen keeps reading Room.
+
+- **Window: 30 days becomes 365 days. This SUPERSEDES the 2026-09-03 OBD-volume ruling** ("recent
+  window only, roughly the last 30 days"). Reason: the Year chart has to fill with head-unit data now
+  that the dongle lives there, and 365 days equals the phone's own retention
+  (`TelemetryRecorder.RETENTION_MS`), so the pull never fetches rows the phone would then purge. It is
+  also the longest FINITE range the screen offers (`ALL` is unbounded and stays a non-goal).
+- **Cost, once:** about 219k rows per car per year (600 a day), fetched at 500 rows a page and at most
+  100 pages per vehicle per run, so the first backfill resumes over roughly five runs ("Older history
+  is still downloading" on the screen) and then stays small.
+- **Late uploads: the engine tracks arrival (Kevin chose this over a bigger overlap).** `since` filters
+  `recorded_at`, so a head unit that uploads a drive hours late lands behind any `recorded_at` cursor.
+  `GET /api/fleet/obd_samples/` gains `received_after` and `after_id`, a keyset on `(created_at, id)`
+  (`created_at` is `statement_timestamp()` at insert and ties across one batch, hence the id). After
+  the bounded `recorded_at` backfill the phone switches to this arrival cursor. The arrival cursor is
+  fixed (backfill start minus 10 minutes) BEFORE the first backfill request, so a row stored during the
+  backfill is found by one walk or the other. Index `obd_samples_vehicle_arrival_idx (vehicle_id,
+  created_at, id)`, ingest migration 0023, public schema only.
+- **Pulled rows are not re-uploaded:** the phone's upload cursor is advanced past rows the pull
+  inserted when it had caught up; if unsent local rows exist it is left alone and the pulled rows are
+  re-posted once (idempotent).
+- **Known limit:** two batches in flight can commit out of `created_at` order, so a row a few
+  milliseconds behind a cursor can be missed; not fixed.

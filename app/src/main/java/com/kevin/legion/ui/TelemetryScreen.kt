@@ -252,7 +252,10 @@ fun TelemetryContent(
                 state.totalCount == 0 -> {
                     SectionHeader(state.carLabel.ifBlank { "a car you haven't named yet" })
                     Text(
-                        "No telemetry recorded for this car. The recorder writes a sample every 30 seconds while an OBD adapter is connected and the engine is running.",
+                        "No telemetry recorded for this car yet. Samples come from whichever device has the OBD " +
+                            "adapter, this phone or the car's head unit, about every 30 seconds while the " +
+                            "engine is running. Anything the head unit recorded appears here after the " +
+                            "next update from the engine.",
                         style = MaterialTheme.typography.bodySmall,
                         color = sem.faint,
                         modifier = Modifier.padding(12.dp),

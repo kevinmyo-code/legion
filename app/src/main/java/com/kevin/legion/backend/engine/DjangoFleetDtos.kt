@@ -648,6 +648,9 @@ internal data class DjangoObdSampleRow(
     @SerialName("recorded_at") val recordedAt: String,
     val lat: Double? = null,
     val lng: Double? = null,
+    /** When the engine STORED the row, kept as the raw string: it is the arrival-feed cursor and
+     * must round-trip at microsecond precision. */
+    @SerialName("created_at") val createdAt: String? = null,
 ) {
     /** The natural key, rendered for [EngineSyncedTable]'s page-overlap de-duplication only.
      * Never sent anywhere - see that class's `idOf` parameter doc. */

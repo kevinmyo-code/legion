@@ -20,6 +20,7 @@ import com.kevin.legion.backend.RemoteDrive
 import com.kevin.legion.backend.RemoteDriveReassignment
 import com.kevin.legion.backend.RemoteMaintenanceSchedule
 import com.kevin.legion.backend.RemoteObdSample
+import com.kevin.legion.backend.RemoteObdArrivalPage
 import com.kevin.legion.backend.RemoteObdSamplePage
 import com.kevin.legion.backend.RemoteOilAnalysis
 import com.kevin.legion.backend.RemoteServiceHistory
@@ -531,6 +532,29 @@ class DjangoFleetBackend(private val http: EngineHttp) : FleetBackend {
         translatingEngineCall("load that car's OBD samples") {
             val page = obdSamples.fetchPage(fleetTs(sinceMs), mapOf("vehicle" to vehicleServerId))
             RemoteObdSamplePage(page.results.map { it.toRemote() }, page.next?.let(::fleetParseTs))
+        }
+
+    override val supportsArrivalFeed: Boolean get() = true
+
+    /** `GET obd_samples/?vehicle=&received_after=&after_id=` - one page in arrival order. */
+    override suspend fun fetchObdSamplesArrivalPage(
+        vehicleServerId: String,
+        receivedAfter: String,
+        afterId: String?,
+    ): Result<RemoteObdArrivalPage> =
+        translatingEngineCall("load that car's OBD samples") {
+            val query = buildMap {
+                put("vehicle", vehicleServerId)
+                put("received_after", receivedAfter)
+                afterId?.let { put("after_id", it) }
+            }
+            val page = obdSamples.fetchPage(null, query)
+            RemoteObdArrivalPage(
+                samples = page.results.map { it.toRemote() },
+                hasMore = page.next != null,
+                cursorReceivedAfter = page.next ?: page.results.lastOrNull()?.createdAt,
+                cursorAfterId = page.nextAfter,
+            )
         }
 
     // --- Plumbing ------------------------------------------------------------------------------
