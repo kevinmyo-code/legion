@@ -201,16 +201,20 @@ object ObdSamplePull {
         val app = context.applicationContext
         val backends = EngineBackends(app)
         val backend = if (backends.isConfiguredFor(EngineBackends.ASPECT_FLEET)) backends.fleetBackend() else null
-        if (backend == null) return notAvailable(app, "No engine is set up on this phone.")
-
-        runCatching { ObdSampleReconcile.run(app, backend) }
-
-        val engineVehicles = backend.fetchActiveVehicles().getOrElse {
-            return notAvailable(app, it.message ?: "The engine could not be reached.")
+        return if (backend == null) {
+            notAvailable(app, "No engine is set up on this phone.")
+        } else {
+            refreshVia(app, backend)
         }
-        val db = CarDatabase.getDatabase(app)
-        val macs = db.vehicleSidecarDao().getAll().associate { it.serverId to it.obdMac }
-        return pull(app, backend, engineVehicles.map { it.serverId }, macs)
+    }
+
+    private suspend fun refreshVia(app: Context, backend: FleetBackend): Report {
+        runCatching { ObdSampleReconcile.run(app, backend) }
+        val macs = CarDatabase.getDatabase(app).vehicleSidecarDao().getAll().associate { it.serverId to it.obdMac }
+        return backend.fetchActiveVehicles().fold(
+            onSuccess = { vehicles -> pull(app, backend, vehicles.map { it.serverId }, macs) },
+            onFailure = { notAvailable(app, it.message ?: "The engine could not be reached.") },
+        )
     }
 
     private fun notAvailable(app: Context, message: String): Report {
@@ -235,34 +239,40 @@ object ObdSamplePull {
     ): VehicleOutcome {
         val key = CURSOR_PREFIX + serverId
         var cursor = FleetPullCursor.lastPulledAtMs(app, key)
-        var since = maxOf(nowMs - BACKFILL_WINDOW_MS, if (cursor > 0L) cursor - OVERLAP_MS else 0L)
+        var nextSince: Long? = maxOf(nowMs - BACKFILL_WINDOW_MS, if (cursor > 0L) cursor - OVERLAP_MS else 0L)
         var inserted = 0
         var repost = 0
         var pages = 0
-        while (true) {
-            if (pages >= MAX_PAGES_PER_VEHICLE) return VehicleOutcome(inserted, repost, true, null)
-            val page = backend.fetchObdSamplesPage(serverId, since).getOrElse {
-                return VehicleOutcome(inserted, repost, false, it.message ?: "The engine could not be reached.")
+        var more = false
+        var failure: String? = null
+        while (nextSince != null && failure == null && !more) {
+            val since: Long = nextSince
+            if (pages >= MAX_PAGES_PER_VEHICLE) {
+                more = true
+            } else {
+                val result = backend.fetchObdSamplesPage(serverId, since)
+                val page = result.getOrNull()
+                if (page == null) {
+                    failure = result.exceptionOrNull()?.message ?: "The engine could not be reached."
+                } else {
+                    val stored = storePage(app, db, mac, page.samples)
+                    inserted += stored.inserted
+                    repost += stored.repostPending
+                    pages++
+                    // Only now, with the page committed, does the cursor move.
+                    val newest = page.samples.maxOfOrNull { it.recordedAtMs }
+                    if (newest != null && newest > cursor) {
+                        cursor = newest
+                        FleetPullCursor.advance(app, key, newest)
+                    }
+                    nextSince = page.nextSinceMs
+                    if (nextSince != null && nextSince <= since) {
+                        failure = "The engine kept returning the same page of samples, so the download stopped there."
+                    }
+                }
             }
-            val stored = storePage(app, db, mac, page.samples)
-            inserted += stored.inserted
-            repost += stored.repostPending
-            pages++
-            // Only now, with the page committed, does the cursor move.
-            val newest = page.samples.maxOfOrNull { it.recordedAtMs }
-            if (newest != null && newest > cursor) {
-                cursor = newest
-                FleetPullCursor.advance(app, key, newest)
-            }
-            val next = page.nextSinceMs ?: return VehicleOutcome(inserted, repost, false, null)
-            if (next <= since) {
-                return VehicleOutcome(
-                    inserted, repost, false,
-                    "The engine kept returning the same page of samples, so the download stopped there.",
-                )
-            }
-            since = next
         }
+        return VehicleOutcome(inserted, repost, more, failure)
     }
 
     private class Stored(val inserted: Int, val repostPending: Int)
@@ -272,8 +282,14 @@ object ObdSamplePull {
         db: CarDatabase,
         mac: String,
         samples: List<RemoteObdSample>,
+    ): Stored = if (samples.isEmpty()) Stored(0, 0) else storeNonEmpty(app, db, mac, samples)
+
+    private suspend fun storeNonEmpty(
+        app: Context,
+        db: CarDatabase,
+        mac: String,
+        samples: List<RemoteObdSample>,
     ): Stored {
-        if (samples.isEmpty()) return Stored(0, 0)
         val dao = db.odbSampleDao()
         val minTs = samples.minOf { it.recordedAtMs }
         val maxTs = samples.maxOf { it.recordedAtMs }
@@ -295,14 +311,14 @@ object ObdSamplePull {
             count = fresh.size
             maxAfter = dao.maxId() ?: maxBefore
         }
-        if (count == 0) return Stored(0, 0)
-
         val uploaded = ObdSampleUploadCursor.lastUploadedId(app)
-        return if (uploaded >= maxBefore) {
-            if (maxAfter > uploaded) ObdSampleUploadCursor.advance(app, maxAfter)
-            Stored(count, 0)
-        } else {
-            Stored(count, count)
+        return when {
+            count == 0 -> Stored(0, 0)
+            uploaded >= maxBefore -> {
+                if (maxAfter > uploaded) ObdSampleUploadCursor.advance(app, maxAfter)
+                Stored(count, 0)
+            }
+            else -> Stored(count, count)
         }
     }
 }

@@ -41,27 +41,47 @@ internal class FakePullFleetBackend(private val pageSize: Int = 5) : FleetBacken
     }
     override suspend fun countObdSamples(): Result<Long> = Result.success(0L)
 
-        override suspend fun uploadMigratedVehicle(vehicle: MigratedVehicle): Result<Boolean> = error("out of scope")
-        override suspend fun upsertVehicle(vehicle: VehicleUpload): Result<RemoteVehicle> = error("out of scope")
-        override suspend fun fetchActiveServiceHistory(): Result<List<RemoteServiceHistory>> = error("out of scope")
-        override suspend fun uploadMigratedServiceHistory(history: MigratedServiceHistory): Result<Boolean> = error("out of scope")
-        override suspend fun upsertServiceHistory(history: ServiceHistoryUpload): Result<RemoteServiceHistory> = error("out of scope")
-        override suspend fun fetchActiveDrives(): Result<List<RemoteDrive>> = error("out of scope")
-        override suspend fun upsertDrive(drive: DriveUpload): Result<RemoteDrive> = error("out of scope")
-        override suspend fun fetchActiveCodeEvents(): Result<List<RemoteCodeEvent>> = error("out of scope")
-        override suspend fun upsertCodeEvent(event: CodeEventUpload): Result<RemoteCodeEvent> = error("out of scope")
-        override suspend fun fetchActiveCodeClearEvents(): Result<List<RemoteCodeClearEvent>> = error("out of scope")
-        override suspend fun upsertCodeClearEvent(event: CodeClearEventUpload): Result<RemoteCodeClearEvent> = error("out of scope")
-        override suspend fun fetchActiveOilAnalyses(): Result<List<RemoteOilAnalysis>> = error("out of scope")
-        override suspend fun upsertOilAnalysis(analysis: OilAnalysisUpload): Result<RemoteOilAnalysis> = error("out of scope")
-        override suspend fun fetchChassisQuirks(): Result<List<RemoteChassisQuirk>> = error("out of scope")
-        override suspend fun upsertChassisQuirk(quirk: ChassisQuirkUpload): Result<RemoteChassisQuirk> = error("out of scope")
-        override suspend fun fetchVehicleSpecs(): Result<List<RemoteVehicleSpec>> = error("out of scope")
-        override suspend fun upsertVehicleSpec(spec: VehicleSpecUpload): Result<RemoteVehicleSpec> = error("out of scope")
-        override suspend fun fetchActiveBuildEntries(): Result<List<RemoteBuildEntry>> = error("out of scope")
-        override suspend fun upsertBuildEntry(entry: BuildEntryUpload): Result<RemoteBuildEntry> = error("out of scope")
-        override suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>> = error("out of scope")
-        override suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment> = error("out of scope")
-        override suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>> = error("out of scope")
-        override suspend fun upsertMaintenanceSchedule(schedule: MaintenanceScheduleUpload): Result<RemoteMaintenanceSchedule> = error("out of scope")
+    override suspend fun uploadMigratedVehicle(vehicle: MigratedVehicle): Result<Boolean> =
+        error("out of scope")
+    override suspend fun upsertVehicle(vehicle: VehicleUpload): Result<RemoteVehicle> =
+        error("out of scope")
+    override suspend fun fetchActiveServiceHistory(): Result<List<RemoteServiceHistory>> =
+        error("out of scope")
+    override suspend fun uploadMigratedServiceHistory(history: MigratedServiceHistory): Result<Boolean> =
+        error("out of scope")
+    override suspend fun upsertServiceHistory(history: ServiceHistoryUpload): Result<RemoteServiceHistory> =
+        error("out of scope")
+    override suspend fun fetchActiveDrives(): Result<List<RemoteDrive>> = error("out of scope")
+    override suspend fun upsertDrive(drive: DriveUpload): Result<RemoteDrive> = error("out of scope")
+    override suspend fun fetchActiveCodeEvents(): Result<List<RemoteCodeEvent>> = error("out of scope")
+    override suspend fun upsertCodeEvent(event: CodeEventUpload): Result<RemoteCodeEvent> =
+        error("out of scope")
+    override suspend fun fetchActiveCodeClearEvents(): Result<List<RemoteCodeClearEvent>> =
+        error("out of scope")
+    override suspend fun upsertCodeClearEvent(event: CodeClearEventUpload): Result<RemoteCodeClearEvent> =
+        error("out of scope")
+    override suspend fun fetchActiveOilAnalyses(): Result<List<RemoteOilAnalysis>> = error("out of scope")
+    override suspend fun upsertOilAnalysis(analysis: OilAnalysisUpload): Result<RemoteOilAnalysis> =
+        error("out of scope")
+    override suspend fun fetchChassisQuirks(): Result<List<RemoteChassisQuirk>> = error("out of scope")
+    override suspend fun upsertChassisQuirk(quirk: ChassisQuirkUpload): Result<RemoteChassisQuirk> =
+        error("out of scope")
+    override suspend fun fetchVehicleSpecs(): Result<List<RemoteVehicleSpec>> = error("out of scope")
+    override suspend fun upsertVehicleSpec(spec: VehicleSpecUpload): Result<RemoteVehicleSpec> =
+        error("out of scope")
+    override suspend fun fetchActiveBuildEntries(): Result<List<RemoteBuildEntry>> = error("out of scope")
+    override suspend fun upsertBuildEntry(entry: BuildEntryUpload): Result<RemoteBuildEntry> =
+        error("out of scope")
+    override suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>> =
+        error("out of scope")
+    override suspend fun upsertDriveReassignment(
+        reassignment: DriveReassignmentUpload,
+    ): Result<RemoteDriveReassignment> =
+        error("out of scope")
+    override suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>> =
+        error("out of scope")
+    override suspend fun upsertMaintenanceSchedule(
+        schedule: MaintenanceScheduleUpload,
+    ): Result<RemoteMaintenanceSchedule> =
+        error("out of scope")
 }

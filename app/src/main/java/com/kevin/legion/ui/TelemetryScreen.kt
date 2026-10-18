@@ -239,21 +239,7 @@ fun TelemetryContent(
             Hairline()
 
             // Hands path for the engine pull, and the words for how fresh Room is.
-            if (!state.loading) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        if (state.refreshing) "Updating from the engine..." else state.engineStatus,
-                        style = LegionType.stamp,
-                        color = sem.faint,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onRefresh, enabled = !state.refreshing) { Text("Refresh") }
-                }
-                Hairline()
-            }
+            if (!state.loading) EngineStatusRow(state, onRefresh)
 
             when {
                 state.loading -> Text(
@@ -273,71 +259,100 @@ fun TelemetryContent(
                     )
                 }
 
-                else -> {
-                    SectionHeader(
-                        state.carLabel.ifBlank { "a car you haven't named yet" },
-                        "${groupThousands(state.totalCount)} readings",
-                    )
-                    spanLine(state.firstSampleMs, state.lastSampleMs)?.let { span ->
-                        Text(
-                            span,
-                            style = LegionType.stamp,
-                            color = sem.faint,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
+                else -> TelemetryLoaded(state, onSelectPid, onSelectRange)
+            }
+        }
+    }
+}
 
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        state.pids.forEach { pid ->
-                            PidChip(pid, selected = pid == state.selectedPid, onSelect = { onSelectPid(pid) })
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        TelemetryRange.entries.forEach { option ->
-                            RangeChip(option, selected = option == state.range, onSelect = { onSelectRange(option) })
-                        }
-                    }
-                    Hairline()
+/** The "when did the engine last update this" line and its Refresh button. */
+@Composable
+private fun EngineStatusRow(state: TelemetryUiState, onRefresh: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (state.refreshing) "Updating from the engine..." else state.engineStatus,
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRefresh, enabled = !state.refreshing) { Text("Refresh") }
+    }
+    Hairline()
+}
 
-                    val summary = summaryLine(state.summary, state.unit)
-                    if (summary == null) {
-                        Text(
-                            "No ${state.selectedPid?.let { ObdHistory.pidLabel(it) }.orEmpty().lowercase()} readings in this range.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = sem.faint,
-                            modifier = Modifier.padding(12.dp),
-                        )
-                    } else {
-                        Text(
-                            summary,
-                            style = LegionType.stamp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                        TelemetryChart(state.series?.points.orEmpty())
-                        // Stated, never implied: the line stops early because
-                        // the query capped, not because the car stopped.
-                        if (state.series?.truncated == true) {
-                            Text(
-                                "Chart shows the newest $ROW_CAP readings in this range. The figures above cover all of it.",
-                                style = LegionType.stamp,
-                                color = sem.faint,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            )
-                        }
-                        // What the RANGE actually covers, as opposed to what
-                        // the car has recorded all-time in the header above -
-                        // "1Y" on a car parked since March covers a lot less
-                        // than a year, and the row says which.
-                        state.summary?.let { s ->
-                            Hairline()
-                            spanLine(s.firstMs, s.lastMs)?.let { windowSpan ->
-                                ReadingRow("In range", windowSpan, sub = "${groupThousands(s.count)} readings")
-                                Hairline()
-                            }
-                        }
-                    }
-                }
+/** [TelemetryContent]'s body once the car's history has loaded and is non-empty. Split out only so
+ *  neither function outgrows detekt's LongMethod ceiling; behaviour is unchanged. */
+@Composable
+private fun TelemetryLoaded(
+    state: TelemetryUiState,
+    onSelectPid: (String) -> Unit,
+    onSelectRange: (TelemetryRange) -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    SectionHeader(
+        state.carLabel.ifBlank { "a car you haven't named yet" },
+        "${groupThousands(state.totalCount)} readings",
+    )
+    spanLine(state.firstSampleMs, state.lastSampleMs)?.let { span ->
+        Text(
+            span,
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        state.pids.forEach { pid ->
+            PidChip(pid, selected = pid == state.selectedPid, onSelect = { onSelectPid(pid) })
+        }
+    }
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        TelemetryRange.entries.forEach { option ->
+            RangeChip(option, selected = option == state.range, onSelect = { onSelectRange(option) })
+        }
+    }
+    Hairline()
+
+    val summary = summaryLine(state.summary, state.unit)
+    if (summary == null) {
+        Text(
+            "No ${state.selectedPid?.let { ObdHistory.pidLabel(it) }.orEmpty().lowercase()} readings in this range.",
+            style = MaterialTheme.typography.bodySmall,
+            color = sem.faint,
+            modifier = Modifier.padding(12.dp),
+        )
+    } else {
+        Text(
+            summary,
+            style = LegionType.stamp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+        TelemetryChart(state.series?.points.orEmpty())
+        // Stated, never implied: the line stops early because
+        // the query capped, not because the car stopped.
+        if (state.series?.truncated == true) {
+            Text(
+                "Chart shows the newest $ROW_CAP readings in this range. The figures above cover all of it.",
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
+        // What the RANGE actually covers, as opposed to what
+        // the car has recorded all-time in the header above -
+        // "1Y" on a car parked since March covers a lot less
+        // than a year, and the row says which.
+        state.summary?.let { s ->
+            Hairline()
+            spanLine(s.firstMs, s.lastMs)?.let { windowSpan ->
+                ReadingRow("In range", windowSpan, sub = "${groupThousands(s.count)} readings")
+                Hairline()
             }
         }
     }

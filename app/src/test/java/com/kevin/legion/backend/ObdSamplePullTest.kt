@@ -103,7 +103,9 @@ class ObdSamplePullTest {
         insertVehicle()
         val dao = CarDatabase.getDatabase(context).odbSampleDao()
         // Already on the phone (e.g. recorded here and uploaded): the pull must not add it again.
-        dao.insert(OdbSample(vehicleId = mac, pid = "010C", value = 801.0, unit = "rpm", timestamp = remote(1).recordedAtMs))
+        dao.insert(
+            OdbSample(vehicleId = mac, pid = "010C", value = 801.0, unit = "rpm", timestamp = remote(1).recordedAtMs),
+        )
         val backend = backendWith(12)
         // The engine repeats a boundary instant inside one page too.
         backend.samples[serverId]!!.add(remote(3))
@@ -124,7 +126,8 @@ class ObdSamplePullTest {
         val backend = backendWith(3)
 
         val noSidecar = ObdSamplePull.pull(context, backend, listOf("vehicle-unknown"), macs, nowMs)
-        val noCar = ObdSamplePull.pull(context, backend, listOf("vehicle-2"), mapOf("vehicle-2" to "AA:00:00:00:00:99"), nowMs)
+        val ghostMacs = mapOf("vehicle-2" to "AA:00:00:00:00:99")
+        val noCar = ObdSamplePull.pull(context, backend, listOf("vehicle-2"), ghostMacs, nowMs)
 
         assertEquals(1, noSidecar.skippedVehicles.size)
         assertTrue(noSidecar.skippedVehicles.single().contains("vehicle-unknown"))
@@ -173,7 +176,10 @@ class ObdSamplePullTest {
         assertTrue(ok, ok.startsWith("Updated from engine "))
         assertTrue(failedAfterOk, failedAfterOk.contains("Showing what this phone has"))
         assertTrue(failedAfterOk, failedAfterOk.contains("Last updated from engine"))
-        assertEquals("Not updated from the engine yet. Showing what this phone has.", ObdPullStatus.describe(null, null, false))
+        assertEquals(
+            "Not updated from the engine yet. Showing what this phone has.",
+            ObdPullStatus.describe(null, null, false),
+        )
     }
 
     // --- no re-upload of pulled rows ------------------------------------------------------------
