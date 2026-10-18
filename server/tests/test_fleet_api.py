@@ -975,6 +975,75 @@ def test_obd_feed_is_windowed_per_vehicle(auth_client, fleet):
     assert all(str(row["vehicle_id"]) == fleet.vehicle for row in everything)
 
 
+def _arrival_walk(auth_client, vehicle, received_after, after_id=None):
+    """Follow the arrival feed's `next` / `next_after` to the end, returning
+    every row in the order served and the number of pages."""
+    rows, pages = [], 0
+    while True:
+        query = f"{OBD}?vehicle={vehicle}&received_after={received_after}"
+        if after_id:
+            query += f"&after_id={after_id}"
+        body = auth_client.get(query).data
+        rows.extend(body["results"])
+        pages += 1
+        if body["next"] is None:
+            return rows, pages
+        received_after, after_id = body["next"], body["next_after"]
+
+
+def test_obd_arrival_walk_crosses_a_page_inside_one_batch(auth_client, fleet):
+    """One POST is one statement, so all 520 rows share one `created_at`
+    (`statement_timestamp()`). A cursor on the timestamp alone would re-serve
+    the first page forever; the `(created_at, id)` keyset walks past it, and
+    no row is dropped or repeated."""
+    batch = [a_sample(fleet.vehicle, pid=f"P{i:03d}", day=2) for i in range(520)]
+    assert auth_client.post(OBD_BATCH, batch, format="json").status_code == 201
+
+    rows, pages = _arrival_walk(auth_client, fleet.vehicle, EPOCH)
+
+    assert pages == 2
+    assert len(rows) == 520
+    assert sorted(row["pid"] for row in rows) == sorted(f"P{i:03d}" for i in range(520))
+    assert len({row["created_at"] for row in rows}) == 1  # genuinely tied
+
+
+def test_obd_arrival_feed_returns_a_late_row_with_an_old_recorded_at(auth_client, fleet):
+    """The reason the mode exists: a head unit uploads a drive recorded days
+    ago AFTER the phone's cursor has passed. `since` (recorded_at) cannot see
+    it; `received_after` (created_at) does."""
+    auth_client.post(OBD_BATCH, [a_sample(fleet.vehicle, pid="recent", day=20)], format="json")
+    first, _ = _arrival_walk(auth_client, fleet.vehicle, EPOCH)
+    assert [row["pid"] for row in first] == ["recent"]
+    cursor = first[-1]["created_at"]
+
+    auth_client.post(OBD_BATCH, [a_sample(fleet.vehicle, pid="late", day=2)], format="json")
+
+    # The recorded_at feed, positioned at what the phone already holds, misses it.
+    by_recorded = auth_client.get(f"{OBD}?vehicle={fleet.vehicle}&since={_iso(20)}").data["results"]
+    assert [row["pid"] for row in by_recorded] == ["recent"]
+    # The arrival feed does not (inclusive of the cursor row, which the phone dedupes).
+    later, _ = _arrival_walk(auth_client, fleet.vehicle, cursor)
+    assert "late" in [row["pid"] for row in later]
+
+
+def test_obd_arrival_feed_refuses_a_garbled_after_id(auth_client, fleet):
+    response = auth_client.get(
+        f"{OBD}?vehicle={fleet.vehicle}&received_after={EPOCH}&after_id=not-a-uuid"
+    )
+    assert response.status_code == 400
+    assert "after_id" in response.data["detail"]
+
+
+def test_obd_arrival_feed_is_per_vehicle(auth_client, fleet):
+    auth_client.post(
+        OBD_BATCH,
+        [a_sample(fleet.vehicle, pid="mine"), a_sample(fleet.other, pid="theirs")],
+        format="json",
+    )
+    rows, _ = _arrival_walk(auth_client, fleet.vehicle, EPOCH)
+    assert [row["pid"] for row in rows] == ["mine"]
+
+
 def test_obd_feed_carries_no_id_and_no_tombstone(auth_client, fleet):
     """`RemoteObdSample`'s own shape: no `serverId`, no `deleted_at`. There is
     no detail route to address a sample by, so publishing a uuid would hand a

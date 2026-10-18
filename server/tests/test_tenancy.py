@@ -292,6 +292,13 @@ def test_obd_samples_are_scoped_by_household(token_a, token_b):
     assert token_b.get(f"/api/fleet/obd_samples/?vehicle={a_car}").status_code == 404
     assert token_b.get(f"/api/fleet/obd_samples/?vehicle={b_car}").status_code == 200
 
+    # The arrival-order mode is the same choke point: the 404 holds there too,
+    # and B's own car shows none of A's rows from the beginning of time.
+    arrival = "received_after=1970-01-01T00:00:00Z"
+    assert token_b.get(f"/api/fleet/obd_samples/?vehicle={a_car}&{arrival}").status_code == 404
+    assert token_b.get(f"/api/fleet/obd_samples/?vehicle={b_car}&{arrival}").data["results"] == []
+    assert len(token_a.get(f"/api/fleet/obd_samples/?vehicle={a_car}&{arrival}").data["results"]) == 1
+
 
 def test_voice_notes_are_scoped_by_household(token_a, token_b):
     from tests.test_voice_notes_api import NOTE
