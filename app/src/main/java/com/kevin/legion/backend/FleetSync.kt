@@ -158,7 +158,7 @@ object FleetSync {
          * or synthetic id) - equal to [vehicles]' own `inserted`, named separately so a caller never
          * has to know that equivalence to read the number that matters most for this ticket. */
         val vehiclesReconstructed: Int,
-        /** Rows actually downloaded and inserted this run, inside the ~30-day window - see
+        /** Rows actually downloaded and inserted this run, inside the 365-day window - see
          * [pullObdSamples]'s own doc comment. **Never confused with the whole history**: the phone is
          * a cache for this table. */
         val obdSamplesPulled: Int,
@@ -187,12 +187,10 @@ object FleetSync {
     private const val T_DRIVE_REASSIGNMENTS = "drive_reassignments"
     private const val T_MAINTENANCE_SCHEDULES = "maintenance_schedules"
 
-    /** Kevin's OBD-volume ruling (2026-09-03): "recent window only... roughly the last 30 days -
-     * older rows stay on the server and are fetched only when something asks." Named here, not
-     * inlined, so a reader (and a future ticket widening it) sees the number without having to find
-     * the one place it is used. */
-    internal const val OBD_PULL_WINDOW_DAYS = 30L
-    private const val OBD_PULL_WINDOW_MS = OBD_PULL_WINDOW_DAYS * 24 * 60 * 60 * 1000L
+    /** The OBD pull window, now owned by [ObdSamplePull.BACKFILL_WINDOW_DAYS] (a year; was 30 days
+     * under Kevin's 2026-09-03 ruling, widened at his 2026-10-17 request - the reasoning is on that
+     * constant). Kept as an alias so [FleetSyncTest]'s window test still names the window. */
+    internal const val OBD_PULL_WINDOW_DAYS = ObdSamplePull.BACKFILL_WINDOW_DAYS
 
     // =============================================================================================
     // Vehicles - the reconstruction wave every other table below depends on.
@@ -825,65 +823,20 @@ object FleetSync {
     // =============================================================================================
 
     /**
-     * Kevin's OBD-volume ruling (2026-09-03): pull roughly the last [OBD_PULL_WINDOW_DAYS] days per
-     * vehicle, never the whole history - older rows stay server-side and are fetched only when
-     * something asks (no such "something" is built by this ticket; the window is the whole of this
-     * table's live-sync treatment for now). The per-vehicle cursor never regresses below the current
-     * window start, so the window rolls forward with real time rather than creeping backward on a
-     * device that has not pulled in a while.
-     *
-     * **Dedup is by local lookup, not a `gt` cursor** - the server's own `recorded_at gte` filter is
-     * inclusive, so the boundary sample is re-fetched on every subsequent call the same way every
-     * other `fetchChangedXSince` in this file is (see this file's own class doc). [OdbSample] has no
-     * unique index to lean on for an `INSERT ... ON CONFLICT DO NOTHING` locally, so this reads the
-     * already-present samples for the same `(vehicleId, pid)` window once and skips anything whose
-     * `(pid, timestamp)` pair is already on file, rather than risking a duplicate row per re-fetch.
-     *
-     * Per-vehicle failures do not abort the whole pull - one car's fetch throwing must not cost every
-     * other car its telemetry for this run, matching the "per-table failures do not abort the whole
-     * run" posture [LedgerConfigBackfill]'s own class doc states for a different kind of partial
-     * failure.
+     * Delegates to [ObdSamplePull], which owns the paged, cursor-after-store, deduped, no-re-upload
+     * pull and the "updated from engine" status the Telemetry screen shows. Kevin's OBD-volume
+     * ruling of 2026-09-03 ("roughly the last 30 days") is WIDENED to a year at his 2026-10-17
+     * request; the reasoning and the bound live on [ObdSamplePull.BACKFILL_WINDOW_DAYS]. The old
+     * body here swallowed a failed fetch (`getOrNull() ?: continue`), walked every page into memory
+     * before storing anything, and let the upload re-post every row it pulled - [ObdSamplePull]
+     * fixes all three. A per-vehicle failure still does not abort the other cars or the rest of
+     * this pull.
      */
     private suspend fun pullObdSamples(
         context: Context,
-        db: CarDatabase,
         backend: FleetBackend,
         obdMacByServerId: Map<String, String>,
-    ): Int {
-        val nowMs = System.currentTimeMillis()
-        val windowStartMs = nowMs - OBD_PULL_WINDOW_MS
-        var pulled = 0
-
-        for ((serverId, obdMac) in obdMacByServerId) {
-            val cursorKey = "obd_samples:$serverId"
-            val sinceMs = maxOf(windowStartMs, FleetPullCursor.lastPulledAtMs(context, cursorKey))
-            val remote = backend.fetchObdSamplesSince(serverId, sinceMs).getOrNull() ?: continue
-            if (remote.isEmpty()) continue
-
-            val existingByPidAndTimestamp = remote.map { it.pid }.toSet().flatMap { pid ->
-                db.odbSampleDao().getRange(obdMac, pid, sinceMs, nowMs).map { pid to it.timestamp }
-            }.toSet()
-
-            for (s in remote) {
-                if ((s.pid to s.recordedAtMs) in existingByPidAndTimestamp) continue
-                db.odbSampleDao().insert(
-                    OdbSample(
-                        vehicleId = obdMac,
-                        pid = s.pid,
-                        value = s.value,
-                        unit = s.unit,
-                        timestamp = s.recordedAtMs,
-                        lat = s.lat,
-                        lng = s.lng,
-                    ),
-                )
-                pulled++
-            }
-            remote.maxOfOrNull { it.recordedAtMs }?.let { FleetPullCursor.advance(context, cursorKey, it) }
-        }
-
-        return pulled
-    }
+    ): Int = ObdSamplePull.pull(context, backend, obdMacByServerId.keys, obdMacByServerId).inserted
 
     // =============================================================================================
     // Orchestration + foreground auto-trigger.
@@ -906,7 +859,7 @@ object FleetSync {
         val buildEntries = pullBuildEntries(context, db, backend, obdMacByServerId)
         val driveReassignments = pullDriveReassignments(context, db, backend, obdMacByServerId)
         val maintenanceSchedules = pullMaintenanceSchedules(context, db, backend, obdMacByServerId)
-        val obdSamplesPulled = pullObdSamples(context, db, backend, obdMacByServerId)
+        val obdSamplesPulled = pullObdSamples(context, backend, obdMacByServerId)
         val obdSamplesServerTotal = backend.countObdSamples().getOrDefault(0L)
 
         return PullReport(

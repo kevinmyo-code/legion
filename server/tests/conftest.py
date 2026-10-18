@@ -338,6 +338,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
             assert skipped is None, skipped
             skipped = apply_ledger_bank_rows(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0023` (obd_samples arrival-order index), the same way.
+            from api.obd_arrival_index import create_arrival_index
+
+            skipped = create_arrival_index(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

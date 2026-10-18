@@ -55,7 +55,7 @@ for it, and their docstrings say so.
 3. **The pull is windowed and per-vehicle by design.**
    `FleetBackend.fetchObdSamplesSince(vehicleServerId, sinceMs)` has no
    whole-table form, and Kevin's 2026-09-03 OBD-volume ruling is "recent window
-   only, roughly the last 30 days". The phone is a CACHE for this table, not
+   only, roughly the last 30 days" - WIDENED to 365 days on 2026-10-17 (Kevin) so the Year chart fills with head-unit data. The phone is a CACHE for this table, not
    the archive.
 4. **Upload is a resumable batch, not a per-row upsert.**
    `ObdSampleReconcile` pages 500 rows at a time; a PUT per sample would be
@@ -71,12 +71,12 @@ principle points the other way and the honest options narrow to two: refuse, or
 silently narrow.
 
 Silently narrowing loses. A client that asked for a whole table and was handed
-thirty days of one car has been told nothing about the difference, and would
+a narrow slice of one car has been told nothing about the difference, and would
 have no way to tell a quiet window from a car with no telemetry - the same
 "unreadable and empty are different sentences" trap CLAUDE.md section 1 names.
 So `GET /api/fleet/obd_samples/` **requires `?vehicle=<uuid>`** and answers 400
 naming the parameter when it is absent, 404 when it names no vehicle. The
-30-day window stays where it belongs: the client passes it as `?since=`, and
+time window stays where it belongs: the client passes it as `?since=`, and
 the server serves what was asked for, paged, rather than deciding on the
 client's behalf how much of its own history it is allowed to see.
 
@@ -148,7 +148,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer, paged_serializer
-from api.sync import PAGE_SIZE, paginate_since, parse_since, save_or_400
+from api.sync import PAGE_SIZE, paginate_keyset, paginate_since, parse_since, save_or_400
 from api.synced import (
     HouseholdScopedPrimaryKeyRelatedField,
     SyncedModelViewSet,
@@ -1354,9 +1354,40 @@ OBD_SINCE_PARAMETER = OpenApiParameter(
         "READ FROM THE CAR, not the instant it reached this server. That is the column "
         "`FleetBackend.fetchObdSamplesSince` filters on, and the only one that means anything "
         "to a client rebuilding a window of telemetry. Omitted means this vehicle's whole "
-        "history, paged; the phone passes roughly the last 30 days (Kevin's 2026-09-03 "
-        "OBD-volume ruling), and that window is the CLIENT's choice, never a narrowing this "
-        "server applies on its behalf."
+        "history, paged; the phone's first-run backfill passes the last 365 days (Kevin's "
+        "2026-10-17 ruling, which superseded the 2026-09-03 ~30-day bound), and that window is "
+        "the CLIENT's choice, never a narrowing this server applies on its behalf. Ignored when "
+        "`received_after` is sent."
+    ),
+)
+
+OBD_RECEIVED_AFTER_PARAMETER = OpenApiParameter(
+    name="received_after",
+    location=OpenApiParameter.QUERY,
+    type=OpenApiTypes.DATETIME,
+    required=False,
+    description=(
+        "ISO-8601 UTC ARRIVAL watermark, matched against `created_at` - when this server "
+        "STORED the sample, not when it was read from the car. Switches the feed to arrival "
+        "order, keyed on `(created_at, id)`: a head unit that uploads a drive hours late is "
+        "still returned, because its rows arrive after the watermark whatever their "
+        "`recorded_at`. Without `after_id` the match is inclusive (`>=`); with it, strictly "
+        "after that position. `since` is ignored in this mode. The response's `next` and "
+        "`next_after` are the keyset to hand back as `received_after` and `after_id`."
+    ),
+)
+
+OBD_AFTER_ID_PARAMETER = OpenApiParameter(
+    name="after_id",
+    location=OpenApiParameter.QUERY,
+    type=OpenApiTypes.UUID,
+    required=False,
+    description=(
+        "Only with `received_after`: the row id of the last sample already received at that "
+        "exact `created_at`. A batch insert gives every row the same `created_at`, so the id "
+        "is what lets a page boundary fall inside one batch without dropping or repeating "
+        "rows. Taken from the previous page's `next_after`; an id is never published on a "
+        "row. Not a uuid is a 400."
     ),
 )
 
@@ -1569,7 +1600,12 @@ class ObdSampleListView(APIView):
     @extend_schema(
         operation_id="api_fleet_obd_samples_list",
         tags=["fleet"],
-        parameters=[OBD_VEHICLE_PARAMETER, OBD_SINCE_PARAMETER],
+        parameters=[
+            OBD_VEHICLE_PARAMETER,
+            OBD_SINCE_PARAMETER,
+            OBD_RECEIVED_AFTER_PARAMETER,
+            OBD_AFTER_ID_PARAMETER,
+        ],
         responses={
             200: OpenApiResponse(
                 response=paged_serializer(ObdSampleSerializer),
@@ -1593,6 +1629,9 @@ class ObdSampleListView(APIView):
         vehicle, error = _required_vehicle(request, required=True)
         if error is not None:
             return error
+        received_raw = (request.query_params.get("received_after") or "").strip()
+        if received_raw:
+            return self._arrival_page(request, vehicle, received_raw)
         since = parse_since(request.query_params.get("since"))
         # The household filter is redundant given `vehicle` was resolved inside
         # it, and it is here anyway: a second reader of this line should not
@@ -1608,6 +1647,51 @@ class ObdSampleListView(APIView):
         return Response(
             {"results": ObdSampleSerializer(page, many=True).data, "next": next_since}
         )
+
+    @staticmethod
+    def _arrival_page(request, vehicle, received_raw):
+        return _arrival_page(request, vehicle, received_raw)
+
+
+def _arrival_page(request, vehicle, received_raw: str) -> Response:
+    """`?received_after=` mode of [ObdSampleListView]: arrival order, keyset on
+    `(created_at, id)` via `paginate_keyset`.
+
+    `created_at` is `statement_timestamp()` at insert (`_OBD_ROW_PLACEHOLDERS`),
+    so it is the moment THIS server stored the row, and every row of one batch
+    shares it; the `id` tiebreak is what makes a page boundary inside a batch
+    safe. Served oldest-arrival first so a client can persist its cursor after
+    each page it stores.
+
+    Known limit, stated rather than hidden: two batches in flight at once can
+    COMMIT in the opposite order to their statement timestamps, so a row with a
+    `created_at` slightly behind a cursor another reader already passed can
+    appear late. A batch is one statement committed straight away, so the
+    window is a few milliseconds; the phone starts every walk five minutes
+    before its stored cursor (`ObdSamplePull.ARRIVAL_OVERLAP_MS`) and dedupes, which
+    bounds the gap to a commit slower than that.
+    """
+    received_after = parse_since(received_raw)
+    after = (request.query_params.get("after_id") or "").strip() or None
+    if after is not None:
+        try:
+            after = str(uuid.UUID(after))
+        except ValueError:
+            return _refuse(
+                f"Nothing was returned. ?after_id={after!r} is not a uuid. It is the "
+                f"`next_after` the previous page returned."
+            )
+    queryset = scoped(ObdSample, request).filter(vehicle=vehicle)
+    page, next_received, next_after = paginate_keyset(
+        queryset, received_after, after, cursor_field="created_at"
+    )
+    return Response(
+        {
+            "results": ObdSampleSerializer(page, many=True).data,
+            "next": next_received,
+            "next_after": next_after,
+        }
+    )
 
 
 class ObdSampleCountView(APIView):

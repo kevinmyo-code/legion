@@ -15,7 +15,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -23,6 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import com.kevin.legion.backend.ObdPullStatus
+import com.kevin.legion.backend.ObdSamplePull
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.PidSummary
 import com.kevin.legion.ui.common.Hairline
@@ -88,6 +93,11 @@ data class TelemetryUiState(
     val series: TelemetrySeries? = null,
     val summary: PidSummary? = null,
     val unit: String = "",
+    /** [com.kevin.legion.backend.ObdPullStatus]'s sentence: when this phone last heard from the
+     *  engine, or why it could not. Always shown - the screen reads Room, so a stale chart must
+     *  say it may be behind. */
+    val engineStatus: String = "",
+    val refreshing: Boolean = false,
 )
 
 @Composable
@@ -97,10 +107,27 @@ fun TelemetryScreen(onBack: () -> Unit) {
     var selectedPid by remember { mutableStateOf<String?>(null) }
     var range by remember { mutableStateOf(TelemetryRange.ALL) }
 
-    // Pass one: the car and what it has recorded at all. Runs once - none of
-    // it changes while the screen is open, since the active car cannot be
-    // switched from here.
-    LaunchedEffect(Unit) {
+    // Bumped after an engine pull finishes so both passes re-read Room. Samples recorded by another
+    // device (the head unit) arrive in Room through ObdSamplePull, and this screen only ever reads
+    // Room - offline it shows what Room has and the status line says it may be behind.
+    var reloadTick by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    val refreshFromEngine: () -> Unit = {
+        if (!state.refreshing) {
+            state = state.copy(refreshing = true)
+            scope.launch {
+                runCatching { ObdSamplePull.refresh(context) }
+                state = state.copy(refreshing = false)
+                reloadTick++
+            }
+        }
+    }
+    // On open: show Room straight away (pass one below), pull in the background.
+    LaunchedEffect(Unit) { refreshFromEngine() }
+
+    // Pass one: the car and what it has recorded at all. Re-runs after each engine pull; the
+    // active car cannot be switched from here.
+    LaunchedEffect(reloadTick) {
         val vehicle = VehicleController.currentVehicle(context)
         val dao = CarDatabase.getDatabase(context).odbSampleDao()
         // MPG_TRIP is dropped from the picker while MpgTrust.SHOW_MPG is false (ticket 09,
@@ -140,12 +167,13 @@ fun TelemetryScreen(onBack: () -> Unit) {
             firstSampleMs = firstSampleMs,
             lastSampleMs = lastSampleMs,
             pids = pids,
+            engineStatus = ObdPullStatus.line(context),
         )
         if (selectedPid == null) selectedPid = pids.firstOrNull()
     }
 
     // Pass two: the selected PID's window. Re-runs on every pick.
-    LaunchedEffect(selectedPid, range) {
+    LaunchedEffect(selectedPid, range, reloadTick) {
         val pid = selectedPid ?: return@LaunchedEffect
         val vehicle = VehicleController.currentVehicle(context)
         val dao = CarDatabase.getDatabase(context).odbSampleDao()
@@ -188,6 +216,7 @@ fun TelemetryScreen(onBack: () -> Unit) {
         onBack = onBack,
         onSelectPid = { selectedPid = it },
         onSelectRange = { range = it },
+        onRefresh = refreshFromEngine,
     )
 }
 
@@ -198,6 +227,7 @@ fun TelemetryContent(
     onBack: () -> Unit,
     onSelectPid: (String) -> Unit,
     onSelectRange: (TelemetryRange) -> Unit,
+    onRefresh: () -> Unit = {},
 ) {
     FleetSoftSurface {
         val sem = LocalLegionSemantics.current
@@ -207,6 +237,9 @@ fun TelemetryContent(
             // not switchable from here.
             DeckScreenHeader(title = "Telemetry", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
+
+            // Hands path for the engine pull, and the words for how fresh Room is.
+            if (!state.loading) EngineStatusRow(state, onRefresh)
 
             when {
                 state.loading -> Text(
@@ -219,78 +252,110 @@ fun TelemetryContent(
                 state.totalCount == 0 -> {
                     SectionHeader(state.carLabel.ifBlank { "a car you haven't named yet" })
                     Text(
-                        "No telemetry recorded for this car. The recorder writes a sample every 30 seconds while an OBD adapter is connected and the engine is running.",
+                        "No telemetry recorded for this car yet. Samples come from whichever device has the OBD " +
+                            "adapter, this phone or the car's head unit, about every 30 seconds while the " +
+                            "engine is running. Anything the head unit recorded appears here after the " +
+                            "next update from the engine.",
                         style = MaterialTheme.typography.bodySmall,
                         color = sem.faint,
                         modifier = Modifier.padding(12.dp),
                     )
                 }
 
-                else -> {
-                    SectionHeader(
-                        state.carLabel.ifBlank { "a car you haven't named yet" },
-                        "${groupThousands(state.totalCount)} readings",
-                    )
-                    spanLine(state.firstSampleMs, state.lastSampleMs)?.let { span ->
-                        Text(
-                            span,
-                            style = LegionType.stamp,
-                            color = sem.faint,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
+                else -> TelemetryLoaded(state, onSelectPid, onSelectRange)
+            }
+        }
+    }
+}
 
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        state.pids.forEach { pid ->
-                            PidChip(pid, selected = pid == state.selectedPid, onSelect = { onSelectPid(pid) })
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        TelemetryRange.entries.forEach { option ->
-                            RangeChip(option, selected = option == state.range, onSelect = { onSelectRange(option) })
-                        }
-                    }
-                    Hairline()
+/** The "when did the engine last update this" line and its Refresh button. */
+@Composable
+private fun EngineStatusRow(state: TelemetryUiState, onRefresh: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (state.refreshing) "Updating from the engine..." else state.engineStatus,
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRefresh, enabled = !state.refreshing) { Text("Refresh") }
+    }
+    Hairline()
+}
 
-                    val summary = summaryLine(state.summary, state.unit)
-                    if (summary == null) {
-                        Text(
-                            "No ${state.selectedPid?.let { ObdHistory.pidLabel(it) }.orEmpty().lowercase()} readings in this range.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = sem.faint,
-                            modifier = Modifier.padding(12.dp),
-                        )
-                    } else {
-                        Text(
-                            summary,
-                            style = LegionType.stamp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                        TelemetryChart(state.series?.points.orEmpty())
-                        // Stated, never implied: the line stops early because
-                        // the query capped, not because the car stopped.
-                        if (state.series?.truncated == true) {
-                            Text(
-                                "Chart shows the newest $ROW_CAP readings in this range. The figures above cover all of it.",
-                                style = LegionType.stamp,
-                                color = sem.faint,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            )
-                        }
-                        // What the RANGE actually covers, as opposed to what
-                        // the car has recorded all-time in the header above -
-                        // "1Y" on a car parked since March covers a lot less
-                        // than a year, and the row says which.
-                        state.summary?.let { s ->
-                            Hairline()
-                            spanLine(s.firstMs, s.lastMs)?.let { windowSpan ->
-                                ReadingRow("In range", windowSpan, sub = "${groupThousands(s.count)} readings")
-                                Hairline()
-                            }
-                        }
-                    }
-                }
+/** [TelemetryContent]'s body once the car's history has loaded and is non-empty. Split out only so
+ *  neither function outgrows detekt's LongMethod ceiling; behaviour is unchanged. */
+@Composable
+private fun TelemetryLoaded(
+    state: TelemetryUiState,
+    onSelectPid: (String) -> Unit,
+    onSelectRange: (TelemetryRange) -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    SectionHeader(
+        state.carLabel.ifBlank { "a car you haven't named yet" },
+        "${groupThousands(state.totalCount)} readings",
+    )
+    spanLine(state.firstSampleMs, state.lastSampleMs)?.let { span ->
+        Text(
+            span,
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        state.pids.forEach { pid ->
+            PidChip(pid, selected = pid == state.selectedPid, onSelect = { onSelectPid(pid) })
+        }
+    }
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        TelemetryRange.entries.forEach { option ->
+            RangeChip(option, selected = option == state.range, onSelect = { onSelectRange(option) })
+        }
+    }
+    Hairline()
+
+    val summary = summaryLine(state.summary, state.unit)
+    if (summary == null) {
+        Text(
+            "No ${state.selectedPid?.let { ObdHistory.pidLabel(it) }.orEmpty().lowercase()} readings in this range.",
+            style = MaterialTheme.typography.bodySmall,
+            color = sem.faint,
+            modifier = Modifier.padding(12.dp),
+        )
+    } else {
+        Text(
+            summary,
+            style = LegionType.stamp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+        TelemetryChart(state.series?.points.orEmpty())
+        // Stated, never implied: the line stops early because
+        // the query capped, not because the car stopped.
+        if (state.series?.truncated == true) {
+            Text(
+                "Chart shows the newest $ROW_CAP readings in this range. The figures above cover all of it.",
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
+        // What the RANGE actually covers, as opposed to what
+        // the car has recorded all-time in the header above -
+        // "1Y" on a car parked since March covers a lot less
+        // than a year, and the row says which.
+        state.summary?.let { s ->
+            Hairline()
+            spanLine(s.firstMs, s.lastMs)?.let { windowSpan ->
+                ReadingRow("In range", windowSpan, sub = "${groupThousands(s.count)} readings")
+                Hairline()
             }
         }
     }

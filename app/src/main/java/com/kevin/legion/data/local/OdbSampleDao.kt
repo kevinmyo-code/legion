@@ -10,6 +10,21 @@ interface OdbSampleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(sample: OdbSample)
 
+    /**
+     * One page of samples pulled from the engine ([com.kevin.legion.backend.ObdSamplePull]).
+     * IGNORE rather than REPLACE: this table has NO unique index on its natural key
+     * `(vehicleId, pid, timestamp)` (see [OdbSample]), so neither strategy dedupes by itself and the
+     * caller does the read-then-skip. IGNORE is simply the one that can never overwrite a row.
+     * Returns the new row ids in insert order, which the caller needs to advance the upload cursor.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(samples: List<OdbSample>): List<Long>
+
+    /** The highest local id, or null on an empty table. Brackets a pull's inserts so the upload
+     *  cursor can be moved past rows that came FROM the engine. */
+    @Query("SELECT MAX(id) FROM obd_samples")
+    suspend fun maxId(): Long?
+
     /** All samples for a PID in a time range, ordered oldest-first. */
     @Query(
         "SELECT * FROM obd_samples " +

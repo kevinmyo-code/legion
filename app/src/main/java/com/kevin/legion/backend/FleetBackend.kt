@@ -600,8 +600,9 @@ data class ObdSampleUpload(
 
 /**
  * One `public.obd_samples` row as Postgres reports it, for [FleetBackend.fetchObdSamplesSince]'s
- * WINDOWED pull (live-sync ticket, Kevin's OBD-volume ruling 2026-09-03: "recent window only,
- * roughly the last 30 days"). No `serverId`/`syncId` at all - the table's own natural key is
+ * WINDOWED pull (live-sync ticket, Kevin's OBD-volume ruling 2026-09-03: "recent window only",
+ * widened from roughly 30 days to 365 on 2026-10-17, see [ObdSamplePull.BACKFILL_WINDOW_DAYS]).
+ * No `serverId`/`syncId` at all - the table's own natural key is
  * `(vehicle_id, pid, recorded_at)` (its own `on conflict do nothing`, per [ObdSampleUpload]'s own
  * doc comment), which [FleetSync]'s pull-side dedup matches against directly rather than needing a
  * separate identity column. No `deleted`/`deleted_at` either - `obd_samples` has no tombstone
@@ -616,6 +617,35 @@ data class RemoteObdSample(
     val recordedAtMs: Long,
     val lat: Double?,
     val lng: Double?,
+)
+
+/**
+ * ONE page of [RemoteObdSample] rows, for [FleetBackend.fetchObdSamplesPage]. [nextSinceMs] is the
+ * `recorded_at` of the page's last row when more may follow (the engine's `next`), or null on the
+ * last page. It is INCLUSIVE - the next request re-serves the boundary instant - so a caller
+ * dedupes on the natural key, which [ObdSamplePull] does.
+ */
+data class RemoteObdSamplePage(val samples: List<RemoteObdSample>, val nextSinceMs: Long?)
+
+/**
+ * ONE page of the ARRIVAL-ordered feed (`created_at`, i.e. when the engine stored the sample, not
+ * when it was read from the car), for [FleetBackend.fetchObdSamplesArrivalPage].
+ *
+ * The cursor is kept as the engine's own strings, never converted to milliseconds: `created_at`
+ * has microsecond precision and a batch gives every row the same value, so a truncated cursor
+ * would no longer match the tie it is meant to step past.
+ *
+ * @param hasMore the engine said a full page came back, so ask again from the cursor.
+ * @param cursorReceivedAfter the `received_after` to send next: the engine's `next` on a full
+ *   page, otherwise the last row's `created_at`. Null only for an empty page (keep the old cursor).
+ * @param cursorAfterId the `after_id` that goes with it; null on a final page, where the next
+ *   request is inclusive and the repeated rows are deduped.
+ */
+data class RemoteObdArrivalPage(
+    val samples: List<RemoteObdSample>,
+    val hasMore: Boolean,
+    val cursorReceivedAfter: String?,
+    val cursorAfterId: String?,
 )
 
 data class RemoteDriveReassignment(
@@ -934,6 +964,35 @@ interface FleetBackend {
      * materialise every car's rows in memory at once. Same default as [fetchChangedVehiclesSince].
      */
     suspend fun fetchObdSamplesSince(vehicleServerId: String, sinceMs: Long): Result<List<RemoteObdSample>> = Result.success(emptyList())
+
+    /**
+     * One PAGE of [fetchObdSamplesSince]'s feed, so [ObdSamplePull] can store a page and move its
+     * cursor before asking for the next, instead of holding a year of rows in memory and losing the
+     * lot to one failure on page 40. The default wraps [fetchObdSamplesSince] as a single final
+     * page, which is exactly right for a backend that has no paging of its own.
+     */
+    suspend fun fetchObdSamplesPage(vehicleServerId: String, sinceMs: Long): Result<RemoteObdSamplePage> =
+        fetchObdSamplesSince(vehicleServerId, sinceMs).map { RemoteObdSamplePage(it, null) }
+
+    /**
+     * True when the backend can walk samples in ARRIVAL order ([fetchObdSamplesArrivalPage]). Only
+     * the Django engine can; [ObdSamplePull] falls back to the `recorded_at` feed for any other
+     * backend, which cannot see a sample uploaded late with an old `recorded_at`.
+     */
+    val supportsArrivalFeed: Boolean get() = false
+
+    /**
+     * One page of one vehicle's samples that the engine STORED at or after [receivedAfter]
+     * (an ISO-8601 string, the engine's own cursor), ordered by `(created_at, id)`. [afterId], when
+     * given, makes the position strict: only rows after that id at that exact `created_at`. This is
+     * what lets a head unit's late upload be found whatever its `recorded_at`.
+     */
+    suspend fun fetchObdSamplesArrivalPage(
+        vehicleServerId: String,
+        receivedAfter: String,
+        afterId: String?,
+    ): Result<RemoteObdArrivalPage> =
+        Result.failure(FleetBackendException("This backend cannot list OBD samples by arrival."))
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseFleetBackend] for every failure branch - owned
