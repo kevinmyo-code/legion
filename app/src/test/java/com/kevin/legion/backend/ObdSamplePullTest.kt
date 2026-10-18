@@ -219,6 +219,23 @@ class ObdSamplePullTest {
     }
 
     @Test
+    fun `a row stamped just behind an already-served cursor is still pulled next run`() = runBlocking {
+        insertVehicle()
+        val backend = arrivalBackend()
+        (1..3).forEach { backend.store(serverId, remote(it), nowMs - 1_000L, "id%02d".format(it)) }
+        ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs)
+        assertEquals(3, rows().size)
+
+        // A batch whose statement started earlier but committed after the cursor passed it.
+        val behind = RemoteObdSample(serverId, "010C", 7.0, "rpm", remote(3).recordedAtMs + 5_000L, null, null)
+        backend.store(serverId, behind, nowMs - 4_000L, "zz00")
+        val report = ObdSamplePull.pull(context, backend, listOf(serverId), macs, nowMs + 60_000L)
+
+        assertEquals(1, report.inserted)
+        assertEquals(4, rows().size)
+    }
+
+    @Test
     fun `a row that arrives during the backfill is not lost at the handover`() = runBlocking {
         insertVehicle()
         val backend = arrivalBackend()
@@ -233,7 +250,9 @@ class ObdSamplePullTest {
         assertTrue(rows().any { it.timestamp == old.recordedAtMs })
         // The arrival cursor started before the backfill did.
         assertEquals(
-            Instant.ofEpochMilli(nowMs - ObdSamplePull.HANDOVER_MARGIN_MS).toString(),
+            Instant.ofEpochMilli(
+                nowMs - ObdSamplePull.HANDOVER_MARGIN_MS - ObdSamplePull.ARRIVAL_OVERLAP_MS,
+            ).toString(),
             backend.requestedArrival.first().first,
         )
     }

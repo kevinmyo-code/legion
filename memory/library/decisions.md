@@ -6434,5 +6434,6 @@ now pulls them into Room (`backend/ObdSamplePull.kt`) and the screen keeps readi
 - **Pulled rows are not re-uploaded:** the phone's upload cursor is advanced past rows the pull
   inserted when it had caught up; if unsent local rows exist it is left alone and the pulled rows are
   re-posted once (idempotent).
-- **Known limit:** two batches in flight can commit out of `created_at` order, so a row a few
-  milliseconds behind a cursor can be missed; not fixed.
+- **Out-of-order commits are bounded, not eliminated:** two batches in flight can commit out of
+  `created_at` order, so each arrival walk starts five minutes before the stored cursor (deduped);
+  a batch that commits within five minutes of its statement start is still picked up.

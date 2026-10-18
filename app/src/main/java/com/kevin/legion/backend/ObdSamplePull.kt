@@ -160,6 +160,17 @@ object ObdSamplePull {
      */
     internal const val HANDOVER_MARGIN_MS = 10 * 60 * 1000L
 
+    /**
+     * Every arrival walk starts this far BEFORE the stored cursor, with no `after_id`. The engine
+     * stamps `created_at` at the START of a batch's insert statement, but a batch becomes visible
+     * when it COMMITS; one that started earlier can commit after a newer one has already been
+     * served, leaving it just behind the cursor. Re-asking from five minutes back catches it
+     * provided it commits within that time, and the dedupe absorbs the repeated rows. The stored
+     * cursor stays the engine's own string; only the request's start is moved, with
+     * [java.time.Instant] arithmetic that keeps the microseconds.
+     */
+    internal const val ARRIVAL_OVERLAP_MS = 5 * 60 * 1000L
+
     /** Pages per vehicle per run (500 rows each): a year of backfill resumes over several runs
      *  rather than holding the foreground for one enormous one. Hitting it is reported, not hidden. */
     internal const val MAX_PAGES_PER_VEHICLE = 100
@@ -381,7 +392,7 @@ object ObdSamplePull {
         mac: String,
     ): VehicleOutcome {
         val start = ObdArrivalCursors.arrivalAt(app, serverId) ?: return EMPTY_OUTCOME
-        var cursor = Cursor(start, ObdArrivalCursors.arrivalId(app, serverId))
+        var cursor = Cursor(overlapStart(start), null)
         var total = EMPTY_OUTCOME
         var pages = 0
         var walking = true
@@ -395,6 +406,9 @@ object ObdSamplePull {
         val capped = walking && total.failure == null
         return if (capped) total + VehicleOutcome(0, 0, true, null) else total
     }
+
+    private fun overlapStart(storedAt: String): String =
+        runCatching { Instant.parse(storedAt).minusMillis(ARRIVAL_OVERLAP_MS).toString() }.getOrDefault(storedAt)
 
     /** One arrival page: fetch, store, and only then persist the cursor it leads to. */
     private suspend fun arrivalStep(

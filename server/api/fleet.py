@@ -1667,8 +1667,9 @@ def _arrival_page(request, vehicle, received_raw: str) -> Response:
     COMMIT in the opposite order to their statement timestamps, so a row with a
     `created_at` slightly behind a cursor another reader already passed can
     appear late. A batch is one statement committed straight away, so the
-    window is a few milliseconds; the phone's dedupe makes a re-served row
-    harmless but cannot recover one never served.
+    window is a few milliseconds; the phone starts every walk five minutes
+    before its stored cursor (`ObdSamplePull.ARRIVAL_OVERLAP_MS`) and dedupes, which
+    bounds the gap to a commit slower than that.
     """
     received_after = parse_since(received_raw)
     after = (request.query_params.get("after_id") or "").strip() or None
