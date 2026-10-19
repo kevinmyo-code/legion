@@ -54,6 +54,9 @@ data class TetrisUiState(
     val opponentScore: Int = 0,
     val opponentToppedOut: Boolean = false,
     val busy: Boolean = false,
+    /** Solo only: gravity, lock delay and input are stopped and the pause overlay is up. */
+    val paused: Boolean = false,
+    val theme: TetrisTheme = TetrisTheme.CLASSIC,
 )
 
 private const val POLL_MS = 1_000L
@@ -75,8 +78,14 @@ private const val SEED_RANGE = 1L shl 32
  * Both run on the main dispatcher, so the game needs no locking.
  */
 @Suppress("TooManyFunctions") // one function per user action and per race step; splitting would share all the state
-class TetrisViewModel(app: Application) : AndroidViewModel(app) {
-    private val _state = MutableStateFlow(TetrisUiState())
+class TetrisViewModel @JvmOverloads constructor(
+    app: Application,
+    /** The frame clock; a test passes its own so gravity is deterministic. */
+    private val nanoClock: () -> Long = System::nanoTime,
+) : AndroidViewModel(app) {
+    private val themeStore = TetrisThemeStore(app)
+    private var theme = themeStore.load()
+    private val _state = MutableStateFlow(TetrisUiState(theme = theme))
     val state: StateFlow<TetrisUiState> = _state.asStateFlow()
 
     private var started = false
@@ -107,22 +116,76 @@ class TetrisViewModel(app: Application) : AndroidViewModel(app) {
     private fun startSolo() {
         val g = TetrisGame(Random.nextLong(0L, SEED_RANGE))
         game = g
-        _state.value = TetrisUiState(stage = TetrisStage.PLAYING, race = false, board = g.snapshot())
+        paused = false
+        _state.value = TetrisUiState(stage = TetrisStage.PLAYING, race = false, board = g.snapshot(), theme = theme)
         frameJob?.cancel()
         frameJob = viewModelScope.launch { soloLoop(g) }
     }
 
     fun playAgain() = startSolo()
 
-    /** Solo only: the screen leaving the foreground must not let pieces fall unseen. */
-    fun setPaused(value: Boolean) {
-        if (!_state.value.race) paused = value
+    /**
+     * Solo only. Races never pause: the clock is the engine's and shared with the other player, so
+     * a local freeze would only let one side think. Gravity, lock delay and input all stop because
+     * the solo loop stops calling [TetrisGame.advance] and [act] refuses while paused.
+     */
+    fun pause() {
+        val s = _state.value
+        if (s.race || s.stage != TetrisStage.PLAYING || paused) return
+        paused = true
+        releaseHolds()
+        _state.update { it.copy(paused = true) }
     }
 
+    fun resume() {
+        if (!paused) return
+        paused = false
+        _state.update { it.copy(paused = false) }
+    }
+
+    fun togglePause() = if (paused) resume() else pause()
+
+    /** The app left the foreground (ON_STOP): pause, and stay paused until the user presses Resume. */
+    fun autoPause() = pause()
+
+    fun setTheme(value: TetrisTheme) {
+        theme = value
+        themeStore.save(value)
+        _state.update { it.copy(theme = value) }
+    }
+
+    fun cycleTheme() = setTheme(theme.next())
+
+    // ---- the pad: touch buttons and hardware keys both land here
+
+    private val holds = mapOf(
+        PadButton.LEFT to HoldRepeat(viewModelScope) { moveLeft() },
+        PadButton.RIGHT to HoldRepeat(viewModelScope) { moveRight() },
+        PadButton.DOWN to HoldRepeat(viewModelScope) { softDrop() },
+    )
+
+    fun padDown(button: PadButton) {
+        when (button) {
+            PadButton.LEFT, PadButton.RIGHT, PadButton.DOWN -> holds.getValue(button).press()
+            PadButton.UP -> hardDrop()
+            PadButton.A -> rotate(clockwise = true)
+            PadButton.B -> rotate(clockwise = false)
+            PadButton.HOLD -> hold()
+            PadButton.START -> togglePause()
+            PadButton.SELECT -> cycleTheme()
+        }
+    }
+
+    fun padUp(button: PadButton) {
+        holds[button]?.release()
+    }
+
+    private fun releaseHolds() = holds.values.forEach { it.release() }
+
     private suspend fun soloLoop(g: TetrisGame) {
-        var last = System.nanoTime()
+        var last = nanoClock()
         while (viewModelScope.isActive) {
-            val now = System.nanoTime()
+            val now = nanoClock()
             val dt = ((now - last) / NANOS_PER_SECOND).coerceAtMost(MAX_FRAME_SECONDS)
             last = now
             if (!paused) g.advance(dt)
@@ -145,7 +208,9 @@ class TetrisViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun startInvite(userId: String) {
         val engine = engineOrClosed() ?: return
-        _state.value = TetrisUiState(stage = TetrisStage.STARTING, race = true, message = "Sending the invite...")
+        _state.value = TetrisUiState(
+            stage = TetrisStage.STARTING, race = true, message = "Sending the invite...", theme = theme,
+        )
         viewModelScope.launch {
             engine.invite(userId).fold(
                 onSuccess = { id ->
@@ -168,7 +233,9 @@ class TetrisViewModel(app: Application) : AndroidViewModel(app) {
     private fun openMatch(id: String) {
         if (engineOrClosed() == null) return
         asInviter = false
-        _state.value = TetrisUiState(stage = TetrisStage.STARTING, race = true, message = "Opening the invite...")
+        _state.value = TetrisUiState(
+            stage = TetrisStage.STARTING, race = true, message = "Opening the invite...", theme = theme,
+        )
         follow(id)
     }
 
@@ -177,7 +244,9 @@ class TetrisViewModel(app: Application) : AndroidViewModel(app) {
         val engine = djangoGamesBackendOrNull(getApplication<Application>())
         backend = engine
         if (engine == null) {
-            _state.value = TetrisUiState(stage = TetrisStage.CLOSED, race = true, message = NO_ENGINE_SENTENCE)
+            _state.value = TetrisUiState(
+                stage = TetrisStage.CLOSED, race = true, message = NO_ENGINE_SENTENCE, theme = theme,
+            )
         }
         return engine
     }
@@ -272,9 +341,9 @@ class TetrisViewModel(app: Application) : AndroidViewModel(app) {
     // ---- race: the frame loop
 
     private suspend fun raceLoop() {
-        var last = System.nanoTime()
+        var last = nanoClock()
         while (viewModelScope.isActive) {
-            val now = System.nanoTime()
+            val now = nanoClock()
             val dt = ((now - last) / NANOS_PER_SECOND).coerceAtMost(MAX_FRAME_SECONDS)
             last = now
             latest?.let { step(it, dt) }

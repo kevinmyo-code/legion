@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "MagicNumber") // PascalCase composables; the colour literals are the palette
+@file:Suppress("FunctionNaming", "MagicNumber") // PascalCase composables; the fractions are drawing proportions
 
 package com.kevin.legion.ui.games
 
@@ -14,34 +14,29 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import com.kevin.legion.games.tetris.Board
 import com.kevin.legion.games.tetris.GameSnapshot
 import com.kevin.legion.games.tetris.Piece
 
-private val WELL = Color(0xFF0E0F13)
-private val GRID_LINE = Color(0xFF1C1E24)
+/**
+ * The wall band is this fraction of a cell on the left, right, top and bottom, so the canvas is
+ * `COLUMNS + 2 * WALL_FRAC` cells wide and `VISIBLE_ROWS + 2 * WALL_FRAC` cells tall.
+ */
+const val WALL_FRAC = 0.4f
+const val VISIBLE_ROWS = Board.ROWS - Board.HIDDEN_ROWS
 
-/** One colour per [Piece], in enum order I J L O S T Z. */
-private val PIECE_COLORS = listOf(
-    Color(0xFF4DD0E1), // I
-    Color(0xFF5C7CFA), // J
-    Color(0xFFFF9F43), // L
-    Color(0xFFFFD43B), // O
-    Color(0xFF69DB7C), // S
-    Color(0xFFB197FC), // T
-    Color(0xFFFF6B6B), // Z
-)
-
-private fun colorOf(piece: Piece) = PIECE_COLORS[piece.ordinal]
+private fun cellOf(widthPx: Float) = widthPx / (Board.COLUMNS + 2 * WALL_FRAC)
 
 private const val CELL_INSET = 0.06f
 private const val FLICK_CELLS = 4
 private const val FLICK_MAX_MS = 250L
 private const val SOFT_DROP_MIN_MS = 120L
 private const val NANOS_PER_MS = 1_000_000L
-private const val GHOST_ALPHA = 0.55f
-private const val GHOST_STROKE = 0.08f
+private const val GHOST_ALPHA = 0.9f
+private const val GHOST_FILL_ALPHA = 0.18f
+private const val GHOST_STROKE = 0.1f
 
 /**
  * The well, with the touch controls as the PWA has them (ticket 04/05): tap rotates, a horizontal
@@ -50,13 +45,13 @@ private const val GHOST_STROKE = 0.08f
  * has been down [SOFT_DROP_MIN_MS], so a quick flick is one hard drop and nothing else.
  */
 @Composable
-fun TetrisBoard(snapshot: GameSnapshot?, input: BoardInput, modifier: Modifier = Modifier) {
+fun TetrisBoard(snapshot: GameSnapshot?, palette: TetrisPalette, input: BoardInput, modifier: Modifier = Modifier) {
     val current by rememberUpdatedState(input)
     Canvas(
         modifier
             .pointerInput(Unit) { detectTapGestures(onTap = { current.onRotate() }) }
             .pointerInput(Unit) {
-                val cell = size.width / Board.COLUMNS.toFloat()
+                val cell = cellOf(size.width.toFloat())
                 var downAtNs = 0L
                 var accX = 0f
                 var accY = 0f
@@ -96,47 +91,89 @@ fun TetrisBoard(snapshot: GameSnapshot?, input: BoardInput, modifier: Modifier =
                 )
             },
     ) {
-        val cell = size.width / Board.COLUMNS
-        drawRect(WELL)
-        for (col in 1 until Board.COLUMNS) {
-            drawLine(GRID_LINE, Offset(col * cell, 0f), Offset(col * cell, size.height))
-        }
-        snapshot?.let { drawSnapshot(it, cell) }
+        val cell = cellOf(size.width)
+        drawWell(palette, cell)
+        snapshot?.let { drawSnapshot(it, palette, cell) }
     }
 }
 
-private fun DrawScope.drawSnapshot(s: GameSnapshot, cell: Float) {
+/** Wall band first, then the well inside it, its edge line and faint grid so columns and rows read. */
+private fun DrawScope.drawWell(p: TetrisPalette, cell: Float) {
+    val wall = cell * WALL_FRAC
+    drawRect(p.wall)
+    val wellSize = Size(cell * Board.COLUMNS, cell * VISIBLE_ROWS)
+    drawRect(p.well, Offset(wall, wall), wellSize)
+    for (col in 1 until Board.COLUMNS) {
+        drawLine(p.grid, Offset(wall + col * cell, wall), Offset(wall + col * cell, wall + wellSize.height))
+    }
+    for (row in 1 until VISIBLE_ROWS) {
+        drawLine(p.grid, Offset(wall, wall + row * cell), Offset(wall + wellSize.width, wall + row * cell))
+    }
+    val edge = (wall * 0.35f).coerceAtLeast(2f)
+    drawRect(p.wallEdge, Offset(wall - edge / 2, wall - edge / 2), Size(wellSize.width + edge, wellSize.height + edge),
+        style = Stroke(width = edge))
+}
+
+private fun DrawScope.drawSnapshot(s: GameSnapshot, p: TetrisPalette, cell: Float) {
+    val origin = cell * WALL_FRAC
     for (row in Board.HIDDEN_ROWS until Board.ROWS) {
         for (col in 0 until Board.COLUMNS) {
             val v = s.cells[row * Board.COLUMNS + col]
-            if (v != 0) drawCell(col, row - Board.HIDDEN_ROWS, cell, PIECE_COLORS[v - 1])
+            if (v == 0) continue
+            drawBlock(p, p.pieces[v - 1], origin + col * cell, origin + (row - Board.HIDDEN_ROWS) * cell, cell)
         }
     }
     val active = s.active ?: return
-    val tint = colorOf(active.piece)
+    val tint = p.colorOf(active.piece)
+    val ghostColor = p.edgeOf(tint)
     for (c in s.ghost) {
         if (c.y < Board.HIDDEN_ROWS) continue
         val inset = cell * CELL_INSET
-        drawRect(
-            tint.copy(alpha = GHOST_ALPHA),
-            Offset(c.x * cell + inset, (c.y - Board.HIDDEN_ROWS) * cell + inset),
-            Size(cell - 2 * inset, cell - 2 * inset),
-            style = Stroke(width = cell * GHOST_STROKE),
-        )
+        val topLeft = Offset(origin + c.x * cell + inset, origin + (c.y - Board.HIDDEN_ROWS) * cell + inset)
+        val box = Size(cell - 2 * inset, cell - 2 * inset)
+        drawRect(ghostColor.copy(alpha = GHOST_FILL_ALPHA), topLeft, box)
+        drawRect(ghostColor.copy(alpha = GHOST_ALPHA), topLeft, box, style = Stroke(width = cell * GHOST_STROKE))
     }
     for (c in active.cells()) {
-        if (c.y >= Board.HIDDEN_ROWS) drawCell(c.x, c.y - Board.HIDDEN_ROWS, cell, tint)
+        if (c.y >= Board.HIDDEN_ROWS) {
+            drawBlock(p, tint, origin + c.x * cell, origin + (c.y - Board.HIDDEN_ROWS) * cell, cell)
+        }
     }
 }
 
-private fun DrawScope.drawCell(col: Int, row: Int, cell: Float, color: Color) {
+/** One block in the theme's style, with its cell's top-left at ([x], [y]). */
+private fun DrawScope.drawBlock(p: TetrisPalette, color: Color, x: Float, y: Float, cell: Float) {
     val inset = cell * CELL_INSET
-    drawRect(color, Offset(col * cell + inset, row * cell + inset), Size(cell - 2 * inset, cell - 2 * inset))
+    val topLeft = Offset(x + inset, y + inset)
+    val side = cell - 2 * inset
+    val box = Size(side, side)
+    when (p.style) {
+        BlockStyle.BEVEL -> {
+            // Hard-edged strips, no anti-aliased gradient: the Game Boy look.
+            val bevel = side * 0.18f
+            drawRect(color, topLeft, box)
+            drawRect(lerp(color, Color.White, 0.45f), topLeft, Size(side, bevel))
+            drawRect(lerp(color, Color.White, 0.45f), topLeft, Size(bevel, side))
+            drawRect(lerp(color, Color.Black, 0.4f), Offset(topLeft.x, topLeft.y + side - bevel), Size(side, bevel))
+            drawRect(lerp(color, Color.Black, 0.4f), Offset(topLeft.x + side - bevel, topLeft.y), Size(bevel, side))
+        }
+        BlockStyle.GLOW -> {
+            val glow = cell * 0.12f
+            val halo = Size(side + 2 * glow, side + 2 * glow)
+            drawRect(color.copy(alpha = 0.22f), Offset(topLeft.x - glow, topLeft.y - glow), halo)
+            drawRect(color.copy(alpha = 0.85f), topLeft, box)
+            drawRect(lerp(color, Color.White, 0.55f), topLeft, box, style = Stroke(width = cell * 0.07f))
+        }
+        BlockStyle.OUTLINE -> {
+            drawRect(color, topLeft, box)
+            drawRect(p.edgeOf(color), topLeft, box, style = Stroke(width = cell * 0.08f))
+        }
+    }
 }
 
 /** A piece drawn centred in a small box, for the hold and next panels. */
 @Composable
-fun PiecePreview(piece: Piece?, dimmed: Boolean, modifier: Modifier = Modifier) {
+fun PiecePreview(piece: Piece?, dimmed: Boolean, palette: TetrisPalette, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         if (piece == null) return@Canvas
         val cells = piece.cells(0)
@@ -147,14 +184,10 @@ fun PiecePreview(piece: Piece?, dimmed: Boolean, modifier: Modifier = Modifier) 
         val unit = size.width / PREVIEW_SPAN
         val left = (size.width - (maxX - minX + 1) * unit) / 2f
         val top = (size.height - (maxY - minY + 1) * unit) / 2f
-        val color = if (dimmed) colorOf(piece).copy(alpha = DIM_ALPHA) else colorOf(piece)
+        val base = palette.colorOf(piece)
+        val color = if (dimmed) base.copy(alpha = DIM_ALPHA) else base
         for (c in cells) {
-            val inset = unit * CELL_INSET
-            drawRect(
-                color,
-                Offset(left + (c.x - minX) * unit + inset, top + (c.y - minY) * unit + inset),
-                Size(unit - 2 * inset, unit - 2 * inset),
-            )
+            drawBlock(palette, color, left + (c.x - minX) * unit, top + (c.y - minY) * unit, unit)
         }
     }
 }
