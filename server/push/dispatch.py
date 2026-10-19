@@ -362,3 +362,31 @@ class _Dispatcher:
 
 def dispatch_household(household, now: dt.datetime, send) -> Report:
     return _Dispatcher(household, now, send).run()
+
+
+# ---------------------------------------------------------------------------
+# Sent now, not by the cron (retro-games ticket 05, ADR 0060)
+# ---------------------------------------------------------------------------
+
+SENT = "sent"
+NO_DEVICE = "no_device"
+TURNED_OFF = "turned_off"
+FAILED = "failed"
+
+
+def send_now(household, user, *, kind, key, title, body, url, now, send) -> str:
+    """Say one thing to one member at once, through the same delivery rules as
+    the cron (`_Dispatcher.deliver`: 404/410 removes a device, five strikes
+    remove one, `PushSent` dedupes by key). Honours that member's preference
+    for `kind`. Returns which of four things happened, never assumed:
+    `sent` (reached at least one device), `no_device`, `turned_off`, `failed`."""
+    stored = PushPreference.objects.filter(household=household, user=user).first()
+    if stored is not None and not getattr(stored, kind, True):
+        return TURNED_OFF
+    subs = list(
+        PushSubscription.objects.filter(household=household, user=user).order_by("created_at", "id")
+    )
+    if not subs:
+        return NO_DEVICE
+    reached = _Dispatcher(household, now, send).deliver(user, subs, kind, key, title, body, url)
+    return SENT if reached else FAILED

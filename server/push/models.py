@@ -27,7 +27,10 @@ from household.tenancy_sql import household_unique_name
 LIST_CHANGES = "list_changes"
 EVENT_REMINDERS = "event_reminders"
 TASK_DUE_MORNING = "task_due_morning"
-KINDS: tuple[str, ...] = (LIST_CHANGES, EVENT_REMINDERS, TASK_DUE_MORNING)
+# retro-games ticket 05 (ADR 0060): sent the moment a member invites another to
+# a Tetris race, by the invite view rather than by `push_dispatch`.
+GAME_INVITE = "game_invite"
+KINDS: tuple[str, ...] = (LIST_CHANGES, EVENT_REMINDERS, TASK_DUE_MORNING, GAME_INVITE)
 DEFAULT_MORNING_TIME = datetime.time(7, 30)
 
 
@@ -64,6 +67,7 @@ class PushPreference(models.Model):
     list_changes = models.BooleanField(default=True)
     event_reminders = models.BooleanField(default=True)
     task_due_morning = models.BooleanField(default=True)
+    game_invite = models.BooleanField(default=True)
     morning_time = models.TimeField(default=DEFAULT_MORNING_TIME)
     updated_at = models.DateTimeField(db_default=Now())
 

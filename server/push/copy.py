@@ -25,7 +25,10 @@ KIND_NAMES = {
     "list_changes": "list changes",
     "event_reminders": "event reminders",
     "task_due_morning": "the morning list of what is due",
+    "game_invite": "Tetris invites",
 }
+
+TITLE_GAME_INVITE = "Tetris"
 
 TURNED_OFF = "You will not get {kind} any more. Turn them back on in Settings, Notifications."
 UNKNOWN_KIND = "{kind!r} is not a kind of notification. Use one of: {kinds}. Nothing was changed."
@@ -78,3 +81,8 @@ def clock(hour: int, minute: int) -> str:
     """3:00 pm. Lower case, no leading zero, the way a person says it."""
     suffix = "am" if hour < 12 else "pm"
     return f"{(hour % 12) or 12}:{minute:02d} {suffix}"
+
+
+def game_invite(who: str) -> str:
+    """ "Mia invited you to a Tetris race. It lasts 3 minutes; the invite is open for 2." """
+    return f"{who} invited you to a Tetris race. It lasts 3 minutes; the invite is open for 2."

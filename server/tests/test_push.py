@@ -456,6 +456,7 @@ def test_preferences_round_trip_and_default_on(kevin_client):
         "list_changes": True,
         "event_reminders": True,
         "task_due_morning": True,
+        "game_invite": True,
         "morning_time": "07:30",
     }
     put = kevin_client.put(
@@ -470,6 +471,13 @@ def test_preferences_round_trip_and_default_on(kevin_client):
     )
     assert put.status_code == 200, put.data
     assert kevin_client.get("/api/push/preferences").data["morning_time"] == "06:45"
+    # A client from before `game_invite` existed leaves it as it was.
+    assert kevin_client.get("/api/push/preferences").data["game_invite"] is True
+    off = kevin_client.post("/api/push/preferences/off", {"kind": "game_invite"}, format="json")
+    assert off.status_code == 200
+    assert off.data["detail"] == (
+        "You will not get Tetris invites any more. Turn them back on in Settings, Notifications."
+    )
     bad = kevin_client.post("/api/push/preferences/off", {"kind": "streaks"}, format="json")
     assert bad.status_code == 400 and "Nothing was changed" in bad.data["detail"]
 
@@ -571,13 +579,21 @@ def test_no_notification_string_references_absence_or_streaks():
         copy.all_day_reminder("Birthday", 1440),
         copy.morning(["HW 4", "rent", "a", "b", "c", "d"]),
         copy.morning(["HW 4"]),
+        copy.game_invite("Mia"),
     ]
     # Every function in the module is exercised above, so a new template is
     # caught by this count before it can ship ungrepped.
     functions = {
         n for n, f in vars(copy).items() if inspect.isfunction(f) and not n.startswith("_")
     }
-    assert functions == {"list_added", "event_reminder", "all_day_reminder", "morning", "clock"}
+    assert functions == {
+        "list_added",
+        "event_reminder",
+        "all_day_reminder",
+        "morning",
+        "clock",
+        "game_invite",
+    }
     offenders = [(s, word) for s in strings for word in BANNED if word in s.lower()]
     assert not offenders, offenders
 
