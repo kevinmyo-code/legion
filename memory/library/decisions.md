@@ -6437,3 +6437,27 @@ now pulls them into Room (`backend/ObdSamplePull.kt`) and the screen keeps readi
 - **Out-of-order commits are bounded, not eliminated:** two batches in flight can commit out of
   `created_at` order, so each arrival walk starts five minutes before the stored cursor (deduped);
   a batch that commits within five minutes of its statement start is still picked up.
+
+## 2026-10-18 - Tetris, built in, and a score race with Mia through the engine (Kevin)
+
+Kevin: *"i want tetris on there. also i wanna be able to play multiplayer with my wife on her pwa.
+elt me invite her, she gets a notification on her phone and accepts and we play together."*
+
+- **Tetris is built into LEGION**, on the phone (Compose) and the PWA (React), solo and multiplayer.
+  It sits in the Games sheet beside the ROM shelves; it is not a ROM and needs no emulator.
+- **Mode: score race (Kevin chose it over versus and co-op).** Both players get the same piece
+  sequence from one shared seed, a 3-minute clock from one engine-set start time, highest score
+  wins, equal scores draw. No mid-game interaction; each side sees the other's live score.
+- **The engine keeps transient match state only (Kevin).** Invite, seed, clock and live progress,
+  deleted after the match ends or the invite expires. No scores, no history, no leaderboard. This
+  AMENDS ADR 0058's "nothing reaches the engine"; ADR 0060.
+- **Invites go both ways, always (Kevin).** Kevin to Mia: a Web Push on her PWA, sent at invite
+  time (not by the 5-minute `push_dispatch` cron). Mia to Kevin: the phone has no push channel
+  (Firebase stays banned), so the phone polls the engine for invites in the background and raises
+  a local notification. Its battery cost was stated when he chose it.
+- **Transport is polling, not websockets (orchestrator call, stated not asked).** The engine is
+  WSGI gunicorn on up to 4 Cloud Run instances with no pub/sub; a score race only syncs a score a
+  second, so both clients poll Postgres through the API. No new infrastructure.
+- **One rule set, two implementations, one fixture file.** Kotlin and TypeScript each implement
+  the rules; both test suites read `shared/tetris/fixtures.json` (seed to piece sequence, clears to
+  score), so a drift fails a build instead of deciding a match.

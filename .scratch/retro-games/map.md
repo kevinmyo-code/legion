@@ -4,8 +4,8 @@ title: "Retro games, one tap from HOME"
 charted: 2026-10-11
 charted-by: "Kevin + Opus"
 effort: "`.scratch/retro-games/`"
-tickets: 3
-open: 1
+tickets: 6
+open: 2
 status: open
 tags: [map]
 ---
@@ -26,3 +26,6 @@ its emulator. No folder granted or no emulator installed is said in words with t
 - 01 decision (resolved): launcher not aspect, SAF folder grant, cached box art
 - 02 research (resolved): the emulator launch intents, verified on the A25
 - 03 build: the Games chip, sheet, ROM scan, box-art cache and launch
+- 04 decision (resolved): built-in Tetris, score race with Mia, transient engine match (ADR 0060)
+- 05 build: engine match API, game_invite push, PWA Tetris solo and race
+- 06 build: phone Tetris solo and race, background invite poll
