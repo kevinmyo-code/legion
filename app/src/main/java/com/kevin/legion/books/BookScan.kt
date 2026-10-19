@@ -25,29 +25,25 @@ object NaturalOrder : Comparator<String> {
     override fun compare(a: String, b: String): Int {
         var i = 0
         var j = 0
-        while (i < a.length && j < b.length) {
-            val x = a[i]
-            val y = b[j]
-            if (x.isDigit() && y.isDigit()) {
+        var order = 0
+        while (order == 0 && i < a.length && j < b.length) {
+            if (a[i].isDigit() && b[j].isDigit()) {
                 val ei = a.digitRunEnd(i)
                 val ej = b.digitRunEnd(j)
                 val ra = a.substring(i, ei).trimStart('0')
                 val rb = b.substring(j, ej).trimStart('0')
                 // A longer run (no leading zeros) is the larger number.
-                if (ra.length != rb.length) return ra.length.compareTo(rb.length)
-                val c = ra.compareTo(rb)
-                if (c != 0) return c
+                order = if (ra.length != rb.length) ra.length.compareTo(rb.length) else ra.compareTo(rb)
                 i = ei
                 j = ej
             } else {
-                val c = x.lowercaseChar().compareTo(y.lowercaseChar())
-                if (c != 0) return c
+                order = a[i].lowercaseChar().compareTo(b[j].lowercaseChar())
                 i++
                 j++
             }
         }
-        val rest = (a.length - i).compareTo(b.length - j)
-        return if (rest != 0) rest else a.compareTo(b)
+        if (order == 0) order = (a.length - i).compareTo(b.length - j)
+        return if (order != 0) order else a.compareTo(b)
     }
 
     private fun String.digitRunEnd(from: Int): Int {

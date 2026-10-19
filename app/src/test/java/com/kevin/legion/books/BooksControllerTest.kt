@@ -119,7 +119,8 @@ class BooksControllerTest {
     @Test fun `success names the book and says only what happened`() = runBlocking {
         val outcome = controller(ready(item("Moby-Dick"))).openByName("moby dick", listen = false) as BookOutcome.Opened
         assertEquals("Opened \"Moby-Dick\".", outcome.sentence)
-        val listening = controller(ready(item("Moby-Dick"))).openByName("moby dick", listen = true) as BookOutcome.Opened
+        val listening = controller(ready(item("Moby-Dick")))
+            .openByName("moby dick", listen = true) as BookOutcome.Opened
         assertTrue(listening.sentence, "asked it to read aloud" in listening.sentence)
     }
 

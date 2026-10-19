@@ -109,7 +109,12 @@ class BooksViewModelTest {
         val vm = model(
             CatalogState.Ready(
                 "/sdcard/Books",
-                listOf(item("Nemo", BookFormat.CBZ), item("Moby"), item("Manual", BookFormat.PDF), item("Kat", BookFormat.CBR)),
+                listOf(
+                    item("Nemo", BookFormat.CBZ),
+                    item("Moby"),
+                    item("Manual", BookFormat.PDF),
+                    item("Kat", BookFormat.CBR),
+                ),
             ),
         )
         vm.refresh()

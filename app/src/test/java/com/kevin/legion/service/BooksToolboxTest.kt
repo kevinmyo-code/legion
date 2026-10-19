@@ -49,9 +49,10 @@ class BooksToolboxTest {
     private fun call(args: JSONObject): JSONObject =
         runBlocking { BooksToolbox.dispatch(context, "books", args) }!!
 
-    private fun args(action: String, title: String? = null, listen: Boolean? = null) = JSONObject().put("action", action)
-        .apply { title?.let { put("title", it) } }
-        .apply { listen?.let { put("listen", it) } }
+    private fun args(action: String, title: String? = null, listen: Boolean? = null) =
+        JSONObject().put("action", action)
+            .apply { title?.let { put("title", it) } }
+            .apply { listen?.let { put("listen", it) } }
 
     @After fun tearDown() {
         BooksToolbox.controllerFactory = { BooksController.forContext(it) }
@@ -154,7 +155,10 @@ class BooksToolboxTest {
 
     @Test fun `two books that fit are named and none is opened`() {
         val launcher = install(
-            CatalogState.Ready("/sdcard/Books", listOf(item("Volume 1", BookFormat.CBZ), item("Volume 2", BookFormat.CBZ))),
+            CatalogState.Ready(
+                "/sdcard/Books",
+                listOf(item("Volume 1", BookFormat.CBZ), item("Volume 2", BookFormat.CBZ)),
+            ),
         )
         val r = call(args("open", "volume"))
         assertFalse(r.getBoolean("success"))

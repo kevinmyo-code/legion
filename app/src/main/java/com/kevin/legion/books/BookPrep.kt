@@ -28,8 +28,8 @@ class SafBookPrep(
         val book = item.book
         val needsCover = cache.cached(book.documentId) == null && !cache.missIsFresh(book.documentId)
         val needsMeta = book.format == BookFormat.EPUB && dao.get(book.documentId)?.metadataRead != true
-        if (!needsCover && !needsMeta) return PrepResult(changed = false)
-        val uri = catalog.uriOf(book) ?: return PrepResult(changed = false)
+        val uri = if (needsCover || needsMeta) catalog.uriOf(book) else null
+        if (uri == null) return PrepResult(changed = false)
         val info = covers.prepare(book, uri)
         if (book.format == BookFormat.EPUB) {
             if (info != null) {

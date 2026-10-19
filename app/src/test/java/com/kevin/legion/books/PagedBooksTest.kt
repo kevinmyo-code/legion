@@ -23,7 +23,8 @@ class PagedBooksTest {
     }
 
     @Test fun `mac resource forks and hidden files are not pages`() {
-        val pages = ComicPageNames.pages(listOf("__MACOSX/._01.jpg", ".hidden.jpg", "01.jpg", "dir/._02.jpg", "dir/02.jpg"))
+        val names = listOf("__MACOSX/._01.jpg", ".hidden.jpg", "01.jpg", "dir/._02.jpg", "dir/02.jpg")
+        val pages = ComicPageNames.pages(names)
         assertEquals(listOf("01.jpg", "dir/02.jpg"), pages)
     }
 

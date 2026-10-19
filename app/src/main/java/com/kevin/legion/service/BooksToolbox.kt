@@ -67,11 +67,12 @@ object BooksToolbox {
         val outcome = when (args.optString("action")) {
             "open" -> controller.openByName(args.optString("title"), listen)
             "continue" -> controller.continueReading(listen)
-            else -> return result(false, "Say whether to open a named book or continue the last one. Nothing was opened.")
+            else -> null
         }
         return when (outcome) {
             is BookOutcome.Opened -> result(true, outcome.sentence)
             is BookOutcome.Failed -> result(false, outcome.sentence)
+            null -> result(false, "Say whether to open a named book or continue the last one. Nothing was opened.")
         }
     }
 

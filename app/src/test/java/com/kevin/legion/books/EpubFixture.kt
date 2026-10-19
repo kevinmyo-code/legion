@@ -24,8 +24,11 @@ object EpubFixture {
             put("mimetype", "application/epub+zip", stored = true)
             put(
                 "META-INF/container.xml",
-                """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-                <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""",
+                """<?xml version="1.0"?>
+                <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                <rootfiles>
+                <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+                </rootfiles></container>""",
             )
             val manifest = (1..chapters).joinToString("") {
                 """<item id="c$it" href="c$it.xhtml" media-type="application/xhtml+xml"/>"""
@@ -38,7 +41,9 @@ object EpubFixture {
                 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
                 <dc:identifier id="id">urn:uuid:fixture-1</dc:identifier><dc:title>$title</dc:title>
                 <dc:creator>$author</dc:creator><dc:language>en</dc:language></metadata>
-                <manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>$manifest</manifest>
+                <manifest>
+                <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                $manifest</manifest>
                 <spine>$spine</spine></package>""",
             )
             val links = (1..chapters).joinToString("") { """<li><a href="c$it.xhtml">Chapter $it</a></li>""" }

@@ -42,6 +42,7 @@ private const val NOTICE_MS = 2_400L
  * folder, lost permission, empty, populated), not the file system. No Hilt yet, matching
  * [GamesViewModel] (CLAUDE.md sec 8's migration order); [Factory] is the injection point.
  */
+@Suppress("TooManyFunctions") // one function per sheet action, as GamesViewModel
 class BooksViewModel(
     private val catalog: BookCatalog,
     private val controller: BooksController,

@@ -5,7 +5,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BookMatcherTest {
-    private fun item(title: String, author: String? = null, file: String = "$title.epub", format: BookFormat = BookFormat.EPUB) =
+    private fun item(
+        title: String,
+        author: String? = null,
+        file: String = "$title.epub",
+        format: BookFormat = BookFormat.EPUB,
+    ) =
         BookItem(Book("id-$title", file, format), title, author, 0.0, null, 0, 0, null, null)
 
     private val shelf = listOf(

@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.SoftColors
 
-/** The Books tone: the violet pair the Recordings area uses, the closest existing tokens to the prototype's violet chip. */
+/** The Books tone: the Recordings area's violet pair, the closest existing tokens to the prototype's chip. */
 internal val BooksTone = AreaAccent.RECORDINGS
 
 private const val FORMATS_LINE = "EPUB, PDF and CBZ"

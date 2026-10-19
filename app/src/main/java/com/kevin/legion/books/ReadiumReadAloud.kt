@@ -70,6 +70,7 @@ class ReadiumReadAloudEngine private constructor(
 
     companion object {
         /** Builds the engine from the first visible sentence ([startLocatorJson]) of an EPUB. */
+        @Suppress("ReturnCount") // each early return is a distinct "could not start" sentence
         suspend fun create(
             app: Application,
             publication: Publication,

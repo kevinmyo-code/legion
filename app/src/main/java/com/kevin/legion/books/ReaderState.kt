@@ -106,7 +106,10 @@ data class ReaderUiState(
     val hasPosition: Boolean = false,
 )
 
-/** Colours of one reading theme. Night reuses the app's tokens; Day and Sepia are paper, which the app has no token for. */
+/**
+ * Colours of one reading theme. Night reuses the app's tokens; Day and Sepia are paper, which the app
+ * has no token for.
+ */
 data class ReaderPalette(
     val page: Color,
     val text: Color,
@@ -117,10 +120,12 @@ data class ReaderPalette(
 ) {
     companion object {
         private val DAY = ReaderPalette(
-            Color(0xFFF6F3EC), Color(0xFF1D1B17), Color(0xFF5C5850), Color(0xFFDDD6C8), Color(0xFFE8E2D5), Color(0xFFE2D8FF),
+            Color(0xFFF6F3EC), Color(0xFF1D1B17), Color(0xFF5C5850),
+            Color(0xFFDDD6C8), Color(0xFFE8E2D5), Color(0xFFE2D8FF),
         )
         private val SEPIA = ReaderPalette(
-            Color(0xFFECE0C8), Color(0xFF3B2F1E), Color(0xFF6B5A40), Color(0xFFD4C4A4), Color(0xFFE0D1B3), Color(0xFFD9C9F5),
+            Color(0xFFECE0C8), Color(0xFF3B2F1E), Color(0xFF6B5A40),
+            Color(0xFFD4C4A4), Color(0xFFE0D1B3), Color(0xFFD9C9F5),
         )
         private val NIGHT = ReaderPalette(
             com.kevin.legion.ui.theme.soft.SoftColors.ground,
@@ -138,3 +143,23 @@ data class ReaderPalette(
         }
     }
 }
+
+/** What the reader chrome asks of its owner. */
+data class ReaderActions(
+    val onBack: () -> Unit = {},
+    val onToggleSettings: () -> Unit = {},
+    val onToggleBookmarks: () -> Unit = {},
+    val onToggleContents: () -> Unit = {},
+    val onClosePanel: () -> Unit = {},
+    val onTheme: (ReaderTheme) -> Unit = {},
+    val onBigger: () -> Unit = {},
+    val onSmaller: () -> Unit = {},
+    val onListen: () -> Unit = {},
+    val onStopListening: () -> Unit = {},
+    val onSpeed: () -> Unit = {},
+    val onAddBookmark: () -> Unit = {},
+    val onDeleteBookmark: (BookBookmark) -> Unit = {},
+    val onGoBookmark: (BookBookmark) -> Unit = {},
+    val onGoToc: (TocEntry) -> Unit = {},
+    val onGoPage: (Int) -> Unit = {},
+)

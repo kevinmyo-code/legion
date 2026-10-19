@@ -16,22 +16,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,26 +34,9 @@ import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
 import com.kevin.legion.ui.home.BooksTone
 import com.kevin.legion.ui.theme.soft.MsIcon
+import com.kevin.legion.ui.theme.soft.SoftColors
 
-/** What the reader chrome asks of its owner. */
-data class ReaderActions(
-    val onBack: () -> Unit = {},
-    val onToggleSettings: () -> Unit = {},
-    val onToggleBookmarks: () -> Unit = {},
-    val onToggleContents: () -> Unit = {},
-    val onClosePanel: () -> Unit = {},
-    val onTheme: (ReaderTheme) -> Unit = {},
-    val onBigger: () -> Unit = {},
-    val onSmaller: () -> Unit = {},
-    val onListen: () -> Unit = {},
-    val onStopListening: () -> Unit = {},
-    val onSpeed: () -> Unit = {},
-    val onAddBookmark: () -> Unit = {},
-    val onDeleteBookmark: (com.kevin.legion.data.local.BookBookmark) -> Unit = {},
-    val onGoBookmark: (com.kevin.legion.data.local.BookBookmark) -> Unit = {},
-    val onGoToc: (TocEntry) -> Unit = {},
-    val onGoPage: (Int) -> Unit = {},
-)
+private const val SEPARATOR = " · "
 
 /**
  * The reader's one screen (prototype `Reader.dc.html`): header, the page, the read-aloud bar, and
@@ -168,14 +140,17 @@ private fun SettingsCard(state: ReaderUiState, actions: ReaderActions, modifier:
             .padding(horizontal = 12.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(com.kevin.legion.ui.theme.soft.SoftColors.cardHigh)
+            .background(SoftColors.cardHigh)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        val ink = com.kevin.legion.ui.theme.soft.SoftColors.text
         if (isEpub) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Text size", style = MaterialTheme.typography.titleSmall, color = ink)
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Text size", style = MaterialTheme.typography.titleSmall, color = SoftColors.text)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SmallRound("Smaller text", "A-", actions.onSmaller)
                     SmallRound("Bigger text", "A+", actions.onBigger)
@@ -184,32 +159,40 @@ private fun SettingsCard(state: ReaderUiState, actions: ReaderActions, modifier:
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ReaderTheme.entries.forEach { theme ->
-                val p = ReaderPalette.of(theme)
-                val selected = theme == state.settings.theme
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .heightIn(min = 44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(p.page)
-                        .border(if (selected) 2.dp else 1.dp, if (selected) BooksTone.onContainer else p.line, RoundedCornerShape(12.dp))
-                        .clickable(role = Role.Button) { actions.onTheme(theme) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // The selection is said in words as well as drawn: "Night, selected".
-                    Text(
-                        if (selected) "${theme.label} ✓" else theme.label,
-                        color = p.text,
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+                ThemeChoice(theme, theme == state.settings.theme, Modifier.weight(1f)) { actions.onTheme(theme) }
             }
         }
         Text(
-            if (isEpub) "EPUB reflows. PDF and comics zoom instead, with page turning." else "PDF and comics zoom instead of reflowing.",
+            if (isEpub) {
+                "EPUB reflows. PDF and comics zoom instead, with page turning."
+            } else {
+                "PDF and comics zoom instead of reflowing."
+            },
             style = MaterialTheme.typography.bodySmall,
-            color = com.kevin.legion.ui.theme.soft.SoftColors.text3,
+            color = SoftColors.text3,
+        )
+    }
+}
+
+@Composable
+private fun ThemeChoice(theme: ReaderTheme, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val p = ReaderPalette.of(theme)
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier
+            .heightIn(min = 44.dp)
+            .clip(shape)
+            .background(p.page)
+            .border(if (selected) 2.dp else 1.dp, if (selected) BooksTone.onContainer else p.line, shape)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // The selection is said in words as well as drawn: "Night, selected".
+        Text(
+            if (selected) "${theme.label} ✓" else theme.label,
+            color = p.text,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.bodyMedium,
         )
     }
 }
@@ -220,11 +203,11 @@ private fun SmallRound(description: String, label: String, onClick: () -> Unit) 
         Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(com.kevin.legion.ui.theme.soft.SoftColors.cardHighest)
+            .background(SoftColors.cardHighest)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
-    ) { Text(label, color = com.kevin.legion.ui.theme.soft.SoftColors.text, style = MaterialTheme.typography.bodyMedium) }
+    ) { Text(label, color = SoftColors.text, style = MaterialTheme.typography.bodyMedium) }
 }
 
 @Composable
@@ -239,24 +222,30 @@ private fun ListenBar(readAloud: ReadAloudUi, actions: ReaderActions) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        val description = if (readAloud.playing) "Pause reading aloud" else "Resume reading aloud"
         Box(
             Modifier
                 .size(44.dp)
                 .clip(CircleShape)
                 .background(BooksTone.onContainer)
                 .clickable(role = Role.Button, onClick = actions.onListen)
-                .semantics { contentDescription = if (readAloud.playing) "Pause reading aloud" else "Resume reading aloud" },
+                .semantics { contentDescription = description },
             contentAlignment = Alignment.Center,
         ) {
-            MsIcon(if (readAloud.playing) R.drawable.ms_pause else R.drawable.ms_play_arrow, null, BooksTone.container, size = 18.dp)
+            val icon = if (readAloud.playing) R.drawable.ms_pause else R.drawable.ms_play_arrow
+            MsIcon(icon, null, BooksTone.container, size = 18.dp)
         }
         Column(Modifier.weight(1f)) {
             Text(
                 if (readAloud.playing) "Reading aloud" else "Paused",
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = com.kevin.legion.ui.theme.soft.SoftColors.text,
+                color = SoftColors.text,
             )
-            Text("Device voice · offline", style = MaterialTheme.typography.labelSmall, color = BooksTone.onContainer)
+            Text(
+                "Device voice · offline",
+                style = MaterialTheme.typography.labelSmall,
+                color = BooksTone.onContainer,
+            )
         }
         Box(
             Modifier
@@ -267,7 +256,7 @@ private fun ListenBar(readAloud: ReadAloudUi, actions: ReaderActions) {
                 .padding(horizontal = 12.dp)
                 .semantics { contentDescription = "Reading speed ${readAloud.speedLabel}" },
             contentAlignment = Alignment.Center,
-        ) { Text(readAloud.speedLabel, color = com.kevin.legion.ui.theme.soft.SoftColors.text, fontWeight = FontWeight.SemiBold) }
+        ) { Text(readAloud.speedLabel, color = SoftColors.text, fontWeight = FontWeight.SemiBold) }
     }
 }
 
@@ -284,23 +273,31 @@ private fun BottomBar(state: ReaderUiState, palette: ReaderPalette, actions: Rea
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(state.positionLabel, style = MaterialTheme.typography.bodySmall, color = palette.muted)
                 Text(
-                    listOfNotNull(state.percentLabel, state.timeLeft).joinToString(" · "),
+                    listOfNotNull(state.percentLabel, state.timeLeft).joinToString(SEPARATOR),
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.muted,
                 )
             }
             Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(palette.line)) {
-                Box(Modifier.fillMaxWidth(state.progress.coerceIn(0f, 1f)).height(4.dp).background(BooksTone.onContainer, RoundedCornerShape(2.dp)))
+                Box(
+                    Modifier
+                        .fillMaxWidth(state.progress.coerceIn(0f, 1f))
+                        .height(4.dp)
+                        .background(BooksTone.onContainer, RoundedCornerShape(2.dp)),
+                )
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton(if (state.format == BookFormat.EPUB) "Contents" else "Pages", palette.chip, palette.text, Modifier.weight(1f), actions.onToggleContents)
+            val contents = if (state.format == BookFormat.EPUB) "Contents" else "Pages"
+            PillButton(contents, palette.chip, palette.text, Modifier.weight(1f), actions.onToggleContents)
+            val listening = state.readAloud.active
             PillButton(
-                if (state.readAloud.active) "Stop listening" else "Listen",
+                if (listening) "Stop listening" else "Listen",
                 BooksTone.onContainer,
                 BooksTone.container,
                 Modifier.weight(1f),
-            ) { if (state.readAloud.active) actions.onStopListening() else actions.onListen() }
+                if (listening) actions.onStopListening else actions.onListen,
+            )
         }
     }
 }
@@ -315,97 +312,4 @@ private fun PillButton(label: String, background: Color, content: Color, modifie
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Text(label, color = content, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium) }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ContentsSheet(state: ReaderUiState, actions: ReaderActions) {
-    ModalBottomSheet(
-        onDismissRequest = actions.onClosePanel,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = com.kevin.legion.ui.theme.soft.SoftColors.card,
-    ) {
-        val ink = com.kevin.legion.ui.theme.soft.SoftColors.text
-        if (state.format == BookFormat.EPUB) {
-            Text("Contents", style = MaterialTheme.typography.titleLarge, color = ink, modifier = Modifier.padding(horizontal = 20.dp))
-            if (state.toc.isEmpty()) {
-                Text(
-                    "This book has no contents list.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = com.kevin.legion.ui.theme.soft.SoftColors.text2,
-                    modifier = Modifier.padding(20.dp),
-                )
-            }
-            LazyColumn(Modifier.padding(bottom = 24.dp)) {
-                items(state.toc, key = { it.index }) { entry ->
-                    Text(
-                        entry.title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = ink,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .clickable(role = Role.Button) { actions.onGoToc(entry) }
-                            .padding(start = (20 + 16 * entry.depth).dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
-                    )
-                }
-            }
-        } else {
-            PageJump(state, actions)
-        }
-    }
-}
-
-/** PDF and comics have no contents list; "Pages" jumps to a page number. */
-@Composable
-private fun PageJump(state: ReaderUiState, actions: ReaderActions) {
-    var target by remember(state.pageIndex) { mutableFloatStateOf(state.pageIndex.toFloat()) }
-    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Pages", style = MaterialTheme.typography.titleLarge, color = com.kevin.legion.ui.theme.soft.SoftColors.text)
-        Text(
-            "Page ${target.toInt() + 1} of ${state.pageCount}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = com.kevin.legion.ui.theme.soft.SoftColors.text2,
-        )
-        if (state.pageCount > 1) {
-            Slider(value = target, onValueChange = { target = it }, valueRange = 0f..(state.pageCount - 1).toFloat())
-        }
-        TextButton(onClick = { actions.onGoPage(target.toInt()) }, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("Go to page ${target.toInt() + 1}", color = BooksTone.onContainer)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BookmarksSheet(state: ReaderUiState, actions: ReaderActions) {
-    ModalBottomSheet(
-        onDismissRequest = actions.onClosePanel,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = com.kevin.legion.ui.theme.soft.SoftColors.card,
-    ) {
-        val ink = com.kevin.legion.ui.theme.soft.SoftColors.text
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Bookmarks", style = MaterialTheme.typography.titleLarge, color = ink)
-            TextButton(onClick = actions.onAddBookmark, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Add a bookmark here (${state.positionLabel})", color = BooksTone.onContainer)
-            }
-            if (state.bookmarks.isEmpty()) {
-                Text("No bookmarks in this book yet.", style = MaterialTheme.typography.bodyMedium, color = com.kevin.legion.ui.theme.soft.SoftColors.text2)
-            }
-            state.bookmarks.forEach { bookmark ->
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        bookmark.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = ink,
-                        modifier = Modifier.weight(1f).clickable(role = Role.Button) { actions.onGoBookmark(bookmark) }.padding(vertical = 12.dp),
-                    )
-                    TextButton(onClick = { actions.onDeleteBookmark(bookmark) }) {
-                        Text("Delete", color = com.kevin.legion.ui.theme.soft.SoftColors.text2)
-                    }
-                }
-            }
-        }
-    }
 }

@@ -10,7 +10,6 @@ import android.os.ParcelFileDescriptor
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
-import java.util.zip.ZipException
 import java.util.zip.ZipFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -61,7 +60,8 @@ class PdfPages private constructor(
         const val PASSWORD_SENTENCE = "This PDF is password protected, and LEGION cannot open protected PDFs."
         const val UNREADABLE_SENTENCE = "This PDF could not be read. It may be damaged."
 
-        @Suppress("SwallowedException") // each failure becomes a sentence the reader shows
+        // each failure becomes a distinct sentence the reader shows, so the throws are not one idea
+        @Suppress("SwallowedException", "ThrowsCount")
         fun open(resolver: ContentResolver, uri: Uri): PdfPages {
             val descriptor = resolver.openFileDescriptor(uri, "r")
                 ?: throw BookOpenException("Android would not open this file. Pick the Books folder again.")
@@ -86,11 +86,9 @@ object ComicPageNames {
         entryNames.filter { isPage(it) }.sortedWith(NaturalOrder)
 
     private fun isPage(name: String): Boolean {
-        if (name.endsWith("/")) return false
-        val parts = name.split('/')
-        // macOS resource forks and hidden files are not pages.
-        if (parts.any { it == "__MACOSX" || it.startsWith(".") || it.startsWith("._") }) return false
-        return name.substringAfterLast('.', "").lowercase() in IMAGE_EXTENSIONS
+        // macOS resource forks and hidden files are not pages ("._x" also starts with a dot).
+        val hidden = name.split('/').any { it == "__MACOSX" || it.startsWith(".") }
+        return !name.endsWith("/") && !hidden && name.substringAfterLast('.', "").lowercase() in IMAGE_EXTENSIONS
     }
 }
 
@@ -111,7 +109,8 @@ class ComicPages private constructor(
     }
 
     private fun decode(index: Int, widthPx: Int): Bitmap {
-        val entry = zip.getEntry(names[index]) ?: throw BookOpenException("Page ${index + 1} is missing from this comic.")
+        val entry = zip.getEntry(names[index])
+            ?: throw BookOpenException("Page ${index + 1} is missing from this comic.")
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         zip.getInputStream(entry).use { BitmapFactory.decodeStream(it, null, bounds) }
         val options = BitmapFactory.Options().apply { inSampleSize = sampleFor(bounds.outWidth, widthPx) }
@@ -139,9 +138,7 @@ class ComicPages private constructor(
         fun open(resolver: ContentResolver, uri: Uri, cacheDir: File): ComicPages {
             val zip = try {
                 openZip(resolver, uri, cacheDir)
-            } catch (e: ZipException) {
-                throw BookOpenException(UNREADABLE_SENTENCE, e)
-            } catch (e: IOException) {
+            } catch (e: IOException) { // ZipException is an IOException
                 throw BookOpenException(UNREADABLE_SENTENCE, e)
             }
             val names = ComicPageNames.pages(zip.entries().asSequence().map { it.name }.toList())

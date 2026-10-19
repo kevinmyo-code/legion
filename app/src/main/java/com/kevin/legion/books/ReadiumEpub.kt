@@ -39,7 +39,8 @@ class ReadiumEpub(context: Context) {
         DefaultPublicationParser(app, httpClient = httpClient, assetRetriever = assetRetriever, pdfFactory = null),
     )
 
-    @Suppress("TooGenericExceptionCaught") // a damaged archive can throw anything out of the parser
+    // a damaged archive can throw anything out of the parser; each early return is its own failure sentence
+    @Suppress("TooGenericExceptionCaught", "ReturnCount")
     suspend fun open(uri: Uri): EpubOpenResult {
         val url = AbsoluteUrl(uri.toString())
             ?: return EpubOpenResult.Failed("Android gave an address for this book that LEGION cannot read.")

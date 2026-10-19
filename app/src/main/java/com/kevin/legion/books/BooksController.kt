@@ -52,56 +52,66 @@ class BooksController(
     private val tts: TtsAvailability,
 ) {
     /** Opens the most recently read book, optionally reading aloud. */
-    suspend fun continueReading(listen: Boolean): BookOutcome {
-        val items = when (val state = catalog.load()) {
-            is CatalogState.Ready -> state.items
-            else -> return state.failure()
-        }
-        if (items.isEmpty()) return Failed(EMPTY)
+    suspend fun continueReading(listen: Boolean): BookOutcome = withItems { items ->
         val last = items.filter { it.lastReadAtMs != null }.maxByOrNull { it.lastReadAtMs ?: 0L }
-            ?: return Failed("No book has been opened yet, so there is nothing to continue. Nothing was opened.")
-        return open(last, listen)
+        if (last == null) {
+            Failed("No book has been opened yet, so there is nothing to continue. Nothing was opened.")
+        } else {
+            open(last, listen)
+        }
     }
 
     /** Opens the book [query] names, optionally reading aloud. */
-    suspend fun openByName(query: String, listen: Boolean): BookOutcome {
-        if (query.isBlank()) return Failed("No book name was given, so nothing was opened.")
-        val items = when (val state = catalog.load()) {
-            is CatalogState.Ready -> state.items
-            else -> return state.failure()
+    suspend fun openByName(query: String, listen: Boolean): BookOutcome =
+        if (query.isBlank()) {
+            Failed("No book name was given, so nothing was opened.")
+        } else {
+            withItems { items ->
+                when (val match = BookMatcher.find(items, query)) {
+                    is BookMatch.One -> open(match.item, listen)
+                    is BookMatch.Several -> Failed(
+                        "More than one book fits \"${query.trim()}\": " +
+                            "${match.items.joinToString("; ") { it.title }}. Nothing was opened. Say which one.",
+                    )
+                    BookMatch.None -> Failed(
+                        "I could not find a book matching \"${query.trim()}\" in the Books folder, " +
+                            "so nothing was opened.",
+                    )
+                }
+            }
         }
-        if (items.isEmpty()) return Failed(EMPTY)
-        return when (val match = BookMatcher.find(items, query)) {
-            is BookMatch.One -> open(match.item, listen)
-            is BookMatch.Several -> Failed(
-                "More than one book fits \"${query.trim()}\": ${match.items.joinToString("; ") { it.title }}. " +
-                    "Nothing was opened. Say which one.",
-            )
-            BookMatch.None ->
-                Failed("I could not find a book matching \"${query.trim()}\" in the Books folder, so nothing was opened.")
+
+    /** Loads the catalog; a catalog that cannot supply books, or supplies none, answers in words instead. */
+    private suspend fun withItems(block: suspend (List<BookItem>) -> BookOutcome): BookOutcome =
+        when (val state = catalog.load()) {
+            is CatalogState.Ready -> if (state.items.isEmpty()) Failed(EMPTY) else block(state.items)
+            else -> state.failure()
         }
-    }
 
     /** The sheet's tile, Read and Listen buttons land here, and so does everything above. */
     suspend fun open(item: BookItem, listen: Boolean): BookOutcome {
-        val format = item.book.format
-        val refusal = when {
-            !format.readable -> "${BookFormat.CBR_UNSUPPORTED} Nothing was opened."
-            listen && !format.listenable -> BookFormat.LISTEN_EBOOKS_ONLY
-            listen && !tts.available() ->
-                "This phone has no text-to-speech engine installed, so nothing was read aloud and nothing was opened. " +
-                    "Install one in Android settings, under Text-to-speech."
-            else -> null
+        val refusal = refusalFor(item.book.format, listen)
+        return when {
+            refusal != null -> Failed(refusal)
+            !launcher.launch(item.book, listen) -> Failed(
+                "The reader did not come up, so \"${item.title}\" was not opened. Try the Books sheet on HOME.",
+            )
+            else -> Opened(
+                item.title,
+                listen,
+                if (listen) "Opened \"${item.title}\" and asked it to read aloud." else "Opened \"${item.title}\".",
+            )
         }
-        if (refusal != null) return Failed(refusal)
-        if (!launcher.launch(item.book, listen)) {
-            return Failed("The reader did not come up, so \"${item.title}\" was not opened. Try the Books sheet on HOME.")
-        }
-        return Opened(
-            item.title,
-            listen,
-            if (listen) "Opened \"${item.title}\" and asked it to read aloud." else "Opened \"${item.title}\".",
-        )
+    }
+
+    /** Why this book cannot be opened this way, or null when it can. */
+    private fun refusalFor(format: BookFormat, listen: Boolean): String? = when {
+        !format.readable -> "${BookFormat.CBR_UNSUPPORTED} Nothing was opened."
+        listen && !format.listenable -> BookFormat.LISTEN_EBOOKS_ONLY
+        listen && !tts.available() ->
+            "This phone has no text-to-speech engine installed, so nothing was read aloud and nothing was " +
+                "opened. Install one in Android settings, under Text-to-speech."
+        else -> null
     }
 
     /** The sentence for a catalog that cannot supply books (Ready is handled by the callers). */

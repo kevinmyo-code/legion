@@ -29,7 +29,7 @@ class BookScanTest {
                 BookEntry("7", "noextension"),
             ),
         )
-        assertEquals(listOf(BookFormat.EPUB, BookFormat.PDF, BookFormat.CBZ, BookFormat.CBR).toSet(), books.map { it.format }.toSet())
+        assertEquals(BookFormat.entries.toSet(), books.map { it.format }.toSet())
         assertEquals(4, books.size)
     }
 

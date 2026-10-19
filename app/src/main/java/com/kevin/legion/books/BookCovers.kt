@@ -20,14 +20,15 @@ class BookCoverCache(private val dir: File, private val now: () -> Long = System
 
     /** True while a recorded miss is still fresh, i.e. do not try this book again yet. */
     fun missIsFresh(documentId: String): Boolean {
-        val miss = File(dir, "${key(documentId)}.miss").takeIf { it.exists() } ?: return false
-        val retryAt = miss.readText().trim().toLongOrNull() ?: return false
-        return now() < retryAt
+        val retryAt = File(dir, "${key(documentId)}.miss").takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
+        return retryAt != null && now() < retryAt
     }
 
     fun put(documentId: String, bitmap: Bitmap) {
         dir.mkdirs()
-        File(dir, "${key(documentId)}.jpg").outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+        File(dir, "${key(documentId)}.jpg").outputStream().use {
+            bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)
+        }
         File(dir, "${key(documentId)}.miss").delete()
     }
 
@@ -57,7 +58,8 @@ class BookCovers(
     private val resolver: ContentResolver,
     private val comicCacheDir: File,
 ) {
-    @Suppress("TooGenericExceptionCaught") // one unreadable file must not stop the rest of the shelf
+    // one unreadable file must not stop the rest of the shelf; the miss marker is the record of it
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     suspend fun prepare(book: Book, uri: Uri): EpubInfo? {
         var info: EpubInfo? = null
         val cover: Bitmap? = try {

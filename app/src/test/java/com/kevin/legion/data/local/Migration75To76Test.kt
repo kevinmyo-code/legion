@@ -136,7 +136,8 @@ class Migration75To76Test {
         )
         db.execSQL(
             "INSERT OR IGNORE INTO `books` (`documentId`, `fileName`, `format`, `title`, `metadataRead`, " +
-                "`progress`, `pageIndex`, `pageCount`, `firstSeenAtMs`) VALUES ('d', 'a.pdf', 'PDF', 'a', 0, 0, 0, 0, 2)",
+                "`progress`, `pageIndex`, `pageCount`, `firstSeenAtMs`) " +
+                "VALUES ('d', 'a.pdf', 'PDF', 'a', 0, 0, 0, 0, 2)",
         )
         db.query("SELECT `progress`, `pageIndex`, `lastReadAtMs` FROM `books`").use { c ->
             assertTrue(c.moveToFirst())

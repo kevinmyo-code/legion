@@ -34,7 +34,10 @@ import org.readium.r2.shared.util.AbsoluteUrl
 
 private const val NAVIGATOR_TAG = "legion-epub-navigator"
 
-/** Pure-ish: the Readium preferences for a [ReaderSettings] and [ReaderPalette]. Publisher styles are off so the font and colours apply. */
+/**
+ * The Readium preferences for a [ReaderSettings] and [ReaderPalette]. Publisher styles are off so the
+ * font and colours apply.
+ */
 @OptIn(ExperimentalReadiumApi::class)
 internal fun epubPreferences(settings: ReaderSettings, palette: ReaderPalette) = EpubPreferences(
     backgroundColor = ReadiumColor(palette.page.toArgb()),
@@ -121,10 +124,12 @@ private class EpubFragmentControl(
     }
 
     override fun goToLocator(locatorJson: String) {
-        runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull()?.let { navigator.go(it, animated = false) }
+        val locator = runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull()
+        locator?.let { navigator.go(it, animated = false) }
     }
 
-    override suspend fun firstVisibleLocatorJson(): String? = navigator.firstVisibleElementLocator()?.toJSON()?.toString()
+    override suspend fun firstVisibleLocatorJson(): String? =
+        navigator.firstVisibleElementLocator()?.toJSON()?.toString()
 
     override fun highlight(locatorJson: String?) {
         val locator = locatorJson?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }

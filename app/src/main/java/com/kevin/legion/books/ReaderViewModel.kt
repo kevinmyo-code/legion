@@ -219,7 +219,8 @@ class ReaderViewModel(
 
     // ---- panels, settings ---------------------------------------------------------------------
 
-    fun showPanel(panel: ReaderPanel) = _state.update { it.copy(panel = if (it.panel == panel) ReaderPanel.NONE else panel) }
+    fun showPanel(panel: ReaderPanel) =
+        _state.update { it.copy(panel = if (it.panel == panel) ReaderPanel.NONE else panel) }
 
     fun closePanel() = _state.update { it.copy(panel = ReaderPanel.NONE) }
 
@@ -376,7 +377,8 @@ class ReaderViewModel(
                     is EpubOpenResult.Failed -> LoadedBook.Failed(opened.sentence)
                 }
                 BookFormat.PDF -> LoadedBook.Paged(PdfPages.open(app.contentResolver, uri))
-                BookFormat.CBZ -> LoadedBook.Paged(ComicPages.open(app.contentResolver, uri, File(app.cacheDir, "comics")))
+                BookFormat.CBZ ->
+                    LoadedBook.Paged(ComicPages.open(app.contentResolver, uri, File(app.cacheDir, "comics")))
                 BookFormat.CBR -> LoadedBook.Failed(BookFormat.CBR_UNSUPPORTED)
             }
         } catch (e: BookOpenException) {

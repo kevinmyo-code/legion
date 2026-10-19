@@ -47,7 +47,9 @@ class EpubSession private constructor(
     private fun timeLeftFor(locator: Locator, position: Int?): String? {
         if (position == null) return null
         val key = locator.href.toString().substringBefore('#')
-        val remaining = positions.count { it.href.toString().substringBefore('#') == key && (it.locations.position ?: 0) > position }
+        val remaining = positions.count {
+            it.href.toString().substringBefore('#') == key && (it.locations.position ?: 0) > position
+        }
         return timeLeftLabel(minutesLeftInChapter(remaining))
     }
 
