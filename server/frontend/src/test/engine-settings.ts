@@ -74,6 +74,7 @@ export function defaultSettings(): SettingsState {
         list_changes: true,
         event_reminders: true,
         task_due_morning: true,
+        game_invite: true,
         morning_time: '07:30',
       },
       subscriptions: [],
@@ -425,6 +426,7 @@ const KIND_NAMES: Record<string, string> = {
   list_changes: 'list changes',
   event_reminders: 'event reminders',
   task_due_morning: 'the morning list of what is due',
+  game_invite: 'Tetris invites',
 }
 
 function subscriptionBody(id: string, tz: string) {
@@ -488,7 +490,7 @@ function handlePush(push: PushState, method: string, pathname: string, body: unk
         body: { morning_time: ['Time has wrong format. Use one of these formats instead: hh:mm.'] },
       }
     }
-    push.preferences = { ...sent }
+    push.preferences = { ...push.preferences, ...sent }
     return { status: 200, body: push.preferences }
   }
 

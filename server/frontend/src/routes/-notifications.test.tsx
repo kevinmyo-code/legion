@@ -232,7 +232,7 @@ describe('turning this device off', () => {
 })
 
 describe('what to send', () => {
-  test('shows the three kinds as the engine holds them', async () => {
+  test('shows the four kinds as the engine holds them', async () => {
     const engine = setUp()
     engine.settings.push.preferences.event_reminders = false
     await open(engine)
@@ -240,6 +240,7 @@ describe('what to send', () => {
     expect(await screen.findByRole('switch', { name: 'List changes' })).toBeChecked()
     expect(screen.getByRole('switch', { name: 'Event reminders' })).not.toBeChecked()
     expect(screen.getByRole('switch', { name: 'Due today' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'Tetris invites' })).toBeChecked()
     expect(screen.getByLabelText('Morning time')).toHaveValue('07:30')
   })
 
@@ -252,7 +253,13 @@ describe('what to send', () => {
     expect(engine.writes.at(-1)).toEqual({
       method: 'PUT',
       pathname: '/api/push/preferences',
-      body: { list_changes: false, event_reminders: true, task_due_morning: true, morning_time: '07:30' },
+      body: {
+        list_changes: false,
+        event_reminders: true,
+        task_due_morning: true,
+        game_invite: true,
+        morning_time: '07:30',
+      },
     })
     expect(screen.getByRole('switch', { name: 'List changes' })).not.toBeChecked()
   })
@@ -282,7 +289,7 @@ describe('what to send', () => {
     expect(engine.settings.push.preferences.morning_time).toBe('08:15')
   })
 
-  test('the master off turns all three off in one tap, and then says everything is off', async () => {
+  test('the master off turns all four off in one tap, and then says everything is off', async () => {
     const engine = setUp()
     await open(engine)
 
@@ -292,9 +299,10 @@ describe('what to send', () => {
       list_changes: false,
       event_reminders: false,
       task_due_morning: false,
+      game_invite: false,
     })
     expect(screen.queryByRole('button', { name: 'Turn everything off' })).not.toBeInTheDocument()
-    for (const name of ['List changes', 'Event reminders', 'Due today']) {
+    for (const name of ['List changes', 'Event reminders', 'Due today', 'Tetris invites']) {
       expect(screen.getByRole('switch', { name })).not.toBeChecked()
     }
   })

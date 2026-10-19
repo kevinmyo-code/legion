@@ -2,6 +2,7 @@ import { todayEpochDay } from '../lib/day'
 import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip, Purchase } from '../api/types'
 import { defaultAssistant, handleAssistant, type AssistantState } from './engine-assistant'
+import { defaultGames, handleGames, type GamesState } from './engine-games'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
 
@@ -60,6 +61,8 @@ export interface EngineOptions {
   settings?: Partial<SettingsState>
   /** The web assistant's state (`engine-assistant.ts`); a Dorothy and no failures when absent. */
   assistant?: Partial<AssistantState>
+  /** Tetris races (`engine-games.ts`); nobody to race and no matches when absent. */
+  games?: Partial<GamesState>
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -92,6 +95,8 @@ export interface Engine {
   settings: SettingsState
   /** The web assistant's answers (`engine-assistant.ts`): companion, mint, tools. */
   assistant: AssistantState
+  /** Tetris races (`engine-games.ts`). */
+  games: GamesState
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -343,6 +348,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     members: options.members ?? [],
     settings: { ...defaultSettings(), ...options.settings },
     assistant: { ...defaultAssistant(), ...options.assistant },
+    games: { ...defaultGames(), ...options.games },
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -675,6 +681,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
       if (method === 'GET' && pathname === '/api/ledger/spend') {
         return { status: 200, body: spendWithTargets(engine) }
       }
+
+      const gamesReply = handleGames(engine, { user_id: ME.user_id, name: ME.name }, method, pathname, body)
+      if (gamesReply) return gamesReply
 
       const assistantReply = handleAssistant(engine, method, pathname, body)
       if (assistantReply) return assistantReply

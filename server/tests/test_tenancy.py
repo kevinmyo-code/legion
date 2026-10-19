@@ -575,6 +575,59 @@ def test_device_logs_are_scoped_by_household(token_a, token_b, household_a, hous
     assert "bravo-line" in out and "alpha-line" not in out
 
 
+def test_game_matches_are_scoped_by_household(
+    token_a, token_b, household_a, household_b, household_user, user_b, monkeypatch
+):
+    """retro-games ticket 05 (ADR 0060). `game_matches` has no synced route, so
+    this is its leak test: B cannot invite a member of A, and B's detail,
+    pending, accept, decline, cancel and progress never reach A's match. A 404,
+    never a 403, so B learns nothing about whether the match exists."""
+    from games.models import GameMatch
+    from tests.conftest import _client_for, _member
+
+    for name in ("VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"):
+        monkeypatch.delenv(name, raising=False)
+    mia = _member(household_a, "mia-tenancy@example.com")
+    b_partner = _member(household_b, "b-partner@example.com")
+
+    across = token_b.post(
+        "/api/games/matches/", {"opponent_user_id": str(household_user.pk)}, format="json"
+    )
+    assert across.status_code == 400
+    assert not GameMatch.objects.exists()
+
+    a_match = token_a.post(
+        "/api/games/matches/", {"opponent_user_id": str(mia.pk)}, format="json"
+    ).data["match"]["id"]
+    b_match = token_b.post(
+        "/api/games/matches/", {"opponent_user_id": str(b_partner.pk)}, format="json"
+    ).data["match"]["id"]
+    assert GameMatch.objects.get(pk=a_match).household_id == household_a.id
+    assert GameMatch.objects.get(pk=b_match).household_id == household_b.id
+
+    b_partner_client = _client_for(b_partner)
+    for client in (token_b, b_partner_client):
+        assert client.get(f"/api/games/matches/{a_match}/").status_code == 404
+        for verb in ("accept", "decline", "cancel"):
+            assert client.post(f"/api/games/matches/{a_match}/{verb}/").status_code == 404
+        assert (
+            client.post(
+                f"/api/games/matches/{a_match}/progress/",
+                {"score": 1, "lines": 0, "level": 1},
+                format="json",
+            ).status_code
+            == 404
+        )
+    assert [m["id"] for m in b_partner_client.get("/api/games/matches/pending/").json()] == [
+        b_match
+    ]
+    assert [o["user_id"] for o in token_b.get("/api/games/opponents/").json()] == [
+        str(b_partner.pk)
+    ]
+    assert GameMatch.objects.get(pk=a_match).status == "invited"
+    assert "household" not in str(token_a.get(f"/api/games/matches/{a_match}/").json())
+
+
 def test_purchases_are_scoped_by_household(token_a, token_b):
     """purchase-log ticket 06. `purchases` has no synced route, so this is its
     leak test: B's list, detail, edit, delete, "last bought" and Groceries hook

@@ -4401,6 +4401,284 @@ paths:
             phrase from `last_ok_at`. `stale` is true when no run succeeded inside
             the source's threshold (canvas 2h, webassign/drive_statements/backup/obd_rollup
             36h, heartbeat 1h), and false for a source the household has not set up.
+  /api/games/matches/:
+    post:
+      operationId: api_games_matches_create
+      tags:
+      - games
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteResponse'
+          description: Invited. `push` and `detail` say whether a notification reached
+            them.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No invite was made.
+  /api/games/matches/{match_id}/:
+    get:
+      operationId: api_games_matches_retrieve
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - games
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Match'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such match. It may have closed more than ten minutes ago.
+            Nothing was changed.
+  /api/games/matches/{match_id}/accept/:
+    post:
+      operationId: api_games_matches_accept_create
+      description: 'Accept, decline or cancel: one conditional UPDATE, then the match.'
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - games
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Match'
+          description: 'Accepted: `start_at` is 5 s from now and `ends_at` 180 s after
+            that.'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not your move to make.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such match. It may have closed more than ten minutes ago.
+            Nothing was changed.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The match is not in a state that allows this; nothing changed.
+  /api/games/matches/{match_id}/cancel/:
+    post:
+      operationId: api_games_matches_cancel_create
+      description: 'Accept, decline or cancel: one conditional UPDATE, then the match.'
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - games
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Match'
+          description: Cancelled.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not your move to make.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such match. It may have closed more than ten minutes ago.
+            Nothing was changed.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The match is not in a state that allows this; nothing changed.
+  /api/games/matches/{match_id}/decline/:
+    post:
+      operationId: api_games_matches_decline_create
+      description: 'Accept, decline or cancel: one conditional UPDATE, then the match.'
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - games
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Match'
+          description: Declined.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not your move to make.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such match. It may have closed more than ten minutes ago.
+            Nothing was changed.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The match is not in a state that allows this; nothing changed.
+  /api/games/matches/{match_id}/progress/:
+    post:
+      operationId: api_games_matches_progress_create
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - games
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgressRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProgressRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProgressRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Match'
+          description: Saved; the match as it now is.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Nothing was saved.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such match. It may have closed more than ten minutes ago.
+            Nothing was changed.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'Nothing was saved: the match is not being played, or it ended
+            more than 15 s ago.'
+  /api/games/matches/pending/:
+    get:
+      operationId: api_games_matches_pending_list
+      tags:
+      - games
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Match'
+          description: ''
+  /api/games/opponents/:
+    get:
+      operationId: api_games_opponents_list
+      tags:
+      - games
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Opponent'
+          description: ''
   /api/households/me:
     get:
       operationId: api_households_me_retrieve
@@ -9483,6 +9761,36 @@ components:
       - live
       - reason
       - uses_left
+    InviteRequest:
+      type: object
+      properties:
+        opponent_user_id:
+          type: string
+          format: uuid
+      required:
+      - opponent_user_id
+    InviteResponse:
+      type: object
+      properties:
+        match:
+          $ref: '#/components/schemas/Match'
+        push:
+          allOf:
+          - $ref: '#/components/schemas/PushEnum'
+          description: |-
+            What happened to the notification. Only `sent` reached a device.
+
+            * `sent` - sent
+            * `no_device` - no_device
+            * `turned_off` - turned_off
+            * `failed` - failed
+            * `not_set_up` - not_set_up
+        detail:
+          type: string
+      required:
+      - detail
+      - match
+      - push
     LastBought:
       type: object
       properties:
@@ -9850,6 +10158,75 @@ components:
       - service_name
       - updated_at
       - vehicle_id
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        game:
+          type: string
+          description: Always `tetris` today.
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        seed:
+          type: integer
+          description: 'A uint32: mulberry32''s seed (ticket 04).'
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: The invite lapses here if not accepted.
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        server_now:
+          type: string
+          format: date-time
+          description: 'The engine''s clock as it answered: subtract your own to correct
+            the countdown.'
+        you:
+          $ref: '#/components/schemas/Player'
+        opponent:
+          $ref: '#/components/schemas/Player'
+        result:
+          nullable: true
+          description: |-
+            For the caller, once the match has ended; null before.
+
+            * `won` - won
+            * `lost` - lost
+            * `draw` - draw
+          oneOf:
+          - $ref: '#/components/schemas/ResultEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        detail:
+          type: string
+          description: What this match is, in words, for the caller.
+      required:
+      - created_at
+      - detail
+      - ends_at
+      - expires_at
+      - game
+      - id
+      - opponent
+      - result
+      - role
+      - seed
+      - server_now
+      - start_at
+      - status
+      - you
     MeResponse:
       type: object
       properties:
@@ -10389,7 +10766,7 @@ components:
       properties:
         kind:
           type: string
-          description: list_changes, event_reminders or task_due_morning.
+          description: list_changes, event_reminders, task_due_morning or game_invite.
       required:
       - kind
     OffResponse:
@@ -10400,6 +10777,8 @@ components:
         event_reminders:
           type: boolean
         task_due_morning:
+          type: boolean
+        game_invite:
           type: boolean
         morning_time:
           type: string
@@ -10558,6 +10937,17 @@ components:
       - sync_id
       - updated_at
       - vehicle_id
+    Opponent:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - name
+      - user_id
     OutcomeEnum:
       enum:
       - ok
@@ -11860,6 +12250,37 @@ components:
       - detail
       - place
       - reminders_moved
+    Player:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        score:
+          type: integer
+        lines:
+          type: integer
+        level:
+          type: integer
+        topped_out:
+          type: boolean
+        finished:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - finished
+      - level
+      - lines
+      - name
+      - score
+      - topped_out
+      - updated_at
+      - user_id
     Preference:
       type: object
       properties:
@@ -11869,6 +12290,8 @@ components:
           type: boolean
         task_due_morning:
           type: boolean
+        game_invite:
+          type: boolean
         morning_time:
           type: string
           format: time
@@ -11877,6 +12300,33 @@ components:
       - list_changes
       - morning_time
       - task_due_morning
+    ProgressRequest:
+      type: object
+      properties:
+        score:
+          type: integer
+          maximum: 2000000000
+          minimum: 0
+        lines:
+          type: integer
+          maximum: 100000
+          minimum: 0
+        level:
+          type: integer
+          maximum: 10000
+          minimum: 1
+        topped_out:
+          type: boolean
+          default: false
+        finished:
+          type: boolean
+          default: false
+          description: 'True once this player''s game is over: clock out or topped
+            out.'
+      required:
+      - level
+      - lines
+      - score
     ProvenanceEnum:
       enum:
       - DETERMINISTIC
@@ -12001,6 +12451,20 @@ components:
       - message
       - results
       - truncated
+    PushEnum:
+      enum:
+      - sent
+      - no_device
+      - turned_off
+      - failed
+      - not_set_up
+      type: string
+      description: |-
+        * `sent` - sent
+        * `no_device` - no_device
+        * `turned_off` - turned_off
+        * `failed` - failed
+        * `not_set_up` - not_set_up
     ReasonEnum:
       enum:
       - drive_end
@@ -12296,6 +12760,24 @@ components:
       - reversal_of
       - total_price_cents
       - unit_price_cents
+    ResultEnum:
+      enum:
+      - won
+      - lost
+      - draw
+      type: string
+      description: |-
+        * `won` - won
+        * `lost` - lost
+        * `draw` - draw
+    RoleEnum:
+      enum:
+      - inviter
+      - invitee
+      type: string
+      description: |-
+        * `inviter` - inviter
+        * `invitee` - invitee
     ServiceHistory:
       type: object
       description: |-
@@ -12915,6 +13397,22 @@ components:
       - provisional_superseded
       - restatements_skipped
       - statement_id
+    StatusEnum:
+      enum:
+      - invited
+      - playing
+      - ended
+      - declined
+      - cancelled
+      - expired
+      type: string
+      description: |-
+        * `invited` - invited
+        * `playing` - playing
+        * `ended` - ended
+        * `declined` - declined
+        * `cancelled` - cancelled
+        * `expired` - expired
     Stored:
       type: object
       properties:

@@ -142,6 +142,9 @@ INSTALLED_APPS = [
     # Kevin 2026-10-15: the head unit uploads its own logs (`public.device_logs`)
     # after every drive, so they can be read without ADB.
     "devicelogs",
+    # retro-games ticket 05 (ADR 0060): a Tetris score race held only while it
+    # lives (`public.game_matches`), and the invite's Web Push.
+    "games",
 ]
 
 MIDDLEWARE = [

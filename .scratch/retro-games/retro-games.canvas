@@ -21,6 +21,16 @@
       "color": "4"
     },
     {
+      "id": "aa2ff44cb96a2809",
+      "type": "file",
+      "file": ".scratch/retro-games/issues/04-tetris-rules-and-race.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
       "id": "1f5cd1b6b700132d",
       "type": "file",
       "file": ".scratch/retro-games/issues/03-build-home-games.md",
@@ -29,6 +39,26 @@
       "width": 320,
       "height": 110,
       "color": "4"
+    },
+    {
+      "id": "8434d81baf52fc14",
+      "type": "file",
+      "file": ".scratch/retro-games/issues/05-build-race-engine-pwa.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f402df05c53e54e2",
+      "type": "file",
+      "file": ".scratch/retro-games/issues/06-build-race-phone.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -44,6 +74,20 @@
       "fromNode": "b01d4cc819e6a160",
       "fromSide": "right",
       "toNode": "1f5cd1b6b700132d",
+      "toSide": "left"
+    },
+    {
+      "id": "a4afecb19665f632",
+      "fromNode": "aa2ff44cb96a2809",
+      "fromSide": "right",
+      "toNode": "8434d81baf52fc14",
+      "toSide": "left"
+    },
+    {
+      "id": "81357331c7fc7008",
+      "fromNode": "aa2ff44cb96a2809",
+      "fromSide": "right",
+      "toNode": "f402df05c53e54e2",
       "toSide": "left"
     }
   ]
