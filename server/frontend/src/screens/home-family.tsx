@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useHousehold, useChanges, useMe } from '@/api/queries'
 import { DueItemRow } from '@/components/due-item-row'
 import { EventRow, timeLabel } from '@/components/event-row'
+import { GamesPill } from '@/components/games-pill'
 import { PinnedListCard } from '@/components/family/pinned-list-card'
 import { SpendCard } from '@/components/family/spend-card'
 import { relativeTime } from '@/components/freshness'
@@ -156,6 +157,7 @@ export function FamilyHome() {
         </div>
       </header>
       <BoughtPill />
+      <GamesPill />
     </>
   )
 

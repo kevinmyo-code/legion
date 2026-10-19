@@ -1,6 +1,7 @@
 import {
   Car,
   CalendarDays,
+  Gamepad2,
   HeartPulse,
   House,
   ListChecks,
@@ -67,6 +68,9 @@ export const NAV: readonly NavItem[] = [
   { to: '/fleet', label: 'Fleet', icon: Car, surfaces: DESK, built: true },
   { to: '/places', label: 'Places', icon: MapPin, surfaces: DESK, built: true },
   { to: '/notes', label: 'Notes', icon: NotebookText, surfaces: DESK, built: true },
+  // Retro-games 05. A rail item on the desk; on the family surface Home links to
+  // it instead, because spec D1 fixes the family tabs at four.
+  { to: '/games', label: 'Games', icon: Gamepad2, surfaces: DESK, built: true },
   {
     to: '/settings',
     label: 'Settings',

@@ -162,6 +162,7 @@ describe('the nav table', () => {
       'Fleet',
       'Places',
       'Notes',
+      'Games',
       'Settings',
     ])
   })

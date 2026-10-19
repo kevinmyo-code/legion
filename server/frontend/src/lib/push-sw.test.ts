@@ -203,6 +203,10 @@ describe('tapping the notification', () => {
     expect(sameOriginUrl('https://evil.example/phish', ORIGIN)).toBe(`${ORIGIN}/`)
     expect(sameOriginUrl('//evil.example/phish', ORIGIN)).toBe(`${ORIGIN}/`)
     expect(sameOriginUrl('/calendar?day=3', ORIGIN)).toBe(`${ORIGIN}/calendar?day=3`)
+    // A Tetris invite (retro-games 05) deep-links to its match.
+    expect(sameOriginUrl('/games/match/5c0ffee0-0000-4000-8000-000000000001', ORIGIN)).toBe(
+      `${ORIGIN}/games/match/5c0ffee0-0000-4000-8000-000000000001`,
+    )
     expect(sameOriginUrl(undefined, ORIGIN)).toBe(`${ORIGIN}/`)
     expect(sameOriginUrl('', ORIGIN)).toBe(`${ORIGIN}/`)
   })
