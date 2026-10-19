@@ -284,12 +284,15 @@ function RaceView({ id, read }: { id: string; read: MatchRead }) {
       {!resumed && (
         <div className="flex items-start gap-3">
           {field.board}
-          <div className="flex flex-col gap-3">
-            <Sidebar stats={field.stats} />
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <Sidebar stats={field.stats} theme={field.theme} />
+            {field.themePicker}
+            {field.pauseButton}
             {field.holdButton}
           </div>
         </div>
       )}
+      {!resumed && field.controls}
       {match.you.finished && !sendError && !resumed && <OkSentence>Your final score was sent.</OkSentence>}
     </>
   )
