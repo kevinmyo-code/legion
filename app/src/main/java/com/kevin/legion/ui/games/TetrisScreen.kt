@@ -166,6 +166,14 @@ fun TetrisScreen(state: TetrisUiState, input: BoardInput, actions: TetrisActions
                 }
             }
             TetrisStage.WAITING -> Panel(state.message, busy = true) {
+                state.inviteNote?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SoftColors.text2,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 OutlinedButton(onClick = actions.onCancel, enabled = !state.busy, modifier = buttonModifier()) {
                     Text("Cancel invite", color = SoftColors.text)
                 }

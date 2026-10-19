@@ -57,6 +57,8 @@ data class TetrisUiState(
     /** Solo only: gravity, lock delay and input are stopped and the pause overlay is up. */
     val paused: Boolean = false,
     val theme: TetrisTheme = TetrisTheme.CLASSIC,
+    /** What the engine said happened to the invite's notification; shown while waiting. */
+    val inviteNote: String? = null,
 )
 
 private const val POLL_MS = 1_000L
@@ -213,9 +215,12 @@ class TetrisViewModel @JvmOverloads constructor(
         )
         viewModelScope.launch {
             engine.invite(userId).fold(
-                onSuccess = { id ->
+                onSuccess = { sent ->
                     asInviter = true
-                    follow(id)
+                    // The engine's own sentence about the notification (for example "no device
+                    // signed up for them"), kept on the waiting screen so the inviter knows.
+                    _state.update { it.copy(inviteNote = sent.note.takeIf(String::isNotBlank)) }
+                    follow(sent.matchId)
                 },
                 onFailure = { e ->
                     _state.update {

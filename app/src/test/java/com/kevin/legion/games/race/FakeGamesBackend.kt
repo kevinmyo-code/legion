@@ -4,7 +4,7 @@ package com.kevin.legion.games.race
 class FakeGamesBackend : GamesBackend {
     var opponentsResult: Result<List<Opponent>> = Result.success(emptyList())
     var pendingResult: Result<List<PendingInvite>> = Result.success(emptyList())
-    var inviteResult: Result<String> = Result.success("m1")
+    var inviteResult: Result<InviteSent> = Result.success(InviteSent("m1", ""))
     var matchResult: Result<MatchState> = Result.failure(IllegalStateException("no match scripted"))
     var actionResult: Result<Unit> = Result.success(Unit)
 
@@ -13,7 +13,7 @@ class FakeGamesBackend : GamesBackend {
 
     override suspend fun opponents() = opponentsResult
     override suspend fun pending() = pendingResult
-    override suspend fun invite(opponentUserId: String): Result<String> {
+    override suspend fun invite(opponentUserId: String): Result<InviteSent> {
         actions += "invite:$opponentUserId"
         return inviteResult
     }

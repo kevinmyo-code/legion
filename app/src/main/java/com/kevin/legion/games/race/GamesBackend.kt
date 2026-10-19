@@ -6,6 +6,9 @@ data class Opponent(val userId: String, val name: String)
 /** A live invite addressed to me, from `GET /api/games/matches/pending/`. */
 data class PendingInvite(val matchId: String, val fromName: String)
 
+/** A created invite: the match to follow and the engine's sentence about whether a notification went out. */
+data class InviteSent(val matchId: String, val note: String)
+
 /** The match's lifecycle on the engine (ticket 05's `status`). */
 enum class MatchStatus { INVITED, PLAYING, ENDED, DECLINED, CANCELLED, EXPIRED }
 
@@ -49,8 +52,8 @@ interface GamesBackend {
     suspend fun opponents(): Result<List<Opponent>>
     suspend fun pending(): Result<List<PendingInvite>>
 
-    /** Creates the invite and returns the new match's id. */
-    suspend fun invite(opponentUserId: String): Result<String>
+    /** Creates the invite; the result carries the new match's id and what happened to the notification. */
+    suspend fun invite(opponentUserId: String): Result<InviteSent>
     suspend fun accept(matchId: String): Result<Unit>
     suspend fun decline(matchId: String): Result<Unit>
     suspend fun cancel(matchId: String): Result<Unit>
