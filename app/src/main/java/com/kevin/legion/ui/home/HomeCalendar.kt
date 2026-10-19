@@ -631,8 +631,9 @@ private fun LegendItem(label: String, mark: @Composable () -> Unit) {
 
 // ------------------------------------------------------------------------------------ buttons
 
-/** The three panel buttons (To-dos, Lists, Ideas), each opening a bottom sheet. The Ask/mic button
- * lives in the shell's talk bar and is deliberately not repeated here. */
+/** The panel buttons, two rows of three (Kevin, 2026-10-19, ADR 0061): To-dos, Lists, Ideas / Games,
+ * Books, More. The first three open bottom sheets here, Games and Books open their own. The Ask/mic
+ * button lives in the shell's talk bar and is deliberately not repeated here. */
 @Composable
 fun HomePanelButtons(
     state: HomeCalendarUiState,
@@ -642,38 +643,50 @@ fun HomePanelButtons(
     /** Retro-games ticket 03: the Games chip beside Ideas, its subtitle in words. */
     gamesSub: String = "set up",
     onGames: () -> Unit = {},
+    /** Books ticket 02: the Books chip beside Games, its subtitle in words. */
+    booksSub: String = "set up",
+    onBooks: () -> Unit = {},
 ) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        PanelButton(
-            "To-dos",
-            if (state.todosNote != null) "can't read" else "${state.openTodoCount} open",
-            AreaAccent.LISTS.container, AreaAccent.LISTS.onContainer, Modifier.weight(1f),
-        ) { callbacks.onOpenSheet(PanelSheet.TODOS) }
-        PanelButton(
-            "Lists",
-            when {
-                state.listsNote != null -> "can't read"
-                state.lists.size == 1 -> "1 list"
-                else -> "${state.lists.size} lists"
-            },
-            SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f),
-        ) { callbacks.onOpenSheet(PanelSheet.LISTS) }
-        PanelButton(
-            "Ideas",
-            when {
-                state.ideasNote != null -> "can't read"
-                state.ideas.isEmpty() -> "none"
-                else -> "${state.ideas.size} ideas"
-            },
-            AreaAccent.NEWS.container, AreaAccent.NEWS.onContainer, Modifier.weight(1f),
-        ) { callbacks.onOpenSheet(PanelSheet.IDEAS) }
-        PanelButton(
-            "Games", gamesSub, AreaAccent.CALENDAR.container, AreaAccent.CALENDAR.onContainer,
-            Modifier.weight(1f), onClick = onGames,
-            border = AreaAccent.CALENDAR.onContainer.copy(alpha = GAMES_BORDER_ALPHA),
-        )
-        // Kevin, 2026-10-09: "4th button: More" - the six area tiles that used to fill this screen.
-        PanelButton("More", "", SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f), onClick = onMore)
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PanelButton(
+                "To-dos",
+                if (state.todosNote != null) "can't read" else "${state.openTodoCount} open",
+                AreaAccent.LISTS.container, AreaAccent.LISTS.onContainer, Modifier.weight(1f),
+            ) { callbacks.onOpenSheet(PanelSheet.TODOS) }
+            PanelButton(
+                "Lists",
+                when {
+                    state.listsNote != null -> "can't read"
+                    state.lists.size == 1 -> "1 list"
+                    else -> "${state.lists.size} lists"
+                },
+                SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f),
+            ) { callbacks.onOpenSheet(PanelSheet.LISTS) }
+            PanelButton(
+                "Ideas",
+                when {
+                    state.ideasNote != null -> "can't read"
+                    state.ideas.isEmpty() -> "none"
+                    else -> "${state.ideas.size} ideas"
+                },
+                AreaAccent.NEWS.container, AreaAccent.NEWS.onContainer, Modifier.weight(1f),
+            ) { callbacks.onOpenSheet(PanelSheet.IDEAS) }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PanelButton(
+                "Games", gamesSub, AreaAccent.CALENDAR.container, AreaAccent.CALENDAR.onContainer,
+                Modifier.weight(1f), onClick = onGames,
+                border = AreaAccent.CALENDAR.onContainer.copy(alpha = GAMES_BORDER_ALPHA),
+            )
+            PanelButton(
+                "Books", booksSub, BooksTone.container, BooksTone.onContainer,
+                Modifier.weight(1f), onClick = onBooks,
+                border = BooksTone.onContainer.copy(alpha = GAMES_BORDER_ALPHA),
+            )
+            // Kevin, 2026-10-09: "4th button: More" - the six area tiles that used to fill this screen.
+            PanelButton("More", "", SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f), onClick = onMore)
+        }
     }
 }
 

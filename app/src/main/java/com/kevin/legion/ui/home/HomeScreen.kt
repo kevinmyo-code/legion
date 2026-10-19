@@ -140,6 +140,10 @@ fun HomeScreen(
     val gamesViewModel: GamesViewModel = viewModel()
     val gamesState by gamesViewModel.state.collectAsStateWithLifecycle()
     val pickRomFolder = rememberRomFolderPicker(gamesViewModel)
+    // Books ticket 02: the Books chip and sheet, wired like Games (ADR 0061).
+    val booksViewModel: BooksViewModel = viewModel(factory = BooksViewModel.Factory(context))
+    val booksState by booksViewModel.state.collectAsStateWithLifecycle()
+    val pickBooksFolder = rememberBooksFolderPicker(booksViewModel)
 
     // Home-launcher ticket 06's own dock - pins are read fresh on every resume (a pin/unpin made
     // from Apps must show up here without a process restart), and against AppDrawerCache's own
@@ -160,6 +164,7 @@ fun HomeScreen(
         calendarViewModel.refresh()
         tilesViewModel.refresh()
         gamesViewModel.refresh()
+        booksViewModel.refresh()
         pins = DockPinsStore.read(context)
         categoryPicks = CategoryPicksStore.readAll(context)
         drawerSnapshot = AppDrawerCache.peek()
@@ -244,6 +249,17 @@ fun HomeScreen(
             cover = gamesViewModel::cover,
             appIcon = gamesViewModel::appIcon,
         ),
+        books = BooksHome(
+            state = booksState,
+            callbacks = BooksCallbacks(
+                onRead = booksViewModel::read,
+                onListen = booksViewModel::listen,
+                onContinue = booksViewModel::continueReading,
+                onPickFolder = pickBooksFolder,
+                onDismissNotice = booksViewModel::dismissNotice,
+            ),
+            cover = booksViewModel::cover,
+        ),
         tiles = tiles,
         recording = recording,
         recordRefusal = recordRefusal,
@@ -327,9 +343,14 @@ fun HomeContent(
     chooserRows: List<ChooserRow> = emptyList(),
     categoryCallbacks: CategoryCallbacks = CategoryCallbacks(onLaunch = {}, onSave = { _, _ -> }),
     games: GamesHome = GamesHome(),
+    books: BooksHome = BooksHome(),
 ) {
     var moreOpen by remember { mutableStateOf(false) }
     var gamesOpen by remember { mutableStateOf(false) }
+    var booksOpen by remember { mutableStateOf(false) }
+    // A book that opened closes the sheet, as a launched game does: the reader is what is left to see.
+    val booksOpened = books.state.notice?.takeIf { !it.failed }
+    androidx.compose.runtime.LaunchedEffect(booksOpened) { if (booksOpened != null) booksOpen = false }
     // A launch that started closes the sheet, so the "Opening ..." toast on HOME is what is left to see.
     val launched = games.state.notice?.takeIf { !it.failed }
     androidx.compose.runtime.LaunchedEffect(launched) { if (launched != null) gamesOpen = false }
@@ -339,6 +360,8 @@ fun HomeContent(
             HomePanelButtons(
                 calendar, calendarCallbacks, Modifier.padding(top = 6.dp, bottom = 4.dp),
                 onMore = { moreOpen = true },
+                booksSub = books.state.chipSub,
+                onBooks = { booksOpen = true },
                 gamesSub = games.state.chipSub,
                 onGames = {
                     gamesOpen = true
@@ -359,6 +382,7 @@ fun HomeContent(
         }
         HomePanelSheet(calendar, calendarCallbacks)
         if (gamesOpen) GamesSheet(games, onDismiss = { gamesOpen = false })
+        if (booksOpen) BooksSheet(books, onDismiss = { booksOpen = false })
         Box(Modifier.fillMaxSize().padding(bottom = 28.dp), contentAlignment = Alignment.BottomCenter) {
             GamesToast(launched)
         }
