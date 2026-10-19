@@ -33,19 +33,21 @@ function AuthedLayout() {
     }
   }, [me.data, navigate])
 
-  if (me.isPending) {
+  if (me.data === undefined) {
+    // Only when the engine was never reached. A refetch that fails later (a
+    // window focus during a cold start) keeps the last answer, so it never tears
+    // down the screen underneath: a Tetris game, solo or raced, plays through it.
+    if (me.isError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center p-4 text-center text-sm">
+          Could not reach the engine, so LEGION does not know whether you are
+          signed in. {me.error?.message}
+        </div>
+      )
+    }
     return (
       <div className="flex min-h-screen items-center justify-center p-4 text-sm text-muted-foreground">
         Asking the engine who you are…
-      </div>
-    )
-  }
-
-  if (me.isError) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-4 text-center text-sm">
-        Could not reach the engine, so LEGION does not know whether you are
-        signed in. {me.error.message}
       </div>
     )
   }
