@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 
 Six life domains, one voice loop, two clients. LEGION may also be the phone's home app (ADR 0050,
 opt-in through Android's own Settings). HOME is the calendar: a month grid and the chosen day's
-agenda, two rows of chips that open panel sheets (Games and Books among them), and a More button for the
+agenda, one row of six chips that open panel sheets (Games and Books among them), and a More button for the
 weather and the per-area tiles that tap through to their own screens.
 
 (The sync layer keys off nine `ASPECT_*` names, which is a different and wider sense of the word

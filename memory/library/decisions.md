@@ -6468,7 +6468,7 @@ Kevin: *"i want my own ebook reader embedded into the launcher as well. so right
 right, i also want books there as a section."*
 
 - **Placement: prototype A (Kevin).** A Books chip beside Games with its own sheet; the chip row
-  becomes two rows of three. B (a Library chip with Games and Books tabs) and C (one Play & Read
+  first became two rows of three, then (Kevin, 2026-10-19) ONE row of six slim chips. B (a Library chip with Games and Books tabs) and C (one Play & Read
   sheet) were not chosen. Prototypes in `.scratch/books/research/`.
 - **Formats: EPUB, PDF and comics, CBZ and CBR (Kevin, over EPUB+PDF).**
 - **Source: one granted folder on the phone (Kevin)**, like the ROMs folder. Nothing uploaded.
@@ -6498,6 +6498,6 @@ without a pdfium adapter, and its PDF TTS is not supported.
   already-allowed `media3-session` from 1.4.1 to 1.10.0; the Android Auto probe still compiles.
 - **Live setup payload ceiling 24,000 to 24,250 for the books tool (Kevin, 2026-10-19).** Marcus measured
   ~24,099 tokens with the one `books` declaration (~143 tokens).
-- **Slimmer HOME chips (Kevin, 2026-10-19).** The two-row chip layout cost the real-phone shell one
-  agenda row, so the subtitle line is dropped from all six chips (about 44dp tall); the count stays in
+- **One row of six slim chips (Kevin, 2026-10-19).** The two-row layout cost the real-phone shell
+  agenda rows, so the chip row is one row of six, no subtitle line, 44dp minimum height; the count stays in
   each chip's TalkBack description and in the sheet subtitles. The agenda guard stays at 2 rows or more.

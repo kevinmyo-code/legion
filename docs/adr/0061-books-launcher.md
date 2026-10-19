@@ -37,7 +37,8 @@ Games and not a shared sheet.
 
 ## Consequences
 
-- HOME's chip row becomes two rows of three.
+- HOME's chip row becomes one row of six slim chips with no subtitle line (Kevin, 2026-10-19; the
+  prototype's two rows of three cost HOME an agenda row). Counts ride in each chip's TalkBack description.
 - No folder granted, permission lost, an empty folder, or a format that cannot be read aloud is said
   in words with the fix.
 - PdfBox stays banned (CLAUDE.md section 3); the PDF path uses the platform renderer or Pdfium.

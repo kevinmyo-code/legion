@@ -18,8 +18,9 @@ The spec is prototype A: `research/Main.dc.html` (HOME + sheet) and `research/Re
 
 ## What to build
 
-- **Chip row.** Two rows of three: To-dos, Lists, Ideas / Games, Books, More. Books chip subtitle
-  "N books", violet tone as in the prototype.
+- **Chip row.** One row of six slim chips, no subtitle line (Kevin 2026-10-19, replacing the
+  prototype's two rows of three): To-dos, Lists, Ideas, Games, Books, More, 44dp minimum tap height.
+  The count ("7 books") rides in the chip's TalkBack description and the sheet subtitle. Violet tone.
 - **Sheet.** Title "Books", subtitle count and folder. Continue reading card (cover, title, chapter
   or page, percent, progress bar, last read; Read and Listen buttons). Shelves: Ebooks (EPUB),
   Documents (PDF), Comics (CBZ, and CBR shown but unreadable: opening one says "CBR is not supported. Convert it to CBZ to read it here."); a shelf with no files is not shown. Tile = cover + progress bar.
@@ -58,7 +59,7 @@ one PDF and one comic opened, resume after closing, Listen with the screen off.
 
 ## Build notes (2026-10-19, branch `feat/books`)
 
-Built: the chip row (two rows of three), the Books sheet (Continue card, Ebooks / Documents / Comics
+Built: the chip row (one row of six slim chips), the Books sheet (Continue card, Ebooks / Documents / Comics
 shelves, four folder states said in words), the folder scan, covers and EPUB titles from the files
 (cached on the phone), the reader (EPUB through Readium 3.3.0, PDF on `PdfRenderer`, CBZ as a zip of
 images, pinch zoom, Day / Sepia / Night, contents, bookmarks, resume on every page turn), EPUB
