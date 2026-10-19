@@ -1,0 +1,33 @@
+{
+  "nodes": [
+    {
+      "id": "b71e019bbeca46b8",
+      "type": "file",
+      "file": ".scratch/books/issues/01-books-launcher.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c81dd2547bc1e952",
+      "type": "file",
+      "file": ".scratch/books/issues/02-build-books.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e3ebfd47ad70dc6a",
+      "fromNode": "b71e019bbeca46b8",
+      "fromSide": "right",
+      "toNode": "c81dd2547bc1e952",
+      "toSide": "left"
+    }
+  ]
+}

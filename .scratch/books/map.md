@@ -20,7 +20,7 @@ i have games right, i also want books there as a section."* Picked prototype **A
 
 **Shipped, and a book read on the A25.** A Books chip on HOME beside Games opens a sheet: Continue
 reading (cover, chapter, percent, Read and Listen), then shelves for Ebooks (EPUB), Documents (PDF)
-and Comics (CBZ/CBR). A tap opens LEGION's own reader. Listen reads aloud with the phone's voice.
+and Comics (CBZ; a CBR is listed but says it is not supported). A tap opens LEGION's own reader. Listen reads aloud with the phone's voice.
 
 ## Tickets
 

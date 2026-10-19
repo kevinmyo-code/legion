@@ -30,6 +30,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[31-phase-6-deletions\|31]] | build | Phase 6 deletions: the mirror, SyncEngine, and the dead notes-era tables |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[12-canvas-submitted-on-the-phone\|12]] | build | The phone shows what Canvas says beside each coursework task (Android terminal) |
+| [[.scratch/books/map\|books]] | [[02-build-books\|02]] | build | Build: Books chip, sheet, folder scan, reader (EPUB/PDF/comics), read-aloud, voice tool |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
@@ -259,6 +260,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
+| [[.scratch/books/map\|books]] | 2 | 1 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |

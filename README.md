@@ -32,10 +32,11 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 | Navigation | In-app turn-by-turn on the Mapbox Navigation SDK and the household's own token (ADR 0054), with turn cues spoken in LEGION's own voice and voice tools over the live trip. No hand-off to another map app |
 | Companions | A named companion picked per profile. One of them, Marcus Aurelius, answers from a bundled public-domain translation of the Meditations, searched deterministically and cited by book and section |
 | Games | A launcher on HOME, not an aspect (ADR 0058): ROMs read through a folder grant, launched in the emulator, with box art fetched once and cached |
+| Books | A launcher on HOME beside Games, not an aspect (ADR 0061): EPUB, PDF and CBZ read from a folder grant in LEGION's own reader (Readium for EPUB, the platform `PdfRenderer` for PDF, a zip-of-images viewer for comics), covers taken from the files, position and bookmarks kept on the phone, EPUBs read aloud with the phone's own voice. A CBR is listed and says it is not supported |
 
 Six life domains, one voice loop, two clients. LEGION may also be the phone's home app (ADR 0050,
 opt-in through Android's own Settings). HOME is the calendar: a month grid and the chosen day's
-agenda, a row of chips that open panel sheets (Games among them), and a More button for the
+agenda, two rows of chips that open panel sheets (Games and Books among them), and a More button for the
 weather and the per-area tiles that tap through to their own screens.
 
 (The sync layer keys off nine `ASPECT_*` names, which is a different and wider sense of the word
@@ -46,7 +47,7 @@ this README does not pretend they have.)
 
 <!-- VOICE-SURFACE:START -->
 
-**128 voice tools across 15 domains**, dispatched from one Gemini Live
+**129 voice tools across 16 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
@@ -62,6 +63,7 @@ model rather than to sell the feature.
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |
 | Music | 4 | &ldquo;Play the Roadtrip playlist&rdquo; |
 | Mail and calendar | 5 | &ldquo;Any mail from the garage?&rdquo; |
+| Books | 1 | &ldquo;Read me Moby-Dick&rdquo; |
 | Phone calls | 3 | &ldquo;Answer it&rdquo; |
 | Recordings | 4 | &ldquo;Record this meeting&rdquo; |
 | Memory | 3 | &ldquo;Remember that the XJ takes 5W-30&rdquo; |
@@ -242,12 +244,13 @@ memory. Last swept 2026-10-14.
 | Android unit suite | **4,650 tests, 0 failures, 0 errors, 0 skipped**, counted from the JUnit XML across 482 result files (2026-10-11, at `768e750d`) |
 | Web client suite | **52 tests across 6 files**, green; `tsc --noEmit` and the production build both clean (2026-09-16; not recounted since, and the web client has grown a lot) |
 | Server suite | **718 passed, 42 skipped**, run against a real Postgres rather than SQLite (22 minutes) (2026-09-16; not recounted since) |
-| Room schema | **v75**, additive-only migrations, `exportSchema` on, no destructive fallback anywhere (2026-10-14) |
-| Voice surface | **128 tools across 15 groups**, every one carrying user-facing copy or the build fails (2026-10-14) |
+| Room schema | **v76**, additive-only migrations, `exportSchema` on, no destructive fallback anywhere (2026-10-14) |
+| Voice surface | **129 tools across 16 groups**, every one carrying user-facing copy or the build fails (2026-10-14) |
 | Django engine | Deployed to Cloud Run and serving the web client; its Postgres is the existing Supabase-hosted database (`deploy/cloudrun/README.md`). All nine sync aspects default to it. As of 2026-09-16 **only four had run end to end on a phone** (events, checklists, body, memory) and places and voice notes had their pull path exercised and nothing more. Ledger's pull path has since run on the A25: 906 bank-feed rows mirrored into Room and rendered (2026-10-11). **Pantry and fleet have never run against Django on hardware.** They were flipped because the Supabase path now fails a `household_id NOT NULL` constraint, not because they were proven |
 | Plaid bank feed | Live on the engine since 2026-10-11, scheduled every three hours. First run 835 new rows and 783 older file rows replaced; later runs added nothing new (2026-10-11) |
 | Mapbox navigation | Built; device-run fixes recorded on `.scratch/mapbox-nav/` ticket 10. **A real drive (ticket 12) is still open** (2026-10-14) |
 | HOME as the calendar | Built and installed on the A25 (Kevin, 2026-10-11). A home app is opt-in through Android's Settings |
+| Books | Chip, sheet, folder scan, reader (EPUB / PDF / CBZ), read-aloud and the `books` voice tool built (2026-10-19); the suite is green except two HOME real-phone agenda-guard tests that the second chip row turns red (one fewer agenda row; awaiting a ruling). **Not yet run on the A25:** folder granted, one EPUB, one PDF and one comic opened, resume after closing, Listen with the screen off (`.scratch/books/` ticket 02) |
 | Retro games | Games chip, ROM scan, launch and box art built; ticket 03 resolved on the A25 (2026-10-11). Tetris on the PWA and the engine race API (`/api/games/`, ADR 0060) built and suite-green, rules held to `shared/tetris/fixtures.json`; **a real race on Mia's phone and the invite push arriving are owed** (`.scratch/retro-games/` ticket 05, 2026-10-18) |
 | Tenancy | One Python choke point (`SyncedModelViewSet`). **ADR 0045 describes Postgres row-level security as the backstop under it; that does not exist** - no `CREATE POLICY` or `ENABLE ROW LEVEL SECURITY` anywhere in `server/`. A missed filter is currently a leak, not a no-op |
 | Supabase | Not retired, mid-cutover. `supabase-kt` is still in the build, 12 `Supabase*Backend.kt` files remain, and an install with no engine address or token falls back to Supabase for everything |

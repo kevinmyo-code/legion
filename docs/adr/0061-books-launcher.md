@@ -12,7 +12,7 @@ tags: [adr]
 ## Standing
 
 **Books is a launcher on HOME, beside Games, not an aspect.** A Books chip opens a sheet listing the
-EPUB, PDF and comic files (CBZ, CBR) under one folder the user grants through the system picker, and
+EPUB, PDF and comic files (CBZ read; CBR listed but not readable, Kevin 2026-10-19) under one folder the user grants through the system picker, and
 opens them in LEGION's own reader. The six aspects are unchanged.
 
 **Everything stays on the phone.** Reading position, bookmarks and reader settings are local; nothing
@@ -20,6 +20,14 @@ reaches the engine. Covers come from the files themselves, so Books fetches noth
 
 **Read-aloud uses the phone's own text-to-speech**, offline. The voice tool and the Listen button
 call one controller (ADR 0035).
+
+**The engine is a hybrid (Kevin, 2026-10-19).** Readium 3.3.0 reads EPUBs and reads them aloud, and
+nothing else. PDF is LEGION's own viewer on Android's `PdfRenderer`. Comics are LEGION's own viewer,
+a CBZ read as a zip of images in natural order. CBR is listed but not readable, and opening one says
+"CBR is not supported. Convert it to CBZ to read it here." Read-aloud is for ebooks; PDF and comics
+say so in words. Readium's `media3-exoplayer` is excluded from the build, so Media3 stays as it was
+in CLAUDE.md section 3 (the session library only). Position and bookmarks are two local-only Room
+tables (`books`, `book_bookmarks`); reader settings are SharedPreferences.
 
 ## Context
 

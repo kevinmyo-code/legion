@@ -55,6 +55,7 @@ Grouped by what they are for:
 | **Body** | `WorkoutPlan`, `WorkoutPlanItem`, `WorkoutSetLog`, `BodyweightLog`, `SleepTarget`, `SleepLog` |
 | **Places** | `TaggedPlace`, `PlaceReminder` *(tombstone)* |
 | **Voice notes** | `VoiceNote` |
+| **Books** | `BookRow`, `BookBookmark` *(local-only, never synced; ADR 0061)* |
 | **Memory, companion and AI** | `MemoryEntry`, `CompanionMemory`, `EpisodicTurn`, `CompanionProfileEntity`, `MemoryAudit`, `ConversationAudit` |
 | **Proactive and sitrep** | `ProactiveRaiseRow`, `ProactiveSetting`, `SitrepSchedule`, `SitrepModuleSetting`, `WellbeingDigestSchedule`, `MutedReminder`, `FeedSubscription` |
 | **Advisor and goals** | `Goal`, `AdvisorAdvice` |
@@ -120,6 +121,8 @@ than reaching for one, which is why it is not in this roster: it is storage, not
 **Navigation** - `MapboxNavController`.
 
 **News** - `FeedSubscriptionController`.
+
+**Books** - `BooksController` (the Books sheet and the `books` voice tool both call it; ADR 0061).
 
 **Platform** - `LiveSessionController`, `TelephonyController`, `GlanceCardController`,
 `VoiceModalController`, `GeneratedViewController`.
