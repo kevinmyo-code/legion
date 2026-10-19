@@ -6,6 +6,7 @@ import { seedAspects } from '../src/test/aspects-seed'
 import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
 import { calendarShots } from './calendar-shots'
 import { familyShots } from './family-shots'
+import { tetrisShots } from './tetris-shots'
 import { notificationShots, settingsShots } from './settings-shots'
 import { seedLedger, seedSpend } from '../src/test/ledger-seed'
 
@@ -260,6 +261,8 @@ const ROUTES: Shot[] = [
   ...calendarShots,
   // Ticket 10: Mia's Home and the family Lists. Rows live in `family-shots.ts`.
   ...familyShots,
+  // PWA Tetris polish: themes, pause. Rows live in `tetris-shots.ts`.
+  ...tetrisShots,
   // Tickets 05 and 15: join, signup and Settings. Rows live in `settings-shots.ts`.
   ...settingsShots,
   ...notificationShots,

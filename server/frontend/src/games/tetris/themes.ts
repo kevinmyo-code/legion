@@ -46,7 +46,7 @@ const NEON: BoardTheme = {
   label: 'Neon',
   well: '#07080d',
   grid: '#1b1f2b',
-  wall: '#e8f4ff',
+  wall: '#7c8cff',
   glow: 8,
   fill: { I: '#22d3ee', O: '#facc15', T: '#a855f7', S: '#22c55e', Z: '#ef4444', J: '#3b82f6', L: '#f97316' },
   edge: { I: '#a5f3fc', O: '#fef08a', T: '#d8b4fe', S: '#86efac', Z: '#fca5a5', J: '#93c5fd', L: '#fdba74' },

@@ -24,22 +24,25 @@ export function GamesSoloScreen() {
   })
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-16">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[1.5rem] font-medium">Tetris</h1>
         <Button asChild variant="ghost">
           <Link to="/games">Games</Link>
         </Button>
       </div>
-      <Numbers stats={field.stats} />
       <div className="flex items-start gap-3">
         {field.board}
         <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <Numbers stats={field.stats} stacked />
           <Sidebar stats={field.stats} theme={field.theme} />
-          {field.themePicker}
           {field.pauseButton}
           {field.holdButton}
         </div>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        {field.themePicker}
+        {field.padToggle}
       </div>
       {field.controls}
       {field.stats.over && (

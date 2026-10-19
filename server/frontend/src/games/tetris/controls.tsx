@@ -95,14 +95,15 @@ export interface GamePadProps {
 const ARROW = 'h-12 w-12 text-[1.25rem]'
 
 export function GamePad({ press, holdDisabled, startDisabled, className }: GamePadProps) {
+  const pill = 'h-12 w-20 rounded-full text-[0.8125rem]'
   return (
     <div
       role="group"
       aria-label="Game controls"
-      className={cn('grid w-full max-w-[22rem] grid-cols-[auto_1fr_auto] items-center gap-x-2 self-center', className)}
+      className={cn('flex w-full max-w-[22rem] items-center justify-between gap-1 self-center', className)}
     >
       {/* D-pad. */}
-      <div className="grid grid-cols-3 grid-rows-3 gap-0.5" style={{ width: '9.25rem' }}>
+      <div className="grid shrink-0 grid-cols-3 grid-rows-3" style={{ width: '9rem' }}>
         <PadButton action="up" label="Hard drop" press={press} className={cn(ARROW, 'col-start-2 row-start-1 rounded-t-control')}>
           {'▲'}
         </PadButton>
@@ -118,45 +119,26 @@ export function GamePad({ press, holdDisabled, startDisabled, className }: GameP
         </PadButton>
       </div>
 
-      {/* Hold shoulder over the middle pills. */}
-      <div className="flex flex-col items-center gap-2">
-        <PadButton
-          action="hold"
-          label="Hold"
-          press={press}
-          disabled={holdDisabled}
-          className="h-12 min-w-20 rounded-control px-4 text-[0.8125rem] font-medium"
-        >
+      {/* Hold shoulder, then Select and Start, down the middle. */}
+      <div className="flex shrink-0 flex-col items-center gap-1">
+        <PadButton action="hold" label="Hold" press={press} disabled={holdDisabled} className={cn(pill, 'font-medium')}>
           Hold
         </PadButton>
-        <div className="flex gap-2">
-          <PadButton
-            action="select"
-            label="Change theme"
-            press={press}
-            className="h-12 min-w-12 rounded-full px-2 text-[0.6875rem]"
-          >
-            Theme
-          </PadButton>
-          <PadButton
-            action="start"
-            label="Pause"
-            press={press}
-            disabled={startDisabled}
-            className="h-12 min-w-12 rounded-full px-2 text-[0.6875rem]"
-          >
-            Pause
-          </PadButton>
-        </div>
+        <PadButton action="select" label="Change theme" press={press} className={pill}>
+          Theme
+        </PadButton>
+        <PadButton action="start" label="Pause" press={press} disabled={startDisabled} className={pill}>
+          Pause
+        </PadButton>
       </div>
 
       {/* A and B. */}
-      <div className="relative" style={{ width: '7.25rem', height: '6.5rem' }}>
+      <div className="relative shrink-0" style={{ width: '6.75rem', height: '8.5rem' }}>
         <PadButton
           action="rotateCcw"
           label="Rotate counter-clockwise"
           press={press}
-          className="absolute bottom-0 left-0 h-14 w-14 rounded-full text-[1.125rem] font-semibold"
+          className="absolute bottom-3 left-0 h-14 w-14 rounded-full text-[1.125rem] font-semibold"
         >
           B
         </PadButton>
@@ -164,7 +146,7 @@ export function GamePad({ press, holdDisabled, startDisabled, className }: GameP
           action="rotateCw"
           label="Rotate clockwise"
           press={press}
-          className="absolute right-0 top-0 h-14 w-14 rounded-full text-[1.125rem] font-semibold"
+          className="absolute right-0 top-3 h-14 w-14 rounded-full text-[1.125rem] font-semibold"
         >
           A
         </PadButton>

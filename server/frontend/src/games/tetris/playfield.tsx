@@ -230,12 +230,14 @@ export interface Playfield {
   board: ReactNode
   /** The small Hold button, or null while the gamepad (which has Hold) is showing. */
   holdButton: ReactNode
-  /** The three-theme picker. */
+  /** The three-theme picker, one row. */
   themePicker: ReactNode
   /** A Pause button in solo; in a race, the sentence saying why there is none. */
   pauseButton: ReactNode
-  /** The on-screen gamepad, or the toggle that brings it back. */
+  /** The on-screen gamepad, or null while it is collapsed. */
   controls: ReactNode
+  /** Shows or hides the gamepad. */
+  padToggle: ReactNode
   theme: BoardTheme
   paused: boolean
   pause: () => void
@@ -245,11 +247,11 @@ export interface Playfield {
   getGame: () => TetrisGame | null
 }
 
-/** On a touch screen the pad starts out; on a desk with a mouse it starts collapsed. */
+/** The pad starts out on a touch screen or a narrow window; on a desk with a mouse it starts collapsed. */
 function padStartsOpen(): boolean {
   try {
     if (typeof window.matchMedia !== 'function') return true
-    return window.matchMedia('(pointer: coarse)').matches || !window.matchMedia('(any-pointer: fine)').matches
+    return window.matchMedia('(pointer: coarse), (max-width: 767px)').matches || !window.matchMedia('(any-pointer: fine)').matches
   } catch {
     return true
   }
@@ -504,7 +506,7 @@ export function usePlayfield(
 
   const board = (
     <div
-      className="relative w-full max-w-[min(100%,calc((100dvh-24rem)/2.1))] shrink-0 touch-none select-none"
+      className="relative w-full max-w-[min(100%,calc((100dvh-26rem)/2.1))] shrink-0 touch-none select-none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -526,7 +528,7 @@ export function usePlayfield(
         <div
           role="dialog"
           aria-label="Paused"
-          className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-control bg-background/95 p-2 text-center"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-control bg-background p-2 text-center"
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >
@@ -542,25 +544,22 @@ export function usePlayfield(
   )
 
   const themePicker = (
-    <div role="radiogroup" aria-label="Board theme" className="flex flex-col gap-1">
-      <p className="text-[0.8125rem] text-muted-foreground">Theme</p>
-      <div className="flex flex-wrap gap-1">
-        {THEME_ORDER.map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="radio"
-            aria-checked={id === themeId}
-            onClick={() => setTheme(id)}
-            className={cn(
-              'h-9 min-w-0 flex-1 rounded-control px-2 text-[0.75rem]',
-              id === themeId ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-foreground',
-            )}
-          >
-            {THEMES[id].label}
-          </button>
-        ))}
-      </div>
+    <div role="radiogroup" aria-label="Board theme" className="flex gap-1">
+      {THEME_ORDER.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="radio"
+          aria-checked={id === themeId}
+          onClick={() => setTheme(id)}
+          className={cn(
+            'h-9 min-w-14 rounded-control px-2 text-[0.75rem]',
+            id === themeId ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-foreground',
+          )}
+        >
+          {THEMES[id].label}
+        </button>
+      ))}
     </div>
   )
 
@@ -573,15 +572,12 @@ export function usePlayfield(
   )
 
   const controls = padOpen ? (
-    <div className="flex flex-col gap-1">
-      <GamePad press={perform} holdDisabled={holdDisabled} startDisabled={!canPause || stats.over} />
-      <Button type="button" variant="ghost" size="sm" className="self-center" onClick={() => setPadOpen(false)}>
-        Hide on-screen pad
-      </Button>
-    </div>
-  ) : (
-    <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setPadOpen(true)}>
-      Show on-screen pad
+    <GamePad press={perform} holdDisabled={holdDisabled} startDisabled={!canPause || stats.over} />
+  ) : null
+
+  const padToggle = (
+    <Button type="button" variant="ghost" size="sm" onClick={() => setPadOpen(!padOpen)}>
+      {padOpen ? 'Hide pad' : 'Show on-screen pad'}
     </Button>
   )
 
@@ -593,6 +589,7 @@ export function usePlayfield(
     themePicker,
     pauseButton,
     controls,
+    padToggle,
     theme,
     paused,
     pause,
@@ -625,21 +622,23 @@ export function Sidebar({ stats, theme }: { stats: Stats; theme: BoardTheme }) {
 }
 
 /** Score, lines and level, as numbers a person reads at a glance. */
-export function Numbers({ stats, label = 'You' }: { stats: Stats; label?: string }) {
+export function Numbers({ stats, label = 'You', stacked = false }: { stats: Stats; label?: string; stacked?: boolean }) {
+  const rows: [string, string][] = [
+    ['Score', stats.score.toLocaleString()],
+    ['Lines', String(stats.lines)],
+    ['Level', String(stats.level)],
+  ]
   return (
-    <dl className="grid grid-cols-3 gap-2 text-center" aria-label={`${label}: score, lines and level`}>
-      <div>
-        <dt className="text-[0.75rem] text-muted-foreground">Score</dt>
-        <dd className="text-[1.25rem] font-medium tabular-nums">{stats.score.toLocaleString()}</dd>
-      </div>
-      <div>
-        <dt className="text-[0.75rem] text-muted-foreground">Lines</dt>
-        <dd className="text-[1.25rem] font-medium tabular-nums">{stats.lines}</dd>
-      </div>
-      <div>
-        <dt className="text-[0.75rem] text-muted-foreground">Level</dt>
-        <dd className="text-[1.25rem] font-medium tabular-nums">{stats.level}</dd>
-      </div>
+    <dl
+      className={cn('grid gap-2', stacked ? 'grid-cols-1 gap-1' : 'grid-cols-3 text-center')}
+      aria-label={`${label}: score, lines and level`}
+    >
+      {rows.map(([name, value]) => (
+        <div key={name} className={stacked ? 'flex items-baseline justify-between gap-2' : undefined}>
+          <dt className="text-[0.75rem] text-muted-foreground">{name}</dt>
+          <dd className={cn('font-medium tabular-nums', stacked ? 'text-[1rem]' : 'text-[1.25rem]')}>{value}</dd>
+        </div>
+      ))}
     </dl>
   )
 }
