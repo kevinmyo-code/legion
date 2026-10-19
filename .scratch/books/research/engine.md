@@ -29,3 +29,22 @@ Ticket 02 waits on a ruling. Nothing was built on another engine.
 2. Own reader: EPUB through a WebView/own parser, PdfRenderer for PDF, ZipInputStream/junrar for
    comics. More code, no ExoPlayer, no toolkit lag.
 3. Separately: CBR via junrar (licence above) or unsupported in words.
+
+---
+
+# Update 2026-10-19 (Kevin ruled: HYBRID) - spike result
+
+Kevin ruled: Readium 3.3.0 for EPUB reading and EPUB read-aloud only; PDF on `PdfRenderer`; CBZ as a
+zip of images; CBR skipped; Room. The compile spike, on this tree:
+
+| Check | Result |
+|---|---|
+| Readium 3.3.0 (shared, streamer, navigator, navigator-media-tts) on Kotlin 2.2.10 / compileSdk 36 | compiles. 3.4.0 was never tried (needs Kotlin 2.4.20, compileSdk 37) |
+| Extra requirement | `desugar_jdk_libs` 2.1.4 -> 2.1.5 (AGP refuses Readium otherwise) |
+| `media3-exoplayer` | EXCLUDED by `configurations.configureEach { exclude(...) }`. `dependencies --configuration debugRuntimeClasspath` shows media3-common, common-ktx, session, datasource, database at 1.10.0 and no exoplayer. Media3 did NOT come back, so CLAUDE.md section 3 is unchanged |
+| `media3-session` | the pin 1.4.1 was lifted to 1.10.0 by Readium; the pin now says 1.10.0. Android Auto probe compiles unchanged |
+| Does the TTS navigator need ExoPlayer at runtime? | Not for text-to-speech: `ReadiumSmokeTest` loads `TtsNavigator` and `AndroidTtsNavigatorFactory` with ExoPlayer absent. Playing real speech is owed on the A25 |
+| EPUB open on the JVM | `ReadiumSmokeTest` opens a generated EPUB through `AssetRetriever` + `PublicationOpener` (no PDF factory) and reads the title and reading order |
+| Reader host | a dedicated `ReaderActivity : FragmentActivity` (MainActivity untouched); Readium's `EpubNavigatorFragment` is added into a `FragmentContainerView` once it attaches |
+| Heap | the first full compile of the new dependencies ran the Kotlin daemon out of memory at the repo default (2 GB). Built here with `-Pkotlin.daemon.jvmargs=-Xmx3g` on the command line; nothing committed |
+| Literata | not bundled (no font file in the repo, nothing fetched at runtime): the reader uses the system serif |

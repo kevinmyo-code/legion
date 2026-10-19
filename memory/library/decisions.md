@@ -6478,3 +6478,21 @@ right, i also want books there as a section."*
 - **Books is a launcher, not a seventh aspect.** ADR 0061.
 - **Engine: Readium Kotlin toolkit expected (orchestrator call, to be verified in ticket 02).**
   PdfBox stays banned.
+
+## 2026-10-19 - Books engine: hybrid, CBR skipped (Kevin)
+
+Ticket 02 verified Readium before building (`.scratch/books/research/engine.md`): 3.4.0 needs Kotlin
+2.4.20 and compileSdk 37, so the app takes 3.3.0; Readium opens neither RAR nor (usefully) PDF
+without a pdfium adapter, and its PDF TTS is not supported.
+
+- **Engine: hybrid (Kevin).** Readium 3.3.0 for EPUB reading and EPUB read-aloud ONLY. PDF is our own
+  viewer on Android's `PdfRenderer` (no readium-adapter-pdfium, no PdfBox). Comics are our own viewer,
+  a CBZ read as a zip of images, naturally sorted.
+- **CBR skipped (Kevin).** A `.cbr` is listed on the Comics shelf; opening it says "CBR is not
+  supported. Convert it to CBZ to read it here." No junrar (its licence is the UnRAR freeware licence).
+- **Storage: Room (Kevin, on the orchestrator's lean).** Two local-only tables (books with position,
+  bookmarks), additive v75 to v76. Reader settings in SharedPreferences.
+- **Read-aloud is EPUB only.** PDF and comics say in words that Listen is for ebooks.
+- **Media3 did not come back.** `media3-exoplayer` is excluded from the classpath (Readium declares it
+  for audiobooks Books never plays), so CLAUDE.md section 3 is unchanged. Readium does lift the
+  already-allowed `media3-session` from 1.4.1 to 1.10.0; the Android Auto probe still compiles.
