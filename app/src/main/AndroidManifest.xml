@@ -139,6 +139,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Books read-aloud (ADR 0061): without this, API 30+ hides the installed text-to-speech
+             engines and Listen would report "no engine" on a phone that has one. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application
@@ -255,6 +260,28 @@
             android:exported="false"
             android:label="Mirror Sync"
             android:theme="@style/Theme.Legion" />
+
+        <!-- Books reader (ADR 0061). A FragmentActivity because Readium's EPUB navigator is a
+             Fragment; configChanges so a rotation never destroys the page being read. -->
+        <activity
+            android:name=".books.ReaderActivity"
+            android:exported="false"
+            android:label="Reader"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|navigation|uiMode"
+            android:theme="@style/Theme.Legion" />
+
+        <!-- Read-aloud keeps going with the screen off as a media session, so the lock screen has
+             play and pause (Books, ADR 0061). Not exported: only this app's notification controller
+             binds it. The media3 action is how SessionToken recognises the service type. -->
+        <service
+            android:name=".books.BookReadAloudService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".service.AriaForegroundService"
