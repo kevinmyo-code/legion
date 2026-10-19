@@ -59,12 +59,16 @@ export const NOTIFICATION_COPY = {
       blurb:
         'One message each morning listing the tasks due that day. If nothing is due, nothing is sent.',
     },
+    game_invite: {
+      label: 'Tetris invites',
+      blurb: 'When someone in the household invites you to a Tetris race. The invite is open for 2 minutes.',
+    },
   },
   morningHelp: 'The time the “Due today” message is sent, in this browser’s time zone.',
   allOff: 'Everything is off. Turn one on above to get it.',
 } as const
 
-const KIND_ORDER: PreferenceKind[] = ['list_changes', 'event_reminders', 'task_due_morning']
+const KIND_ORDER: PreferenceKind[] = ['list_changes', 'event_reminders', 'task_due_morning', 'game_invite']
 
 /**
  * `/settings/notifications`: subscribe this browser to push, and choose what is
@@ -199,7 +203,10 @@ function KindsPanel() {
   }
 
   const current = preferences.data
-  const anyOn = KIND_ORDER.some((kind) => current[kind])
+  // `game_invite` is optional on the wire only so an older client's save leaves it
+  // alone; the engine always reads it back, and it defaults on.
+  const isOn = (kind: PreferenceKind) => current[kind] ?? true
+  const anyOn = KIND_ORDER.some(isOn)
   const shownTime = time ?? current.morning_time
 
   function change(next: Preference, sentence: string) {
@@ -229,7 +236,7 @@ function KindsPanel() {
               </div>
               <Switch
                 id={id}
-                checked={current[kind]}
+                checked={isOn(kind)}
                 disabled={save.isPending}
                 onCheckedChange={(checked) =>
                   change(
@@ -299,6 +306,7 @@ function KindsPanel() {
                   list_changes: false,
                   event_reminders: false,
                   task_due_morning: false,
+                  game_invite: false,
                 },
                 'All notifications are turned off.',
               )

@@ -28,7 +28,7 @@ import {
  */
 
 export type Preference = components['schemas']['Preference']
-export type PreferenceKind = 'list_changes' | 'event_reminders' | 'task_due_morning'
+export type PreferenceKind = 'list_changes' | 'event_reminders' | 'task_due_morning' | 'game_invite'
 
 export const VAPID_KEY = ['push', 'vapid'] as const
 export const PREFERENCES_KEY = ['push', 'preferences'] as const
