@@ -1,5 +1,19 @@
-import fixtures from '../../../../../shared/tetris/fixtures.json'
 import { PieceStream, gravitySeconds, levelFor, mulberry32, scoreFor } from './rules'
+
+interface Fixtures {
+  rng: { seed: number; firstFloats: number[] }[]
+  bags: { seed: number; pieces: string[] }[]
+  score: { level: number; linesCleared: number; softDropCells: number; hardDropCells: number; points: number }[]
+  level: { totalLines: number; level: number }[]
+  gravity: { level: number; secondsPerRow: number }[]
+}
+
+// The engine's Docker build context is `server/`, so the repo-root `shared/` folder is absent
+// when `tsc -b` runs inside the image build. The import is unresolvable there and only there;
+// vitest (which never runs in that build) always resolves it.
+// @ts-ignore TS2307 inside the Docker build only
+import rawFixtures from '../../../../../shared/tetris/fixtures.json'
+const fixtures = rawFixtures as Fixtures
 
 /**
  * Ticket 04's rule set, held to `shared/tetris/fixtures.json`: the one file the
