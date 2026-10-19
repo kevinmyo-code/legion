@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>B: Library tabs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b0c0e}
+a{color:#9cc0ff}a:hover{color:#c4dbff}
+button{font-family:inherit;cursor:pointer}
+.shelf::-webkit-scrollbar{display:none}
+</style>
+</helmet>
+<div style="position: relative; width: 384px; height: 832px; overflow: hidden; background: #121317; color: #e9e9ec; font-family: Figtree, system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <div style="padding: 14px 20px 6px; font-size: 26px; font-weight: 700">October</div>
+  <div style="margin: 6px 14px; padding: 14px; border-radius: 18px; background: #1d1f25; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 600"><span>Today · Mon, Oct 19</span><span style="font-size: 12px; color: #a3a6ae; font-weight: 500">2 plans</span></div>
+    <div style="font-size: 14px; color: #c9cbd1">Due 11:59 PM · Ch. 7 quiz</div>
+    <div style="font-size: 14px; color: #c9cbd1">7:30 PM · Team dinner</div>
+  </div>
+
+  <div style="display: flex; gap: 6px; padding: 8px 14px">
+    <button style="flex: 1; height: 56px; border-radius: 16px; border: 0; background: #3b3416; color: #f3d77a; font-size: 14px; font-weight: 700">To-dos<div style="font-size: 11px; font-weight: 500; color: #d8c27a">3 open</div></button>
+    <button style="flex: 1; height: 56px; border-radius: 16px; border: 0; background: #2a2c33; color: #e9e9ec; font-size: 14px; font-weight: 700">Lists<div style="font-size: 11px; font-weight: 500; color: #a3a6ae">4 lists</div></button>
+    <button style="flex: 1; height: 56px; border-radius: 16px; border: 0; background: #3d2a1c; color: #f2b27c; font-size: 14px; font-weight: 700">Ideas<div style="font-size: 11px; font-weight: 500; color: #d9a47a">4 ideas</div></button>
+    <button onClick="{{open}}" style="flex: 1.15; height: 56px; border-radius: 16px; border: 2px solid #9cc0ff; background: #1d2a40; color: #9cc0ff; font-size: 14px; font-weight: 700">Library<div style="font-size: 11px; font-weight: 500; color: #8fa9d6">6 games · 7 books</div></button>
+    <button style="flex: 0.9; height: 56px; border-radius: 16px; border: 0; background: #2a2c33; color: #e9e9ec; font-size: 14px; font-weight: 700">More</button>
+  </div>
+  <div style="padding: 2px 20px; font-size: 12px; color: #a3a6ae">Games chip becomes Library. Tap it.</div>
+
+  <div style="margin: 12px 14px 0; padding: 14px; border-radius: 18px; background: #1d1f25; display: flex; align-items: center; justify-content: space-between">
+    <div><div style="font-size: 15px; font-weight: 600">solace</div><div style="font-size: 13px; color: #a3a6ae">louke's beats</div></div>
+    <div style="width: 40px; height: 40px; border-radius: 20px; background: #7a3a2a"></div>
+  </div>
+  <div style="margin: 12px 14px 0; padding: 16px; border-radius: 22px; background: #23252b; font-size: 15px; color: #c9cbd1">Tap to talk</div>
+
+  <sc-if value="{{isOpen}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.55)"></div>
+    <div style="position: absolute; left: 0; right: 0; bottom: 0; top: 58px; border-radius: 24px 24px 0 0; background: #1a1c21; display: flex; flex-direction: column">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 12px 8px 20px">
+        <div style="font-size: 22px; font-weight: 700">Library</div>
+        <button onClick="{{close}}" style="height: 44px; padding: 0 14px; border: 0; background: transparent; color: #e9e9ec; font-size: 15px; font-weight: 600">Done</button>
+      </div>
+      <div style="margin: 0 14px 8px; padding: 4px; border-radius: 22px; background: #24262d; display: flex">
+        <button onClick="{{showGames}}" style="flex: 1; height: 40px; border-radius: 18px; border: 0; background: {{gamesBg}}; color: {{gamesFg}}; font-size: 14px; font-weight: 700">Games · 6</button>
+        <button onClick="{{showBooks}}" style="flex: 1; height: 40px; border-radius: 18px; border: 0; background: {{booksBg}}; color: {{booksFg}}; font-size: 14px; font-weight: 700">Books · 7</button>
+      </div>
+      <div class="shelf" style="flex: 1; overflow-y: auto; padding-bottom: 24px">
+        <sc-if value="{{isBooks}}" hint-placeholder-val="{{ true }}">
+          <div style="margin: 4px 14px 10px; padding: 12px; border-radius: 18px; background: #24262d; display: flex; gap: 12px; align-items: center">
+            <div style="width: 64px; height: 92px; border-radius: 8px; background: #3a4a6b; display: flex; align-items: flex-end; padding: 6px; box-sizing: border-box; font-size: 10px; font-weight: 700">Moby-Dick</div>
+            <div style="flex: 1; min-width: 0">
+              <div style="font-size: 11px; font-weight: 700; color: #b8a3ff; letter-spacing: 0.5px">CONTINUE READING</div>
+              <div style="font-size: 16px; font-weight: 600">Moby-Dick</div>
+              <div style="font-size: 12px; color: #a3a6ae">Ch. 41 · 38% · 2 h ago</div>
+            </div>
+            <a href="Reader.dc.html" style="height: 40px; padding: 0 14px; border-radius: 20px; background: #cdbdff; color: #1a1530; font-size: 14px; font-weight: 700; display: flex; align-items: center; text-decoration: none">Read</a>
+          </div>
+          <sc-for list="{{shelves}}" as="s" hint-placeholder-count="3">
+            <div style="display: flex; justify-content: space-between; padding: 12px 20px 8px"><span style="font-size: 15px; font-weight: 600">{{s.name}}</span><span style="font-size: 12px; color: #a3a6ae">{{s.count}}</span></div>
+            <div class="shelf" style="display: flex; gap: 12px; overflow-x: auto; padding: 0 16px">
+              <sc-for list="{{s.items}}" as="b" hint-placeholder-count="3">
+                <a href="Reader.dc.html" style="flex: none; width: 96px; text-decoration: none; color: #e9e9ec">
+                  <div style="width: 96px; height: 134px; border-radius: 10px; background: {{b.color}}; display: flex; align-items: flex-end; padding: 8px; box-sizing: border-box; font-size: 12px; font-weight: 700">{{b.title}}</div>
+                  <div style="font-size: 12px; color: #c9cbd1; margin-top: 6px">{{b.author}}</div>
+                </a>
+              </sc-for>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{isGames}}" hint-placeholder-val="{{ false }}">
+          <div style="margin: 4px 14px 10px; padding: 12px; border-radius: 18px; background: #24262d; display: flex; gap: 12px; align-items: center">
+            <div style="width: 64px; height: 64px; border-radius: 12px; background: #1e2a4a; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #9cc0ff">TETRIS</div>
+            <div style="flex: 1"><div style="font-size: 16px; font-weight: 600">Tetris</div><div style="font-size: 12px; color: #a3a6ae">Built in · solo or race Mia</div></div>
+            <button style="height: 40px; padding: 0 14px; border-radius: 20px; border: 0; background: #b9cff8; color: #10213f; font-size: 14px; font-weight: 700">Play</button>
+          </div>
+          <sc-for list="{{systems}}" as="g" hint-placeholder-count="2">
+            <div style="display: flex; justify-content: space-between; padding: 12px 20px 8px"><span style="font-size: 15px; font-weight: 600">{{g.name}}</span><span style="font-size: 12px; color: #a3a6ae">RetroArch</span></div>
+            <div class="shelf" style="display: flex; gap: 12px; overflow-x: auto; padding: 0 16px">
+              <sc-for list="{{g.items}}" as="t" hint-placeholder-count="2">
+                <div style="flex: none; width: 96px">
+                  <div style="width: 96px; height: 128px; border-radius: 10px; background: {{t.color}}"></div>
+                  <div style="font-size: 12px; color: #c9cbd1; margin-top: 6px">{{t.title}}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { isOpen: false, tab: 'books' }; }
+  renderVals() {
+    const books = this.state.tab === 'books';
+    return {
+      isOpen: this.state.isOpen,
+      open: () => this.setState({ isOpen: true }),
+      close: () => this.setState({ isOpen: false }),
+      showGames: () => this.setState({ tab: 'games' }),
+      showBooks: () => this.setState({ tab: 'books' }),
+      isBooks: books,
+      isGames: !books,
+      gamesBg: books ? 'transparent' : '#3a3d47',
+      gamesFg: books ? '#a3a6ae' : '#ffffff',
+      booksBg: books ? '#3a3d47' : 'transparent',
+      booksFg: books ? '#ffffff' : '#a3a6ae',
+      shelves: [
+        { name: 'Ebooks', count: 'EPUB · 3', items: [
+          { title: 'Moby-Dick', author: 'Melville', color: '#3a4a6b' },
+          { title: 'Pride and Prejudice', author: 'Austen', color: '#6b3a4f' },
+          { title: 'The Art of War', author: 'Sun Tzu', color: '#5a4a2a' }
+        ] },
+        { name: 'Documents', count: 'PDF · 2', items: [
+          { title: 'Outlander manual', author: 'Mitsubishi', color: '#2f4f4a' },
+          { title: 'Lease 2026', author: 'PDF', color: '#44464e' }
+        ] },
+        { name: 'Comics', count: 'CBZ · 2', items: [
+          { title: 'Little Nemo', author: 'McCay', color: '#7a5a1f' },
+          { title: 'Krazy Kat', author: 'Herriman', color: '#7a2f2f' }
+        ] }
+      ],
+      systems: [
+        { name: 'PlayStation', items: [ { title: 'Harvest Moon', color: '#3f6b3f' } ] },
+        { name: 'Game Boy Advance', items: [ { title: 'Pokemon Emerald', color: '#1f6b5a' }, { title: 'Metroid Zero Mission', color: '#5a4a1f' } ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

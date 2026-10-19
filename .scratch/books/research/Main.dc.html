@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A: Books chip</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b0c0e}
+a{color:#9cc0ff}a:hover{color:#c4dbff}
+button{font-family:inherit;cursor:pointer}
+.shelf::-webkit-scrollbar{display:none}
+</style>
+</helmet>
+<div style="position: relative; width: 384px; height: 832px; overflow: hidden; background: #121317; color: #e9e9ec; font-family: Figtree, system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <div style="padding: 14px 20px 6px; font-size: 26px; font-weight: 700">October</div>
+  <div style="margin: 6px 14px; padding: 14px; border-radius: 18px; background: #1d1f25; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 600"><span>Today · Mon, Oct 19</span><span style="font-size: 12px; color: #a3a6ae; font-weight: 500">2 plans</span></div>
+    <div style="font-size: 14px; color: #c9cbd1">Due 11:59 PM · Ch. 7 quiz</div>
+    <div style="font-size: 14px; color: #c9cbd1">7:30 PM · Team dinner</div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px 14px">
+    <button style="height: 56px; border-radius: 16px; border: 0; background: #3b3416; color: #f3d77a; font-size: 15px; font-weight: 700">To-dos<div style="font-size: 11px; font-weight: 500; color: #d8c27a">3 open</div></button>
+    <button style="height: 56px; border-radius: 16px; border: 0; background: #2a2c33; color: #e9e9ec; font-size: 15px; font-weight: 700">Lists<div style="font-size: 11px; font-weight: 500; color: #a3a6ae">4 lists</div></button>
+    <button style="height: 56px; border-radius: 16px; border: 0; background: #3d2a1c; color: #f2b27c; font-size: 15px; font-weight: 700">Ideas<div style="font-size: 11px; font-weight: 500; color: #d9a47a">4 ideas</div></button>
+    <button style="height: 56px; border-radius: 16px; border: 0; background: #1d2a40; color: #9cc0ff; font-size: 15px; font-weight: 700">Games<div style="font-size: 11px; font-weight: 500; color: #8fa9d6">6 games</div></button>
+    <button onClick="{{open}}" style="height: 56px; border-radius: 16px; border: 2px solid #b8a3ff; background: #2a2340; color: #cdbdff; font-size: 15px; font-weight: 700">Books<div style="font-size: 11px; font-weight: 500; color: #b3a6dc">7 books</div></button>
+    <button style="height: 56px; border-radius: 16px; border: 0; background: #2a2c33; color: #e9e9ec; font-size: 15px; font-weight: 700">More</button>
+  </div>
+  <div style="padding: 2px 20px; font-size: 12px; color: #a3a6ae">Chips go to two rows of three. Tap Books.</div>
+
+  <div style="margin: 12px 14px 0; padding: 14px; border-radius: 18px; background: #1d1f25; display: flex; align-items: center; justify-content: space-between">
+    <div><div style="font-size: 15px; font-weight: 600">solace</div><div style="font-size: 13px; color: #a3a6ae">louke's beats</div></div>
+    <div style="width: 40px; height: 40px; border-radius: 20px; background: #7a3a2a"></div>
+  </div>
+  <div style="margin: 12px 14px 0; padding: 16px; border-radius: 22px; background: #23252b; font-size: 15px; color: #c9cbd1">Tap to talk</div>
+
+  <sc-if value="{{isOpen}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.55)"></div>
+    <div style="position: absolute; left: 0; right: 0; bottom: 0; top: 58px; border-radius: 24px 24px 0 0; background: #1a1c21; display: flex; flex-direction: column">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 12px 8px 20px">
+        <div><div style="font-size: 22px; font-weight: 700">Books</div><div style="font-size: 12px; color: #a3a6ae">7 books · /sdcard/Books</div></div>
+        <button onClick="{{close}}" style="height: 44px; padding: 0 14px; border: 0; background: transparent; color: #e9e9ec; font-size: 15px; font-weight: 600">Done</button>
+      </div>
+      <div class="shelf" style="flex: 1; overflow-y: auto; padding-bottom: 24px">
+        <div style="margin: 4px 14px 10px; padding: 12px; border-radius: 18px; background: #24262d; display: flex; gap: 12px; align-items: center">
+          <div style="width: 64px; height: 92px; border-radius: 8px; background: #3a4a6b; display: flex; align-items: flex-end; padding: 6px; box-sizing: border-box; font-size: 10px; font-weight: 700">Moby-Dick</div>
+          <div style="flex: 1; min-width: 0">
+            <div style="font-size: 11px; font-weight: 700; color: #b8a3ff; letter-spacing: 0.5px">CONTINUE READING</div>
+            <div style="font-size: 16px; font-weight: 600">Moby-Dick</div>
+            <div style="font-size: 12px; color: #a3a6ae">Ch. 41 · 38% · 2 h ago</div>
+            <div style="margin-top: 6px; height: 4px; border-radius: 2px; background: #3a3c44"><div style="width: 38%; height: 4px; border-radius: 2px; background: #b8a3ff"></div></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <a href="Reader.dc.html" style="height: 40px; padding: 0 14px; border-radius: 20px; background: #cdbdff; color: #1a1530; font-size: 14px; font-weight: 700; display: flex; align-items: center; text-decoration: none">Read</a>
+            <a href="Reader.dc.html" style="height: 36px; padding: 0 14px; border-radius: 18px; background: #2f3138; color: #e9e9ec; font-size: 13px; font-weight: 600; display: flex; align-items: center; text-decoration: none">Listen</a>
+          </div>
+        </div>
+        <sc-for list="{{shelves}}" as="s" hint-placeholder-count="3">
+          <div style="display: flex; justify-content: space-between; padding: 12px 20px 8px"><span style="font-size: 15px; font-weight: 600">{{s.name}}</span><span style="font-size: 12px; color: #a3a6ae">{{s.count}}</span></div>
+          <div class="shelf" style="display: flex; gap: 12px; overflow-x: auto; padding: 0 16px">
+            <sc-for list="{{s.items}}" as="b" hint-placeholder-count="3">
+              <a href="Reader.dc.html" style="flex: none; width: 96px; text-decoration: none; color: #e9e9ec">
+                <div style="width: 96px; height: 134px; border-radius: 10px; background: {{b.color}}; position: relative; display: flex; align-items: flex-end; padding: 8px; box-sizing: border-box; font-size: 12px; font-weight: 700">
+                  <span style="position: absolute; top: 6px; left: 6px; padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,0.45); font-size: 10px">{{b.kind}}</span>{{b.title}}
+                </div>
+                <div style="margin-top: 6px; height: 3px; border-radius: 2px; background: #3a3c44"><div style="width: {{b.pct}}; height: 3px; border-radius: 2px; background: #b8a3ff"></div></div>
+                <div style="font-size: 12px; color: #c9cbd1; margin-top: 4px">{{b.author}}</div>
+              </a>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { isOpen: false }; }
+  renderVals() {
+    return {
+      isOpen: this.state.isOpen,
+      open: () => this.setState({ isOpen: true }),
+      close: () => this.setState({ isOpen: false }),
+      shelves: [
+        { name: 'Ebooks', count: 'EPUB · 3', items: [
+          { title: 'Moby-Dick', author: 'Melville', kind: 'EPUB', color: '#3a4a6b', pct: '38%' },
+          { title: 'Pride and Prejudice', author: 'Austen', kind: 'EPUB', color: '#6b3a4f', pct: '0%' },
+          { title: 'The Art of War', author: 'Sun Tzu', kind: 'EPUB', color: '#5a4a2a', pct: '100%' }
+        ] },
+        { name: 'Documents', count: 'PDF · 2', items: [
+          { title: 'Outlander manual', author: 'Mitsubishi', kind: 'PDF', color: '#2f4f4a', pct: '12%' },
+          { title: 'Lease 2026', author: 'PDF', kind: 'PDF', color: '#44464e', pct: '0%' }
+        ] },
+        { name: 'Comics', count: 'CBZ · 2', items: [
+          { title: 'Little Nemo', author: 'McCay', kind: 'CBZ', color: '#7a5a1f', pct: '60%' },
+          { title: 'Krazy Kat', author: 'Herriman', kind: 'CBZ', color: '#7a2f2f', pct: '0%' }
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -6461,3 +6461,20 @@ elt me invite her, she gets a notification on her phone and accepts and we play 
 - **One rule set, two implementations, one fixture file.** Kotlin and TypeScript each implement
   the rules; both test suites read `shared/tetris/fixtures.json` (seed to piece sequence, clears to
   score), so a drift fails a build instead of deciding a match.
+
+## 2026-10-19 - Books on HOME: a launcher section with LEGION's own reader (Kevin)
+
+Kevin: *"i want my own ebook reader embedded into the launcher as well. so right now i have games
+right, i also want books there as a section."*
+
+- **Placement: prototype A (Kevin).** A Books chip beside Games with its own sheet; the chip row
+  becomes two rows of three. B (a Library chip with Games and Books tabs) and C (one Play & Read
+  sheet) were not chosen. Prototypes in `.scratch/books/research/`.
+- **Formats: EPUB, PDF and comics, CBZ and CBR (Kevin, over EPUB+PDF).**
+- **Source: one granted folder on the phone (Kevin)**, like the ROMs folder. Nothing uploaded.
+- **Progress stays on the phone (Kevin).** No engine table, no sync.
+- **Read-aloud with the phone's TTS (Kevin)**, offline, with a voice tool and a Listen button on
+  one controller.
+- **Books is a launcher, not a seventh aspect.** ADR 0061.
+- **Engine: Readium Kotlin toolkit expected (orchestrator call, to be verified in ticket 02).**
+  PdfBox stays banned.
