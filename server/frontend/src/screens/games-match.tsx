@@ -58,7 +58,7 @@ function clock(ms: number): string {
 
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-16">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[1.5rem] font-medium">Tetris race</h1>
         <Button asChild variant="ghost">
@@ -274,7 +274,9 @@ function RaceView({ id, read }: { id: string; read: MatchRead }) {
           {clock(ends - now)}
         </span>
       </div>
-      <Numbers stats={resumed ? { ...field.stats, ...match.you, hold: null, holdUsed: false, next: [], over: true } : field.stats} />
+      {resumed && (
+        <Numbers stats={{ ...field.stats, ...match.you, hold: null, holdUsed: false, next: [], over: true }} />
+      )}
       {status && (
         <p role="status" className="rounded-control bg-surface-2 px-4 py-3 text-[0.9375rem]">
           {status} {timeUp ? MATCH_COPY.waitingForResult : MATCH_COPY.waitingForThem(match.opponent.name)}
@@ -284,12 +286,21 @@ function RaceView({ id, read }: { id: string; read: MatchRead }) {
       {!resumed && (
         <div className="flex items-start gap-3">
           {field.board}
-          <div className="flex flex-col gap-3">
-            <Sidebar stats={field.stats} />
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <Numbers stats={field.stats} stacked />
+            <Sidebar stats={field.stats} theme={field.theme} />
+            {field.pauseButton}
             {field.holdButton}
           </div>
         </div>
       )}
+      {!resumed && (
+        <div className="flex items-center justify-between gap-2">
+          {field.themePicker}
+          {field.padToggle}
+        </div>
+      )}
+      {!resumed && field.controls}
       {match.you.finished && !sendError && !resumed && <OkSentence>Your final score was sent.</OkSentence>}
     </>
   )

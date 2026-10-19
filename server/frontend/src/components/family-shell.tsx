@@ -26,6 +26,7 @@ import { isActive, type NavItem } from '@/lib/nav'
  */
 export function FamilyShell({ items, children }: { items: NavItem[]; children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const playing = pathname === '/games/solo' || pathname.startsWith('/games/match/')
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -40,7 +41,8 @@ export function FamilyShell({ items, children }: { items: NavItem[]; children: R
         {children}
       </main>
 
-      <FamilyAssistant />
+      {/* The pad owns the bottom corner while a game is on screen. */}
+      {!playing && <FamilyAssistant />}
 
       <nav
         aria-label="Tabs"
