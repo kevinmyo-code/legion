@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
+from games.matches import sweep
 from ingest.jobs import JobCommand
 from ingest.models import IngestRun, Source
 from push.copy import PUSH_OFF_NOTHING_SENT
@@ -32,6 +33,13 @@ class Command(JobCommand):
         return PushSubscription.objects.filter(household=household).exists()
 
     def handle(self, *args, **options):
+        # Tetris races (ADR 0060) are deleted ten minutes after they close. The
+        # games routes do this lazily for a household that is using them; this
+        # catches one nobody opened again. Before the VAPID check on purpose: a
+        # server with push off still must not keep matches.
+        purged = sweep(timezone.now())
+        if purged:
+            self.stdout.write(f"Deleted {purged} finished Tetris match(es).")
         config = vapid_config()
         if config is None:
             self.stdout.write(PUSH_OFF_NOTHING_SENT)

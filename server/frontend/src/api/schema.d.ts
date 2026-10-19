@@ -942,6 +942,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device-logs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_device_logs_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -1741,6 +1757,137 @@ export interface paths {
             cookie?: never;
         };
         get: operations["api_freshness_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/matches/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_games_matches_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/matches/{match_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_games_matches_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/matches/{match_id}/accept/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Accept, decline or cancel: one conditional UPDATE, then the match. */
+        post: operations["api_games_matches_accept_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/matches/{match_id}/cancel/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Accept, decline or cancel: one conditional UPDATE, then the match. */
+        post: operations["api_games_matches_cancel_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/matches/{match_id}/decline/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Accept, decline or cancel: one conditional UPDATE, then the match. */
+        post: operations["api_games_matches_decline_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/matches/{match_id}/progress/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_games_matches_progress_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/matches/pending/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_games_matches_pending_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/opponents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_games_opponents_list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4071,6 +4218,24 @@ export interface components {
             /** @description Why the code cannot be used, in words, or null when it can. */
             reason: string | null;
         };
+        InviteRequest: {
+            /** Format: uuid */
+            opponent_user_id: string;
+        };
+        InviteResponse: {
+            match: components["schemas"]["Match"];
+            /**
+             * @description What happened to the notification. Only `sent` reached a device.
+             *
+             *     * `sent` - sent
+             *     * `no_device` - no_device
+             *     * `turned_off` - turned_off
+             *     * `failed` - failed
+             *     * `not_set_up` - not_set_up
+             */
+            push: components["schemas"]["PushEnum"];
+            detail: string;
+        };
         LastBought: {
             query: string;
             matches: components["schemas"]["LastBoughtMatch"][];
@@ -4239,6 +4404,44 @@ export interface components {
             readonly updated_at: string;
             /** Format: date-time */
             readonly deleted_at: string | null;
+        };
+        Match: {
+            /** Format: uuid */
+            id: string;
+            /** @description Always `tetris` today. */
+            game: string;
+            status: components["schemas"]["StatusEnum"];
+            /** @description A uint32: mulberry32's seed (ticket 04). */
+            seed: number;
+            role: components["schemas"]["RoleEnum"];
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description The invite lapses here if not accepted.
+             */
+            expires_at: string;
+            /** Format: date-time */
+            start_at: string | null;
+            /** Format: date-time */
+            ends_at: string | null;
+            /**
+             * Format: date-time
+             * @description The engine's clock as it answered: subtract your own to correct the countdown.
+             */
+            server_now: string;
+            you: components["schemas"]["Player"];
+            opponent: components["schemas"]["Player"];
+            /**
+             * @description For the caller, once the match has ended; null before.
+             *
+             *     * `won` - won
+             *     * `lost` - lost
+             *     * `draw` - draw
+             */
+            result: (components["schemas"]["ResultEnum"] | components["schemas"]["NullEnum"]) | null;
+            /** @description What this match is, in words, for the caller. */
+            detail: string;
         };
         MeResponse: {
             /** Format: uuid */
@@ -4551,13 +4754,14 @@ export interface components {
             lng?: number | null;
         };
         OffRequest: {
-            /** @description list_changes, event_reminders or task_due_morning. */
+            /** @description list_changes, event_reminders, task_due_morning or game_invite. */
             kind: string;
         };
         OffResponse: {
             list_changes: boolean;
             event_reminders: boolean;
             task_due_morning: boolean;
+            game_invite?: boolean;
             /** Format: time */
             morning_time: string;
             detail: string;
@@ -4614,6 +4818,11 @@ export interface components {
             readonly updated_at: string;
             /** Format: date-time */
             readonly deleted_at: string | null;
+        };
+        Opponent: {
+            /** Format: uuid */
+            user_id: string;
+            name: string;
         };
         /**
          * @description * `ok` - OK
@@ -5217,12 +5426,37 @@ export interface components {
             /** @description What happened, in words. */
             detail: string;
         };
+        Player: {
+            /** Format: uuid */
+            user_id: string;
+            name: string;
+            score: number;
+            lines: number;
+            level: number;
+            topped_out: boolean;
+            finished: boolean;
+            /** Format: date-time */
+            updated_at: string | null;
+        };
         Preference: {
             list_changes: boolean;
             event_reminders: boolean;
             task_due_morning: boolean;
+            game_invite?: boolean;
             /** Format: time */
             morning_time: string;
+        };
+        ProgressRequest: {
+            score: number;
+            lines: number;
+            level: number;
+            /** @default false */
+            topped_out: boolean;
+            /**
+             * @description True once this player's game is over: clock out or topped out.
+             * @default false
+             */
+            finished: boolean;
         };
         /**
          * @description * `DETERMINISTIC` - Deterministic
@@ -5276,6 +5510,22 @@ export interface components {
             /** @description A sentence to show when `results` is empty, else null. With `q` it is "I have no record of buying ...", never "never bought". */
             message: string | null;
         };
+        /**
+         * @description * `sent` - sent
+         *     * `no_device` - no_device
+         *     * `turned_off` - turned_off
+         *     * `failed` - failed
+         *     * `not_set_up` - not_set_up
+         * @enum {string}
+         */
+        PushEnum: "sent" | "no_device" | "turned_off" | "failed" | "not_set_up";
+        /**
+         * @description * `drive_end` - drive_end
+         *     * `startup` - startup
+         *     * `manual` - manual
+         * @enum {string}
+         */
+        ReasonEnum: "drive_end" | "startup" | "manual";
         /**
          * @description One `public.receipts` header, with the anchors the gate checked it
          *     against (section 4 rule 8) and the residual it could not explain (rule 7).
@@ -5398,6 +5648,19 @@ export interface components {
             readonly created_at: string;
             readonly origin_guid: string | null;
         };
+        /**
+         * @description * `won` - won
+         *     * `lost` - lost
+         *     * `draw` - draw
+         * @enum {string}
+         */
+        ResultEnum: "won" | "lost" | "draw";
+        /**
+         * @description * `inviter` - inviter
+         *     * `invitee` - invitee
+         * @enum {string}
+         */
+        RoleEnum: "inviter" | "invitee";
         /**
          * @description Field-for-field `RemoteServiceHistory` / `ServiceHistoryUpload`.
          *
@@ -5709,6 +5972,25 @@ export interface components {
             provisional_superseded: number;
             anchors: components["schemas"]["StatementAnchors"];
         };
+        /**
+         * @description * `invited` - invited
+         *     * `playing` - playing
+         *     * `ended` - ended
+         *     * `declined` - declined
+         *     * `cancelled` - cancelled
+         *     * `expired` - expired
+         * @enum {string}
+         */
+        StatusEnum: "invited" | "playing" | "ended" | "declined" | "cancelled" | "expired";
+        Stored: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            received_at: string;
+            /** @description The compressed size kept. */
+            stored_bytes: number;
+            detail: string;
+        };
         /** @description What a member sees of a subscription: never the keys. */
         Subscription: {
             /** Format: uuid */
@@ -5782,6 +6064,27 @@ export interface components {
             value?: number | null;
             /** @default USER_REPORTED */
             source: string;
+        };
+        Upload: {
+            /**
+             * Format: uuid
+             * @description The device's idempotency key. A retry of the same batch is answered 200, once.
+             */
+            batch_id: string;
+            device_label: string;
+            /** @default  */
+            app_version_name: string;
+            app_version_code?: number | null;
+            reason: components["schemas"]["ReasonEnum"];
+            /** @description Epoch milliseconds on the DEVICE's clock, which is not trusted. */
+            window_start_ms?: number | null;
+            /** @description Epoch milliseconds on the DEVICE's clock, which is not trusted. */
+            window_end_ms?: number | null;
+            /**
+             * Format: uri
+             * @description The log text, gzip-compressed.
+             */
+            file: string;
         };
         VapidKey: {
             enabled: boolean;
@@ -7863,6 +8166,57 @@ export interface operations {
             };
         };
     };
+    api_device_logs_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Upload"];
+            };
+        };
+        responses: {
+            /** @description This batch_id was already stored; nothing new. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stored"];
+                };
+            };
+            /** @description Stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stored"];
+                };
+            };
+            /** @description Refused, nothing stored. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Over the size cap, nothing stored. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_events_list: {
         parameters: {
             query?: {
@@ -8865,7 +9219,11 @@ export interface operations {
     api_fleet_obd_samples_list: {
         parameters: {
             query: {
-                /** @description ISO-8601 UTC watermark, matched against `recorded_at` - the instant the sample was READ FROM THE CAR, not the instant it reached this server. That is the column `FleetBackend.fetchObdSamplesSince` filters on, and the only one that means anything to a client rebuilding a window of telemetry. Omitted means this vehicle's whole history, paged; the phone passes roughly the last 30 days (Kevin's 2026-09-03 OBD-volume ruling), and that window is the CLIENT's choice, never a narrowing this server applies on its behalf. */
+                /** @description Only with `received_after`: the row id of the last sample already received at that exact `created_at`. A batch insert gives every row the same `created_at`, so the id is what lets a page boundary fall inside one batch without dropping or repeating rows. Taken from the previous page's `next_after`; an id is never published on a row. Not a uuid is a 400. */
+                after_id?: string;
+                /** @description ISO-8601 UTC ARRIVAL watermark, matched against `created_at` - when this server STORED the sample, not when it was read from the car. Switches the feed to arrival order, keyed on `(created_at, id)`: a head unit that uploads a drive hours late is still returned, because its rows arrive after the watermark whatever their `recorded_at`. Without `after_id` the match is inclusive (`>=`); with it, strictly after that position. `since` is ignored in this mode. The response's `next` and `next_after` are the keyset to hand back as `received_after` and `after_id`. */
+                received_after?: string;
+                /** @description ISO-8601 UTC watermark, matched against `recorded_at` - the instant the sample was READ FROM THE CAR, not the instant it reached this server. That is the column `FleetBackend.fetchObdSamplesSince` filters on, and the only one that means anything to a client rebuilding a window of telemetry. Omitted means this vehicle's whole history, paged; the phone's first-run backfill passes the last 365 days (Kevin's 2026-10-17 ruling, which superseded the 2026-09-03 ~30-day bound), and that window is the CLIENT's choice, never a narrowing this server applies on its behalf. Ignored when `received_after` is sent. */
                 since?: string;
                 /** @description REQUIRED. The `vehicles.id` whose samples to return. This is the one list route in the API with a mandatory filter: `obd_samples` held 20,796 rows on 2026-09-07 and an unbounded feed over it is a download, not a feed. Absent is a 400 naming this parameter; a uuid naming no vehicle is a 404, never an empty page - an empty page would read as 'this car has no telemetry' when the truth is 'there is no such car'. */
                 vehicle: string;
@@ -9353,6 +9711,311 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Freshness"];
+                };
+            };
+        };
+    };
+    api_games_matches_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["InviteRequest"];
+                "multipart/form-data": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Invited. `push` and `detail` say whether a notification reached them. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteResponse"];
+                };
+            };
+            /** @description No invite was made. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_games_matches_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Match"];
+                };
+            };
+            /** @description No such match. It may have closed more than ten minutes ago. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_games_matches_accept_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted: `start_at` is 5 s from now and `ends_at` 180 s after that. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Match"];
+                };
+            };
+            /** @description Not your move to make. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such match. It may have closed more than ten minutes ago. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The match is not in a state that allows this; nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_games_matches_cancel_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Match"];
+                };
+            };
+            /** @description Not your move to make. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such match. It may have closed more than ten minutes ago. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The match is not in a state that allows this; nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_games_matches_decline_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Declined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Match"];
+                };
+            };
+            /** @description Not your move to make. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such match. It may have closed more than ten minutes ago. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The match is not in a state that allows this; nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_games_matches_progress_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProgressRequest"];
+                "multipart/form-data": components["schemas"]["ProgressRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the match as it now is. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Match"];
+                };
+            };
+            /** @description Nothing was saved. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such match. It may have closed more than ten minutes ago. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Nothing was saved: the match is not being played, or it ended more than 15 s ago. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_games_matches_pending_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Match"][];
+                };
+            };
+        };
+    };
+    api_games_opponents_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Opponent"][];
                 };
             };
         };
