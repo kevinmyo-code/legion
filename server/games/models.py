@@ -11,6 +11,9 @@ ordinary foreign key, the table is in `household.tenancy.TENANT_TABLES`, and
 every read goes through the request's household (`household_of`). Both
 players are members of that household; the invite view refuses anyone else.
 
+Each player's live board rides along as 220 characters (ADR 0060, amended
+2026-10-19), as transient as the score: it is deleted with the match.
+
 Progress is two flat column sets rather than a child table so that each
 player's write is one conditional UPDATE of their own columns: two players
 posting in the same instant can never overwrite each other.
@@ -55,6 +58,9 @@ class GameMatch(models.Model):
     inviter_topped_out = models.BooleanField(default=False)
     inviter_finished = models.BooleanField(default=False)
     inviter_updated_at = models.DateTimeField(null=True, blank=True)
+    # The live board, 22 rows x 10 as one char a cell (`games.matches.BOARD_CELLS`),
+    # so the other side can draw it beside their own. "" until the first post.
+    inviter_board = models.TextField(default="", blank=True)
 
     invitee_score = models.IntegerField(default=0)
     invitee_lines = models.IntegerField(default=0)
@@ -62,6 +68,7 @@ class GameMatch(models.Model):
     invitee_topped_out = models.BooleanField(default=False)
     invitee_finished = models.BooleanField(default=False)
     invitee_updated_at = models.DateTimeField(null=True, blank=True)
+    invitee_board = models.TextField(default="", blank=True)
 
     class Meta:
         db_table = "game_matches"

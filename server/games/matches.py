@@ -47,7 +47,24 @@ DRAW = "draw"
 INVITER = "inviter"
 INVITEE = "invitee"
 
-PROGRESS_FIELDS = ("score", "lines", "level", "topped_out", "finished")
+PROGRESS_FIELDS = ("score", "lines", "level", "topped_out", "finished", "board")
+
+# A board on the wire (ADR 0060, amended 2026-10-19): 22 rows of 10, top row
+# first, hidden rows included, one character a cell. `.` is empty, a letter is
+# that piece's colour, and the falling piece is baked in. The ghost is not sent.
+BOARD_ROWS = 22
+BOARD_COLUMNS = 10
+BOARD_CELLS = BOARD_ROWS * BOARD_COLUMNS
+BOARD_ALPHABET = frozenset(".IJLOSTZ")
+BOARD_REFUSAL = (
+    "Nothing was saved. A board is 220 characters, 22 rows of 10, each one '.' "
+    "or a piece letter I, J, L, O, S, T or Z."
+)
+
+
+def board_ok(text: str) -> bool:
+    """True for "" (no board sent yet) or exactly 220 cells of the alphabet."""
+    return text == "" or (len(text) == BOARD_CELLS and set(text) <= BOARD_ALPHABET)
 
 
 def display_name(user) -> str:

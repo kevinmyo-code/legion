@@ -51,6 +51,11 @@ class PlayerSerializer(serializers.Serializer):
     topped_out = serializers.BooleanField()
     finished = serializers.BooleanField()
     updated_at = serializers.DateTimeField(allow_null=True)
+    board = serializers.CharField(
+        allow_blank=True,
+        help_text="The live board: 220 characters, 22 rows of 10 top row first, '.' empty or a "
+        "piece letter, falling piece included. Empty until this player first posts one.",
+    )
 
 
 class MatchSerializer(serializers.Serializer):
@@ -98,6 +103,14 @@ class ProgressRequestSerializer(serializers.Serializer):
     topped_out = serializers.BooleanField(default=False)
     finished = serializers.BooleanField(
         default=False, help_text="True once this player's game is over: clock out or topped out."
+    )
+    board = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        max_length=matches.BOARD_CELLS,
+        help_text="Optional. The live board, 220 characters (see `Player.board`); left as it was "
+        "when omitted.",
     )
 
 
@@ -417,9 +430,16 @@ class ProgressView(APIView):
     def post(self, request, match_id):
         body = ProgressRequestSerializer(data=request.data)
         if not body.is_valid():
+            if "board" in body.errors:
+                return Response(
+                    {"detail": matches.BOARD_REFUSAL}, status=status.HTTP_400_BAD_REQUEST
+                )
             return Response(
                 {"detail": f"Nothing was saved. {body.errors}"}, status=status.HTTP_400_BAD_REQUEST
             )
+        board = body.validated_data.get("board")
+        if board is not None and not matches.board_ok(board):
+            return Response({"detail": matches.BOARD_REFUSAL}, status=status.HTTP_400_BAD_REQUEST)
         match = _mine(request, match_id)
         if match is None:
             return _not_found()
@@ -443,6 +463,8 @@ class ProgressView(APIView):
             f"{role}_finished": data["finished"] or getattr(match, f"{role}_finished"),
             f"{role}_updated_at": now,
         }
+        if board is not None:
+            update[f"{role}_board"] = board
         saved = GameMatch.objects.filter(pk=match.pk, status=PLAYING).update(**update)
         if not saved:
             return _conflict(_why_not(_reloaded(match), request, "saved"))

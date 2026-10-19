@@ -5437,6 +5437,8 @@ export interface components {
             finished: boolean;
             /** Format: date-time */
             updated_at: string | null;
+            /** @description The live board: 220 characters, 22 rows of 10 top row first, '.' empty or a piece letter, falling piece included. Empty until this player first posts one. */
+            board: string;
         };
         Preference: {
             list_changes: boolean;
@@ -5457,6 +5459,8 @@ export interface components {
              * @default false
              */
             finished: boolean;
+            /** @description Optional. The live board, 220 characters (see `Player.board`); left as it was when omitted. */
+            board?: string;
         };
         /**
          * @description * `DETERMINISTIC` - Deterministic

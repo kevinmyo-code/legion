@@ -350,6 +350,73 @@ def test_bad_progress_is_refused_in_words(kevin_client, mia_client, kevin, mia, 
     assert refused.data["detail"].startswith("Nothing was saved.")
 
 
+# =============================================================================
+# Boards: each side sees the other's (ADR 0060, amended 2026-10-19)
+# =============================================================================
+
+EMPTY_BOARD = "." * 220
+# Row 21 (the floor) holds an I across the left four cells; an O falls at the top.
+SOME_BOARD = "....OO...." + "....OO...." + "." * 190 + "IIII......"
+assert len(SOME_BOARD) == 220
+
+
+def test_a_board_is_empty_until_posted_then_shown_to_the_other_player(
+    kevin_client, mia_client, kevin, mia, no_vapid
+):
+    match_id = started(kevin_client, mia_client, mia)
+    before = mia_client.get(f"/api/games/matches/{match_id}/").json()
+    assert before["you"]["board"] == "" and before["opponent"]["board"] == ""
+    mine = progress(kevin_client, match_id, score=10, board=SOME_BOARD)
+    assert mine.status_code == 200, mine.data
+    assert mine.json()["you"]["board"] == SOME_BOARD
+    hers = mia_client.get(f"/api/games/matches/{match_id}/").json()
+    assert hers["opponent"]["board"] == SOME_BOARD
+    assert hers["you"]["board"] == ""
+
+
+def test_a_post_without_a_board_keeps_the_last_one(kevin_client, mia_client, kevin, mia, no_vapid):
+    match_id = started(kevin_client, mia_client, mia)
+    progress(kevin_client, match_id, score=10, board=SOME_BOARD)
+    again = progress(kevin_client, match_id, score=20)
+    assert again.status_code == 200
+    assert again.json()["you"]["board"] == SOME_BOARD
+    assert again.json()["you"]["score"] == 20
+    cleared = progress(kevin_client, match_id, score=30, board=EMPTY_BOARD)
+    assert cleared.json()["you"]["board"] == EMPTY_BOARD
+
+
+@pytest.mark.parametrize(
+    "board",
+    [
+        "." * 219,  # one cell short
+        "." * 221,  # one cell over
+        "." * 219 + "G",  # the ghost is never sent
+        "." * 219 + "i",  # lower case is not a piece
+        "." * 219 + " ",  # nor is a space
+    ],
+)
+def test_a_bad_board_is_refused_in_words_and_nothing_is_saved(
+    kevin_client, mia_client, kevin, mia, no_vapid, board
+):
+    match_id = started(kevin_client, mia_client, mia)
+    refused = progress(kevin_client, match_id, score=500, board=board)
+    assert refused.status_code == 400
+    assert refused.data["detail"] == matches.BOARD_REFUSAL
+    assert refused.data["detail"].startswith("Nothing was saved.")
+    row = GameMatch.objects.get(pk=match_id)
+    assert row.inviter_score == 0 and row.inviter_board == ""
+
+
+def test_boards_are_deleted_with_the_match(kevin_client, mia_client, kevin, mia, no_vapid):
+    match_id = started(kevin_client, mia_client, mia)
+    progress(kevin_client, match_id, score=10, board=SOME_BOARD)
+    progress(kevin_client, match_id, score=10, finished=True)
+    progress(mia_client, match_id, score=5, finished=True)
+    rewind(match_id, matches.KEEP + dt.timedelta(seconds=1))
+    matches.sweep(timezone.now())
+    assert not GameMatch.objects.filter(pk=match_id).exists()
+
+
 def test_a_third_member_cannot_see_or_touch_the_match(
     kevin_client, mia_client, kevin, mia, household_a, no_vapid
 ):

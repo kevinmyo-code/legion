@@ -12272,7 +12272,13 @@ components:
           type: string
           format: date-time
           nullable: true
+        board:
+          type: string
+          description: 'The live board: 220 characters, 22 rows of 10 top row first,
+            ''.'' empty or a piece letter, falling piece included. Empty until this
+            player first posts one.'
       required:
+      - board
       - finished
       - level
       - lines
@@ -12323,6 +12329,11 @@ components:
           default: false
           description: 'True once this player''s game is over: clock out or topped
             out.'
+        board:
+          type: string
+          description: Optional. The live board, 220 characters (see `Player.board`);
+            left as it was when omitted.
+          maxLength: 220
       required:
       - level
       - lines
