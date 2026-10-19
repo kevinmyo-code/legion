@@ -46,6 +46,8 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/EngineToolbox.kt',
     # purchase-log ticket 08: the household bought log's one `bought_log` tool.
     ROOT / 'app/src/main/java/com/kevin/legion/service/PurchaseToolbox.kt',
+    # books ticket 02: the one `books` tool (open a book, continue, read aloud).
+    ROOT / 'app/src/main/java/com/kevin/legion/service/BooksToolbox.kt',
     # MeditationsToolbox: `consult_meditations`, declared only while the Marcus companion is active.
     ROOT / 'app/src/main/java/com/kevin/legion/service/MeditationsToolbox.kt',
 ]

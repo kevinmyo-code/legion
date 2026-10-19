@@ -203,6 +203,13 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "Books",
+            blurb = "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
+            entries = listOf(
+                Entry(name = "books", say = "Read me Moby-Dick", does = "Opens a book from your Books folder in the reader, or carries on with the last one you were reading. Say 'read aloud' to have the phone's own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.", hands = "HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card."),
+            ),
+        ),
+        Group(
             title = "Phone calls",
             blurb = "Needs phone permissions granted in Setup.",
             entries = listOf(
@@ -256,6 +263,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 128 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 128
+    /** Total entries across every group above - 129 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 129
 }

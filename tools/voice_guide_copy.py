@@ -40,6 +40,7 @@ GROUP_BLURBS = {
     "Goals and advice": "Longer-term things, and the per-aspect advisors.",
     "Music": "Spotify, mostly. Needs it connected in Setup.",
     "Mail and calendar": "Needs a Google account connected.",
+    "Books": "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
     "Phone calls": "Needs phone permissions granted in Setup.",
     "Recordings": "Voice notes and meetings. Audio, a transcript and a summary are all kept until "
         "you delete them, and the summary is the assistant's reading of the transcript, not a "
@@ -207,6 +208,7 @@ COPY = {
     "create_record": ("Log bench press, 185 for 5", "Writes one new entry into one of your trackers. Only writes what you actually said - never guesses a value.", "Voice only for now, same as list_aspects."),
     "update_record": ("Change that to 190 pounds", "Changes one or more fields on an entry you already logged.", "Voice only for now, same as list_aspects."),
     "delete_record": ("Delete that entry", "Removes one entry (into a 30-day recoverable trash) right away, or asks you to confirm first when it would remove several at once.", "Voice only for now, same as list_aspects."),
+    "books": ("Read me Moby-Dick", "Opens a book from your Books folder in the reader, or carries on with the last one you were reading. Say 'read aloud' to have the phone's own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.", "HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card."),
     "aspect_clerk": ("Log three sets of squats at 225, 5 reps each", "A helper that works out what to read or write across your trackers for a request with more than one step - finding something first, or logging several things from one sentence. Tells you plainly how much of it actually got written.", "Voice only for now, same as list_aspects."),
     "create_aspect": ("Start tracking my reading - book, pages, date finished", "Drafts a brand-new tracker from what you describe and reads the shape back to you. Creates nothing until you say yes.", "Voice only for now, same as list_aspects."),
     "update_aspect": ("Add a genre field to my reading tracker", "Drafts one change to a tracker you already have - a new field, a new category of entry, or a rename - and reads it back. Changes nothing until you say yes.", "Voice only for now, same as list_aspects."),
@@ -223,6 +225,7 @@ GROUPS = {
     "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
     "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status"],
+    "Books": ["books"],
     "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Recordings": ["start_voice_note", "stop_voice_note", "read_voice_note", "list_voice_notes"],
     "Memory": ["remember", "recall_memory", "why_did_you_say_that"],
