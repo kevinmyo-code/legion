@@ -45,6 +45,7 @@ private const val ICON_PX = 192
  * sec 8's migration order). The logic worth testing lives in the pure `games` package; this wires it
  * to the folder grant, the scan, the launcher and the cover cache.
  */
+@Suppress("TooManyFunctions") // one function per Games-sheet action; the 12th is the Tetris opponent load
 class GamesViewModel(app: Application) : AndroidViewModel(app) {
     private val folders = GamesFolderStore(app)
     private val lastPlayed = LastPlayedStore(app)

@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@file:Suppress("FunctionNaming", "MagicNumber") // PascalCase composables; the colour literals are the palette
 
 package com.kevin.legion.ui.games
 
@@ -18,15 +18,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.kevin.legion.games.tetris.Board
 import com.kevin.legion.games.tetris.GameSnapshot
 import com.kevin.legion.games.tetris.Piece
-
-/** What the board's gestures ask the game to do. */
-class BoardInput(
-    val onLeft: () -> Unit,
-    val onRight: () -> Unit,
-    val onRotate: () -> Unit,
-    val onSoftDrop: () -> Unit,
-    val onHardDrop: () -> Unit,
-)
 
 private val WELL = Color(0xFF0E0F13)
 private val GRID_LINE = Color(0xFF1C1E24)

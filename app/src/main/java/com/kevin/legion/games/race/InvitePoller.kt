@@ -52,7 +52,13 @@ class InvitePoller(
 
     private suspend fun poll(): PollOutcome {
         val games = backend() ?: return PollOutcome.NoEngine
-        val pending = games.pending().getOrElse { return PollOutcome.Failed(it.engineSentence()) }
+        return games.pending().fold(
+            onSuccess = { settle(it) },
+            onFailure = { PollOutcome.Failed(it.engineSentence()) },
+        )
+    }
+
+    private fun settle(pending: List<PendingInvite>): PollOutcome {
         val already = seen.load()
         val fresh = pending.filter { it.matchId !in already }
         val gone = already - pending.map { it.matchId }.toSet()

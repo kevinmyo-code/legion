@@ -31,6 +31,7 @@ class GameSnapshot(
  * change a race's outcome: half a second of lock delay with 15 resets a piece, spawned centred in
  * the hidden band.
  */
+@Suppress("ReturnCount") // guard clauses: every input is ignored with no piece or after top-out
 class TetrisGame(seed: Long) {
     private val board = Board()
     private val bag = SevenBag(seed)

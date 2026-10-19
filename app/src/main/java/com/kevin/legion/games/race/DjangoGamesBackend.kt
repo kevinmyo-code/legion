@@ -142,37 +142,41 @@ private fun JsonElement?.toProgress(): PlayerProgress {
     )
 }
 
+private fun statusOf(text: String?): MatchStatus = when (text?.lowercase()) {
+    "invited" -> MatchStatus.INVITED
+    "playing" -> MatchStatus.PLAYING
+    "ended" -> MatchStatus.ENDED
+    "declined" -> MatchStatus.DECLINED
+    "cancelled" -> MatchStatus.CANCELLED
+    "expired" -> MatchStatus.EXPIRED
+    else -> throw IllegalArgumentException("the engine sent a match status this app does not know")
+}
+
+// guess: `result` is "won" | "lost" | "draw" for the caller, null until the match ends.
+private fun resultOf(text: String?): RaceResult? = when (text?.lowercase()) {
+    "won" -> RaceResult.WON
+    "lost" -> RaceResult.LOST
+    "draw" -> RaceResult.DRAW
+    else -> null
+}
+
 internal fun toMatch(o: JsonObject): MatchState {
-    val status = when (o.string("status")?.lowercase()) {
-        "invited" -> MatchStatus.INVITED
-        "playing" -> MatchStatus.PLAYING
-        "ended" -> MatchStatus.ENDED
-        "declined" -> MatchStatus.DECLINED
-        "cancelled" -> MatchStatus.CANCELLED
-        "expired" -> MatchStatus.EXPIRED
-        else -> throw IllegalArgumentException("the engine sent a match status this app does not know")
-    }
     val opponent = o["opponent"] as? JsonObject
     return MatchState(
-        id = o.string("id", "match_id") ?: throw IllegalArgumentException("the engine's match carried no id"),
-        status = status,
-        seed = o.long("seed") ?: throw IllegalArgumentException("the engine's match carried no seed"),
+        id = requireNotNull(o.string("id", "match_id")) { "the engine's match carried no id" },
+        status = statusOf(o.string("status")),
+        seed = requireNotNull(o.long("seed")) { "the engine's match carried no seed" },
         // guess: the opponent's name rides on `opponent.name` or a flat `opponent_name`.
         opponentName = opponent?.string("name", "display_name") ?: o.string("opponent_name") ?: "Your opponent",
         startAtMs = instantMs(o.string("start_at")),
         endsAtMs = instantMs(o.string("ends_at")),
-        serverNowMs = instantMs(o.string("server_now"))
-            ?: throw IllegalArgumentException("the engine's match carried no server_now"),
+        serverNowMs = requireNotNull(instantMs(o.string("server_now"))) {
+            "the engine's match carried no server_now"
+        },
         // guess: the caller's progress is `me` and the other player's is `opponent`.
         me = o["me"].toProgress(),
         opponent = opponent.toProgress(),
-        // guess: `result` is "won" | "lost" | "draw" for the caller, null until the match ends.
-        result = when (o.string("result")?.lowercase()) {
-            "won" -> RaceResult.WON
-            "lost" -> RaceResult.LOST
-            "draw" -> RaceResult.DRAW
-            else -> null
-        },
+        result = resultOf(o.string("result")),
     )
 }
 

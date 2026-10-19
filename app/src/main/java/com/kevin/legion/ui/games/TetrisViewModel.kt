@@ -214,9 +214,10 @@ class TetrisViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun reportProgress() {
-        val engine = backend ?: return
-        val id = matchId ?: return
-        val g = game ?: return
+        val engine = backend
+        val id = matchId
+        val g = game
+        if (engine == null || id == null || g == null) return
         if (_state.value.stage == TetrisStage.RESULT) return
         engine.progress(
             id,
@@ -248,9 +249,9 @@ class TetrisViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun answer(call: suspend (GamesBackend, String) -> Unit) {
-        val engine = backend ?: return
-        val id = matchId ?: return
-        if (_state.value.busy) return
+        val engine = backend
+        val id = matchId
+        if (engine == null || id == null || _state.value.busy) return
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             call(engine, id)

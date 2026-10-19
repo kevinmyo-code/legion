@@ -81,6 +81,15 @@ fun TetrisRoute(mode: TetrisMode, onBack: () -> Unit, viewModel: TetrisViewModel
     }
 }
 
+/** What the board's gestures ask the game to do. */
+class BoardInput(
+    val onLeft: () -> Unit,
+    val onRight: () -> Unit,
+    val onRotate: () -> Unit,
+    val onSoftDrop: () -> Unit,
+    val onHardDrop: () -> Unit,
+)
+
 class TetrisActions(
     val onBack: () -> Unit,
     val onHold: () -> Unit,

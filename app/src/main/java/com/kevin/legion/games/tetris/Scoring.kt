@@ -9,6 +9,7 @@ import kotlin.math.pow
  * (`shared/tetris/fixtures.json` pins this: level 2, 1 line, 3 soft, 10 hard is 223).
  */
 object Scoring {
+    @Suppress("MagicNumber") // the published award table, indexed by lines cleared
     private val lineAward = intArrayOf(0, 100, 300, 500, 800)
     private const val LINES_PER_LEVEL = 10
     private const val BASE_GRAVITY = 0.8

@@ -16,7 +16,7 @@ class Mulberry32(seed: Long) {
     fun next(): Double {
         state += INCREMENT
         var t = (state xor (state ushr SHIFT_A)) * (1 or state)
-        t = (t + (t xor (t ushr SHIFT_B)) * (61 or t)) xor t
+        t = (t + (t xor (t ushr SHIFT_B)) * (MIX_OR or t)) xor t
         return Integer.toUnsignedLong(t xor (t ushr SHIFT_C)).toDouble() / TWO_POW_32
     }
 
@@ -25,6 +25,7 @@ class Mulberry32(seed: Long) {
         const val SHIFT_A = 15
         const val SHIFT_B = 7
         const val SHIFT_C = 14
+        const val MIX_OR = 61
         const val TWO_POW_32 = 4294967296.0
     }
 }
