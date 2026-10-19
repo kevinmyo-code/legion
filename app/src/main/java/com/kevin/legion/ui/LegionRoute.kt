@@ -368,6 +368,22 @@ object LegionRoute {
     fun navigateTo(placeLabel: String): String = "navigate?$NAVIGATE_PLACE_ARG=${android.net.Uri.encode(placeLabel)}"
 
     /**
+     * Built-in Tetris (retro-games ticket 06, ADR 0060). [TETRIS] is solo and always works.
+     * [TETRIS_INVITE_PATTERN] invites a household member by user id and waits for their answer;
+     * [TETRIS_MATCH_PATTERN] opens an existing match, which is where an invite notification lands.
+     * All three are one screen driven by one ViewModel; the route only says how it starts.
+     */
+    const val TETRIS = "games/tetris"
+    const val TETRIS_USER_ARG = "userId"
+    const val TETRIS_MATCH_ARG = "matchId"
+    const val TETRIS_INVITE_PATTERN = "games/tetris/invite/{$TETRIS_USER_ARG}"
+    const val TETRIS_MATCH_PATTERN = "games/match/{$TETRIS_MATCH_ARG}"
+
+    fun tetrisInvite(userId: String): String = "games/tetris/invite/${android.net.Uri.encode(userId)}"
+
+    fun tetrisMatch(matchId: String): String = "games/match/${android.net.Uri.encode(matchId)}"
+
+    /**
      * Connect Spotify - the entry point that makes the whole `media/` Spotify tier reachable
      * (2026-08-12). Same shape as [SETTINGS_DRIVE_SYNC]: before it,
      * [com.kevin.legion.ai.CompanionProfile.saveSpotifyClientId],

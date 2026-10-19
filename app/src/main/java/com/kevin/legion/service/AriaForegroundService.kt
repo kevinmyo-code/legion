@@ -232,6 +232,20 @@ class AriaForegroundService : Service() {
             }
         }
 
+        // Tetris invites (retro-games ticket 06, ADR 0060): the phone has no push channel, so it asks
+        // the engine every 30 s and raises a local notification per new invite. This is the ONE
+        // background poll for it, and it runs ONLY while this service does - i.e. while the
+        // assistant toggle is on and Android allowed the start. The class doc above (and the
+        // ledger note in this onCreate) say non-assistant work must not depend on this service's
+        // lifecycle; this does, knowingly, because the alternatives were a second foreground
+        // service or WorkManager (15 minute floor against a 120 s invite). The same poller also
+        // runs while the app is in front, bound in MidnightApplication, so the two together cover
+        // "assistant on" and "app open" but NOT "assistant off and app closed". The shared poller
+        // serialises the two loops so one invite never raises twice.
+        serviceScope.launch {
+            com.kevin.legion.games.race.GameInvitePolling.poller(this@AriaForegroundService).run()
+        }
+
         // Companion-memory map, tickets 02 + 05 (2026-07-22): distill whatever's
         // left pending into durable memories, then look for patterns across
         // them. TWO call sites, deliberately, for the same reason the drive-

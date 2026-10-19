@@ -517,6 +517,13 @@ class MidnightApplication : Application() {
                 com.kevin.legion.backend.engine.EnginePoll.forApp(this@MidnightApplication).bind(appScope)
             }.onFailure { MidnightEvents.appStartWorkFailed("bind_engine_poll", it) }
 
+            // Tetris invites while the app is in front (retro-games ticket 06): the same shared
+            // poller AriaForegroundService runs while the assistant is on. See GameInvitePolling's
+            // class doc for what is and is not covered.
+            runCatching {
+                com.kevin.legion.games.race.GameInvitePolling.bindForeground(this@MidnightApplication, appScope)
+            }.onFailure { MidnightEvents.appStartWorkFailed("bind_game_invite_poll", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY
