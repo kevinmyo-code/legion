@@ -3031,3 +3031,32 @@ val MIGRATION_74_75 = object : Migration(SCHEMA_V74, SCHEMA_V75) {
         db.execSQL("ALTER TABLE `events` ADD COLUMN `pinnedByJson` TEXT")
     }
 }
+
+private const val SCHEMA_V76 = 76
+
+/**
+ * `books` and `book_bookmarks` (Kevin, 2026-10-19: the Books launcher, ADR 0061) - see [BookRow] and
+ * [BookBookmark]. Two new tables are additive. The CREATE statements are copied verbatim out of the
+ * generated `76.json` (the `${TABLE_NAME}` placeholder replaced by the table name, the only edit
+ * CLAUDE.md section 5 permits). Both start empty: a book is remembered the first time the folder
+ * scan sees it. Local-only, so no sync columns and no guid backfill.
+ */
+val MIGRATION_75_76 = object : Migration(SCHEMA_V75, SCHEMA_V76) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `books` (`documentId` TEXT NOT NULL, `fileName` TEXT NOT NULL, " +
+                "`format` TEXT NOT NULL, `title` TEXT NOT NULL, `author` TEXT, `metadataRead` INTEGER NOT NULL, " +
+                "`progress` REAL NOT NULL, `chapterLabel` TEXT, `pageIndex` INTEGER NOT NULL, " +
+                "`pageCount` INTEGER NOT NULL, `locatorJson` TEXT, `lastReadAtMs` INTEGER, " +
+                "`firstSeenAtMs` INTEGER NOT NULL, PRIMARY KEY(`documentId`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `book_bookmarks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`documentId` TEXT NOT NULL, `label` TEXT NOT NULL, `locatorJson` TEXT, " +
+                "`pageIndex` INTEGER NOT NULL, `progress` REAL NOT NULL, `createdAtMs` INTEGER NOT NULL)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_book_bookmarks_documentId` ON `book_bookmarks` (`documentId`)",
+        )
+    }
+}
