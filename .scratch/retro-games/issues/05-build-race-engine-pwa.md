@@ -3,11 +3,12 @@ map: retro-games
 ticket: "05"
 title: "Build: engine match API + game_invite push, PWA Tetris solo and race"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-10-18 on feat/tetris-engine: /api/games/ + game_invite push + PWA solo/race. test_games + test_push green (46), vitest + tsc green; FULL server suite not completed (remote test DB contention). Owes a real race on Mia's phone vs the phone app and the push arriving on her phone"
 blockers: ["04"]
 blocked-by: ["[[04-tetris-rules-and-race]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

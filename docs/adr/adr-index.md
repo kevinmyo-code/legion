@@ -66,6 +66,7 @@ Format and the test for whether something deserves an ADR:
 | 0057 | [[0057-the-bank-feed-is-the-ledgers-truth\|The bank's own feed is the ledger's truth for the accounts it covers]] | accepted | 2026-10-09 | - |
 | 0058 | [[0058-retro-games-launcher\|Retro games are a HOME launcher, read through a folder grant, with cached box art]] | accepted | 2026-10-11 | - |
 | 0059 | [[0059-headunit-is-a-limb-in-this-repo\|The head unit is a limb of the engine, and it lives in this repo]] | accepted | 2026-10-14 | - |
+| 0060 | [[0060-tetris-race-through-the-engine\|Built-in Tetris, and a household score race held transiently by the engine]] | accepted | 2026-10-18 | - |
 
 ## Superseded
 
