@@ -92,10 +92,21 @@ fun EpubNavigatorHost(
                 override fun onExternalLinkActivated(url: AbsoluteUrl) = Unit
             },
         )
+        // A recomposition that re-enters with a new container must not leave a second navigator behind.
+        fragments.findFragmentByTag(NAVIGATOR_TAG)?.let { fragments.beginTransaction().remove(it).commitNow() }
         fragments.beginTransaction()
             .add(view.id, EpubNavigatorFragment::class.java, Bundle(), NAVIGATOR_TAG)
             .commitNow()
         navigator = fragments.findFragmentByTag(NAVIGATOR_TAG) as? EpubNavigatorFragment
+    }
+
+    DisposableEffect(activity) {
+        onDispose {
+            val fragments = activity.supportFragmentManager
+            if (!fragments.isStateSaved) {
+                fragments.findFragmentByTag(NAVIGATOR_TAG)?.let { fragments.beginTransaction().remove(it).commitNow() }
+            }
+        }
     }
 
     val nav = navigator
