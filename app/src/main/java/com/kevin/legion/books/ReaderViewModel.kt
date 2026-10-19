@@ -116,6 +116,7 @@ class ReaderViewModel(
             }
             is LoadedBook.Epub -> {
                 session = loaded.session
+                epubStart = row.locatorJson
                 readAloud = readAloudFor(loaded.session, { control?.firstVisibleLocatorJson() }, scope)
                 lastEpubJson = row.locatorJson
                 _state.update {
@@ -139,8 +140,12 @@ class ReaderViewModel(
 
     // ---- the starting place -------------------------------------------------------------------
 
-    /** The locator JSON an EPUB reopens at, or null to start at the beginning. */
-    suspend fun epubStart(): String? = store.row(documentId)?.locatorJson
+    /**
+     * The locator JSON an EPUB reopens at, or null to start at the beginning. Fixed at load, BEFORE the
+     * state says the EPUB is ready, so the navigator is never built ahead of the place it must resume at.
+     */
+    var epubStart: String? = null
+        private set
 
     // ---- position -----------------------------------------------------------------------------
 

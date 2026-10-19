@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -77,12 +76,11 @@ class ReaderActivity : FragmentActivity() {
             is ReaderContent.Failed -> Centered(content.sentence, palette)
             ReaderContent.Epub -> {
                 val session = model.epubSession
-                val start by produceState<String?>(null) { value = model.epubStart() }
                 if (session != null) {
                     EpubNavigatorHost(
                         activity = this,
                         session = session,
-                        startLocatorJson = start,
+                        startLocatorJson = model.epubStart,
                         settings = state.settings,
                         palette = palette,
                         onLocator = model::onEpubLocator,
