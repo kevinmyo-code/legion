@@ -81,7 +81,6 @@ private const val LEGEND_TEXT_DP = 11
 private const val AGENDA_TITLE_DP = 15
 
 /** A panel button's second line is the label colour at this opacity. */
-private const val SUB_ALPHA = 0.8f
 
 /** The Games chip carries a hairline of its own tone, as prototype A draws it. */
 private const val GAMES_BORDER_ALPHA = 0.35f
@@ -702,11 +701,14 @@ private fun PanelButton(
 ) {
     Column(
         modifier
-            .heightIn(min = 52.dp)
+            .heightIn(min = 44.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(container)
             .let { if (border != null) it.border(1.5.dp, border, RoundedCornerShape(16.dp)) else it }
             .clickable(role = Role.Button, onClick = onClick)
+            // The count is not drawn on the chip (Kevin, 2026-10-19: slimmer chips, the sheet says it) but
+            // TalkBack still reads it: "Books, 7 books".
+            .semantics { contentDescription = if (sub.isEmpty()) label else "$label, $sub" }
             .padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -719,13 +721,6 @@ private fun PanelButton(
             style = labelStyle,
             maxLines = 1,
             autoSize = TextAutoSize.StepBased(minFontSize = LABEL_MIN_SP.sp, maxFontSize = labelStyle.fontSize),
-        )
-        if (sub.isNotEmpty()) Text(
-            sub,
-            style = MaterialTheme.typography.labelSmall,
-            color = content.copy(alpha = SUB_ALPHA),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

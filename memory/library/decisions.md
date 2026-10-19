@@ -6496,3 +6496,8 @@ without a pdfium adapter, and its PDF TTS is not supported.
 - **Media3 did not come back.** `media3-exoplayer` is excluded from the classpath (Readium declares it
   for audiobooks Books never plays), so CLAUDE.md section 3 is unchanged. Readium does lift the
   already-allowed `media3-session` from 1.4.1 to 1.10.0; the Android Auto probe still compiles.
+- **Live setup payload ceiling 24,000 to 24,250 for the books tool (Kevin, 2026-10-19).** Marcus measured
+  ~24,099 tokens with the one `books` declaration (~143 tokens).
+- **Slimmer HOME chips (Kevin, 2026-10-19).** The two-row chip layout cost the real-phone shell one
+  agenda row, so the subtitle line is dropped from all six chips (about 44dp tall); the count stays in
+  each chip's TalkBack description and in the sheet subtitles. The agenda guard stays at 2 rows or more.

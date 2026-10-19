@@ -147,8 +147,8 @@ class LiveSetupPayloadSizeTest {
      * Marcus was ~37 tokens under the old ceiling before this change, so no rename tool fits without
      * either this raise or trimming other tools. Kevin chose raising over trimming tool descriptions.
      *
-     * **Raised to 24,250 on 2026-10-19 (books ticket 02, the `books` voice tool) - NOT yet ruled on
-     * by Kevin; the orchestrator is asked to confirm or to prefer trimming.** The brief for the Books
+     * **Raised to 24,250 on 2026-10-19 (books ticket 02, the `books` voice tool) - Kevin's ruling,
+     * recorded in `memory/library/decisions.md` (books engine entry).** The brief for the Books
      * launcher requires a voice tool, and ADR 0035 requires it. It is ONE action-dispatched
      * declaration (573 chars of JSON, ~143 tokens), its description already cut to three clauses.
      * Measured: Alfred ~23,385, Kratos ~23,719, Marcus ~24,099, so Marcus was ~61 tokens under the
