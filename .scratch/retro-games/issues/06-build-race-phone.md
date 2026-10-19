@@ -3,11 +3,12 @@ map: retro-games
 ticket: "06"
 title: "Build: phone Tetris solo and race, background invite poll, local notification"
 type: build
-status: open
+status: built
+status-detail: "Suite green 2026-10-19 (phone 4696/0, server 1716 passed); owed on the A25: solo, a race vs the PWA, an invite while backgrounded"
 blockers: ["04"]
 blocked-by: ["[[04-tetris-rules-and-race]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
