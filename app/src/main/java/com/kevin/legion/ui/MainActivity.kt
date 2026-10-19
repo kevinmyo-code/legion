@@ -905,6 +905,11 @@ private fun LegionShell(
                             homeListPick = checklistId
                             navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true }
                         },
+                        onPlayTetris = { userId ->
+                            navController.navigate(
+                                if (userId == null) LegionRoute.TETRIS else LegionRoute.tetrisInvite(userId),
+                            ) { launchSingleTop = true }
+                        },
                     )
                 }
             }
@@ -1161,6 +1166,45 @@ private fun LegionShell(
                     initialPlace = entry.arguments?.getString(LegionRoute.NAVIGATE_PLACE_ARG),
                     onBack = { navController.popBackStack() },
                     onOpenSetup = { navController.navigate(LegionRoute.SETTINGS_KEY) },
+                )
+            }
+            // Built-in Tetris (retro-games ticket 06, ADR 0060): one screen, three ways in. Solo; an
+            // invite to a household member; an existing match, which is where the invite
+            // notification lands. Fully qualified like the nav screen above.
+            composable(LegionRoute.TETRIS) {
+                com.kevin.legion.ui.games.TetrisRoute(
+                    mode = com.kevin.legion.ui.games.TetrisMode.Solo,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                LegionRoute.TETRIS_INVITE_PATTERN,
+                arguments = listOf(
+                    androidx.navigation.navArgument(LegionRoute.TETRIS_USER_ARG) {
+                        type = androidx.navigation.NavType.StringType
+                    },
+                ),
+            ) { entry ->
+                com.kevin.legion.ui.games.TetrisRoute(
+                    mode = com.kevin.legion.ui.games.TetrisMode.Invite(
+                        entry.arguments?.getString(LegionRoute.TETRIS_USER_ARG).orEmpty(),
+                    ),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                LegionRoute.TETRIS_MATCH_PATTERN,
+                arguments = listOf(
+                    androidx.navigation.navArgument(LegionRoute.TETRIS_MATCH_ARG) {
+                        type = androidx.navigation.NavType.StringType
+                    },
+                ),
+            ) { entry ->
+                com.kevin.legion.ui.games.TetrisRoute(
+                    mode = com.kevin.legion.ui.games.TetrisMode.Match(
+                        entry.arguments?.getString(LegionRoute.TETRIS_MATCH_ARG).orEmpty(),
+                    ),
+                    onBack = { navController.popBackStack() },
                 )
             }
             // Playbook/memory build (2026-08-18): both are single-screen, no sub-routes of their

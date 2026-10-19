@@ -1,5 +1,7 @@
 package com.kevin.legion.games.race
 
+import android.content.Context
+import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttp
 import com.kevin.legion.backend.engine.EngineHttpException
@@ -93,6 +95,19 @@ class DjangoGamesBackend(private val http: EngineHttp) : GamesBackend {
     private fun path(matchId: String) = "$MATCHES_PATH${matchId.encodeURLPathPart()}/"
 }
 
+/**
+ * The backend for this device's engine, or null when there is no engine address or no signed-in
+ * token. Null is the "race unavailable, said in words" case; solo never asks.
+ */
+fun djangoGamesBackendOrNull(context: Context): GamesBackend? {
+    val http = EngineHttp(EngineConfig(context.applicationContext))
+    return if (http.isUsable()) DjangoGamesBackend(http) else null
+}
+
+/** Why a race cannot start on a phone with no usable engine. */
+const val NO_ENGINE_SENTENCE =
+    "Racing needs the household engine, and this phone is not signed in to one. Solo still works."
+
 /** A reply that must be one JSON object; anything else is an IllegalArgumentException, which the call wrapper words. */
 private fun jsonObjectOf(body: String): JsonObject =
     Json.parseToJsonElement(body) as? JsonObject ?: throw IllegalArgumentException("the engine's reply was not a match")
@@ -146,7 +161,8 @@ internal fun toMatch(o: JsonObject): MatchState {
         opponentName = opponent?.string("name", "display_name") ?: o.string("opponent_name") ?: "Your opponent",
         startAtMs = instantMs(o.string("start_at")),
         endsAtMs = instantMs(o.string("ends_at")),
-        serverNowMs = instantMs(o.string("server_now")) ?: throw IllegalArgumentException("the engine's match carried no server_now"),
+        serverNowMs = instantMs(o.string("server_now"))
+            ?: throw IllegalArgumentException("the engine's match carried no server_now"),
         // guess: the caller's progress is `me` and the other player's is `opponent`.
         me = o["me"].toProgress(),
         opponent = opponent.toProgress(),

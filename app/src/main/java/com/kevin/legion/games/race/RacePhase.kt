@@ -1,6 +1,6 @@
 package com.kevin.legion.games.race
 
-/** The race's duration from the engine's `start_at` (ticket 04). The engine sets `ends_at`; this is the fallback and the display bound. */
+/** The race's length from `start_at` (ticket 04). The engine sets `ends_at`; this is only the fallback. */
 const val RACE_SECONDS = 180
 
 /** Where a race stands, in the words the screen will say. Pure: derived from a [MatchState] and a clock. */

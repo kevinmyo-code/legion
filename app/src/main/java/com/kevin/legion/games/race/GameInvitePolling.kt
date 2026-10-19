@@ -4,8 +4,6 @@ import android.content.Context
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.kevin.legion.backend.engine.EngineConfig
-import com.kevin.legion.backend.engine.EngineHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -49,10 +47,7 @@ object GameInvitePolling {
     private fun build(app: Context): InvitePoller {
         val notifier = GameInviteNotifier(app)
         return InvitePoller(
-            backend = {
-                val http = EngineHttp(EngineConfig(app))
-                if (http.isUsable()) DjangoGamesBackend(http) else null
-            },
+            backend = { djangoGamesBackendOrNull(app) },
             seen = PrefsInviteSeenStore(app),
             raise = notifier::raise,
             retract = notifier::retract,

@@ -123,6 +123,8 @@ fun HomeScreen(
     onOpenDay: (day: java.time.LocalDate, reminderId: Long?) -> Unit = { _, _ -> },
     /** A list in the Lists sheet: that list. */
     onOpenList: (checklistId: Long) -> Unit = { onOpenLists() },
+    /** Games sheet's Tetris tile: a household member's user id to race, or null for solo. */
+    onPlayTetris: (opponentUserId: String?) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -236,6 +238,8 @@ fun HomeScreen(
                 onPlayResume = gamesViewModel::playResume,
                 onPlayApp = gamesViewModel::playApp,
                 onPickFolder = pickRomFolder,
+                onSheetOpened = gamesViewModel::loadOpponents,
+                onPlayTetris = onPlayTetris,
             ),
             cover = gamesViewModel::cover,
             appIcon = gamesViewModel::appIcon,
@@ -336,7 +340,10 @@ fun HomeContent(
                 calendar, calendarCallbacks, Modifier.padding(top = 6.dp, bottom = 4.dp),
                 onMore = { moreOpen = true },
                 gamesSub = games.state.chipSub,
-                onGames = { gamesOpen = true },
+                onGames = {
+                    gamesOpen = true
+                    games.callbacks.onSheetOpened()
+                },
             )
             AppDock(slots = dockSlots, callbacks = dock)
             CategoryRow(categories = categories, chooserRows = chooserRows, callbacks = categoryCallbacks)

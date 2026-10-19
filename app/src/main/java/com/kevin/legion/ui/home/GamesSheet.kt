@@ -116,6 +116,7 @@ fun GamesSheetContent(games: GamesHome, onClose: () -> Unit) {
         }
         // Fills the sheet's height and scrolls past it; HOME itself never scrolls.
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            TetrisShelf(games)
             state.resume?.let { ContinueCard(it, state, games) }
             when (val folder = state.folder) {
                 GamesFolderState.None -> FolderPrompt(

@@ -22,6 +22,9 @@ import com.kevin.legion.games.SafRomTree
 import com.kevin.legion.games.agoLabel
 import com.kevin.legion.games.folderLabel
 import com.kevin.legion.games.message
+import com.kevin.legion.games.race.NO_ENGINE_SENTENCE
+import com.kevin.legion.games.race.djangoGamesBackendOrNull
+import com.kevin.legion.games.race.engineSentence
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -91,6 +94,33 @@ class GamesViewModel(app: Application) : AndroidViewModel(app) {
                     games = result.games,
                     resume = resumeFor(result.games, it.androidGames),
                     missingEmulators = missing,
+                )
+            }
+        }
+    }
+
+    /**
+     * Loads who a Tetris race can invite. Called each time the sheet opens, so a sign-in made since
+     * is seen. No engine, or an engine that will not answer, becomes a sentence on the tile and
+     * leaves Solo untouched.
+     */
+    fun loadOpponents() {
+        val backend = djangoGamesBackendOrNull(getApplication<Application>())
+        if (backend == null) {
+            _state.update { it.copy(race = RaceOpponentsUi(unavailable = NO_ENGINE_SENTENCE)) }
+            return
+        }
+        _state.update { it.copy(race = it.race.copy(loading = true, unavailable = null)) }
+        viewModelScope.launch {
+            val result = backend.opponents()
+            _state.update {
+                it.copy(
+                    race = result.fold(
+                        onSuccess = { who -> RaceOpponentsUi(opponents = who) },
+                        onFailure = { e ->
+                            RaceOpponentsUi(unavailable = "Racing is unavailable right now. ${e.engineSentence()}")
+                        },
+                    ),
                 )
             }
         }

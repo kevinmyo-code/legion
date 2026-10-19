@@ -5,6 +5,7 @@ import com.kevin.legion.games.AndroidGame
 import com.kevin.legion.games.Emulator
 import com.kevin.legion.games.Game
 import com.kevin.legion.games.GameSystem
+import com.kevin.legion.games.race.Opponent
 
 /** Where the ROMs folder grant stands. [label] is the folder as the user would say it ("/sdcard/ROMs"). */
 sealed interface GamesFolderState {
@@ -27,6 +28,13 @@ data class ResumeUi(val rom: Game?, val app: AndroidGame?, val ago: String) {
     val title: String get() = rom?.title ?: app?.label.orEmpty()
 }
 
+/** Who can be invited to Tetris, or why nobody can. [unavailable] is the sentence for a race that cannot start. */
+data class RaceOpponentsUi(
+    val loading: Boolean = false,
+    val opponents: List<Opponent> = emptyList(),
+    val unavailable: String? = null,
+)
+
 data class Shelf(val system: GameSystem, val games: List<Game>)
 
 data class GamesUiState(
@@ -45,6 +53,7 @@ data class GamesUiState(
     /** Emulators not installed, so a shelf can say so before a tap fails. */
     val missingEmulators: Set<Emulator> = emptySet(),
     val notice: GameNotice? = null,
+    val race: RaceOpponentsUi = RaceOpponentsUi(),
 ) {
     /** One shelf per system that has games, in [GameSystem] order. */
     val shelves: List<Shelf>
@@ -72,6 +81,10 @@ data class GamesCallbacks(
     val onPlayResume: () -> Unit = {},
     val onPlayApp: (AndroidGame) -> Unit = {},
     val onPickFolder: () -> Unit = {},
+    /** The sheet opened: load the household members a race can invite. */
+    val onSheetOpened: () -> Unit = {},
+    /** Start Tetris: a household member's user id for a race, null for solo. */
+    val onPlayTetris: (opponentUserId: String?) -> Unit = {},
 )
 
 /** Everything HOME needs to draw Games: state, callbacks, and how a tile gets its cover (null = none). */
