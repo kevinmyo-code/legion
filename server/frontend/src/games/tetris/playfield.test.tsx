@@ -130,6 +130,29 @@ describe('auto-repeat', () => {
     expect(press).toHaveBeenCalledTimes(2)
   })
 
+  test('the big Drop button sits with A and B and fires one drop per press', () => {
+    const press = vi.fn()
+    render(<GamePad press={press} holdDisabled={false} startDisabled={false} />)
+    const drop = screen.getByRole('button', { name: 'Drop' })
+    expect(drop).toHaveTextContent('Drop')
+    expect(drop.parentElement).toBe(screen.getByRole('button', { name: 'Rotate clockwise' }).parentElement)
+    fireEvent.pointerDown(drop)
+    vi.advanceTimersByTime(1000)
+    expect(press.mock.calls).toEqual([['drop']])
+  })
+
+  test('Drop hard-drops the falling piece in a game', () => {
+    const { result } = solo()
+    const game = result.current.getGame()!
+    const before = game.active!
+    const floor = game.ghostY()!
+    render(<>{result.current.controls}</>)
+    act(() => void fireEvent.pointerDown(screen.getByRole('button', { name: 'Drop' })))
+    // The piece landed and locked where its ghost was, and the next one spawned.
+    expect(game.active).not.toBe(before)
+    expect(game.board.some((row, y) => y >= floor && row.some((cell) => cell === before.kind))).toBe(true)
+  })
+
   test('a physical gamepad edge-fires once and repeats only directions', () => {
     const fire = vi.fn()
     const pads = new GamepadRepeater()

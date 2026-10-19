@@ -219,6 +219,8 @@ export interface PlayfieldOptions {
   canPause?: boolean
   /** Where Quit in the pause overlay goes. */
   onQuit?: () => void
+  /** A race: the board leaves at least a third of the row for the opponent's column. */
+  besideOpponent?: boolean
 }
 
 export const RACE_NO_PAUSE = "Races can't pause, the clock is shared."
@@ -357,6 +359,7 @@ export function usePlayfield(
         case 'down':
           return act((g) => g.softDrop())
         case 'up':
+        case 'drop':
           return act((g) => g.hardDrop())
         case 'rotateCw':
           return act((g) => g.rotate(1))
@@ -506,7 +509,12 @@ export function usePlayfield(
 
   const board = (
     <div
-      className="relative w-full max-w-[min(100%,calc((100dvh-26rem)/2.1))] shrink-0 touch-none select-none"
+      className={cn(
+        'relative w-full shrink-0 touch-none select-none',
+        options.besideOpponent
+          ? 'max-w-[min(62%,calc((100dvh-28rem)/2.1))]'
+          : 'max-w-[min(100%,calc((100dvh-26rem)/2.1))]',
+      )}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -599,10 +607,12 @@ export function usePlayfield(
   }
 }
 
-/** Hold and the next five, beside or above the board. */
-export function Sidebar({ stats, theme }: { stats: Stats; theme: BoardTheme }) {
+/** Hold and the next five, beside or above the board. `compact` (a race, where
+ * the opponent's board takes the column) puts Hold beside the next three. */
+export function Sidebar({ stats, theme, compact = false }: { stats: Stats; theme: BoardTheme; compact?: boolean }) {
+  const next = compact ? stats.next.slice(0, 3) : stats.next
   return (
-    <div className="flex flex-col gap-3 text-[0.8125rem]">
+    <div className={cn('text-[0.8125rem]', compact ? 'grid grid-cols-2 gap-2' : 'flex flex-col gap-3')}>
       <div>
         <p className="text-muted-foreground">Hold</p>
         <PieceIcon kind={stats.hold} dim={stats.holdUsed} theme={theme} />
@@ -610,7 +620,7 @@ export function Sidebar({ stats, theme }: { stats: Stats; theme: BoardTheme }) {
       <div>
         <p className="text-muted-foreground">Next</p>
         <ul className="flex flex-col gap-1" aria-label="Next pieces">
-          {stats.next.map((kind, index) => (
+          {next.map((kind, index) => (
             <li key={`${index}-${kind}`}>
               <PieceIcon kind={kind} theme={theme} />
             </li>

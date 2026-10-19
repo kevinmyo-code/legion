@@ -38,6 +38,7 @@ export function player(user: { user_id: string; name: string }, fields: Partial<
     topped_out: false,
     finished: false,
     updated_at: null,
+    board: '',
     ...fields,
   }
 }
@@ -160,6 +161,7 @@ export function handleGames(
       topped_out: Boolean(sent.topped_out) || match.you.topped_out,
       finished: Boolean(sent.finished) || match.you.finished,
       updated_at: now,
+      board: typeof sent.board === 'string' ? sent.board : match.you.board,
     }
     return { status: 200, body: fresh(match) }
   }

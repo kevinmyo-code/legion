@@ -8,6 +8,7 @@ export type PadAction =
   | 'right'
   | 'down'
   | 'up'
+  | 'drop'
   | 'rotateCw'
   | 'rotateCcw'
   | 'hold'
@@ -17,7 +18,7 @@ export type PadAction =
 export const DAS_MS = 170
 export const ARR_MS = 50
 
-/** The actions that repeat while held. Up (hard drop) does not. */
+/** The actions that repeat while held. Up and Drop (both hard drop) do not. */
 export const REPEATING: ReadonlySet<PadAction> = new Set<PadAction>(['left', 'right', 'down'])
 
 export interface Repeater {

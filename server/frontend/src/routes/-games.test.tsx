@@ -187,4 +187,87 @@ describe('the race', () => {
     expect(screen.getByText('1,500')).toBeInTheDocument()
     expect(screen.getByText('1,200')).toBeInTheDocument()
   })
+
+  test('my board goes out with my score, 220 cells, falling piece and all', async () => {
+    const engine = racing()
+    renderApp(`/games/match/${MATCH_ID}`, engine, 'family')
+    await vi.waitFor(
+      () => {
+        const post = engine.writes.find((w) => w.pathname === `/api/games/matches/${MATCH_ID}/progress/`)
+        expect(post).toBeDefined()
+        const board = (post!.body as { board?: string }).board
+        expect(board).toMatch(/^[.IJLOSTZ]{220}$/)
+        expect([...board!].filter((ch) => ch !== '.')).toHaveLength(4)
+      },
+      { timeout: 4000 },
+    )
+  })
+
+  test('their board is drawn beside mine, live while they post', async () => {
+    const theirs = '.'.repeat(210) + 'IIII..ZZ..'
+    const engine = racing({ opponent: player(KEVIN, { score: 1200, board: theirs, updated_at: secondsFromNow(0) }) })
+    renderApp(`/games/match/${MATCH_ID}`, engine, 'family')
+    expect(await screen.findByRole('img', { name: "Kevin's board, live." })).toBeInTheDocument()
+    expect(screen.queryByText('Waiting for Kevin')).not.toBeInTheDocument()
+  })
+
+  test('their board dims and says so when they stop posting', async () => {
+    const engine = racing({ opponent: player(KEVIN, { score: 1200, updated_at: secondsFromNow(-8) }) })
+    renderApp(`/games/match/${MATCH_ID}`, engine, 'family')
+    const board = await screen.findByRole('img', { name: /Kevin's board, not updating/ })
+    expect(board).toHaveAttribute('data-stale', 'true')
+    expect(screen.getByText('Waiting for Kevin')).toBeInTheDocument()
+  })
+
+  test('a board that has stopped because they finished says finished, not waiting', async () => {
+    const engine = racing({
+      opponent: player(KEVIN, { score: 1200, topped_out: true, finished: true, updated_at: secondsFromNow(-30) }),
+    })
+    renderApp(`/games/match/${MATCH_ID}`, engine, 'family')
+    expect(await screen.findByText('Board filled')).toBeInTheDocument()
+    expect(screen.queryByText('Waiting for Kevin')).not.toBeInTheDocument()
+  })
+
+  test(
+    'one failed poll says nothing; five seconds of nothing says one calm line, gone when it is back',
+    async () => {
+      const engine = racing()
+      renderApp(`/games/match/${MATCH_ID}`, engine, 'family')
+      expect(await screen.findByRole('img', { name: /Tetris board/ })).toBeInTheDocument()
+
+      engine.refusals[`GET /api/games/matches/${MATCH_ID}/`] = { status: 503 }
+      engine.refusals[`POST /api/games/matches/${MATCH_ID}/progress/`] = { status: 503 }
+      // A couple of failed polls and posts: still nothing on screen.
+      await new Promise((resolve) => setTimeout(resolve, 2500))
+      expect(screen.queryByText(MATCH_COPY.raceUnreachable)).not.toBeInTheDocument()
+      expect(screen.queryByText(MATCH_COPY.unreachable)).not.toBeInTheDocument()
+      expect(screen.queryByText(/503|Nothing was/)).not.toBeInTheDocument()
+
+      // Past five seconds: the one line, and the game is still there.
+      expect(await screen.findByText(MATCH_COPY.raceUnreachable, {}, { timeout: 5000 })).toBeInTheDocument()
+      expect(screen.getByRole('img', { name: /Tetris board/ })).toBeInTheDocument()
+
+      delete engine.refusals[`GET /api/games/matches/${MATCH_ID}/`]
+      delete engine.refusals[`POST /api/games/matches/${MATCH_ID}/progress/`]
+      await vi.waitFor(() => expect(screen.queryByText(MATCH_COPY.raceUnreachable)).not.toBeInTheDocument(), {
+        timeout: 4000,
+      })
+    },
+    20_000,
+  )
+})
+
+describe('solo', () => {
+  test('never says anything about the network, even with the engine gone mid-game', async () => {
+    const engine = setUp()
+    const { queryClient } = renderApp('/games/solo', engine, 'family')
+    expect(await screen.findByRole('img', { name: /Tetris board/ })).toBeInTheDocument()
+    engine.refusals['GET *'] = { status: 503 }
+    // Who I am is asked again (a window focus during a cold start) and fails: the game stays.
+    await queryClient.refetchQueries({ queryKey: ['auth', 'me'] })
+    expect(queryClient.getQueryState(['auth', 'me'])?.status).toBe('error')
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    expect(screen.getByRole('img', { name: /Tetris board/ })).toBeInTheDocument()
+    expect(screen.queryByText(/Could not reach the engine|Can't reach the engine/)).not.toBeInTheDocument()
+  })
 })

@@ -5,8 +5,10 @@ import { cn } from '@/lib/utils'
 import { REPEATING, createRepeater, type PadAction, type Repeater } from './input'
 
 /**
- * The on-screen gamepad: a D-pad left, A and B right, Hold across the top and
- * small Start and Select between. Pointer events with capture, so a thumb that
+ * The on-screen gamepad: a D-pad left, A, B and a big Drop right, Hold across
+ * the top and small Start and Select between. Drop is an instant hard drop for
+ * the right thumb (Kevin, 2026-10-19); D-pad Up hard-drops too. The phone puts
+ * its Drop in the same place. Pointer events with capture, so a thumb that
  * slides off a button still releases it; Left, Right and Down auto-repeat.
  */
 
@@ -132,23 +134,31 @@ export function GamePad({ press, holdDisabled, startDisabled, className }: GameP
         </PadButton>
       </div>
 
-      {/* A and B. */}
-      <div className="relative shrink-0" style={{ width: '6.75rem', height: '8.5rem' }}>
-        <PadButton
-          action="rotateCcw"
-          label="Rotate counter-clockwise"
-          press={press}
-          className="absolute bottom-3 left-0 h-14 w-14 rounded-full text-[1.125rem] font-semibold"
-        >
-          B
-        </PadButton>
+      {/* A and B, and Drop under them for the right thumb. */}
+      <div className="relative shrink-0" style={{ width: '6.75rem', height: '9.5rem' }}>
         <PadButton
           action="rotateCw"
           label="Rotate clockwise"
           press={press}
-          className="absolute right-0 top-3 h-14 w-14 rounded-full text-[1.125rem] font-semibold"
+          className="absolute right-0 top-0 h-14 w-14 rounded-full text-[1.125rem] font-semibold"
         >
           A
+        </PadButton>
+        <PadButton
+          action="rotateCcw"
+          label="Rotate counter-clockwise"
+          press={press}
+          className="absolute left-0 top-[2rem] h-14 w-14 rounded-full text-[1.125rem] font-semibold"
+        >
+          B
+        </PadButton>
+        <PadButton
+          action="drop"
+          label="Drop"
+          press={press}
+          className="absolute inset-x-0 bottom-0 h-14 rounded-full text-[1rem] font-semibold"
+        >
+          Drop
         </PadButton>
       </div>
     </div>
