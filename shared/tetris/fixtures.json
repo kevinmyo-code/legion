@@ -1,0 +1,351 @@
+{
+  "version": 1,
+  "source": ".scratch/retro-games/issues/04-tetris-rules-and-race.md",
+  "rng": [
+    {
+      "seed": 0,
+      "firstFloats": [
+        0.26642920868471265,
+        0.0003297457005828619,
+        0.2232720274478197,
+        0.1462021479383111,
+        0.46732782293111086
+      ]
+    },
+    {
+      "seed": 1,
+      "firstFloats": [
+        0.6270739405881613,
+        0.002735721180215478,
+        0.5274470399599522,
+        0.9810509674716741,
+        0.9683778982143849
+      ]
+    },
+    {
+      "seed": 42,
+      "firstFloats": [
+        0.6011037519201636,
+        0.44829055899754167,
+        0.8524657934904099,
+        0.6697340414393693,
+        0.17481389874592423
+      ]
+    },
+    {
+      "seed": 123456789,
+      "firstFloats": [
+        0.2577907438389957,
+        0.9707721115555614,
+        0.7853280142880976,
+        0.20616457983851433,
+        0.30307188746519387
+      ]
+    },
+    {
+      "seed": 4294967295,
+      "firstFloats": [
+        0.8964226141106337,
+        0.189478256739676,
+        0.7156526781618595,
+        0.9440599093213677,
+        0.8452364315744489
+      ]
+    },
+    {
+      "seed": 2654435761,
+      "firstFloats": [
+        0.5464560757391155,
+        0.45955629041418433,
+        0.2470416973810643,
+        0.5192999374121428,
+        0.8892884191591293
+      ]
+    }
+  ],
+  "bags": [
+    {
+      "seed": 0,
+      "pieces": [
+        "O",
+        "L",
+        "S",
+        "T",
+        "Z",
+        "I",
+        "J",
+        "J",
+        "T",
+        "I",
+        "Z",
+        "L",
+        "O",
+        "S",
+        "I",
+        "J",
+        "S",
+        "T",
+        "O",
+        "L",
+        "Z"
+      ]
+    },
+    {
+      "seed": 1,
+      "pieces": [
+        "J",
+        "T",
+        "Z",
+        "O",
+        "L",
+        "I",
+        "S",
+        "T",
+        "I",
+        "J",
+        "O",
+        "L",
+        "Z",
+        "S",
+        "T",
+        "O",
+        "S",
+        "Z",
+        "J",
+        "L",
+        "I"
+      ]
+    },
+    {
+      "seed": 42,
+      "pieces": [
+        "O",
+        "J",
+        "I",
+        "T",
+        "Z",
+        "L",
+        "S",
+        "L",
+        "T",
+        "I",
+        "Z",
+        "S",
+        "O",
+        "J",
+        "S",
+        "Z",
+        "O",
+        "L",
+        "I",
+        "J",
+        "T"
+      ]
+    },
+    {
+      "seed": 123456789,
+      "pieces": [
+        "L",
+        "Z",
+        "S",
+        "I",
+        "O",
+        "T",
+        "J",
+        "L",
+        "O",
+        "Z",
+        "S",
+        "I",
+        "J",
+        "T",
+        "S",
+        "I",
+        "T",
+        "Z",
+        "L",
+        "J",
+        "O"
+      ]
+    },
+    {
+      "seed": 4294967295,
+      "pieces": [
+        "I",
+        "T",
+        "L",
+        "S",
+        "O",
+        "J",
+        "Z",
+        "J",
+        "Z",
+        "T",
+        "O",
+        "I",
+        "L",
+        "S",
+        "J",
+        "I",
+        "T",
+        "O",
+        "Z",
+        "S",
+        "L"
+      ]
+    },
+    {
+      "seed": 2654435761,
+      "pieces": [
+        "I",
+        "S",
+        "Z",
+        "T",
+        "J",
+        "L",
+        "O",
+        "T",
+        "S",
+        "I",
+        "J",
+        "O",
+        "Z",
+        "L",
+        "I",
+        "L",
+        "J",
+        "T",
+        "S",
+        "Z",
+        "O"
+      ]
+    }
+  ],
+  "score": [
+    {
+      "level": 1,
+      "linesCleared": 0,
+      "softDropCells": 0,
+      "hardDropCells": 0,
+      "points": 0
+    },
+    {
+      "level": 1,
+      "linesCleared": 1,
+      "softDropCells": 0,
+      "hardDropCells": 0,
+      "points": 100
+    },
+    {
+      "level": 1,
+      "linesCleared": 2,
+      "softDropCells": 0,
+      "hardDropCells": 0,
+      "points": 300
+    },
+    {
+      "level": 1,
+      "linesCleared": 3,
+      "softDropCells": 0,
+      "hardDropCells": 0,
+      "points": 500
+    },
+    {
+      "level": 1,
+      "linesCleared": 4,
+      "softDropCells": 0,
+      "hardDropCells": 0,
+      "points": 800
+    },
+    {
+      "level": 3,
+      "linesCleared": 4,
+      "softDropCells": 0,
+      "hardDropCells": 0,
+      "points": 2400
+    },
+    {
+      "level": 7,
+      "linesCleared": 2,
+      "softDropCells": 0,
+      "hardDropCells": 0,
+      "points": 2100
+    },
+    {
+      "level": 1,
+      "linesCleared": 0,
+      "softDropCells": 5,
+      "hardDropCells": 0,
+      "points": 5
+    },
+    {
+      "level": 1,
+      "linesCleared": 0,
+      "softDropCells": 0,
+      "hardDropCells": 18,
+      "points": 36
+    },
+    {
+      "level": 2,
+      "linesCleared": 1,
+      "softDropCells": 3,
+      "hardDropCells": 10,
+      "points": 223
+    },
+    {
+      "level": 10,
+      "linesCleared": 3,
+      "softDropCells": 0,
+      "hardDropCells": 7,
+      "points": 5014
+    }
+  ],
+  "level": [
+    {
+      "totalLines": 0,
+      "level": 1
+    },
+    {
+      "totalLines": 9,
+      "level": 1
+    },
+    {
+      "totalLines": 10,
+      "level": 2
+    },
+    {
+      "totalLines": 19,
+      "level": 2
+    },
+    {
+      "totalLines": 20,
+      "level": 3
+    },
+    {
+      "totalLines": 95,
+      "level": 10
+    }
+  ],
+  "gravity": [
+    {
+      "level": 1,
+      "secondsPerRow": 1
+    },
+    {
+      "level": 2,
+      "secondsPerRow": 0.793
+    },
+    {
+      "level": 5,
+      "secondsPerRow": 0.355196928256
+    },
+    {
+      "level": 10,
+      "secondsPerRow": 0.06415158495985583
+    },
+    {
+      "level": 15,
+      "secondsPerRow": 0.007058616220934218
+    }
+  ]
+}
