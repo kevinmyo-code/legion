@@ -6485,3 +6485,43 @@ server error messages while playing. also we should be able to see our game side
   "Could not reach ..." or a 5xx body verbatim, Google front end HTML included); the PWA showed an
   error on any one failed poll, and a failed who-am-I refetch replaced the whole screen, a solo
   game included.
+
+## 2026-10-19 - Books on HOME: a launcher section with LEGION's own reader (Kevin)
+
+Kevin: *"i want my own ebook reader embedded into the launcher as well. so right now i have games
+right, i also want books there as a section."*
+
+- **Placement: prototype A (Kevin).** A Books chip beside Games with its own sheet; the chip row
+  first became two rows of three, then (Kevin, 2026-10-19) ONE row of six slim chips. B (a Library chip with Games and Books tabs) and C (one Play & Read
+  sheet) were not chosen. Prototypes in `.scratch/books/research/`.
+- **Formats: EPUB, PDF and comics, CBZ and CBR (Kevin, over EPUB+PDF).**
+- **Source: one granted folder on the phone (Kevin)**, like the ROMs folder. Nothing uploaded.
+- **Progress stays on the phone (Kevin).** No engine table, no sync.
+- **Read-aloud with the phone's TTS (Kevin)**, offline, with a voice tool and a Listen button on
+  one controller.
+- **Books is a launcher, not a seventh aspect.** ADR 0061.
+- **Engine: Readium Kotlin toolkit expected (orchestrator call, to be verified in ticket 02).**
+  PdfBox stays banned.
+
+## 2026-10-19 - Books engine: hybrid, CBR skipped (Kevin)
+
+Ticket 02 verified Readium before building (`.scratch/books/research/engine.md`): 3.4.0 needs Kotlin
+2.4.20 and compileSdk 37, so the app takes 3.3.0; Readium opens neither RAR nor (usefully) PDF
+without a pdfium adapter, and its PDF TTS is not supported.
+
+- **Engine: hybrid (Kevin).** Readium 3.3.0 for EPUB reading and EPUB read-aloud ONLY. PDF is our own
+  viewer on Android's `PdfRenderer` (no readium-adapter-pdfium, no PdfBox). Comics are our own viewer,
+  a CBZ read as a zip of images, naturally sorted.
+- **CBR skipped (Kevin).** A `.cbr` is listed on the Comics shelf; opening it says "CBR is not
+  supported. Convert it to CBZ to read it here." No junrar (its licence is the UnRAR freeware licence).
+- **Storage: Room (Kevin, on the orchestrator's lean).** Two local-only tables (books with position,
+  bookmarks), additive v75 to v76. Reader settings in SharedPreferences.
+- **Read-aloud is EPUB only.** PDF and comics say in words that Listen is for ebooks.
+- **Media3 did not come back.** `media3-exoplayer` is excluded from the classpath (Readium declares it
+  for audiobooks Books never plays), so CLAUDE.md section 3 is unchanged. Readium does lift the
+  already-allowed `media3-session` from 1.4.1 to 1.10.0; the Android Auto probe still compiles.
+- **Live setup payload ceiling 24,000 to 24,250 for the books tool (Kevin, 2026-10-19).** Marcus measured
+  ~24,099 tokens with the one `books` declaration (~143 tokens).
+- **One row of six slim chips (Kevin, 2026-10-19).** The two-row layout cost the real-phone shell
+  agenda rows, so the chip row is one row of six, no subtitle line, 44dp minimum height; the count stays in
+  each chip's TalkBack description and in the sheet subtitles. The agenda guard stays at 2 rows or more.

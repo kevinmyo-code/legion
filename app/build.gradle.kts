@@ -417,9 +417,17 @@ dependencies {
     implementation(files("libs/spotify-app-remote-release.aar"))
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // Readium (Books, ADR 0061): EPUB reflow + EPUB read-aloud ONLY. PDF is our own PdfRenderer
+    // viewer and comics our own zip viewer, so no readium-adapter-pdfium. ExoPlayer is excluded
+    // below: Readium pulls it for audiobooks, which Books never plays.
+    implementation(libs.readium.shared)
+    implementation(libs.readium.streamer)
+    implementation(libs.readium.navigator)
+    implementation(libs.readium.navigator.media.tts)
+
     debugImplementation(libs.ui.tooling)
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     testImplementation(libs.junit)
     testImplementation("org.json:json:20231013")
@@ -466,4 +474,10 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.room.testing)
+}
+
+// Readium declares media3-exoplayer for audiobook playback; Books plays none (CLAUDE.md section 3
+// keeps ExoPlayer dropped). See .scratch/books/research/engine.md for whether the exclusion held.
+configurations.configureEach {
+    exclude(group = "androidx.media3", module = "media3-exoplayer")
 }

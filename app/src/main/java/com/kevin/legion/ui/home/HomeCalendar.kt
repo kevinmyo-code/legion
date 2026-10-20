@@ -81,7 +81,6 @@ private const val LEGEND_TEXT_DP = 11
 private const val AGENDA_TITLE_DP = 15
 
 /** A panel button's second line is the label colour at this opacity. */
-private const val SUB_ALPHA = 0.8f
 
 /** The Games chip carries a hairline of its own tone, as prototype A draws it. */
 private const val GAMES_BORDER_ALPHA = 0.35f
@@ -631,8 +630,10 @@ private fun LegendItem(label: String, mark: @Composable () -> Unit) {
 
 // ------------------------------------------------------------------------------------ buttons
 
-/** The three panel buttons (To-dos, Lists, Ideas), each opening a bottom sheet. The Ask/mic button
- * lives in the shell's talk bar and is deliberately not repeated here. */
+/** The panel buttons, one row of six slim chips (Kevin, 2026-10-19, ADR 0061): To-dos, Lists, Ideas,
+ * Games, Books, More, no subtitle line (the count rides in each chip's TalkBack description). The
+ * first three open bottom sheets here, Games and Books open their own. The Ask/mic
+ * button lives in the shell's talk bar and is deliberately not repeated here. */
 @Composable
 fun HomePanelButtons(
     state: HomeCalendarUiState,
@@ -642,8 +643,11 @@ fun HomePanelButtons(
     /** Retro-games ticket 03: the Games chip beside Ideas, its subtitle in words. */
     gamesSub: String = "set up",
     onGames: () -> Unit = {},
+    /** Books ticket 02: the Books chip beside Games, its subtitle in words. */
+    booksSub: String = "set up",
+    onBooks: () -> Unit = {},
 ) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         PanelButton(
             "To-dos",
             if (state.todosNote != null) "can't read" else "${state.openTodoCount} open",
@@ -672,6 +676,11 @@ fun HomePanelButtons(
             Modifier.weight(1f), onClick = onGames,
             border = AreaAccent.CALENDAR.onContainer.copy(alpha = GAMES_BORDER_ALPHA),
         )
+        PanelButton(
+            "Books", booksSub, BooksTone.container, BooksTone.onContainer,
+            Modifier.weight(1f), onClick = onBooks,
+            border = BooksTone.onContainer.copy(alpha = GAMES_BORDER_ALPHA),
+        )
         // Kevin, 2026-10-09: "4th button: More" - the six area tiles that used to fill this screen.
         PanelButton("More", "", SoftColors.cardHigh, SoftColors.text, Modifier.weight(1f), onClick = onMore)
     }
@@ -689,12 +698,15 @@ private fun PanelButton(
 ) {
     Column(
         modifier
-            .heightIn(min = 52.dp)
+            .heightIn(min = 44.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(container)
             .let { if (border != null) it.border(1.5.dp, border, RoundedCornerShape(16.dp)) else it }
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            // The count is not drawn on the chip (Kevin, 2026-10-19: slimmer chips, the sheet says it) but
+            // TalkBack still reads it: "Books, 7 books".
+            .semantics { contentDescription = if (sub.isEmpty()) label else "$label, $sub" }
+            .padding(horizontal = 2.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -706,13 +718,6 @@ private fun PanelButton(
             style = labelStyle,
             maxLines = 1,
             autoSize = TextAutoSize.StepBased(minFontSize = LABEL_MIN_SP.sp, maxFontSize = labelStyle.fontSize),
-        )
-        if (sub.isNotEmpty()) Text(
-            sub,
-            style = MaterialTheme.typography.labelSmall,
-            color = content.copy(alpha = SUB_ALPHA),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

@@ -2425,6 +2425,10 @@ object LiveToolbox {
         val purchaseDecls = PurchaseToolbox.declarations()
         for (i in 0 until purchaseDecls.length()) fns.put(purchaseDecls.getJSONObject(i))
 
+        // books ticket 02: open a book in LEGION's own reader, one action-dispatched declaration.
+        val booksDecls = BooksToolbox.declarations()
+        for (i in 0 until booksDecls.length()) fns.put(booksDecls.getJSONObject(i))
+
         return fns
     }
 
@@ -2611,6 +2615,7 @@ object LiveToolbox {
         // this already-7,000-line `when` never has to grow their branches too.
         EngineToolbox.dispatch(context, name, args)?.let { return it }
         PurchaseToolbox.dispatch(context, name, args)?.let { return it }
+        BooksToolbox.dispatch(context, name, args)?.let { return it }
         MeditationsToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))

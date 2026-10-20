@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reader</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;family=Literata:wght@400;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b0c0e}
+a{color:#9cc0ff}a:hover{color:#c4dbff}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="position: relative; width: 384px; height: 832px; overflow: hidden; background: {{pageBg}}; color: {{pageFg}}; font-family: Figtree, system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <div style="display: flex; align-items: center; gap: 4px; padding: 8px 8px 4px">
+    <a href="Main.dc.html" aria-label="Back to HOME" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: {{pageFg}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></a>
+    <div style="flex: 1; min-width: 0"><div style="font-size: 15px; font-weight: 600">Moby-Dick</div><div style="font-size: 12px; color: {{mutedFg}}">Ch. 41 · Moby Dick</div></div>
+    <button onClick="{{toggleSettings}}" aria-label="Text settings" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: transparent; color: {{pageFg}}; font-size: 17px; font-weight: 700">Aa</button>
+    <button aria-label="Bookmarks" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: transparent; color: {{pageFg}}; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"></path></svg></button>
+  </div>
+
+  <div style="flex: 1; overflow: hidden; padding: 12px 28px 0; font-family: Literata, Georgia, serif; font-size: {{fontPx}}; line-height: 1.6">
+    <p style="margin: 0 0 14px">I, Ishmael, was one of that crew; my shouts had gone up with the rest; my oath had been welded with theirs; and stronger I shouted, and more did I hammer and clinch my oath, because of the dread in my soul.</p>
+    <p style="margin: 0 0 14px"><span style="background: {{ttsMark}}">A wild, mystical, sympathetical feeling was in me; Ahab's quenchless feud seemed mine.</span> With greedy ears I learned the history of that murderous monster against whom I and all the others had taken our oaths of violence and revenge.</p>
+    <p style="margin: 0">For some time past, though at intervals only, the unaccompanied, secluded White Whale had haunted those uncivilized seas mostly frequented by the Sperm Whale fishermen.</p>
+  </div>
+
+  <sc-if value="{{showSettings}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 12px; right: 12px; top: 60px; padding: 14px; border-radius: 18px; background: #23252b; color: #e9e9ec; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.4)">
+      <div style="display: flex; align-items: center; justify-content: space-between">
+        <span style="font-size: 14px; font-weight: 600">Text size</span>
+        <div style="display: flex; gap: 8px">
+          <button onClick="{{smaller}}" aria-label="Smaller text" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: #33353d; color: #e9e9ec; font-size: 14px">A-</button>
+          <button onClick="{{bigger}}" aria-label="Bigger text" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: #33353d; color: #e9e9ec; font-size: 18px">A+</button>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <button onClick="{{dayTheme}}" style="height: 44px; border-radius: 12px; border: 0; background: #f6f3ec; color: #1d1b17; font-size: 14px; font-weight: 600">Day</button>
+        <button onClick="{{sepiaTheme}}" style="height: 44px; border-radius: 12px; border: 0; background: #ece0c8; color: #3b2f1e; font-size: 14px; font-weight: 600">Sepia</button>
+        <button onClick="{{nightTheme}}" style="height: 44px; border-radius: 12px; border: 1px solid #4a4c55; background: #121317; color: #d8d6cf; font-size: 14px; font-weight: 600">Night</button>
+      </div>
+      <div style="font-size: 12px; color: #a3a6ae">EPUB reflows. PDF and comics zoom instead, with page or panel-by-panel turning.</div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{listening}}" hint-placeholder-val="{{ false }}">
+    <div style="margin: 0 12px 8px; padding: 10px 12px; border-radius: 18px; background: #2a2340; color: #e9e9ec; display: flex; align-items: center; gap: 10px">
+      <button onClick="{{toggleListen}}" aria-label="Pause reading aloud" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: #cdbdff; color: #1a1530; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg></button>
+      <div style="flex: 1"><div style="font-size: 13px; font-weight: 600">Reading aloud</div><div style="font-size: 11px; color: #b3a6dc">Device voice · offline</div></div>
+      <button style="height: 36px; padding: 0 12px; border-radius: 18px; border: 0; background: #3a3354; color: #e9e9ec; font-size: 13px; font-weight: 600">1.0x</button>
+    </div>
+  </sc-if>
+
+  <div style="padding: 8px 20px 18px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid {{lineCol}}">
+    <div style="display: flex; justify-content: space-between; font-size: 12px; color: {{mutedFg}}"><span>Page 212 of 560</span><span>38% · 14 min left in chapter</span></div>
+    <div style="height: 4px; border-radius: 2px; background: {{lineCol}}"><div style="width: 38%; height: 4px; border-radius: 2px; background: #8c74e8"></div></div>
+    <div style="display: flex; gap: 8px">
+      <button style="flex: 1; height: 44px; border-radius: 22px; border: 0; background: {{chipBg}}; color: {{pageFg}}; font-size: 14px; font-weight: 600">Contents</button>
+      <button onClick="{{toggleListen}}" style="flex: 1; height: 44px; border-radius: 22px; border: 0; background: #8c74e8; color: #ffffff; font-size: 14px; font-weight: 700">{{listenLabel}}</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { theme: 'night', size: 17, settings: false, listening: false }; }
+  renderVals() {
+    const t = {
+      day: { pageBg: '#f6f3ec', pageFg: '#1d1b17', mutedFg: '#5c5850', lineCol: '#ddd6c8', chipBg: '#e8e2d5', ttsMark: '#e2d8ff' },
+      sepia: { pageBg: '#ece0c8', pageFg: '#3b2f1e', mutedFg: '#6b5a40', lineCol: '#d4c4a4', chipBg: '#e0d1b3', ttsMark: '#d9c9f5' },
+      night: { pageBg: '#121317', pageFg: '#d8d6cf', mutedFg: '#a3a6ae', lineCol: '#2c2e35', chipBg: '#23252b', ttsMark: '#3a3157' }
+    }[this.state.theme];
+    return {
+      ...t,
+      ttsMark: this.state.listening ? t.ttsMark : 'transparent',
+      fontPx: this.state.size + 'px',
+      showSettings: this.state.settings,
+      listening: this.state.listening,
+      listenLabel: this.state.listening ? 'Stop listening' : 'Listen',
+      toggleSettings: () => this.setState({ settings: !this.state.settings }),
+      toggleListen: () => this.setState({ listening: !this.state.listening }),
+      smaller: () => this.setState({ size: Math.max(14, this.state.size - 1) }),
+      bigger: () => this.setState({ size: Math.min(24, this.state.size + 1) }),
+      dayTheme: () => this.setState({ theme: 'day' }),
+      sepiaTheme: () => this.setState({ theme: 'sepia' }),
+      nightTheme: () => this.setState({ theme: 'night' })
+    };
+  }
+}
+</script>
+</body>
+</html>
