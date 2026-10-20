@@ -56,10 +56,10 @@ import com.kevin.legion.ui.home.GamesTone
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
 
-private val SIDE_PANEL = 64.dp
 private val PAGE_PADDING = 12.dp
 private const val SECONDS_PER_MINUTE = 60
-private const val NEXT_SHOWN = 5
+/** The least the race's right-hand column (their board, hold, next) is left. */
+private val RACE_COLUMN_MIN = 120.dp
 
 /** The Tetris screen's entry (retro-games ticket 06): owns the ViewModel, hands the stateless screen its state. */
 @Composable
@@ -144,14 +144,7 @@ class TetrisActions(
 fun TetrisScreen(state: TetrisUiState, input: BoardInput, actions: TetrisActions) {
     Column(Modifier.fillMaxSize().background(SoftColors.ground).padding(PAGE_PADDING)) {
         TopBar(state, actions)
-        state.error?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = SoftColors.caution,
-                modifier = Modifier.padding(vertical = 6.dp),
-            )
-        }
+        StatusLines(state)
         when (state.stage) {
             TetrisStage.STARTING -> Panel(state.message, busy = true) {}
             TetrisStage.INCOMING -> Panel(state.message) {
@@ -253,10 +246,11 @@ private fun GameView(state: TetrisUiState, input: BoardInput, actions: TetrisAct
     val palette = state.theme.palette
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // The canvas is the well plus its wall band: (10 + 0.8) cells by (20 + 0.8). Width is what
-        // the side panels leave, height is what the header, race note and pad leave. Take the
-        // smaller cell so it fits a short phone without scrolling.
+        // the side panels (solo) or the opponent's column (race) leave, height is what the header,
+        // race note and pad leave. Take the smaller cell so it fits a short phone without scrolling.
         val note = if (state.race) RACE_NOTE_H else 0.dp
-        val byWidth: Dp = (maxWidth - SIDE_PANEL * 2 - 16.dp).coerceAtLeast(0.dp) / (Board.COLUMNS + WALL_CELLS)
+        val besides = if (state.race) RACE_COLUMN_MIN + 8.dp else SIDE_PANEL * 2 + 16.dp
+        val byWidth: Dp = (maxWidth - besides).coerceAtLeast(0.dp) / (Board.COLUMNS + WALL_CELLS)
         val byHeight: Dp =
             (maxHeight - HEADER_H - note - PAD_H - GAPS_H).coerceAtLeast(0.dp) / (VISIBLE_ROWS + WALL_CELLS)
         val cell = if (byWidth < byHeight) byWidth else byHeight
@@ -265,34 +259,10 @@ private fun GameView(state: TetrisUiState, input: BoardInput, actions: TetrisAct
             if (state.race) {
                 Text(RACE_NO_PAUSE, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                Column(Modifier.width(SIDE_PANEL), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Label("HOLD")
-                    PiecePreview(
-                        snapshot?.held,
-                        dimmed = snapshot?.holdAvailable == false,
-                        palette = palette,
-                        modifier = Modifier.size(52.dp).background(palette.well).border(1.dp, palette.wall),
-                    )
-                }
-                Box(
-                    Modifier
-                        .width(cell * (Board.COLUMNS + WALL_CELLS))
-                        .height(cell * (VISIBLE_ROWS + WALL_CELLS))
-                        .semantics { contentDescription = "Tetris board. Score ${snapshot?.score ?: 0}." },
-                ) {
-                    TetrisBoard(snapshot, palette, input, Modifier.fillMaxSize())
-                    Overlay(state, actions)
-                }
-                Column(Modifier.width(SIDE_PANEL), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Label("NEXT")
-                    snapshot?.next?.take(NEXT_SHOWN)?.forEach {
-                        PiecePreview(
-                            it, dimmed = false, palette = palette,
-                            modifier = Modifier.size(36.dp).padding(vertical = 2.dp),
-                        )
-                    }
-                }
+            if (state.race) {
+                RaceRow(state, input, actions, cell)
+            } else {
+                SoloRow(state, input, actions, cell)
             }
             Spacer(Modifier.weight(1f))
             TetrisGamepad(
@@ -306,7 +276,21 @@ private fun GameView(state: TetrisUiState, input: BoardInput, actions: TetrisAct
 }
 
 @Composable
-private fun Label(text: String) {
+internal fun OwnBoard(state: TetrisUiState, input: BoardInput, actions: TetrisActions, cell: Dp) {
+    val snapshot = state.board
+    Box(
+        Modifier
+            .width(cell * (Board.COLUMNS + WALL_CELLS))
+            .height(cell * (VISIBLE_ROWS + WALL_CELLS))
+            .semantics { contentDescription = "Tetris board. Score ${snapshot?.score ?: 0}." },
+    ) {
+        TetrisBoard(snapshot, state.theme.palette, input, Modifier.fillMaxSize())
+        Overlay(state, actions)
+    }
+}
+
+@Composable
+internal fun Label(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.labelSmall,
@@ -321,13 +305,11 @@ private fun Header(state: TetrisUiState) {
     val mine = snapshot?.score ?: 0
     Column(Modifier.padding(bottom = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (state.race) {
-            val toppedOut = if (state.opponentToppedOut) " (topped out)" else ""
             Text(
-                "You $mine   ${state.opponentName} ${state.opponentScore}$toppedOut",
+                "You $mine   ${clock(state.secondsLeft)}",
                 style = MaterialTheme.typography.titleMedium,
                 color = SoftColors.text,
             )
-            Text(clock(state.secondsLeft), style = MaterialTheme.typography.bodyMedium, color = SoftColors.text2)
         } else {
             Text("Score $mine", style = MaterialTheme.typography.titleMedium, color = SoftColors.text)
         }

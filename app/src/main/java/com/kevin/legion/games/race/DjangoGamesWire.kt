@@ -38,7 +38,7 @@ private fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?
 private fun instantMs(text: String?): Long? =
     text?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
 
-/** `PlayerSerializer`: score, lines, level, topped_out, finished (plus user_id, name, updated_at). */
+/** `PlayerSerializer`: score, lines, level, topped_out, finished, updated_at, board (plus user_id, name). */
 private fun JsonElement?.toProgress(): PlayerProgress {
     val o = this as? JsonObject ?: throw IllegalArgumentException("the engine's match carried no player block")
     return PlayerProgress(
@@ -47,6 +47,9 @@ private fun JsonElement?.toProgress(): PlayerProgress {
         level = (o["level"] as? JsonPrimitive)?.intOrNull ?: 1,
         toppedOut = (o["topped_out"] as? JsonPrimitive)?.booleanOrNull ?: false,
         finished = (o["finished"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        // Optional so an engine from before the 2026-10-19 board change still races (score only).
+        board = o.string("board").orEmpty(),
+        updatedAtMs = instantMs(o.string("updated_at")),
     )
 }
 

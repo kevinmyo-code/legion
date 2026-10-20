@@ -22,6 +22,10 @@ data class PlayerProgress(
     val level: Int = 1,
     val toppedOut: Boolean = false,
     val finished: Boolean = false,
+    /** The live board as [BoardWire] text; "" when none has been posted (or none to send). */
+    val board: String = "",
+    /** When the engine last took a post from this player (engine clock), null before the first. */
+    val updatedAtMs: Long? = null,
 )
 
 /**

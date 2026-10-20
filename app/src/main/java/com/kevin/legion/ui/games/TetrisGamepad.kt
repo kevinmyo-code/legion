@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,12 +44,14 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 
 private val DPAD_KEY = 52.dp
 private val ACTION_KEY = 60.dp
+private val DROP_KEY_H = 56.dp
+private val B_DROP = 32.dp
 private val MIN_TARGET = 48.dp
 private const val DPAD_SPAN = 3
 private const val DISABLED_ALPHA = 0.4f
 
 /**
- * The handheld layout: Hold shoulder above a D-pad on the left, B and A on the right, Select and
+ * The handheld layout: Hold shoulder above a D-pad on the left, B, A and DROP on the right, Select and
  * Start small in the middle. Start is the pause button; in a race it is shown dimmed and does
  * nothing, because the screen says in words that races cannot pause.
  */
@@ -101,15 +104,24 @@ private fun DPad(onDown: (PadButton) -> Unit, onUp: (PadButton) -> Unit) {
     }
 }
 
-/** B (rotate back) lower left, A (rotate clockwise) upper right, the way a handheld sets them. */
+/**
+ * A (rotate clockwise) upper right and B (rotate back) a step lower on the left, the way a handheld
+ * sets them, and under both a wide DROP key for the right thumb (Kevin, 2026-10-19). The cluster is
+ * as tall as the D-pad, so the pad did not grow. The PWA puts its Drop in the same place.
+ */
 @Composable
 private fun ActionKeys(onDown: (PadButton) -> Unit, onUp: (PadButton) -> Unit) {
-    Box(Modifier.width(ACTION_KEY * 2 - 4.dp).height(ACTION_KEY * 2 - 8.dp)) {
+    Box(Modifier.width(ACTION_KEY * 2 - 4.dp).height(DPAD_KEY * DPAD_SPAN)) {
         val key = Modifier.size(ACTION_KEY)
-        PadKey(
-            PadButton.B, "B", "Rotate back", CircleShape, key.align(Alignment.BottomStart), onDown, onUp, round = true,
-        )
         PadKey(PadButton.A, "A", "Rotate", CircleShape, key.align(Alignment.TopEnd), onDown, onUp, round = true)
+        PadKey(
+            PadButton.B, "B", "Rotate back", CircleShape,
+            key.align(Alignment.TopStart).offset(y = B_DROP), onDown, onUp, round = true,
+        )
+        PadKey(
+            PadButton.DROP, "DROP", "Drop", RoundedCornerShape(percent = 50),
+            Modifier.fillMaxWidth().height(DROP_KEY_H).align(Alignment.BottomCenter), onDown, onUp, round = true,
+        )
     }
 }
 

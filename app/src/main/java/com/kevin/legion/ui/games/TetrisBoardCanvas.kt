@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -194,3 +195,28 @@ fun PiecePreview(piece: Piece?, dimmed: Boolean, palette: TetrisPalette, modifie
 
 private const val PREVIEW_SPAN = 4f
 private const val DIM_ALPHA = 0.35f
+
+/**
+ * The other player's board in a race (ADR 0060, amended 2026-10-19), drawn small in this player's
+ * own theme from the [com.kevin.legion.games.race.BoardWire] cells the engine relays. It takes no
+ * input. [stale] dims it; the words beside it say why, never the dimming alone.
+ */
+@Composable
+fun OpponentBoardCanvas(cells: IntArray?, palette: TetrisPalette, stale: Boolean, modifier: Modifier = Modifier) {
+    Canvas(modifier.alpha(if (stale) STALE_ALPHA else 1f)) {
+        val cell = cellOf(size.width)
+        drawWell(palette, cell)
+        if (cells == null) return@Canvas
+        val origin = cell * WALL_FRAC
+        for (row in Board.HIDDEN_ROWS until Board.ROWS) {
+            for (col in 0 until Board.COLUMNS) {
+                val v = cells.getOrElse(row * Board.COLUMNS + col) { 0 }
+                if (v == 0) continue
+                val y = origin + (row - Board.HIDDEN_ROWS) * cell
+                drawBlock(palette, palette.pieces[v - 1], origin + col * cell, y, cell)
+            }
+        }
+    }
+}
+
+private const val STALE_ALPHA = 0.4f

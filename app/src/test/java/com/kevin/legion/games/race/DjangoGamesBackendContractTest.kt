@@ -78,6 +78,27 @@ class DjangoGamesBackendContractTest {
     }
 
     @Test
+    fun `a player block carries its board and when it was last posted`() {
+        val board = ".".repeat(200) + "IIII......" + "ZZ....OO.."
+        val body = match("playing", "2026-10-19T12:00:15Z", "2026-10-19T12:03:15Z", null, "Racing Mia.")
+            .replace(
+                """"opponent": {"user_id": "22222222-2222-2222-2222-222222222222"""",
+                """"opponent": {"board": "$board", "user_id": "22222222-2222-2222-2222-222222222222"""",
+            )
+        val m = parseMatch(body)
+        assertEquals(board, m.opponent.board)
+        assertEquals("", m.me.board)
+        assertEquals(1_792_411_205_123L, m.opponent.updatedAtMs)
+        assertEquals(board, BoardWire.encode(BoardWire.decode(m.opponent.board)!!, null, emptyList()))
+    }
+
+    @Test
+    fun `an engine from before boards still parses, with no board`() {
+        val m = parseMatch(match("playing", "2026-10-19T12:00:15Z", "2026-10-19T12:03:15Z", null, "Racing Mia."))
+        assertEquals("", m.opponent.board)
+    }
+
+    @Test
     fun `an unknown status is refused`() {
         assertThrows(IllegalArgumentException::class.java) {
             parseMatch(match("paused", null, null, null, "x"))

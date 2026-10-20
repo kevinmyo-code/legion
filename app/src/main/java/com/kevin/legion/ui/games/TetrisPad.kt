@@ -9,7 +9,10 @@ import kotlinx.coroutines.launch
 
 /** The buttons of the handheld layout; touch buttons and a physical controller both speak this. */
 enum class PadButton {
-    LEFT, RIGHT, DOWN, UP, A, B, HOLD, START, SELECT;
+    LEFT, RIGHT, DOWN, UP, A, B, HOLD, START, SELECT,
+
+    /** The big labelled hard-drop key beside A and B (Kevin, 2026-10-19). Up hard-drops too. */
+    DROP;
 
     /** Left, Right and Down repeat while held; the rest fire once per press. */
     val repeats: Boolean get() = this == LEFT || this == RIGHT || this == DOWN

@@ -57,6 +57,7 @@ class DjangoGamesBackend(private val http: EngineHttp) : GamesBackend {
                 put("level", progress.level)
                 put("topped_out", progress.toppedOut)
                 put("finished", progress.finished)
+                if (progress.board.isNotEmpty()) put("board", progress.board)
             }.toString()
             http.post("${path(matchId)}progress/", body).getOrThrow()
             Unit

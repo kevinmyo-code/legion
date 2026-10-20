@@ -72,3 +72,49 @@ fun resultSentence(result: RaceResult?, mine: Int, theirs: Int, them: String): S
     RaceResult.DRAW -> "A draw, $mine each."
     null -> "The engine has not reported a result yet."
 }
+
+/** The opponent's board dims after this long (engine clock) with no new post from them. */
+const val BOARD_STALE_MS = 3_000L
+
+/**
+ * How long without one good answer from the engine before a race says so. One slow or failed poll
+ * is normal (a cold start, a phone between networks) and says nothing; five seconds is an outage
+ * worth one calm line (Kevin, 2026-10-19).
+ */
+const val REACH_GRACE_MS = 5_000L
+
+/** The one line a race shows after [REACH_GRACE_MS] with no answer; the game itself keeps going. */
+const val RACE_UNREACHABLE = "Can't reach the engine, your score is kept and will send when it's back."
+
+/** The same outage before the race has started (waiting for an answer to an invite). */
+const val INVITE_UNREACHABLE = "Can't reach the engine right now. Trying again."
+
+/** What the opponent's board is doing, said in words when it is not simply live. */
+sealed interface TheirBoard {
+    data object Live : TheirBoard
+
+    /** Nothing new for [BOARD_STALE_MS]: drawn dimmed. */
+    data class Waiting(val name: String) : TheirBoard {
+        val sentence: String get() = "Waiting for $name"
+    }
+
+    /** Their game is over, so the board is final rather than stale. */
+    data class Done(val sentence: String) : TheirBoard
+}
+
+/**
+ * The opponent's board state at engine time [serverNowMs]. Engine time on both sides: their last
+ * post ([PlayerProgress.updatedAtMs]) against the engine's now. Before their first post the start
+ * time stands in, so a countdown is not "waiting".
+ */
+fun theirBoard(match: MatchState, serverNowMs: Long): TheirBoard {
+    val them = match.opponent
+    return when {
+        them.toppedOut -> TheirBoard.Done("Topped out")
+        them.finished -> TheirBoard.Done("Finished")
+        else -> {
+            val lastHeard = them.updatedAtMs ?: match.startAtMs ?: serverNowMs
+            if (serverNowMs - lastHeard > BOARD_STALE_MS) TheirBoard.Waiting(match.opponentName) else TheirBoard.Live
+        }
+    }
+}

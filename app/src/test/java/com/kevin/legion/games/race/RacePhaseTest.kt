@@ -58,4 +58,26 @@ class RacePhaseTest {
         assertEquals("A draw, 500 each.", resultSentence(RaceResult.DRAW, 500, 500, "Mia"))
         assertTrue(resultSentence(null, 1, 2, "Mia").contains("not reported"))
     }
+
+    @Test
+    fun theirBoardIsLiveWhilePostingAndWaitingAfterThreeQuietSeconds() {
+        val start = 10_000L
+        val playing = matchState(MatchStatus.PLAYING, startAtMs = start, endsAtMs = start + 180_000)
+        val posted = playing.copy(opponent = PlayerProgress(updatedAtMs = 20_000L))
+        assertEquals(TheirBoard.Live, theirBoard(posted, serverNowMs = 23_000L))
+        assertEquals(TheirBoard.Waiting("Mia"), theirBoard(posted, serverNowMs = 23_001L))
+        assertEquals("Waiting for Mia", TheirBoard.Waiting("Mia").sentence)
+        // Before their first post the start stands in, so the opening seconds are not "waiting".
+        assertEquals(TheirBoard.Live, theirBoard(playing, serverNowMs = start + 2_000L))
+        assertEquals(TheirBoard.Waiting("Mia"), theirBoard(playing, serverNowMs = start + 4_000L))
+    }
+
+    @Test
+    fun aFinishedOrToppedOutBoardIsFinalNotStale() {
+        val m = matchState(MatchStatus.PLAYING, startAtMs = 0, endsAtMs = 180_000)
+        val topped = m.copy(opponent = PlayerProgress(toppedOut = true, finished = true, updatedAtMs = 0))
+        assertEquals(TheirBoard.Done("Topped out"), theirBoard(topped, serverNowMs = 60_000))
+        val finished = m.copy(opponent = PlayerProgress(finished = true, updatedAtMs = 0))
+        assertEquals(TheirBoard.Done("Finished"), theirBoard(finished, serverNowMs = 60_000))
+    }
 }

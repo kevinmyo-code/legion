@@ -1,18 +1,25 @@
 package com.kevin.legion.ui.games
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kevin.legion.games.race.BoardWire
 import com.kevin.legion.games.race.GamesBackend
+import com.kevin.legion.games.race.INVITE_UNREACHABLE
 import com.kevin.legion.games.race.MatchState
 import com.kevin.legion.games.race.NO_ENGINE_SENTENCE
 import com.kevin.legion.games.race.PlayerProgress
+import com.kevin.legion.games.race.RACE_UNREACHABLE
+import com.kevin.legion.games.race.REACH_GRACE_MS
 import com.kevin.legion.games.race.RacePhase
+import com.kevin.legion.games.race.TheirBoard
 import com.kevin.legion.games.race.clockOffsetMs
 import com.kevin.legion.games.race.djangoGamesBackendOrNull
 import com.kevin.legion.games.race.engineSentence
 import com.kevin.legion.games.race.racePhase
 import com.kevin.legion.games.race.resultSentence
+import com.kevin.legion.games.race.theirBoard
 import com.kevin.legion.games.tetris.GameSnapshot
 import com.kevin.legion.games.tetris.TetrisGame
 import kotlin.random.Random
@@ -24,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** How the Tetris screen was entered (see the three routes in `LegionRoute`). */
 sealed interface TetrisMode {
@@ -59,6 +67,14 @@ data class TetrisUiState(
     val theme: TetrisTheme = TetrisTheme.CLASSIC,
     /** What the engine said happened to the invite's notification; shown while waiting. */
     val inviteNote: String? = null,
+    /**
+     * The one calm line for a sustained outage ([REACH_GRACE_MS] with no good answer), or null.
+     * Kept apart from [error]: a single failed or slow poll never reaches the screen at all.
+     */
+    val link: String? = null,
+    /** The opponent's live board as [BoardWire] text; "" until they first post one. */
+    val opponentBoard: String = "",
+    val theirBoard: TheirBoard = TheirBoard.Live,
 )
 
 private const val POLL_MS = 1_000L
@@ -67,6 +83,13 @@ private const val IDLE_TICK_MS = 100L
 private const val MAX_FRAME_SECONDS = 0.1
 private const val NANOS_PER_SECOND = 1_000_000_000.0
 private const val SEED_RANGE = 1L shl 32
+
+/** A race call that has not answered in this long is abandoned and tried again on the next poll. */
+private const val RACE_CALL_TIMEOUT_MS = 4_000L
+private const val NANOS_PER_MS = 1_000_000L
+
+/** A race call that timed out, so the poll moves on rather than waiting out OkHttp's own 10 s. */
+private class RaceCallTimeout : Exception("the engine did not answer in time")
 
 /**
  * The Tetris screen's ViewModel (retro-games ticket 06): one [StateFlow] of [TetrisUiState], per
@@ -84,6 +107,8 @@ class TetrisViewModel @JvmOverloads constructor(
     app: Application,
     /** The frame clock; a test passes its own so gravity is deterministic. */
     private val nanoClock: () -> Long = System::nanoTime,
+    /** The engine seam; a test passes a fake. Null means "no usable engine" (said in words). */
+    private val backendFactory: (Context) -> GamesBackend? = ::djangoGamesBackendOrNull,
 ) : AndroidViewModel(app) {
     private val themeStore = TetrisThemeStore(app)
     private var theme = themeStore.load()
@@ -101,6 +126,9 @@ class TetrisViewModel @JvmOverloads constructor(
     private var paused = false
     private var frameJob: Job? = null
     private var pollJob: Job? = null
+
+    /** When the engine last answered a race call well, on [nanoClock]. */
+    private var lastOkNanos = 0L
 
     /** Idempotent: a recomposition or rotation that calls again does nothing. */
     fun start(mode: TetrisMode) {
@@ -169,7 +197,7 @@ class TetrisViewModel @JvmOverloads constructor(
     fun padDown(button: PadButton) {
         when (button) {
             PadButton.LEFT, PadButton.RIGHT, PadButton.DOWN -> holds.getValue(button).press()
-            PadButton.UP -> hardDrop()
+            PadButton.UP, PadButton.DROP -> hardDrop()
             PadButton.A -> rotate(clockwise = true)
             PadButton.B -> rotate(clockwise = false)
             PadButton.HOLD -> hold()
@@ -246,7 +274,7 @@ class TetrisViewModel @JvmOverloads constructor(
 
     /** The engine, or the CLOSED screen saying in words that a race cannot start without one. */
     private fun engineOrClosed(): GamesBackend? {
-        val engine = djangoGamesBackendOrNull(getApplication<Application>())
+        val engine = backendFactory(getApplication<Application>())
         backend = engine
         if (engine == null) {
             _state.value = TetrisUiState(
@@ -258,6 +286,7 @@ class TetrisViewModel @JvmOverloads constructor(
 
     private fun follow(id: String) {
         matchId = id
+        lastOkNanos = nanoClock()
         pollJob?.cancel()
         frameJob?.cancel()
         pollJob = viewModelScope.launch {
@@ -271,20 +300,45 @@ class TetrisViewModel @JvmOverloads constructor(
 
     // ---- race: talking to the engine
 
+    /**
+     * One poll: read the match, then send my progress, each bounded by [RACE_CALL_TIMEOUT_MS].
+     * A failure says nothing here: the next poll a second later carries the same numbers, and only
+     * [REACH_GRACE_MS] without one good answer shows a line ([updateLink]). A failed read never
+     * skips the post, so the other side keeps seeing my board while my reads are failing.
+     */
     private suspend fun refresh() {
         val engine = backend ?: return
         val id = matchId ?: return
-        engine.match(id).fold(
-            onSuccess = { m ->
-                offsetMs = clockOffsetMs(m, System.currentTimeMillis())
-                latest = m
-                _state.update { it.copy(error = null) }
-            },
-            onFailure = { e ->
-                _state.update { it.copy(error = "Lost touch with the engine, trying again. ${e.engineSentence()}") }
-            },
-        )
+        bounded { engine.match(id) }.onSuccess { m ->
+            offsetMs = clockOffsetMs(m, System.currentTimeMillis())
+            latest = m
+            markOk()
+            _state.update { it.copy(error = null) }
+        }
         reportProgress()
+    }
+
+    private suspend fun <T> bounded(call: suspend () -> Result<T>): Result<T> =
+        withTimeoutOrNull(RACE_CALL_TIMEOUT_MS) { call() } ?: Result.failure(RaceCallTimeout())
+
+    private fun markOk() {
+        lastOkNanos = nanoClock()
+        if (_state.value.link != null) _state.update { it.copy(link = null) }
+    }
+
+    /** The calm outage line, only after [REACH_GRACE_MS] with no good answer, by stage. */
+    private fun updateLink() {
+        val quietMs = (nanoClock() - lastOkNanos) / NANOS_PER_MS
+        val line = if (quietMs < REACH_GRACE_MS) {
+            null
+        } else {
+            when (_state.value.stage) {
+                TetrisStage.COUNTDOWN, TetrisStage.PLAYING, TetrisStage.FINISHING -> RACE_UNREACHABLE
+                TetrisStage.STARTING, TetrisStage.INCOMING, TetrisStage.WAITING -> INVITE_UNREACHABLE
+                else -> null
+            }
+        }
+        if (_state.value.link != line) _state.update { it.copy(link = line) }
     }
 
     private suspend fun reportProgress() {
@@ -293,12 +347,11 @@ class TetrisViewModel @JvmOverloads constructor(
         val g = game
         if (engine == null || id == null || g == null) return
         if (_state.value.stage == TetrisStage.RESULT) return
-        engine.progress(
-            id,
-            PlayerProgress(g.score, g.lines, g.level, toppedOut = g.toppedOut, finished = finishedLocally),
-        ).onFailure { e ->
-            _state.update { it.copy(error = "Your score was not sent this time. ${e.engineSentence()}") }
-        }
+        val mine = PlayerProgress(
+            g.score, g.lines, g.level,
+            toppedOut = g.toppedOut, finished = finishedLocally, board = BoardWire.encode(g.snapshot()),
+        )
+        bounded { engine.progress(id, mine) }.onSuccess { markOk() }
     }
 
     fun accept() = answer { engine, id ->
@@ -352,6 +405,7 @@ class TetrisViewModel @JvmOverloads constructor(
             val dt = ((now - last) / NANOS_PER_SECOND).coerceAtMost(MAX_FRAME_SECONDS)
             last = now
             latest?.let { step(it, dt) }
+            updateLink()
             delay(if (_state.value.stage == TetrisStage.PLAYING) FRAME_MS else IDLE_TICK_MS)
         }
     }
@@ -420,6 +474,7 @@ class TetrisViewModel @JvmOverloads constructor(
         secondsLeft: Int = 0,
         board: TetrisGame? = null,
     ) {
+        val serverNow = System.currentTimeMillis() + offsetMs
         _state.update {
             it.copy(
                 stage = stage,
@@ -430,6 +485,8 @@ class TetrisViewModel @JvmOverloads constructor(
                 opponentName = m.opponentName,
                 opponentScore = m.opponent.score,
                 opponentToppedOut = m.opponent.toppedOut,
+                opponentBoard = m.opponent.board,
+                theirBoard = theirBoard(m, serverNow),
             )
         }
     }
