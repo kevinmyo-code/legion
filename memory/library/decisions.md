@@ -6461,3 +6461,27 @@ elt me invite her, she gets a notification on her phone and accepts and we play 
 - **One rule set, two implementations, one fixture file.** Kotlin and TypeScript each implement
   the rules; both test suites read `shared/tetris/fixtures.json` (seed to piece sequence, clears to
   score), so a drift fails a build instead of deciding a match.
+
+## 2026-10-19 - Tetris race shows both boards (Kevin)
+
+Kevin, after playing on the A25: *"tetris need a drop button, to instant drop. also i kept getting
+server error messages while playing. also we should be able to see our game side by side"*.
+
+- **Both boards, side by side.** Each player sees the opponent's live board next to their own. The
+  race now syncs a board snapshot about once a second with the score: 220 characters (22 rows of
+  10, top first, hidden rows included, `.` or a piece letter, falling piece baked in, ghost not
+  sent), still by polling, still transient (two columns on `game_matches`, deleted with the
+  match). AMENDS ADR 0060's "a race syncs a score, not a board". Layout at 384 wide: own board
+  large on the left, a right column with their name, live score and their board at about 40% in
+  my theme, then Hold and the next three. No new post from them for 3 s (engine clock) dims their
+  board and says "Waiting for <name>"; a board that stopped because they finished says so instead.
+- **A Drop button.** A big labelled hard-drop key under A and B for the right thumb, same place on
+  the phone and the PWA. D-pad Up still hard-drops.
+- **Network trouble is not news until it lasts (orchestrator brief, from his "server error"
+  report).** A single failed or slow race poll shows nothing; the next one a second later carries
+  the same numbers. Only 5 s without one good answer shows one calm line, "Can't reach the
+  engine, your score is kept and will send when it's back", cleared on recovery. Solo never shows
+  a network error. The phone was printing every failed poll's raw failure sentence (a timeout's
+  "Could not reach ..." or a 5xx body verbatim, Google front end HTML included); the PWA showed an
+  error on any one failed poll, and a failed who-am-I refetch replaced the whole screen, a solo
+  game included.

@@ -21,7 +21,10 @@ whose "nothing reaches the engine" still holds for the ROM launcher.
 **Invites go both ways.** To a PWA: Web Push sent at invite time. To the phone: a background poll
 of the engine and a local notification, because the phone has no push channel by ruling.
 
-**Clients poll; there are no websockets.** A race syncs a score, not a board.
+**Clients poll; there are no websockets.** A race syncs each player's score and, about once a
+second, a snapshot of their board (220 characters, 22 rows of 10, one character a cell), still by
+polling and still transient: deleted with the match. Each side shows the other's board beside its
+own (amended 2026-10-19, Kevin: "we should be able to see our game side by side").
 
 ## Consequences
 
