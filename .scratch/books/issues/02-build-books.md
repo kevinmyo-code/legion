@@ -3,11 +3,12 @@ map: books
 ticket: "02"
 title: "Build: Books chip, sheet, folder scan, reader (EPUB/PDF/comics), read-aloud, voice tool"
 type: build
-status: open
+status: built
+status-detail: "Suite green 2026-10-19 (4854/0, merged with Tetris side-by-side); owed on the A25: folder, EPUB, PDF, CBZ, resume, Listen screen-off"
 blockers: ["01"]
 blocked-by: ["[[01-books-launcher]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
