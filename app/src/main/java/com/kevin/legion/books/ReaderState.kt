@@ -104,6 +104,11 @@ data class ReaderUiState(
     val listenNote: String? = null,
     /** True once the first page is up; the bottom bar stays hidden before there is a position. */
     val hasPosition: Boolean = false,
+    /** How display pages map to source pages; changes identity only when the mapping changes. */
+    val spread: SpreadMap = SpreadMap.of(emptyList(), split = false, pageCount = 0),
+    /** The per-book Split / Whole choice; only offered when [SpreadMap.hasSpreads]. */
+    val spreadSplit: Boolean = true,
+    val landscapeScreen: Boolean = false,
 )
 
 /**
@@ -162,4 +167,5 @@ data class ReaderActions(
     val onGoBookmark: (BookBookmark) -> Unit = {},
     val onGoToc: (TocEntry) -> Unit = {},
     val onGoPage: (Int) -> Unit = {},
+    val onSpreadSplit: (Boolean) -> Unit = {},
 )

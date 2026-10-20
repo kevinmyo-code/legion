@@ -44,7 +44,21 @@ class ReaderSettingsStore(context: Context) {
         prefs.edit().putInt(KEY_SIZE, settings.textSize).putString(KEY_THEME, settings.theme.name).apply()
     }
 
+    /**
+     * Whether this book's two-page spreads are split, kept per book id in the same preferences file
+     * (no Room column, so no migration). Null means never chosen, which reads as Split.
+     */
+    fun spreadSplit(documentId: String): Boolean? =
+        if (prefs.contains(spreadKey(documentId))) prefs.getBoolean(spreadKey(documentId), true) else null
+
+    fun writeSpreadSplit(documentId: String, split: Boolean) {
+        prefs.edit().putBoolean(spreadKey(documentId), split).apply()
+    }
+
+    private fun spreadKey(documentId: String) = "$KEY_SPREAD_PREFIX$documentId"
+
     private companion object {
+        const val KEY_SPREAD_PREFIX = "spreads:"
         const val PREFS = "books_reader"
         const val KEY_SIZE = "text_size"
         const val KEY_THEME = "theme"

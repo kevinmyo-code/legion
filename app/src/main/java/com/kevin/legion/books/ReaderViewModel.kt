@@ -67,6 +67,8 @@ class ReaderViewModel(
     private val writeSettings: (ReaderSettings) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
     scope: CoroutineScope? = null,
+    private val readSpread: (String) -> Boolean? = { null },
+    private val writeSpread: (String, Boolean) -> Unit = { _, _ -> },
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -87,6 +89,13 @@ class ReaderViewModel(
     private var lastEpubPlace: EpubPlace? = null
     private var autoListenDone = false
 
+    // A paged book's real place is a source page and a half (see [Spot]); display indexes derive from it.
+    private var aspects: List<Float> = emptyList()
+    private var spot = Spot(0)
+    private var splitSetting = true
+    private var landscape = false
+    private var pagedSource: PageSource? = null
+
     init {
         this.scope.launch { load() }
     }
@@ -104,15 +113,22 @@ class ReaderViewModel(
             is LoadedBook.Failed -> fail(loaded.sentence)
             is LoadedBook.Paged -> {
                 val resume = ResumePoint.from(row, loaded.source.pageCount)
+                pagedSource = loaded.source
+                aspects = runCatching { loaded.source.aspects() }.getOrDefault(emptyList())
+                splitSetting = readSpread(documentId) ?: true
+                // An old whole-page position has no locator and resumes at that page's left half.
+                spot = Spot.saved(resume.pageIndex, resume.locatorJson)
+                val map = currentMap(loaded.source.pageCount)
                 _state.update {
                     it.copy(
                         subtitle = "${format.label} · ${pagesLabel(loaded.source.pageCount)}",
-                        content = ReaderContent.Paged(loaded.source, resume.pageIndex),
-                        pageIndex = resume.pageIndex,
-                        pageCount = loaded.source.pageCount,
+                        content = ReaderContent.Paged(loaded.source, map.indexOf(spot)),
+                        spread = map,
+                        spreadSplit = splitSetting,
+                        landscapeScreen = landscape,
                     )
                 }
-                updatePaged(resume.pageIndex, loaded.source.pageCount, save = false)
+                updatePaged(map.indexOf(spot), save = false)
             }
             is LoadedBook.Epub -> {
                 session = loaded.session
@@ -149,13 +165,49 @@ class ReaderViewModel(
 
     // ---- position -----------------------------------------------------------------------------
 
-    /** A PDF or comic page turn. */
+    private fun currentMap(pageCount: Int) = SpreadMap.of(aspects, splitSetting && !landscape, pageCount)
+
+    /** A PDF or comic page turn; [index] is a display page. */
     fun onPage(index: Int) {
-        val count = (state.value.content as? ReaderContent.Paged)?.source?.pageCount ?: return
-        updatePaged(index, count, save = true)
+        if (state.value.content !is ReaderContent.Paged) return
+        spot = _state.value.spread.spotOf(index)
+        updatePaged(index, save = true)
     }
 
-    private fun updatePaged(index: Int, count: Int, save: Boolean) {
+    /** The screen turned. Same spot, new mapping: portrait splits spreads, landscape shows them whole. */
+    fun setLandscape(isLandscape: Boolean) {
+        if (landscape == isLandscape) return
+        landscape = isLandscape
+        remap()
+    }
+
+    /** The Aa choice between splitting spreads and showing them whole, remembered for this book. */
+    fun setSpreadSplit(split: Boolean) {
+        if (splitSetting == split) return
+        splitSetting = split
+        writeSpread(documentId, split)
+        remap()
+    }
+
+    private fun remap() {
+        val source = pagedSource ?: return
+        val map = currentMap(source.pageCount)
+        // One update carries the map and the page index in it, so the pager is never rebuilt on half of it.
+        _state.update {
+            it.copy(
+                spread = map, spreadSplit = splitSetting, landscapeScreen = landscape, pageIndex = map.indexOf(spot),
+            )
+        }
+        updatePaged(map.indexOf(spot), save = false)
+    }
+
+    private fun savePaged(progress: Double) {
+        val pages = pagedSource?.pageCount ?: return
+        scope.launch { store.savePosition(documentId, progress, null, spot.page, pages, spot.locator, now()) }
+    }
+
+    private fun updatePaged(index: Int, save: Boolean) {
+        val count = _state.value.spread.count
         val progress = if (count <= 1) 0.0 else index.toDouble() / (count - 1)
         _state.update {
             it.copy(
@@ -167,9 +219,7 @@ class ReaderViewModel(
                 hasPosition = true,
             )
         }
-        if (save) {
-            scope.launch { store.savePosition(documentId, progress, null, index, count, null, now()) }
-        }
+        if (save) savePaged(progress)
     }
 
     /** The EPUB navigator moved (a page turn, a jump, or the read-aloud following a sentence). */
@@ -203,9 +253,7 @@ class ReaderViewModel(
             if (place != null) {
                 store.savePosition(documentId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, now())
             } else if (current.content is ReaderContent.Paged) {
-                store.savePosition(
-                    documentId, current.progress.toDouble(), null, current.pageIndex, current.pageCount, null, now(),
-                )
+                savePaged(current.progress.toDouble())
             }
         }
     }
@@ -266,7 +314,7 @@ class ReaderViewModel(
             documentId = documentId,
             label = label,
             locatorJson = place?.locatorJson,
-            pageIndex = s.pageIndex,
+            pageIndex = if (s.content is ReaderContent.Paged) spot.page else s.pageIndex,
             progress = s.progress.toDouble(),
             createdAtMs = now(),
         )
@@ -284,7 +332,9 @@ class ReaderViewModel(
     }
 
     fun goToBookmark(bookmark: BookBookmark) {
-        bookmark.locatorJson?.let { control?.goToLocator(it) } ?: goToPage(bookmark.pageIndex)
+        // A bookmark's pageIndex is a source page, so it lands right whatever the spread mode is now.
+        bookmark.locatorJson?.let { control?.goToLocator(it) }
+            ?: goToPage(_state.value.spread.indexOf(Spot(bookmark.pageIndex)))
         closePanel()
     }
 
@@ -371,6 +421,8 @@ class ReaderViewModel(
                 },
                 readSettings = settings::read,
                 writeSettings = settings::write,
+                readSpread = settings::spreadSplit,
+                writeSpread = settings::writeSpreadSplit,
             ) as T
         }
 

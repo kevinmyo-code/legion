@@ -13,6 +13,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -54,6 +57,8 @@ private const val EDGE_TAP_FRACTION = 0.25f
 @Composable
 fun PagedViewer(
     source: PageSource,
+    spread: SpreadMap,
+    landscape: Boolean,
     startPage: Int,
     palette: ReaderPalette,
     pageRequest: Int?,
@@ -61,16 +66,34 @@ fun PagedViewer(
     onPageRequestHandled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pager = rememberPagerState(initialPage = startPage.coerceIn(0, (source.pageCount - 1).coerceAtLeast(0))) {
-        source.pageCount
+    // A different mapping (the phone turned, or Split/Whole flipped) rebuilds the pager at the same spot.
+    androidx.compose.runtime.key(spread) {
+        PagerBody(source, spread, landscape, startPage, palette, pageRequest, onPage, onPageRequestHandled, modifier)
     }
+}
+
+@Composable
+@Suppress("LongParameterList") // the viewer's inputs, passed straight through from PagedViewer
+private fun PagerBody(
+    source: PageSource,
+    spread: SpreadMap,
+    landscape: Boolean,
+    startPage: Int,
+    palette: ReaderPalette,
+    pageRequest: Int?,
+    onPage: (Int) -> Unit,
+    onPageRequestHandled: () -> Unit,
+    modifier: Modifier,
+) {
+    val last = (spread.count - 1).coerceAtLeast(0)
+    val pager = rememberPagerState(initialPage = startPage.coerceIn(0, last)) { spread.count }
     var zoomed by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { onPage(it) } }
     LaunchedEffect(pageRequest) {
         if (pageRequest != null) {
-            pager.scrollToPage(pageRequest.coerceIn(0, source.pageCount - 1))
+            pager.scrollToPage(pageRequest.coerceIn(0, last))
             onPageRequestHandled()
         }
     }
@@ -83,12 +106,15 @@ fun PagedViewer(
     ) { index ->
         ZoomablePage(
             source = source,
+            spot = spread.spotOf(index),
+            isHalf = spread.isHalf(index),
             index = index,
+            fit = Fit.mode(landscape, spread.isHalf(index)),
             palette = palette,
             onZoomed = { zoomed = it },
             onTapEdge = { forward ->
                 scope.launch {
-                    val target = (pager.currentPage + if (forward) 1 else -1).coerceIn(0, source.pageCount - 1)
+                    val target = (pager.currentPage + if (forward) 1 else -1).coerceIn(0, last)
                     pager.animateScrollToPage(target)
                 }
             },
@@ -99,15 +125,18 @@ fun PagedViewer(
 @Composable
 private fun ZoomablePage(
     source: PageSource,
+    spot: Spot,
+    isHalf: Boolean,
     index: Int,
+    fit: FitMode,
     palette: ReaderPalette,
     onZoomed: (Boolean) -> Unit,
     onTapEdge: (forward: Boolean) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val widthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
-        val bitmap by produceState<Bitmap?>(null, index, widthPx) {
-            value = runCatching { source.render(index, widthPx) }.getOrNull()
+        val bitmap by produceState<Bitmap?>(null, spot, isHalf, widthPx) {
+            value = runCatching { source.renderSpot(spot, widthPx, isHalf) }.getOrNull()
         }
         val zoom = remember { ZoomState() }
         LaunchedEffect(zoom.scale) { onZoomed(zoom.scale > 1f) }
@@ -126,11 +155,13 @@ private fun ZoomablePage(
         ) {
             val shown = bitmap
             if (shown != null) {
+                // WIDTH fills the width and scrolls down the page; PAGE shows it whole.
+                val scroll = if (fit == FitMode.WIDTH) Modifier.verticalScroll(rememberScrollState()) else Modifier
                 Image(
                     bitmap = shown.asImageBitmap(),
                     contentDescription = "Page ${index + 1}",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
+                    contentScale = if (fit == FitMode.WIDTH) ContentScale.FillWidth else ContentScale.Fit,
+                    modifier = if (fit == FitMode.WIDTH) scroll.fillMaxWidth() else Modifier.fillMaxSize(),
                 )
             } else {
                 Text(

@@ -2,6 +2,7 @@ package com.kevin.legion.books
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -10,9 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -65,12 +68,15 @@ class ReaderActivity : FragmentActivity() {
         onGoBookmark = model::goToBookmark,
         onGoToc = model::goToToc,
         onGoPage = model::goToPage,
+        onSpreadSplit = model::setSpreadSplit,
     )
 
     @Composable
     private fun ReaderBody(state: ReaderUiState) {
         val palette = ReaderPalette.of(state.settings.theme)
         val pageRequest by model.pageRequest.collectAsStateWithLifecycle()
+        val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        LaunchedEffect(landscape) { model.setLandscape(landscape) }
         when (val content = state.content) {
             ReaderContent.Loading -> Centered("Opening...", palette)
             is ReaderContent.Failed -> Centered(content.sentence, palette)
@@ -91,7 +97,9 @@ class ReaderActivity : FragmentActivity() {
             }
             is ReaderContent.Paged -> PagedViewer(
                 source = content.source,
-                startPage = content.startPage,
+                spread = state.spread,
+                landscape = landscape,
+                startPage = state.pageIndex,
                 palette = palette,
                 pageRequest = pageRequest,
                 onPage = model::onPage,

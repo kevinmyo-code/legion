@@ -22,6 +22,13 @@ interface PageSource : Closeable {
 
     /** Page [index] (0-based) rendered [widthPx] wide. Never returns a half-drawn page. */
     suspend fun render(index: Int, widthPx: Int): Bitmap
+
+    /**
+     * Width over height of every page, or empty when the source cannot say cheaply. Only the PDF
+     * answers: comics are left unsplit because a spread there may read right to left (manga), and
+     * "left half first" would be wrong.
+     */
+    suspend fun aspects(): List<Float> = emptyList()
 }
 
 /** Why a paged book could not be opened, in words the reader shows. */
@@ -47,6 +54,14 @@ class PdfPages private constructor(
                     it.eraseColor(Color.WHITE)
                     page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 }
+            }
+        }
+    }
+
+    override suspend fun aspects(): List<Float> = lock.withLock {
+        withContext(Dispatchers.IO) {
+            List(renderer.pageCount) { i ->
+                renderer.openPage(i).use { it.width.toFloat() / it.height.coerceAtLeast(1) }
             }
         }
     }

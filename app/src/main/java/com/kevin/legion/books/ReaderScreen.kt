@@ -162,6 +162,20 @@ private fun SettingsCard(state: ReaderUiState, actions: ReaderActions, modifier:
                 ThemeChoice(theme, theme == state.settings.theme, Modifier.weight(1f)) { actions.onTheme(theme) }
             }
         }
+        if (state.spread.hasSpreads) {
+            Text("Two-page spreads", style = MaterialTheme.typography.titleSmall, color = SoftColors.text)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val night = ReaderTheme.NIGHT
+                ChoicePill("Split", night, state.spreadSplit, Modifier.weight(1f)) { actions.onSpreadSplit(true) }
+                ChoicePill("Whole", night, !state.spreadSplit, Modifier.weight(1f)) { actions.onSpreadSplit(false) }
+            }
+            Text(
+                "Split shows each printed page on its own when the phone is upright. " +
+                    "Turned sideways, the page fills the width and scrolls.",
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftColors.text3,
+            )
+        }
         Text(
             if (isEpub) {
                 "EPUB reflows. PDF and comics zoom instead, with page turning."
@@ -175,7 +189,11 @@ private fun SettingsCard(state: ReaderUiState, actions: ReaderActions, modifier:
 }
 
 @Composable
-private fun ThemeChoice(theme: ReaderTheme, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun ThemeChoice(theme: ReaderTheme, selected: Boolean, modifier: Modifier, onClick: () -> Unit) =
+    ChoicePill(theme.label, theme, selected, modifier, onClick)
+
+@Composable
+private fun ChoicePill(label: String, theme: ReaderTheme, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val p = ReaderPalette.of(theme)
     val shape = RoundedCornerShape(12.dp)
     Box(
@@ -189,7 +207,7 @@ private fun ThemeChoice(theme: ReaderTheme, selected: Boolean, modifier: Modifie
     ) {
         // The selection is said in words as well as drawn: "Night, selected".
         Text(
-            if (selected) "${theme.label} ✓" else theme.label,
+            if (selected) "$label ✓" else label,
             color = p.text,
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.bodyMedium,
