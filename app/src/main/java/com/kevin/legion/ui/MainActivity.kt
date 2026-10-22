@@ -66,6 +66,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -506,6 +507,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+// The shell wires every route. Dumb mode (ADR 0062) added branches; the annotation changes the baseline signature.
+@Suppress("CyclomaticComplexMethod", "LongMethod") // one shell function by design, see the comment above
 private fun LegionShell(
     deepLinkRoute: String? = null,
     deepLinkNonce: Int = 0,
@@ -653,6 +656,11 @@ private fun LegionShell(
     // which still runs (for its own highlight logic) on every OTHER route.
     val shellBackStackEntry by navController.currentBackStackEntryAsState()
     val isDrivingMode = shellBackStackEntry?.destination?.route == LegionRoute.DRIVING
+    // Dumb phone mode (ADR 0062): on its HOME the list is the whole screen, so the status line and the
+    // talk bar (an app drawer, a quiet toggle, settings) are not drawn. Other routes keep their chrome.
+    val dumbState by (context.applicationContext as com.kevin.legion.MidnightApplication).dumbMode.state
+        .collectAsStateWithLifecycle()
+    val isDumbHome = dumbState.on && shellBackStackEntry?.destination?.route == LegionRoute.HOME
 
     // Fixed on-device 2026-09-01: a generated view built for a question asked on METERS was
     // surviving navigation to CALENDAR, painting over the month grid and eating the tap meant to
@@ -724,7 +732,7 @@ private fun LegionShell(
             // Renders nothing at all on DRIVING (ticket 20) - same "occupies zero space" shape this
             // slot already had.
             bottomBar = {
-                if (!isDrivingMode) {
+                if (!isDrivingMode && !isDumbHome) {
                     // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051) - the
                     // talk bar is shell chrome, converted along with StatusLine below; the NavHost
                     // content beside it stays on [LegionTheme] until its own ticket.
@@ -755,7 +763,7 @@ private fun LegionShell(
                 // doc for the closed loop it breaks. Absent on DRIVING along with the rest of
                 // the status line, which is correct: nothing about driving mode should invite
                 // you into a settings tree.
-                if (!isDrivingMode) {
+                if (!isDrivingMode && !isDumbHome) {
                     // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051).
                     SoftTheme {
                         StatusLine(
@@ -878,6 +886,17 @@ private fun LegionShell(
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
                 ) {
+                  if (dumbState.on) {
+                    // Dumb phone mode swaps HOME's content for the short list (ADR 0062).
+                    com.kevin.legion.ui.dumb.DumbHome(
+                        onOpenMaps = { navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true } },
+                        onOpenTodos = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
+                        onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                        onOpenSettings = {
+                            navController.navigate(LegionRoute.SETTINGS_DUMB_MODE) { launchSingleTop = true }
+                        },
+                    )
+                  } else {
                     com.kevin.legion.ui.home.HomeScreen(
                         onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
                         onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
@@ -911,6 +930,7 @@ private fun LegionShell(
                             ) { launchSingleTop = true }
                         },
                     )
+                  }
                 }
             }
             // CALENDAR (home-launcher ticket 03): the month grid + day view, split back off HOME
@@ -1060,6 +1080,7 @@ private fun LegionShell(
                     onOpenDataPrivacy = { navController.navigate(LegionRoute.SETTINGS_DATA_PRIVACY) },
                     onOpenPermissionsDiagnostics = { navController.navigate(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) },
                     onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
+                    onOpenDumbMode = { navController.navigate(LegionRoute.SETTINGS_DUMB_MODE) },
                     // The widget pager's own hands path (rehomed from the deleted
                     // `ui/TodayScreen.kt`'s "DASHBOARD" button, one-today ticket 07).
                     onOpenDashboard = { navController.navigate(LegionRoute.DASHBOARD) { launchSingleTop = true } },
@@ -1081,6 +1102,12 @@ private fun LegionShell(
             // SETTINGS_MEMORY/SETTINGS_PHONE just below.
             composable(LegionRoute.SETTINGS_HELP) {
                 com.kevin.legion.ui.help.VoiceGuideScreen(onBack = { navController.popBackStack() })
+            }
+            composable(LegionRoute.SETTINGS_DUMB_MODE) {
+                com.kevin.legion.ui.dumb.DumbModeSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenHome = { navController.popBackStack(LegionRoute.HOME, inclusive = false) },
+                )
             }
             composable(LegionRoute.SETTINGS_PROACTIVE_SPEECH) {
                 com.kevin.legion.ui.settings.ProactiveSpeechScreen(onBack = { navController.popBackStack() })

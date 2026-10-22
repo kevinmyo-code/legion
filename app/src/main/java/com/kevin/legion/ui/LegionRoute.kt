@@ -417,6 +417,9 @@ object LegionRoute {
      */
     const val SETTINGS_HELP = "settings/help"
 
+    /** Dumb phone mode's setup: the switch, every one-time grant in words, the kept apps (ADR 0062). */
+    const val SETTINGS_DUMB_MODE = "settings/dumb-mode"
+
     // TOP_LEVEL, topLevelOf and label DELETED 2026-09-10, one-home ticket 03b, on ticket 01's
     // resolution: **there are no top-level tabs any more.** HOME is what the app opens to and the
     // only surface you land on; everything else is a drill-down reached by tapping the row that

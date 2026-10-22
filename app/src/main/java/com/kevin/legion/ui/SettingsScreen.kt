@@ -36,6 +36,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
  * `ON_RESUME`.
  */
 @Composable
+@Suppress("LongMethod") // one nav row per sub-screen; dumb mode (ADR 0062) added the row that tipped it over 60
 fun SettingsScreen(
     onOpenAssistant: () -> Unit,
     onOpenVoiceGuide: () -> Unit = {},
@@ -49,6 +50,8 @@ fun SettingsScreen(
     // (ADR 0035) and the seven on-device grid-feel rounds behind them are not orphaned. Defaults to
     // a no-op, matching this screen's other `onOpen*` callbacks.
     onOpenDashboard: () -> Unit = {},
+    // Dumb phone mode's setup (ADR 0062). A no-op default, like the other optional rows.
+    onOpenDumbMode: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
 
@@ -109,6 +112,13 @@ fun SettingsScreen(
                 label = "Permissions and diagnostics",
                 status = "Calls, location, and diagnostic probes.",
                 onClick = onOpenPermissionsDiagnostics,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            SettingsNavRow(
+                label = "Dumb mode",
+                status = "A short list instead of a phone. Held notifications, quiet strangers.",
+                onClick = onOpenDumbMode,
             )
 
             Spacer(Modifier.height(8.dp))

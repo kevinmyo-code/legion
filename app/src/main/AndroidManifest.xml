@@ -128,6 +128,11 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- Dumb mode (ADR 0062) finds the camera app by who answers this intent, never by a
+             hard-coded package. The MAIN/LAUNCHER query above does not cover it. -->
+        <intent>
+            <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
+        </intent>
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.spotify.music" />
         <!-- Retro-games ticket 03: the three emulators LEGION hands a game to; without these the
@@ -433,6 +438,18 @@
 
         <!-- The Quiet tile: vibrate, calls and alarms only, every other notification silent.
              See quiet/QuietMode.kt. -->
+        <!-- The dumb phone mode tile (ADR 0062): off to on in one tap; leaving is never a tile tap. -->
+        <service
+            android:name=".dumb.DumbModeTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_dumb_tile"
+            android:label="Dumb mode"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".quiet.QuietTileService"
             android:exported="true"

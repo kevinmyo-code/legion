@@ -466,6 +466,8 @@ fun MoreSheetContent(
                 fillRemaining = false,
                 showCalendarAndLists = false,
             )
+            // Dumb phone mode's switch-on (ADR 0062); hidden where the context is not the app.
+            com.kevin.legion.ui.dumb.DumbModeMoreRow()
         }
     }
 }

@@ -70,6 +70,15 @@ class MidnightApplication : Application() {
         )
     }
 
+    /**
+     * Dumb phone mode's one state machine (ADR 0062), shared by the Activity, the Quick Settings
+     * tile and the later services. A constructor-injected class held here because Hilt is not in the
+     * build yet (architecture ticket 02); this property is the injection point until it is.
+     */
+    val dumbMode: com.kevin.legion.dumb.DumbModeController by lazy {
+        com.kevin.legion.dumb.DumbModeController(com.kevin.legion.dumb.PrefsDumbModeStore(this))
+    }
+
     /** The raw route/progress objects the nav screen's map draws; written by [navController]'s SDK seam. */
     val navMapFeed: NavMapFeed by lazy { NavMapFeed() }
 

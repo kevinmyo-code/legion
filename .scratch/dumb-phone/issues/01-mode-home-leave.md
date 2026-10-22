@@ -3,12 +3,12 @@ map: dumb-phone
 ticket: "01"
 title: "Build: mode state, Home A, Leave flow, tile, settings row"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Suite green 2026-10-22 (4898/0). Owed on the A25: the look at 384dp, the tile, the leave wait across a lock, Maps/Books/Assistant from the list"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
