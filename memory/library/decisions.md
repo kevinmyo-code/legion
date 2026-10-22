@@ -6525,3 +6525,24 @@ without a pdfium adapter, and its PDF TTS is not supported.
 - **One row of six slim chips (Kevin, 2026-10-19).** The two-row layout cost the real-phone shell
   agenda rows, so the chip row is one row of six, no subtitle line, 44dp minimum height; the count stays in
   each chip's TalkBack description and in the sheet subtitles. The agenda guard stays at 2 rows or more.
+
+## 2026-10-22 - The phone notifies when a feed's saved login expires (Kevin)
+
+Kevin: "notify me when canvas login expires". Built, no server change.
+
+- **Trigger is `last_outcome == "needs_login"` on `GET /api/freshness`, for ANY source.** Canvas,
+  WebAssign and Drive share one code path. The reply is wrapped (`{"sources": [...]}`), pinned by
+  `FreshnessWireContractTest`.
+- **The body is the server's `sentence`, verbatim.** Kotlin composes only a short title. This is the
+  freshness.py rule (surfaces render `sentence`, never their own phrase).
+- **Once per expiry.** Dedupe key is source + `last_error` (which carries the refusal timestamp); a
+  source back to any other outcome clears its key. The seen set is persisted.
+- **Own hourly cadence with the app closed**: `AlarmManager.setAndAllowWhileIdle`, re-armed by the
+  receiver, at app start and in `BootReceiver`, the `WellbeingDigestScheduler` pattern.
+  `ScheduledBackup` was named as the model but only runs from `onResume`, so it is not one.
+- **Silenceable (clause d)**: a "Stop these" action on the notice persists a flag; the "Login expired
+  notices" row on the Proactive speech settings screen turns it back on. The raise is not routed
+  through `ProactiveBus` (that registry governs spoken lines and their daily cap).
+- **Engine unreachable, non-200 or unparseable is silence**: no error notification.
+- `tools/relogin.ps1` added: `connect_session.py` never asks for a password by design, so this trades
+  the LEGION login for a device token for that one run.

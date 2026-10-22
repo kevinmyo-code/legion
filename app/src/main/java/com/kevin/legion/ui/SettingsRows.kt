@@ -175,6 +175,37 @@ fun RecallAlertsRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
 }
 
 /**
+ * Whether the phone posts a notification when a server feed's saved login is refused (Canvas,
+ * WebAssign, Drive). The notification's own "Stop these" button turns this off; this row turns it
+ * back on. Wording is the row's own; the notice itself carries the server's sentence.
+ */
+@Composable
+fun LoginExpiryNoticesRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Login expired notices", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    if (enabled) {
+                        "On - one notification when a feed's saved login is refused"
+                    } else {
+                        "Off - no notification when a feed's login expires"
+                    },
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+/**
  * The proactive master switch. **Backed by [com.kevin.legion.service.ProactiveSettings.master] in
  * Room since 2026-08-21** (ticket 04); it used to read
  * [com.kevin.legion.service.ProactivePreferences]'s inverted `muted` boolean, which is now a

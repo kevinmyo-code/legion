@@ -74,6 +74,10 @@ class BootReceiver : BroadcastReceiver() {
                 // not cost any of the others theirs.
                 runCatching { WellbeingDigestScheduler.rescheduleFromSettings(context) }
                     .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_wellbeing_digest", it) }
+                // Login-expiry check alarm: AlarmManager forgets it across a reboot like every
+                // other alarm here. Guarded separately for the same reason as the others.
+                runCatching { com.kevin.legion.freshness.LoginExpiryScheduler.arm(context) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("boot_arm_login_expiry", it) }
                 // resumeIfEnabled is a plain (non-suspend) SharedPreferences read plus a
                 // startForegroundService IPC call - safe to fire from this receiver's IO scope
                 // same as rescheduleAll above; nothing about starting a Service requires the

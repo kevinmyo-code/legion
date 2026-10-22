@@ -30,6 +30,8 @@ import com.kevin.legion.sitrep.SitrepModule
 import com.kevin.legion.sitrep.SitrepSettings
 import com.kevin.legion.ui.ProactiveCategoryRow
 import com.kevin.legion.ui.ProactiveSpeechRow
+import com.kevin.legion.freshness.LoginExpirySettings
+import com.kevin.legion.ui.LoginExpiryNoticesRow
 import com.kevin.legion.ui.RecallAlertsRow
 import com.kevin.legion.ui.SitrepModuleRow
 import com.kevin.legion.ui.SitrepNewsSendersRow
@@ -65,6 +67,7 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var recallAlertsOn by remember { mutableStateOf(DebugSettings.recallAlertsEnabled(context)) }
+    var loginNoticesOn by remember { mutableStateOf(!LoginExpirySettings.silenced(context)) }
     var proactiveOn by remember { mutableStateOf(true) }
     var proactiveCategories by remember {
         mutableStateOf<Map<ProactiveCategory, Boolean>>(emptyMap())
@@ -112,6 +115,7 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         reloadNonce++
         recallAlertsOn = DebugSettings.recallAlertsEnabled(context)
+        loginNoticesOn = !LoginExpirySettings.silenced(context)
         scope.launch {
             ProactiveSettings.load(context)
             proactiveOn = ProactiveSettings.master.value
@@ -144,6 +148,16 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
                     onToggle = { on ->
                         DebugSettings.setRecallAlerts(context, on)
                         recallAlertsOn = on
+                    },
+                )
+
+                // The "Stop these" notification button writes the same flag; this is where it comes back.
+                Spacer(Modifier.height(8.dp))
+                LoginExpiryNoticesRow(
+                    enabled = loginNoticesOn,
+                    onToggle = { on ->
+                        LoginExpirySettings.setSilenced(context, !on)
+                        loginNoticesOn = on
                     },
                 )
 

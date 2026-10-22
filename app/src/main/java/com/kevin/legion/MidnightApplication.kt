@@ -291,6 +291,9 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("seed_dates_aspect", it) }
                 runCatching { com.kevin.legion.service.DatesAlarmScheduler.armNext(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("arm_dates_reminder", it) }
+                // The hourly login-expiry check (replaces any armed one, so a relaunch never stacks).
+                runCatching { com.kevin.legion.freshness.LoginExpiryScheduler.arm(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("arm_login_expiry", it) }
             }
 
             // Wave 1 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):
