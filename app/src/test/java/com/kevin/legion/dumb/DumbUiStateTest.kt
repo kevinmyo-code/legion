@@ -96,10 +96,16 @@ class DumbUiStateTest {
 
     @Test
     fun `setup says a missing grant in words and what is not active`() {
-        val rows = DumbSetup.rows(DumbGrantFacts(notificationAccess = false))
-        assertFalse(rows.single().granted)
-        assertTrue(rows.single().state.startsWith("Not granted"))
+        val rows = DumbSetup.rows(DumbGrantFacts(notificationAccess = false, dndAccess = true))
+        val missing = rows.single { !it.granted }
+        assertEquals(DumbGrantRow.Id.NOTIFICATION_ACCESS, missing.id)
+        assertTrue(missing.state.startsWith("Not granted"))
         assertEquals("Not active: Notifications are not being held.", DumbSetup.notActive(rows))
-        assertNull(DumbSetup.notActive(DumbSetup.rows(DumbGrantFacts(notificationAccess = true))))
+        val both = DumbSetup.rows(DumbGrantFacts(notificationAccess = false, dndAccess = false))
+        assertEquals(
+            "Not active: Notifications are not being held. The phone's sounds are not being silenced.",
+            DumbSetup.notActive(both),
+        )
+        assertNull(DumbSetup.notActive(DumbSetup.rows(DumbGrantFacts(notificationAccess = true, dndAccess = true))))
     }
 }

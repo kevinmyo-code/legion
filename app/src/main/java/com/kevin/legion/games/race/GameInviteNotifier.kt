@@ -40,6 +40,8 @@ class GameInviteNotifier(context: Context) {
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            // Who sent it, for dumb mode's hold (ADR 0062): the household name, not a message body.
+            .addExtras(android.os.Bundle().apply { putString(INVITE_FROM_EXTRA, invite.fromName) })
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         NotificationManagerCompat.from(app).notify(notificationId(invite.matchId), notification)
@@ -79,6 +81,9 @@ class GameInviteNotifier(context: Context) {
 
     companion object {
         const val CHANNEL_ID = "game_invites_channel"
+
+        /** Read by `dumb.NotificationFactsReader.EXTRA_INVITE_FROM`; the two strings must match. */
+        const val INVITE_FROM_EXTRA = "com.kevin.legion.invite_from"
         private const val REQUEST_OPEN = 0
         private const val REQUEST_ACCEPT = 1
         private const val REQUEST_KINDS = 2

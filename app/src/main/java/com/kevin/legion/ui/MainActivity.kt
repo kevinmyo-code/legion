@@ -658,9 +658,12 @@ private fun LegionShell(
     val isDrivingMode = shellBackStackEntry?.destination?.route == LegionRoute.DRIVING
     // Dumb phone mode (ADR 0062): on its HOME the list is the whole screen, so the status line and the
     // talk bar (an app drawer, a quiet toggle, settings) are not drawn. Other routes keep their chrome.
-    val dumbState by (context.applicationContext as com.kevin.legion.MidnightApplication).dumbMode.state
-        .collectAsStateWithLifecycle()
-    val isDumbHome = dumbState.on && shellBackStackEntry?.destination?.route == LegionRoute.HOME
+    val dumbApp = context.applicationContext as com.kevin.legion.MidnightApplication
+    val dumbState by dumbApp.dumbMode.state.collectAsStateWithLifecycle()
+    val digestState by dumbApp.dumb.digest.state.collectAsStateWithLifecycle()
+    // The held-notification digest takes HOME over the moment the mode ends, until it is dealt with.
+    val digestShowing = !dumbState.on && digestState.pending && digestState.entries.isNotEmpty()
+    val isDumbHome = (dumbState.on || digestShowing) && shellBackStackEntry?.destination?.route == LegionRoute.HOME
 
     // Fixed on-device 2026-09-01: a generated view built for a question asked on METERS was
     // surviving navigation to CALENDAR, painting over the month grid and eating the tap meant to
@@ -896,6 +899,8 @@ private fun LegionShell(
                             navController.navigate(LegionRoute.SETTINGS_DUMB_MODE) { launchSingleTop = true }
                         },
                     )
+                  } else if (digestShowing) {
+                    com.kevin.legion.ui.dumb.DumbDigest()
                   } else {
                     com.kevin.legion.ui.home.HomeScreen(
                         onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },

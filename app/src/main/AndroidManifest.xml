@@ -39,6 +39,9 @@
          user grants on a system screen. Without it the tile says so and changes nothing. -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Dumb mode's alarm-stream fallback (ADR 0062): a chosen person's message vibrates when the
+         system will not let a notification channel break through Do Not Disturb. A normal permission. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <!-- Caller ID and voice call control (2026-08-21, Kevin: "i wanna know whos calling ... can i
@@ -328,7 +331,9 @@
 
         <!-- Grants MediaSessionManager access to active media sessions (now-playing
              state, e.g. Spotify) once the driver enables notification access in
-             system settings. No notifications are parsed. -->
+             system settings. This comment used to end "No notifications are parsed."; since dumb
+             mode (ADR 0062, 2026-10-22) the listener also reads WHO a notification is from while
+             that mode is on, to hold all but a chosen person's. It stores no notification content. -->
         <service
             android:name=".service.MediaNotificationListener"
             android:exported="true"

@@ -57,6 +57,7 @@ class DumbModeViewModel(
         private val app = context.applicationContext as MidnightApplication
 
         @Suppress("UNCHECKED_CAST") // the only type this factory is asked for
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = DumbModeViewModel(app.dumbMode) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>): T =
+            DumbModeViewModel(app.dumbMode, peopleNames = { app.dumb.people.names() }) as T
     }
 }

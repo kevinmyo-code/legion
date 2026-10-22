@@ -14,8 +14,8 @@
       "id": "3d8c5e176a956b58",
       "type": "file",
       "file": ".scratch/dumb-phone/issues/02-hold-digest-people.md",
-      "x": 520,
-      "y": 0,
+      "x": 0,
+      "y": 150,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -25,7 +25,7 @@
       "type": "file",
       "file": ".scratch/dumb-phone/issues/03-call-screening.md",
       "x": 520,
-      "y": 150,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -35,7 +35,7 @@
       "type": "file",
       "file": ".scratch/dumb-phone/issues/04-accessibility-bounce.md",
       "x": 520,
-      "y": 300,
+      "y": 150,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -45,20 +45,13 @@
       "type": "file",
       "file": ".scratch/dumb-phone/issues/05-grayscale-streak.md",
       "x": 520,
-      "y": 450,
+      "y": 300,
       "width": 320,
       "height": 110,
       "color": "1"
     }
   ],
   "edges": [
-    {
-      "id": "e7bc6e234599ebc0",
-      "fromNode": "7626ab704faf4d06",
-      "fromSide": "right",
-      "toNode": "3d8c5e176a956b58",
-      "toSide": "left"
-    },
     {
       "id": "2bfa65ca22792605",
       "fromNode": "7626ab704faf4d06",

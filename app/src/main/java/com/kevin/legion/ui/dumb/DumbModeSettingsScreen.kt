@@ -81,6 +81,9 @@ fun DumbModeSettingsScreen(onBack: () -> Unit, onOpenHome: () -> Unit) {
                 rows.forEach { row -> GrantRowView(row) }
 
                 Spacer(Modifier.height(8.dp))
+                DumbPeopleSection()
+
+                Spacer(Modifier.height(8.dp))
                 KeptAppsSection()
                 Spacer(Modifier.height(24.dp))
             }
