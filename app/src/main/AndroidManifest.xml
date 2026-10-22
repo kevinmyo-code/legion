@@ -443,6 +443,18 @@
 
         <!-- The Quiet tile: vibrate, calls and alarms only, every other notification silent.
              See quiet/QuietMode.kt. -->
+        <!-- Dumb mode's call screener (ADR 0062). Android binds it only after the user grants LEGION the
+             call screening role on the setup screen; that role displaces Samsung Smart Call. It only
+             ever silences a ring, never rejects or disconnects a call. -->
+        <service
+            android:name=".dumb.DumbCallScreeningService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
         <!-- The dumb phone mode tile (ADR 0062): off to on in one tap; leaving is never a tile tap. -->
         <service
             android:name=".dumb.DumbModeTileService"

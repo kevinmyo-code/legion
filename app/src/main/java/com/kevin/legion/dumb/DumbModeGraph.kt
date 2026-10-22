@@ -21,6 +21,14 @@ class DumbModeGraph(private val app: Application) {
     val alertSwitch: AlertFallbackSwitch by lazy { AlertFallbackSwitch(app) }
     val dnd: DumbDnd by lazy { DumbDnd(AndroidDndGateway(app), PrefsDndSavedStore(app)) }
 
+    val callScreener: DumbCallScreener by lazy {
+        DumbCallScreener(
+            isOn = { controller.state.value.on },
+            isChosen = people::isChosenNumber,
+            recent = RecentCallers(PrefsRecentCallStore(app)),
+        )
+    }
+
     private val alert: ChosenPersonAlert by lazy { ChosenPersonAlert(app, alertSwitch) }
 
     private val handler: HeldNotificationHandler by lazy {

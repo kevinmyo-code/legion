@@ -1,6 +1,8 @@
 package com.kevin.legion.ui.dumb
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +34,7 @@ import com.kevin.legion.MidnightApplication
 import com.kevin.legion.dumb.AndroidKeptAppResolver
 import com.kevin.legion.dumb.DumbGrantRow
 import com.kevin.legion.dumb.DumbSetup
+import com.kevin.legion.dumb.GrantAction
 import com.kevin.legion.dumb.KeptEntry
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
@@ -116,6 +119,8 @@ private fun ModeSwitchRow(on: Boolean, onTurnOn: () -> Unit, onLeave: () -> Unit
 @Composable
 private fun GrantRowView(row: DumbGrantRow) {
     val context = LocalContext.current
+    // The result is ignored: the screen re-reads every grant when it resumes.
+    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
     val sem = LocalLegionSemantics.current
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Row(
@@ -127,13 +132,20 @@ private fun GrantRowView(row: DumbGrantRow) {
                 Text(row.title, style = MaterialTheme.typography.bodyMedium)
                 Text(row.state, style = LegionType.stamp, color = if (row.granted) sem.faint else sem.estimated)
             }
-            OutlinedButton(onClick = {
-                runCatching {
-                    context.startActivity(
-                        Intent(DumbSetup.settingsAction(row.id)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
-            }) { Text(row.buttonLabel) }
+            if (row.action != GrantAction.None) {
+                OutlinedButton(onClick = {
+                    runCatching {
+                        when (val action = row.action) {
+                            is GrantAction.OpenSettings -> context.startActivity(
+                                Intent(action.intentAction).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                            is GrantAction.RequestRole ->
+                                DumbSetup.roleRequestIntent(context, action.role)?.let(roleLauncher::launch)
+                            GrantAction.None -> Unit
+                        }
+                    }
+                }) { Text(row.buttonLabel) }
+            }
         }
     }
 }

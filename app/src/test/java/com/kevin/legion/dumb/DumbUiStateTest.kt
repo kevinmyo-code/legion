@@ -96,16 +96,39 @@ class DumbUiStateTest {
 
     @Test
     fun `setup says a missing grant in words and what is not active`() {
-        val rows = DumbSetup.rows(DumbGrantFacts(notificationAccess = false, dndAccess = true))
+        val noListener = DumbGrantFacts(notificationAccess = false, dndAccess = true, callScreeningRole = true)
+        val rows = DumbSetup.rows(noListener)
         val missing = rows.single { !it.granted }
         assertEquals(DumbGrantRow.Id.NOTIFICATION_ACCESS, missing.id)
         assertTrue(missing.state.startsWith("Not granted"))
         assertEquals("Not active: Notifications are not being held.", DumbSetup.notActive(rows))
-        val both = DumbSetup.rows(DumbGrantFacts(notificationAccess = false, dndAccess = false))
+        val noDnd = DumbGrantFacts(notificationAccess = false, dndAccess = false, callScreeningRole = true)
+        val two = DumbSetup.rows(noDnd)
         assertEquals(
             "Not active: Notifications are not being held. The phone's sounds are not being silenced.",
-            DumbSetup.notActive(both),
+            DumbSetup.notActive(two),
         )
-        assertNull(DumbSetup.notActive(DumbSetup.rows(DumbGrantFacts(notificationAccess = true, dndAccess = true))))
+        val allGranted = DumbGrantFacts(notificationAccess = true, dndAccess = true, callScreeningRole = true)
+        assertNull(DumbSetup.notActive(DumbSetup.rows(allGranted)))
+    }
+
+    @Test
+    fun `call screening says in words what is not active and asks for the role`() {
+        val facts = DumbGrantFacts(notificationAccess = true, dndAccess = true, callScreeningRole = false)
+        val row = DumbSetup.rows(facts).single { it.id == DumbGrantRow.Id.CALL_SCREENING }
+        assertFalse(row.granted)
+        assertTrue(row.state.contains("Every call rings"))
+        assertTrue(row.state.contains("replaces the phone's current call screener"))
+        assertEquals(GrantAction.RequestRole(DumbSetup.ROLE_CALL_SCREENING), row.action)
+        assertEquals("Not active: Strangers' calls still ring.", DumbSetup.notActive(DumbSetup.rows(facts)))
+    }
+
+    @Test
+    fun `call screening below Android 10 has no button and says why`() {
+        val facts = DumbGrantFacts(true, true, callScreeningRole = false, callScreeningSupported = false)
+        val row = DumbSetup.rows(facts).single { it.id == DumbGrantRow.Id.CALL_SCREENING }
+        assertEquals(GrantAction.None, row.action)
+        assertTrue(row.state.contains("Android 10"))
+        assertFalse(row.granted)
     }
 }

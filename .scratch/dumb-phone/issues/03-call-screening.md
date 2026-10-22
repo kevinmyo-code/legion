@@ -3,11 +3,11 @@ map: dumb-phone
 ticket: "03"
 title: "Build: call screening"
 type: build
-status: open
-status-detail: ""
-blockers: ["01"]
-blocked-by: ["[[01-mode-home-leave]]"]
-open-blockers: 1
+status: built
+status-detail: "Suite green 2026-10-22. Owed on the A25: setSilenceCall on the Samsung dialer, the role displacing Smart Call, a contact calling while dumb mode is on"
+blockers: []
+blocked-by: []
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
