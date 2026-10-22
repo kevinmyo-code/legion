@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "id": "1bcf73668d61ff7d",
+      "type": "file",
+      "file": ".scratch/ai-upgrade/issues/01-what-to-upgrade.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}
