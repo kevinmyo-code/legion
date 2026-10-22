@@ -3,12 +3,12 @@ map: ai-upgrade
 ticket: "01"
 title: "Decision: provider, decision models, and which agent-platform upgrades to build"
 type: decision
-status: open
-status-detail: "Plan proposed 2026-10-22, waiting on Kevin"
+status: resolved
+status-detail: "Kevin 2026-10-22: stay on Gemini Live, reasoning unchanged, build daily brief (02) and MCP update + Claude/Gemini app (03)"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -38,7 +38,17 @@ Evidence: `research/2026-10-22-landscape.md`.
    - It must never write ledger rows (§4).
 6. **Wait on AppFunctions** (Android 16+, private preview) and **MCP Events**. Grok Bot and Dots have no API, and memory products cut against §7's anchored memory, so all three are out.
 
-## Open questions for Kevin
+## Rulings (Kevin, 2026-10-22)
+
+1. **Voice stays on Gemini 3.8 Live.** No OpenAI voice.
+2. **Reasoning calls are left as they are.** No `LlmClient` seam and no GPT-6 Sol.
+3. **No decision model** (proposal item 2 stands).
+4. **Build the MCP update and connect it to Claude and the Gemini app.** That is ticket 03.
+5. **Build a daily brief rather than a general agent platform.** That is ticket 02.
+   - Kevin: *"i want a personal daily digest delivered to my phone. canvas, money, car, ai news + topics im interested in, a morning brief basically. it should be a button, pressing it opens a modal i can dismiss. so i can bring it back up anytime. updates daily."*
+   - It runs as a server job on the existing Gemini key and Cloud Scheduler. No hosted agent runtime (Claude or Gemini Managed Agents) is used: the job's shape is one grounded call per day, and a new vendor would add cost and send bank data further out for no gain.
+
+## Questions asked (answered above)
 
 - Voice: stay on Gemini (proposed) or switch anyway?
 - Item 3: seam only, seam plus OpenAI reasoning, or neither?

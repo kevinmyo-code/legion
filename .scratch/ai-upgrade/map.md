@@ -4,7 +4,7 @@ title: "AI tooling upgrade: provider choice, decision models, agent platforms"
 charted: 2026-10-22
 charted-by: "Kevin + Opus"
 effort: "`.scratch/ai-upgrade/`"
-tickets: 1
+tickets: 3
 open: 1
 status: open
 tags: [map]
@@ -27,5 +27,7 @@ September and October 2026 where it pays, and stays put where it does not.
 
 ## Tickets
 
-- 01 decision (open): which provider for voice and reasoning, whether decision models earn a place,
+- 01 decision (resolved): which provider for voice and reasoning, whether decision models earn a place,
   which agent-platform upgrades to build
+- 02 build: the daily brief (5am server job, HOME button, modal)
+- 03 build: engine MCP on the 2026-07-28 spec with OAuth, for Claude and the Gemini app

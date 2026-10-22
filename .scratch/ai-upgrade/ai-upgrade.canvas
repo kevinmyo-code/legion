@@ -8,8 +8,43 @@
       "y": 0,
       "width": 320,
       "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "96d26a9d4ddf6736",
+      "type": "file",
+      "file": ".scratch/ai-upgrade/issues/02-daily-brief.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1bf3b147f74771f6",
+      "type": "file",
+      "file": ".scratch/ai-upgrade/issues/03-mcp-for-claude-and-gemini.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
       "color": "1"
     }
   ],
-  "edges": []
+  "edges": [
+    {
+      "id": "d1e2d6190616879a",
+      "fromNode": "1bcf73668d61ff7d",
+      "fromSide": "right",
+      "toNode": "96d26a9d4ddf6736",
+      "toSide": "left"
+    },
+    {
+      "id": "fd0d50479d36972c",
+      "fromNode": "1bcf73668d61ff7d",
+      "fromSide": "right",
+      "toNode": "1bf3b147f74771f6",
+      "toSide": "left"
+    }
+  ]
 }
