@@ -432,7 +432,9 @@ here.
   What remains binding, and is narrower on purpose:
   - **No compulsion mechanics.** Streaks, re-engagement pings, manufactured return, guilt for being
     away. Warmth is welcome; a mechanism engineered to pull someone back is not. The difference is
-    whether the feeling serves the user or the retention.
+    whether the feeling serves the user or the retention. **One streak is allowed (Kevin,
+    2026-10-22, ADR 0062): dumb mode's, which counts time AWAY from the phone.** A streak that pulls
+    him back into an app stays banned.
 
     **The compulsion test, so this is checkable rather than felt about (Kevin, 2026-08-21,
     `.scratch/proactive-mode/issues/03-compulsion-test.md`).** An Alfred rest-nudge is mechanically

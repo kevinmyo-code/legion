@@ -68,6 +68,7 @@ Format and the test for whether something deserves an ADR:
 | 0059 | [[0059-headunit-is-a-limb-in-this-repo\|The head unit is a limb of the engine, and it lives in this repo]] | accepted | 2026-10-14 | - |
 | 0060 | [[0060-tetris-race-through-the-engine\|Built-in Tetris, and a household score race held transiently by the engine]] | accepted | 2026-10-18 | - |
 | 0061 | [[0061-books-launcher\|Books are a HOME launcher with LEGION's own reader, read from a folder grant]] | accepted | 2026-10-19 | - |
+| 0062 | [[0062-dumb-phone-mode\|Dumb phone mode is a manual switch that shrinks HOME, holds notifications and silences strangers]] | accepted | 2026-10-22 | - |
 
 ## Superseded
 

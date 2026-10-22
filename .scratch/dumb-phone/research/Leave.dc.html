@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Leaving dumb mode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#EDEDED;text-decoration:none}a:hover{color:#FFFFFF}
+input:focus{outline:2px solid #EDEDED;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 384px; height: 832px; box-sizing: border-box; background: #0E0E0E; color: #EDEDED; font-family: 'Inter Tight', system-ui, sans-serif; padding: 72px 28px 28px; display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 13px; color: #9A9A9A; font-family: 'JetBrains Mono', monospace">dumb for 2h 14m</div>
+<h1 style="margin: 0; font-size: 30px; font-weight: 500; line-height: 1.2">Leave dumb mode?</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #B5B5B5">Wait out the timer, then type the sentence. Mia, Mom and Dad can reach you either way.</p>
+</div>
+<sc-if value="{{waiting}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 24px 0">
+<div role="timer" aria-live="polite" style="font-family: 'JetBrains Mono', monospace; font-size: 96px; letter-spacing: -4px; line-height: 1">{{remaining}}</div>
+<div style="width: 100%; height: 4px; background: #2A2A2A; border-radius: 2px">
+<div style="height: 4px; background: #EDEDED; border-radius: 2px; width: {{barWidth}}"></div>
+</div>
+<div style="font-size: 14px; color: #9A9A9A">seconds. Put the phone down if you like.</div>
+</div>
+</sc-if>
+<sc-if value="{{typing}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<label for="leave-sentence" style="font-size: 14px; color: #9A9A9A">Type: <span style="color: #EDEDED">{{sentence}}</span></label>
+<input id="leave-sentence" type="text" autocomplete="off" value="{{typed}}" onChange="{{onType}}" style="font-family: 'Inter Tight', system-ui, sans-serif; font-size: 17px; color: #EDEDED; background: #1A1A1A; border: 1px solid #3A3A3A; border-radius: 14px; padding: 14px 16px; min-height: 52px; box-sizing: border-box; width: 100%">
+<div style="font-size: 13px; color: #9A9A9A; font-family: 'JetBrains Mono', monospace">{{matchNote}}</div>
+</div>
+</sc-if>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<sc-if value="{{canLeave}}" hint-placeholder-val="{{ false }}">
+<a href="Digest.dc.html" style="font-size: 17px; font-weight: 500; text-align: center; border: 1px solid #EDEDED; border-radius: 999px; padding: 15px; min-height: 52px; box-sizing: border-box">Leave dumb mode</a>
+</sc-if>
+<a href="Main.dc.html" style="font-size: 17px; font-weight: 600; text-align: center; background: #EDEDED; color: #0E0E0E; border-radius: 999px; padding: 15px; min-height: 52px; box-sizing: border-box">Stay in dumb mode</a>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"countdownSeconds":{"editor":"int","default":60,"min":3,"max":300,"section":"Prototype"},"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { left: this.total(), typed: '' };
+}
+total() {
+return this.props.countdownSeconds ?? 60;
+}
+componentDidMount() {
+this.timer = setInterval(() => {
+this.setState((s) => (s.left > 0 ? { left: s.left - 1 } : s));
+}, 1000);
+}
+componentWillUnmount() {
+clearInterval(this.timer);
+}
+renderVals() {
+const sentence = 'I am choosing to leave dumb mode';
+const left = this.state.left;
+const total = this.total();
+const waiting = left > 0;
+const matches = this.state.typed.trim().toLowerCase() === sentence.toLowerCase();
+return {
+sentence,
+waiting,
+typing: !waiting,
+remaining: String(left),
+barWidth: Math.round(((total - left) / total) * 100) + '%',
+typed: this.state.typed,
+onType: (e) => this.setState({ typed: e.target.value }),
+matchNote: matches ? 'matches' : 'not yet',
+canLeave: !waiting && matches
+};
+}
+}
+</script>
+</body>
+</html>

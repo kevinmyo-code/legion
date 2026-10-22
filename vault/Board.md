@@ -40,6 +40,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[01-mode-home-leave\|01]] | build | Build: mode state, Home A, Leave flow, tile, settings row |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -185,6 +186,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[09-android-http-backends\|09]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[11-fresh-clone-end-to-end\|11]] | test | Fresh clone, end to end: the clone-and-run test in its new shape  waiting on [[10-cutover\|10]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[02-hold-digest-people\|02]] | build | Build: notification hold, digest, people picker, DND policy  waiting on [[01-mode-home-leave\|01]] |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[03-call-screening\|03]] | build | Build: call screening  waiting on [[01-mode-home-leave\|01]] |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[04-accessibility-bounce\|04]] | build | Build: accessibility bounce  waiting on [[01-mode-home-leave\|01]] |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[05-grayscale-streak\|05]] | build | Build: grayscale and streak  waiting on [[01-mode-home-leave\|01]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[11-the-phone-bridges-engine-tools\|11]] | build | The phone bridges engine tools into its Live session  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[12-oauth-for-third-party-clients\|12]] | build | OAuth for third-party clients  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
@@ -269,6 +274,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/django-engine/map\|django-engine]] | 16 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | 5 | 5 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
