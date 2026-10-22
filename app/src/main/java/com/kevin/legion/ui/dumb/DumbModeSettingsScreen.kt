@@ -1,6 +1,8 @@
 package com.kevin.legion.ui.dumb
 
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -138,6 +140,11 @@ private fun GrantRowView(row: DumbGrantRow) {
                         when (val action = row.action) {
                             is GrantAction.OpenSettings -> context.startActivity(
                                 Intent(action.intentAction).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                            GrantAction.OpenAppInfo -> context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    .setData(Uri.fromParts("package", context.packageName, null))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                             )
                             is GrantAction.RequestRole ->
                                 DumbSetup.roleRequestIntent(context, action.role)?.let(roleLauncher::launch)

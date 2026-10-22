@@ -73,6 +73,8 @@ fun DumbPeopleSection() {
     OutlinedButton(onClick = {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
             PackageManager.PERMISSION_GRANTED
+        // The contacts picker is another app's window: tell the bounce LEGION opened it on purpose.
+        graph.bounce.allowance.armGrace()
         if (granted) pick.launch(null) else askContacts.launch(Manifest.permission.READ_CONTACTS)
     }) { Text("Add from contacts") }
     notice?.let { Text(it, style = LegionType.stamp, color = sem.estimated) }

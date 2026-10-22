@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dumb phone mode's bounce service (ADR 0062). Window-state changes only, and no access to window
+  content: it learns WHICH app just opened, never what is on its screen. No packageNames filter,
+  because the point is to notice any app that is not on the kept list.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/dumb_bounce_description"
+    android:notificationTimeout="100" />

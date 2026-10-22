@@ -110,6 +110,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[01-mode-home-leave\|01]] | build | Build: mode state, Home A, Leave flow, tile, settings row |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[02-hold-digest-people\|02]] | build | Build: notification hold, digest, people picker, DND policy |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[03-call-screening\|03]] | build | Build: call screening |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[04-accessibility-bounce\|04]] | build | Build: accessibility bounce |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[10-the-engine-mcp-endpoint\|10]] | build | The engine's MCP endpoint, read and write tools, and the tenancy leak test over it |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
@@ -188,7 +189,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[09-android-http-backends\|09]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[11-fresh-clone-end-to-end\|11]] | test | Fresh clone, end to end: the clone-and-run test in its new shape  waiting on [[10-cutover\|10]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
-| [[.scratch/dumb-phone/map\|dumb-phone]] | [[04-accessibility-bounce\|04]] | build | Build: accessibility bounce  waiting on [[01-mode-home-leave\|01]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[05-grayscale-streak\|05]] | build | Build: grayscale and streak  waiting on [[01-mode-home-leave\|01]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[11-the-phone-bridges-engine-tools\|11]] | build | The phone bridges engine tools into its Live session  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[12-oauth-for-third-party-clients\|12]] | build | OAuth for third-party clients  waiting on [[10-the-engine-mcp-endpoint\|10]] |

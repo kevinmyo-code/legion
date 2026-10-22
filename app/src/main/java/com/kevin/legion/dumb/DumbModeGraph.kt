@@ -29,6 +29,15 @@ class DumbModeGraph(private val app: Application) {
         )
     }
 
+    val bounce: DumbBounce by lazy {
+        DumbBounce(
+            isOn = { controller.state.value.on },
+            ownPackage = app.packageName,
+            env = AndroidBounceEnvironment(app, AndroidKeptAppResolver(app)),
+            allowance = BounceAllowance(),
+        )
+    }
+
     private val alert: ChosenPersonAlert by lazy { ChosenPersonAlert(app, alertSwitch) }
 
     private val handler: HeldNotificationHandler by lazy {
@@ -40,7 +49,11 @@ class DumbModeGraph(private val app: Application) {
                 people = { people.people.value },
             ),
             digest = digest,
-            reAlert = { name, pkg, key, tap -> alert.alert(name, appLabel(pkg), key, tap) },
+            reAlert = { name, pkg, key, tap ->
+                // Off by default, see BounceAllowance.ALLOW_APP_AFTER_CHOSEN_PERSON: an open question.
+                if (BounceAllowance.ALLOW_APP_AFTER_CHOSEN_PERSON) bounce.allowance.allowPackage(pkg)
+                alert.alert(name, appLabel(pkg), key, tap)
+            },
         )
     }
 

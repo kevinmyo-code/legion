@@ -75,7 +75,13 @@ fun DumbHome(
 
     val booksViewModel: BooksViewModel = viewModel(factory = BooksViewModel.Factory(context))
     val booksState by booksViewModel.state.collectAsStateWithLifecycle()
-    val pickBooksFolder = rememberBooksFolderPicker(booksViewModel)
+    val openFolderPicker = rememberBooksFolderPicker(booksViewModel)
+    val graph = remember(context) { (context.applicationContext as com.kevin.legion.MidnightApplication).dumb }
+    // The folder picker is the system's window, not a kept app: tell the bounce LEGION opened it.
+    val pickBooksFolder: () -> Unit = {
+        graph.bounce.allowance.armGrace()
+        openFolderPicker()
+    }
     var booksOpen by remember { mutableStateOf(false) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { booksViewModel.refresh() }
     // A book that opened closes the sheet, as on the normal HOME: the reader is what is left to see.

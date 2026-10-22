@@ -455,6 +455,33 @@
             </intent-filter>
         </service>
 
+        <!-- Dumb mode's bounce (ADR 0062): window-state changes only, no window content (see
+             res/xml/dumb_bounce_service.xml). Android runs it only after the user turns it on in
+             Accessibility settings; a sideloaded build first needs "Allow restricted settings" under
+             App info. It sends a hidden app home and shows DumbBounceActivity. -->
+        <service
+            android:name=".dumb.DumbBounceService"
+            android:exported="true"
+            android:label="Dumb mode"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/dumb_bounce_service" />
+        </service>
+
+        <!-- The "Dumb mode is on" screen a bounced app leaves behind. Not exported: only the bounce
+             service starts it. Out of Recents so it does not linger as a way back to anything. -->
+        <activity
+            android:name=".ui.dumb.DumbBounceActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="Dumb mode"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Legion" />
+
         <!-- The dumb phone mode tile (ADR 0062): off to on in one tap; leaving is never a tile tap. -->
         <service
             android:name=".dumb.DumbModeTileService"

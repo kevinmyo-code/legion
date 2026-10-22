@@ -1,11 +1,13 @@
 package com.kevin.legion.dumb
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationManager
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import androidx.core.app.NotificationManagerCompat
 
 /**
@@ -17,6 +19,7 @@ data class DumbGrantFacts(
     val notificationAccess: Boolean,
     val dndAccess: Boolean,
     val callScreeningRole: Boolean,
+    val accessibilityEnabled: Boolean = true,
     /** Call screening needs Android 10 (API 29) for the role; below it the row says so and has no button. */
     val callScreeningSupported: Boolean = true,
 )
@@ -28,6 +31,9 @@ sealed interface GrantAction {
 
     /** Asks for a role through the system's own dialog. */
     data class RequestRole(val role: String) : GrantAction
+
+    /** Opens LEGION's own App info page, where "Allow restricted settings" lives for a sideloaded build. */
+    data object OpenAppInfo : GrantAction
 
     /** No button: the grant cannot be made from a screen. */
     data object None : GrantAction
@@ -44,7 +50,7 @@ data class DumbGrantRow(
     /** Said when this grant is missing and dumb mode is on: what is NOT happening. */
     val missingEffect: String,
 ) {
-    enum class Id { NOTIFICATION_ACCESS, DND_ACCESS, CALL_SCREENING }
+    enum class Id { NOTIFICATION_ACCESS, DND_ACCESS, CALL_SCREENING, ACCESSIBILITY, RESTRICTED_SETTINGS }
 }
 
 object DumbSetup {
@@ -76,7 +82,45 @@ object DumbSetup {
             missingEffect = "The phone's sounds are not being silenced.",
         ),
         callScreeningRow(facts),
+        accessibilityRow(facts),
+    ) + restrictedSettingsRow(facts)
+
+    private fun accessibilityRow(facts: DumbGrantFacts) = DumbGrantRow(
+        id = DumbGrantRow.Id.ACCESSIBILITY,
+        title = "Accessibility service",
+        state = if (facts.accessibilityEnabled) {
+            "On. A hidden app that opens is sent back home."
+        } else {
+            "Off. Hidden apps opened another way are not sent home. Turn on \"Dumb mode\" under Downloaded apps."
+        },
+        granted = facts.accessibilityEnabled,
+        buttonLabel = "Open accessibility",
+        action = GrantAction.OpenSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+        missingEffect = "Hidden apps are not sent home.",
     )
+
+    /**
+     * Shown only while the accessibility service is off. A sideloaded build cannot be switched on
+     * until "Allow restricted settings" is ticked in App info (its menu), which Android hides until a
+     * first attempt is refused. The user can go there first.
+     */
+    private fun restrictedSettingsRow(facts: DumbGrantFacts): List<DumbGrantRow> =
+        if (facts.accessibilityEnabled) {
+            emptyList()
+        } else {
+            listOf(
+                DumbGrantRow(
+                    id = DumbGrantRow.Id.RESTRICTED_SETTINGS,
+                    title = "Allow restricted settings",
+                    state = "If the accessibility switch is greyed out: open App info, tap the three dots at the " +
+                        "top right, then Allow restricted settings. Needed once for a sideloaded app.",
+                    granted = true,
+                    buttonLabel = "Open App info",
+                    action = GrantAction.OpenAppInfo,
+                    missingEffect = "",
+                ),
+            )
+        }
 
     private fun callScreeningRow(facts: DumbGrantFacts) = DumbGrantRow(
         id = DumbGrantRow.Id.CALL_SCREENING,
@@ -98,6 +142,9 @@ object DumbSetup {
         missingEffect = "Strangers' calls still ring.",
     )
 
+    /** The bounce service's class name, as the system lists it. */
+    const val BOUNCE_SERVICE = "com.kevin.legion.dumb.DumbBounceService"
+
     /** `RoleManager.ROLE_CALL_SCREENING`, spelled out so this file's row logic stays plain Kotlin. */
     const val ROLE_CALL_SCREENING = "android.app.role.CALL_SCREENING"
 
@@ -111,8 +158,18 @@ object DumbSetup {
             .contains(context.packageName),
         dndAccess = context.getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted,
         callScreeningRole = callScreeningHeld(context),
+        accessibilityEnabled = accessibilityOn(context),
         callScreeningSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
     )
+
+    private fun accessibilityOn(context: Context): Boolean = runCatching {
+        context.getSystemService(AccessibilityManager::class.java)
+            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .any { info ->
+                val service = info.resolveInfo.serviceInfo
+                service.packageName == context.packageName && service.name == BOUNCE_SERVICE
+            }
+    }.getOrDefault(false)
 
     private fun callScreeningHeld(context: Context): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
