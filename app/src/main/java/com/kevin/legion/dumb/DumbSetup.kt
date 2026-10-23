@@ -2,6 +2,7 @@ package com.kevin.legion.dumb
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationManager
+import android.app.WallpaperManager
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
@@ -20,6 +21,8 @@ data class DumbGrantFacts(
     val dndAccess: Boolean,
     val callScreeningRole: Boolean,
     val accessibilityEnabled: Boolean = true,
+    /** LEGION's live wallpaper is the current HOME wallpaper. (The lock screen's cannot be read below API 34.) */
+    val rainWallpaperSet: Boolean = false,
     /** Call screening needs Android 10 (API 29) for the role; below it the row says so and has no button. */
     val callScreeningSupported: Boolean = true,
 )
@@ -34,6 +37,9 @@ sealed interface GrantAction {
 
     /** Opens LEGION's own App info page, where "Allow restricted settings" lives for a sideloaded build. */
     data object OpenAppInfo : GrantAction
+
+    /** Opens the system live-wallpaper preview for LEGION's Matrix rain. */
+    data object PickWallpaper : GrantAction
 
     /** No button: the grant cannot be made from a screen. */
     data object None : GrantAction
@@ -50,7 +56,15 @@ data class DumbGrantRow(
     /** Said when this grant is missing and dumb mode is on: what is NOT happening. */
     val missingEffect: String,
 ) {
-    enum class Id { NOTIFICATION_ACCESS, DND_ACCESS, CALL_SCREENING, ACCESSIBILITY, RESTRICTED_SETTINGS }
+    enum class Id {
+        NOTIFICATION_ACCESS,
+        DND_ACCESS,
+        CALL_SCREENING,
+        ACCESSIBILITY,
+        RESTRICTED_SETTINGS,
+        RAIN_WALLPAPER,
+        RAIN_SCREENSAVER,
+    }
 }
 
 object DumbSetup {
@@ -83,7 +97,36 @@ object DumbSetup {
         ),
         callScreeningRow(facts),
         accessibilityRow(facts),
-    ) + restrictedSettingsRow(facts)
+    ) + restrictedSettingsRow(facts) + rainRows(facts)
+
+    /**
+     * The two optional looks (Kevin, 2026-10-22). They are never "missing": nothing is wrong with the
+     * mode without them, so they are always [DumbGrantRow.granted] and never appear in [notActive].
+     * The wallpaper row does not claim the lock screen works: Samsung may refuse a live wallpaper there.
+     */
+    private fun rainRows(facts: DumbGrantFacts): List<DumbGrantRow> = listOf(
+        DumbGrantRow(
+            id = DumbGrantRow.Id.RAIN_WALLPAPER,
+            title = "Matrix rain wallpaper",
+            state = (if (facts.rainWallpaperSet) "Set as the home wallpaper. " else "Not set. ") +
+                "The system preview lets you pick Home, Lock or both. Samsung phones may refuse a live wallpaper " +
+                "on the lock screen; if yours does, only the home screen gets it.",
+            granted = true,
+            buttonLabel = "Preview and set",
+            action = GrantAction.PickWallpaper,
+            missingEffect = "",
+        ),
+        DumbGrantRow(
+            id = DumbGrantRow.Id.RAIN_SCREENSAVER,
+            title = "Charging screensaver",
+            state = "Opens Screen saver settings. Choose Matrix rain there and set it to start while charging. " +
+                "LEGION does not turn it on for you.",
+            granted = true,
+            buttonLabel = "Open screen saver",
+            action = GrantAction.OpenSettings(Settings.ACTION_DREAM_SETTINGS),
+            missingEffect = "",
+        ),
+    )
 
 
     private fun accessibilityRow(facts: DumbGrantFacts) = DumbGrantRow(
@@ -143,6 +186,9 @@ object DumbSetup {
         missingEffect = "Strangers' calls still ring.",
     )
 
+    /** The live wallpaper service's class name, as the system lists it. */
+    const val RAIN_WALLPAPER_SERVICE = "com.kevin.legion.dumb.rain.MatrixWallpaperService"
+
     /** The bounce service's class name, as the system lists it. */
     const val BOUNCE_SERVICE = "com.kevin.legion.dumb.DumbBounceService"
 
@@ -160,8 +206,13 @@ object DumbSetup {
         dndAccess = context.getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted,
         callScreeningRole = callScreeningHeld(context),
         accessibilityEnabled = accessibilityOn(context),
+        rainWallpaperSet = rainWallpaperSet(context),
         callScreeningSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
     )
+
+    private fun rainWallpaperSet(context: Context): Boolean = runCatching {
+        WallpaperManager.getInstance(context).wallpaperInfo?.component?.className == RAIN_WALLPAPER_SERVICE
+    }.getOrDefault(false)
 
     private fun accessibilityOn(context: Context): Boolean = runCatching {
         context.getSystemService(AccessibilityManager::class.java)

@@ -1,5 +1,7 @@
 package com.kevin.legion.ui.dumb
 
+import android.app.WallpaperManager
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -37,6 +39,7 @@ import com.kevin.legion.dumb.AndroidKeptAppResolver
 import com.kevin.legion.dumb.DumbGrantRow
 import com.kevin.legion.dumb.DumbSetup
 import com.kevin.legion.dumb.GrantAction
+import com.kevin.legion.dumb.rain.MatrixWallpaperService
 import com.kevin.legion.dumb.KeptEntry
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
@@ -140,6 +143,14 @@ private fun GrantRowView(row: DumbGrantRow) {
                         when (val action = row.action) {
                             is GrantAction.OpenSettings -> context.startActivity(
                                 Intent(action.intentAction).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                            GrantAction.PickWallpaper -> context.startActivity(
+                                Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                                    .putExtra(
+                                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                                        ComponentName(context, MatrixWallpaperService::class.java),
+                                    )
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                             )
                             GrantAction.OpenAppInfo -> context.startActivity(
                                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)

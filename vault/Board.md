@@ -40,7 +40,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
-| [[.scratch/dumb-phone/map\|dumb-phone]] | [[06-matrix-rain\|06]] | build | Build: Matrix code rain (Home A background, live wallpaper, screensaver) |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -113,6 +112,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[03-call-screening\|03]] | build | Build: call screening |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[04-accessibility-bounce\|04]] | build | Build: accessibility bounce |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[05-streak\|05]] | build | Build: streak and time-in-dumb counter |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[06-matrix-rain\|06]] | build | Build: Matrix code rain (Home A background, live wallpaper, screensaver) |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[10-the-engine-mcp-endpoint\|10]] | build | The engine's MCP endpoint, read and write tools, and the tenancy leak test over it |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |

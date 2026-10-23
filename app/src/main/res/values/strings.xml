@@ -11,4 +11,5 @@
     <string name="merchant_alias_remove">Remove rename</string>
     <string name="merchant_alias_bank_text">Bank text: %1$s</string>
     <string name="dumb_bounce_description">Dumb mode (LEGION) uses this only to notice which app has just opened while dumb mode is on, so a hidden app can be sent back to the home screen. It cannot read what is on the screen, and it does nothing when dumb mode is off.</string>
+    <string name="matrix_wallpaper_description">Green code rain falling on black, the same as dumb mode\'s home screen.</string>
 </resources>

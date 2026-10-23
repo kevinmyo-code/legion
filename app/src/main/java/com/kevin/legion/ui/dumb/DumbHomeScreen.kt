@@ -166,6 +166,7 @@ fun DumbHome(
 
 /** Home A, stateless (prototype `Main.dc.html`): clock, date, running time, the kept list, the footer. */
 @Composable
+@Suppress("LongMethod") // one screen; the rain Box wrapper put it one line over
 fun DumbHomeContent(
     ui: DumbUiState,
     message: String?,
@@ -173,10 +174,13 @@ fun DumbHomeContent(
     onLeave: () -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
+    Box(Modifier.fillMaxSize().background(DumbColors.ground)) {
+    // The rain runs only while the screen is resumed; the scrim keeps the list above 4.5:1 over it.
+    CodeRainBackground(Modifier.fillMaxSize())
     Column(
         Modifier
             .fillMaxSize()
-            .background(DumbColors.ground)
+            .background(DumbColors.scrim)
             .padding(start = 28.dp, end = 28.dp, top = 40.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
@@ -228,6 +232,7 @@ fun DumbHomeContent(
             )
             PillButton("Leave", onLeave, primary = false)
         }
+    }
     }
 }
 

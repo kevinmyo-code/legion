@@ -482,6 +482,36 @@
             android:launchMode="singleTop"
             android:theme="@style/Theme.Legion" />
 
+        <!-- Matrix code rain as a live wallpaper (ADR 0062). It draws only while visible. Whether the
+             phone lets it be the LOCK screen wallpaper is the phone maker's call; Samsung may refuse. -->
+        <service
+            android:name=".dumb.rain.MatrixWallpaperService"
+            android:exported="true"
+            android:label="Matrix rain"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/matrix_wallpaper" />
+        </service>
+
+        <!-- Matrix code rain as the charging screensaver (ADR 0062). Chosen in Screen saver settings. -->
+        <service
+            android:name=".dumb.rain.MatrixDreamService"
+            android:exported="true"
+            android:label="Matrix rain"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/matrix_dream" />
+        </service>
+
         <!-- The dumb phone mode tile (ADR 0062): off to on in one tap; leaving is never a tile tap. -->
         <service
             android:name=".dumb.DumbModeTileService"
