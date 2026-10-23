@@ -304,4 +304,111 @@ class ReaderViewModelTest {
         assertEquals(ReaderPanel.NONE, vm.state.value.panel)
         assertNotNull(vm.state.value.content)
     }
+
+    // ---- reading sync (ticket 09) -------------------------------------------------------------
+
+    private class FakeSync(var picked: PickedUp? = null, val onPick: suspend (String) -> Unit = {}) : ReaderSync {
+        val saved = mutableListOf<Triple<String, Double, String?>>()
+        val added = mutableListOf<Pair<String, BookBookmark>>()
+        val deleted = mutableListOf<BookBookmark>()
+        var kicks = 0
+        val picks = mutableListOf<String>()
+
+        override suspend fun pickUp(readId: String): PickedUp? {
+            picks += readId
+            onPick(readId)
+            return picked
+        }
+
+        override suspend fun positionSaved(
+            readId: String,
+            progress: Double,
+            chapterLabel: String?,
+            wireLocator: String?,
+            atMs: Long,
+        ) {
+            saved += Triple(readId, progress, wireLocator)
+        }
+
+        override suspend fun bookmarkAdded(readId: String, bookmark: BookBookmark) {
+            added += readId to bookmark
+        }
+
+        override suspend fun bookmarkDeleted(bookmark: BookBookmark) {
+            deleted += bookmark
+        }
+
+        override fun kick() {
+            kicks++
+        }
+    }
+
+    private fun syncing(store: FakeStore, sync: ReaderSync, conversions: PdfConversions = PdfConversions.None) =
+        ReaderViewModel(
+            documentId = "doc",
+            listenRequested = false,
+            store = store,
+            loader = { LoadedBook.Paged(FakePages(40)) },
+            readAloudFor = { _, _, _ -> error("unused") },
+            now = { 123L },
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            conversions = conversions,
+            sync = sync,
+        )
+
+    @Test fun `a book picked up from another device opens there and says so in words`() {
+        val store = FakeStore(row(BookFormat.PDF))
+        val sync = FakeSync(PickedUp("web")) { store.row = store.row?.copy(pageIndex = 22, lastReadAtMs = 999) }
+        val vm = syncing(store, sync)
+        assertEquals("the page the pull wrote, not the stale row read before it", 22,
+            (vm.state.value.content as ReaderContent.Paged).startPage)
+        assertEquals("Picked up where you left off on the web.", vm.state.value.syncNote)
+    }
+
+    @Test fun `a book nothing moved says nothing`() {
+        val vm = syncing(FakeStore(row(BookFormat.PDF, pageIndex = 4)), FakeSync(null))
+        assertNull(vm.state.value.syncNote)
+        assertEquals(4, (vm.state.value.content as ReaderContent.Paged).startPage)
+    }
+
+    @Test fun `every page turn is queued for sync with the page as its locator`() {
+        val sync = FakeSync()
+        val vm = syncing(FakeStore(row(BookFormat.PDF)), sync)
+        vm.onPage(5)
+        val (readId, progress, locator) = sync.saved.last()
+        assertEquals("doc", readId)
+        assertEquals(5 / 39.0, progress, 1e-9)
+        assertEquals(PagedLocator.of(5), locator)
+    }
+
+    @Test fun `leaving the reader kicks a send`() {
+        val sync = FakeSync()
+        val vm = syncing(FakeStore(row(BookFormat.PDF)), sync)
+        vm.flush()
+        assertEquals(1, sync.kicks)
+    }
+
+    @Test fun `a bookmark gets its engine id at creation and its delete is queued`() {
+        val sync = FakeSync()
+        val vm = syncing(FakeStore(row(BookFormat.PDF)), sync)
+        vm.addBookmark()
+        val (readId, mark) = sync.added.single()
+        assertEquals("doc", readId)
+        assertTrue("an offline phone must be able to mint one", !mark.syncUuid.isNullOrEmpty())
+        vm.deleteBookmark(mark)
+        assertEquals(mark.syncUuid, sync.deleted.single().syncUuid)
+        assertEquals(2, sync.kicks)
+    }
+
+    @Test fun `the EPUB copy of a PDF syncs under its own read id so it maps to the resizable variant`() {
+        val sync = FakeSync()
+        val vm = ReaderViewModel(
+            documentId = "doc", listenRequested = false, store = FakeStore(row(BookFormat.PDF)),
+            loader = { LoadedBook.Failed("stub") }, readAloudFor = { _, _, _ -> error("unused") },
+            now = { 123L }, scope = CoroutineScope(Dispatchers.Unconfined),
+            conversions = FakeConversions(copy = copy), sync = sync,
+        )
+        assertEquals(listOf(ConvertedBooks.derivedId("doc")), sync.picks)
+        assertEquals(BookFormat.EPUB, vm.state.value.format)
+    }
 }

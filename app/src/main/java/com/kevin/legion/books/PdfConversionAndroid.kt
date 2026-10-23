@@ -92,18 +92,33 @@ class PrefsConversionState(context: Context) : PdfHashCache, ConversionNotes {
             prefs.edit().apply { if (value == null) remove(KEY_NOTE) else putString(KEY_NOTE, value) }.apply()
         }
 
-    private fun key(documentId: String) = "hash:$documentId"
+    /**
+     * The document ids whose last cached hash is [sha256] (reading sync, ticket 09, matches a remote row to a file by
+     * it).
+     */
+    fun documentsFor(sha256: String): List<String> =
+        prefs.all.entries
+            .filter { (k, v) -> k.startsWith(KEY_PREFIX) && (v as? String)?.substringBefore(SEP) == sha256 }
+            .map { it.key.removePrefix(KEY_PREFIX) }
+
+    private fun key(documentId: String) = "$KEY_PREFIX$documentId"
 
     private companion object {
         const val PREFS = "books_pdf_conversion"
         const val KEY_NOTE = "server_note"
+        const val KEY_PREFIX = "hash:"
         const val SEP = "|"
         const val ENTRY_PARTS = 3
     }
 }
 
 /** [PdfSource] over the granted Books folder. A document's size and modified time come from the provider. */
-class SafPdfSource(context: Context, private val folders: BooksFolderStore = BooksFolderStore(context)) : PdfSource {
+class SafPdfSource(
+    context: Context,
+    private val folders: BooksFolderStore = BooksFolderStore(context),
+    /** False lists every readable format, for the hash pass of reading sync (ticket 09), which hashes every book. */
+    private val onlyPdf: Boolean = true,
+) : PdfSource {
     private val app = context.applicationContext
 
     @Suppress("ReturnCount") // no folder, no grant, an unreadable root: each is its own way to answer null
@@ -112,7 +127,7 @@ class SafPdfSource(context: Context, private val folders: BooksFolderStore = Boo
         if (!folders.isGranted(tree)) return null
         val scan = BookLibrary(SafRomTree(app.contentResolver, tree)).scan(SafRomTree.rootDocumentId(tree))
         if (scan.unreadable) return null
-        return scan.books.filter { it.format == BookFormat.PDF }.map { book -> stat(tree, book) }
+        return scan.books.filter { !onlyPdf || it.format == BookFormat.PDF }.map { book -> stat(tree, book) }
     }
 
     override fun open(ref: PdfRef): InputStream? {

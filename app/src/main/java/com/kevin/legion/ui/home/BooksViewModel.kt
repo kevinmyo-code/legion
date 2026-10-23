@@ -14,6 +14,7 @@ import com.kevin.legion.books.AndroidPdfConversions
 import com.kevin.legion.books.BookCovers
 import com.kevin.legion.books.BookFormat
 import com.kevin.legion.books.PdfConversionScheduler
+import com.kevin.legion.books.ReadingSyncScheduler
 import com.kevin.legion.books.PdfSheetInfo
 import com.kevin.legion.books.BookItem
 import com.kevin.legion.books.BookOutcome
@@ -61,6 +62,10 @@ class BooksViewModel(
     private val enqueueConversion: () -> Unit = {},
     /** Which PDFs are resizable and how many still wait, read without opening any PDF. */
     private val pdfInfo: suspend (List<BookItem>) -> PdfSheetInfo = { PdfSheetInfo.None },
+    /** Starts a reading-sync pass after a scan (WorkManager in production, nothing in tests; books ticket 09). */
+    private val enqueueSync: () -> Unit = {},
+    /** The sheet's line about reading progress waiting to sync, or null. */
+    private val syncLine: suspend () -> String? = { null },
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -80,6 +85,9 @@ class BooksViewModel(
             apply(loaded)
             if (loaded is CatalogState.Ready) {
                 if (loaded.items.any { it.book.format == BookFormat.PDF }) enqueueConversion()
+                enqueueSync()
+                val line = withContext(io) { syncLine() }
+                _state.update { it.copy(syncLine = line) }
                 applyPdfInfo(withContext(io) { pdfInfo(loaded.items) })
                 prepare(loaded.items)
             }
@@ -205,6 +213,8 @@ class BooksViewModel(
                 cachedCount = folders::cachedCount,
                 enqueueConversion = { PdfConversionScheduler.enqueue(app) },
                 pdfInfo = { items -> PdfSheetInfo.of(AndroidPdfConversions(app), items) },
+                enqueueSync = { ReadingSyncScheduler.enqueue(app) },
+                syncLine = { ReadingSyncScheduler.sheetLine(app) },
                 coverOf = { book ->
                     withContext(Dispatchers.IO) {
                         cache.cached(book.documentId)?.let(BookCovers::decode)?.asImageBitmap()

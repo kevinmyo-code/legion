@@ -48,6 +48,8 @@ data class BooksUiState(
     val coverVersion: Int = 0,
     /** "2 PDFs waiting for Wi-Fi" (ticket 05); null when no PDF is waiting to be converted. */
     val pdfLine: String? = null,
+    /** "Reading progress will sync when the server is reachable." while writes wait for the engine; null otherwise. */
+    val syncLine: String? = null,
 ) {
     /** One shelf per shelf kind that has files, in [BookShelf] order. */
     val shelves: List<BookShelfUi>

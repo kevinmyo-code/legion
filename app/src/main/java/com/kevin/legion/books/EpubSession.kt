@@ -53,6 +53,24 @@ class EpubSession private constructor(
         return timeLeftLabel(minutesLeftInChapter(remaining))
     }
 
+    /**
+     * Where to open: the saved locator when this book has the chapter file it names, else the position
+     * nearest its total progression, flagged [StartPlace.near] so the reader says "near" and never
+     * claims the exact spot (ticket 07: another device's locator may not apply to this layout).
+     * No saved locator at all is the start of the book, not a guess.
+     */
+    fun startFor(locatorJson: String?, progress: Double): StartPlace {
+        val hrefs = positions.map { it.href.toString().substringBefore('#') }.toSet()
+        return when {
+            locatorJson == null -> StartPlace(null, near = false)
+            LocatorFit.fits(locatorJson, hrefs) -> StartPlace(locatorJson, near = false)
+            else -> {
+                val index = EpubStart.nearestIndex(positions.map { it.locations.totalProgression ?: 0.0 }, progress)
+                StartPlace(index?.let { positions[it].toJSON().toString() }, near = true)
+            }
+        }
+    }
+
     companion object {
         suspend fun of(publication: Publication): EpubSession {
             val positions = publication.positions()

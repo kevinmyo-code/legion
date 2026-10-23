@@ -65,6 +65,25 @@ class EpubSessionTest {
         assertTrue(place.progress in 0.0..1.0)
     }
 
+    @Test fun `a locator from this book opens exactly there, a foreign one opens near by progress`() = runBlocking {
+        val opened = epub.open(fixture(3)) as EpubOpenResult.Opened
+        val session = EpubSession.of(opened.publication)
+        val own = session.describe(opened.publication.locatorFromLink(session.linkAt(1)!!)!!)
+        val exact = session.startFor(own.locatorJson, own.progress)
+        assertEquals(own.locatorJson, exact.locatorJson)
+        assertEquals(false, exact.near)
+
+        // Another toolkit's locator naming a chapter file this book does not have: fall back, and say near.
+        val foreign = """{"href":"no-such-chapter.xhtml","type":"application/xhtml+xml"}"""
+        val near = session.startFor(foreign, own.progress)
+        assertEquals(true, near.near)
+        assertNotNull(near.locatorJson)
+        assertTrue(near.locatorJson!!.contains("href"))
+
+        // No saved place at all is the start of the book, not a guess.
+        assertEquals(StartPlace(null, near = false), session.startFor(null, 0.0))
+    }
+
     @Test fun `time left is an estimate in words`() {
         assertEquals("14 min left in chapter", timeLeftLabel(14))
         assertEquals("Less than a minute left in chapter", timeLeftLabel(0))

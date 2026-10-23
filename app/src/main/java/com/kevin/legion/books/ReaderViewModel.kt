@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.json.JSONObject
@@ -73,6 +74,8 @@ class ReaderViewModel(
     private val conversions: PdfConversions = PdfConversions.None,
     /** Open the PDF itself even when it has an EPUB copy ("Open original"). */
     private val openOriginal: Boolean = false,
+    /** Reading sync (ticket 09): pulls a newer place before opening, queues every save and bookmark. */
+    private val sync: ReaderSync = ReaderSync.None,
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -111,6 +114,7 @@ class ReaderViewModel(
         this.scope.launch { load() }
     }
 
+    @Suppress("LongMethod") // one branch per kind of book, each a few lines; splitting would hide the order
     private suspend fun load() {
         val row = store.row(documentId)
         val format = row?.let { runCatching { BookFormat.valueOf(it.format) }.getOrNull() }
@@ -121,10 +125,13 @@ class ReaderViewModel(
         val book = Book(row.documentId, row.fileName, format)
         val reading = resolveReading(row, book)
         val readBook = reading.book
-        val readRow = reading.row
         val readFormat = readBook.format
         val copy = reading.copied
         readId = readBook.documentId
+        // A newer place from another device is pulled BEFORE the starting place is fixed, but never
+        // for longer than PICK_UP_MS: an unreachable engine must not hold the page hostage.
+        val pickedUp = withTimeoutOrNull(PICK_UP_MS) { sync.pickUp(readId) }
+        val readRow = if (pickedUp != null) store.row(readId) ?: reading.row else reading.row
         _state.update {
             it.copy(
                 title = row.title, format = readFormat, bookmarks = emptyList(),
@@ -151,14 +158,19 @@ class ReaderViewModel(
                     )
                 }
                 updatePaged(map.indexOf(spot), save = false)
+                pickedUp?.let { picked ->
+                    _state.update { it.copy(syncNote = ReadingSyncSentences.pickedUp(picked.device, near = false)) }
+                }
             }
             is LoadedBook.Epub -> {
                 session = loaded.session
-                epubStart = readRow.locatorJson
+                val start = loaded.session.startFor(readRow.locatorJson, readRow.progress)
+                epubStart = start.locatorJson
                 readAloud = readAloudFor(loaded.session, { control?.firstVisibleLocatorJson() }, scope)
-                lastEpubJson = readRow.locatorJson
+                lastEpubJson = start.locatorJson
                 _state.update {
                     it.copy(
+                        syncNote = pickedUp?.let { picked -> ReadingSyncSentences.pickedUp(picked.device, start.near) },
                         subtitle = readRow.author ?: if (copy) "Resizable PDF copy" else "EPUB",
                         content = ReaderContent.Epub,
                         toc = loaded.session.toc,
@@ -250,7 +262,11 @@ class ReaderViewModel(
 
     private fun savePaged(progress: Double) {
         val pages = pagedSource?.pageCount ?: return
-        scope.launch { store.savePosition(readId, progress, null, spot.page, pages, spot.locator, now()) }
+        val at = now()
+        scope.launch {
+            store.savePosition(readId, progress, null, spot.page, pages, spot.locator, at)
+            sync.positionSaved(readId, progress, null, PagedLocator.of(spot.page), at)
+        }
     }
 
     private fun updatePaged(index: Int, save: Boolean) {
@@ -287,8 +303,10 @@ class ReaderViewModel(
                 hasPosition = true,
             )
         }
+        val at = now()
         scope.launch {
-            store.savePosition(readId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, now())
+            store.savePosition(readId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, at)
+            sync.positionSaved(readId, place.progress, place.chapterLabel, place.locatorJson, at)
         }
     }
 
@@ -298,10 +316,13 @@ class ReaderViewModel(
         val current = _state.value
         scope.launch {
             if (place != null) {
-                store.savePosition(readId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, now())
+                val at = now()
+                store.savePosition(readId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, at)
+                sync.positionSaved(readId, place.progress, place.chapterLabel, place.locatorJson, at)
             } else if (current.content is ReaderContent.Paged) {
                 savePaged(current.progress.toDouble())
             }
+            sync.kick()
         }
     }
 
@@ -378,9 +399,13 @@ class ReaderViewModel(
             pageIndex = if (s.content is ReaderContent.Paged) spot.page else s.pageIndex,
             progress = s.progress.toDouble(),
             createdAtMs = now(),
+            // Chosen here so a phone with no signal can still create a bookmark the engine will accept.
+            syncUuid = java.util.UUID.randomUUID().toString(),
         )
         scope.launch {
             store.addBookmark(bookmark)
+            sync.bookmarkAdded(readId, bookmark)
+            sync.kick()
             refreshBookmarks()
         }
     }
@@ -388,6 +413,8 @@ class ReaderViewModel(
     fun deleteBookmark(bookmark: BookBookmark) {
         scope.launch {
             store.deleteBookmark(bookmark.id)
+            sync.bookmarkDeleted(bookmark)
+            sync.kick()
             refreshBookmarks()
         }
     }
@@ -443,6 +470,7 @@ class ReaderViewModel(
 
     private companion object {
         const val PERCENT = 100
+        const val PICK_UP_MS = 4_000L
     }
 
     /** Builds the production ViewModel for one book. */
@@ -460,6 +488,7 @@ class ReaderViewModel(
             val settings = ReaderSettingsStore(app)
             val readium = ReadiumEpub(app)
             val conversions = AndroidPdfConversions(app)
+            val sync = AndroidReaderSync(app)
             val loader = ReaderLoader { book ->
                 // The EPUB copy of a PDF lives in app-private storage, not under the granted folder.
                 if (ConvertedBooks.isDerived(book.documentId)) {
@@ -492,6 +521,7 @@ class ReaderViewModel(
                 writeSpread = settings::writeSpreadSplit,
                 conversions = conversions,
                 openOriginal = openOriginal,
+                sync = sync,
             ) as T
         }
 
