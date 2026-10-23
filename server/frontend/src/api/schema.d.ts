@@ -807,6 +807,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/books/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert a PDF to a reflowable EPUB. Nothing is kept on the server.
+         * @description The body is the PDF itself (`Content-Type: application/pdf`), not multipart, and must declare its `Content-Length`; over 30 MiB is refused before it is read. The PDF is converted in a temporary directory deleted before the response is sent. Text only: figures and tables are not carried over. A PDF whose median page has fewer than 200 non-whitespace characters is a scan and is refused as `scanned`.
+         */
+        post: operations["api_books_convert_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/brief/latest": {
         parameters: {
             query?: never;
@@ -3490,6 +3510,14 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        /**
+         * @description * `scanned` - scanned
+         *     * `unreadable` - unreadable
+         *     * `too_big` - too_big
+         *     * `failed` - failed
+         * @enum {string}
+         */
+        BookConvertCodeEnum: "scanned" | "unreadable" | "too_big" | "failed";
         Brief: {
             /** Format: uuid */
             id: string;
@@ -3918,6 +3946,19 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid: string;
+        };
+        ConvertError: {
+            /**
+             * @description `scanned`, `unreadable` and `too_big` are final: sending the same PDF again gets the same answer. `failed` may succeed on a retry.
+             *
+             *     * `scanned` - scanned
+             *     * `unreadable` - unreadable
+             *     * `too_big` - too_big
+             *     * `failed` - failed
+             */
+            code: components["schemas"]["BookConvertCodeEnum"];
+            /** @description A sentence for a person, saying what happened and that nothing was kept. Show it as is. */
+            message: string;
         };
         /**
          * @description * `cookie_jar` - Cookie jar
@@ -7748,6 +7789,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_books_convert_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/pdf": string;
+            };
+        };
+        responses: {
+            /** @description The EPUB, in the response body. */
+            200: {
+                headers: {
+                    /** @description The PDF's page count. */
+                    "X-Legion-Pages"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/epub+zip": string;
+                };
+            };
+            /** @description `too_big`: over 30 MiB. Nothing was read. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvertError"];
+                };
+            };
+            /** @description `scanned`: no text layer. `unreadable`: not a PDF, damaged, password-protected, empty, all margins, or the upload ended early; the message says which. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvertError"];
+                };
+            };
+            /** @description `failed`: the converter failed or ran past 50 s. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvertError"];
                 };
             };
         };

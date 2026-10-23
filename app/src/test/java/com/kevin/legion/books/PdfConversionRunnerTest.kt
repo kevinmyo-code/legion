@@ -169,6 +169,15 @@ class PdfConversionRunnerTest {
         assertTrue(f.uploads.isEmpty())
     }
 
+    @Test fun `the too big sentence rounds half to even like the server's Python`() {
+        // 31.25 MiB is an exact tie: server prints 31.2, Java's %.1f would print 31.3.
+        assertEquals(
+            "This PDF is 31.2 MB; the most the server takes is 30 MB.",
+            PdfConversionRules.tooBigSentence(31L * 1024 * 1024 + 256 * 1024),
+        )
+        assertEquals(30L * 1024 * 1024, PdfConversionRules.MAX_BYTES)
+    }
+
     @Test fun `the too big sentence names the size to one decimal and the 30 MB cap`() {
         assertEquals(
             "This PDF is 34.0 MB; the most the server takes is 30 MB.",

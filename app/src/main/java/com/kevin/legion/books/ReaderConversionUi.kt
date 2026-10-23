@@ -70,3 +70,36 @@ internal fun ConversionNotices(state: ReaderUiState, palette: ReaderPalette, act
         )
     }
 }
+
+/**
+ * The one line reading sync says on open (ticket 09): the book moved to a place another device
+ * recorded, "Picked up where you left off on the web", or "near" when only the progress applied.
+ * Said once per open and dismissed by the reader; it is a statement that the page is not where this
+ * phone left it, so it is never hidden by default.
+ */
+@Composable
+internal fun SyncNotice(state: ReaderUiState, palette: ReaderPalette) {
+    var dismissed by rememberSaveable { mutableStateOf(false) }
+    val note = state.syncNote
+    if (note != null && !dismissed) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(palette.chip)
+                .padding(start = 12.dp, end = 4.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                note,
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { dismissed = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Got it", color = palette.muted)
+            }
+        }
+    }
+}

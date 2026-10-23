@@ -7,13 +7,17 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Update
 
 /**
  * One book the Books launcher has seen, and where the reader left off (ADR 0061, v75 to v76).
  *
- * **Local-only, no sync columns, never sent to the engine** (ADR 0061: reading position, bookmarks
- * and settings stay on the phone). It follows `feed_subscriptions` and the sitrep settings: a small
- * piece of one person's own state, with no engine leg. The key is the SAF document id of the file,
+ * **CORRECTED 2026-10-23 (books ticket 09, ADR 0061 amendment).** This used to say "Local-only, no
+ * sync columns, never sent to the engine". Position and bookmarks now sync through the engine, per
+ * person, newest position wins, keyed by the file's SHA-256 and not by this row's id. This table
+ * still has no sync column: what is waiting to go lives in [BookSyncOutboxRow], and the hash lives
+ * in the hash cache, so a position is pushed from here but never identified by it. Reader settings
+ * stay on the phone. The key is the SAF document id of the file,
  * the same key a ROM uses, so a book that moves out of the folder starts a fresh row rather than
  * guessing at identity.
  *
@@ -45,7 +49,13 @@ data class BookRow(
     val firstSeenAtMs: Long,
 )
 
-/** A saved place in a book. [label] is what the Bookmarks list says in words. */
+/**
+ * A saved place in a book. [label] is what the Bookmarks list says in words.
+ *
+ * [syncUuid] (v78) is the id the engine knows this bookmark by, chosen on the phone so an offline
+ * phone can create one. Null on a bookmark made before sync existed: the next sync run gives it one
+ * and queues it. It is NOT the primary key, so nothing local changed shape.
+ */
 @Entity(tableName = "book_bookmarks", indices = [Index(value = ["documentId"])])
 data class BookBookmark(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -55,9 +65,11 @@ data class BookBookmark(
     val pageIndex: Int,
     val progress: Double,
     val createdAtMs: Long,
+    val syncUuid: String? = null,
 )
 
 @Dao
+@Suppress("TooManyFunctions") // one query per saved fact, as a DAO is
 interface BookDao {
     @Query("SELECT * FROM books")
     suspend fun all(): List<BookRow>
@@ -101,4 +113,22 @@ interface BookDao {
 
     @Query("DELETE FROM book_bookmarks WHERE id = :id")
     suspend fun deleteBookmark(id: Long)
+
+    @Query("SELECT * FROM book_bookmarks WHERE syncUuid = :uuid")
+    suspend fun bookmarkByUuid(uuid: String): BookBookmark?
+
+    @Query("SELECT * FROM book_bookmarks WHERE syncUuid IS NULL")
+    suspend fun bookmarksWithoutUuid(): List<BookBookmark>
+
+    @Query("UPDATE book_bookmarks SET syncUuid = :uuid WHERE id = :id")
+    suspend fun setBookmarkUuid(id: Long, uuid: String)
+
+    @Query("UPDATE book_bookmarks SET syncUuid = NULL WHERE syncUuid = :uuid")
+    suspend fun clearBookmarkUuid(uuid: String)
+
+    @Update
+    suspend fun updateBookmark(bookmark: BookBookmark)
+
+    @Query("DELETE FROM book_bookmarks WHERE syncUuid = :uuid")
+    suspend fun deleteBookmarkByUuid(uuid: String)
 }

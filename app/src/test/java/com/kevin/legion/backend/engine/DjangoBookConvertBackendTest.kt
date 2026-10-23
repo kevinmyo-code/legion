@@ -63,6 +63,11 @@ class DjangoBookConvertBackendTest {
         assertEquals(ConvertReply.Refused(ConversionStatus.SCANNED, sentence), reply)
     }
 
+    @Test fun `a read-only device token's 403 is unavailable, not a burned attempt`() {
+        val reply = convert(EngineTestSupport.RecordingEngine { respond("", HttpStatusCode.Forbidden) })
+        assertTrue(reply is ConvertReply.Unavailable)
+    }
+
     @Test fun `422 unreadable, 413 too big and 502 failed map to their statuses`() {
         val unreadable = refusal("unreadable", HttpStatusCode.UnprocessableEntity, "encrypted")
         val tooBig = refusal("too_big", HttpStatusCode.PayloadTooLarge, "31 MB")
