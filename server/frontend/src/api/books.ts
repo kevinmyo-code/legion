@@ -130,12 +130,13 @@ export class BooksHttpError extends Error {
   }
 }
 
+// The sync routes refuse as `{"detail": ...}` (DRF); the convert route as `{"code", "message"}`.
 function failed(status: number, body: unknown): never {
-  const message =
-    body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
-      ? body.message
-      : `The server answered ${status}.`
-  throw new BooksHttpError(status, message)
+  const said = (key: 'detail' | 'message'): string | undefined =>
+    body && typeof body === 'object' && key in body && typeof (body as Record<string, unknown>)[key] === 'string'
+      ? ((body as Record<string, unknown>)[key] as string)
+      : undefined
+  throw new BooksHttpError(status, said('detail') ?? said('message') ?? `The server answered ${status}.`)
 }
 
 async function readAll<T>(

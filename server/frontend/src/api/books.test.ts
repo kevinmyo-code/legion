@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { listPositions } from './books'
+import { deleteBookmark, listPositions } from './books'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -26,5 +26,19 @@ describe('reading the position list', () => {
     expect(urls[0]).toContain('since=2026-10-23T10%3A00%3A00%2B00%3A00')
     expect(urls[1]).toContain('cursor=p2')
     expect(urls[1]).not.toMatch(/since=[^&]*\+/)
+  })
+})
+
+describe('a refusal shows the engine sentence', () => {
+  const refuse = (body: unknown) => new Response(JSON.stringify(body), { status: 404, headers: { 'Content-Type': 'application/json' } })
+
+  test('reads `detail`, the shape the sync routes refuse with', async () => {
+    vi.stubGlobal('fetch', async () => refuse({ detail: 'Nothing was deleted. No bookmark of yours has that id.' }))
+    await expect(deleteBookmark('00000000-0000-0000-0000-000000000000')).rejects.toThrow('Nothing was deleted. No bookmark of yours has that id.')
+  })
+
+  test('still reads `message`, the shape the convert route refuses with', async () => {
+    vi.stubGlobal('fetch', async () => refuse({ code: 'scanned', message: 'This PDF is scanned pages with no text, so its text cannot be refit.' }))
+    await expect(deleteBookmark('00000000-0000-0000-0000-000000000000')).rejects.toThrow('This PDF is scanned pages')
   })
 })
