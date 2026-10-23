@@ -273,12 +273,16 @@ class DjangoReadingSyncBackend(private val http: EngineHttp) : ReadingSyncBacken
                 )
             } else {
                 SyncReply.Rejected(
-                    failure.body.ifBlank { "The engine refused the reading sync (HTTP ${failure.status})." },
+                    said(failure.body).ifBlank { "The engine refused the reading sync (HTTP ${failure.status})." },
                 )
             }
         is EngineFailure.Malformed -> SyncReply.Rejected(failure.sentence)
         null -> SyncReply.Rejected("Reading sync failed for a reason the engine did not give.")
     }
+
+    /** The engine refuses as `{"detail": "<sentence>"}`; show the sentence, not the JSON around it. */
+    private fun said(body: String): String =
+        runCatching { JSONObject(body).optString("detail") }.getOrNull()?.takeIf { it.isNotBlank() } ?: body
 
     private fun locator(json: JSONObject): String? = json.optJSONObject("locator")?.toString()
 

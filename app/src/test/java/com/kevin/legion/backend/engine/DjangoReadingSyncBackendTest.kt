@@ -130,7 +130,7 @@ class DjangoReadingSyncBackendTest {
         val refused = backend(
             EngineTestSupport.RecordingEngine { json("""{"detail": "Bad hash."}""", HttpStatusCode.BadRequest) },
         ).putPosition(sha, SyncVariant.ORIGINAL, PositionWrite(null, 0.1, null, 5, "phone"))
-        assertTrue((refused as SyncReply.Rejected).sentence.contains("Bad hash."))
+        assertEquals("Bad hash.", (refused as SyncReply.Rejected).sentence)
 
         val failed = backend(EngineTestSupport.RecordingEngine { respond("boom", HttpStatusCode.InternalServerError) })
             .putPosition(sha, SyncVariant.ORIGINAL, PositionWrite(null, 0.1, null, 5, "phone"))
