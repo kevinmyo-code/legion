@@ -54,3 +54,11 @@ never `--reuse-db`, one pytest run at a time.
 
 Needs Kevin's OK like every production deploy. A migration: check memory
 `legion-live-role-no-private-schema` (nothing in `private.*`).
+
+## PROPOSED amendment from ticket 09 (phone), 2026-10-23, not yet accepted
+
+- `locator` for a PDF or CBZ position or bookmark is `{"page": <0-based source page>}`; for an EPUB it is the
+  Readium Locator JSON object as is. Null is allowed and means "use `total_progression`".
+- Both GETs should answer `{"results": [...], "next": <iso or null>}` (the phone also reads a bare array).
+- Phone sends `device: "phone"` and `note: null` on bookmark create.
+
