@@ -758,6 +758,70 @@ def test_briefs_are_scoped_by_household(token_a, token_b, household_a, household
     assert Brief.objects.filter(household=household_b).count() == 1
 
 
+def test_book_positions_and_bookmarks_are_scoped_by_household(
+    token_a, token_b, household_a, household_b
+):
+    """books ticket 08. `book_positions` and `book_bookmarks` have no synced
+    route, so this is their leak test: B never reads A's place in a book or
+    A's bookmarks, B reading the same file is B's own row, and B can neither
+    take over nor delete A's bookmark by its id. Isolation between two
+    members of ONE household is `tests/test_books_sync.py`'s."""
+    import uuid
+
+    from books.models import BookBookmark, BookPosition
+
+    book = "ef" * 32
+    position = {
+        "locator": {"href": "a.xhtml", "locations": {"totalProgression": 0.4}},
+        "total_progression": 0.4,
+        "chapter_label": "A's chapter",
+        "recorded_at": "2026-10-23T10:00:00Z",
+        "device": "A25",
+    }
+    bookmark_id = uuid.uuid4()
+    bookmark = {
+        "book_sha256": book,
+        "variant": "original",
+        "locator": {"page": 3},
+        "total_progression": 0.1,
+        "label": "A's label",
+        "note": "A's note",
+    }
+    _put(token_a, f"/api/books/positions/{book}/original", position)
+    _put(token_a, f"/api/books/bookmarks/{bookmark_id}", bookmark)
+
+    assert token_b.get(f"/api/books/positions?since={EPOCH}").data == []
+    assert token_b.get(f"/api/books/bookmarks?since={EPOCH}").data == []
+
+    # B reading the same file with a NEWER clock writes B's own row, and
+    # newest-wins never reaches across the household line.
+    b_position = _put(
+        token_b,
+        f"/api/books/positions/{book}/original",
+        {**position, "total_progression": 0.9, "recorded_at": "2026-10-23T12:00:00Z",
+         "chapter_label": "B's chapter"},
+    )
+    assert "kept" not in b_position
+    assert BookPosition.objects.filter(household=household_a).get().total_progression == 0.4
+    assert BookPosition.objects.filter(household=household_b).get().total_progression == 0.9
+    assert "B's chapter" not in str(token_a.get("/api/books/positions").data)
+
+    taken = token_b.put(
+        f"/api/books/bookmarks/{bookmark_id}", {**bookmark, "note": "B's note"}, format="json"
+    )
+    assert taken.status_code == 409, taken.data
+    assert "A's" not in str(taken.data)
+    assert token_b.delete(f"/api/books/bookmarks/{bookmark_id}").status_code == 404
+    stored = BookBookmark.objects.get(pk=bookmark_id)
+    assert stored.household_id == household_a.id
+    assert stored.note == "A's note"
+    assert stored.deleted_at is None
+
+    for row in token_a.get("/api/books/positions").data + token_a.get("/api/books/bookmarks").data:
+        assert not SERVER_ONLY_FIELDS & set(row), row
+        assert "user" not in row and "user_id" not in row, row
+
+
 def test_sessions_are_scoped_by_household(token_a, token_b, household_a, household_b, monkeypatch):
     """backend-etl ticket 02. `source_credentials` has no synced route, so
     this is its leak test: B's saved login, and even the fact that B has one,

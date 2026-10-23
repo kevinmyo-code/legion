@@ -1701,6 +1701,120 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/books/bookmarks:
+    get:
+      operationId: api_books_bookmarks_list
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: Rows the server stored at or after this instant (inclusive).
+          Absent or unreadable means every row.
+      tags:
+      - books
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookBookmark'
+          description: The signed-in member's bookmarks, oldest `updated_at` first,
+            deleted ones included with `deleted_at` set. A bare array, never paged.
+  /api/books/bookmarks/{id}:
+    put:
+      operationId: api_books_bookmarks_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: The bookmark's id, a UUID chosen by the reader that made it.
+        required: true
+      tags:
+      - books
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookBookmarkWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookBookmarkWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookBookmarkWrite'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookBookmark'
+          description: The bookmark as stored, created or updated. Updating a deleted
+            bookmark brings it back (`deleted_at` cleared). `created_at` never changes
+            after the first write.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A bad id, hash, variant, progression or body, or an update
+            that would move the bookmark to another book or copy. Nothing was saved.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The id belongs to a bookmark that is not the caller's. Nothing
+            was saved; make the bookmark again with a new id.
+    delete:
+      operationId: api_books_bookmarks_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: The bookmark's id, a UUID chosen by the reader that made it.
+        required: true
+      tags:
+      - books
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookBookmark'
+          description: The bookmark as stored, with `deleted_at` set. Deleting it
+            again changes nothing and answers the same.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The id is not a UUID. Nothing changed.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: 'No bookmark of the caller''s has that id: it was never synced,
+            or it is not theirs. Nothing changed. A reader that made and deleted a
+            bookmark while offline may treat this as done.'
   /api/books/convert:
     post:
       operationId: api_books_convert_create
@@ -1755,6 +1869,84 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConvertError'
           description: '`failed`: the converter failed or ran past 50 s.'
+  /api/books/positions:
+    get:
+      operationId: api_books_positions_list
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: Rows the server stored at or after this instant (inclusive).
+          Absent or unreadable means every row.
+      tags:
+      - books
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookPosition'
+          description: The signed-in member's positions, oldest `updated_at` first.
+            A bare array, never paged.
+  /api/books/positions/{sha256}/{variant}:
+    put:
+      operationId: api_books_positions_update
+      parameters:
+      - in: path
+        name: sha256
+        schema:
+          type: string
+        description: SHA-256 of the book file, 64 hex characters (either case; stored
+          lower).
+        required: true
+      - in: path
+        name: variant
+        schema:
+          type: string
+          enum:
+          - original
+          - resizable
+        description: '`original` or `resizable`.'
+        required: true
+      tags:
+      - books
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookPositionWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookPositionWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookPositionWrite'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookPositionPutResponse'
+          description: The position as stored. Created or replaced when this `recorded_at`
+            is the same as or newer than the stored one. Otherwise nothing was written,
+            the body is the stored row and `kept` is `newer`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A bad hash, variant, progression or body. Nothing was saved.
   /api/brief/latest:
     get:
       operationId: api_brief_latest_retrieve
@@ -8217,6 +8409,91 @@ components:
       - updated_at
       - weight_unit
       - weight_value
+    BookBookmark:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Chosen by the reader that made the bookmark.
+        book_sha256:
+          type: string
+          description: SHA-256 of the book file's bytes, 64 lower-case hex characters.
+        variant:
+          $ref: '#/components/schemas/BookVariantEnum'
+        locator:
+          description: As sent, minus any `text` member.
+        total_progression:
+          type: number
+          format: double
+          description: 0 to 1, how far through the book.
+        label:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
+          description: What the member typed, if anything.
+        created_at:
+          type: string
+          format: date-time
+          description: 'When the bookmark was made: the reader''s `created_at` when
+            it sent one, otherwise when the server first stored it. Never changed
+            by an edit.'
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when the bookmark was deleted. Drop it locally.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the server last stored this row. Use the largest seen
+            as the next `since`.
+      required:
+      - book_sha256
+      - created_at
+      - deleted_at
+      - id
+      - label
+      - locator
+      - note
+      - total_progression
+      - updated_at
+      - variant
+    BookBookmarkWrite:
+      type: object
+      properties:
+        book_sha256:
+          type: string
+        variant:
+          type: string
+        locator:
+          description: Required. A `text` member is dropped and never stored.
+        total_progression:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+        label:
+          type: string
+          nullable: true
+          maxLength: 500
+        note:
+          type: string
+          nullable: true
+          maxLength: 20000
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the member made it, by the reader's clock. Used on create
+            only.
+      required:
+      - book_sha256
+      - locator
+      - total_progression
+      - variant
     BookConvertCodeEnum:
       enum:
       - scanned
@@ -8229,6 +8506,149 @@ components:
         * `unreadable` - unreadable
         * `too_big` - too_big
         * `failed` - failed
+    BookPosition:
+      type: object
+      properties:
+        book_sha256:
+          type: string
+          description: SHA-256 of the book file's bytes, 64 lower-case hex characters.
+        variant:
+          allOf:
+          - $ref: '#/components/schemas/BookVariantEnum'
+          description: |-
+            `original`: the file as it is. `resizable`: the EPUB made from a PDF.
+
+            * `original` - original
+            * `resizable` - resizable
+        locator:
+          nullable: true
+          description: Readium Locator JSON for an EPUB, a page index for PDF/CBZ,
+            as the reader sent it minus any `text` member. Null when only `total_progression`
+            is known.
+        total_progression:
+          type: number
+          format: double
+          description: 0 to 1, how far through the book.
+        chapter_label:
+          type: string
+          nullable: true
+        recorded_at:
+          type: string
+          format: date-time
+          description: When the reader recorded this position, by the reader's clock.
+            Newest wins.
+        device:
+          type: string
+          description: Which reader wrote it, e.g. "A25" or "web".
+        updated_at:
+          type: string
+          format: date-time
+          description: When the server last stored this row. Use the largest seen
+            as the next `since`.
+      required:
+      - book_sha256
+      - chapter_label
+      - device
+      - locator
+      - recorded_at
+      - total_progression
+      - updated_at
+      - variant
+    BookPositionKeptEnum:
+      enum:
+      - newer
+      type: string
+      description: '* `newer` - newer'
+    BookPositionPutResponse:
+      type: object
+      properties:
+        book_sha256:
+          type: string
+          description: SHA-256 of the book file's bytes, 64 lower-case hex characters.
+        variant:
+          allOf:
+          - $ref: '#/components/schemas/BookVariantEnum'
+          description: |-
+            `original`: the file as it is. `resizable`: the EPUB made from a PDF.
+
+            * `original` - original
+            * `resizable` - resizable
+        locator:
+          nullable: true
+          description: Readium Locator JSON for an EPUB, a page index for PDF/CBZ,
+            as the reader sent it minus any `text` member. Null when only `total_progression`
+            is known.
+        total_progression:
+          type: number
+          format: double
+          description: 0 to 1, how far through the book.
+        chapter_label:
+          type: string
+          nullable: true
+        recorded_at:
+          type: string
+          format: date-time
+          description: When the reader recorded this position, by the reader's clock.
+            Newest wins.
+        device:
+          type: string
+          description: Which reader wrote it, e.g. "A25" or "web".
+        updated_at:
+          type: string
+          format: date-time
+          description: When the server last stored this row. Use the largest seen
+            as the next `since`.
+        kept:
+          allOf:
+          - $ref: '#/components/schemas/BookPositionKeptEnum'
+          description: |-
+            Present, as `newer`, only when the write was NOT stored because the stored position has a newer `recorded_at`. The body is then the stored row, unchanged. Absent when the write was stored.
+
+            * `newer` - newer
+      required:
+      - book_sha256
+      - chapter_label
+      - device
+      - locator
+      - recorded_at
+      - total_progression
+      - updated_at
+      - variant
+    BookPositionWrite:
+      type: object
+      properties:
+        locator:
+          nullable: true
+          description: Readium Locator JSON for an EPUB, a page index for PDF/CBZ.
+            A `text` member is dropped and never stored.
+        total_progression:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+        chapter_label:
+          type: string
+          nullable: true
+          maxLength: 1000
+        recorded_at:
+          type: string
+          format: date-time
+          description: When the reader recorded this position, by its own clock.
+        device:
+          type: string
+          default: ''
+          maxLength: 64
+      required:
+      - recorded_at
+      - total_progression
+    BookVariantEnum:
+      enum:
+      - original
+      - resizable
+      type: string
+      description: |-
+        * `original` - original
+        * `resizable` - resizable
     Brief:
       type: object
       properties:

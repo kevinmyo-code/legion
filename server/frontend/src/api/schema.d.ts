@@ -807,6 +807,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/books/bookmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_books_bookmarks_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/bookmarks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["api_books_bookmarks_update"];
+        post?: never;
+        delete: operations["api_books_bookmarks_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/books/convert": {
         parameters: {
             query?: never;
@@ -821,6 +853,38 @@ export interface paths {
          * @description The body is the PDF itself (`Content-Type: application/pdf`), not multipart, and must declare its `Content-Length`; over 30 MiB is refused before it is read. The PDF is converted in a temporary directory deleted before the response is sent. Text only: figures and tables are not carried over. A PDF whose median page has fewer than 200 non-whitespace characters is a scan and is refused as `scanned`.
          */
         post: operations["api_books_convert_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_books_positions_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/positions/{sha256}/{variant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["api_books_positions_update"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3510,6 +3574,56 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        BookBookmark: {
+            /**
+             * Format: uuid
+             * @description Chosen by the reader that made the bookmark.
+             */
+            id: string;
+            /** @description SHA-256 of the book file's bytes, 64 lower-case hex characters. */
+            book_sha256: string;
+            variant: components["schemas"]["BookVariantEnum"];
+            /** @description As sent, minus any `text` member. */
+            locator: unknown;
+            /**
+             * Format: double
+             * @description 0 to 1, how far through the book.
+             */
+            total_progression: number;
+            label: string | null;
+            /** @description What the member typed, if anything. */
+            note: string | null;
+            /**
+             * Format: date-time
+             * @description When the bookmark was made: the reader's `created_at` when it sent one, otherwise when the server first stored it. Never changed by an edit.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Set when the bookmark was deleted. Drop it locally.
+             */
+            deleted_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the server last stored this row. Use the largest seen as the next `since`.
+             */
+            updated_at: string;
+        };
+        BookBookmarkWrite: {
+            book_sha256: string;
+            variant: string;
+            /** @description Required. A `text` member is dropped and never stored. */
+            locator: unknown;
+            /** Format: double */
+            total_progression: number;
+            label?: string | null;
+            note?: string | null;
+            /**
+             * Format: date-time
+             * @description When the member made it, by the reader's clock. Used on create only.
+             */
+            created_at?: string | null;
+        };
         /**
          * @description * `scanned` - scanned
          *     * `unreadable` - unreadable
@@ -3518,6 +3632,99 @@ export interface components {
          * @enum {string}
          */
         BookConvertCodeEnum: "scanned" | "unreadable" | "too_big" | "failed";
+        BookPosition: {
+            /** @description SHA-256 of the book file's bytes, 64 lower-case hex characters. */
+            book_sha256: string;
+            /**
+             * @description `original`: the file as it is. `resizable`: the EPUB made from a PDF.
+             *
+             *     * `original` - original
+             *     * `resizable` - resizable
+             */
+            variant: components["schemas"]["BookVariantEnum"];
+            /** @description Readium Locator JSON for an EPUB, a page index for PDF/CBZ, as the reader sent it minus any `text` member. Null when only `total_progression` is known. */
+            locator: unknown;
+            /**
+             * Format: double
+             * @description 0 to 1, how far through the book.
+             */
+            total_progression: number;
+            chapter_label: string | null;
+            /**
+             * Format: date-time
+             * @description When the reader recorded this position, by the reader's clock. Newest wins.
+             */
+            recorded_at: string;
+            /** @description Which reader wrote it, e.g. "A25" or "web". */
+            device: string;
+            /**
+             * Format: date-time
+             * @description When the server last stored this row. Use the largest seen as the next `since`.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description * `newer` - newer
+         * @enum {string}
+         */
+        BookPositionKeptEnum: "newer";
+        BookPositionPutResponse: {
+            /** @description SHA-256 of the book file's bytes, 64 lower-case hex characters. */
+            book_sha256: string;
+            /**
+             * @description `original`: the file as it is. `resizable`: the EPUB made from a PDF.
+             *
+             *     * `original` - original
+             *     * `resizable` - resizable
+             */
+            variant: components["schemas"]["BookVariantEnum"];
+            /** @description Readium Locator JSON for an EPUB, a page index for PDF/CBZ, as the reader sent it minus any `text` member. Null when only `total_progression` is known. */
+            locator: unknown;
+            /**
+             * Format: double
+             * @description 0 to 1, how far through the book.
+             */
+            total_progression: number;
+            chapter_label: string | null;
+            /**
+             * Format: date-time
+             * @description When the reader recorded this position, by the reader's clock. Newest wins.
+             */
+            recorded_at: string;
+            /** @description Which reader wrote it, e.g. "A25" or "web". */
+            device: string;
+            /**
+             * Format: date-time
+             * @description When the server last stored this row. Use the largest seen as the next `since`.
+             */
+            updated_at: string;
+            /**
+             * @description Present, as `newer`, only when the write was NOT stored because the stored position has a newer `recorded_at`. The body is then the stored row, unchanged. Absent when the write was stored.
+             *
+             *     * `newer` - newer
+             */
+            kept?: components["schemas"]["BookPositionKeptEnum"];
+        };
+        BookPositionWrite: {
+            /** @description Readium Locator JSON for an EPUB, a page index for PDF/CBZ. A `text` member is dropped and never stored. */
+            locator?: unknown;
+            /** Format: double */
+            total_progression: number;
+            chapter_label?: string | null;
+            /**
+             * Format: date-time
+             * @description When the reader recorded this position, by its own clock.
+             */
+            recorded_at: string;
+            /** @default  */
+            device: string;
+        };
+        /**
+         * @description * `original` - original
+         *     * `resizable` - resizable
+         * @enum {string}
+         */
+        BookVariantEnum: "original" | "resizable";
         Brief: {
             /** Format: uuid */
             id: string;
@@ -7793,6 +8000,117 @@ export interface operations {
             };
         };
     };
+    api_books_bookmarks_list: {
+        parameters: {
+            query?: {
+                /** @description Rows the server stored at or after this instant (inclusive). Absent or unreadable means every row. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed-in member's bookmarks, oldest `updated_at` first, deleted ones included with `deleted_at` set. A bare array, never paged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookBookmark"][];
+                };
+            };
+        };
+    };
+    api_books_bookmarks_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The bookmark's id, a UUID chosen by the reader that made it. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookBookmarkWrite"];
+                "application/x-www-form-urlencoded": components["schemas"]["BookBookmarkWrite"];
+                "multipart/form-data": components["schemas"]["BookBookmarkWrite"];
+            };
+        };
+        responses: {
+            /** @description The bookmark as stored, created or updated. Updating a deleted bookmark brings it back (`deleted_at` cleared). `created_at` never changes after the first write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookBookmark"];
+                };
+            };
+            /** @description A bad id, hash, variant, progression or body, or an update that would move the bookmark to another book or copy. Nothing was saved. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The id belongs to a bookmark that is not the caller's. Nothing was saved; make the bookmark again with a new id. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_books_bookmarks_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The bookmark's id, a UUID chosen by the reader that made it. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bookmark as stored, with `deleted_at` set. Deleting it again changes nothing and answers the same. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookBookmark"];
+                };
+            };
+            /** @description The id is not a UUID. Nothing changed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No bookmark of the caller's has that id: it was never synced, or it is not theirs. Nothing changed. A reader that made and deleted a bookmark while offline may treat this as done. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_books_convert_create: {
         parameters: {
             query?: never;
@@ -7842,6 +8160,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConvertError"];
+                };
+            };
+        };
+    };
+    api_books_positions_list: {
+        parameters: {
+            query?: {
+                /** @description Rows the server stored at or after this instant (inclusive). Absent or unreadable means every row. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed-in member's positions, oldest `updated_at` first. A bare array, never paged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookPosition"][];
+                };
+            };
+        };
+    };
+    api_books_positions_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description SHA-256 of the book file, 64 hex characters (either case; stored lower). */
+                sha256: string;
+                /** @description `original` or `resizable`. */
+                variant: "original" | "resizable";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookPositionWrite"];
+                "application/x-www-form-urlencoded": components["schemas"]["BookPositionWrite"];
+                "multipart/form-data": components["schemas"]["BookPositionWrite"];
+            };
+        };
+        responses: {
+            /** @description The position as stored. Created or replaced when this `recorded_at` is the same as or newer than the stored one. Otherwise nothing was written, the body is the stored row and `kept` is `newer`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookPositionPutResponse"];
+                };
+            };
+            /** @description A bad hash, variant, progression or body. Nothing was saved. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
         };

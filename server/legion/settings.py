@@ -505,5 +505,9 @@ SPECTACULAR_SETTINGS = {
         # can collide with the next `code` field and get renamed under ticket
         # 05's client.
         "BookConvertCodeEnum": "books.views.CONVERT_CODES",
+        # books ticket 08: named for the same reason, before a bare `variant`
+        # or `kept` anywhere else turns either into `VariantEnum` collisions.
+        "BookVariantEnum": "books.models.VARIANTS",
+        "BookPositionKeptEnum": "books.reading.KEPT_CHOICES",
     },
 }
