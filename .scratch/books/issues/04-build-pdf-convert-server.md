@@ -3,11 +3,12 @@ map: books
 ticket: "04"
 title: "Build: server PDF to EPUB conversion, pass-through, nothing stored"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-10-23 on PyMuPDF + ebooklib, the ticket's fallback (Calibre measured at 1105 MB of apt). Server suite green locally (1854, 0 failed, 46 skipped). Owed at deploy, with Kevin's OK: image build, then one real PDF converted on the deployed container; Cloud Run timeout/memory raise is now optional, measure first."
 blockers: ["03"]
 blocked-by: ["[[03-pdf-refit-decision]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -70,3 +71,23 @@ under Calibre will not fit 512 MiB / 60 s. Say this in the deploy request; do no
 - One integration test that really converts, `skipif` `ebook-convert` is not on PATH. Say plainly that
   real conversion is first exercised on the deployed container.
 - Server rules: `uv run --no-sync`, never `--reuse-db`, one pytest run at a time.
+
+## As built (2026-10-23)
+
+- **Converter: the fallback, PyMuPDF 1.28.2 + ebooklib 0.20**, run as a child process
+  (`server/books/convert.py`) under the 50 s timeout. Calibre was ruled out on Debian's own
+  package data, not memory: `python:3.13-slim` is trixie, and trixie's `calibre`
+  8.5.0+ds-1+deb13u3 with `--no-install-recommends` pulls 370 packages, 1105 MB installed (amd64;
+  1064 MB arm64), Chromium's QtWebEngine and a second Python among them, onto an image of roughly
+  400 MB. That is the ~1.5 GB line above, and it could not be run headless before production.
+  The numbers are in commit `077bfc6e`.
+- **No Dockerfile text change.** Both libraries install from wheels (abi3, x86_64 and aarch64) in
+  the existing `pip install` layer, and PyMuPDF's own text pass replaces `pdftotext`, so
+  poppler-utils is not added. The image still changes, through `requirements.txt`.
+- **The real conversion runs in the test suite**, not behind a `skipif`: PyMuPDF is a pinned
+  requirement with a Windows wheel. What has not run is the converter inside the built image on
+  Cloud Run.
+- The deploy-time config above was sized for Calibre. With MuPDF the current 60 s / 512 MiB may
+  be enough; time one real conversion of the 12.4 MB textbook on the deployed service before
+  asking for the raise. gunicorn's `--timeout 60` (`server/entrypoint.sh`) stays binding either
+  way, and the 50 s child timeout fits under it.
