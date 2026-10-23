@@ -6583,3 +6583,24 @@ through an interview and clickable prototypes (home layout A, text list). ADR 00
 ## 2026-10-23: dumb mode is called Matrix mode
 
 Kevin: *"i wouldnt call it dumb mode, more like matrix mode"*. The user-facing name changed everywhere a person reads it, including the leave sentence; code identifiers keep `dumb` so persisted state and granted permissions survive. ADR 0062 amended.
+
+## 2026-10-23 - Matrix home keeps WhatsApp and may open Google Maps (Kevin)
+
+Approved by Kevin with the matrix batch, 2026-10-23.
+
+- **WhatsApp is a kept app** on Matrix home, right after Messages, shown only when installed. Kept means
+  never bounced, so a chosen person's WhatsApp notification opens the chat. Everyone else's WhatsApp
+  notifications are still held. This answers `BounceAllowance.ALLOW_APP_AFTER_CHOSEN_PERSON`'s open
+  question for WhatsApp only; the switch itself stays off for every other hidden app.
+- **Maps picks Google Maps or LEGION's navigation**, by a setting on the Matrix mode settings screen,
+  default Google Maps. Chosen Google Maps is kept; missing Google Maps falls back to LEGION's
+  navigation, said in words.
+- **ADR 0054 amended narrowly, ADR 0062 amended.** History: CLAUDE.md section 3 said "Mapbox only, no
+  hand-off to another map app" with no exception. It now states that rule for LEGION's own
+  navigation and names Matrix home's Maps entry as Kevin's exception until `.scratch/mapbox-plus/`
+  lands.
+- **Clock (new ask, same day):** tapping Matrix home's big time opens `ACTION_SHOW_ALARMS`, so an alarm
+  can be set; no clock app was kept before, so it bounced. The package is resolved through
+  `PackageManager` at run time and kept, never a hard-coded Samsung package (clone-and-run). No
+  resolver: it says so in words. The Maps setting is read live by the bounce, not from a cached kept
+  list.

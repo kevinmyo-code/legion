@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -41,6 +43,7 @@ import com.kevin.legion.dumb.DumbSetup
 import com.kevin.legion.dumb.GrantAction
 import com.kevin.legion.dumb.rain.MatrixWallpaperService
 import com.kevin.legion.dumb.KeptEntry
+import com.kevin.legion.dumb.MapsChoice
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -92,9 +95,57 @@ fun DumbModeSettingsScreen(onBack: () -> Unit, onOpenHome: () -> Unit) {
                 DumbPeopleSection()
 
                 Spacer(Modifier.height(8.dp))
+                MapsChoiceSection()
+
+                Spacer(Modifier.height(8.dp))
                 KeptAppsSection()
                 Spacer(Modifier.height(24.dp))
             }
+        }
+    }
+}
+
+private fun packageFor(entry: KeptEntry, resolver: AndroidKeptAppResolver): String? = when (entry) {
+    KeptEntry.PHONE -> resolver.dialerPackage()
+    KeptEntry.MESSAGES -> resolver.smsPackage()
+    KeptEntry.CAMERA -> resolver.cameraPackage()
+    KeptEntry.MUSIC -> resolver.musicPackage()
+    KeptEntry.WHATSAPP -> resolver.whatsappPackage()
+    else -> null
+}
+
+/**
+ * Where the Maps entry goes (Kevin, 2026-10-23): Google Maps (default) or LEGION's own navigation.
+ * Stored live; the bounce reads it on every window change, so a change applies at once.
+ */
+@Composable
+private fun MapsChoiceSection() {
+    val context = LocalContext.current
+    val sem = LocalLegionSemantics.current
+    val store = remember(context) { (context.applicationContext as MidnightApplication).dumb.mapsChoice }
+    var choice by remember { mutableStateOf(store.get()) }
+    val googleInstalled = remember(context) { AndroidKeptAppResolver(context).googleMapsPackage() != null }
+    Text("Maps", style = MaterialTheme.typography.labelLarge)
+    Text(
+        when {
+            choice == MapsChoice.LEGION_NAV -> "Maps opens LEGION navigation."
+            googleInstalled -> "Maps opens Google Maps, which stays open in Matrix mode."
+            else -> "Google Maps is not installed on this phone, so Maps opens LEGION navigation."
+        },
+        style = LegionType.stamp,
+        color = if (choice == MapsChoice.GOOGLE_MAPS && !googleInstalled) sem.estimated else sem.faint,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        MapsChoice.entries.forEach { option ->
+            val label = if (option == MapsChoice.GOOGLE_MAPS) "Google Maps" else "LEGION navigation"
+            val picked = option == choice
+            OutlinedButton(
+                onClick = {
+                    store.set(option)
+                    choice = option
+                },
+                modifier = Modifier.semantics { selected = picked },
+            ) { Text(if (picked) "$label (chosen)" else label) }
         }
     }
 }
@@ -180,13 +231,11 @@ private fun KeptAppsSection() {
         color = sem.faint,
     )
     KeptEntry.entries.forEach { entry ->
-        val pkg = when (entry) {
-            KeptEntry.PHONE -> resolver.dialerPackage()
-            KeptEntry.MESSAGES -> resolver.smsPackage()
-            KeptEntry.CAMERA -> resolver.cameraPackage()
-            KeptEntry.MUSIC -> resolver.musicPackage()
-            else -> null
-        }
+        val pkg = packageFor(entry, resolver)
+        // WhatsApp's row is hidden from Home when it is not installed, so it is not "missing" here.
+        if (entry == KeptEntry.WHATSAPP && pkg == null) return@forEach
+        // Maps is described by its own setting above; the row says what the setting currently does.
+        if (entry == KeptEntry.MAPS) return@forEach
         val missing = entry.isExternal && pkg == null
         Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -201,6 +250,21 @@ private fun KeptAppsSection() {
                     color = if (missing) sem.estimated else sem.faint,
                 )
             }
+        }
+    }
+    val clock = remember(resolver) { resolver.clockPackages() }
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text("Clock (the big time on Home)", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                if (clock.isEmpty()) {
+                    "No clock app on this phone can show alarms, so tapping the time will say so."
+                } else {
+                    "Opens " + clock.joinToString(", ")
+                },
+                style = LegionType.stamp,
+                color = if (clock.isEmpty()) sem.estimated else sem.faint,
+            )
         }
     }
 }

@@ -50,4 +50,10 @@ reason Mapbox was killed, and it stopped being a reason once the token became BY
   NAVIGATION to another map app; nothing in the navigation path (`navigate`, `change_trip`,
   `trip_status`, `end_trip`, the nav screen) changed, and LEGION Navigation is always the first choice
   in that bucket. `.scratch/one-home/issues/11-home-is-the-calendar.md`.
+- **2026-10-23, amended narrowly: Matrix home may open Google Maps (Kevin).** Matrix mode's Maps
+  entry opens Google Maps or LEGION's navigation, by a setting on the Matrix mode settings screen;
+  Google Maps is the default. This is Kevin's exception for Matrix home only, and it lasts until
+  `.scratch/mapbox-plus/` lands. "Mapbox only, no hand-off" still governs LEGION's own navigation:
+  the nav screen and the four voice tools never hand a trip to another app. ADR 0062 carries the
+  Matrix side.
 

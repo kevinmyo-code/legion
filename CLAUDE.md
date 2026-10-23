@@ -180,7 +180,9 @@ here would be wrong within a month, and has been.
 **Dropped deliberately. Do not reintroduce without a ruling:** Firebase, Play Billing, Media3,
 ZXing, PdfBox-Android. Each went for a reason recorded in `library/decisions.md`; adding one back is
 a decision, not a dependency bump. **Mapbox came back by ruling** (Kevin, 2026-10-03, ADR 0054):
-native navigation on the household's own token, Mapbox only, no hand-off to another map app.
+LEGION's own navigation is native Mapbox on the household's own token and never hands a trip to
+another map app. **One exception (Kevin, 2026-10-23, ADR 0062):** Matrix home's Maps entry opens
+Google Maps when his setting says so (the default), until `.scratch/mapbox-plus/` lands.
 
 ---
 

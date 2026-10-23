@@ -28,6 +28,7 @@ class DumbModeViewModel(
     private val peopleNames: () -> List<String> = { emptyList() },
     private val zone: () -> ZoneId = ZoneId::systemDefault,
     private val locale: () -> Locale = Locale::getDefault,
+    private val entries: () -> List<KeptEntry> = { KeptEntry.entries },
 ) : ViewModel() {
 
     private val ticks = flow {
@@ -45,7 +46,7 @@ class DumbModeViewModel(
 
     private fun build(s: DumbModeState, now: Long): DumbUiState {
         val streak = DumbStreaks.compute(controller.history(), s, now, zone()).days
-        return DumbUiStates.build(s, now, zone(), locale(), peopleNames(), streak)
+        return DumbUiStates.build(s, now, zone(), locale(), peopleNames(), streak, entries())
     }
 
     fun requestLeave() {
@@ -58,9 +59,14 @@ class DumbModeViewModel(
 
     class Factory(context: Context) : ViewModelProvider.Factory {
         private val app = context.applicationContext as MidnightApplication
+        private val resolver = AndroidKeptAppResolver(app)
 
         @Suppress("UNCHECKED_CAST") // the only type this factory is asked for
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            DumbModeViewModel(app.dumbMode, peopleNames = { app.dumb.people.names() }) as T
+            DumbModeViewModel(
+                app.dumbMode,
+                peopleNames = { app.dumb.people.names() },
+                entries = { DumbUiStates.visibleEntries(resolver.whatsappPackage() != null) },
+            ) as T
     }
 }

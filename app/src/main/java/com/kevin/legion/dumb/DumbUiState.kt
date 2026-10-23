@@ -60,6 +60,10 @@ object DumbFormat {
 }
 
 object DumbUiStates {
+    /** The list as shown: the WhatsApp row only when WhatsApp is installed, everything else always. */
+    fun visibleEntries(whatsappInstalled: Boolean): List<KeptEntry> =
+        KeptEntry.entries.filter { it != KeptEntry.WHATSAPP || whatsappInstalled }
+
     private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm")
     private val DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 
@@ -70,6 +74,7 @@ object DumbUiStates {
         locale: Locale,
         peopleNames: List<String>,
         streakDays: Int = 0,
+        entries: List<KeptEntry> = KeptEntry.entries,
     ): DumbUiState {
         val at = Instant.ofEpochMilli(nowMs).atZone(zone)
         val requested = state.leaveRequestedAtMs
@@ -91,6 +96,7 @@ object DumbUiStates {
             elapsed = elapsed,
             statusLine = if (state.on) DumbFormat.statusLine(elapsed, streakDays) else "",
             peopleLine = DumbFormat.peopleLine(peopleNames),
+            entries = entries,
             leave = leave,
         )
     }

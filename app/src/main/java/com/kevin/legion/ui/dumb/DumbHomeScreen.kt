@@ -3,6 +3,7 @@ package com.kevin.legion.ui.dumb
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.draw.clip
@@ -42,6 +43,7 @@ import com.kevin.legion.dumb.DumbModeViewModel
 import com.kevin.legion.dumb.DumbUiState
 import com.kevin.legion.dumb.KeptAppLauncher
 import com.kevin.legion.dumb.KeptEntry
+import com.kevin.legion.dumb.MapsRoute
 import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.ui.assistant.AssistantChatViewModel
 import com.kevin.legion.ui.assistant.ChatPanelSheet
@@ -60,7 +62,7 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
  * Maps, To-dos and Calendar are LEGION's own routes and arrive as callbacks.
  */
 @Composable
-@Suppress("LongMethod") // one screen wrapper wiring three sub-surfaces, as HomeScreen does
+@Suppress("LongMethod", "CyclomaticComplexMethod") // one screen wrapper wiring the sub-surfaces, as HomeScreen does
 fun DumbHome(
     onOpenMaps: () -> Unit,
     onOpenTodos: () -> Unit,
@@ -105,6 +107,22 @@ fun DumbHome(
         unreadReply = panel.unread,
         onOpenChat = panel::show,
     )
+    // Maps: Google Maps or LEGION's navigation by the live setting (ADR 0062, 2026-10-23). When Google
+    // Maps was wanted and cannot open, LEGION navigation opens and the sentence says so (toast too, as
+    // the home list is not what is on screen then).
+    val openMaps: () -> Unit = {
+        val route = MapsRoute.decide(graph.mapsChoice.get(), AndroidKeptAppResolver(context).googleMapsPackage())
+        val notice = when (route) {
+            is MapsRoute.Google ->
+                launcher.launchPackage(route.packageName, "Google Maps")?.let { MapsRoute.NOT_OPENED_NOTICE }
+            is MapsRoute.LegionNav -> route.notice
+        }
+        message = notice
+        if (route is MapsRoute.LegionNav || notice != null) {
+            if (notice != null) Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
+            onOpenMaps()
+        }
+    }
     val talk: () -> Unit = {
         val micGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
@@ -134,7 +152,7 @@ fun DumbHome(
         onEntry = { entry ->
             message = null
             when (entry) {
-                KeptEntry.MAPS -> onOpenMaps()
+                KeptEntry.MAPS -> openMaps()
                 KeptEntry.TODOS -> onOpenTodos()
                 KeptEntry.CALENDAR -> onOpenCalendar()
                 KeptEntry.BRIEF -> briefOpen = true
@@ -145,6 +163,7 @@ fun DumbHome(
         },
         onLeave = viewModel::requestLeave,
         onOpenSettings = onOpenSettings,
+        onOpenClock = { message = launcher.openAlarms() },
     )
     SoftTheme {
         if (booksOpen) {
@@ -177,6 +196,7 @@ fun DumbHomeContent(
     onEntry: (KeptEntry) -> Unit,
     onLeave: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    onOpenClock: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(DumbColors.ground)) {
     // The rain runs only while the screen is resumed; the scrim keeps the list above 4.5:1 over it.
@@ -196,6 +216,8 @@ fun DumbHomeContent(
                 fontSize = 64.sp,
                 letterSpacing = (-2).sp,
                 lineHeight = 64.sp,
+                // The big clock opens the system alarm list, so an alarm can be set (Kevin, 2026-10-23).
+                modifier = Modifier.clickable(onClickLabel = "Open alarms", onClick = onOpenClock),
             )
             Text(ui.date, color = DumbColors.dim, fontSize = 15.sp)
             Text(

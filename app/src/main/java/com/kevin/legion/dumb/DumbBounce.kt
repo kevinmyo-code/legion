@@ -91,9 +91,11 @@ class TtlCache<T>(private val ttlMs: Long, private val clock: () -> Long, privat
 class AndroidBounceEnvironment(
     private val context: Context,
     private val resolver: KeptAppResolver,
+    mapsChoice: () -> MapsChoice = { MapsChoice.GOOGLE_MAPS },
     private val clock: () -> Long = System::currentTimeMillis,
 ) : BounceEnvironment {
-    private val kept = TtlCache(CACHE_MS, clock) { resolver.keptPackages() }
+    // Google Maps is added live from the setting inside LiveKeptPackages; the rest is cached.
+    private val kept = LiveKeptPackages(resolver, mapsChoice, CACHE_MS, clock)
     private val system = TtlCache(CACHE_MS, clock) { systemPackages(context) }
     private val launcherCache = HashMap<String, Pair<Boolean, Long>>()
 
