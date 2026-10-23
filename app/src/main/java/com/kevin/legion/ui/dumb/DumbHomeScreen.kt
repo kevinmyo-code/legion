@@ -199,7 +199,7 @@ fun DumbHomeContent(
                 color = DumbColors.dim,
                 fontFamily = DumbMono,
                 fontSize = 13.sp,
-                modifier = Modifier.clickable(onClickLabel = "Open dumb mode settings", onClick = onOpenSettings),
+                modifier = Modifier.clickable(onClickLabel = "Open matrix mode settings", onClick = onOpenSettings),
             )
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {

@@ -63,7 +63,7 @@ fun DumbModeSettingsScreen(onBack: () -> Unit, onOpenHome: () -> Unit) {
 
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
-            DeckScreenHeader(title = "Dumb mode", onBack = onBack)
+            DeckScreenHeader(title = "Matrix mode", onBack = onBack)
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "A short list instead of a phone. Other apps' notifications are held, strangers' calls " +
@@ -109,7 +109,7 @@ private fun ModeSwitchRow(on: Boolean, onTurnOn: () -> Unit, onLeave: () -> Unit
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Dumb mode", style = MaterialTheme.typography.bodyMedium)
+                Text("Matrix mode", style = MaterialTheme.typography.bodyMedium)
                 Text(if (on) "On. Leave it from the home list." else "Off", style = LegionType.stamp, color = sem.faint)
             }
             if (on) {

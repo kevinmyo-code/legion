@@ -108,8 +108,8 @@ class DumbStreakTest {
 
     @Test
     fun `the status line says the streak only when there is one`() {
-        assertEquals("dumb for 2h 14m", DumbFormat.statusLine("2h 14m", 0))
-        assertEquals("dumb for 2h 14m · 1 day in a row", DumbFormat.statusLine("2h 14m", 1))
-        assertEquals("dumb for 2h 14m · 4 days in a row", DumbFormat.statusLine("2h 14m", 4))
+        assertEquals("in the matrix for 2h 14m", DumbFormat.statusLine("2h 14m", 0))
+        assertEquals("in the matrix for 2h 14m · 1 day in a row", DumbFormat.statusLine("2h 14m", 1))
+        assertEquals("in the matrix for 2h 14m · 4 days in a row", DumbFormat.statusLine("2h 14m", 4))
     }
 }

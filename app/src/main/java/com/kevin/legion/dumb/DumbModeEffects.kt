@@ -33,7 +33,7 @@ class DumbModeEffects(
             var previous: Boolean? = null
             isOn.distinctUntilChanged().collect { on ->
                 // One failed step must not end the collector: later flips still have to be applied.
-                runCatching { step(previous, on) }.onFailure { Log.w(TAG, "Dumb mode step failed", it) }
+                runCatching { step(previous, on) }.onFailure { Log.w(TAG, "Matrix mode step failed", it) }
                 previous = on
             }
         }

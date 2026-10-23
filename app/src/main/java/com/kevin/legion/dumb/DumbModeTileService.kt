@@ -33,7 +33,7 @@ class DumbModeTileService : TileService() {
         val tile = qsTile ?: return
         val on = controller.state.value.on
         tile.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = "Dumb mode"
+        tile.label = "Matrix mode"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = if (on) "On. Tap to open" else "Off"
         }

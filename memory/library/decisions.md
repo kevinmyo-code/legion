@@ -6579,3 +6579,7 @@ through an interview and clickable prototypes (home layout A, text list). ADR 00
   said only "Streaks, re-engagement pings, manufactured return, guilt for being away."
 - **Implementation note (orchestrator):** Hilt is not in the build (architecture ticket 02 is open), so
   `DumbModeController` is a constructor-injected class with a holder on the Application, not `@Inject`.
+
+## 2026-10-23: dumb mode is called Matrix mode
+
+Kevin: *"i wouldnt call it dumb mode, more like matrix mode"*. The user-facing name changed everywhere a person reads it, including the leave sentence; code identifiers keep `dumb` so persisted state and granted permissions survive. ADR 0062 amended.

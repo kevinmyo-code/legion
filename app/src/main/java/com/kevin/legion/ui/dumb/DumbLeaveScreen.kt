@@ -37,7 +37,7 @@ import com.kevin.legion.dumb.LeaveUi
 
 /**
  * The Leave flow (prototype `Leave.dc.html`, ADR 0062): a countdown that runs on the wall clock,
- * then a sentence to type. "Stay in dumb mode" is the primary button and Back does the same.
+ * then a sentence to type. "Stay in matrix mode" is the primary button and Back does the same.
  * The wait and the sentence are checked again by the controller; this screen is only the view.
  */
 @Composable
@@ -77,7 +77,7 @@ fun DumbLeaveScreen(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (canLeave) {
                 PillButton(
-                    "Leave dumb mode",
+                    "Leave matrix mode",
                     onClick = {
                         // The controller re-checks both rules; a refusal here means the screen was stale.
                         val result = onLeave(typed)
@@ -87,7 +87,7 @@ fun DumbLeaveScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            PillButton("Stay in dumb mode", onStay, primary = true, modifier = Modifier.fillMaxWidth())
+            PillButton("Stay in matrix mode", onStay, primary = true, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -95,8 +95,8 @@ fun DumbLeaveScreen(
 @Composable
 private fun LeaveHeader(elapsed: String) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("dumb for $elapsed", color = DumbColors.dim, fontSize = 13.sp, fontFamily = DumbMono)
-        Text("Leave dumb mode?", color = DumbColors.text, fontSize = 30.sp, fontWeight = FontWeight.Medium)
+        Text("in the matrix for $elapsed", color = DumbColors.dim, fontSize = 13.sp, fontFamily = DumbMono)
+        Text("Leave matrix mode?", color = DumbColors.text, fontSize = 30.sp, fontWeight = FontWeight.Medium)
         Text(
             "Wait out the timer, then type the sentence. The people you chose can reach you either way.",
             color = DumbColors.body,
@@ -157,7 +157,7 @@ private fun LeaveSentenceField(typed: String, onTyped: (String) -> Unit, note: S
 /** What did NOT happen, in words, for a refused leave. */
 internal fun refusalWords(result: LeaveResult): String = when (result) {
     LeaveResult.Left -> ""
-    LeaveResult.NotOn -> "Dumb mode is already off."
+    LeaveResult.NotOn -> "Matrix mode is already off."
     LeaveResult.NotRequested -> "The wait has not started. Tap Leave on the home list first."
     is LeaveResult.TooEarly -> "Still waiting: ${DumbFormat.secondsCeil(result.remainingMs)} seconds left."
     LeaveResult.WrongSentence -> "That is not the sentence yet."

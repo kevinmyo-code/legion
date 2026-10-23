@@ -119,9 +119,9 @@ class DumbModeControllerTest {
 
     @Test
     fun `the sentence match ignores case and outer spaces only`() {
-        assertTrue(DumbLeaveRule.sentenceMatches("  i AM choosing to LEAVE dumb mode "))
-        assertFalse(DumbLeaveRule.sentenceMatches("I am choosing to leave dumb mode."))
-        assertFalse(DumbLeaveRule.sentenceMatches("I am  choosing to leave dumb mode"))
+        assertTrue(DumbLeaveRule.sentenceMatches("  i AM choosing to LEAVE matrix mode "))
+        assertFalse(DumbLeaveRule.sentenceMatches("I am choosing to leave matrix mode."))
+        assertFalse(DumbLeaveRule.sentenceMatches("I am  choosing to leave matrix mode"))
         assertFalse(DumbLeaveRule.sentenceMatches(""))
     }
 

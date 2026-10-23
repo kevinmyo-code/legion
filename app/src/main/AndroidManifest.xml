@@ -462,7 +462,7 @@
         <service
             android:name=".dumb.DumbBounceService"
             android:exported="true"
-            android:label="Dumb mode"
+            android:label="Matrix mode"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -478,7 +478,7 @@
             android:name=".ui.dumb.DumbBounceActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:label="Dumb mode"
+            android:label="Matrix mode"
             android:launchMode="singleTop"
             android:theme="@style/Theme.Legion" />
 
@@ -517,7 +517,7 @@
             android:name=".dumb.DumbModeTileService"
             android:exported="true"
             android:icon="@drawable/ic_dumb_tile"
-            android:label="Dumb mode"
+            android:label="Matrix mode"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

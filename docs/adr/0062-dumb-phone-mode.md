@@ -65,3 +65,7 @@ through an interview and clickable prototypes and picked home layout A over the 
 - No voice tool: the mode is manual only, so ADR 0035's rule has nothing to mirror.
 - `DumbModeController` is a constructor-injected class held by the Application. Hilt is architecture
   ticket 02 and not in the build yet; the holder is the injection point until it lands.
+
+## Amendment, 2026-10-23: the user-facing name is "Matrix mode"
+
+Kevin: *"i wouldnt call it dumb mode, more like matrix mode"*. Every string a person sees is now "Matrix mode": the tile, settings, setup, Leave, Digest and Bounce screens, the accessibility and wallpaper descriptions, and the leave sentence ("I am choosing to leave matrix mode"). The status line reads "in the matrix for 2h 14m". The code keeps `dumb` in its package, class and preference names, so stored state and the setup grants survive the rename. "Dumb mode" in code and in this ADR means Matrix mode.

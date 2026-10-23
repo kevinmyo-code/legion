@@ -26,7 +26,7 @@ import com.kevin.legion.MidnightApplication
 import com.kevin.legion.ui.MainActivity
 
 /**
- * "Dumb mode is on" (prototype `Bounce.dc.html`, ADR 0062): shown over LEGION's home after a hidden
+ * "Matrix mode is on" (prototype `Bounce.dc.html`, ADR 0062): shown over LEGION's home after a hidden
  * app was sent away. The hidden app's label is the only thing it says about that app. "Back to
  * home" closes it (Home was already pressed, so LEGION's home is underneath); the small link starts
  * the 60 second leave wait and opens the Leave flow.
@@ -67,7 +67,7 @@ fun DumbBounceScreen(appLabel: String, onBack: () -> Unit, onLeave: () -> Unit) 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text("Dumb mode is on", color = DumbColors.text, fontSize = 26.sp, fontWeight = FontWeight.Medium)
+            Text("Matrix mode is on", color = DumbColors.text, fontSize = 26.sp, fontWeight = FontWeight.Medium)
             Text(
                 "$appLabel is hidden right now. Its notifications are being held for later.",
                 color = DumbColors.body,
@@ -80,7 +80,7 @@ fun DumbBounceScreen(appLabel: String, onBack: () -> Unit, onLeave: () -> Unit) 
         Column(Modifier.fillMaxWidth().padding(top = 48.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             PillButton("Back to home", onBack, primary = true, modifier = Modifier.fillMaxWidth())
             Text(
-                "Leave dumb mode (60s wait)",
+                "Leave matrix mode (60s wait)",
                 color = DumbColors.dim,
                 fontSize = 15.sp,
                 textAlign = TextAlign.Center,

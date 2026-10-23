@@ -29,7 +29,7 @@ fun DumbModeMoreRow() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text("Dumb mode", color = SoftColors.text)
+            Text("Matrix mode", color = SoftColors.text)
             Text("A short list instead of a phone.", color = SoftColors.text.copy(alpha = 0.7f))
         }
         OutlinedButton(onClick = { app.dumbMode.turnOn() }, modifier = Modifier.heightIn(min = 44.dp)) {

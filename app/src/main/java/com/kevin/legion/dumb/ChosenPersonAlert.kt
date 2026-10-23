@@ -84,7 +84,7 @@ class ChosenPersonAlert(context: Context, private val switch: AlertFallbackSwitc
     /** Creates both channels (idempotent) and reports whether the system kept the bypass flag. */
     private fun bypassPermitted(): Boolean {
         val bypass = NotificationChannel(BYPASS_CHANNEL, "Chosen people", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "A message from someone you chose, while dumb mode is on."
+            description = "A message from someone you chose, while matrix mode is on."
             setBypassDnd(true)
         }
         val silent = NotificationChannel(
