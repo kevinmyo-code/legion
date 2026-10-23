@@ -28,6 +28,10 @@ longer than the length that passed the check.
 service's request timeout is 60 s and gunicorn's `--timeout 60` kills a worker
 that runs over with no response at all, so the 50 s bound is what turns an
 overlong conversion into a 502 in words instead of a dropped connection.
+That holds only while the upload itself is quick: gunicorn's 60 s counts the
+whole request, upload and spool included, so a slow 30 MB upload leaves the
+converter less than 50 s. Raising Cloud Run's timeout without raising
+gunicorn's `--timeout` in `entrypoint.sh` with it changes nothing.
 
 **Who may call it**: the project defaults, like every device endpoint - a
 device token or a browser session, household membership required. A

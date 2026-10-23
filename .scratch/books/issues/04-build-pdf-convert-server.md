@@ -89,5 +89,7 @@ under Calibre will not fit 512 MiB / 60 s. Say this in the deploy request; do no
   Cloud Run.
 - The deploy-time config above was sized for Calibre. With MuPDF the current 60 s / 512 MiB may
   be enough; time one real conversion of the 12.4 MB textbook on the deployed service before
-  asking for the raise. gunicorn's `--timeout 60` (`server/entrypoint.sh`) stays binding either
-  way, and the 50 s child timeout fits under it.
+  asking for the raise. **If the raise is asked for, it is a pair:** gunicorn's `--timeout 60`
+  (`server/entrypoint.sh`) counts the whole request, upload included, so Cloud Run at 120 s with
+  gunicorn left at 60 s changes nothing. The 50 s child timeout fits under 60 s only while the
+  upload is quick.

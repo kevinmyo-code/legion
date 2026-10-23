@@ -429,6 +429,26 @@ def test_converted_is_200_with_the_epub_and_the_page_count(token_a, monkeypatch,
 
 
 @pytest.mark.django_db
+def test_a_body_past_django_s_in_memory_limit_reaches_the_converter_whole(token_a, monkeypatch):
+    """The reason the view reads `request.stream`: `request.body` refuses anything
+    over DATA_UPLOAD_MAX_MEMORY_SIZE (2.5 MB), and every real book is bigger."""
+    from django.conf import settings
+
+    pdf = b"%PDF-1.7" + b"x" * (settings.DATA_UPLOAD_MAX_MEMORY_SIZE + 1_000_000)
+    seen: list[bytes] = []
+    recorder = Recorder('{"outcome": "ok", "pages": 1, "chars": 900}', epub=b"PK")
+
+    def spy(in_path, out_path, workdir):
+        seen.append(in_path.read_bytes())
+        return recorder(in_path, out_path, workdir)
+
+    monkeypatch.setattr(views, "run_converter", spy)
+    response = _post(token_a, pdf)
+    assert response.status_code == 200
+    assert len(seen) == 1 and len(seen[0]) == len(pdf) and seen[0] == pdf
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("stdout", "returncode", "status", "code", "message"),
     [
