@@ -39,6 +39,16 @@ pywebpush==2.5.0
 # feed (`ingest/plaid_client.py`, the only importer). Pinned EXACTLY: Plaid ships
 # a new major roughly monthly. 45.0.0 is the release of 2026-10-02 (PyPI).
 plaid-python==45.0.0
+# ai-upgrade ticket 03, 2026-10-22 (Kevin: "LEGION's own Django is the OAuth
+# authorization server; django-oauth-toolkit is acceptable"). 3.4.1 is the
+# release of 2026-08-21 (PyPI): MCP authorization-server support - RFC 8414 and
+# RFC 9728 metadata, Dynamic Client Registration, Client ID Metadata Documents,
+# RFC 8707 resource binding, S256-only PKCE, rotating refresh tokens with reuse
+# protection. `engine_mcp/oauth.py` is LEGION's half. oauthlib and jwcrypto are
+# what it resolved on 2026-10-22.
+django-oauth-toolkit==3.4.1
+oauthlib==4.0.0
+jwcrypto==1.6.1
 
 # Transitive, pinned by `uv pip freeze` against the above.
 aiohappyeyeballs==2.7.1

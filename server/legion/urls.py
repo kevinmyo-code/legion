@@ -76,6 +76,10 @@ urlpatterns = [
     # not part of the REST contract `openapi.yaml` describes - it is a second
     # face on the same rules, never a second set of them.
     path("mcp", McpView.as_view(), name="mcp"),
+    # ai-upgrade ticket 03: the OAuth 2.1 authorization server for `/mcp` -
+    # `/.well-known/oauth-*` at the root (the issuer is the site root) and
+    # `/oauth/*`. Off with `/mcp` (404 in words). `engine_mcp/oauth_urls.py`.
+    path("", include("engine_mcp.oauth_urls")),
     # LAST, and it has to be: this pattern matches almost everything, so any
     # route added below it would be unreachable. Django tries patterns in
     # order, so putting the catch-all at the end is what lets every real route
@@ -98,5 +102,9 @@ urlpatterns = [
     # subsumes the other. The cost is that an SPA route beginning with one of
     # these words is unreachable - `/health-log` would be swallowed - which is
     # a real constraint on ticket 05's route names, not a bug here.
-    re_path(r"^(?!api/|admin/|static/|media/|health|healthz|mcp$).*$", spa_index, name="spa"),
+    re_path(
+        r"^(?!api/|admin/|static/|media/|health|healthz|mcp$|oauth/|\.well-known/).*$",
+        spa_index,
+        name="spa",
+    ),
 ]

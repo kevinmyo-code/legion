@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { oauthNext } from '@/lib/oauth-next'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -49,6 +50,13 @@ function Login() {
       // before this submit, `auth/me` foremost - without this the Today
       // redirect below reads the stale cache and bounces straight back here.
       await queryClient.invalidateQueries()
+      // ai-upgrade ticket 03: signed in for an app's consent page, so go back
+      // to it. A full page load, because Django renders it, not this app.
+      const next = oauthNext(window.location.search)
+      if (next) {
+        window.location.assign(next)
+        return
+      }
       await navigate({ to: '/' })
     } catch (networkError) {
       setError(

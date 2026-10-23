@@ -873,8 +873,7 @@ _UUID = {"type": "string", "format": "uuid"}
 # The scope half is true of a device token only; the web door
 # (`assistant/surface.py`) drops it from what a browser session's model is told.
 WRITE_SCOPE_SENTENCE = (
-    "Needs a device token with write scope; a read-only token is refused and nothing is "
-    "written. "
+    "Refused, with nothing written, when the caller holds a read-only device token. "
 )
 _WRITE_NOTE = (
     " " + WRITE_SCOPE_SENTENCE + "Report it done only when this tool's result says it was "

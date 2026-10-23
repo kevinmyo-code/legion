@@ -5,7 +5,8 @@ What happens to one request, in order:
 1. **The switch** (ticket 08, Kevin 2026-10-02: off by default). Unless
    `LEGION_MCP` is on, the answer is 404 in words, before authentication, so
    an engine that never opted in exposes nothing but that sentence.
-2. **Device-token authentication only** (ticket 05). No session auth: the
+2. **A device token or an OAuth access token** (ticket 05; OAuth since
+   ai-upgrade ticket 03, `engine_mcp/oauth.py`). No session auth: the
    browser has no business here, and leaving it out means no cookie can ever
    carry a request to this endpoint. `IsHouseholdMember` refuses a user in no
    household. The token's scope is checked per TOOL in `tools.py`, because
@@ -27,12 +28,14 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
+from oauth2_provider.models import AccessToken
 from rest_framework import exceptions
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from engine_mcp import server as mcp_server
 from engine_mcp.models import McpCall, Outcome
+from engine_mcp.oauth import McpOAuthAuthentication
 from household.authentication import DeviceTokenAuthentication
 from household.models import DeviceToken
 from household.permissions import IsHouseholdMember
@@ -66,9 +69,14 @@ class McpTokenThrottle(SimpleRateThrottle):
 
     def get_cache_key(self, request, view):
         token = getattr(request, "auth", None)
-        if not isinstance(token, DeviceToken):
-            return None
-        return self.cache_format % {"scope": self.scope, "ident": token.pk}
+        if isinstance(token, DeviceToken):
+            return self.cache_format % {"scope": self.scope, "ident": token.pk}
+        if isinstance(token, AccessToken):
+            # ai-upgrade ticket 03: an OAuth access token rotates every hour, so
+            # the budget is per client per member, not per token.
+            ident = f"oauth:{token.application_id}:{token.user_id}"
+            return self.cache_format % {"scope": self.scope, "ident": ident}
+        return None
 
 
 def _peek(body: bytes) -> tuple[str, str | None]:
@@ -120,7 +128,12 @@ def _scope_for(request, body: bytes) -> dict:
 
 
 class McpView(APIView):
-    authentication_classes = [DeviceTokenAuthentication]
+    # ai-upgrade ticket 03: an OAuth Bearer token (Claude, Gemini) or a device
+    # token (`Token <key>`, Claude Code and the phone). OAuth FIRST, because DRF
+    # takes the 401 challenge from the first class, and its challenge carries
+    # `resource_metadata` - how a connector finds where to sign in. Each returns
+    # None for the other's header, so neither shadows the other.
+    authentication_classes = [McpOAuthAuthentication, DeviceTokenAuthentication]
     permission_classes = [IsHouseholdMember]
     throttle_classes = [McpTokenThrottle]
     # `IsHouseholdMember` refuses a read-scoped token on every unsafe method;
@@ -196,11 +209,19 @@ def _outcome(status: int, content: bytes, state: dict) -> str:
 
 def _audit(request, method: str, tool: str | None, outcome: str) -> None:
     token = request.auth if isinstance(request.auth, DeviceToken) else None
+    if token is not None:
+        name, scope = token.name, token.scope
+    elif isinstance(request.auth, AccessToken):
+        application = request.auth.application
+        label = (application.name or application.client_id) if application else "unknown client"
+        name, scope = f"OAuth: {label}"[:200], "oauth"
+    else:
+        name, scope = "", ""
     McpCall.objects.create(
         household=household_of(request),
         token=token,
-        token_name=token.name if token else "",
-        token_scope=token.scope if token else "",
+        token_name=name,
+        token_scope=scope,
         method=method[:200],
         tool=tool[:200] if tool else None,
         outcome=outcome,

@@ -129,6 +129,10 @@ INSTALLED_APPS = [
     # engine-mcp ticket 10: the `/mcp` endpoint, and `public.mcp_calls`, its
     # audit trail. Named `engine_mcp` so it cannot shadow the `mcp` SDK.
     "engine_mcp",
+    # ai-upgrade ticket 03: django-oauth-toolkit, the OAuth 2.1 authorization
+    # server for `/mcp` (`engine_mcp/oauth.py`). Its tables are Django's own and
+    # carry no household: a client is per engine, a token is per member.
+    "oauth2_provider",
     # web-revamp ticket 15: Web Push subscriptions, preferences and the
     # dedupe ledger (`public.push_*`), and `manage.py push_dispatch`.
     "push",
@@ -440,6 +444,89 @@ LEGION_MCP = os.environ.get("LEGION_MCP", "").strip().lower() in {
     "true",
     "yes",
     "on",
+}
+
+
+def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
+# ai-upgrade ticket 03 (Kevin, 2026-10-22): OAuth 2.1 for `/mcp`, LEGION's own
+# Django as the authorization server (`engine_mcp/oauth.py`, django-oauth-
+# toolkit underneath). Every one of these is behind LEGION_MCP: off, every OAuth
+# route answers 404 like `/mcp` does.
+#
+# THE REDIRECT ALLOWLIST (ruling 3). A client registered by DCR (Gemini) or
+# described by a CIMD document (Claude) is refused unless EVERY redirect URI it
+# names is one of these exactly, or starts with one of the prefixes. Overridable
+# from the environment (comma-separated) without a release.
+LEGION_OAUTH_REDIRECT_URIS = _env_list(
+    "LEGION_OAUTH_REDIRECT_URIS", ("https://claude.ai/api/mcp/auth_callback",)
+)
+LEGION_OAUTH_REDIRECT_PREFIXES = _env_list(
+    "LEGION_OAUTH_REDIRECT_PREFIXES", ("https://oauth-redirect.googleusercontent.com/r/",)
+)
+
+# Django's sign-in redirect for the consent page: the web app's own `/login`,
+# which sends the browser back to `/oauth/authorize/...` once the session exists
+# (`frontend/src/lib/oauth-next.ts`).
+LOGIN_URL = "/login"
+
+OAUTH2_PROVIDER = {
+    "OAUTH2_VALIDATOR_CLASS": "engine_mcp.oauth.LegionOAuth2Validator",
+    "SCOPES": {"mcp": "Read and write your LEGION records"},
+    "DEFAULT_SCOPES": ["mcp"],
+    # Short-lived access, rotating refresh (ruling 5). A refresh token unused
+    # for 30 days expires; a replayed one revokes its whole family.
+    "ACCESS_TOKEN_EXPIRE_SECONDS": 3600,
+    "REFRESH_TOKEN_EXPIRE_SECONDS": 30 * 24 * 3600,
+    "ROTATE_REFRESH_TOKEN": True,
+    "REFRESH_TOKEN_REUSE_PROTECTION": True,
+    "AUTHORIZATION_CODE_EXPIRE_SECONDS": 60,
+    # PKCE, S256 only; no implicit or password grant; `iss` on the redirect
+    # (RFC 9207); tokens hashed at rest; header-only bearer transport.
+    "PKCE_REQUIRED": True,
+    "COMPLIANT_BCP_RFC9700_PKCE_METHOD": True,
+    "COMPLIANT_BCP_RFC9700_PKCE_REQUIRED": True,
+    "COMPLIANT_BCP_RFC9700_IMPLICIT_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_PASSWORD_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_AUTHZ_RESPONSE_ISS": True,
+    "COMPLIANT_BCP_RFC9700_TOKEN_STORAGE": True,
+    "COMPLIANT_BCP_RFC9700_ACCESS_TOKEN_TRANSPORT": True,
+    "COMPLIANT_BCP_RFC9700_REFRESH_TOKEN": True,
+    "COMPLIANT_BCP_RFC9700_REDIRECT_URI_MATCHING": True,
+    "OAUTH2_RESPONSE_TYPES_SUPPORTED": ["code"],
+    "OAUTH2_GRANT_TYPES_SUPPORTED": ["authorization_code", "refresh_token"],
+    # "none" is what makes Claude choose CIMD over DCR; the secret methods are
+    # for a DCR client that asks for one.
+    "OAUTH2_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED": [
+        "none",
+        "client_secret_basic",
+        "client_secret_post",
+    ],
+    # Gemini registers itself, anonymously (no user exists yet); the redirect
+    # allowlist above is what bounds it (`engine_mcp.oauth.LegionDCRView`).
+    "DCR_ENABLED": True,
+    "DCR_REGISTRATION_PERMISSION_CLASSES": ("oauth2_provider.dcr.AllowAllDCRPermission",),
+    # Claude's hosted client id is a URL on claude.ai; only hosts listed here
+    # may be fetched as a client, and the document's redirects must pass the
+    # allowlist too (`engine_mcp.oauth.AllowlistedMetadataFetcher`).
+    "CIMD_ENABLED": True,
+    "CIMD_METADATA_FETCHER": "engine_mcp.oauth.AllowlistedMetadataFetcher",
+    "CIMD_REGISTRATION_PERMISSION_CLASSES": (
+        "oauth2_provider.cimd.HostAllowlistCIMDPermission",
+    ),
+    "CIMD_ALLOWED_HOSTS": list(_env_list("LEGION_OAUTH_CIMD_HOSTS", ("claude.ai",))),
+    "OAUTH2_PROTECTED_RESOURCE_NAME": "LEGION engine",
+    # An OAuth client spans households, so its admin pages are the operator's.
+    "APPLICATION_ADMIN_CLASS": "engine_mcp.oauth_admin.ApplicationAdmin",
+    "ACCESS_TOKEN_ADMIN_CLASS": "engine_mcp.oauth_admin.AccessTokenAdmin",
+    "GRANT_ADMIN_CLASS": "engine_mcp.oauth_admin.GrantAdmin",
+    "ID_TOKEN_ADMIN_CLASS": "engine_mcp.oauth_admin.IDTokenAdmin",
+    "REFRESH_TOKEN_ADMIN_CLASS": "engine_mcp.oauth_admin.RefreshTokenAdmin",
 }
 
 # ADR 0057 (Kevin, 2026-10-09): the bank's own transaction feed, through the

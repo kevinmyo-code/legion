@@ -1231,21 +1231,32 @@ def _feed(client) -> dict:
     return feed
 
 
-def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b, token_a, token_b):
+@pytest.mark.parametrize("credential", ["device_token", "oauth"])
+def test_every_mcp_tool_is_scoped_by_household(
+    settings, household_user, user_b, token_a, token_b, credential
+):
+    """Every MCP tool, over both doors `/mcp` has: a device token, and an
+    OAuth access token from the engine's own authorization server (ai-upgrade
+    ticket 03, whose leak test this is). The OAuth member signs in through the
+    real flow: register, consent, code, PKCE exchange."""
     from engine_mcp.models import McpCall
     from engine_mcp.tools import READABLE, TOOLS_BY_NAME
     from tests.test_engine_mcp import call, client_with
+    from tests.test_mcp_oauth import oauth_mcp_client
 
     settings.LEGION_MCP = True
     a = _mcp_seed(token_a, "alpha")
     _mcp_seed(token_b, "bravo")
-    mcp_a = client_with(household_user)
-    mcp_b = client_with(user_b)
+    make = client_with if credential == "device_token" else oauth_mcp_client
+    mcp_a = make(household_user)
+    mcp_b = make(user_b)
     a_marks = ("alpha", "ALPHA", *a.values())
     covered = set()
+    b_calls = [0]
 
     def b_reads(name, arguments):
         covered.add(name)
+        b_calls[0] += 1
         is_error, text, _ = call(mcp_b, name, arguments)
         assert not is_error, (name, arguments, text)
         leaked = [mark for mark in a_marks if mark in text]
@@ -1281,6 +1292,7 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
 
     def b_writes(name, arguments, *, lands_in_b):
         covered.add(name)
+        b_calls[0] += 1
         is_error, text, _ = call(mcp_b, name, arguments)
         if lands_in_b:
             assert not is_error, (name, text)
@@ -1324,8 +1336,18 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
 
     # The audit trail is tenanted like every other table.
     b_household = user_b.household
-    assert McpCall.objects.filter(token__user=user_b).exclude(household=b_household).count() == 0
-    assert McpCall.objects.filter(household=b_household).exclude(token__user=user_b).count() == 0
+    # Every call B made is audited in B's household and none elsewhere: B made
+    # exactly `b_calls` requests to /mcp, and B's household holds exactly that
+    # many rows.
+    assert McpCall.objects.filter(household=b_household).count() == b_calls[0]
+    if credential == "device_token":
+        assert (
+            McpCall.objects.filter(token__user=user_b).exclude(household=b_household).count() == 0
+        )
+    else:
+        assert not McpCall.objects.filter(household=b_household).exclude(
+            token_scope="oauth"
+        ).exists()
 
 
 def test_bank_connections_are_scoped_by_household(
