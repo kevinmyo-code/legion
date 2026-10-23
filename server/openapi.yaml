@@ -8217,7 +8217,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BriefLink'
-          description: Sources. Every News item has at least one.
+          description: Sources. A News item carries its own when Gemini tied it to
+            one. When Gemini tied none, News items have no links and News ends with
+            one line that holds the sources for the whole section; that line and the
+            section's `note` say so in words.
       required:
       - links
       - text

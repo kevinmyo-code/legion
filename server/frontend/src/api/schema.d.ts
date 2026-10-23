@@ -3514,7 +3514,7 @@ export interface components {
             text: string;
             /** @description True when a figure in `text` rests on bank rows no statement gate checked. The sentence already says so; a client may also mark it. */
             unverified: boolean;
-            /** @description Sources. Every News item has at least one. */
+            /** @description Sources. A News item carries its own when Gemini tied it to one. When Gemini tied none, News items have no links and News ends with one line that holds the sources for the whole section; that line and the section's `note` say so in words. */
             links: components["schemas"]["BriefLink"][];
         };
         BriefLink: {

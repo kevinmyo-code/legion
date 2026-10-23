@@ -47,7 +47,12 @@ class BriefLineSerializer(serializers.Serializer):
         help_text="True when a figure in `text` rests on bank rows no statement gate checked. "
         "The sentence already says so; a client may also mark it."
     )
-    links = BriefLinkSerializer(many=True, help_text="Sources. Every News item has at least one.")
+    links = BriefLinkSerializer(
+        many=True,
+        help_text="Sources. A News item carries its own when Gemini tied it to one. When Gemini "
+        "tied none, News items have no links and News ends with one line that holds the sources "
+        "for the whole section; that line and the section's `note` say so in words.",
+    )
 
 
 class BriefSectionSerializer(serializers.Serializer):

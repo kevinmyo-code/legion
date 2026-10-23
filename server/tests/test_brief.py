@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import logging
 
 import pytest
 from django.core.management import call_command
@@ -511,13 +512,203 @@ def test_news_failure_is_said_in_words(status, words):
     assert words in result.section["note"]
 
 
-def test_news_with_nothing_grounded_shows_nothing():
+def news_from(payload: dict) -> NewsResult:
+    return build_news(dt.date(2026, 10, 15), transport=FakeGemini(payload=payload), key="k")
+
+
+def grounding_log(caplog) -> str:
+    """The one diagnostic line, asserted to carry no content and no URI."""
+    (record,) = [r for r in caplog.records if r.name == "brief.news"]
+    assert record.levelno == logging.WARNING
+    message = record.getMessage()
+    assert "http" not in message
+    assert "vertexaisearch" not in message
+    for word in ("OpenAI", "Android", "rumour", "openai.com", "ai news"):
+        assert word not in message
+    return message
+
+
+def test_news_with_chunks_but_no_supports_keeps_items_and_lists_sources_for_the_section(caplog):
+    caplog.set_level(logging.WARNING, logger="brief.news")
     payload = grounded_payload()
-    payload["candidates"][0]["groundingMetadata"]["groundingSupports"] = []
-    result = build_news(dt.date(2026, 10, 15), transport=FakeGemini(payload=payload), key="k")
+    del payload["candidates"][0]["groundingMetadata"]["groundingSupports"]
+    result = news_from(payload)
+    assert result.ok is True
+    sec = result.section
+    assert sec["status"] == "ok"
+    *items, sources = sec["lines"]
+    assert [item["text"] for item in items] == [
+        "OpenAI shipped a new model.",
+        "Google released Android 17 beta 2.",
+        "A rumour nobody sourced.",
+    ]
+    # No item claims a source it was never tied to.
+    assert all(item["links"] == [] for item in items)
+    assert sources["text"] == news_module.SECTION_SOURCES_LINE
+    assert "not per item" in sources["text"]
+    assert sources["links"] == [
+        {"title": "openai.com", "url": "https://vertexaisearch.example/r/1"},
+        {"title": "android.com", "url": "https://vertexaisearch.example/r/2"},
+    ]
+    assert sec["note"] == f"Only 3 items today. {news_module.SECTION_SOURCES_NOTE}"
+    assert "not per item" in sec["note"]
+    message = grounding_log(caplog)
+    assert "outcome=section_sources" in message
+    assert "groundingChunks=2 groundingSupports=0 webSearchQueries=2" in message
+    assert "bullets=3" in message
+
+
+def test_news_whose_supports_land_on_no_bullet_also_lists_sources_for_the_section(caplog):
+    caplog.set_level(logging.WARNING, logger="brief.news")
+    payload = grounded_payload()
+    payload["candidates"][0]["groundingMetadata"]["groundingSupports"] = [
+        {"segment": {"text": "A sentence that is not in the answer."}, "groundingChunkIndices": [0]}
+    ]
+    result = news_from(payload)
+    assert result.ok is True
+    *items, sources = result.section["lines"]
+    assert len(items) == 3 and all(item["links"] == [] for item in items)
+    assert len(sources["links"]) == 2
+    assert "groundingSupports=1" in grounding_log(caplog)
+
+
+def test_news_with_neither_chunks_nor_supports_shows_nothing_and_logs_the_shape(caplog):
+    caplog.set_level(logging.WARNING, logger="brief.news")
+    payload = grounded_payload()
+    del payload["candidates"][0]["groundingMetadata"]
+    result = news_from(payload)
     assert result.ok is False
     assert result.section["lines"] == []
     assert "no item in it was tied to a web source" in result.section["note"]
+    message = grounding_log(caplog)
+    assert "outcome=nothing" in message
+    assert "groundingMetadata=absent" in message
+    assert "groundingChunks=0 groundingSupports=0 webSearchQueries=0" in message
+
+
+def test_news_with_supports_but_no_chunks_invents_no_link(caplog):
+    """The shape a 2.5 Flash-Lite user reported: supports point at chunk
+    indices, and the chunk list is empty. There is no URI to show."""
+    caplog.set_level(logging.WARNING, logger="brief.news")
+    payload = grounded_payload()
+    payload["candidates"][0]["groundingMetadata"]["groundingChunks"] = []
+    result = news_from(payload)
+    assert result.ok is False
+    assert result.section["lines"] == []
+    assert "groundingChunks=0 groundingSupports=2" in grounding_log(caplog)
+
+
+def test_news_that_is_not_a_list_says_so(caplog):
+    caplog.set_level(logging.WARNING, logger="brief.news")
+    payload = grounded_payload()
+    payload["candidates"][0]["content"]["parts"] = [{"text": "OpenAI shipped a new model today."}]
+    result = news_from(payload)
+    assert result.ok is False
+    assert "not as a list of items" in result.section["note"]
+    assert "bullets=0" in grounding_log(caplog)
+
+
+def test_a_grounded_answer_logs_nothing(caplog):
+    caplog.set_level(logging.WARNING, logger="brief.news")
+    assert news_from(grounded_payload()).ok is True
+    assert [r for r in caplog.records if r.name == "brief.news"] == []
+
+
+NON_ASCII = (
+    "- 東京株式市場で日経平均株価が史上最高値を更新した。\n"
+    "- Samsung shipped One UI 9.\n"
+    "- Mozilla released Firefox 150.\n"
+)
+
+
+def offsets_of(text: str, sentence: str) -> tuple[int, int, int, int]:
+    """(byte start, byte end, char start, char end) of `sentence` in `text`."""
+    char = text.index(sentence)
+    byte = text.encode("utf-8").index(sentence.encode("utf-8"))
+    return byte, byte + len(sentence.encode("utf-8")), char, char + len(sentence)
+
+
+def one_support_payload(text_parts: list[dict], segment: dict) -> dict:
+    return {
+        "candidates": [
+            {
+                "content": {"parts": text_parts},
+                "groundingMetadata": {
+                    "groundingChunks": [
+                        {"web": {"uri": "https://x.example/r/1", "title": "x.com"}}
+                    ],
+                    "groundingSupports": [{"segment": segment, "groundingChunkIndices": [0]}],
+                },
+            }
+        ]
+    }
+
+
+def test_segment_offsets_are_utf8_bytes_not_characters():
+    byte_start, byte_end, char_start, _ = offsets_of(NON_ASCII, "Samsung shipped One UI 9.")
+    # The fixture discriminates: read as characters, these byte offsets land on
+    # the third line, not the second.
+    third_char_start = NON_ASCII.index("Mozilla")
+    assert byte_start > third_char_start
+    payload = one_support_payload(
+        [{"text": NON_ASCII}], {"startIndex": byte_start, "endIndex": byte_end}
+    )
+    parsed = parse(payload)
+    assert parsed.mode == news_module.PER_ITEM
+    assert [item["text"] for item in parsed.items] == ["Samsung shipped One UI 9."]
+    assert parsed.items[0]["links"] == [{"title": "x.com", "url": "https://x.example/r/1"}]
+    assert parsed.dropped == 2
+    assert char_start != byte_start
+
+
+def test_a_segment_whose_offsets_disagree_with_its_text_is_found_by_its_text():
+    # Character offsets, which the reference says the API does not send; the
+    # segment's own text still places it on the right line.
+    _, _, char_start, char_end = offsets_of(NON_ASCII, "Samsung shipped One UI 9.")
+    payload = one_support_payload(
+        [{"text": NON_ASCII}],
+        {"startIndex": char_start, "endIndex": char_end, "text": "Samsung shipped One UI 9."},
+    )
+    parsed = parse(payload)
+    assert [item["text"] for item in parsed.items] == ["Samsung shipped One UI 9."]
+
+
+def test_offsets_whose_own_text_is_nowhere_in_the_answer_tie_no_bullet():
+    # The offsets land squarely on the Samsung line, but the segment says it
+    # supports a sentence the answer does not contain. Neither is trusted.
+    byte_start, byte_end, _, _ = offsets_of(NON_ASCII, "Samsung shipped One UI 9.")
+    payload = one_support_payload(
+        [{"text": NON_ASCII}],
+        {"startIndex": byte_start, "endIndex": byte_end, "text": "Apple shipped iOS 30."},
+    )
+    parsed = parse(payload)
+    assert parsed.mode == news_module.SECTION_SOURCES
+    assert all(item["links"] == [] for item in parsed.items)
+
+
+def test_segment_offsets_are_per_part():
+    parts = [
+        {"thoughtSignature": "c2ln"},
+        {"text": "- OpenAI shipped a new model.\n"},
+        {"text": "- Google released Android 17 beta 2.\n"},
+    ]
+    sentence = "Google released Android 17 beta 2."
+    # Offsets into Part 2 alone; in the joined text they would point at line 1.
+    payload = one_support_payload(
+        parts, {"partIndex": 2, "startIndex": 2, "endIndex": 2 + len(sentence)}
+    )
+    parsed = parse(payload)
+    assert [item["text"] for item in parsed.items] == [sentence]
+    assert parsed.dropped == 1
+
+
+def test_a_segment_spanning_the_bullet_marker_still_ties_by_text():
+    payload = one_support_payload(
+        [{"text": "- OpenAI shipped a new model.\n- Another story.\n"}],
+        {"text": "- OpenAI shipped a new model."},
+    )
+    parsed = parse(payload)
+    assert [item["text"] for item in parsed.items] == ["OpenAI shipped a new model."]
 
 
 def test_a_network_error_is_a_failed_section_not_a_raise():
@@ -545,8 +736,7 @@ def test_parse_caps_at_eight_items():
             }
         ]
     }
-    lines, _dropped = parse(payload)
-    assert len(lines) == 8
+    assert len(parse(payload).items) == 8
     assert usage_of(payload)["cost_estimate_micro_usd"] is None
 
 
