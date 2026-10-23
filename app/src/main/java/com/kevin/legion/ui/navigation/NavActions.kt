@@ -25,4 +25,6 @@ data class NavActions(
     val onStopInput: (String) -> Unit,
     val onAddStop: () -> Unit,
     val onDropStop: (String) -> Unit,
+    /** Cycles the map's look: Auto, Day, Night (mapbox-plus ticket 01). Defaulted so previews need not pass it. */
+    val onCycleMapStyle: () -> Unit = {},
 )

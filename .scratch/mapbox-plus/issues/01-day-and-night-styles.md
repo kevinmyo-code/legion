@@ -3,11 +3,12 @@ map: mapbox-plus
 ticket: "01"
 title: "Build: day and night map styles that are easy to read, switching like Google's"
 type: build
-status: open
+status-detail: "Built 2026-10-23 on Mapbox Standard (Maps SDK 11.32) lightPreset, switched in place with no style reload. Pure sunrise/sunset picker unit-tested. Owed on the phone: day and night screenshots, a mid-trip Auto/Day/Night switch on the drive (ticket 02), route line, puck and banner at 3:1 on both looks, and Standard style speed on the A25."
+status: built
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

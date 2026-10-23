@@ -50,7 +50,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
-| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[01-day-and-night-styles\|01]] | build | Build: day and night map styles that are easy to read, switching like Google's |
 | [[.scratch/one-home/map\|one-home]] | [[09-sync-the-feed-subscriptions\|09]] | decision | Decide whether feed subscriptions sync, and build the leg if they do |
 | [[.scratch/one-today/map\|one-today]] | [[02-ticking-an-appointment\|02]] | build | You cannot cross off a calendar item, and the field is not what is missing |
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | Delete what the audit found dead in the day-to-day area |
@@ -134,6 +133,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/home-launcher/map\|home-launcher]] | [[07-settings-menu-letter-folders-category-buttons\|07]] | build | Settings menu, letter folders in Apps, and category buttons under the dock |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[09-sdk-in-the-build\|09]] | build | Mapbox in the build, behind the clone-and-run gate, with token setup |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[01-day-and-night-styles\|01]] | build | Build: day and night map styles that are easy to read, switching like Google's |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
 | [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |

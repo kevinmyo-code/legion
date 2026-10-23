@@ -88,6 +88,11 @@ class MidnightApplication : Application() {
     /** The mode's state machine, kept as its own name because the tile and the screens read only this. */
     val dumbMode: com.kevin.legion.dumb.DumbModeController get() = dumb.controller
 
+    /** The nav map's Auto / Day / Night choice (mapbox-plus ticket 01). */
+    val mapStyle: com.kevin.legion.navigation.MapStyleSetting by lazy {
+        com.kevin.legion.navigation.MapStyleSetting(this)
+    }
+
     /** The raw route/progress objects the nav screen's map draws; written by [navController]'s SDK seam. */
     val navMapFeed: NavMapFeed by lazy { NavMapFeed() }
 
