@@ -6604,6 +6604,9 @@ Approved by Kevin with the matrix batch, 2026-10-23.
   `PackageManager` at run time and kept, never a hard-coded Samsung package (clone-and-run). No
   resolver: it says so in words. The Maps setting is read live by the bounce, not from a cached kept
   list.
+- **Push-to-talk on Matrix home (Kevin, same day):** a round mic button in the footer, left of Leave,
+  one tap starts a voice turn through the chat panel's Talk path. Chosen over making the Assistant row
+  talk directly and over only shrinking rows so Assistant fits.
 
 ## 2026-10-23 - Brief News: section-level sources when grounding ties no bullet (Kevin)
 

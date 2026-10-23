@@ -91,3 +91,4 @@ Kevin, approving the matrix batch on 2026-10-23.
   phone resolves elsewhere). With nothing answering, tapping the time says so in words and nothing
   crashes. The Maps setting is read live by the bounce on every window change, not baked into a kept
   list at setup.
+- **A round mic button sits in the footer, left of Leave** (Kevin, 2026-10-23: *"i need a way to reach the voice ai push to talk in dumb mode"*). One tap starts a voice turn by the same path as the chat panel's Talk. The Assistant row stays for typing; it had fallen below the fold once WhatsApp was added.
