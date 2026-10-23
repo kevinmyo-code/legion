@@ -110,6 +110,11 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Matrix home's big clock opens AlarmClock.ACTION_SHOW_ALARMS (ADR 0062). Samsung's clock
+         guards that intent with SET_ALARM and refuses the launch without it, logging a Permission
+         Denial and opening nothing (seen on the A25, 2026-10-23). Normal permission, granted at install. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+
     <!-- Google Calendar permissions REMOVED - one-today ticket 01, "cut Google entirely"
          (2026-09-01, `.scratch/one-today/issues/01-one-agenda-source.md`). READ_CALENDAR/
          WRITE_CALENDAR (ticket 13 read, ticket 14 write) backed the retired
