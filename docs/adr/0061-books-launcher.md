@@ -42,3 +42,13 @@ Games and not a shared sheet.
 - No folder granted, permission lost, an empty folder, or a format that cannot be read aloud is said
   in words with the fix.
 - PdfBox stays banned (CLAUDE.md section 3); the PDF path uses the platform renderer or Pdfium.
+
+## Amendment, 2026-10-23: PDFs pass through the engine to become resizable EPUBs
+
+Kevin: *"i wanna make it bigger but its just a zoom on the pdf screen. how can we make the fonts refit
+instead?"* "Everything stays on the phone" now has one exception. Every PDF in the granted folder is
+sent, automatically and in the background, to the household engine, which converts it to EPUB and
+returns it in the same response. **Nothing is kept on the server**: no row, no file, no content in a
+log. The EPUB lives in LEGION's app-private storage, never in the books folder. A PDF with no text
+layer is said in words to be scanned and is never retried; there is no OCR. Kevin chose automatic over
+a per-book button knowing every PDF he adds reaches his server. Tickets `.scratch/books/issues/03-06`.

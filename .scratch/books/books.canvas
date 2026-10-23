@@ -11,10 +11,50 @@
       "color": "4"
     },
     {
+      "id": "4d3923eb61a596dd",
+      "type": "file",
+      "file": ".scratch/books/issues/03-pdf-refit-decision.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d906127dad69a78f",
+      "type": "file",
+      "file": ".scratch/books/issues/06-build-reader-comfort.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "c81dd2547bc1e952",
       "type": "file",
       "file": ".scratch/books/issues/02-build-books.md",
       "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "047ed0577efcf361",
+      "type": "file",
+      "file": ".scratch/books/issues/04-build-pdf-convert-server.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0b1e9ea47d361713",
+      "type": "file",
+      "file": ".scratch/books/issues/05-build-pdf-convert-phone.md",
+      "x": 1040,
       "y": 0,
       "width": 320,
       "height": 110,
@@ -27,6 +67,27 @@
       "fromNode": "b71e019bbeca46b8",
       "fromSide": "right",
       "toNode": "c81dd2547bc1e952",
+      "toSide": "left"
+    },
+    {
+      "id": "4e488644b506eb31",
+      "fromNode": "4d3923eb61a596dd",
+      "fromSide": "right",
+      "toNode": "047ed0577efcf361",
+      "toSide": "left"
+    },
+    {
+      "id": "e9d111afa56db6cd",
+      "fromNode": "4d3923eb61a596dd",
+      "fromSide": "right",
+      "toNode": "0b1e9ea47d361713",
+      "toSide": "left"
+    },
+    {
+      "id": "6b207cb050cf4a7a",
+      "fromNode": "047ed0577efcf361",
+      "fromSide": "right",
+      "toNode": "0b1e9ea47d361713",
       "toSide": "left"
     }
   ]

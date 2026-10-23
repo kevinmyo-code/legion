@@ -6616,3 +6616,15 @@ Approved by Kevin with the matrix batch, 2026-10-23.
 - Amends `.scratch/ai-upgrade/issues/02-daily-brief.md` ruling 3 (News: "each with its source
   link"). A per-item link is still only ever one grounding tied to that bullet.
 - Considered and rejected: drop untied bullets, and say News could not be sourced when none remain.
+
+## 2026-10-23 - Books: PDFs converted to EPUB on the engine, pass-through, every PDF (Kevin)
+
+- Ask: PDF text too small, and bigger is only a zoom. Options put: EPUB edition, server conversion,
+  phone reflow (needs a PDF text library; PdfBox is dropped by ruling), crop margins.
+- **Ruled by interview:** server conversion; pass-through with nothing stored on the server; every PDF
+  automatically (over a per-book button); the EPUB in app-private storage (over the books folder);
+  scanned PDFs said in words with no OCR.
+- ADR 0061 amended: "Everything stays on the phone" gains this one exception.
+- Same day, reader comfort: full screen, a one-tap Day/Night toggle that reaches PDFs, a warm
+  "night light" filter. Orchestrator defaults in `.scratch/books/issues/06`, changeable.
+- Tickets `.scratch/books/issues/03` (decision) to `06`.
