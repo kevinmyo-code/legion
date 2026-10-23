@@ -6579,3 +6579,12 @@ through an interview and clickable prototypes (home layout A, text list). ADR 00
   said only "Streaks, re-engagement pings, manufactured return, guilt for being away."
 - **Implementation note (orchestrator):** Hilt is not in the build (architecture ticket 02 is open), so
   `DumbModeController` is a constructor-injected class with a holder on the Application, not `@Inject`.
+
+## 2026-10-23 - Brief News: section-level sources when grounding ties no bullet (Kevin)
+
+- The first live brief (2026-10-23 05:00) dropped News entirely: "no item tied to a web source".
+- Kevin chose the fallback over a strict drop: bullets ship without links of their own, and the
+  section's sources sit on one trailing line that says in words they are not per item.
+- Amends `.scratch/ai-upgrade/issues/02-daily-brief.md` ruling 3 (News: "each with its source
+  link"). A per-item link is still only ever one grounding tied to that bullet.
+- Considered and rejected: drop untied bullets, and say News could not be sourced when none remain.

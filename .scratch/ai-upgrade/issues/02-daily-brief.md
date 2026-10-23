@@ -39,6 +39,10 @@ can dismiss. so i can bring it back up anytime. updates daily."*
    - **News:** one Gemini call with Google Search grounding over these topics: AI news, AI
      companies and new models, software engineering and tech news, cybersecurity, and Android and
      dev tools. 5 to 8 bullets, each with its source link.
+     **AMENDED 2026-10-23 (Kevin):** when grounding ties no bullet to a source, the bullets still
+     ship with no link of their own, and the section's sources are listed once on a trailing line
+     that says in words they are for the section, not per item. A bullet is never shown with a link
+     that grounding did not tie to it.
 4. **Deterministic sections are composed by code. Only News reaches an LLM**, the same split
    `SitrepBuilder` already uses.
 5. **Read-through (§7) holds.** The stored brief carries web news only. Gmail newsletter summaries
