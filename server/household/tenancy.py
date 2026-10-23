@@ -127,6 +127,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # ten minutes after it closes. Born tenanted like `device_logs`
     # (`games/models.py`).
     "game_matches",
+    # ai-upgrade ticket 02: the daily brief, one row per member per build,
+    # Django-managed and born tenanted like `mcp_calls` (`brief/models.py`).
+    "briefs",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -173,6 +176,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "assistant_calls",
         "device_logs",
         "game_matches",
+        "briefs",
     }
 )
 

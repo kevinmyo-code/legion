@@ -1701,6 +1701,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/brief/latest:
+    get:
+      operationId: api_brief_latest_retrieve
+      tags:
+      - brief
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brief'
+          description: The signed-in member's most recent brief.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No brief has been built for this member.
+  /api/brief/refresh:
+    post:
+      operationId: api_brief_refresh_create
+      tags:
+      - brief
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brief'
+          description: A new brief, built now for the signed-in member. Makes one
+            Gemini call on the household key for News.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The household's brief is being built already. Nothing changed.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The brief could not be built. The previous brief is unchanged.
   /api/changes:
     get:
       operationId: api_changes_retrieve
@@ -8114,6 +8163,138 @@ components:
       - updated_at
       - weight_unit
       - weight_value
+    Brief:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        brief_date:
+          type: string
+          format: date
+          description: The household-local date it was built for.
+        built_at:
+          type: string
+          format: date-time
+        trigger:
+          $ref: '#/components/schemas/BriefTriggerEnum'
+        age_sentence:
+          type: string
+          description: How old the brief is, in words ("Built 3 hours ago, by the
+            05:00 build."). A client showing a cached copy says its own age instead.
+        news_ok:
+          type: boolean
+        notes:
+          type: array
+          items:
+            type: string
+          description: Sentences about the whole brief.
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/BriefSection'
+          description: Canvas, Money, Car, News, in that order.
+      required:
+      - age_sentence
+      - brief_date
+      - built_at
+      - id
+      - news_ok
+      - notes
+      - sections
+      - trigger
+    BriefLine:
+      type: object
+      properties:
+        text:
+          type: string
+          description: One sentence, composed by the engine. Show as is.
+        unverified:
+          type: boolean
+          description: True when a figure in `text` rests on bank rows no statement
+            gate checked. The sentence already says so; a client may also mark it.
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/BriefLink'
+          description: Sources. Every News item has at least one.
+      required:
+      - links
+      - text
+      - unverified
+    BriefLink:
+      type: object
+      properties:
+        title:
+          type: string
+          description: The source's name, usually its domain.
+        url:
+          type: string
+          description: The source link Gemini's grounding returned.
+      required:
+      - title
+      - url
+    BriefSection:
+      type: object
+      properties:
+        key:
+          $ref: '#/components/schemas/BriefSectionKeyEnum'
+        title:
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/BriefSectionStatusEnum'
+          description: |-
+            `empty`: the source has nothing, and a line says so in words. `failed`: the section could not be built, and `note` says why.
+
+            * `ok` - ok
+            * `empty` - empty
+            * `failed` - failed
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/BriefLine'
+        note:
+          type: string
+          nullable: true
+          description: 'A sentence about the section itself: Canvas freshness, why
+            News failed.'
+      required:
+      - key
+      - lines
+      - note
+      - status
+      - title
+    BriefSectionKeyEnum:
+      enum:
+      - canvas
+      - money
+      - car
+      - news
+      type: string
+      description: |-
+        * `canvas` - canvas
+        * `money` - money
+        * `car` - car
+        * `news` - news
+    BriefSectionStatusEnum:
+      enum:
+      - ok
+      - empty
+      - failed
+      type: string
+      description: |-
+        * `ok` - ok
+        * `empty` - empty
+        * `failed` - failed
+    BriefTriggerEnum:
+      enum:
+      - scheduled
+      - refresh
+      type: string
+      description: |-
+        * `scheduled` - Scheduled
+        * `refresh` - Refresh
     BudgetTarget:
       type: object
       description: |-
@@ -13140,6 +13321,7 @@ components:
       - heartbeat
       - push
       - plaid
+      - brief
       type: string
       description: |-
         * `canvas` - Canvas
@@ -13150,6 +13332,7 @@ components:
         * `heartbeat` - Heartbeat
         * `push` - Notifications
         * `plaid` - Bank connection
+        * `brief` - Daily brief
     Spend:
       type: object
       properties:

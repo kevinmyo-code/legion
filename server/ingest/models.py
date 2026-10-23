@@ -43,6 +43,10 @@ class Source(models.TextChoices):
     PUSH = "push", "Notifications"
     # ADR 0057: the bank's own transaction feed (Plaid), `manage.py plaid_sync`.
     PLAID = "plaid", "Bank connection"
+    # ai-upgrade ticket 02: `manage.py morning_brief`. Not a feed: one row per
+    # household per BUILD (the 05:00 build or a Refresh), so freshness can say
+    # when the brief was last built.
+    BRIEF = "brief", "Daily brief"
 
 
 class Outcome(models.TextChoices):
