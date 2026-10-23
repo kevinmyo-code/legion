@@ -132,6 +132,9 @@ INSTALLED_APPS = [
     # web-revamp ticket 15: Web Push subscriptions, preferences and the
     # dedupe ledger (`public.push_*`), and `manage.py push_dispatch`.
     "push",
+    # ai-upgrade ticket 02: the daily brief (`public.briefs`),
+    # `manage.py morning_brief` and `/api/brief/*`.
+    "brief",
     # purchase-log ticket 06: the household bought log (`public.purchases`) and
     # the Groceries tick hook (ADR 0055).
     "purchases",
@@ -403,6 +406,10 @@ REST_FRAMEWORK = {
             os.environ.get("LEGION_ASSISTANT_SESSION_RATE", "").strip() or "30/hour"
         ),
         "assistant_tool": os.environ.get("LEGION_ASSISTANT_TOOL_RATE", "").strip() or "60/min",
+        # ai-upgrade ticket 02, per signed-in MEMBER (`brief/views.py`). Each
+        # refresh is one grounded Gemini call on the household's key. Same
+        # per-process LocMemCache caveat as `mcp` above.
+        "brief_refresh": os.environ.get("LEGION_BRIEF_REFRESH_RATE", "").strip() or "10/hour",
     },
 }
 
@@ -483,5 +490,13 @@ SPECTACULAR_SETTINGS = {
         "SourceEnum": "ingest.models.Source",
         "SessionSourceEnum": "ingest.models.SessionSource",
         "CredentialKindEnum": "ingest.models.CredentialKind",
+        # ai-upgrade ticket 02 put a second `status` choice field in the schema
+        # (a brief section's), and the collision renamed the games' match
+        # status under a client that already codes against `StatusEnum`.
+        # Pinned, and the brief's own three named for what they are.
+        "StatusEnum": "games.models.STATUSES",
+        "BriefSectionStatusEnum": "brief.models.SECTION_STATUSES",
+        "BriefSectionKeyEnum": "brief.models.SECTION_KEYS",
+        "BriefTriggerEnum": "brief.models.Trigger",
     },
 }

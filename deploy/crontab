@@ -30,6 +30,12 @@
 # drive_statements' hour (that one runs every six, on the hour).
 30 */3 * * * python manage.py plaid_sync
 
+# ai-upgrade ticket 02: the daily brief at 05:00 HOUSEHOLD-LOCAL time. This file
+# is UTC (install_schedule.py passes no --time-zone), so it runs every hour and
+# the command builds only for a household whose local clock has reached 05:00
+# and has no brief yet today: right through DST and for every household's zone.
+0 * * * * python manage.py morning_brief
+
 # web-revamp ticket 15: Web Push - list changes, event reminders and the
 # morning list, deduped in public.push_sent. Every five minutes. With the
 # VAPID_* keys unset it says push is off and sends nothing.

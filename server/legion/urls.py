@@ -63,6 +63,9 @@ urlpatterns = [
     # retro-games ticket 05 (ADR 0060): a Tetris race between two household
     # members, held only while it lives (`games/views.py`).
     path("api/games/", include("games.urls")),
+    # ai-upgrade ticket 02: the daily brief, built at 05:00 household-local
+    # time and on Refresh (`brief/views.py`).
+    path("api/brief/", include("brief.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

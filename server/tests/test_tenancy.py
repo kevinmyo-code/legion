@@ -709,6 +709,55 @@ def test_freshness_never_shows_another_households_runs(token_a, token_b, househo
     assert b_body["webassign"]["last_error"] == "RuntimeError: household B's WebAssign is down"
 
 
+def test_briefs_are_scoped_by_household(token_a, token_b, household_a, household_b, monkeypatch):
+    """ai-upgrade ticket 02. `briefs` has no synced route, so this is its leak
+    test: B's refresh is composed from B's rows only, B never reads A's brief,
+    and A's brief is untouched by B's."""
+    import datetime
+
+    from brief.models import Brief
+    from ingest.statements import GEMINI_KEY_ENV
+    from tests.test_spend_api import line, statement
+
+    monkeypatch.delenv(GEMINI_KEY_ENV, raising=False)
+    today = datetime.datetime.now(datetime.UTC)
+    due = (today + datetime.timedelta(days=2)).isoformat()
+    made = token_a.post(
+        "/api/events", {"title": "A's homework", "kind": "task", "starts_at": due}, format="json"
+    )
+    assert made.status_code == 201, made.data
+    statement(
+        household_a,
+        "4242",
+        "A's bank",
+        [line((today - datetime.timedelta(days=1)).date().isoformat(), "A's MERCHANT", -1_234)],
+        start=(today - datetime.timedelta(days=3)).date().isoformat(),
+        end=today.date().isoformat(),
+    )
+    assert token_a.put(
+        "/api/fleet/vehicles/a-car/",
+        {"name": "A's car", "make": "BMW", "model": "M3", "year": 2003, "confirmed": True,
+         "archived": False},
+        format="json",
+    ).status_code == 200
+
+    a_made = token_a.post("/api/brief/refresh")
+    assert a_made.status_code == 201, a_made.data
+    assert "A's homework" in str(a_made.data) and "A's car" in str(a_made.data)
+    assert "A's MERCHANT" in str(a_made.data)
+
+    assert token_b.get("/api/brief/latest").status_code == 404
+    b_made = token_b.post("/api/brief/refresh")
+    assert b_made.status_code == 201, b_made.data
+    body = str(b_made.data)
+    for of_a in ("A's homework", "A's car", "A's MERCHANT", "A's bank"):
+        assert of_a not in body, of_a
+    assert token_b.get("/api/brief/latest").data["id"] == b_made.data["id"]
+    assert token_a.get("/api/brief/latest").data["id"] == a_made.data["id"]
+    assert Brief.objects.filter(household=household_a).count() == 1
+    assert Brief.objects.filter(household=household_b).count() == 1
+
+
 def test_sessions_are_scoped_by_household(token_a, token_b, household_a, household_b, monkeypatch):
     """backend-etl ticket 02. `source_credentials` has no synced route, so
     this is its leak test: B's saved login, and even the fact that B has one,

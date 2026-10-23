@@ -807,6 +807,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/brief/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_brief_latest_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/brief/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_brief_refresh_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/changes": {
         parameters: {
             query?: never;
@@ -3458,6 +3490,75 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        Brief: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date
+             * @description The household-local date it was built for.
+             */
+            brief_date: string;
+            /** Format: date-time */
+            built_at: string;
+            trigger: components["schemas"]["BriefTriggerEnum"];
+            /** @description How old the brief is, in words ("Built 3 hours ago, by the 05:00 build."). A client showing a cached copy says its own age instead. */
+            age_sentence: string;
+            news_ok: boolean;
+            /** @description Sentences about the whole brief. */
+            notes: string[];
+            /** @description Canvas, Money, Car, News, in that order. */
+            sections: components["schemas"]["BriefSection"][];
+        };
+        BriefLine: {
+            /** @description One sentence, composed by the engine. Show as is. */
+            text: string;
+            /** @description True when a figure in `text` rests on bank rows no statement gate checked. The sentence already says so; a client may also mark it. */
+            unverified: boolean;
+            /** @description Sources. Every News item has at least one. */
+            links: components["schemas"]["BriefLink"][];
+        };
+        BriefLink: {
+            /** @description The source's name, usually its domain. */
+            title: string;
+            /** @description The source link Gemini's grounding returned. */
+            url: string;
+        };
+        BriefSection: {
+            key: components["schemas"]["BriefSectionKeyEnum"];
+            title: string;
+            /**
+             * @description `empty`: the source has nothing, and a line says so in words. `failed`: the section could not be built, and `note` says why.
+             *
+             *     * `ok` - ok
+             *     * `empty` - empty
+             *     * `failed` - failed
+             */
+            status: components["schemas"]["BriefSectionStatusEnum"];
+            lines: components["schemas"]["BriefLine"][];
+            /** @description A sentence about the section itself: Canvas freshness, why News failed. */
+            note: string | null;
+        };
+        /**
+         * @description * `canvas` - canvas
+         *     * `money` - money
+         *     * `car` - car
+         *     * `news` - news
+         * @enum {string}
+         */
+        BriefSectionKeyEnum: "canvas" | "money" | "car" | "news";
+        /**
+         * @description * `ok` - ok
+         *     * `empty` - empty
+         *     * `failed` - failed
+         * @enum {string}
+         */
+        BriefSectionStatusEnum: "ok" | "empty" | "failed";
+        /**
+         * @description * `scheduled` - Scheduled
+         *     * `refresh` - Refresh
+         * @enum {string}
+         */
+        BriefTriggerEnum: "scheduled" | "refresh";
         /**
          * @description Field-for-field `RemoteBudgetTarget` / `BudgetTargetFields`.
          *
@@ -5858,9 +5959,10 @@ export interface components {
          *     * `heartbeat` - Heartbeat
          *     * `push` - Notifications
          *     * `plaid` - Bank connection
+         *     * `brief` - Daily brief
          * @enum {string}
          */
-        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push" | "plaid";
+        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push" | "plaid" | "brief";
         Spend: {
             /** @description YYYY-MM, the budget month these figures are for. */
             month: string;
@@ -7641,6 +7743,73 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_brief_latest_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed-in member's most recent brief. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Brief"];
+                };
+            };
+            /** @description No brief has been built for this member. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_brief_refresh_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A new brief, built now for the signed-in member. Makes one Gemini call on the household key for News. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Brief"];
+                };
+            };
+            /** @description The household's brief is being built already. Nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The brief could not be built. The previous brief is unchanged. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

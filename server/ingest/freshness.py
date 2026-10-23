@@ -47,6 +47,9 @@ STALE_AFTER: dict[str, datetime.timedelta] = {
     Source.PUSH: datetime.timedelta(minutes=15),
     # ADR 0057: every six hours, like drive_statements.
     Source.PLAID: datetime.timedelta(hours=36),
+    # ai-upgrade ticket 02: built once a day at 05:00 local, so a missed day
+    # plus a few hours is the line.
+    Source.BRIEF: datetime.timedelta(hours=30),
 }
 
 
@@ -73,6 +76,7 @@ WORDS: dict[str, _Words] = {
     Source.HEARTBEAT: _Words("The scheduler", "last ran", "has never run"),
     Source.PUSH: _Words("Notifications", "were last checked", "have never been checked"),
     Source.PLAID: _Words("The bank connection", "last synced", "has never synced"),
+    Source.BRIEF: _Words("The daily brief", "was last built", "has never been built"),
 }
 
 
