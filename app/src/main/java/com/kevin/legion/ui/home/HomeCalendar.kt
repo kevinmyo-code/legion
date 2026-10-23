@@ -120,6 +120,8 @@ fun HomeCalendarArea(
     state: HomeCalendarUiState,
     callbacks: HomeCalendarCallbacks,
     modifier: Modifier = Modifier,
+    /** Ai-upgrade ticket 02: the daily brief's button in the month header. Null draws no button. */
+    onBrief: (() -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val fontScale = density.fontScale
@@ -134,7 +136,7 @@ fun HomeCalendarArea(
     Layout(
         modifier = modifier,
         content = {
-            MonthHeader(state, callbacks)
+            MonthHeader(state, callbacks, onBrief)
             WeekdayHeader()
             DayGrid(state, callbacks)
             AgendaPanel(state, callbacks, rowH)
@@ -174,7 +176,7 @@ private fun fixedSp(dp: Int): androidx.compose.ui.unit.TextUnit = with(LocalDens
 internal fun agendaRowHeight(fontScale: Float): Dp = max(ROW_MIN.value, (14f + 11f) * 1.3f * fontScale).dp
 
 @Composable
-private fun MonthHeader(state: HomeCalendarUiState, callbacks: HomeCalendarCallbacks) {
+private fun MonthHeader(state: HomeCalendarUiState, callbacks: HomeCalendarCallbacks, onBrief: (() -> Unit)?) {
     Row(
         Modifier.fillMaxWidth().padding(start = 8.dp, end = 0.dp, top = 0.dp, bottom = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -190,10 +192,37 @@ private fun MonthHeader(state: HomeCalendarUiState, callbacks: HomeCalendarCallb
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(end = 8.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            onBrief?.let { BriefButton(it) }
             MonthButton("Previous month", leftArrow = true, onClick = callbacks.onPreviousMonth)
             MonthButton("Next month", leftArrow = false, onClick = callbacks.onNextMonth)
         }
+    }
+}
+
+/**
+ * The daily brief's button (ai-upgrade ticket 02): opens the Brief modal, which can be dismissed and
+ * reopened any time. The only way the brief is ever shown on HOME: never a notification, never
+ * unsolicited speech (ruling 2). Same 44dp touch height as the month arrows beside it, so the header
+ * row does not grow.
+ */
+@Composable
+private fun BriefButton(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .heightIn(min = TOUCH)
+            .clip(RoundedCornerShape(percent = 50))
+            .background(SoftColors.primaryContainer)
+            .clickable(role = Role.Button, onClickLabel = "Open today's brief", onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "Brief",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = SoftColors.onPrimaryContainer,
+            maxLines = 1,
+        )
     }
 }
 
@@ -633,7 +662,9 @@ private fun LegendItem(label: String, mark: @Composable () -> Unit) {
 /** The panel buttons, one row of six slim chips (Kevin, 2026-10-19, ADR 0061): To-dos, Lists, Ideas,
  * Games, Books, More, no subtitle line (the count rides in each chip's TalkBack description). The
  * first three open bottom sheets here, Games and Books open their own. The Ask/mic
- * button lives in the shell's talk bar and is deliberately not repeated here. */
+ * button lives in the shell's talk bar and is deliberately not repeated here. The daily brief's
+ * button is NOT a seventh chip: seven truncated "To-dos" at font 1.3 (HomePanelButtonsFitTest), so
+ * it sits in [MonthHeader] instead. */
 @Composable
 fun HomePanelButtons(
     state: HomeCalendarUiState,

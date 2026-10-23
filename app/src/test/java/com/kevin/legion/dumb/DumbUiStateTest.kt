@@ -72,9 +72,9 @@ class DumbUiStateTest {
     }
 
     @Test
-    fun `the kept list is the nine entries in the ruled order`() {
+    fun `the kept list is the ten entries in the ruled order, Brief after Calendar`() {
         assertEquals(
-            listOf("Phone", "Messages", "Maps", "Camera", "Music", "To-dos", "Calendar", "Books", "Assistant"),
+            listOf("Phone", "Messages", "Maps", "Camera", "Music", "To-dos", "Calendar", "Brief", "Books", "Assistant"),
             KeptEntry.entries.map { it.label },
         )
         assertEquals(

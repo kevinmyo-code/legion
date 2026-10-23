@@ -83,6 +83,8 @@ fun DumbHome(
         openFolderPicker()
     }
     var booksOpen by remember { mutableStateOf(false) }
+    // Ai-upgrade ticket 02: the same Brief modal HOME's chip opens, links shown as text (no browser here).
+    var briefOpen by remember { mutableStateOf(false) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { booksViewModel.refresh() }
     // A book that opened closes the sheet, as on the normal HOME: the reader is what is left to see.
     val booksOpened = booksState.notice?.takeIf { !it.failed }
@@ -135,6 +137,7 @@ fun DumbHome(
                 KeptEntry.MAPS -> onOpenMaps()
                 KeptEntry.TODOS -> onOpenTodos()
                 KeptEntry.CALENDAR -> onOpenCalendar()
+                KeptEntry.BRIEF -> briefOpen = true
                 KeptEntry.BOOKS -> booksOpen = true
                 KeptEntry.ASSISTANT -> panel.show()
                 else -> message = launcher.launch(entry)
@@ -161,6 +164,7 @@ fun DumbHome(
             )
         }
         if (panel.open) ChatPanelSheet(typedChat, onTalk = talk, onClose = panel::hide)
+        com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false }, linksOpen = false)
     }
 }
 

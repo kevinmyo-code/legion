@@ -8,8 +8,10 @@ import android.telecom.TelecomManager
 import com.kevin.legion.media.SpotifyController
 
 /**
- * The nine entries dumb mode's HOME shows, in order (Kevin, ADR 0062). The list is the allowlist:
- * everything else is hidden, including the browser, and a new install is hidden automatically.
+ * The ten entries dumb mode's HOME shows, in order (Kevin, ADR 0062; Brief added after Calendar by
+ * ai-upgrade ticket 02, opening the same modal as HOME's Brief chip). The list is the allowlist:
+ * everything else is hidden, including the browser, and a new install is hidden automatically. That
+ * is why the Brief modal shows its News links as text in dumb mode rather than opening them.
  */
 enum class KeptEntry(val label: String) {
     PHONE("Phone"),
@@ -19,6 +21,7 @@ enum class KeptEntry(val label: String) {
     MUSIC("Music"),
     TODOS("To-dos"),
     CALENDAR("Calendar"),
+    BRIEF("Brief"),
     BOOKS("Books"),
     ASSISTANT("Assistant"),
     ;
