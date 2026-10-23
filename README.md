@@ -53,7 +53,7 @@ model rather than to sell the feature.
 
 | Domain | Tools | Something you would say |
 |---|---|---|
-| Getting started | 10 | &ldquo;Give me a sitrep&rdquo; |
+| Getting started | 10 | &ldquo;Give me my brief&rdquo; |
 | Your day | 14 | &ldquo;Remind me to renew my registration next month&rdquo; |
 | The cars | 28 | &ldquo;Any trouble codes?&rdquo; |
 | Driving | 6 | &ldquo;Take me to the hardware store&rdquo; |

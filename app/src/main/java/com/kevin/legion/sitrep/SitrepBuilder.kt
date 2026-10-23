@@ -25,7 +25,8 @@ import kotlinx.coroutines.withContext
  * scheduled** - ticket 32 (`.scratch/hands-and-senses/issues/32-sitrep-on-demand-only.md`, Kevin:
  * "sitreps stay tap only or via voice activation only") deleted the `SitrepScheduler`/
  * `SitrepAlarmReceiver` pair that used to call this on a timer; the only callers left are
- * [com.kevin.legion.service.LiveToolbox]'s `get_sitrep` dispatch and the Home card's tap.
+ * [com.kevin.legion.ui.world.NewsDigestCard]'s tap and, through [sections], the daily brief
+ * (`com.kevin.legion.brief.SitrepBriefPhone`: the Brief modal and `get_sitrep`, ai-upgrade ticket 02).
  *
  * **Three of four sections are deterministic; only [SitrepModule.NEWS] ever reaches an LLM**
  * (ticket 08's resolution §3, restated at [SitrepModule]'s own doc): CALENDAR/WEATHER/FLEET are
@@ -109,6 +110,21 @@ object SitrepBuilder {
             }
         }
 
+        return compose(SitrepModule.entries, sectionsFor(context, requested))
+    }
+
+    /**
+     * Each requested module's section on its own, keyed by module, under the same settings rule as
+     * [build] ([modules] narrows what is switched on, never widens it). Empty when nothing requested is
+     * switched on. The daily brief's modal (ai-upgrade ticket 02) shows calendar and weather as their
+     * own sections, which a joined string cannot give it.
+     */
+    suspend fun sections(context: Context, modules: Set<SitrepModule>?): Map<SitrepModule, String> {
+        SitrepSettings.load(context)
+        return sectionsFor(context, resolveRequestedModules(modules, SitrepSettings.enabledModules()))
+    }
+
+    private suspend fun sectionsFor(context: Context, requested: Set<SitrepModule>): Map<SitrepModule, String> {
         val sections = mutableMapOf<SitrepModule, String>()
         val now = System.currentTimeMillis()
         val zone = ZoneId.systemDefault()
@@ -152,7 +168,7 @@ object SitrepBuilder {
             sections[SitrepModule.NEWS] = newsSectionLive(context)
         }
 
-        return compose(SitrepModule.entries, sections)
+        return sections
     }
 
     /**

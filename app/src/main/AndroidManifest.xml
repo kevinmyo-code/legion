@@ -472,7 +472,7 @@
                 android:resource="@xml/dumb_bounce_service" />
         </service>
 
-        <!-- The "Dumb mode is on" screen a bounced app leaves behind. Not exported: only the bounce
+        <!-- The "Matrix mode is on" screen a bounced app leaves behind. Not exported: only the bounce
              service starts it. Out of Recents so it does not linger as a way back to anything. -->
         <activity
             android:name=".ui.dumb.DumbBounceActivity"

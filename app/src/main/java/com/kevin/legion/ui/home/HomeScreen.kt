@@ -144,6 +144,8 @@ fun HomeScreen(
     val booksViewModel: BooksViewModel = viewModel(factory = BooksViewModel.Factory(context))
     val booksState by booksViewModel.state.collectAsStateWithLifecycle()
     val pickBooksFolder = rememberBooksFolderPicker(booksViewModel)
+    // Ai-upgrade ticket 02: the Brief chip's modal, reopenable any time, never opened unasked.
+    var briefOpen by remember { mutableStateOf(false) }
 
     // Home-launcher ticket 06's own dock - pins are read fresh on every resume (a pin/unpin made
     // from Apps must show up here without a process restart), and against AppDrawerCache's own
@@ -316,7 +318,9 @@ fun HomeScreen(
                 categoryPicks = categoryPicks + (category to picks)
             },
         ),
+        onBrief = { briefOpen = true },
     )
+    SoftTheme { com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false }) }
 }
 
 /**
@@ -344,6 +348,8 @@ fun HomeContent(
     categoryCallbacks: CategoryCallbacks = CategoryCallbacks(onLaunch = {}, onSave = { _, _ -> }),
     games: GamesHome = GamesHome(),
     books: BooksHome = BooksHome(),
+    /** The Brief chip. The modal itself is drawn by [HomeScreen], which owns its ViewModel. */
+    onBrief: () -> Unit = {},
 ) {
     var moreOpen by remember { mutableStateOf(false) }
     var gamesOpen by remember { mutableStateOf(false) }
@@ -356,7 +362,7 @@ fun HomeContent(
     androidx.compose.runtime.LaunchedEffect(launched) { if (launched != null) gamesOpen = false }
     SoftTheme {
         Column(Modifier.fillMaxSize().background(SoftColors.ground).padding(12.dp)) {
-            HomeCalendarArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth())
+            HomeCalendarArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth(), onBrief = onBrief)
             HomePanelButtons(
                 calendar, calendarCallbacks, Modifier.padding(top = 6.dp, bottom = 4.dp),
                 onMore = { moreOpen = true },
