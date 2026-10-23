@@ -11,6 +11,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.LegionSemantics
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.LocalMatrixMode
+import com.kevin.legion.ui.theme.pickColorScheme
+import com.kevin.legion.ui.theme.pickSemantics
 
 /**
  * Corner radii ticket 02 names: small 10dp, medium 16dp, large 20dp, extraLarge 24dp. `extraSmall`
@@ -214,12 +217,13 @@ internal val SoftSemantics = LegionSemantics(
  */
 @Composable
 fun SoftTheme(content: @Composable () -> Unit) {
+    val matrix = LocalMatrixMode.current
     CompositionLocalProvider(
-        LocalLegionSemantics provides SoftSemantics,
+        LocalLegionSemantics provides pickSemantics(matrix, SoftSemantics),
         LocalSoftActive provides true,
     ) {
         MaterialTheme(
-            colorScheme = SoftColorScheme,
+            colorScheme = pickColorScheme(matrix, SoftColorScheme),
             typography = SoftTypography,
             shapes = SoftShapes,
             content = content,

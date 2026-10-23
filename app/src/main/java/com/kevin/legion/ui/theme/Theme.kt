@@ -256,12 +256,13 @@ val LocalLegionSemantics = staticCompositionLocalOf { DarkSemantics }
 fun LegionTheme(content: @Composable () -> Unit) {
     // Resets LocalSoftActive: a LegionTheme nested inside a SoftTheme (Settings reached from a soft
     // screen) must render mission-control, not inherit the flag.
+    val matrix = LocalMatrixMode.current
     CompositionLocalProvider(
-        LocalLegionSemantics provides DarkSemantics,
+        LocalLegionSemantics provides pickSemantics(matrix, DarkSemantics),
         LocalSoftActive provides false,
     ) {
         MaterialTheme(
-            colorScheme = DarkScheme,
+            colorScheme = pickColorScheme(matrix, DarkScheme),
             typography = LegionTypography,
             shapes = LegionShapes,
             content = content,
