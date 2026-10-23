@@ -79,4 +79,13 @@ class PdfConversionSentencesTest {
         assertFalse(ConvertedBooks.isDerived("primary:Books/x.pdf"))
         assertEquals("primary:Books/x.pdf", ConvertedBooks.originalId(derived))
     }
+
+    @Test fun `only a FAILED row with every try used is spent`() {
+        fun row(status: ConversionStatus, attempts: Int) =
+            com.kevin.legion.data.local.BookConversionRow("s", status.name, attempts, "m", 1L, null)
+        assertTrue(PdfConversionSentences.isSpent(row(ConversionStatus.FAILED, 3)))
+        assertFalse(PdfConversionSentences.isSpent(row(ConversionStatus.FAILED, 2)))
+        assertFalse(PdfConversionSentences.isSpent(row(ConversionStatus.SCANNED, 3)))
+        assertFalse(PdfConversionSentences.isSpent(null))
+    }
 }

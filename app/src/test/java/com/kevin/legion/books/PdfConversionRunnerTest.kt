@@ -53,6 +53,8 @@ class PdfConversionRunnerTest {
             store = object : ConversionStore {
                 override suspend fun get(sha256: String) = rows[sha256]
 
+                override suspend fun all() = rows.values.toList()
+
                 override suspend fun upsert(row: BookConversionRow) {
                     rows[row.sha256] = row
                 }
@@ -269,5 +271,33 @@ class PdfConversionRunnerTest {
         )
         val other = PdfIdentity.read(ByteArrayInputStream(medium)).sha256
         assertFalse(PdfIdentity.read(ByteArrayInputStream(small)).sha256 == other)
+    }
+
+    @Test fun `an engine without the route is Unavailable with no row and the next run retries`() {
+        val f = Fixture(mapOf("a" to small, "b" to medium))
+        f.replies = { ConvertReply.Unavailable(PdfConversionSentences.SERVER_CANNOT_CONVERT) }
+        assertEquals(RunOutcome.COMPLETE, f.run())
+        assertTrue(f.rows.isEmpty())
+        assertEquals(PdfConversionSentences.SERVER_CANNOT_CONVERT, f.note)
+        f.replies = { ConvertReply.Converted(byteArrayOf(1), 3) }
+        f.run()
+        assertEquals("once the server has the route the same run converts both", 2, f.written.size)
+        assertNull(f.note)
+    }
+
+    @Test fun `the repair resets exactly the FAILED rows holding the 404 or 405 fallback sentence`() {
+        val f = Fixture(mapOf("a" to small))
+        fun row(id: String, status: ConversionStatus, msg: String?) {
+            f.rows[id] = BookConversionRow(id, status.name, 3, msg, 1L, null)
+        }
+        row("r404", ConversionStatus.FAILED, "The engine refused the conversion (HTTP 404).")
+        row("r405", ConversionStatus.FAILED, "The engine refused the conversion (HTTP 405).")
+        row("real", ConversionStatus.FAILED, "The converter timed out.")
+        row("r400", ConversionStatus.FAILED, "The engine refused the conversion (HTTP 400).")
+        row("scanned404", ConversionStatus.SCANNED, "(HTTP 404)")
+        row("nomsg", ConversionStatus.FAILED, null)
+        f.replies = { ConvertReply.Unavailable("x") }
+        f.run()
+        assertEquals(setOf("real", "r400", "scanned404", "nomsg"), f.rows.keys)
     }
 }

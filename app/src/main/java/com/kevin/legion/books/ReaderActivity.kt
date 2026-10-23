@@ -84,6 +84,7 @@ class ReaderActivity : FragmentActivity() {
         onFullScreen = model::setFullScreen,
         onToggleChrome = model::toggleChrome,
         onOpenOriginal = ::openOriginal,
+        onRetryConversion = model::onRetryConversion,
     )
 
     /** "Open original": the PDF itself, in the PDF viewer, then this EPUB copy closes. */

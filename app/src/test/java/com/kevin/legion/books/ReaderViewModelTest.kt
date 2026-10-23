@@ -85,10 +85,19 @@ class ReaderViewModelTest {
     private class FakeConversions(
         private val copy: ConvertedCopy? = null,
         private val note: String? = null,
+        private val spent: Boolean = false,
     ) : PdfConversions {
+        var retried = 0
+
         override suspend fun copyFor(book: Book) = copy
 
-        override suspend fun noteFor(book: Book) = note
+        override suspend fun noteFor(book: Book) = if (retried > 0) PdfConversionSentences.WAITING else note
+
+        override suspend fun canRetry(book: Book) = spent && retried == 0
+
+        override suspend fun retry(book: Book) {
+            retried++
+        }
     }
 
     private fun converting(
@@ -150,6 +159,23 @@ class ReaderViewModelTest {
         val vm = converting(FakeStore(row(BookFormat.PDF)), FakeConversions(note = PdfConversionSentences.WAITING))
         assertEquals("Waiting for Wi-Fi to convert", vm.state.value.conversionNote)
         assertFalse(vm.state.value.convertedFromPdf)
+    }
+
+    @Test fun `a spent conversion offers Try again, which resets it and says the PDF is waiting`() {
+        val conversions = FakeConversions(note = "Could not convert after 3 tries: x", spent = true)
+        val vm = converting(FakeStore(row(BookFormat.PDF)), conversions)
+        assertTrue(vm.state.value.conversionCanRetry)
+        vm.onRetryConversion()
+        assertEquals(1, conversions.retried)
+        assertFalse(vm.state.value.conversionCanRetry)
+        assertEquals(PdfConversionSentences.WAITING, vm.state.value.conversionNote)
+    }
+
+    @Test fun `a conversion with tries left offers no Try again`() {
+        val vm = converting(FakeStore(row(BookFormat.PDF)), FakeConversions(note = "Waiting"))
+        assertFalse(vm.state.value.conversionCanRetry)
+        vm.onRetryConversion()
+        assertEquals("Waiting", vm.state.value.conversionNote)
     }
 
     @Test fun `an EPUB or a comic never asks about conversions`() {

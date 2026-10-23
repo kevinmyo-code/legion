@@ -4,6 +4,7 @@ import com.kevin.legion.backend.engine.EngineTestSupport.json
 import com.kevin.legion.books.ConversionStatus
 import com.kevin.legion.books.ConvertReply
 import com.kevin.legion.books.DjangoBookConvertBackend
+import com.kevin.legion.books.PdfConversionSentences
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -77,13 +78,30 @@ class DjangoBookConvertBackendTest {
         assertEquals(ConversionStatus.FAILED, (failed as ConvertReply.Refused).status)
     }
 
-    @Test fun `a refusal with a body that is not the contract's JSON is FAILED with a sentence`() {
+    @Test fun `a 4xx with a body that is not the contract's JSON is FAILED with a sentence`() {
         val engine = EngineTestSupport.RecordingEngine {
-            respond("<html>boom</html>", HttpStatusCode.InternalServerError)
+            respond("<html>bad</html>", HttpStatusCode.BadRequest)
         }
         val refused = convert(engine) as ConvertReply.Refused
         assertEquals(ConversionStatus.FAILED, refused.status)
         assertTrue(refused.message, refused.message.isNotBlank())
+    }
+
+    @Test fun `a 404 or 405 means no convert route so Unavailable with the update the server sentence`() {
+        for (status in listOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed)) {
+            val reply = convert(EngineTestSupport.RecordingEngine { respond("<html>nope</html>", status) })
+            assertEquals(ConvertReply.Unavailable(PdfConversionSentences.SERVER_CANNOT_CONVERT), reply)
+        }
+    }
+
+    @Test fun `a 5xx with no converter code retries later and burns nothing`() {
+        val statuses = listOf(
+            HttpStatusCode.InternalServerError, HttpStatusCode.BadGateway, HttpStatusCode.ServiceUnavailable,
+        )
+        for (status in statuses) {
+            val reply = convert(EngineTestSupport.RecordingEngine { respond("<html>boom</html>", status) })
+            assertTrue("$status", reply is ConvertReply.Unreachable)
+        }
     }
 
     @Test fun `a 401 is Unavailable, not a retry and not a failed attempt`() {

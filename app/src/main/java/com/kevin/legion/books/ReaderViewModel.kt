@@ -136,6 +136,7 @@ class ReaderViewModel(
             it.copy(
                 title = row.title, format = readFormat, bookmarks = emptyList(),
                 convertedFromPdf = copy, conversionNote = reading.note,
+                conversionCanRetry = reading.canRetry,
             )
         }
         when (val loaded = loader.load(readBook)) {
@@ -185,14 +186,35 @@ class ReaderViewModel(
     }
 
     /** What the reader actually opens for a book: the book itself, or its EPUB copy with the copy's own row. */
-    private class Reading(val book: Book, val row: BookRow, val copied: Boolean, val note: String?)
+    private class Reading(
+        val book: Book,
+        val row: BookRow,
+        val copied: Boolean,
+        val note: String?,
+        val canRetry: Boolean = false,
+    )
+
+    /** The PDF whose spent conversion the "Try again" button resets; set only while that button shows. */
+    private var retryBook: Book? = null
+
+    /** "Try again" on a PDF whose conversion used every try: forget the spent row, queue the worker. */
+    fun onRetryConversion() {
+        val book = retryBook ?: return
+        scope.launch {
+            conversions.retry(book)
+            _state.update { it.copy(conversionNote = conversions.noteFor(book), conversionCanRetry = false) }
+        }
+    }
 
     /** A PDF with a finished conversion opens as its EPUB copy unless the user asked for the original. */
     private suspend fun resolveReading(row: BookRow, book: Book): Reading {
         val isPdf = book.format == BookFormat.PDF
         val copy = if (isPdf && !openOriginal) conversions.copyFor(book) else null
         if (copy == null) {
-            return Reading(book, row, copied = false, note = if (isPdf) conversions.noteFor(book) else null)
+            val canRetry = isPdf && conversions.canRetry(book)
+            if (canRetry) retryBook = book
+            val note = if (isPdf) conversions.noteFor(book) else null
+            return Reading(book, row, copied = false, note = note, canRetry = canRetry)
         }
         val epub = Book(ConvertedBooks.derivedId(book.documentId), row.fileName, BookFormat.EPUB)
         return Reading(epub, copiedRow(row, epub), copied = true, note = null)

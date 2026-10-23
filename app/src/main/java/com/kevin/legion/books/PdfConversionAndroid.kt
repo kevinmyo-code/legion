@@ -37,6 +37,8 @@ import org.json.JSONObject
 class RoomConversionStore(private val dao: BookConversionDao) : ConversionStore {
     override suspend fun get(sha256: String) = dao.get(sha256)
 
+    override suspend fun all() = dao.all()
+
     override suspend fun upsert(row: BookConversionRow) = dao.upsert(row)
 
     override suspend fun delete(sha256: String) = dao.delete(sha256)
@@ -171,7 +173,16 @@ class DjangoBookConvertBackend(private val http: EngineHttp) : BookConvertBacken
         }
     }
 
-    /** The server's `{"code", "message"}` becomes a status and its own sentence, verbatim. */
+    /**
+     * The server's `{"code", "message"}` becomes a status and its own sentence, verbatim. A reply WITHOUT one of
+     * the contract's codes did not come from the converter, so it says nothing about the PDF:
+     *  - 404/405: the engine has no convert route (an older server). Unavailable, no attempt burned; the next
+     *    Books scan tries again, so conversion resumes once the server is updated. This exact case burned three
+     *    attempts on every PDF on 2026-10-23, when the phone shipped before the route did.
+     *  - 5xx: the engine or a proxy failed on its side. Retry on backoff, no attempt burned (the same split
+     *    reading sync makes). A 5xx that DOES carry the converter's `failed` code is a real failed conversion.
+     *  - any other 4xx with no code: refused, one attempt burned, with the engine's words or the status.
+     */
     private fun refusal(failure: EngineFailure.Refused): ConvertReply {
         val json = runCatching { JSONObject(failure.body) }.getOrNull()
         val message = json?.optString("message")?.takeIf { it.isNotBlank() }
@@ -179,14 +190,29 @@ class DjangoBookConvertBackend(private val http: EngineHttp) : BookConvertBacken
             "scanned" -> ConversionStatus.SCANNED
             "unreadable" -> ConversionStatus.UNREADABLE
             "too_big" -> ConversionStatus.TOO_BIG
-            else -> ConversionStatus.FAILED
+            "failed" -> ConversionStatus.FAILED
+            else -> null
         }
-        return ConvertReply.Refused(status, message ?: "The engine refused the conversion (HTTP ${failure.status}).")
+        return when {
+            status != null -> ConvertReply.Refused(status, message ?: "The conversion failed (HTTP ${failure.status}).")
+            failure.status == HTTP_NOT_FOUND || failure.status == HTTP_METHOD_NOT_ALLOWED ->
+                ConvertReply.Unavailable(PdfConversionSentences.SERVER_CANNOT_CONVERT)
+            failure.status >= HTTP_SERVER_ERROR -> ConvertReply.Unreachable(
+                "The engine failed on its side (HTTP ${failure.status}), so the PDF waits.",
+            )
+            else -> ConvertReply.Refused(
+                ConversionStatus.FAILED,
+                message ?: "The engine refused the conversion (HTTP ${failure.status}).",
+            )
+        }
     }
 
     private companion object {
         const val PATH = "/api/books/convert"
         const val PAGES_HEADER = "X-Legion-Pages"
+        const val HTTP_NOT_FOUND = 404
+        const val HTTP_METHOD_NOT_ALLOWED = 405
+        const val HTTP_SERVER_ERROR = 500
         const val NO_REASON = "The conversion failed for a reason the engine did not give."
     }
 }
@@ -299,6 +325,17 @@ class AndroidPdfConversions(context: Context) : PdfConversions {
         val row = sha?.let { dao.get(it) }
         val running = withContext(Dispatchers.IO) { PdfConversionScheduler.isRunning(app) }
         return PdfConversionSentences.viewerLine(row, running, state.serverNote)
+    }
+
+    override suspend fun canRetry(book: Book): Boolean {
+        val sha = shaOf(book) ?: return false
+        return PdfConversionSentences.isSpent(dao.get(sha))
+    }
+
+    override suspend fun retry(book: Book) {
+        val sha = shaOf(book) ?: return
+        withContext(Dispatchers.IO) { dao.delete(sha) }
+        PdfConversionScheduler.enqueue(app)
     }
 
     /** How many PDFs still owe a conversion, from what is cached (no hashing): the sheet's count. */

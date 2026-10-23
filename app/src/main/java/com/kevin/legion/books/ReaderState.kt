@@ -123,6 +123,8 @@ data class ReaderUiState(
     val convertedFromPdf: Boolean = false,
     /** The PDF viewer's line about a conversion that is not done, in words; null when there is none to say. */
     val conversionNote: String? = null,
+    /** True when the conversion used every try: the note carries a "Try again" button. */
+    val conversionCanRetry: Boolean = false,
     /**
      * "Picked up where you left off on the web" (ticket 09), once per open; null when the place is this phone's own.
      */
@@ -193,4 +195,5 @@ data class ReaderActions(
     val onFullScreen: (Boolean) -> Unit = {},
     val onToggleChrome: () -> Unit = {},
     val onOpenOriginal: () -> Unit = {},
+    val onRetryConversion: () -> Unit = {},
 )

@@ -20,6 +20,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.home.BooksTone
 
@@ -57,17 +59,29 @@ internal fun ConversionNotices(state: ReaderUiState, palette: ReaderPalette, act
         }
     }
     state.conversionNote?.let { note ->
-        Text(
-            note,
-            style = MaterialTheme.typography.bodySmall,
-            color = palette.text,
-            modifier = Modifier
+        Column(
+            Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 4.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(palette.chip)
-                .padding(12.dp),
-        )
+                .padding(
+                    start = 12.dp, end = 4.dp, top = 12.dp,
+                    bottom = if (state.conversionCanRetry) 4.dp else 12.dp,
+                ),
+        ) {
+            Text(note, style = MaterialTheme.typography.bodySmall, color = palette.text)
+            if (state.conversionCanRetry) {
+                TextButton(
+                    onClick = actions.onRetryConversion,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .semantics { contentDescription = PdfConversionSentences.TRY_AGAIN_DESCRIPTION },
+                ) {
+                    Text(PdfConversionSentences.TRY_AGAIN, color = BooksTone.onContainer)
+                }
+            }
+        }
     }
 }
 

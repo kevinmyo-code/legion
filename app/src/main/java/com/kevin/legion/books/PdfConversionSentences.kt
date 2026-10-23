@@ -12,6 +12,14 @@ object PdfConversionSentences {
     const val CONVERTING = "Converting to resizable text..."
     const val WAITING = "Waiting for Wi-Fi to convert"
     const val OPEN_ORIGINAL = "Open original"
+    const val TRY_AGAIN = "Try again"
+    const val TRY_AGAIN_DESCRIPTION = "Try converting this PDF again"
+    const val SERVER_CANNOT_CONVERT =
+        "Your LEGION server does not convert PDFs yet. Update the server, then reopen Books."
+
+    /** True when [row] is a FAILED conversion that has used every try: the viewer offers "Try again". */
+    fun isSpent(row: BookConversionRow?): Boolean =
+        row != null && row.status == ConversionStatus.FAILED.name && row.attempts >= PdfConversionRules.MAX_ATTEMPTS
 
     /**
      * The PDF viewer's line for a PDF that has no usable EPUB copy, or null when there is nothing to
@@ -57,6 +65,12 @@ interface PdfConversions {
 
     /** The viewer's sentence for a PDF with no copy ([PdfConversionSentences.viewerLine]), or null. */
     suspend fun noteFor(book: Book): String?
+
+    /** True when [book]'s conversion failed every try, so the viewer offers "Try again". */
+    suspend fun canRetry(book: Book): Boolean = false
+
+    /** Forgets [book]'s spent conversion and queues the worker again. The hands path for a stuck book. */
+    suspend fun retry(book: Book) = Unit
 
     companion object {
         /** No conversions at all (tests, and anywhere the feature is not wired). */

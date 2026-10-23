@@ -107,6 +107,8 @@ interface PdfSource {
 interface ConversionStore {
     suspend fun get(sha256: String): BookConversionRow?
 
+    suspend fun all(): List<BookConversionRow>
+
     suspend fun upsert(row: BookConversionRow)
 
     suspend fun delete(sha256: String)
@@ -193,6 +195,7 @@ class PdfConversionRunner(
 ) {
     @Suppress("ReturnCount") // a run ends the moment the state machine says stop
     suspend fun run(): RunOutcome {
+        repairStuckRows()
         val pdfs = source.list() ?: return RunOutcome.COMPLETE
         var retry = false
         for (ref in pdfs.sortedWith(compareBy(nullsLast()) { it.sizeBytes })) {
@@ -205,6 +208,21 @@ class PdfConversionRunner(
         }
         notes.serverNote = null
         return if (retry) RunOutcome.RETRY else RunOutcome.COMPLETE
+    }
+
+    /**
+     * Forgets FAILED rows whose stored sentence is the "(HTTP 404)" or "(HTTP 405)" fallback. Those were written
+     * on 2026-10-23 by a phone that shipped before the server's convert route: the 404 said nothing about the PDF,
+     * yet burned attempts until the row was spent for good. Deliberately narrow: only that fallback sentence, only
+     * FAILED, so a real converter failure (which carries the server's own words) is never un-spent. New 404/405s
+     * no longer write a row, so after the first run this finds nothing. A data reset, no schema change.
+     */
+    private suspend fun repairStuckRows() {
+        for (row in store.all()) {
+            val failed = row.status == ConversionStatus.FAILED.name
+            val msg = row.message.orEmpty()
+            if (failed && (msg.contains("(HTTP 404)") || msg.contains("(HTTP 405)"))) store.delete(row.sha256)
+        }
     }
 
     private enum class Step { NEXT, RETRY_LATER, STOP_RETRY, STOP }
