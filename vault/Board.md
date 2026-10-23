@@ -16,6 +16,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[02-semantic-recall\|02]] | task | Semantic recall: embeddings in a Room column |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
+| [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
+| [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[03-mcp-for-claude-and-gemini\|03]] | build | Build: engine MCP server on the 2026-07-28 spec with OAuth, connected to Claude and the Gemini app |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -259,6 +261,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
 | [[.scratch/ai-craft/map\|ai-craft]] | 4 | 3 | [[.scratch/ai-craft/ai-craft.canvas\|open]] |
+| [[.scratch/ai-upgrade/map\|ai-upgrade]] | 3 | 2 | [[.scratch/ai-upgrade/ai-upgrade.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
