@@ -6,7 +6,6 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.security.MessageDigest
-import java.util.Locale
 
 /**
  * What became of one PDF's conversion (books ticket 05, rulings in ticket 03). Stored by name in
@@ -51,11 +50,20 @@ object PdfConversionRules {
     /** The phone's own cap: the server takes at most this much, so a bigger file is never uploaded. */
     const val MAX_BYTES = 30L * 1024 * 1024
     const val MAX_ATTEMPTS = 3
-    private const val BYTES_PER_MB = 1024.0 * 1024.0
+    private const val BYTES_PER_MB_LONG = 1024L * 1024L
 
     /** The sentence ticket 04's server sends for an oversize PDF; used here without uploading. One decimal. */
     fun tooBigSentence(bytes: Long): String =
-        "This PDF is ${String.format(Locale.US, "%.1f", bytes / BYTES_PER_MB)} MB; the most the server takes is 30 MB."
+        "This PDF is ${oneDecimalMiB(bytes)} MB; the most the server takes is 30 MB."
+
+    /**
+     * Server's `f"{size_mb:.1f}"`: Python rounds the exact binary value half-to-even, and dividing by a
+     * power of two is exact, so BigDecimal HALF_EVEN reproduces it. Java's `%.1f` rounds half-UP and would
+     * print 31.3 where the server prints 31.2 for a file of exactly 31.25 MiB.
+     */
+    private fun oneDecimalMiB(bytes: Long): String =
+        java.math.BigDecimal(bytes).divide(java.math.BigDecimal(BYTES_PER_MB_LONG))
+            .setScale(1, java.math.RoundingMode.HALF_EVEN).toPlainString()
 
     const val SCANNED_SENTENCE = "This PDF is scanned pages with no text, so its text cannot be refit."
 
