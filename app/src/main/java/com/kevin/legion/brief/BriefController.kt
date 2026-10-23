@@ -100,6 +100,10 @@ class BriefController(
             is BriefView.Unavailable -> out.append("No brief was read. ").append(view.sentence)
         }
         if (!read) out.append("\nCanvas, money, car and web news are not included.")
+        if (modules != null && modules.isEmpty()) {
+            out.append("\nNone of the sections asked for exist, so no section was read. ")
+                .append("Ask without naming sections for the whole brief.")
+        }
         phone.sections(modules).forEach { out.append("\n").append(it.title.uppercase()).append(' ').append(it.text) }
         if ((modules == null || SitrepModule.NEWS in modules) && phone.newslettersEnabled()) {
             out.append("\nNEWSLETTERS, read from your mail on this phone just now and not stored:\n")

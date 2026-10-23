@@ -25,7 +25,8 @@ import kotlinx.coroutines.withContext
  * scheduled** - ticket 32 (`.scratch/hands-and-senses/issues/32-sitrep-on-demand-only.md`, Kevin:
  * "sitreps stay tap only or via voice activation only") deleted the `SitrepScheduler`/
  * `SitrepAlarmReceiver` pair that used to call this on a timer; the only callers left are
- * [com.kevin.legion.service.LiveToolbox]'s `get_sitrep` dispatch and the Home card's tap.
+ * [com.kevin.legion.ui.world.NewsDigestCard]'s tap and, through [sections], the daily brief
+ * (`com.kevin.legion.brief.SitrepBriefPhone`: the Brief modal and `get_sitrep`, ai-upgrade ticket 02).
  *
  * **Three of four sections are deterministic; only [SitrepModule.NEWS] ever reaches an LLM**
  * (ticket 08's resolution §3, restated at [SitrepModule]'s own doc): CALENDAR/WEATHER/FLEET are

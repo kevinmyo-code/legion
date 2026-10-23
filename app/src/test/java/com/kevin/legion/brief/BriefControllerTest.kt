@@ -280,6 +280,14 @@ class BriefControllerTest {
     }
 
     @Test
+    fun `a filter naming no real section says so instead of returning a bare header`() = runBlocking {
+        val text = controller(FakeBackend(Result.success(BriefReply.Got(brief, body)))).forVoice(emptySet()).text
+        assertTrue(text.contains("None of the sections asked for exist, so no section was read."))
+        assertFalse(text.contains("CANVAS"))
+        assertFalse(text.contains("CALENDAR"))
+    }
+
+    @Test
     fun `a modules filter narrows both halves`() = runBlocking {
         val backend = FakeBackend(Result.success(BriefReply.Got(brief, body)))
         val news = controller(backend).forVoice(setOf(SitrepModule.NEWS)).text
