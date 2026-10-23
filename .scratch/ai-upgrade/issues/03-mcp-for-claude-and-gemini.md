@@ -3,11 +3,12 @@ map: ai-upgrade
 ticket: "03"
 title: "Build: engine MCP server on the 2026-07-28 spec with OAuth, connected to Claude and the Gemini app"
 type: build
-status: open
+status: kiv
+status-detail: "Kevin 2026-10-23: stopped; Claude Code already uses the engine MCP. Unverified OAuth WIP parked on branch park/mcp-oauth-wip (ab93a9bc)"
 blockers: ["01"]
 blocked-by: ["[[01-what-to-upgrade]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
