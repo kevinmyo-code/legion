@@ -3079,3 +3079,28 @@ val MIGRATION_76_77 = object : Migration(SCHEMA_V76, SCHEMA_V77) {
         )
     }
 }
+
+private const val SCHEMA_V78 = 78
+
+/**
+ * Reading sync (Kevin, 2026-10-23: position and bookmarks sync through the engine, books ticket 09).
+ * Two additive changes, both copied verbatim from the generated `78.json`: a nullable
+ * `book_bookmarks.syncUuid` (the id the engine knows a bookmark by; null on a bookmark made before
+ * sync, which the next sync run fills and queues) and the `book_sync_outbox` table (what is waiting
+ * to reach the engine; see [BookSyncOutboxRow]). Nothing is backfilled here: assigning ids and
+ * queuing old positions needs the file hash, which only Kotlin can compute.
+ */
+val MIGRATION_77_78 = object : Migration(SCHEMA_V77, SCHEMA_V78) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // ALTER TABLE ADD COLUMN has no IF NOT EXISTS, so look first: a rerun must not fail.
+        val hasColumn = db.query("PRAGMA table_info(`book_bookmarks`)").use { c ->
+            val name = c.getColumnIndexOrThrow("name")
+            generateSequence { if (c.moveToNext()) c.getString(name) else null }.any { it == "syncUuid" }
+        }
+        if (!hasColumn) db.execSQL("ALTER TABLE `book_bookmarks` ADD COLUMN `syncUuid` TEXT")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `book_sync_outbox` (`key` TEXT NOT NULL, `kind` TEXT NOT NULL, " +
+                "`target` TEXT NOT NULL, `payload` TEXT, `queuedAtMs` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        )
+    }
+}

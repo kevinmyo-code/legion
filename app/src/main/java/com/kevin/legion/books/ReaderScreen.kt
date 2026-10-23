@@ -67,6 +67,7 @@ fun ReaderScreen(
         state.readAloud.message?.let { Notice(it, palette) }
         state.listenNote?.let { Notice(it, palette) }
         ConversionNotices(state, palette, actions)
+        SyncNotice(state, palette)
         if (state.readAloud.active) ListenBar(state.readAloud, actions)
         if (chrome) BottomBar(state, palette, actions)
     }

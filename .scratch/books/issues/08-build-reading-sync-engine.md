@@ -104,3 +104,14 @@ them. Nothing above was changed.
 | `since` paging | done, including `%2B` offsets |
 | `openapi.yaml` + `schema.d.ts` | done, staleness test green, `openapi-typescript@7.13.0` |
 | Deploy | owed, needs Kevin's OK |
+
+## PROPOSED amendment from ticket 09 (phone), 2026-10-23, settled 2026-10-23 by the build
+
+- `locator` for a PDF or CBZ position or bookmark is `{"page": <0-based source page>}`; for an EPUB it is the
+  Readium Locator JSON object as is. Null is allowed and means "use `total_progression`".
+- Both GETs should answer `{"results": [...], "next": <iso or null>}` (the phone also reads a bare array).
+- Phone sends `device: "phone"` and `note: null` on bookmark create.
+
+- **Settled by the build (orchestrator, 2026-10-23):** locator shapes accepted as proposed (the server stores
+  any JSON, stripping only a top-level `text`). Both GETs answer a **bare array**, not the envelope; the phone
+  reads both and the web reads a bare array. Device strings `phone` and `web` accepted.

@@ -208,3 +208,11 @@
     }
   }
 }
+
+/* Readium's navigator sizes its container to the reading column and leaves its
+   frames to the page: they must fill it, with no frame border (books ticket 10). */
+.readium-host iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}

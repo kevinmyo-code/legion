@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Car,
   CalendarDays,
   Gamepad2,
@@ -71,6 +72,8 @@ export const NAV: readonly NavItem[] = [
   // Retro-games 05. A rail item on the desk; on the family surface Home links to
   // it instead, because spec D1 fixes the family tabs at four.
   { to: '/games', label: 'Games', icon: Gamepad2, surfaces: DESK, built: true },
+  // Books ticket 10: the laptop reader. Desk only: files live in a folder on the laptop.
+  { to: '/books', label: 'Books', icon: BookOpen, surfaces: DESK, built: true },
   {
     to: '/settings',
     label: 'Settings',
