@@ -11,6 +11,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
@@ -88,6 +89,12 @@ class EngineHttpException(val failure: EngineFailure) : Exception(failure.senten
 data class EngineOk(val status: Int, val body: String)
 
 /**
+ * A 2xx whose body is bytes, not text (books ticket 05: an EPUB comes back from the engine, and
+ * decoding it as a string would corrupt it). [headers] holds only what the caller asked for.
+ */
+class EngineBinary(val status: Int, val bytes: ByteArray, val headers: Map<String, String>)
+
+/**
  * One thin Ktor wrapper around the Django engine's HTTP surface: attaches
  * `Authorization: Token <key>` from [EngineConfig], resolves a path against the saved base URL,
  * and turns every non-2xx into a typed [EngineFailure]. It knows nothing about events, checklists
@@ -106,6 +113,7 @@ data class EngineOk(val status: Int, val body: String)
  * also swallows `kotlinx.coroutines.CancellationException` and would report a caller's own
  * cancellation as "the server is unreachable".
  */
+@Suppress("TooManyFunctions") // one method per HTTP verb the engine takes, plus the binary POST for books
 class EngineHttp(
     private val config: EngineConfig,
     private val client: HttpClient = defaultClient(),
@@ -154,6 +162,41 @@ class EngineHttp(
                 setBody(jsonBody)
             }
         }
+
+    /**
+     * `POST <path>` with a raw [bytes] body of [type] (not JSON, not multipart) and a binary 2xx
+     * reply. Added for books ticket 05's `POST /api/books/convert`: a PDF goes up, an EPUB comes
+     * back in the same response. [wantedHeaders] names the response headers to carry out
+     * (`X-Legion-Pages`). A non-2xx is classified exactly as every other call, so the engine's own
+     * `{"code", "message"}` sentence reaches the caller as [EngineFailure.Refused.body].
+     */
+    suspend fun postBytes(
+        path: String,
+        bytes: ByteArray,
+        type: ContentType,
+        wantedHeaders: List<String> = emptyList(),
+    ): Result<EngineBinary> {
+        val baseUrl = config.baseUrl()
+        if (!EngineConfig.isValidBaseUrl(baseUrl)) return Result.failure(noAddress())
+        return try {
+            val response = client.post(baseUrl + path) {
+                authorize()
+                contentType(type)
+                setBody(bytes)
+            }
+            if (response.status.value in SUCCESS_RANGE) {
+                val headers = wantedHeaders.mapNotNull { name -> response.headers[name]?.let { name to it } }.toMap()
+                Result.success(EngineBinary(response.status.value, response.bodyAsBytes(), headers))
+            } else {
+                val error = classify(response).exceptionOrNull()
+                Result.failure(error ?: IllegalStateException("a non-2xx classified as success"))
+            }
+        } catch (e: IOException) {
+            Result.failure(
+                EngineHttpException(EngineFailure.Unreachable(baseUrl, unreachableMessage(baseUrl, e))),
+            )
+        }
+    }
 
     suspend fun patch(path: String, jsonBody: String): Result<EngineOk> =
         send(path) { url ->
@@ -208,16 +251,7 @@ class EngineHttp(
         request: suspend (String) -> HttpResponse,
     ): Result<EngineOk> {
         val baseUrl = config.baseUrl()
-        if (!EngineConfig.isValidBaseUrl(baseUrl)) {
-            return Result.failure(
-                EngineHttpException(
-                    EngineFailure.Unreachable(
-                        host = "(no engine address)",
-                        message = "No engine address saved on this device yet - nothing was sent.",
-                    ),
-                ),
-            )
-        }
+        if (!EngineConfig.isValidBaseUrl(baseUrl)) return Result.failure(noAddress())
         return try {
             classify(request(baseUrl + path))
         } catch (e: IOException) {
@@ -226,6 +260,13 @@ class EngineHttp(
             )
         }
     }
+
+    private fun noAddress() = EngineHttpException(
+        EngineFailure.Unreachable(
+            host = "(no engine address)",
+            message = "No engine address saved on this device yet - nothing was sent.",
+        ),
+    )
 
     private suspend fun classify(response: HttpResponse): Result<EngineOk> {
         val code = response.status.value

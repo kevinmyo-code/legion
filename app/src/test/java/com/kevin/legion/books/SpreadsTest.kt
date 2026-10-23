@@ -80,6 +80,8 @@ class SpreadsTest {
             )
         }
 
+        override suspend fun ensureRow(row: BookRow) = Unit
+
         override suspend fun bookmarks(documentId: String) = emptyList<com.kevin.legion.data.local.BookBookmark>()
 
         override suspend fun addBookmark(bookmark: com.kevin.legion.data.local.BookBookmark) = Unit

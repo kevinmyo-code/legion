@@ -129,7 +129,7 @@ internal fun BookCover(item: BookItem, books: BooksHome, modifier: Modifier, sma
             )
         }
         Text(
-            item.book.format.label,
+            item.formatLabel,
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
             color = Color.White,
             modifier = Modifier

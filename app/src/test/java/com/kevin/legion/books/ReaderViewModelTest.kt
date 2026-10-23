@@ -22,7 +22,9 @@ class ReaderViewModelTest {
         val marks = mutableListOf<BookBookmark>()
         var saves = 0
 
-        override suspend fun row(documentId: String) = row
+        val ensured = mutableListOf<BookRow>()
+
+        override suspend fun row(documentId: String) = ensured.firstOrNull { it.documentId == documentId } ?: row
 
         override suspend fun savePosition(
             documentId: String,
@@ -38,6 +40,10 @@ class ReaderViewModelTest {
                 progress = progress, chapterLabel = chapterLabel, pageIndex = pageIndex, pageCount = pageCount,
                 locatorJson = locatorJson, lastReadAtMs = atMs,
             )
+        }
+
+        override suspend fun ensureRow(row: BookRow) {
+            if (ensured.none { it.documentId == row.documentId }) ensured += row
         }
 
         override suspend fun bookmarks(documentId: String) = marks.toList()
@@ -75,6 +81,82 @@ class ReaderViewModelTest {
             now = { 123L },
             scope = CoroutineScope(Dispatchers.Unconfined),
         )
+
+    private class FakeConversions(
+        private val copy: ConvertedCopy? = null,
+        private val note: String? = null,
+    ) : PdfConversions {
+        override suspend fun copyFor(book: Book) = copy
+
+        override suspend fun noteFor(book: Book) = note
+    }
+
+    private fun converting(
+        store: FakeStore,
+        conversions: PdfConversions,
+        openOriginal: Boolean = false,
+        seen: MutableList<Book> = mutableListOf(),
+    ) = ReaderViewModel(
+        documentId = "doc",
+        listenRequested = false,
+        store = store,
+        loader = { book ->
+            seen += book
+            LoadedBook.Failed("stub")
+        },
+        readAloudFor = { _, _, _ -> error("unused") },
+        now = { 123L },
+        scope = CoroutineScope(Dispatchers.Unconfined),
+        conversions = conversions,
+        openOriginal = openOriginal,
+    )
+
+    private val copy = ConvertedCopy(java.io.File("x.epub"), "sha")
+
+    @Test fun `a PDF with a finished conversion opens as its EPUB copy under its own book id`() {
+        val store = FakeStore(row(BookFormat.PDF, pageIndex = 7, pageCount = 40))
+        val seen = mutableListOf<Book>()
+        val vm = converting(store, FakeConversions(copy = copy), seen = seen)
+        val opened = seen.single()
+        assertEquals(ConvertedBooks.derivedId("doc"), opened.documentId)
+        assertEquals(BookFormat.EPUB, opened.format)
+        assertEquals(BookFormat.EPUB, vm.state.value.format)
+        assertTrue(vm.state.value.convertedFromPdf)
+        // The copy starts with no position of its own and the PDF's row is untouched.
+        val own = store.ensured.single()
+        assertEquals(ConvertedBooks.derivedId("doc"), own.documentId)
+        assertEquals(0, own.pageIndex)
+        assertNull(own.locatorJson)
+        assertEquals(7, store.row!!.pageIndex)
+    }
+
+    @Test fun `bookmarks on the EPUB copy are kept under the copy's id, never the PDF's`() {
+        val store = FakeStore(row(BookFormat.PDF))
+        val vm = converting(store, FakeConversions(copy = copy))
+        vm.addBookmark()
+        assertEquals(ConvertedBooks.derivedId("doc"), store.marks.single().documentId)
+    }
+
+    @Test fun `Open original loads the PDF itself even when a copy exists`() {
+        val seen = mutableListOf<Book>()
+        val store = FakeStore(row(BookFormat.PDF))
+        val vm = converting(store, FakeConversions(copy = copy), openOriginal = true, seen = seen)
+        assertEquals("doc", seen.single().documentId)
+        assertEquals(BookFormat.PDF, seen.single().format)
+        assertFalse(vm.state.value.convertedFromPdf)
+    }
+
+    @Test fun `a PDF with no copy shows the conversion line in words`() {
+        val vm = converting(FakeStore(row(BookFormat.PDF)), FakeConversions(note = PdfConversionSentences.WAITING))
+        assertEquals("Waiting for Wi-Fi to convert", vm.state.value.conversionNote)
+        assertFalse(vm.state.value.convertedFromPdf)
+    }
+
+    @Test fun `an EPUB or a comic never asks about conversions`() {
+        val vm = converting(FakeStore(row(BookFormat.CBZ)), FakeConversions(copy = copy, note = "no"))
+        assertNull(vm.state.value.conversionNote)
+        assertFalse(vm.state.value.convertedFromPdf)
+    }
 
     @Test fun `a first open starts on page one`() {
         val vm = model(FakeStore(row(BookFormat.PDF)), LoadedBook.Paged(FakePages(40)))

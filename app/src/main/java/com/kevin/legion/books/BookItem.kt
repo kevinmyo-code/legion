@@ -17,7 +17,12 @@ data class BookItem(
     val pageCount: Int,
     val locatorJson: String?,
     val lastReadAtMs: Long?,
+    /** A PDF whose EPUB copy is converted and present: the tile says "Resizable" (ticket 05). */
+    val resizable: Boolean = false,
 ) {
+    /** The tile's format tag in words: "PDF", or "PDF · Resizable" once the text can be refit. */
+    val formatLabel: String get() = if (resizable) "${book.format.label} · Resizable" else book.format.label
+
     val percent: Int get() = (progress.coerceIn(0.0, 1.0) * PERCENT).roundToInt()
 
     /** The Continue card's second line, in words: "Ch. 41 · 38% · 2 h ago" or "Page 12 of 40 · 30% · 1 h ago". */

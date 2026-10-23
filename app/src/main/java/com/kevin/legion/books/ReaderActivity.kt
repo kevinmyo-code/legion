@@ -38,6 +38,7 @@ class ReaderActivity : FragmentActivity() {
             this,
             requireNotNull(documentId) { "ReaderActivity needs a book" },
             intent.getBooleanExtra(EXTRA_LISTEN, false),
+            intent.getBooleanExtra(EXTRA_ORIGINAL, false),
         )
     }
 
@@ -82,7 +83,17 @@ class ReaderActivity : FragmentActivity() {
         onWarmAuto = model::setWarmAuto,
         onFullScreen = model::setFullScreen,
         onToggleChrome = model::toggleChrome,
+        onOpenOriginal = ::openOriginal,
     )
+
+    /** "Open original": the PDF itself, in the PDF viewer, then this EPUB copy closes. */
+    private fun openOriginal() {
+        val id = documentId ?: return
+        startActivity(
+            Intent(this, ReaderActivity::class.java).putExtra(EXTRA_DOCUMENT_ID, id).putExtra(EXTRA_ORIGINAL, true),
+        )
+        finish()
+    }
 
     /** Immersive: hide the system bars, and let a swipe from an edge peek at them. */
     private fun applyFullScreen(on: Boolean) {
@@ -153,6 +164,7 @@ class ReaderActivity : FragmentActivity() {
     companion object {
         private const val EXTRA_DOCUMENT_ID = "documentId"
         private const val EXTRA_LISTEN = "listen"
+        private const val EXTRA_ORIGINAL = "original"
 
         fun intent(context: Context, book: Book, listen: Boolean): Intent =
             Intent(context, ReaderActivity::class.java)

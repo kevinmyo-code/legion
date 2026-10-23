@@ -114,7 +114,7 @@ fun BooksSheetContent(books: BooksHome, onClose: () -> Unit) {
 }
 
 private fun subtitle(state: BooksUiState): String = when (val folder = state.folder) {
-    is BooksFolderState.Granted -> "${state.chipSub} · ${folder.label}"
+    is BooksFolderState.Granted -> listOfNotNull(state.chipSub, folder.label, state.pdfLine).joinToString(" · ")
     is BooksFolderState.Lost -> "Folder access lost · ${folder.label}"
     BooksFolderState.None -> "No folder picked yet"
 }
