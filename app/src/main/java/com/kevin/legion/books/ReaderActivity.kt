@@ -17,6 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -35,6 +38,7 @@ class ReaderActivity : FragmentActivity() {
             this,
             requireNotNull(documentId) { "ReaderActivity needs a book" },
             intent.getBooleanExtra(EXTRA_LISTEN, false),
+            intent.getBooleanExtra(EXTRA_ORIGINAL, false),
         )
     }
 
@@ -45,7 +49,11 @@ class ReaderActivity : FragmentActivity() {
         setContent {
             SoftTheme {
                 val state by model.state.collectAsStateWithLifecycle()
-                ReaderScreen(state, readerActions()) { ReaderBody(state) }
+                LaunchedEffect(state.settings.fullScreen) { applyFullScreen(state.settings.fullScreen) }
+                Box(Modifier.fillMaxSize()) {
+                    ReaderScreen(state, readerActions()) { ReaderBody(state) }
+                    WarmOverlay(state.settings)
+                }
             }
         }
         ReaderPresence.showing.value = documentId
@@ -69,7 +77,31 @@ class ReaderActivity : FragmentActivity() {
         onGoToc = model::goToToc,
         onGoPage = model::goToPage,
         onSpreadSplit = model::setSpreadSplit,
+        onNextTheme = model::nextTheme,
+        onToggleWarm = model::toggleWarm,
+        onWarmStrength = model::setWarmStrength,
+        onWarmAuto = model::setWarmAuto,
+        onFullScreen = model::setFullScreen,
+        onToggleChrome = model::toggleChrome,
+        onOpenOriginal = ::openOriginal,
     )
+
+    /** "Open original": the PDF itself, in the PDF viewer, then this EPUB copy closes. */
+    private fun openOriginal() {
+        val id = documentId ?: return
+        startActivity(
+            Intent(this, ReaderActivity::class.java).putExtra(EXTRA_DOCUMENT_ID, id).putExtra(EXTRA_ORIGINAL, true),
+        )
+        finish()
+    }
+
+    /** Immersive: hide the system bars, and let a swipe from an edge peek at them. */
+    private fun applyFullScreen(on: Boolean) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        val bars = WindowInsetsCompat.Type.systemBars()
+        if (on) controller.hide(bars) else controller.show(bars)
+    }
 
     @Composable
     private fun ReaderBody(state: ReaderUiState) {
@@ -92,6 +124,7 @@ class ReaderActivity : FragmentActivity() {
                         onLocator = model::onEpubLocator,
                         onControl = model::attach,
                         modifier = Modifier.fillMaxSize(),
+                        onTapCenter = model::toggleChrome,
                     )
                 }
             }
@@ -104,6 +137,9 @@ class ReaderActivity : FragmentActivity() {
                 pageRequest = pageRequest,
                 onPage = model::onPage,
                 onPageRequestHandled = model::onPageRequestHandled,
+                // Comics are art: never recoloured, whatever the theme says.
+                colorMatrix = if (state.format == BookFormat.CBZ) null else PageColorMatrix.of(state.settings.theme),
+                onTapCenter = model::toggleChrome,
             )
         }
     }
@@ -128,6 +164,7 @@ class ReaderActivity : FragmentActivity() {
     companion object {
         private const val EXTRA_DOCUMENT_ID = "documentId"
         private const val EXTRA_LISTEN = "listen"
+        private const val EXTRA_ORIGINAL = "original"
 
         fun intent(context: Context, book: Book, listen: Boolean): Intent =
             Intent(context, ReaderActivity::class.java)

@@ -3,7 +3,8 @@ map: books
 ticket: "05"
 title: "Build: phone converts every PDF in the background and reads the EPUB copy"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-10-23 against a fake backend, suite green; schema v77. Owes: ticket 04 deployed, then on the A25 The Road converts and A+ refits it, sheet music says scanned, The Green Book says too big, the textbook converts or says why not, Wi-Fi gate and unreachable-engine wording, Open original, Resizable tag"
 blockers: ["03", "04"]
 blocked-by: ["[[03-pdf-refit-decision]]", "[[04-build-pdf-convert-server]]"]
 open-blockers: 1

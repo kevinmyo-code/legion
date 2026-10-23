@@ -14,6 +14,9 @@ room = "2.8.4"
 composeBom = "2025.09.00"
 okhttp = "4.12.0"
 coroutines = "1.8.1"
+# WorkManager (books ticket 05, 2026-10-23): the PDF-to-EPUB conversion worker. Entered the build for that
+# ticket only; ScheduledBackup and the engine poll stay off it by their own rulings.
+work = "2.10.5"
 lifecycle = "2.8.0"
 activityCompose = "1.9.0"
 # Nav for the single-activity shell (ticket 07, app shell and ignition):
@@ -181,6 +184,7 @@ lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-ru
 # ProcessLifecycleOwner (senior review of aspect-engine ticket 20, MUST-FIX 2): the mirror's real
 # app-foreground/app-background triggers, same "lifecycle" version already pinned above.
 lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycle" }
+work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 # Google Identity Authorization API (com.google.android.gms.auth.api.identity):

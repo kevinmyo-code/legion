@@ -20,6 +20,9 @@ interface ReaderStore {
         atMs: Long,
     )
 
+    /** Remembers a book row that does not exist yet and never touches one that does (an EPUB copy's first open). */
+    suspend fun ensureRow(row: BookRow)
+
     suspend fun bookmarks(documentId: String): List<BookBookmark>
 
     suspend fun addBookmark(bookmark: BookBookmark)
@@ -39,6 +42,8 @@ class RoomReaderStore(private val dao: BookDao) : ReaderStore {
         locatorJson: String?,
         atMs: Long,
     ) = dao.savePosition(documentId, progress, chapterLabel, pageIndex, pageCount, locatorJson, atMs)
+
+    override suspend fun ensureRow(row: BookRow) = dao.insertIfAbsent(listOf(row))
 
     override suspend fun bookmarks(documentId: String) = dao.bookmarks(documentId)
 
@@ -109,6 +114,15 @@ data class ReaderUiState(
     /** The per-book Split / Whole choice; only offered when [SpreadMap.hasSpreads]. */
     val spreadSplit: Boolean = true,
     val landscapeScreen: Boolean = false,
+    /**
+     * The reader's own top and bottom bars. Starts shown; a middle-third tap toggles it. Not saved:
+     * a book reopens with its bars, so the way back is never hidden on arrival.
+     */
+    val chromeVisible: Boolean = true,
+    /** This is the EPUB copy of a PDF (ticket 05): the reader says so, once per open, and offers the original. */
+    val convertedFromPdf: Boolean = false,
+    /** The PDF viewer's line about a conversion that is not done, in words; null when there is none to say. */
+    val conversionNote: String? = null,
 )
 
 /**
@@ -168,4 +182,11 @@ data class ReaderActions(
     val onGoToc: (TocEntry) -> Unit = {},
     val onGoPage: (Int) -> Unit = {},
     val onSpreadSplit: (Boolean) -> Unit = {},
+    val onNextTheme: () -> Unit = {},
+    val onToggleWarm: () -> Unit = {},
+    val onWarmStrength: (Int) -> Unit = {},
+    val onWarmAuto: (Boolean) -> Unit = {},
+    val onFullScreen: (Boolean) -> Unit = {},
+    val onToggleChrome: () -> Unit = {},
+    val onOpenOriginal: () -> Unit = {},
 )

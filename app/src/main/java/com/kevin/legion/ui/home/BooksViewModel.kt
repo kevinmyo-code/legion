@@ -10,7 +10,11 @@ import androidx.lifecycle.viewModelScope
 import com.kevin.legion.books.Book
 import com.kevin.legion.books.BookCatalog
 import com.kevin.legion.books.BookCoverCache
+import com.kevin.legion.books.AndroidPdfConversions
 import com.kevin.legion.books.BookCovers
+import com.kevin.legion.books.BookFormat
+import com.kevin.legion.books.PdfConversionScheduler
+import com.kevin.legion.books.PdfSheetInfo
 import com.kevin.legion.books.BookItem
 import com.kevin.legion.books.BookOutcome
 import com.kevin.legion.books.BooksController
@@ -53,6 +57,10 @@ class BooksViewModel(
     private val now: () -> Long = System::currentTimeMillis,
     scope: CoroutineScope? = null,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Starts the background PDF conversion after a scan (WorkManager in production, nothing in tests). */
+    private val enqueueConversion: () -> Unit = {},
+    /** Which PDFs are resizable and how many still wait, read without opening any PDF. */
+    private val pdfInfo: suspend (List<BookItem>) -> PdfSheetInfo = { PdfSheetInfo.None },
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -70,7 +78,11 @@ class BooksViewModel(
         scanJob = scope.launch {
             val loaded = withContext(io) { catalog.load() }
             apply(loaded)
-            if (loaded is CatalogState.Ready) prepare(loaded.items)
+            if (loaded is CatalogState.Ready) {
+                if (loaded.items.any { it.book.format == BookFormat.PDF }) enqueueConversion()
+                applyPdfInfo(withContext(io) { pdfInfo(loaded.items) })
+                prepare(loaded.items)
+            }
         }
     }
 
@@ -95,6 +107,15 @@ class BooksViewModel(
                     cachedCount = loaded.items.size,
                 )
             }
+        }
+    }
+
+    private fun applyPdfInfo(info: PdfSheetInfo) {
+        _state.update { current ->
+            current.copy(
+                items = current.items.map { it.copy(resizable = it.book.documentId in info.resizable) },
+                pdfLine = info.pendingLine,
+            )
         }
     }
 
@@ -182,6 +203,8 @@ class BooksViewModel(
                 prep = SafBookPrep(app, safCatalog, covers, cache),
                 connectFolder = folders::connect,
                 cachedCount = folders::cachedCount,
+                enqueueConversion = { PdfConversionScheduler.enqueue(app) },
+                pdfInfo = { items -> PdfSheetInfo.of(AndroidPdfConversions(app), items) },
                 coverOf = { book ->
                     withContext(Dispatchers.IO) {
                         cache.cached(book.documentId)?.let(BookCovers::decode)?.asImageBitmap()

@@ -31,6 +31,16 @@
       "color": "1"
     },
     {
+      "id": "378ed9f81ff15359",
+      "type": "file",
+      "file": ".scratch/books/issues/07-read-on-the-laptop-decision.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
       "id": "c81dd2547bc1e952",
       "type": "file",
       "file": ".scratch/books/issues/02-build-books.md",
@@ -51,11 +61,41 @@
       "color": "1"
     },
     {
+      "id": "8eab9ba98d33ce75",
+      "type": "file",
+      "file": ".scratch/books/issues/08-build-reading-sync-engine.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0b1e9ea47d361713",
       "type": "file",
       "file": ".scratch/books/issues/05-build-pdf-convert-phone.md",
       "x": 1040,
       "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0ffb9608d96f3333",
+      "type": "file",
+      "file": ".scratch/books/issues/09-build-reading-sync-phone.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "27a5cc217fd5efe1",
+      "type": "file",
+      "file": ".scratch/books/issues/10-build-web-reader.md",
+      "x": 1040,
+      "y": 300,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -88,6 +128,41 @@
       "fromNode": "047ed0577efcf361",
       "fromSide": "right",
       "toNode": "0b1e9ea47d361713",
+      "toSide": "left"
+    },
+    {
+      "id": "a24400c9801f14e9",
+      "fromNode": "378ed9f81ff15359",
+      "fromSide": "right",
+      "toNode": "8eab9ba98d33ce75",
+      "toSide": "left"
+    },
+    {
+      "id": "0abc9c9e04109ee8",
+      "fromNode": "378ed9f81ff15359",
+      "fromSide": "right",
+      "toNode": "0ffb9608d96f3333",
+      "toSide": "left"
+    },
+    {
+      "id": "7e6a0f4be9e24aa9",
+      "fromNode": "8eab9ba98d33ce75",
+      "fromSide": "right",
+      "toNode": "0ffb9608d96f3333",
+      "toSide": "left"
+    },
+    {
+      "id": "ed6838ef8d402901",
+      "fromNode": "378ed9f81ff15359",
+      "fromSide": "right",
+      "toNode": "27a5cc217fd5efe1",
+      "toSide": "left"
+    },
+    {
+      "id": "edca51f6db0887c9",
+      "fromNode": "8eab9ba98d33ce75",
+      "fromSide": "right",
+      "toNode": "27a5cc217fd5efe1",
       "toSide": "left"
     }
   ]

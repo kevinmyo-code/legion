@@ -3060,3 +3060,22 @@ val MIGRATION_75_76 = object : Migration(SCHEMA_V75, SCHEMA_V76) {
         )
     }
 }
+
+private const val SCHEMA_V77 = 77
+
+/**
+ * `book_conversions` (Kevin, 2026-10-23: every PDF in the Books folder is converted to a resizable
+ * EPUB through the household engine, books ticket 05) - see [BookConversionRow]. One new table is
+ * additive. The CREATE statement is copied verbatim out of the generated `77.json`. It starts
+ * empty: a PDF gets a row the first time the background worker hashes it. Local-only, so no sync
+ * columns and no guid backfill.
+ */
+val MIGRATION_76_77 = object : Migration(SCHEMA_V76, SCHEMA_V77) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `book_conversions` (`sha256` TEXT NOT NULL, `status` TEXT NOT NULL, " +
+                "`attempts` INTEGER NOT NULL, `message` TEXT, `updatedAt` INTEGER NOT NULL, `pages` INTEGER, " +
+                "PRIMARY KEY(`sha256`))",
+        )
+    }
+}

@@ -337,6 +337,8 @@ dependencies {
     // ProcessLifecycleOwner (aspect-engine ticket 20 MUST-FIX 2): real app-foreground/background
     // triggers for MirrorSync, wired from MirrorLifecycleBinder / MidnightApplication.
     implementation(libs.lifecycle.process)
+    // WorkManager, for books ticket 05 only (the unmetered-network PDF conversion worker).
+    implementation(libs.work.runtime.ktx)
     // Single-activity shell (ticket 07): bottom-nav tabs + absorbed sub-routes.
     implementation(libs.navigation.compose)
     // Not used directly by app code. Declared to raise navigation-compose's

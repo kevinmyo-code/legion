@@ -7,6 +7,7 @@ import com.kevin.legion.books.BookItem
 import com.kevin.legion.books.BookPrep
 import com.kevin.legion.books.BooksController
 import com.kevin.legion.books.CatalogState
+import com.kevin.legion.books.PdfSheetInfo
 import com.kevin.legion.books.PrepResult
 import com.kevin.legion.books.ReaderLauncher
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +48,8 @@ class BooksViewModelTest {
         launcher: Launcher = Launcher(),
         prep: BookPrep = BookPrep { PrepResult(changed = false) },
         cached: Int? = null,
+        enqueued: () -> Unit = {},
+        pdfInfo: PdfSheetInfo = PdfSheetInfo.None,
     ): BooksViewModel {
         val catalog = BookCatalog { state }
         return BooksViewModel(
@@ -59,6 +62,8 @@ class BooksViewModelTest {
             now = { 10_000_000L },
             scope = CoroutineScope(Dispatchers.Unconfined),
             io = Dispatchers.Unconfined,
+            enqueueConversion = enqueued,
+            pdfInfo = { pdfInfo },
         )
     }
 
@@ -207,5 +212,26 @@ class BooksViewModelTest {
         vm.continueReading(listen = true)
         assertEquals(listOf("id-Moby" to true), launcher.launched)
         assertNotNull(vm.state.value.notice)
+    }
+
+    @Test fun `a scan that finds a PDF starts the conversion, and one with none does not`() {
+        var enqueued = 0
+        model(
+            CatalogState.Ready("/sdcard/Books", listOf(item("Doc", BookFormat.PDF))),
+            enqueued = { enqueued++ },
+        ).refresh()
+        assertEquals(1, enqueued)
+        model(CatalogState.Ready("/sdcard/Books", listOf(item("Moby"))), enqueued = { enqueued++ }).refresh()
+        assertEquals(1, enqueued)
+    }
+
+    @Test fun `the sheet carries the pending count and tags resizable PDFs in words`() {
+        val vm = model(
+            CatalogState.Ready("/sdcard/Books", listOf(item("Doc", BookFormat.PDF), item("Two", BookFormat.PDF))),
+            pdfInfo = PdfSheetInfo(setOf("id-Doc"), "1 PDF waiting for Wi-Fi"),
+        )
+        vm.refresh()
+        assertEquals("1 PDF waiting for Wi-Fi", vm.state.value.pdfLine)
+        assertEquals(listOf("PDF · Resizable", "PDF"), vm.state.value.items.map { it.formatLabel })
     }
 }

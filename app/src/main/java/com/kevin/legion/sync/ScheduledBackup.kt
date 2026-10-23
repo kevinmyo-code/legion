@@ -14,8 +14,9 @@ import kotlinx.coroutines.launch
  * backup at all. That is not a backup, that is a button.
  *
  * **App-lifecycle daily check, not WorkManager (Kevin's call, this ticket's brief).** The app
- * has no WorkManager dependency and this alone does not earn one. Existing periodic work is
- * either `AlarmManager` + `BootReceiver` re-arm, or an app-foreground hook -
+ * has no WorkManager dependency and this alone does not earn one. (2026-10-23: WorkManager entered
+ * the build for books ticket 05 only, the PDF conversion worker. Backup stays on this ruling.)
+ * Existing periodic work is either `AlarmManager` + `BootReceiver` re-arm, or an app-foreground hook -
  * [com.kevin.legion.calendar.CalendarImportController] is the precedent this follows exactly:
  * one plain `suspend fun` a caller runs from `onResume`, gated by its own "was it recently
  * enough" check, no scheduler service of its own. [checkNow] is the fire-and-forget entry

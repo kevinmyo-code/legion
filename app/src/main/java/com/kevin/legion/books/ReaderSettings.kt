@@ -9,13 +9,27 @@ enum class ReaderTheme(val label: String) {
     NIGHT("Night"),
 }
 
+/** The next theme in the one-tap cycle Day -> Sepia -> Night -> Day. */
+fun ReaderTheme.next(): ReaderTheme = ReaderTheme.entries[(ordinal + 1) % ReaderTheme.entries.size]
+
 /** Reader settings. Local to the phone (ADR 0061), one set for every book. */
 data class ReaderSettings(
     /** The EPUB body size in dp-ish pixels; the prototype's range. */
     val textSize: Int = DEFAULT_TEXT_SIZE,
     val theme: ReaderTheme = ReaderTheme.NIGHT,
+    /** Hide the status and navigation bars while reading (swipe from an edge to peek). Default on. */
+    val fullScreen: Boolean = true,
+    /** The warm filter (LEGION's own "night light" overlay inside the reader); see [WarmFilter]. */
+    val warmOn: Boolean = false,
+    /** 0 to 100; the overlay's alpha curve is [WarmFilter.alpha]. */
+    val warmStrength: Int = WarmFilter.DEFAULT_STRENGTH,
+    /** On from local sunset to sunrise; with no location fix it falls back to [warmOn]. */
+    val warmAuto: Boolean = false,
 ) {
     fun biggerText() = copy(textSize = (textSize + 1).coerceAtMost(MAX_TEXT_SIZE))
+
+    /** The top bar's one-tap cycle: Day, Sepia, Night, Day. */
+    fun nextTheme() = copy(theme = theme.next())
 
     fun smallerText() = copy(textSize = (textSize - 1).coerceAtLeast(MIN_TEXT_SIZE))
 
@@ -38,10 +52,22 @@ class ReaderSettingsStore(context: Context) {
             .coerceIn(ReaderSettings.MIN_TEXT_SIZE, ReaderSettings.MAX_TEXT_SIZE),
         theme = runCatching { ReaderTheme.valueOf(prefs.getString(KEY_THEME, null).orEmpty()) }
             .getOrDefault(ReaderTheme.NIGHT),
+        fullScreen = prefs.getBoolean(KEY_FULL_SCREEN, true),
+        warmOn = prefs.getBoolean(KEY_WARM_ON, false),
+        warmStrength = prefs.getInt(KEY_WARM_STRENGTH, WarmFilter.DEFAULT_STRENGTH)
+            .coerceIn(0, WarmFilter.MAX_STRENGTH),
+        warmAuto = prefs.getBoolean(KEY_WARM_AUTO, false),
     )
 
     fun write(settings: ReaderSettings) {
-        prefs.edit().putInt(KEY_SIZE, settings.textSize).putString(KEY_THEME, settings.theme.name).apply()
+        prefs.edit()
+            .putInt(KEY_SIZE, settings.textSize)
+            .putString(KEY_THEME, settings.theme.name)
+            .putBoolean(KEY_FULL_SCREEN, settings.fullScreen)
+            .putBoolean(KEY_WARM_ON, settings.warmOn)
+            .putInt(KEY_WARM_STRENGTH, settings.warmStrength)
+            .putBoolean(KEY_WARM_AUTO, settings.warmAuto)
+            .apply()
     }
 
     /**
@@ -62,5 +88,9 @@ class ReaderSettingsStore(context: Context) {
         const val PREFS = "books_reader"
         const val KEY_SIZE = "text_size"
         const val KEY_THEME = "theme"
+        const val KEY_FULL_SCREEN = "full_screen"
+        const val KEY_WARM_ON = "warm_on"
+        const val KEY_WARM_STRENGTH = "warm_strength"
+        const val KEY_WARM_AUTO = "warm_auto"
     }
 }

@@ -6628,3 +6628,15 @@ Approved by Kevin with the matrix batch, 2026-10-23.
 - Same day, reader comfort: full screen, a one-tap Day/Night toggle that reaches PDFs, a warm
   "night light" filter. Orchestrator defaults in `.scratch/books/issues/06`, changeable.
 - Tickets `.scratch/books/issues/03` (decision) to `06`.
+
+## 2026-10-23 - Books: read on the laptop, position and bookmarks synced (Kevin)
+
+- Ask: read his books on the laptop with progress synced to LEGION.
+- **Ruled by interview:** a Books page in the web app (over a desktop program); files from a laptop
+  folder (over uploading books to the server); position and bookmarks sync, settings stay per device
+  (over position only, or everything); a PDF read as its EPUB copy is read as that copy on the laptop
+  too (over approximating by percent).
+- Orchestrator calls, changeable: per-person not per-household; the engine holds hash + locator +
+  progression + chapter label, never title or text; Readium's TypeScript toolkit on the web so EPUB
+  locators match, with a "near" fallback said in words.
+- ADR 0061 amended a second time the same day. Tickets `.scratch/books/issues/07` to `10`.

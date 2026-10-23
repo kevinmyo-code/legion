@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kevin.legion.data.local.BookBookmark
+import com.kevin.legion.data.local.BookRow
 import com.kevin.legion.data.local.CarDatabase
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +70,9 @@ class ReaderViewModel(
     scope: CoroutineScope? = null,
     private val readSpread: (String) -> Boolean? = { null },
     private val writeSpread: (String, Boolean) -> Unit = { _, _ -> },
+    private val conversions: PdfConversions = PdfConversions.None,
+    /** Open the PDF itself even when it has an EPUB copy ("Open original"). */
+    private val openOriginal: Boolean = false,
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -96,6 +100,13 @@ class ReaderViewModel(
     private var landscape = false
     private var pagedSource: PageSource? = null
 
+    /**
+     * The book id positions and bookmarks are saved under: [documentId] itself, or the EPUB copy's own
+     * id ([ConvertedBooks.derivedId]) once a PDF opens as its converted EPUB, so the two never share
+     * a locator or a page number.
+     */
+    private var readId: String = documentId
+
     init {
         this.scope.launch { load() }
     }
@@ -108,11 +119,22 @@ class ReaderViewModel(
             return
         }
         val book = Book(row.documentId, row.fileName, format)
-        _state.update { it.copy(title = row.title, format = format, bookmarks = emptyList()) }
-        when (val loaded = loader.load(book)) {
+        val reading = resolveReading(row, book)
+        val readBook = reading.book
+        val readRow = reading.row
+        val readFormat = readBook.format
+        val copy = reading.copied
+        readId = readBook.documentId
+        _state.update {
+            it.copy(
+                title = row.title, format = readFormat, bookmarks = emptyList(),
+                convertedFromPdf = copy, conversionNote = reading.note,
+            )
+        }
+        when (val loaded = loader.load(readBook)) {
             is LoadedBook.Failed -> fail(loaded.sentence)
             is LoadedBook.Paged -> {
-                val resume = ResumePoint.from(row, loaded.source.pageCount)
+                val resume = ResumePoint.from(readRow, loaded.source.pageCount)
                 pagedSource = loaded.source
                 aspects = runCatching { loaded.source.aspects() }.getOrDefault(emptyList())
                 splitSetting = readSpread(documentId) ?: true
@@ -121,7 +143,7 @@ class ReaderViewModel(
                 val map = currentMap(loaded.source.pageCount)
                 _state.update {
                     it.copy(
-                        subtitle = "${format.label} · ${pagesLabel(loaded.source.pageCount)}",
+                        subtitle = "${readFormat.label} · ${pagesLabel(loaded.source.pageCount)}",
                         content = ReaderContent.Paged(loaded.source, map.indexOf(spot)),
                         spread = map,
                         spreadSplit = splitSetting,
@@ -132,22 +154,47 @@ class ReaderViewModel(
             }
             is LoadedBook.Epub -> {
                 session = loaded.session
-                epubStart = row.locatorJson
+                epubStart = readRow.locatorJson
                 readAloud = readAloudFor(loaded.session, { control?.firstVisibleLocatorJson() }, scope)
-                lastEpubJson = row.locatorJson
+                lastEpubJson = readRow.locatorJson
                 _state.update {
                     it.copy(
-                        subtitle = row.author ?: "EPUB",
+                        subtitle = readRow.author ?: if (copy) "Resizable PDF copy" else "EPUB",
                         content = ReaderContent.Epub,
                         toc = loaded.session.toc,
-                        progress = row.progress.toFloat(),
-                        percentLabel = "${(row.progress * PERCENT).toInt()}%",
+                        progress = readRow.progress.toFloat(),
+                        percentLabel = "${(readRow.progress * PERCENT).toInt()}%",
                     )
                 }
                 scope.launch { readAloud?.state?.collect { ra -> onReadAloud(ra) } }
             }
         }
-        _state.update { it.copy(bookmarks = store.bookmarks(documentId)) }
+        _state.update { it.copy(bookmarks = store.bookmarks(readId)) }
+    }
+
+    /** What the reader actually opens for a book: the book itself, or its EPUB copy with the copy's own row. */
+    private class Reading(val book: Book, val row: BookRow, val copied: Boolean, val note: String?)
+
+    /** A PDF with a finished conversion opens as its EPUB copy unless the user asked for the original. */
+    private suspend fun resolveReading(row: BookRow, book: Book): Reading {
+        val isPdf = book.format == BookFormat.PDF
+        val copy = if (isPdf && !openOriginal) conversions.copyFor(book) else null
+        if (copy == null) {
+            return Reading(book, row, copied = false, note = if (isPdf) conversions.noteFor(book) else null)
+        }
+        val epub = Book(ConvertedBooks.derivedId(book.documentId), row.fileName, BookFormat.EPUB)
+        return Reading(epub, copiedRow(row, epub), copied = true, note = null)
+    }
+
+    /** The EPUB copy's own book row, made on first open: same title, no position yet. */
+    private suspend fun copiedRow(pdf: BookRow, copy: Book): BookRow {
+        store.ensureRow(
+            pdf.copy(
+                documentId = copy.documentId, format = BookFormat.EPUB.name, progress = 0.0, chapterLabel = null,
+                pageIndex = 0, pageCount = 0, locatorJson = null, lastReadAtMs = null,
+            ),
+        )
+        return store.row(copy.documentId) ?: pdf
     }
 
     private fun fail(sentence: String) = _state.update { it.copy(content = ReaderContent.Failed(sentence)) }
@@ -203,7 +250,7 @@ class ReaderViewModel(
 
     private fun savePaged(progress: Double) {
         val pages = pagedSource?.pageCount ?: return
-        scope.launch { store.savePosition(documentId, progress, null, spot.page, pages, spot.locator, now()) }
+        scope.launch { store.savePosition(readId, progress, null, spot.page, pages, spot.locator, now()) }
     }
 
     private fun updatePaged(index: Int, save: Boolean) {
@@ -241,7 +288,7 @@ class ReaderViewModel(
             )
         }
         scope.launch {
-            store.savePosition(documentId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, now())
+            store.savePosition(readId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, now())
         }
     }
 
@@ -251,7 +298,7 @@ class ReaderViewModel(
         val current = _state.value
         scope.launch {
             if (place != null) {
-                store.savePosition(documentId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, now())
+                store.savePosition(readId, place.progress, place.chapterLabel, 0, 0, place.locatorJson, now())
             } else if (current.content is ReaderContent.Paged) {
                 savePaged(current.progress.toDouble())
             }
@@ -278,6 +325,20 @@ class ReaderViewModel(
     fun closePanel() = _state.update { it.copy(panel = ReaderPanel.NONE) }
 
     fun setTheme(theme: ReaderTheme) = changeSettings { it.copy(theme = theme) }
+
+    fun nextTheme() = changeSettings { it.nextTheme() }
+
+    fun toggleWarm() = changeSettings { it.copy(warmOn = !it.warmOn) }
+
+    fun setWarmStrength(strength: Int) =
+        changeSettings { it.copy(warmStrength = strength.coerceIn(0, WarmFilter.MAX_STRENGTH)) }
+
+    fun setWarmAuto(auto: Boolean) = changeSettings { it.copy(warmAuto = auto) }
+
+    fun setFullScreen(on: Boolean) = changeSettings { it.copy(fullScreen = on) }
+
+    /** A tap in the middle third: show or hide the reader's own top and bottom bars. */
+    fun toggleChrome() = _state.update { it.copy(chromeVisible = !it.chromeVisible) }
 
     fun biggerText() = changeSettings { it.biggerText() }
 
@@ -311,7 +372,7 @@ class ReaderViewModel(
         val place = lastEpubPlace
         val label = place?.chapterLabel?.let { "$it · ${s.percentLabel}" } ?: "${s.positionLabel} · ${s.percentLabel}"
         val bookmark = BookBookmark(
-            documentId = documentId,
+            documentId = readId,
             label = label,
             locatorJson = place?.locatorJson,
             pageIndex = if (s.content is ReaderContent.Paged) spot.page else s.pageIndex,
@@ -339,7 +400,7 @@ class ReaderViewModel(
     }
 
     private suspend fun refreshBookmarks() {
-        val rows = store.bookmarks(documentId)
+        val rows = store.bookmarks(readId)
         _state.update { it.copy(bookmarks = rows) }
     }
 
@@ -389,6 +450,7 @@ class ReaderViewModel(
         context: Context,
         private val documentId: String,
         private val listen: Boolean,
+        private val openOriginal: Boolean = false,
     ) : ViewModelProvider.Factory {
         private val app = context.applicationContext as Application
 
@@ -397,7 +459,12 @@ class ReaderViewModel(
             val folders = BooksFolderStore(app)
             val settings = ReaderSettingsStore(app)
             val readium = ReadiumEpub(app)
+            val conversions = AndroidPdfConversions(app)
             val loader = ReaderLoader { book ->
+                // The EPUB copy of a PDF lives in app-private storage, not under the granted folder.
+                if (ConvertedBooks.isDerived(book.documentId)) {
+                    return@ReaderLoader openCopy(book, conversions, readium)
+                }
                 val tree = folders.treeUri()
                 val uri: Uri? = tree?.let { com.kevin.legion.games.SafRomTree.documentUri(it, book.documentId) }
                 when {
@@ -423,7 +490,16 @@ class ReaderViewModel(
                 writeSettings = settings::write,
                 readSpread = settings::spreadSplit,
                 writeSpread = settings::writeSpreadSplit,
+                conversions = conversions,
+                openOriginal = openOriginal,
             ) as T
+        }
+
+        private suspend fun openCopy(book: Book, conversions: AndroidPdfConversions, readium: ReadiumEpub): LoadedBook {
+            val pdf = Book(ConvertedBooks.originalId(book.documentId), book.fileName, BookFormat.PDF)
+            val copy = conversions.copyFor(pdf)
+                ?: return LoadedBook.Failed("The resizable copy of this PDF is gone. Open the original instead.")
+            return withContext(Dispatchers.IO) { open(book, Uri.fromFile(copy.file), readium) }
         }
 
         @Suppress("TooGenericExceptionCaught", "SwallowedException") // every failure becomes a sentence

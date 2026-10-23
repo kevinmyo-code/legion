@@ -46,6 +46,8 @@ data class BooksUiState(
     val notice: BookNotice? = null,
     /** Bumped whenever a cover or title landed, so tiles re-ask for their cover. */
     val coverVersion: Int = 0,
+    /** "2 PDFs waiting for Wi-Fi" (ticket 05); null when no PDF is waiting to be converted. */
+    val pdfLine: String? = null,
 ) {
     /** One shelf per shelf kind that has files, in [BookShelf] order. */
     val shelves: List<BookShelfUi>

@@ -34,6 +34,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.positionChanged
@@ -47,7 +49,6 @@ import kotlinx.coroutines.launch
 
 private const val MAX_ZOOM = 5f
 private const val DOUBLE_TAP_ZOOM = 2.5f
-private const val EDGE_TAP_FRACTION = 0.25f
 
 /**
  * The PDF and comic page view (ADR 0061): a pager of pages, each pinch-zoomable. At 1x a swipe or a
@@ -65,10 +66,17 @@ fun PagedViewer(
     onPage: (Int) -> Unit,
     onPageRequestHandled: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The theme's page colour matrix (null for Day and for comics, which are never recoloured). */
+    colorMatrix: FloatArray? = null,
+    /** A tap in the middle third of the page: the reader shows or hides its bars. */
+    onTapCenter: () -> Unit = {},
 ) {
     // A different mapping (the phone turned, or Split/Whole flipped) rebuilds the pager at the same spot.
     androidx.compose.runtime.key(spread) {
-        PagerBody(source, spread, landscape, startPage, palette, pageRequest, onPage, onPageRequestHandled, modifier)
+        PagerBody(
+            source, spread, landscape, startPage, palette, pageRequest, onPage, onPageRequestHandled, modifier,
+            colorMatrix, onTapCenter,
+        )
     }
 }
 
@@ -84,6 +92,8 @@ private fun PagerBody(
     onPage: (Int) -> Unit,
     onPageRequestHandled: () -> Unit,
     modifier: Modifier,
+    colorMatrix: FloatArray?,
+    onTapCenter: () -> Unit,
 ) {
     val last = (spread.count - 1).coerceAtLeast(0)
     val pager = rememberPagerState(initialPage = startPage.coerceIn(0, last)) { spread.count }
@@ -111,6 +121,8 @@ private fun PagerBody(
             index = index,
             fit = Fit.mode(landscape, spread.isHalf(index)),
             palette = palette,
+            colorMatrix = colorMatrix,
+            onTapCenter = onTapCenter,
             onZoomed = { zoomed = it },
             onTapEdge = { forward ->
                 scope.launch {
@@ -130,6 +142,8 @@ private fun ZoomablePage(
     index: Int,
     fit: FitMode,
     palette: ReaderPalette,
+    colorMatrix: FloatArray?,
+    onTapCenter: () -> Unit,
     onZoomed: (Boolean) -> Unit,
     onTapEdge: (forward: Boolean) -> Unit,
 ) {
@@ -145,7 +159,7 @@ private fun ZoomablePage(
         Box(
             Modifier
                 .fillMaxSize()
-                .zoomable(zoom, onTapEdge)
+                .zoomable(zoom, onTapEdge, onTapCenter)
                 .graphicsLayer(
                     scaleX = zoom.scale,
                     scaleY = zoom.scale,
@@ -161,6 +175,7 @@ private fun ZoomablePage(
                     bitmap = shown.asImageBitmap(),
                     contentDescription = "Page ${index + 1}",
                     contentScale = if (fit == FitMode.WIDTH) ContentScale.FillWidth else ContentScale.Fit,
+                    colorFilter = colorMatrix?.let { ColorFilter.colorMatrix(ColorMatrix(it)) },
                     modifier = if (fit == FitMode.WIDTH) scroll.fillMaxWidth() else Modifier.fillMaxSize(),
                 )
             } else {
@@ -200,16 +215,21 @@ private class ZoomState {
     }
 }
 
-private fun Modifier.zoomable(zoom: ZoomState, onTapEdge: (forward: Boolean) -> Unit): Modifier = this
+private fun Modifier.zoomable(
+    zoom: ZoomState,
+    onTapEdge: (forward: Boolean) -> Unit,
+    onTapCenter: () -> Unit,
+): Modifier = this
     .pointerInput(Unit) {
         detectTapGestures(
             onDoubleTap = { zoom.toggle() },
             onTap = { at ->
-                if (zoom.scale == 1f) {
-                    when {
-                        at.x < size.width * EDGE_TAP_FRACTION -> onTapEdge(false)
-                        at.x > size.width * (1f - EDGE_TAP_FRACTION) -> onTapEdge(true)
-                    }
+                // The bars toggle even when zoomed in; edge turns only at 1x, where they cannot misfire.
+                when (TapZone.of(at.x, size.width.toFloat())) {
+                    TapZone.CHROME -> onTapCenter()
+                    TapZone.PREVIOUS -> if (zoom.scale == 1f) onTapEdge(false)
+                    TapZone.NEXT -> if (zoom.scale == 1f) onTapEdge(true)
+                    TapZone.NONE -> Unit
                 }
             },
         )

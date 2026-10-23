@@ -372,9 +372,9 @@ import androidx.room.RoomDatabase
         Checklist::class, ChecklistItem::class, ChecklistTick::class,
         GeminiUsage::class, LiveConnectDay::class, BackgroundPassState::class,
         FeedSubscription::class,
-        BookRow::class, BookBookmark::class,
+        BookRow::class, BookBookmark::class, BookConversionRow::class,
     ],
-    version = 76,
+    version = 77,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -521,6 +521,8 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun feedSubscriptionDao(): FeedSubscriptionDao
     abstract fun bookDao(): BookDao
 
+    abstract fun bookConversionDao(): BookConversionDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -551,7 +553,9 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 76
+        const val SCHEMA_VERSION = 77
+        // 2026-10-23: bumped to 77 alongside `@Database(version=)` in the same edit (books ticket 05:
+        // `book_conversions`, one new local-only table; see [MIGRATION_76_77]).
         // 2026-10-19: bumped to 76 alongside `@Database(version=)` in the same edit (the Books launcher:
         // `books` and `book_bookmarks`, two new local-only tables; see [MIGRATION_75_76]).
         // 2026-09-06: bumped to 67 alongside `@Database(version=)` in the same edit again
@@ -687,6 +691,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_66_67, MIGRATION_67_68, MIGRATION_68_69, MIGRATION_69_70,
                         MIGRATION_70_71, MIGRATION_71_72, MIGRATION_72_73,
                         MIGRATION_73_74, MIGRATION_74_75, MIGRATION_75_76,
+                        MIGRATION_76_77,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it
