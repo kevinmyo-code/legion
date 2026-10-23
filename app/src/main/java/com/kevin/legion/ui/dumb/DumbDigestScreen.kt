@@ -90,7 +90,7 @@ fun DumbDigestContent(
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             PillButton("Clear all", onClearAll, primary = false, modifier = Modifier.fillMaxWidth())
-            PillButton("Go back to dumb mode", onBackToDumb, primary = true, modifier = Modifier.fillMaxWidth())
+            PillButton("Go back to matrix mode", onBackToDumb, primary = true, modifier = Modifier.fillMaxWidth())
         }
     }
 }

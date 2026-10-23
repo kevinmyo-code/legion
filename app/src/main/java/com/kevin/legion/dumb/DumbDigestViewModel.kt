@@ -40,7 +40,7 @@ class DumbDigestViewModel(
             DigestUi(
                 rows = DigestRows.build(s.entries, labelOf),
                 lastRun = controller.history().lastOrNull()
-                    ?.let { "dumb mode off · was on ${DumbFormat.elapsed(it.endMs - it.startMs)}" }
+                    ?.let { "matrix mode off · was on ${DumbFormat.elapsed(it.endMs - it.startMs)}" }
                     .orEmpty(),
             )
         }

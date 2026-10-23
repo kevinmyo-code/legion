@@ -65,3 +65,29 @@ through an interview and clickable prototypes and picked home layout A over the 
 - No voice tool: the mode is manual only, so ADR 0035's rule has nothing to mirror.
 - `DumbModeController` is a constructor-injected class held by the Application. Hilt is architecture
   ticket 02 and not in the build yet; the holder is the injection point until it lands.
+
+## Amendment, 2026-10-23: the user-facing name is "Matrix mode"
+
+Kevin: *"i wouldnt call it dumb mode, more like matrix mode"*. Every string a person sees is now "Matrix mode": the tile, settings, setup, Leave, Digest and Bounce screens, the accessibility and wallpaper descriptions, and the leave sentence ("I am choosing to leave matrix mode"). The status line reads "in the matrix for 2h 14m". The code keeps `dumb` in its package, class and preference names, so stored state and the setup grants survive the rename. "Dumb mode" in code and in this ADR means Matrix mode.
+
+## Amendment, 2026-10-23: WhatsApp is kept, and Maps may open Google Maps
+
+Kevin, approving the matrix batch on 2026-10-23.
+
+- **WhatsApp (`com.whatsapp`) is a kept app**, listed right after Messages, and its row shows only when
+  it is installed. Being kept, it is never bounced, so tapping a chosen person's WhatsApp
+  notification opens the chat. Notifications from anyone else on WhatsApp are still held: the hold
+  decides by person, not by app.
+- **Maps opens Google Maps (`com.google.android.apps.maps`) or LEGION's own navigation**, picked by a
+  setting on the Matrix mode settings screen. **Google Maps is the default.** While Google Maps is the
+  choice it is kept and never bounced. If it is not installed, Maps opens LEGION's navigation and says
+  so in words. This replaces "Maps is LEGION's own nav screen" in the Standing section above for
+  Matrix home only; ADR 0054's "Mapbox only, no hand-off" still governs LEGION's own navigation, and
+  this exception lasts until `.scratch/mapbox-plus/` lands.
+- **Clock: the big time on Matrix home opens the system alarm list** (`AlarmClock.ACTION_SHOW_ALARMS`),
+  so Kevin can set an alarm in the mode (new ask, 2026-10-23; before this no clock app was kept, so
+  it was bounced). The clock package is resolved through `PackageManager` at run time, every package
+  that answers the intent is kept, and no OEM package name is hard-coded (clone-and-run: a stranger's
+  phone resolves elsewhere). With nothing answering, tapping the time says so in words and nothing
+  crashes. The Maps setting is read live by the bounce on every window change, not baked into a kept
+  list at setup.

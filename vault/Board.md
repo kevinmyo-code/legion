@@ -133,6 +133,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/home-launcher/map\|home-launcher]] | [[07-settings-menu-letter-folders-category-buttons\|07]] | build | Settings menu, letter folders in Apps, and category buttons under the dock |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[09-sdk-in-the-build\|09]] | build | Mapbox in the build, behind the clone-and-run gate, with token setup |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[01-day-and-night-styles\|01]] | build | Build: day and night map styles that are easy to read, switching like Google's |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
 | [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |
@@ -213,6 +214,12 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[10-route-and-guidance\|10]] | build | Route and guidance on the nav screen  waiting on [[09-sdk-in-the-build\|09]] |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[11-voice-tools-over-the-live-trip\|11]] | build | Voice tools over the live trip, and the Google hand-off retired  waiting on [[10-route-and-guidance\|10]] |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[12-a-real-drive\|12]] | test | A real drive on the A25  waiting on [[11-voice-tools-over-the-live-trip\|11]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[02-a-real-drive\|02]] | test | Test: a real drive on the A25 with LEGION navigation  waiting on [[01-day-and-night-styles\|01]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[03-recents-and-favourites\|03]] | build | Build: recent destinations and favourites on the nav screen  waiting on [[02-a-real-drive\|02]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[04-traffic-lanes-speed\|04]] | build | Build: traffic on the route, lane guidance, speed limit  waiting on [[02-a-real-drive\|02]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[05-offline-maps\|05]] | decision | Decision: offline maps (area, size, refresh)  waiting on [[02-a-real-drive\|02]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[06-place-search\|06]] | decision | Decision: place search (near me, open now)  waiting on [[02-a-real-drive\|02]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[07-legion-only-extras\|07]] | decision | Decision: LEGION-only extras (ETA to Mia, leave-by, fuel-aware stops)  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[07-web\|07]] | build | Web: the log screen, log-it form, last-bought on list items  waiting on [[06-server\|06]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[08-phone\|08]] | build | Phone: voice tools, the log screen, last-bought label  waiting on [[06-server\|06]] |
@@ -296,6 +303,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/live-sync/map\|live-sync]] | 0 | 0 | [[.scratch/live-sync/live-sync.canvas\|open]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | 13 | 4 | [[.scratch/mapbox-nav/mapbox-nav.canvas\|open]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | 7 | 7 | [[.scratch/mapbox-plus/mapbox-plus.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |

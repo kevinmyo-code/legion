@@ -6,7 +6,9 @@ import android.view.ContextThemeWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -22,6 +24,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.navigation.CameraAction
+import com.kevin.legion.navigation.MapLight
+import com.kevin.legion.navigation.MapLightPicker
+import com.kevin.legion.navigation.MapStyleMode
 import com.kevin.legion.navigation.NavCameraMode
 import com.kevin.legion.navigation.NavCameraPlan
 import com.kevin.legion.navigation.FramePadding
@@ -29,6 +34,7 @@ import com.kevin.legion.navigation.NavFollowFrame
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.NavMapFeed
 import com.kevin.legion.navigation.RouteFailure
+import com.mapbox.bindgen.Value
 import kotlinx.coroutines.delay
 import com.kevin.legion.navigation.NavPhase
 import com.kevin.legion.ui.theme.soft.AreaAccent
@@ -97,6 +103,14 @@ data class NavMapInsets(val topPx: Int = 0, val bottomPx: Int = 0)
  * network-shaped failure is retried; preview alternatives are dashed with butt caps (round caps
  * closed the gaps) and the guided route line's alternatives are grey.
  *
+ * **Day and night (mapbox-plus ticket 01).** The map loads the Mapbox Standard style (Maps SDK 11.32,
+ * which supports its `lightPreset`) and switches look by setting that config property on the already
+ * loaded style, never by loading a different style. That is the whole answer to "switching mid-trip
+ * must not drop the route layer or the camera": nothing is reloaded, so the route layers, the SDK's
+ * route line and the camera are untouched. [styleGen] still bumps on a genuine reload (a failed load
+ * retried), and the route draw effect re-keys on it as before. Auto follows sunrise and sunset at the
+ * device fix and the system dark theme with no fix; see [MapLightPicker].
+ *
  * Preview draws its own lines (primary solid, alternatives dashed, per the design of record);
  * guiding hands the routes to the SDK's route line, which draws traffic. The two never draw at once.
  */
@@ -112,6 +126,7 @@ fun NavMap(
     onAuthFailure: () -> Unit,
     onCameraDetached: () -> Unit,
     onStatus: (MapStatus) -> Unit,
+    styleMode: MapStyleMode,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -152,6 +167,20 @@ fun NavMap(
 
     var styleFailGen by remember { mutableIntStateOf(0) }
     val report by rememberUpdatedState(onStatus)
+
+    // The look: re-evaluated once a minute so Auto crosses sunrise and sunset without a recompose
+    // trigger from anywhere else.
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(LIGHT_REFRESH_MS)
+            nowMs = System.currentTimeMillis()
+        }
+    }
+    val systemDark = isSystemInDarkTheme()
+    val light = MapLightPicker.choose(styleMode, nowMs, deviceFix?.latitude, deviceFix?.longitude, systemDark)
+    // Read by the style-loaded callback, which outlives any one composition of this value.
+    val currentLight = rememberUpdatedState(light)
 
     val marginPx = with(density) { CHROME_MARGIN.toPx().toDouble() }
     val sidePx = with(density) { SIDE_PADDING.toPx().toDouble() }
@@ -205,6 +234,9 @@ fun NavMap(
         var styleReady = false
         val styleLoaded = mapView.mapboxMap.subscribeStyleLoaded {
             styleReady = true
+            // A freshly loaded style starts in the style's own default look; put it in ours before
+            // anything is drawn on it.
+            applyLight(mapView, currentLight.value)
             styleGen++
             report(MapStatus.READY)
         }
@@ -233,7 +265,7 @@ fun NavMap(
             }
         }
         navCamera.registerNavigationCameraStateChangeObserver(cameraStates)
-        mapView.mapboxMap.loadStyle(Style.DARK)
+        mapView.mapboxMap.loadStyle(Style.STANDARD)
         onDispose {
             navCamera.unregisterNavigationCameraStateChangeObserver(cameraStates)
             styleLoaded.cancel()
@@ -245,12 +277,15 @@ fun NavMap(
         }
     }
 
+    // The look changes on the loaded style in place. No reload, so the route and the camera stay put.
+    LaunchedEffect(light, styleGen) { applyLight(mapView, light) }
+
     // Retry a failed style load after a pause. Event-driven (one retry per reported failure) so it
     // never cancels a load that is still in flight.
     LaunchedEffect(styleFailGen) {
         if (styleFailGen == 0) return@LaunchedEffect
         delay(STYLE_RETRY_MS)
-        if (mapView.mapboxMap.style == null) mapView.mapboxMap.loadStyle(Style.DARK)
+        if (mapView.mapboxMap.style == null) mapView.mapboxMap.loadStyle(Style.STANDARD)
     }
 
     // Camera padding and the map's own attribution follow the measured chrome (device-run defect 3).
@@ -352,6 +387,16 @@ fun NavMap(
     AndroidView(factory = { mapView }, modifier = modifier.onSizeChanged { mapHeightPx = it.height })
 }
 
+/**
+ * Sets the Standard style's `lightPreset` on the loaded style. A no-op before a style exists (the
+ * style-loaded callback calls it again once one does). Returns nothing: a refused property leaves the
+ * map in the style's default look, which is readable, and there is nothing useful to tell the user.
+ */
+private fun applyLight(mapView: MapView, light: MapLight) {
+    if (mapView.mapboxMap.style == null) return
+    mapView.mapboxMap.setStyleImportConfigProperty(STANDARD_IMPORT_ID, LIGHT_PRESET_KEY, Value(light.preset))
+}
+
 private fun clearPreview(style: Style) {
     for (i in 0 until PREVIEW_SLOTS) {
         style.removeStyleLayer("$PREVIEW_LINE_ID$i")
@@ -440,6 +485,9 @@ private fun frame(
 private fun FramePadding.toEdgeInsets() = EdgeInsets(top, left, bottom, right)
 
 private const val PREVIEW_SLOTS = 3
+private const val STANDARD_IMPORT_ID = "basemap"
+private const val LIGHT_PRESET_KEY = "lightPreset"
+private const val LIGHT_REFRESH_MS = 60_000L
 private const val PREVIEW_SOURCE_ID = "nav-preview-src-"
 private const val PREVIEW_LINE_ID = "nav-preview-line-"
 private const val PREVIEW_CASING_ID = "nav-preview-casing-"

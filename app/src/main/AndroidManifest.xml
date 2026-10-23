@@ -136,8 +136,15 @@
         <intent>
             <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
         </intent>
+        <!-- Matrix mode's big clock opens the alarm list; the clock app is found by who answers this,
+             never by a hard-coded OEM package (clone-and-run). -->
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.spotify.music" />
+        <!-- Matrix mode (ADR 0062, 2026-10-23): WhatsApp is a kept app when installed. -->
+        <package android:name="com.whatsapp" />
         <!-- Retro-games ticket 03: the three emulators LEGION hands a game to; without these the
              "is it installed" check reads every one as missing on API 30+. -->
         <package android:name="com.retroarch.aarch64" />
@@ -462,7 +469,7 @@
         <service
             android:name=".dumb.DumbBounceService"
             android:exported="true"
-            android:label="Dumb mode"
+            android:label="Matrix mode"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -472,13 +479,13 @@
                 android:resource="@xml/dumb_bounce_service" />
         </service>
 
-        <!-- The "Dumb mode is on" screen a bounced app leaves behind. Not exported: only the bounce
+        <!-- The "Matrix mode is on" screen a bounced app leaves behind. Not exported: only the bounce
              service starts it. Out of Recents so it does not linger as a way back to anything. -->
         <activity
             android:name=".ui.dumb.DumbBounceActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:label="Dumb mode"
+            android:label="Matrix mode"
             android:launchMode="singleTop"
             android:theme="@style/Theme.Legion" />
 
@@ -517,7 +524,7 @@
             android:name=".dumb.DumbModeTileService"
             android:exported="true"
             android:icon="@drawable/ic_dumb_tile"
-            android:label="Dumb mode"
+            android:label="Matrix mode"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

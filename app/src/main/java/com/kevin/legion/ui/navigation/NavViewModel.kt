@@ -7,6 +7,7 @@ import com.kevin.legion.MidnightApplication
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.navigation.AvoidKind
 import com.kevin.legion.navigation.GeoPoint
+import com.kevin.legion.navigation.MapStyleMode
 import com.kevin.legion.navigation.NavCameraMode
 import com.kevin.legion.navigation.NavFollowFrame
 import com.kevin.legion.navigation.NavDestination
@@ -60,6 +61,8 @@ data class NavUiState(
     val stopInput: String = "",
     /** The map's own load state, so the screen can say "loading" / "could not be reached" in words. */
     val mapStatus: MapStatus = MapStatus.READY,
+    /** Auto / Day / Night for the map's look (mapbox-plus ticket 01); Auto follows the sun. */
+    val mapStyle: MapStyleMode = MapStyleMode.AUTO,
 )
 
 private data class LocalState(
@@ -93,8 +96,8 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
 
     private val local = MutableStateFlow(LocalState())
 
-    val state: StateFlow<NavUiState> = combine(controller.state, local) { nav, l ->
-        NavUiState(nav, l.input, l.resolving, l.choice, l.problem, l.labels, l.panel, l.stopInput, l.mapStatus)
+    val state: StateFlow<NavUiState> = combine(controller.state, local, application.mapStyle.mode) { nav, l, style ->
+        NavUiState(nav, l.input, l.resolving, l.choice, l.problem, l.labels, l.panel, l.stopInput, l.mapStatus, style)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, NavUiState(controller.state.value))
 
     init {
@@ -278,6 +281,9 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     fun onMapAuthFailure() = controller.onTokenRefused()
 
     fun onCameraDetached() = controller.cameraDetached()
+
+    /** The map-style button: Auto, Day, Night. Applies live, mid-trip included (no style reload). */
+    fun cycleMapStyle() = application.mapStyle.cycle()
 
     fun onMapStatus(status: MapStatus) = local.update { it.copy(mapStatus = status) }
 

@@ -72,13 +72,18 @@ class DumbUiStateTest {
     }
 
     @Test
-    fun `the kept list is the nine entries in the ruled order`() {
+    fun `the kept list is the eleven entries in the ruled order, WhatsApp after Messages`() {
         assertEquals(
-            listOf("Phone", "Messages", "Maps", "Camera", "Music", "To-dos", "Calendar", "Books", "Assistant"),
+            listOf(
+                "Phone", "Messages", "WhatsApp", "Maps", "Camera", "Music", "To-dos", "Calendar", "Brief", "Books",
+                "Assistant",
+            ),
             KeptEntry.entries.map { it.label },
         )
         assertEquals(
-            setOf(KeptEntry.PHONE, KeptEntry.MESSAGES, KeptEntry.CAMERA, KeptEntry.MUSIC),
+            setOf(
+                KeptEntry.PHONE, KeptEntry.MESSAGES, KeptEntry.WHATSAPP, KeptEntry.CAMERA, KeptEntry.MUSIC,
+            ),
             KeptEntry.entries.filter { it.isExternal }.toSet(),
         )
     }
@@ -90,6 +95,9 @@ class DumbUiStateTest {
             override fun smsPackage() = null
             override fun cameraPackage() = "cam.pkg"
             override fun musicPackage() = "dial.pkg"
+            override fun whatsappPackage() = null
+            override fun googleMapsPackage() = "maps.pkg"
+            override fun clockPackages() = emptySet<String>()
         }
         assertEquals(setOf("dial.pkg", "cam.pkg"), resolver.keptPackages())
     }

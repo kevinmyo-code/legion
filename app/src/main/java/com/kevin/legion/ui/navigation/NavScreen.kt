@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kevin.legion.MidnightApplication
 import com.kevin.legion.R
+import com.kevin.legion.navigation.MapStyleMode
 import com.kevin.legion.navigation.NavCameraMode
 import com.kevin.legion.navigation.NavFollowFrame
 import com.kevin.legion.navigation.NavFormat
@@ -97,6 +98,7 @@ fun NavScreen(
         onStopInput = viewModel::onStopInput,
         onAddStop = viewModel::addStop,
         onDropStop = viewModel::dropStop,
+        onCycleMapStyle = viewModel::cycleMapStyle,
     )
     NavContent(ui, actions) { modifier, insets ->
         NavMap(
@@ -108,6 +110,7 @@ fun NavScreen(
             onAuthFailure = viewModel::onMapAuthFailure,
             onCameraDetached = viewModel::onCameraDetached,
             onStatus = viewModel::onMapStatus,
+            styleMode = ui.mapStyle,
             modifier = modifier,
         )
     }
@@ -148,19 +151,28 @@ fun NavContent(ui: NavUiState, actions: NavActions, map: @Composable (Modifier, 
                 )
                 NavPhase.PREVIEW -> {
                     BackButton(actions.onCancelPreview, Modifier.align(Alignment.TopStart).then(topMeasure))
-                    MapFab(ui, actions, Modifier.align(Alignment.TopEnd))
+                    Column(Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
+                        MapFab(ui, actions, withStatusBarPadding = false)
+                        MapStyleButton(ui.mapStyle, actions.onCycleMapStyle)
+                    }
                     Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
                         PreviewSheet(ui, actions, bottomMeasure)
                     }
                 }
                 NavPhase.ARRIVED, NavPhase.ENDED -> {
                     BackButton(actions.onBack, Modifier.align(Alignment.TopStart).then(topMeasure))
+                    MapStyleButton(
+                        ui.mapStyle, actions.onCycleMapStyle, Modifier.align(Alignment.TopEnd).statusBarsPadding(),
+                    )
                     Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
                         EndedSheet(ui, actions, bottomMeasure)
                     }
                 }
                 else -> {
                     BackButton(actions.onBack, Modifier.align(Alignment.TopStart).then(topMeasure))
+                    MapStyleButton(
+                        ui.mapStyle, actions.onCycleMapStyle, Modifier.align(Alignment.TopEnd).statusBarsPadding(),
+                    )
                     Box(Modifier.align(Alignment.BottomCenter).imePadding()) {
                         ChooseSheet(ui, actions, bottomMeasure)
                     }
@@ -251,6 +263,20 @@ internal fun RoundMapButton(icon: Int, description: String, onClick: () -> Unit,
     }
 }
 
+/**
+ * The map look button (mapbox-plus ticket 01, ruling 2): one tap cycles Auto, Day, Night. The icon shows
+ * the current choice and the description says it in words, with what a tap will do.
+ */
+@Composable
+private fun MapStyleButton(mode: MapStyleMode, onCycle: () -> Unit, modifier: Modifier = Modifier) {
+    val icon = when (mode) {
+        MapStyleMode.AUTO -> R.drawable.ms_wb_twilight
+        MapStyleMode.DAY -> R.drawable.ms_sunny
+        MapStyleMode.NIGHT -> R.drawable.ms_dark_mode
+    }
+    RoundMapButton(icon, "Map style: ${mode.label}. Tap for ${mode.next().label}", onCycle, modifier)
+}
+
 @Composable
 private fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     RoundMapButton(R.drawable.ms_arrow_back, "Back", onClick, modifier.statusBarsPadding())
@@ -301,6 +327,7 @@ private fun GuidingOverlay(
         Column(Modifier.align(Alignment.TopEnd).padding(top = belowChrome)) {
             MapFab(ui, actions, withStatusBarPadding = false)
             RoundMapButton(R.drawable.ms_arrow_back, "Leave the map; the trip keeps going", actions.onBack)
+            MapStyleButton(ui.mapStyle, actions.onCycleMapStyle)
         }
         Column(Modifier.align(Alignment.BottomCenter).imePadding()) {
             // Above the sheet, never under it: panning or pinching left the follow camera, this takes it back.

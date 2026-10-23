@@ -1,6 +1,7 @@
 package com.kevin.legion.dumb
 
 import android.app.Application
+import android.content.Context
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.kevin.legion.games.race.GameInviteNotifier
@@ -16,6 +17,9 @@ import kotlinx.coroutines.SupervisorJob
  */
 class DumbModeGraph(private val app: Application) {
     val controller: DumbModeController by lazy { DumbModeController(PrefsDumbModeStore(app)) }
+    val mapsChoice: MapsChoiceStore by lazy {
+        PrefsMapsChoiceStore(app.getSharedPreferences(PrefsDumbModeStore.PREFS, Context.MODE_PRIVATE))
+    }
     val people: ChosenPeople by lazy { ChosenPeople(PrefsChosenPeopleStore(app)) }
     val digest: HeldDigest by lazy { HeldDigest(PrefsDigestPersistence(app)) }
     val alertSwitch: AlertFallbackSwitch by lazy { AlertFallbackSwitch(app) }
@@ -33,7 +37,7 @@ class DumbModeGraph(private val app: Application) {
         DumbBounce(
             isOn = { controller.state.value.on },
             ownPackage = app.packageName,
-            env = AndroidBounceEnvironment(app, AndroidKeptAppResolver(app)),
+            env = AndroidBounceEnvironment(app, AndroidKeptAppResolver(app), mapsChoice::get),
             allowance = BounceAllowance(),
         )
     }

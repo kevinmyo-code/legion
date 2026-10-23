@@ -135,7 +135,7 @@ object DumbSetup {
         state = if (facts.accessibilityEnabled) {
             "On. A hidden app that opens is sent back home."
         } else {
-            "Off. Hidden apps opened another way are not sent home. Turn on \"Dumb mode\" under Downloaded apps."
+            "Off. Hidden apps opened another way are not sent home. Turn on \"Matrix mode\" under Downloaded apps."
         },
         granted = facts.accessibilityEnabled,
         buttonLabel = "Open accessibility",

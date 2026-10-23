@@ -17,7 +17,7 @@ sealed interface LeaveResult {
 /** The leave rules, pure so the screen and the tests read the same ones. */
 object DumbLeaveRule {
     const val WAIT_MS = 60_000L
-    const val SENTENCE = "I am choosing to leave dumb mode"
+    const val SENTENCE = "I am choosing to leave matrix mode"
 
     /** Case-insensitive and trimmed (Kevin, ADR 0062). Inner spacing must match. */
     fun sentenceMatches(typed: String): Boolean = typed.trim().equals(SENTENCE, ignoreCase = true)
@@ -76,7 +76,7 @@ class DumbModeController(
         true
     }
 
-    /** "Stay in dumb mode": drops the pending leave. */
+    /** "Stay in matrix mode": drops the pending leave. */
     fun stay() = synchronized(lock) {
         val s = _state.value
         if (s.on && s.leaveRequestedAtMs != null) commit(s.copy(leaveRequestedAtMs = null), history)

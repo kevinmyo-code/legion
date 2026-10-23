@@ -13,7 +13,7 @@ import com.kevin.legion.ui.dumb.DumbBounceActivity
  * Sends a hidden app back home (ADR 0062). Listens for window-state changes only
  * (`res/xml/dumb_bounce_service.xml`: no window content, no other event type) and, when dumb mode
  * is on and [DumbBounce] says the window belongs to a hidden app, presses Home and shows LEGION's
- * "Dumb mode is on" screen over the result.
+ * "Matrix mode is on" screen over the result.
  *
  * Android only runs this once the user turns it on in Accessibility settings, which for a sideloaded
  * build first needs "Allow restricted settings" under App info. It does nothing while dumb mode is

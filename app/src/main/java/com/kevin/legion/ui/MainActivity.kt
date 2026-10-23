@@ -152,6 +152,14 @@ class MainActivity : ComponentActivity() {
         // Fill the app drawer's cache in the background, so even the first APPS tap is instant.
         com.kevin.legion.ui.apps.AppDrawerCache.warm(this)
         setContent {
+            // Matrix mode recolours LEGION's own screens (matrix batch item 2); read at the root so
+            // LegionTheme and every nested SoftTheme see it.
+            val matrixState by (application as com.kevin.legion.MidnightApplication).dumbMode.state
+                .collectAsStateWithLifecycle()
+            val matrixOn = matrixState.on
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.kevin.legion.ui.theme.LocalMatrixMode provides matrixOn,
+            ) {
             LegionTheme {
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.kevin.legion.ui.navigation.LocalTripResumeNonce provides tripResumeNonce,
@@ -169,6 +177,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
         }
     }

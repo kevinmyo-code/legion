@@ -78,8 +78,20 @@ class MidnightApplication : Application() {
      */
     val dumb: com.kevin.legion.dumb.DumbModeGraph by lazy { com.kevin.legion.dumb.DumbModeGraph(this) }
 
+    /**
+     * The daily brief (ai-upgrade ticket 02): one controller shared by the Brief modal (HOME and dumb
+     * Home A) and the `get_sitrep` voice tool, so both paths say the same thing (ADR 0035). Built by
+     * hand like [dumb] until Hilt lands; this property is the injection point.
+     */
+    val brief: com.kevin.legion.brief.BriefController by lazy { com.kevin.legion.brief.BriefController.forApp(this) }
+
     /** The mode's state machine, kept as its own name because the tile and the screens read only this. */
     val dumbMode: com.kevin.legion.dumb.DumbModeController get() = dumb.controller
+
+    /** The nav map's Auto / Day / Night choice (mapbox-plus ticket 01). */
+    val mapStyle: com.kevin.legion.navigation.MapStyleSetting by lazy {
+        com.kevin.legion.navigation.MapStyleSetting(this)
+    }
 
     /** The raw route/progress objects the nav screen's map draws; written by [navController]'s SDK seam. */
     val navMapFeed: NavMapFeed by lazy { NavMapFeed() }

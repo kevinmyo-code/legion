@@ -20,7 +20,7 @@ data class DumbUiState(
     val date: String = "",
     /** "2h 14m", the length of the current run. */
     val elapsed: String = "",
-    /** The line under the date: "dumb for 2h 14m", plus " · 4 days in a row" once there is a streak. */
+    /** The line under the date: "in the matrix for 2h 14m", plus " · 4 days in a row" once there is a streak. */
     val statusLine: String = "",
     val entries: List<KeptEntry> = KeptEntry.entries,
     /** "Mia, Mom, Dad get through", or words saying nobody is chosen. */
@@ -47,9 +47,9 @@ object DumbFormat {
 
     /** The prototype's footer: "Mia, Mom, Dad get through". Plural verb only for more than one name. */
     fun statusLine(elapsed: String, streakDays: Int): String = when (streakDays) {
-        0 -> "dumb for $elapsed"
-        1 -> "dumb for $elapsed \u00b7 1 day in a row"
-        else -> "dumb for $elapsed \u00b7 $streakDays days in a row"
+        0 -> "in the matrix for $elapsed"
+        1 -> "in the matrix for $elapsed \u00b7 1 day in a row"
+        else -> "in the matrix for $elapsed \u00b7 $streakDays days in a row"
     }
 
     fun peopleLine(names: List<String>): String = when (names.size) {
@@ -60,6 +60,10 @@ object DumbFormat {
 }
 
 object DumbUiStates {
+    /** The list as shown: the WhatsApp row only when WhatsApp is installed, everything else always. */
+    fun visibleEntries(whatsappInstalled: Boolean): List<KeptEntry> =
+        KeptEntry.entries.filter { it != KeptEntry.WHATSAPP || whatsappInstalled }
+
     private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm")
     private val DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 
@@ -70,6 +74,7 @@ object DumbUiStates {
         locale: Locale,
         peopleNames: List<String>,
         streakDays: Int = 0,
+        entries: List<KeptEntry> = KeptEntry.entries,
     ): DumbUiState {
         val at = Instant.ofEpochMilli(nowMs).atZone(zone)
         val requested = state.leaveRequestedAtMs
@@ -91,6 +96,7 @@ object DumbUiStates {
             elapsed = elapsed,
             statusLine = if (state.on) DumbFormat.statusLine(elapsed, streakDays) else "",
             peopleLine = DumbFormat.peopleLine(peopleNames),
+            entries = entries,
             leave = leave,
         )
     }

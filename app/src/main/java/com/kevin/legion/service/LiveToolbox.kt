@@ -1874,25 +1874,30 @@ object LiveToolbox {
         // sitrep is ever produced, alongside the Home card's tap** - ticket 32 (Kevin: "sitreps
         // stay tap only or via voice activation only") retired the scheduled alarm that used to
         // fire one unasked; there is no other half of this declaration anymore.
+        // Ai-upgrade ticket 02: it now reads the DAILY BRIEF, the same content the Brief modal shows,
+        // through the same BriefController (ADR 0035: the hands path and the voice path share it).
         fns.put(fn(
             name = "get_sitrep",
-            description = "Give the user a sitrep: a status report pulling together their " +
-                "calendar, the weather, their car's fleet status, and the news - whichever of " +
-                "those they have switched on in settings. **Use this for 'what's the news', " +
-                "'what's the news today', 'any news' too**, with modules=\"news\" when they ask " +
-                "for the news alone. The news has two halves: NEWS is a model's SUMMARY of their " +
-                "newsletter mail, and NEWS FEEDS is the verbatim headlines from the RSS feeds " +
-                "they subscribed to. Say which is which - a summary is not a headline, so never " +
-                "present the summary as quoted headlines or paraphrase a headline into a claim " +
-                "it did not make. Deterministic figures only for calendar/weather/fleet. Say " +
-                "each section plainly, including when one reports nothing or could not be " +
-                "checked, and when one half of the news failed while the other worked - never " +
-                "invent a detail that is not in the result.",
+            description = "Give the user their daily brief (also called the sitrep or morning " +
+                "brief): the engine's brief - CANVAS tasks, MONEY, CAR and web NEWS, each with " +
+                "its status - then CALENDAR and WEATHER read live on this phone, then " +
+                "NEWSLETTERS when that module is on. **Use this for 'what's the news', 'what's " +
+                "the news today', 'any news' too**, with modules=\"news\". Every sentence in the " +
+                "brief was written by code from the household's records: say it as given, never " +
+                "reword a figure, and say [unverified] lines are unverified. Web NEWS bullets " +
+                "name their sources; say the source names, never read out a link. Under " +
+                "NEWSLETTERS, NEWS is a model's SUMMARY of their newsletter mail and NEWS FEEDS " +
+                "is verbatim RSS headlines - say which is which. When the result says it is the " +
+                "saved copy, say so and how old it is. A section that failed or reports nothing " +
+                "is said plainly. On success=false no brief was read: say that first, in the " +
+                "result's words, then what the phone itself had. Never invent a detail that is " +
+                "not in the result.",
             params = obj(
-                "modules" to schema("string", "Optional: a comma-separated subset to narrow the " +
-                    "sitrep to, e.g. \"calendar,weather\" when the user asks for just those. " +
-                    "Omit to get every module they have enabled. A module they have switched " +
-                    "off in settings never appears even if named here."),
+                "modules" to schema("string", "Optional: a comma-separated subset, e.g. " +
+                    "\"calendar,weather\" or \"news\". news = the brief's web news plus " +
+                    "newsletters, fleet = the brief's car section, calendar and weather = the " +
+                    "phone's. With a filter, Canvas and money are left out. Omit for the whole " +
+                    "brief. A phone module switched off in settings never appears."),
             ),
             required = listOf(),
         ))
@@ -4960,13 +4965,15 @@ object LiveToolbox {
 
     /**
      * `get_sitrep`. Parses the optional `modules` filter and hands off entirely to
-     * [SitrepBuilder.build] - this function does no formatting of its own, matching this file's own
-     * thin-dispatch convention for every other domain (`ai/SubAgent.kt`'s callers, `GmailToolLogic`,
-     * `CalendarReadToolLogic`) of keeping the actual logic in a plain, independently-testable object.
+     * [com.kevin.legion.brief.BriefController.forVoice], the same controller the Brief modal's
+     * ViewModel calls (ai-upgrade ticket 02, ADR 0035). This function does no formatting of its own.
+     * `success` is false when no brief from the engine, fresh or saved, was read, and the message
+     * then says so in words before giving the phone's own calendar and weather.
      */
     private suspend fun getSitrepTool(context: Context, args: JSONObject): JSONObject {
         val modules = parseSitrepModules(args.optString("modules").takeIf { args.has("modules") })
-        return result(true, SitrepBuilder.build(context, modules))
+        val voice = com.kevin.legion.brief.BriefController.of(context).forVoice(modules)
+        return result(voice.success, voice.text)
     }
 
     /** A blank/omitted `modules` argument means "every enabled module" - [SitrepBuilder.build]'s
