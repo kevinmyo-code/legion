@@ -1701,6 +1701,60 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/books/convert:
+    post:
+      operationId: api_books_convert_create
+      description: 'The body is the PDF itself (`Content-Type: application/pdf`),
+        not multipart, and must declare its `Content-Length`; over 30 MiB is refused
+        before it is read. The PDF is converted in a temporary directory deleted before
+        the response is sent. Text only: figures and tables are not carried over.
+        A PDF whose median page has fewer than 200 non-whitespace characters is a
+        scan and is refused as `scanned`.'
+      summary: Convert a PDF to a reflowable EPUB. Nothing is kept on the server.
+      tags:
+      - books
+      requestBody:
+        content:
+          application/pdf:
+            schema:
+              type: string
+              format: binary
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          headers:
+            X-Legion-Pages:
+              schema:
+                type: integer
+              description: The PDF's page count.
+          content:
+            application/epub+zip:
+              schema:
+                type: string
+                format: binary
+          description: The EPUB, in the response body.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertError'
+          description: '`too_big`: over 30 MiB. Nothing was read.'
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertError'
+          description: '`scanned`: no text layer. `unreadable`: not a PDF, damaged,
+            password-protected, empty, all margins, or the upload ended early; the
+            message says which.'
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertError'
+          description: '`failed`: the converter failed or ran past 50 s.'
   /api/brief/latest:
     get:
       operationId: api_brief_latest_retrieve
@@ -8163,6 +8217,18 @@ components:
       - updated_at
       - weight_unit
       - weight_value
+    BookConvertCodeEnum:
+      enum:
+      - scanned
+      - unreadable
+      - too_big
+      - failed
+      type: string
+      description: |-
+        * `scanned` - scanned
+        * `unreadable` - unreadable
+        * `too_big` - too_big
+        * `failed` - failed
     Brief:
       type: object
       properties:
@@ -9158,6 +9224,26 @@ components:
       - text
       - updated_at
       - vehicle_id
+    ConvertError:
+      type: object
+      properties:
+        code:
+          allOf:
+          - $ref: '#/components/schemas/BookConvertCodeEnum'
+          description: |-
+            `scanned`, `unreadable` and `too_big` are final: sending the same PDF again gets the same answer. `failed` may succeed on a retry.
+
+            * `scanned` - scanned
+            * `unreadable` - unreadable
+            * `too_big` - too_big
+            * `failed` - failed
+        message:
+          type: string
+          description: A sentence for a person, saying what happened and that nothing
+            was kept. Show it as is.
+      required:
+      - code
+      - message
     CredentialKindEnum:
       enum:
       - cookie_jar

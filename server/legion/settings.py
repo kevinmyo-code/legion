@@ -148,6 +148,9 @@ INSTALLED_APPS = [
     # retro-games ticket 05 (ADR 0060): a Tetris score race held only while it
     # lives (`public.game_matches`), and the invite's Web Push.
     "games",
+    # books ticket 04: `POST /api/books/convert`, PDF in, EPUB out, nothing
+    # kept (ticket 03 ruling 1). No models, so no migrations and no tenancy.
+    "books",
 ]
 
 MIDDLEWARE = [
@@ -498,5 +501,9 @@ SPECTACULAR_SETTINGS = {
         "BriefSectionStatusEnum": "brief.models.SECTION_STATUSES",
         "BriefSectionKeyEnum": "brief.models.SECTION_KEYS",
         "BriefTriggerEnum": "brief.models.Trigger",
+        # books ticket 04: a refusal's `code`. Named before a generic `CodeEnum`
+        # can collide with the next `code` field and get renamed under ticket
+        # 05's client.
+        "BookConvertCodeEnum": "books.views.CONVERT_CODES",
     },
 }
