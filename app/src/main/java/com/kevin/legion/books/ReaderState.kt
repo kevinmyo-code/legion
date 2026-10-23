@@ -109,6 +109,11 @@ data class ReaderUiState(
     /** The per-book Split / Whole choice; only offered when [SpreadMap.hasSpreads]. */
     val spreadSplit: Boolean = true,
     val landscapeScreen: Boolean = false,
+    /**
+     * The reader's own top and bottom bars. Starts shown; a middle-third tap toggles it. Not saved:
+     * a book reopens with its bars, so the way back is never hidden on arrival.
+     */
+    val chromeVisible: Boolean = true,
 )
 
 /**
@@ -168,4 +173,10 @@ data class ReaderActions(
     val onGoToc: (TocEntry) -> Unit = {},
     val onGoPage: (Int) -> Unit = {},
     val onSpreadSplit: (Boolean) -> Unit = {},
+    val onNextTheme: () -> Unit = {},
+    val onToggleWarm: () -> Unit = {},
+    val onWarmStrength: (Int) -> Unit = {},
+    val onWarmAuto: (Boolean) -> Unit = {},
+    val onFullScreen: (Boolean) -> Unit = {},
+    val onToggleChrome: () -> Unit = {},
 )

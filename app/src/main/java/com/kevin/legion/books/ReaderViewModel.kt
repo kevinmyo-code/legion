@@ -279,6 +279,20 @@ class ReaderViewModel(
 
     fun setTheme(theme: ReaderTheme) = changeSettings { it.copy(theme = theme) }
 
+    fun nextTheme() = changeSettings { it.nextTheme() }
+
+    fun toggleWarm() = changeSettings { it.copy(warmOn = !it.warmOn) }
+
+    fun setWarmStrength(strength: Int) =
+        changeSettings { it.copy(warmStrength = strength.coerceIn(0, WarmFilter.MAX_STRENGTH)) }
+
+    fun setWarmAuto(auto: Boolean) = changeSettings { it.copy(warmAuto = auto) }
+
+    fun setFullScreen(on: Boolean) = changeSettings { it.copy(fullScreen = on) }
+
+    /** A tap in the middle third: show or hide the reader's own top and bottom bars. */
+    fun toggleChrome() = _state.update { it.copy(chromeVisible = !it.chromeVisible) }
+
     fun biggerText() = changeSettings { it.biggerText() }
 
     fun smallerText() = changeSettings { it.smallerText() }

@@ -3,11 +3,12 @@ map: books
 ticket: "06"
 title: "Build: reader full screen, a one-tap Day/Night toggle that reaches PDFs, and a warm filter"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-10-23, suite green (5097/0); owed on the A25: full screen on EPUB, PDF and CBZ; Night on a PDF page; warm filter at 50% and 100% at night; EPUB middle-third tap; Auto on a real fix"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

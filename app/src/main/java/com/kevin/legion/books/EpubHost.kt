@@ -27,6 +27,8 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color as ReadiumColor
 import org.readium.r2.navigator.preferences.FontFamily
+import org.readium.r2.navigator.input.InputListener
+import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -64,11 +66,14 @@ fun EpubNavigatorHost(
     onLocator: (Locator) -> Unit,
     onControl: (EpubControl?) -> Unit,
     modifier: Modifier = Modifier,
+    /** A tap in the middle third of the page: the reader shows or hides its bars. */
+    onTapCenter: () -> Unit = {},
 ) {
     var container by remember { mutableStateOf<FragmentContainerView?>(null) }
     var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
     val currentPalette by rememberUpdatedState(palette)
     val currentOnLocator by rememberUpdatedState(onLocator)
+    val currentOnTapCenter by rememberUpdatedState(onTapCenter)
 
     AndroidView(
         modifier = modifier,
@@ -113,6 +118,23 @@ fun EpubNavigatorHost(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(nav) {
         nav?.currentLocator?.collect { currentOnLocator(it) }
+    }
+    DisposableEffect(nav) {
+        val tapListener = object : InputListener {
+            // Only the middle third is ours. Edge taps and everything else go on to Readium, so a link
+            // or a selection in the page still works.
+            override fun onTap(event: TapEvent): Boolean {
+                val width = nav?.view?.width?.toFloat() ?: return false
+                return if (TapZone.of(event.point.x, width) == TapZone.CHROME) {
+                    currentOnTapCenter()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        nav?.addInputListener(tapListener)
+        onDispose { nav?.removeInputListener(tapListener) }
     }
     LaunchedEffect(nav, settings, palette) {
         nav?.submitPreferences(epubPreferences(settings, palette))

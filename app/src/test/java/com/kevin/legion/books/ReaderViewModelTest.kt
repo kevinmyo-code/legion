@@ -154,6 +154,34 @@ class ReaderViewModelTest {
         assertEquals(vm.state.value.settings, written)
     }
 
+    @Test fun `the comfort settings change, persist and the chrome toggles`() {
+        var written: ReaderSettings? = null
+        val vm = ReaderViewModel(
+            "doc", false, FakeStore(row(BookFormat.PDF)), { LoadedBook.Paged(FakePages(2)) },
+            { _, _, _ -> error("unused") }, { ReaderSettings() }, { written = it }, { 1L },
+            CoroutineScope(Dispatchers.Unconfined),
+        )
+        assertTrue(vm.state.value.chromeVisible)
+        vm.toggleChrome()
+        assertFalse(vm.state.value.chromeVisible)
+        vm.toggleChrome()
+        assertTrue(vm.state.value.chromeVisible)
+        vm.setTheme(ReaderTheme.DAY)
+        vm.nextTheme()
+        assertEquals(ReaderTheme.SEPIA, vm.state.value.settings.theme)
+        vm.toggleWarm()
+        vm.setWarmStrength(300)
+        vm.setWarmAuto(true)
+        vm.setFullScreen(false)
+        val s = vm.state.value.settings
+        assertTrue(s.warmOn)
+        assertEquals(WarmFilter.MAX_STRENGTH, s.warmStrength)
+        assertTrue(s.warmAuto)
+        assertFalse(s.fullScreen)
+        assertEquals(s, written)
+        assertTrue(ReaderSettings().fullScreen)
+    }
+
     @Test fun `text size stays inside the prototype's range`() {
         var s = ReaderSettings()
         repeat(30) { s = s.biggerText() }

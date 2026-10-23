@@ -16,9 +16,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -35,6 +39,7 @@ import com.kevin.legion.R
 import com.kevin.legion.ui.home.BooksTone
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
+import kotlin.math.roundToInt
 
 private const val SEPARATOR = " · "
 
@@ -51,8 +56,10 @@ fun ReaderScreen(
     body: @Composable () -> Unit,
 ) {
     val palette = ReaderPalette.of(state.settings.theme)
+    // An open panel needs its entry button, so it keeps the bars up whatever the last tap said.
+    val chrome = state.chromeVisible || state.panel != ReaderPanel.NONE
     Column(modifier.fillMaxSize().background(palette.page).statusBarsPadding()) {
-        Header(state, palette, actions)
+        if (chrome) Header(state, palette, actions)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             body()
             if (state.panel == ReaderPanel.SETTINGS) SettingsCard(state, actions, Modifier.align(Alignment.TopCenter))
@@ -60,7 +67,7 @@ fun ReaderScreen(
         state.readAloud.message?.let { Notice(it, palette) }
         state.listenNote?.let { Notice(it, palette) }
         if (state.readAloud.active) ListenBar(state.readAloud, actions)
-        BottomBar(state, palette, actions)
+        if (chrome) BottomBar(state, palette, actions)
     }
     when (state.panel) {
         ReaderPanel.CONTENTS -> ContentsSheet(state, actions)
@@ -94,6 +101,13 @@ private fun Header(state: ReaderUiState, palette: ReaderPalette, actions: Reader
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        RoundButton(themeDescription(state.settings.theme), actions.onNextTheme) {
+            ThemeGlyph(state.settings.theme, palette)
+        }
+        RoundButton(warmDescription(state.settings), actions.onToggleWarm) {
+            val lit = state.settings.warmOn || state.settings.warmAuto
+            MsIcon(R.drawable.ms_wb_twilight, null, if (lit) WarmFilter.TINT else palette.muted, size = 20.dp)
         }
         RoundButton("Text settings", actions.onToggleSettings) {
             Text("Aa", color = palette.text, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
@@ -139,8 +153,10 @@ private fun SettingsCard(state: ReaderUiState, actions: ReaderActions, modifier:
         modifier
             .padding(horizontal = 12.dp)
             .fillMaxWidth()
+            .heightIn(max = 480.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(SoftColors.cardHigh)
+            .verticalScroll(rememberScrollState())
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -162,6 +178,7 @@ private fun SettingsCard(state: ReaderUiState, actions: ReaderActions, modifier:
                 ThemeChoice(theme, theme == state.settings.theme, Modifier.weight(1f)) { actions.onTheme(theme) }
             }
         }
+        WarmSettings(state.settings, actions)
         if (state.spread.hasSpreads) {
             Text("Two-page spreads", style = MaterialTheme.typography.titleSmall, color = SoftColors.text)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -213,19 +230,6 @@ private fun ChoicePill(label: String, theme: ReaderTheme, selected: Boolean, mod
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-}
-
-@Composable
-private fun SmallRound(description: String, label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(SoftColors.cardHighest)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) { Text(label, color = SoftColors.text, style = MaterialTheme.typography.bodyMedium) }
 }
 
 @Composable
