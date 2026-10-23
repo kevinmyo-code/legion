@@ -3,7 +3,8 @@ map: books
 ticket: "10"
 title: "Build: a Books page in the web app that reads a laptop folder, synced with the phone"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-10-23 against a mock of 08 and a hand-typed client (src/api/books.ts, replace with generated types when 08 lands). Vitest and a 7-case Playwright smoke green. Owed: 08 and 04 deployed; the web reader then pointed at the real engine; Kevin's laptop round trip (read on the phone, open here at the same spot, and back); the PDF resizable copy against the real converter; the Readium EPUB middle-third tap and in-frame keys checked by hand on real books (fixtures only so far)"
 blockers: ["07", "08"]
 blocked-by: ["[[07-read-on-the-laptop-decision]]", "[[08-build-reading-sync-engine]]"]
 open-blockers: 1
@@ -54,3 +55,14 @@ Vitest for hashing cache, locator fallback, newest-wins, offline queue. Playwrig
 folder (mocked handle), open an EPUB, turn a page, position PUT fires.
 
 Owed: Kevin opens a book on the laptop that he read on the phone and lands on the same page.
+
+## Built (2026-10-23)
+
+- Reader library: **Readium TS toolkit** (`@readium/navigator` 2.14.0, `@readium/shared` 2.8.0) plus pdf.js
+  6.4.299 and fflate 0.8.3. Readium ships no EPUB parser, so `src/lib/books/epub.ts` is the streamer.
+- Design notes and screenshots: `docs/design/books.md`, `docs/design/refs/books-*.png`.
+- Locator shapes (fixed by the phone): EPUB = Readium Locator JSON; PDF and CBZ = `{"page": n}` 0-based.
+  `device` sent is `web`. List GETs accept a bare array or `{results, next}`.
+- `/books` is a desk rail item only (family tabs stay four).
+- Not built: warm filter Auto (sunset); ticket 10 asks for strength only.
+- Paths follow ticket 08 exactly, no trailing slash; the games routes have one. Confirm when 08 lands.
