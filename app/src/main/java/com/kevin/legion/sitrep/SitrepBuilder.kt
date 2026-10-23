@@ -109,6 +109,21 @@ object SitrepBuilder {
             }
         }
 
+        return compose(SitrepModule.entries, sectionsFor(context, requested))
+    }
+
+    /**
+     * Each requested module's section on its own, keyed by module, under the same settings rule as
+     * [build] ([modules] narrows what is switched on, never widens it). Empty when nothing requested is
+     * switched on. The daily brief's modal (ai-upgrade ticket 02) shows calendar and weather as their
+     * own sections, which a joined string cannot give it.
+     */
+    suspend fun sections(context: Context, modules: Set<SitrepModule>?): Map<SitrepModule, String> {
+        SitrepSettings.load(context)
+        return sectionsFor(context, resolveRequestedModules(modules, SitrepSettings.enabledModules()))
+    }
+
+    private suspend fun sectionsFor(context: Context, requested: Set<SitrepModule>): Map<SitrepModule, String> {
         val sections = mutableMapOf<SitrepModule, String>()
         val now = System.currentTimeMillis()
         val zone = ZoneId.systemDefault()
@@ -152,7 +167,7 @@ object SitrepBuilder {
             sections[SitrepModule.NEWS] = newsSectionLive(context)
         }
 
-        return compose(SitrepModule.entries, sections)
+        return sections
     }
 
     /**
