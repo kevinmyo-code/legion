@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hidden app bounced</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#EDEDED;text-decoration:none}a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width: 384px; height: 832px; box-sizing: border-box; background: #0E0E0E; color: #EDEDED; font-family: 'Inter Tight', system-ui, sans-serif; padding: 28px; display: flex; flex-direction: column; justify-content: center; gap: 28px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center">
+<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#EDEDED" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"></rect><path d="M10.5 18.5h3"></path></svg>
+<h1 style="margin: 0; font-size: 26px; font-weight: 500; line-height: 1.25">Dumb mode is on</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #B5B5B5; max-width: 280px">{{app}} is hidden right now. Its notifications are being held for later.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 24px">
+<a href="Main.dc.html" style="font-size: 17px; font-weight: 600; text-align: center; background: #EDEDED; color: #0E0E0E; border-radius: 999px; padding: 15px; min-height: 52px; box-sizing: border-box">Back to home</a>
+<a href="Leave.dc.html" style="font-size: 15px; text-align: center; color: #9A9A9A; padding: 12px; min-height: 44px; box-sizing: border-box">Leave dumb mode (60s wait)</a>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"app":{"editor":"text","default":"Instagram","section":"Prototype"},"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+renderVals() {
+return { app: this.props.app ?? 'Instagram' };
+}
+}
+</script>
+</body>
+</html>

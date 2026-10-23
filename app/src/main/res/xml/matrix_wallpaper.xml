@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Matrix code rain as a live wallpaper (ADR 0062). No settings screen: the look is fixed. -->
+<wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/matrix_wallpaper_description" />

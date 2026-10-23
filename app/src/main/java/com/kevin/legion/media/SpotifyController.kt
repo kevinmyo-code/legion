@@ -66,9 +66,10 @@ object SpotifyController {
     /**
      * The Spotify app's package. App Remote is an app-to-app binding, so this
      * being absent means nothing in [SpotifyController] can work, no matter
-     * what is saved or authorized.
+     * what is saved or authorized. `internal` since dumb mode (ADR 0062): its kept-apps list
+     * reads this one constant rather than adding a fourth private copy.
      */
-    private const val SPOTIFY_PACKAGE = "com.spotify.music"
+    internal const val SPOTIFY_PACKAGE = "com.spotify.music"
 
     /**
      * Whether the Spotify app is installed on this device.

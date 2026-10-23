@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Held while dumb</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#EDEDED;text-decoration:none}a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width: 384px; height: 832px; box-sizing: border-box; background: #0E0E0E; color: #EDEDED; font-family: 'Inter Tight', system-ui, sans-serif; padding: 72px 24px 28px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 0 4px">
+<div style="font-size: 13px; color: #9A9A9A; font-family: 'JetBrains Mono', monospace">dumb mode off · was on 2h 15m</div>
+<h1 style="margin: 0; font-size: 28px; font-weight: 500; line-height: 1.2">Held while you were away</h1>
+<p style="margin: 0; font-size: 15px; color: #B5B5B5; line-height: 1.5">One summary instead of a flood. Tap an app to see its notifications.</p>
+</div>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{held}}" as="h" hint-placeholder-count="5">
+<li>
+<a href="#" style="background: #1A1A1A; border-radius: 16px; padding: 14px 16px; min-height: 56px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 17px; font-weight: 500">{{h.app}}</span>
+<span style="font-size: 13px; color: #9A9A9A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.gist}}</span>
+</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 15px; color: #B5B5B5">{{h.count}}</span>
+</a>
+</li>
+</sc-for>
+</ul>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<a href="#" style="font-size: 17px; font-weight: 500; text-align: center; border: 1px solid #3A3A3A; border-radius: 999px; padding: 15px; min-height: 52px; box-sizing: border-box">Clear all</a>
+<a href="Main.dc.html" style="font-size: 17px; font-weight: 600; text-align: center; background: #EDEDED; color: #0E0E0E; border-radius: 999px; padding: 15px; min-height: 52px; box-sizing: border-box">Go back to dumb mode</a>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":384,"height":832}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+held: [
+{ app: 'Instagram', gist: 'Likes and suggested posts', count: '[n]' },
+{ app: 'Discord', gist: 'Mentions in 2 servers', count: '[n]' },
+{ app: 'YouTube', gist: 'New uploads', count: '[n]' },
+{ app: 'Gmail', gist: 'Promotions and updates', count: '[n]' },
+{ app: 'Reddit', gist: 'Trending in your feed', count: '[n]' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

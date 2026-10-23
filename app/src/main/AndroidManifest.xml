@@ -39,6 +39,9 @@
          user grants on a system screen. Without it the tile says so and changes nothing. -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Dumb mode's alarm-stream fallback (ADR 0062): a chosen person's message vibrates when the
+         system will not let a notification channel break through Do Not Disturb. A normal permission. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <!-- Caller ID and voice call control (2026-08-21, Kevin: "i wanna know whos calling ... can i
@@ -127,6 +130,11 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Dumb mode (ADR 0062) finds the camera app by who answers this intent, never by a
+             hard-coded package. The MAIN/LAUNCHER query above does not cover it. -->
+        <intent>
+            <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
         </intent>
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.spotify.music" />
@@ -323,7 +331,9 @@
 
         <!-- Grants MediaSessionManager access to active media sessions (now-playing
              state, e.g. Spotify) once the driver enables notification access in
-             system settings. No notifications are parsed. -->
+             system settings. This comment used to end "No notifications are parsed."; since dumb
+             mode (ADR 0062, 2026-10-22) the listener also reads WHO a notification is from while
+             that mode is on, to hold all but a chosen person's. It stores no notification content. -->
         <service
             android:name=".service.MediaNotificationListener"
             android:exported="true"
@@ -433,6 +443,87 @@
 
         <!-- The Quiet tile: vibrate, calls and alarms only, every other notification silent.
              See quiet/QuietMode.kt. -->
+        <!-- Dumb mode's call screener (ADR 0062). Android binds it only after the user grants LEGION the
+             call screening role on the setup screen; that role displaces Samsung Smart Call. It only
+             ever silences a ring, never rejects or disconnects a call. -->
+        <service
+            android:name=".dumb.DumbCallScreeningService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <!-- Dumb mode's bounce (ADR 0062): window-state changes only, no window content (see
+             res/xml/dumb_bounce_service.xml). Android runs it only after the user turns it on in
+             Accessibility settings; a sideloaded build first needs "Allow restricted settings" under
+             App info. It sends a hidden app home and shows DumbBounceActivity. -->
+        <service
+            android:name=".dumb.DumbBounceService"
+            android:exported="true"
+            android:label="Dumb mode"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/dumb_bounce_service" />
+        </service>
+
+        <!-- The "Dumb mode is on" screen a bounced app leaves behind. Not exported: only the bounce
+             service starts it. Out of Recents so it does not linger as a way back to anything. -->
+        <activity
+            android:name=".ui.dumb.DumbBounceActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="Dumb mode"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Legion" />
+
+        <!-- Matrix code rain as a live wallpaper (ADR 0062). It draws only while visible. Whether the
+             phone lets it be the LOCK screen wallpaper is the phone maker's call; Samsung may refuse. -->
+        <service
+            android:name=".dumb.rain.MatrixWallpaperService"
+            android:exported="true"
+            android:label="Matrix rain"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/matrix_wallpaper" />
+        </service>
+
+        <!-- Matrix code rain as the charging screensaver (ADR 0062). Chosen in Screen saver settings. -->
+        <service
+            android:name=".dumb.rain.MatrixDreamService"
+            android:exported="true"
+            android:label="Matrix rain"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/matrix_dream" />
+        </service>
+
+        <!-- The dumb phone mode tile (ADR 0062): off to on in one tap; leaving is never a tile tap. -->
+        <service
+            android:name=".dumb.DumbModeTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_dumb_tile"
+            android:label="Dumb mode"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".quiet.QuietTileService"
             android:exported="true"

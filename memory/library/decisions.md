@@ -6546,3 +6546,36 @@ Kevin: "notify me when canvas login expires". Built, no server change.
 - **Engine unreachable, non-200 or unparseable is silence**: no error notification.
 - `tools/relogin.ps1` added: `connect_session.py` never asks for a password by design, so this trades
   the LEGION login for a device token for that one run.
+
+## 2026-10-22 - Dumb phone mode (Kevin)
+
+Kevin, for his ADHD: no social media, no doomscrolling, only Mia and his parents reach him. Designed
+through an interview and clickable prototypes (home layout A, text list). ADR 0062. All rulings:
+
+- **Toggle: manual only.** A switch, a Settings row and a quick-settings tile. No schedule, no voice,
+  no geofence.
+- **Leaving: 60 s wall-clock wait, persisted, then the typed sentence** "I am choosing to leave dumb
+  mode" (case-insensitive, trimmed). "Stay in dumb mode" is the primary button.
+- **Home A:** clock, date, "dumb for 2h 14m · 4 days in a row", Phone, Messages, Maps, Camera, Music,
+  To-dos, Calendar, Books, Assistant, footer "Mia, Mom, Dad get through", Leave. LEGION is the default
+  HOME app. Maps is LEGION's own nav screen (ADR 0054). Games hidden. System-app entries resolve through
+  role and intent lookups, never a hard-coded OEM package.
+- **Allowlist.** Everything not kept is hidden, including the browser; new installs hidden automatically.
+- **Notifications:** chosen people (picked in LEGION from contacts, not the Android starred flag) get
+  through on any app; everything else is held silently and summarised on leave. The digest keeps
+  package, count and time held, never content (section 7 read-through rule); the prototype gist line
+  does not ship.
+- **Calls:** chosen people ring; anyone else is silent unless the same number rang within 15 minutes.
+- **Hidden apps opened another way** bounce home with a "Dumb mode is on" screen. Settings stays
+  reachable (friction, not lock).
+- **Extras:** digest on leave; time-in-dumb counter and a streak (a day is at least 60 minutes of dumb
+  mode that local day, consecutive days). Grayscale was in this list when the entry was first written.
+- **LATER THE SAME DAY (Kevin): grayscale dropped, Matrix code rain added.** Home A gets animated green
+  code rain at classic movie speed behind a dark scrim, a Matrix green on black palette, and the same
+  renderer as a live wallpaper (home and lock; Samsung may restrict the lock screen) and a charging
+  screensaver. Grayscale was never built, so there is no adb grant and no secure-settings write.
+- **CLAUDE.md section 7 amended:** the compulsion bullet's ban on streaks stands for streaks that pull
+  him back into an app. A streak that measures time AWAY from the phone is allowed. History: the bullet
+  said only "Streaks, re-engagement pings, manufactured return, guilt for being away."
+- **Implementation note (orchestrator):** Hilt is not in the build (architecture ticket 02 is open), so
+  `DumbModeController` is a constructor-injected class with a holder on the Application, not `@Inject`.

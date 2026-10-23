@@ -107,6 +107,12 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[01-mode-home-leave\|01]] | build | Build: mode state, Home A, Leave flow, tile, settings row |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[02-hold-digest-people\|02]] | build | Build: notification hold, digest, people picker, DND policy |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[03-call-screening\|03]] | build | Build: call screening |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[04-accessibility-bounce\|04]] | build | Build: accessibility bounce |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[05-streak\|05]] | build | Build: streak and time-in-dumb counter |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | [[06-matrix-rain\|06]] | build | Build: Matrix code rain (Home A background, live wallpaper, screensaver) |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[10-the-engine-mcp-endpoint\|10]] | build | The engine's MCP endpoint, read and write tools, and the tenancy leak test over it |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
@@ -269,6 +275,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/django-engine/map\|django-engine]] | 16 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
+| [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |

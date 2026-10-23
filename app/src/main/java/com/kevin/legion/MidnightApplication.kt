@@ -70,6 +70,17 @@ class MidnightApplication : Application() {
         )
     }
 
+    /**
+     * Dumb phone mode's object graph (ADR 0062), shared by the Activity, the Quick Settings tile and
+     * the notification listener. Plain classes with constructor injection, built by hand here because
+     * Hilt is not in the build yet (architecture ticket 02); this property is the injection point
+     * until it is.
+     */
+    val dumb: com.kevin.legion.dumb.DumbModeGraph by lazy { com.kevin.legion.dumb.DumbModeGraph(this) }
+
+    /** The mode's state machine, kept as its own name because the tile and the screens read only this. */
+    val dumbMode: com.kevin.legion.dumb.DumbModeController get() = dumb.controller
+
     /** The raw route/progress objects the nav screen's map draws; written by [navController]'s SDK seam. */
     val navMapFeed: NavMapFeed by lazy { NavMapFeed() }
 
@@ -175,6 +186,10 @@ class MidnightApplication : Application() {
         // them can raise it back, so this is one cheap read on a phone where it is already 0.
         // Gated off under Robolectric: every test runs this onCreate and would write the shadow.
         if (!isRunningUnderRobolectric()) com.kevin.legion.quiet.QuietMode.muteSystemSounds(this)
+        // Dumb mode's effects (Do Not Disturb, the digest) follow the mode's state from process start, so
+        // a tile flip with no Activity alive still applies them, and a restart re-asserts them (ADR 0062).
+        // Gated off under Robolectric for the reason the lines around it are: every test runs this.
+        if (!isRunningUnderRobolectric()) dumb.start()
         // backend-erp ticket 25: LedgerFolderPreferences.init/LedgerAccountMappingPreferences.init
         // used to seed here too - both classes are gone along with the rest of phone-side
         // statement ingestion (Kevin: "kill ledger ingestion from phone").

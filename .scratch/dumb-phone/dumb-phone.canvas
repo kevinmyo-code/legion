@@ -1,0 +1,65 @@
+{
+  "nodes": [
+    {
+      "id": "7626ab704faf4d06",
+      "type": "file",
+      "file": ".scratch/dumb-phone/issues/01-mode-home-leave.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3d8c5e176a956b58",
+      "type": "file",
+      "file": ".scratch/dumb-phone/issues/02-hold-digest-people.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0ff8496d4ad7d1ee",
+      "type": "file",
+      "file": ".scratch/dumb-phone/issues/03-call-screening.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "aa3cbcadcf910db1",
+      "type": "file",
+      "file": ".scratch/dumb-phone/issues/04-accessibility-bounce.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "394d5891ce156c5f",
+      "type": "file",
+      "file": ".scratch/dumb-phone/issues/05-streak.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2693dad23c2df230",
+      "type": "file",
+      "file": ".scratch/dumb-phone/issues/06-matrix-rain.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}
