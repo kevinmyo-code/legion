@@ -47,10 +47,13 @@ class BriefControllerTest {
 
     private class FakePhone(var newsletters: Boolean = false) : BriefPhone {
         var newsletterReads = 0
-        override suspend fun sections(filter: Set<SitrepModule>?): List<PhoneSection> = listOfNotNull(
-            PhoneSection("Calendar", "clear for the next 24h").takeIf { filter == null || SitrepModule.CALENDAR in filter },
-            PhoneSection("Weather", "71F, clear").takeIf { filter == null || SitrepModule.WEATHER in filter },
-        )
+        override suspend fun sections(filter: Set<SitrepModule>?): List<PhoneSection> {
+            fun on(m: SitrepModule) = filter == null || m in filter
+            return listOfNotNull(
+                PhoneSection("Calendar", "clear for the next 24h").takeIf { on(SitrepModule.CALENDAR) },
+                PhoneSection("Weather", "71F, clear").takeIf { on(SitrepModule.WEATHER) },
+            )
+        }
         override suspend fun newslettersEnabled() = newsletters
         override suspend fun newsletters(): String {
             newsletterReads++
@@ -60,7 +63,10 @@ class BriefControllerTest {
 
     private fun unreachable() = Result.failure<Nothing>(
         EngineHttpException(
-            EngineFailure.Unreachable("https://engine", "Couldn't read the brief. Can't reach the engine at https://engine."),
+            EngineFailure.Unreachable(
+                "https://engine",
+                "Couldn't read the brief. Can't reach the engine at https://engine.",
+            ),
         ),
     )
 
@@ -233,7 +239,8 @@ class BriefControllerTest {
         val order = listOf("BRIEF Built 5:02 AM today.", "NOTE ", "CANVAS (ok)", "MONEY (ok)", "CAR (empty)",
             "NEWS (ok)", "CALENDAR clear for the next 24h", "WEATHER 71F, clear")
         val positions = order.map { text.indexOf(it) }
-        assertTrue("missing or out of order: $positions\n$text", positions.all { it >= 0 } && positions == positions.sorted())
+        val inOrder = positions.all { it >= 0 } && positions == positions.sorted()
+        assertTrue("missing or out of order: $positions\n$text", inOrder)
         assertTrue(text.contains("Unverified: includes bank rows no statement gate has checked. [unverified]"))
         assertTrue(text.contains("(sources: example.com, news.example.org)"))
         assertTrue(text.contains("Canvas last synced 2 days ago."))
@@ -267,7 +274,8 @@ class BriefControllerTest {
         assertEquals(0, phone.newsletterReads)
         phone.newsletters = true
         val text = controller(backend, cache, phone).forVoice(null).text
-        assertTrue(text.contains("NEWSLETTERS, read from your mail on this phone just now and not stored:\nNEWS Two stories"))
+        val header = "NEWSLETTERS, read from your mail on this phone just now and not stored:"
+        assertTrue(text.contains("$header\nNEWS Two stories"))
         assertFalse(cache.body!!.contains("Two stories"))
     }
 

@@ -40,11 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kevin.legion.brief.BriefLine
 import com.kevin.legion.brief.BriefSection
 import com.kevin.legion.brief.BriefView
-import com.kevin.legion.brief.PhoneSection
 import com.kevin.legion.ui.theme.soft.SoftColors
-
-/** The modal's two actions, so [BriefSheetContent] stays stateless and renderable with fakes. */
-data class BriefCallbacks(val onRefresh: () -> Unit = {}, val onCheckNewsletters: () -> Unit = {})
 
 /**
  * The Brief button's modal, owning its [BriefViewModel]. Drawn while [open]; every open reads the
@@ -187,7 +183,11 @@ private fun BriefLineRow(line: BriefLine, linksOpen: Boolean, openLink: (String)
                         .padding(vertical = 6.dp),
                 )
             } else {
-                Text("${link.title}: ${link.url}", style = MaterialTheme.typography.labelMedium, color = SoftColors.text3)
+                Text(
+                    "${link.title}: ${link.url}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SoftColors.text3,
+                )
             }
         }
     }
@@ -202,12 +202,18 @@ private fun PhoneHalf(state: BriefUiState, callbacks: BriefCallbacks) {
         modifier = Modifier.padding(top = 16.dp),
     )
     if (state.phoneLoading && state.phone.isEmpty()) Waiting("Reading the calendar and weather...")
-    state.phone.forEach { PhoneSectionRow(it) }
+    state.phone.forEach { section ->
+        SectionTitle(section.title, null)
+        Text(section.text, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text)
+    }
     if (state.phoneLoading || !state.newslettersOn) return
     SectionTitle("Newsletters", null)
     when (val news = state.newsletters) {
         NewslettersUi.NotChecked -> {
-            Note("Not checked. A check reads newsletter mail from your Gmail and summarizes it. Nothing is saved.", SoftColors.text2)
+            Note(
+                "Not checked. A check reads newsletter mail from your Gmail and summarizes it. Nothing is saved.",
+                SoftColors.text2,
+            )
             TextButton(onClick = callbacks.onCheckNewsletters, modifier = Modifier.heightIn(min = 44.dp)) {
                 Text("Check newsletters", color = SoftColors.primary)
             }
@@ -218,12 +224,6 @@ private fun PhoneHalf(state: BriefUiState, callbacks: BriefCallbacks) {
             Note("Read from your mail just now. Not saved.", SoftColors.text3)
         }
     }
-}
-
-@Composable
-private fun PhoneSectionRow(section: PhoneSection) {
-    SectionTitle(section.title, null)
-    Text(section.text, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text)
 }
 
 @Composable

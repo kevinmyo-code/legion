@@ -70,9 +70,10 @@ class BriefController(
     /** `POST /api/brief/refresh`. A new brief replaces the cache; any failure leaves it untouched. */
     suspend fun refresh(): RefreshOutcome {
         val engine = backend() ?: return RefreshOutcome.NotRefreshed(BriefWords.NO_ENGINE)
-        val reply = engine.refresh()
-        val got = reply.getOrNull() ?: return RefreshOutcome.NotRefreshed(BriefWords.refreshFailure(reply.exceptionOrNull()))
-        return RefreshOutcome.Refreshed(fresh(got))
+        return engine.refresh().fold(
+            onSuccess = { RefreshOutcome.Refreshed(fresh(it)) },
+            onFailure = { RefreshOutcome.NotRefreshed(BriefWords.refreshFailure(it)) },
+        )
     }
 
     /** Calendar and weather from the phone, live. */
@@ -137,31 +138,5 @@ class BriefController(
         /** `MidnightApplication.brief` when the app is ours (always, outside a bare test context). */
         fun of(context: Context): BriefController =
             (context.applicationContext as? MidnightApplication)?.brief ?: forApp(context)
-    }
-}
-
-/** The engine's brief as plain text for the voice model: its own words, sections in order, nothing reworded. */
-internal object BriefVoiceText {
-    private val MODULE_FOR_SECTION = mapOf("car" to SitrepModule.FLEET, "news" to SitrepModule.NEWS)
-
-    fun render(view: BriefView.Showing, modules: Set<SitrepModule>?): String {
-        val out = StringBuilder("BRIEF ").append(view.header).append('.')
-        view.savedCopy?.let { out.append("\n").append(it) }
-        view.brief.notes.forEach { out.append("\nNOTE ").append(it) }
-        view.brief.sections
-            .filter { modules == null || MODULE_FOR_SECTION[it.key]?.let { m -> m in modules } == true }
-            .forEach { out.append("\n").append(section(it)) }
-        return out.toString()
-    }
-
-    private fun section(section: BriefSection): String {
-        val lines = section.lines.joinToString(" | ") { line ->
-            val mark = if (line.unverified) " [unverified]" else ""
-            val sources = if (line.links.isEmpty()) "" else " (sources: ${line.links.joinToString(", ") { it.title }})"
-            line.text + mark + sources
-        }
-        val head = "${section.title.uppercase()} (${section.status})"
-        val body = listOfNotNull(lines.ifBlank { null }, section.note).joinToString(" ")
-        return if (body.isEmpty()) head else "$head $body"
     }
 }

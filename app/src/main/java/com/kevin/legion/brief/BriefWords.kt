@@ -13,6 +13,7 @@ import java.util.Locale
  * engine's words and are shown as they are. Pure, so every wording is pinned by a test.
  */
 object BriefWords {
+    private const val MS_PER_S = 1_000L
     private const val MINUTE_S = 60L
     private const val HOUR_S = 3_600L
     private const val DAY_S = 86_400L
@@ -40,7 +41,7 @@ object BriefWords {
 
     /** "just now", "1 minute ago", "3 hours ago", "4 days ago": the server's own `ago` steps. */
     fun ago(thenMs: Long, nowMs: Long): String {
-        val seconds = maxOf(0L, (nowMs - thenMs) / 1_000L)
+        val seconds = maxOf(0L, (nowMs - thenMs) / MS_PER_S)
         return when {
             seconds < MINUTE_S -> "just now"
             seconds < HOUR_S -> plural(seconds / MINUTE_S, "minute") + " ago"

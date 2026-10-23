@@ -92,7 +92,9 @@ class BriefViewModelTest {
     @Test
     fun `an unreachable engine with no copy is a sentence, not a blank`() {
         val down = Result.failure<BriefReply>(
-            EngineHttpException(EngineFailure.Unreachable("h", "Couldn't read the brief. Can't reach the engine at h.")),
+            EngineHttpException(
+                EngineFailure.Unreachable("h", "Couldn't read the brief. Can't reach the engine at h."),
+            ),
         )
         val vm = model(Backend(down, locked()))
         vm.open()

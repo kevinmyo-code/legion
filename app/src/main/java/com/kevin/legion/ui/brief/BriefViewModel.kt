@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** The modal's two actions, so `BriefSheetContent` stays stateless and renderable with fakes. */
+data class BriefCallbacks(val onRefresh: () -> Unit = {}, val onCheckNewsletters: () -> Unit = {})
+
 /** The Gmail newsletter half: checked only on a tap, held only in memory, dropped when the modal closes. */
 sealed interface NewslettersUi {
     data object NotChecked : NewslettersUi
@@ -76,12 +79,12 @@ class BriefViewModel(
             }
             _state.update { current ->
                 phone.fold(
-                    onSuccess = { (sections, on) -> current.copy(phoneLoading = false, phone = sections, newslettersOn = on) },
+                    onSuccess = { (sections, on) ->
+                        current.copy(phoneLoading = false, phone = sections, newslettersOn = on)
+                    },
                     onFailure = { e ->
-                        current.copy(
-                            phoneLoading = false,
-                            phone = listOf(PhoneSection("On this phone", "Calendar and weather could not be read: ${e.message}")),
-                        )
+                        val why = "Calendar and weather could not be read: ${e.message}"
+                        current.copy(phoneLoading = false, phone = listOf(PhoneSection("On this phone", why)))
                     },
                 )
             }

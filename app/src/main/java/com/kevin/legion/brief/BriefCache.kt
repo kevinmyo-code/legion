@@ -27,10 +27,8 @@ class PrefsBriefCache(context: Context) : BriefCache {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     override fun read(): CachedBrief? {
-        val raw = prefs.getString(KEY_BODY, null) ?: return null
-        val savedAt = prefs.getLong(KEY_SAVED_AT, 0L)
-        val brief = runCatching { parseBrief(raw) }.getOrNull() ?: return null
-        return CachedBrief(brief, savedAt)
+        val brief = prefs.getString(KEY_BODY, null)?.let { raw -> runCatching { parseBrief(raw) }.getOrNull() }
+        return brief?.let { CachedBrief(it, prefs.getLong(KEY_SAVED_AT, 0L)) }
     }
 
     override fun write(rawServerBody: String, savedAtMs: Long) {
