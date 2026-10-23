@@ -59,7 +59,7 @@ function readCookie(name: string): string | null {
  * Ticket 03 adds the session-login endpoint that sets the cookie; until then
  * this middleware is correct and simply has nothing to attach.
  */
-const djangoSession: Middleware = {
+export const djangoSession: Middleware = {
   async onRequest({ request }) {
     request.headers.set('Accept', 'application/json')
     if (!SAFE_METHODS.has(request.method.toUpperCase())) {

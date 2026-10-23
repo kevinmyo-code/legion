@@ -2,6 +2,7 @@ import { todayEpochDay } from '../lib/day'
 import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip, Purchase } from '../api/types'
 import { defaultAssistant, handleAssistant, type AssistantState } from './engine-assistant'
+import { defaultBooks, handleBooks, type BooksState } from './engine-books'
 import { defaultGames, handleGames, type GamesState } from './engine-games'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
@@ -63,6 +64,8 @@ export interface EngineOptions {
   assistant?: Partial<AssistantState>
   /** Tetris races (`engine-games.ts`); nobody to race and no matches when absent. */
   games?: Partial<GamesState>
+  /** Reading position and bookmark sync (`engine-books.ts`, books ticket 08's contract). */
+  books?: Partial<BooksState>
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -97,6 +100,8 @@ export interface Engine {
   assistant: AssistantState
   /** Tetris races (`engine-games.ts`). */
   games: GamesState
+  /** Reading sync rows (`engine-books.ts`). */
+  books: BooksState
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -349,6 +354,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     settings: { ...defaultSettings(), ...options.settings },
     assistant: { ...defaultAssistant(), ...options.assistant },
     games: { ...defaultGames(), ...options.games },
+    books: { ...defaultBooks(), ...options.books },
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -681,6 +687,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
       if (method === 'GET' && pathname === '/api/ledger/spend') {
         return { status: 200, body: spendWithTargets(engine) }
       }
+
+      const booksReply = handleBooks(engine, method, pathname, search, body)
+      if (booksReply) return booksReply
 
       const gamesReply = handleGames(engine, { user_id: ME.user_id, name: ME.name }, method, pathname, body)
       if (gamesReply) return gamesReply

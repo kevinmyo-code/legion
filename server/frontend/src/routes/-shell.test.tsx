@@ -163,6 +163,7 @@ describe('the nav table', () => {
       'Places',
       'Notes',
       'Games',
+      'Books',
       'Settings',
     ])
   })
