@@ -85,6 +85,7 @@ object DumbSetup {
         accessibilityRow(facts),
     ) + restrictedSettingsRow(facts)
 
+
     private fun accessibilityRow(facts: DumbGrantFacts) = DumbGrantRow(
         id = DumbGrantRow.Id.ACCESSIBILITY,
         title = "Accessibility service",

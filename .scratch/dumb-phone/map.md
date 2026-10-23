@@ -4,8 +4,8 @@ title: "Dumb phone mode"
 charted: 2026-10-22
 charted-by: "Kevin + Opus"
 effort: "`.scratch/dumb-phone/`"
-tickets: 5
-open: 5
+tickets: 6
+open: 6
 status: open
 tags: [map]
 ---
@@ -31,10 +31,11 @@ everything else is held and summarised on leave (app and count only, never conte
 - 02 build: notification hold, digest, people picker, DND policy
 - 03 build: call screening
 - 04 build: accessibility bounce
-- 05 build: grayscale and streak
+- 05 build: streak and time-in-dumb counter (grayscale was dropped, Kevin 2026-10-22)
+- 06 build: Matrix code rain (Home A background, live wallpaper, screensaver)
 
 ## Open on hardware
 
 setSilenceCall on Samsung's dialer, setBypassDnd honoured, the person matcher against real
-WhatsApp and Messages notifications, the bounce, grayscale. `ROLE_CALL_SCREENING` displaces
+WhatsApp and Messages notifications, the bounce, the code rain on the phone. `ROLE_CALL_SCREENING` displaces
 Samsung Smart Call.

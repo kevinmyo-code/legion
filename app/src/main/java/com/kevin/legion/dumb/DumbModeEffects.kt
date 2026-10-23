@@ -1,5 +1,6 @@
 package com.kevin.legion.dumb
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -18,7 +19,7 @@ import kotlinx.coroutines.launch
  * - **off to on** clears the previous session's digest and applies the policy;
  * - **on to off** restores the user's DND and marks the digest to be shown.
  *
- * Later slices hang their own steps here (grayscale, ticket 05).
+ * Grayscale was ruled in and then out the same day (Kevin, 2026-10-22); nothing here touches the colours.
  */
 class DumbModeEffects(
     private val isOn: Flow<Boolean>,
@@ -31,7 +32,8 @@ class DumbModeEffects(
         scope.launch {
             var previous: Boolean? = null
             isOn.distinctUntilChanged().collect { on ->
-                step(previous, on)
+                // One failed step must not end the collector: later flips still have to be applied.
+                runCatching { step(previous, on) }.onFailure { Log.w(TAG, "Dumb mode step failed", it) }
                 previous = on
             }
         }
@@ -48,6 +50,8 @@ class DumbModeEffects(
     }
 
     companion object {
+        private const val TAG = "DumbModeEffects"
+
         fun stateFlow(controller: DumbModeController): Flow<Boolean> = controller.state.map { it.on }
     }
 }

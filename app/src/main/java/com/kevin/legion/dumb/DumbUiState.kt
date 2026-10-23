@@ -18,8 +18,10 @@ data class DumbUiState(
     val on: Boolean = false,
     val clock: String = "",
     val date: String = "",
-    /** "dumb for 2h 14m" */
+    /** "2h 14m", the length of the current run. */
     val elapsed: String = "",
+    /** The line under the date: "dumb for 2h 14m", plus " · 4 days in a row" once there is a streak. */
+    val statusLine: String = "",
     val entries: List<KeptEntry> = KeptEntry.entries,
     /** "Mia, Mom, Dad get through", or words saying nobody is chosen. */
     val peopleLine: String = "",
@@ -44,6 +46,12 @@ object DumbFormat {
     }
 
     /** The prototype's footer: "Mia, Mom, Dad get through". Plural verb only for more than one name. */
+    fun statusLine(elapsed: String, streakDays: Int): String = when (streakDays) {
+        0 -> "dumb for $elapsed"
+        1 -> "dumb for $elapsed \u00b7 1 day in a row"
+        else -> "dumb for $elapsed \u00b7 $streakDays days in a row"
+    }
+
     fun peopleLine(names: List<String>): String = when (names.size) {
         0 -> "No one chosen yet. Pick who gets through in settings."
         1 -> "${names[0]} gets through"
@@ -61,9 +69,11 @@ object DumbUiStates {
         zone: ZoneId,
         locale: Locale,
         peopleNames: List<String>,
+        streakDays: Int = 0,
     ): DumbUiState {
         val at = Instant.ofEpochMilli(nowMs).atZone(zone)
         val requested = state.leaveRequestedAtMs
+        val elapsed = if (state.on) DumbFormat.elapsed(nowMs - state.startedAtMs) else ""
         val leave = if (state.on && requested != null) {
             val remaining = DumbLeaveRule.remainingMs(requested, nowMs)
             LeaveUi(
@@ -78,7 +88,8 @@ object DumbUiStates {
             on = state.on,
             clock = CLOCK.withLocale(locale).format(at),
             date = DATE.withLocale(locale).format(at),
-            elapsed = if (state.on) DumbFormat.elapsed(nowMs - state.startedAtMs) else "",
+            elapsed = elapsed,
+            statusLine = if (state.on) DumbFormat.statusLine(elapsed, streakDays) else "",
             peopleLine = DumbFormat.peopleLine(peopleNames),
             leave = leave,
         )

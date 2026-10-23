@@ -41,23 +41,25 @@
       "color": "1"
     },
     {
-      "id": "d4de7303e569ce4d",
+      "id": "394d5891ce156c5f",
       "type": "file",
-      "file": ".scratch/dumb-phone/issues/05-grayscale-streak.md",
-      "x": 520,
-      "y": 0,
+      "file": ".scratch/dumb-phone/issues/05-streak.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2693dad23c2df230",
+      "type": "file",
+      "file": ".scratch/dumb-phone/issues/06-matrix-rain.md",
+      "x": 0,
+      "y": 750,
       "width": 320,
       "height": 110,
       "color": "1"
     }
   ],
-  "edges": [
-    {
-      "id": "82fcb222713a9d4e",
-      "fromNode": "7626ab704faf4d06",
-      "fromSide": "right",
-      "toNode": "d4de7303e569ce4d",
-      "toSide": "left"
-    }
-  ]
+  "edges": []
 }

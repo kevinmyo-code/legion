@@ -41,7 +41,12 @@ gist line does not ship.
 **The streak counts time away.** A streak day is a local day with at least 60 minutes of dumb mode in
 total; consecutive days make the streak. CLAUDE.md section 7's compulsion bullet bans streaks that pull
 him back into an app; a streak that measures time away from the phone is allowed (Kevin, 2026-10-22).
-Grayscale is on while the mode is on.
+
+**The look is Matrix code rain, not grayscale (Kevin, 2026-10-22, later the same day).** Grayscale was
+ruled first and dropped within hours; it is not built. Instead, while the mode is on, Home A sits on
+animated green code rain (classic movie speed) with the text list on a dark scrim and a Matrix-green on
+black palette. The same renderer is a live wallpaper (home and lock; Samsung may refuse the lock screen)
+and a charging screensaver. Nothing here writes system settings, so no adb step is needed.
 
 ## Context
 
@@ -52,9 +57,9 @@ through an interview and clickable prototypes and picked home layout A over the 
 
 - One-time grants, each said in words on a setup screen with the system page to open: notification
   access (already granted for now-playing), Do Not Disturb access, the call screening role (displaces
-  Samsung Smart Call), an accessibility service (sideloaded apps need "Allow restricted settings" in
-  App info first), and `WRITE_SECURE_SETTINGS` for grayscale, granted once by adb. Dumb mode still turns
-  on with a grant missing, works for what it can and says what is not active.
+  Samsung Smart Call), and an accessibility service (sideloaded apps need "Allow restricted settings" in
+  App info first). Dumb mode still turns on with a grant missing, works for what it can and says what is
+  not active. Two optional rows open the live-wallpaper picker and Screen saver settings.
 - `MediaNotificationListener` now also reads notification metadata while the mode is on; it still
   stores no content.
 - No voice tool: the mode is manual only, so ADR 0035's rule has nothing to mirror.

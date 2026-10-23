@@ -191,7 +191,7 @@ fun DumbHomeContent(
             )
             Text(ui.date, color = DumbColors.dim, fontSize = 15.sp)
             Text(
-                "dumb for ${ui.elapsed}",
+                ui.statusLine,
                 color = DumbColors.dim,
                 fontFamily = DumbMono,
                 fontSize = 13.sp,

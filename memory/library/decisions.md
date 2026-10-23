@@ -6568,8 +6568,12 @@ through an interview and clickable prototypes (home layout A, text list). ADR 00
 - **Calls:** chosen people ring; anyone else is silent unless the same number rang within 15 minutes.
 - **Hidden apps opened another way** bounce home with a "Dumb mode is on" screen. Settings stays
   reachable (friction, not lock).
-- **Extras:** grayscale while on; digest on leave; time-in-dumb counter and a streak (a day is at least
-  60 minutes of dumb mode that local day, consecutive days).
+- **Extras:** digest on leave; time-in-dumb counter and a streak (a day is at least 60 minutes of dumb
+  mode that local day, consecutive days). Grayscale was in this list when the entry was first written.
+- **LATER THE SAME DAY (Kevin): grayscale dropped, Matrix code rain added.** Home A gets animated green
+  code rain at classic movie speed behind a dark scrim, a Matrix green on black palette, and the same
+  renderer as a live wallpaper (home and lock; Samsung may restrict the lock screen) and a charging
+  screensaver. Grayscale was never built, so there is no adb grant and no secure-settings write.
 - **CLAUDE.md section 7 amended:** the compulsion bullet's ban on streaks stands for streaks that pull
   him back into an app. A streak that measures time AWAY from the phone is allowed. History: the bullet
   said only "Streaks, re-engagement pings, manufactured return, guilt for being away."

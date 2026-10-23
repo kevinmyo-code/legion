@@ -25,9 +25,9 @@ private const val STOP_TIMEOUT_MS = 5_000L
 class DumbModeViewModel(
     private val controller: DumbModeController,
     private val clock: () -> Long = System::currentTimeMillis,
-    peopleNames: () -> List<String> = { emptyList() },
-    zone: () -> ZoneId = ZoneId::systemDefault,
-    locale: () -> Locale = Locale::getDefault,
+    private val peopleNames: () -> List<String> = { emptyList() },
+    private val zone: () -> ZoneId = ZoneId::systemDefault,
+    private val locale: () -> Locale = Locale::getDefault,
 ) : ViewModel() {
 
     private val ticks = flow {
@@ -37,13 +37,16 @@ class DumbModeViewModel(
         }
     }
 
-    val state: StateFlow<DumbUiState> = combine(controller.state, ticks) { s, now ->
-        DumbUiStates.build(s, now, zone(), locale(), peopleNames())
-    }.stateIn(
+    val state: StateFlow<DumbUiState> = combine(controller.state, ticks) { s, now -> build(s, now) }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-        DumbUiStates.build(controller.state.value, clock(), zone(), locale(), peopleNames()),
+        build(controller.state.value, clock()),
     )
+
+    private fun build(s: DumbModeState, now: Long): DumbUiState {
+        val streak = DumbStreaks.compute(controller.history(), s, now, zone()).days
+        return DumbUiStates.build(s, now, zone(), locale(), peopleNames(), streak)
+    }
 
     fun requestLeave() {
         controller.requestLeave()
