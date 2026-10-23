@@ -40,6 +40,19 @@ pywebpush==2.5.0
 # a new major roughly monthly. 45.0.0 is the release of 2026-10-02 (PyPI).
 plaid-python==45.0.0
 
+# books ticket 04, 2026-10-23: PDF to EPUB for `POST /api/books/convert`
+# (`books/convert.py`). The ticket's named fallback, taken over Calibre because
+# Debian trixie's `calibre` (8.5.0+ds-1+deb13u3) pulls 370 packages and 1105 MB
+# into this image, Chromium's QtWebEngine and a second Python among them, and
+# could not be run headless before production. PyMuPDF 1.28.2 (2026-08-06) is
+# the last release before 2.0 (2026-10-19, too new, and it adds onnxruntime and
+# numpy); it ships abi3 manylinux_2_28 wheels for x86_64 AND aarch64, so both
+# the Cloud Run and the Oracle A1 image install it with no compiler, and it has
+# no dependencies. Both are AGPL-3.0, and the source of the service that runs
+# them is this public repository. ebooklib pulls lxml (pinned below) and six.
+pymupdf==1.28.2
+ebooklib==0.20
+
 # Transitive, pinned by `uv pip freeze` against the above.
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3
@@ -63,6 +76,7 @@ inflection==0.5.1
 iniconfig==2.3.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
+lxml==6.1.3
 mcp-types==2.2.0
 multidict==6.9.1
 nulltype==2.3.1
