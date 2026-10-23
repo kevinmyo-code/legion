@@ -32,6 +32,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[12-canvas-submitted-on-the-phone\|12]] | build | The phone shows what Canvas says beside each coursework task (Android terminal) |
 | [[.scratch/books/map\|books]] | [[04-build-pdf-convert-server\|04]] | build | Build: server PDF to EPUB conversion, pass-through, nothing stored |
+| [[.scratch/books/map\|books]] | [[08-build-reading-sync-engine\|08]] | build | Build: engine tables and API for synced reading position and bookmarks |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
@@ -185,6 +186,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-etl/map\|backend-etl]] | [[14-ledger-rows-reach-the-phone\|14]] | build | Ledger rows reach the phone: categorised at insert, mirrored whole, deletions honoured  waiting on [[06-drive-statements-watcher\|06]], [[13-bofa-activity-csv-server-side\|13]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[15-rent-counts-in-the-month-it-pays-for\|15]] | build | Rent counts in the month it pays for: a late-month Housing charge moves to the next month  waiting on [[14-ledger-rows-reach-the-phone\|14]] |
 | [[.scratch/books/map\|books]] | [[05-build-pdf-convert-phone\|05]] | build | Build: phone converts every PDF in the background and reads the EPUB copy  waiting on [[04-build-pdf-convert-server\|04]] |
+| [[.scratch/books/map\|books]] | [[09-build-reading-sync-phone\|09]] | build | Build: the phone syncs reading position and bookmarks with the engine  waiting on [[08-build-reading-sync-engine\|08]] |
+| [[.scratch/books/map\|books]] | [[10-build-web-reader\|10]] | build | Build: a Books page in the web app that reads a laptop folder, synced with the phone  waiting on [[08-build-reading-sync-engine\|08]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[04-net-worth-is-never-one-number\|04]] | build | Net worth as a figure plus what is unverified, never one number  waiting on [[02-what-a-net-worth-may-be\|02]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
@@ -279,7 +282,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
-| [[.scratch/books/map\|books]] | 6 | 4 | [[.scratch/books/books.canvas\|open]] |
+| [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |

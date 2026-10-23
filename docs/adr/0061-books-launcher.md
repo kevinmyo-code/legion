@@ -52,3 +52,13 @@ returns it in the same response. **Nothing is kept on the server**: no row, no f
 log. The EPUB lives in LEGION's app-private storage, never in the books folder. A PDF with no text
 layer is said in words to be scanned and is never retried; there is no OCR. Kevin chose automatic over
 a per-book button knowing every PDF he adds reaches his server. Tickets `.scratch/books/issues/03-06`.
+
+## Amendment, 2026-10-23: reading position and bookmarks sync through the engine
+
+Kevin: *"i want to be able to read my books on this laptop, with progress synced to the legion as
+well"*. "Reading position, bookmarks and reader settings are local" now holds for reader settings only.
+**Position and bookmarks sync through the engine**, per person, newest position wins. The laptop
+reads in LEGION's web app from a folder on the laptop; **book files still never reach the engine**
+beyond a PDF's pass-through conversion. A book is the same book on both devices when its file bytes
+hash the same (SHA-256). The engine stores the hash, a locator, a progression and a chapter label,
+never a title, filename or text. Tickets `.scratch/books/issues/07-10`.

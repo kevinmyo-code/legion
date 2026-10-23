@@ -30,3 +30,7 @@ and Comics (CBZ; a CBR is listed but says it is not supported). A tap opens LEGI
 - 04 build: server `POST /api/books/convert`
 - 05 build: phone worker, EPUB copy in the reader, states said in words
 - 06 build: full screen, Day/Night toggle reaching PDFs, warm filter
+- 07 decision (resolved 2026-10-23): read on the laptop in the web app, position + bookmarks synced
+- 08 build: engine tables and API for reading sync
+- 09 build: phone syncs position and bookmarks
+- 10 build: web Books reader on a laptop folder
