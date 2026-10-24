@@ -3,7 +3,8 @@ map: matrix-open
 ticket: "02"
 title: "Build: All apps on Matrix HOME"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-10-24, suite green. Owed on the A25: All apps opens from Matrix HOME after Books, lists the banking app and not Instagram, an app opens from it without a bounce, the footer count matches Blocked apps, and tapping the footer opens Matrix settings."
 blockers: ["01"]
 tags: [ticket]
 ---

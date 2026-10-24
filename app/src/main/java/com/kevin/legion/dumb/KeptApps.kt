@@ -12,9 +12,9 @@ import com.kevin.legion.media.SpotifyController
 /**
  * The entries dumb mode's HOME shows, in order (Kevin, ADR 0062; Brief added after Calendar by
  * ai-upgrade ticket 02, opening the same modal as HOME's Brief chip; WhatsApp added after Messages
- * 2026-10-23, shown only when installed). This is HOME's short
+ * 2026-10-23, shown only when installed; All apps added after Books 2026-10-24). This is HOME's short
  * list, no longer an allowlist: since 2026-10-24 Matrix mode blocks feeds ([BlockModel]) and every
- * other app stays open, reachable through the app drawer. (This comment used to say everything not listed
+ * other app stays open, reachable through All apps. (This comment used to say everything not listed
  * is hidden, the browser included, and that the Brief showed News links as text for that reason.)
  */
 enum class KeptEntry(val label: String) {
@@ -28,6 +28,7 @@ enum class KeptEntry(val label: String) {
     CALENDAR("Calendar"),
     BRIEF("Brief"),
     BOOKS("Books"),
+    ALL_APPS("All apps"),
     ASSISTANT("Assistant"),
     ;
 

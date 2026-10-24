@@ -72,11 +72,11 @@ class DumbUiStateTest {
     }
 
     @Test
-    fun `the kept list is the eleven entries in the ruled order, WhatsApp after Messages`() {
+    fun `the kept list is the twelve entries in the ruled order, WhatsApp after Messages`() {
         assertEquals(
             listOf(
                 "Phone", "Messages", "WhatsApp", "Maps", "Camera", "Music", "To-dos", "Calendar", "Brief", "Books",
-                "Assistant",
+                "All apps", "Assistant",
             ),
             KeptEntry.entries.map { it.label },
         )

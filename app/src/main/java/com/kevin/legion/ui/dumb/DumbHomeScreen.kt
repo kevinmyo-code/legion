@@ -92,6 +92,7 @@ fun DumbHome(
         openFolderPicker()
     }
     var booksOpen by remember { mutableStateOf(false) }
+    var allAppsOpen by remember { mutableStateOf(false) }
     // Ai-upgrade ticket 02: the same Brief modal HOME's chip opens, links open in the
     // browser again (Matrix mode no longer hides it).
     var briefOpen by remember { mutableStateOf(false) }
@@ -154,7 +155,13 @@ fun DumbHome(
         return
     }
 
-    DumbHomeContent(
+    if (allAppsOpen) {
+        MatrixAllApps(
+            policy = graph.blockPolicy,
+            onBack = { allAppsOpen = false },
+            onOpenSettings = onOpenSettings,
+        )
+    } else DumbHomeContent(
         ui = ui,
         message = message,
         onEntry = { entry ->
@@ -165,6 +172,7 @@ fun DumbHome(
                 KeptEntry.CALENDAR -> onOpenCalendar()
                 KeptEntry.BRIEF -> briefOpen = true
                 KeptEntry.BOOKS -> booksOpen = true
+                KeptEntry.ALL_APPS -> allAppsOpen = true
                 KeptEntry.ASSISTANT -> panel.show()
                 else -> message = launcher.launch(entry)
             }
