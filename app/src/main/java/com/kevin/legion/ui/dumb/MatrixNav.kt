@@ -10,6 +10,8 @@ internal fun MatrixDestinationHost(dest: MatrixDest, onOpen: (MatrixDest) -> Uni
         MatrixDest.LISTS -> MatrixListsScreen(onBack)
         MatrixDest.CALENDAR -> MatrixCalendarScreen(onBack)
         MatrixDest.BRIEF -> MatrixBriefScreen(onBack)
+        MatrixDest.NOTES -> MatrixNotesScreen(onBack)
+        MatrixDest.VOICE_NOTES -> MatrixVoiceNotesScreen(onBack)
     }
 }
 
