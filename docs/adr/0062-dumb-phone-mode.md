@@ -99,8 +99,10 @@ Kevin: *"i just need to stop the social media apps... everything thats not a dis
 to doomscroll should stay."* This replaces the Standing section's **"Allowlist, not blocklist"**
 paragraph, including "the browser" being hidden.
 
-- **Blocked:** an app Android tags Social, Video, Game or News, or one on a seed list of known feed
-  apps (Instagram, TikTok, Reddit, X, Facebook, Threads, Snapchat, YouTube, Pinterest). Any app can be
+- **Blocked:** an app Android tags Social, Video or News, or one on a seed list of known feed apps
+  (Instagram, TikTok, Reddit, X, Facebook, Threads, Snapchat, YouTube, Pinterest, LinkedIn). Whatever
+  answers a web link, `mailto:` or SMS is never blocked by category (on the A25, Play tags Chrome,
+  Firefox, Samsung Internet and Gmail Social). Games are allowed. Any app can be
   flipped either way on the Matrix settings screen; a new install is judged by the same rule. Everything
   else stays open, the browser included. YouTube is blocked.
 - **Matrix HOME keeps its short list** and adds "All apps", the drawer minus blocked apps.

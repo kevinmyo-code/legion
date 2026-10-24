@@ -6614,11 +6614,18 @@ Kevin: *"i like matrix mode. its good. the thing is some stuff is hidden that i 
 just need to stop the social media apps... basically everything thats not a distraction or causes me to
 doomscroll should stay."* Decided by interview, 2026-10-24.
 
-- **Blocklist replaces the allowlist.** An app is blocked when Android tags it Social, Video, Game or
-  News (`ApplicationInfo.category`), OR it is on a seed list of known feed apps (Instagram, TikTok,
-  Reddit, X, Facebook, Threads, Snapchat, YouTube, Pinterest). Every app can be flipped either way on
+- **Blocklist replaces the allowlist.** An app is blocked when Android tags it Social, Video or News
+  (`ApplicationInfo.category`), OR it is on a seed list of known feed apps (Instagram, TikTok,
+  Reddit, X, Facebook, Threads, Snapchat, YouTube, Pinterest, LinkedIn). Every app can be flipped either way on
   the Matrix settings screen. A new install is judged by the same rule. The seed list exists because
   the category is developer-declared and often blank; its coverage on the A25 is checked on hardware.
+- **Checked on the A25 the same day (`dumpsys package`, the Play installer's category override):**
+  Instagram, Facebook, Reddit, Discord tag Social; X News; YouTube Video. But Chrome, Firefox, Samsung
+  Internet and Gmail ALSO tag Social, and LinkedIn tags Productivity. So **whatever answers a web link,
+  `mailto:` or SMS is never blocked by category**, resolved at run time (no package names). LinkedIn
+  joins the seed list (Kevin). Discord stays blocked (Kevin).
+- **Games are allowed (Kevin):** Game is NOT a blocking category; emulators and LEGION's retro games
+  stay open.
 - **The browser is allowed.** Kevin chose trust over URL blocking. YouTube is blocked (Video).
 - **Matrix HOME keeps its short list** and gains an "All apps" row: the app drawer with blocked apps
   removed.

@@ -28,6 +28,8 @@ Notifications still held except chosen people.
 - 05 build: Matrix notes and voice notes
 - 06 build: Matrix ledger, pantry and fleet
 
-## Open on hardware
+## Measured on the A25 (2026-10-24)
 
-Which feed apps on the A25 carry a Social/Video category tag (decides how much the seed list carries).
+Play's category override: Instagram, Facebook, Reddit, Discord, WhatsApp, Gmail, Chrome, Firefox,
+Samsung Internet = Social; X = News; YouTube = Video; LinkedIn, Slack, banks = Productivity; RetroArch,
+Lemuroid untagged; melonDS, PPSSPP = Game. Hence the link/mail/SMS exemption and LinkedIn on the seed.
