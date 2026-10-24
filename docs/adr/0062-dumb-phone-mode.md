@@ -92,3 +92,19 @@ Kevin, approving the matrix batch on 2026-10-23.
   crashes. The Maps setting is read live by the bounce on every window change, not baked into a kept
   list at setup.
 - **A round mic button sits in the footer, left of Leave** (Kevin, 2026-10-23: *"i need a way to reach the voice ai push to talk in dumb mode"*). One tap starts a voice turn by the same path as the chat panel's Talk. The Assistant row stays for typing; it had fallen below the fold once WhatsApp was added.
+
+## Amendment, 2026-10-24: Matrix mode blocks feeds, not everything
+
+Kevin: *"i just need to stop the social media apps... everything thats not a distraction or causes me
+to doomscroll should stay."* This replaces the Standing section's **"Allowlist, not blocklist"**
+paragraph, including "the browser" being hidden.
+
+- **Blocked:** an app Android tags Social, Video, Game or News, or one on a seed list of known feed
+  apps (Instagram, TikTok, Reddit, X, Facebook, Threads, Snapchat, YouTube, Pinterest). Any app can be
+  flipped either way on the Matrix settings screen; a new install is judged by the same rule. Everything
+  else stays open, the browser included. YouTube is blocked.
+- **Matrix HOME keeps its short list** and adds "All apps", the drawer minus blocked apps.
+- **Notifications, the chosen people, the leave friction and the digest are unchanged.**
+- **LEGION's own screens get sparse Matrix versions**, text-only like Matrix HOME: lists and to-dos,
+  calendar and brief, notes and voice notes, ledger, pantry and fleet. The Soft screens are not
+  recoloured. Map: `.scratch/matrix-open/`.

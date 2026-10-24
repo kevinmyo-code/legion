@@ -6608,6 +6608,29 @@ Approved by Kevin with the matrix batch, 2026-10-23.
   one tap starts a voice turn through the chat panel's Talk path. Chosen over making the Assistant row
   talk directly and over only shrinking rows so Assistant fits.
 
+## 2026-10-24 - Matrix mode blocks feeds, not everything (Kevin)
+
+Kevin: *"i like matrix mode. its good. the thing is some stuff is hidden that i would like. honestly i
+just need to stop the social media apps... basically everything thats not a distraction or causes me to
+doomscroll should stay."* Decided by interview, 2026-10-24.
+
+- **Blocklist replaces the allowlist.** An app is blocked when Android tags it Social, Video, Game or
+  News (`ApplicationInfo.category`), OR it is on a seed list of known feed apps (Instagram, TikTok,
+  Reddit, X, Facebook, Threads, Snapchat, YouTube, Pinterest). Every app can be flipped either way on
+  the Matrix settings screen. A new install is judged by the same rule. The seed list exists because
+  the category is developer-declared and often blank; its coverage on the A25 is checked on hardware.
+- **The browser is allowed.** Kevin chose trust over URL blocking. YouTube is blocked (Video).
+- **Matrix HOME keeps its short list** and gains an "All apps" row: the app drawer with blocked apps
+  removed.
+- **Notifications are unchanged:** everything held except chosen people, digest on leave.
+- **LEGION's own screens get new sparse Matrix versions**, text-only like Matrix HOME (green
+  monospace on black, no cards, icons or charts, rain only on HOME): lists and to-dos, calendar and
+  brief, notes and voice notes, ledger, pantry and fleet. This answers the 2026-10-23 handoff's open
+  question about the ~627 direct `SoftColors.*` reads: they are not migrated; Matrix gets new screens.
+- History: ADR 0062 said "allowlist, not blocklist... including the browser". Amended. Brief's
+  News-links-as-text rule in Matrix mode loses its reason (the browser is open) and goes with ticket 01.
+  Map: `.scratch/matrix-open/`.
+
 ## 2026-10-23 - Brief News: section-level sources when grounding ties no bullet (Kevin)
 
 - The first live brief (2026-10-23 05:00) dropped News entirely: "no item tied to a web source".

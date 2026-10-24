@@ -1,0 +1,73 @@
+{
+  "nodes": [
+    {
+      "id": "79b39f0d40cffcc7",
+      "type": "file",
+      "file": ".scratch/matrix-open/issues/01-block-model.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d0e9ca08dc4d672c",
+      "type": "file",
+      "file": ".scratch/matrix-open/issues/03-matrix-lists-and-to-dos.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "bb8397d1660383bb",
+      "type": "file",
+      "file": ".scratch/matrix-open/issues/04-matrix-calendar-and-brief.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7b8856d754836573",
+      "type": "file",
+      "file": ".scratch/matrix-open/issues/05-matrix-notes-and-voice-notes.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "21319d491fac5ff9",
+      "type": "file",
+      "file": ".scratch/matrix-open/issues/06-matrix-ledger-pantry-and-fleet.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0bcef2e00c60e66e",
+      "type": "file",
+      "file": ".scratch/matrix-open/issues/02-all-apps.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "74710eb5e803e692",
+      "fromNode": "79b39f0d40cffcc7",
+      "fromSide": "right",
+      "toNode": "0bcef2e00c60e66e",
+      "toSide": "left"
+    }
+  ]
+}
