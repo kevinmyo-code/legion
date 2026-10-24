@@ -12,9 +12,10 @@ import com.kevin.legion.media.SpotifyController
 /**
  * The entries dumb mode's HOME shows, in order (Kevin, ADR 0062; Brief added after Calendar by
  * ai-upgrade ticket 02, opening the same modal as HOME's Brief chip; WhatsApp added after Messages
- * 2026-10-23, shown only when installed). The list is the allowlist:
- * everything else is hidden, including the browser, and a new install is hidden automatically. That
- * is why the Brief modal shows its News links as text in dumb mode rather than opening them.
+ * 2026-10-23, shown only when installed). This is HOME's short
+ * list, no longer an allowlist: since 2026-10-24 Matrix mode blocks feeds ([BlockModel]) and every
+ * other app stays open, reachable through the app drawer. (This comment used to say everything not listed
+ * is hidden, the browser included, and that the Brief showed News links as text for that reason.)
  */
 enum class KeptEntry(val label: String) {
     PHONE("Phone"),
@@ -107,7 +108,8 @@ interface KeptAppResolver {
 }
 
 /**
- * Packages that stay launchable in dumb mode whatever the settings: the resolved externals, WhatsApp
+ * Packages [BlockModel] treats as kept (never blocked by seed or category) whatever the
+ * settings: the resolved externals, WhatsApp
  * and the clock. Google Maps is NOT here: it depends on a setting and is added live by
  * [LiveKeptPackages]. LEGION itself is separate.
  */

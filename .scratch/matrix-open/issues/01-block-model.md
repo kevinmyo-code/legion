@@ -3,7 +3,8 @@ map: matrix-open
 ticket: "01"
 title: "Build: block model, category + seed list + overrides"
 type: build
-status: open
+status: built
+status-detail: "Built 2026-10-24, suite green. Owed on the A25: dump ApplicationInfo.category of the installed feed apps; confirm Instagram bounces and shows the new copy, Chrome, Gmail and the banking app open, flip an app in Matrix settings > Blocked apps and see the bounce follow at once, and open a Brief News link in the browser."
 blockers: []
 tags: [ticket]
 ---

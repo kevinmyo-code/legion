@@ -15,11 +15,12 @@ class BounceRuleTest {
         "com.android.settings",
     )
     private val hasLauncher: (String) -> Boolean = { it in launchers }
+    // Blocklist model: only the feed apps are blocked; the rest is open (BlockModelTest owns the why).
+    private val blocked = setOf("com.instagram.android")
     private val ctx = BounceContext(
         modeOn = true,
         ownPackage = OWN,
-        keptPackages = setOf("com.spotify.music", "com.samsung.dialer"),
-        systemPackages = setOf("com.android.settings", "com.sec.android.app.launcher"),
+        isBlocked = { it in blocked },
         inCall = false,
         graceActive = false,
         allowedAfterChosenPerson = false,
@@ -28,15 +29,14 @@ class BounceRuleTest {
     private fun bounce(pkg: String?, c: BounceContext = ctx) = BounceRule.shouldBounce(pkg, c, hasLauncher)
 
     @Test
-    fun `a hidden app with a launcher entry is bounced`() {
+    fun `a blocked app with a launcher entry is bounced`() {
         assertTrue(bounce("com.instagram.android"))
-        assertTrue(bounce("com.android.chrome"))
     }
 
     @Test
-    fun `a kept app is never bounced`() {
+    fun `an app that is not blocked is never bounced`() {
+        assertFalse(bounce("com.android.chrome"))
         assertFalse(bounce("com.spotify.music"))
-        assertFalse(bounce("com.samsung.dialer"))
     }
 
     @Test
@@ -55,12 +55,6 @@ class BounceRuleTest {
         )) {
             assertFalse(pkg, bounce(pkg))
         }
-    }
-
-    @Test
-    fun `Settings and the home app are never bounced even though they have launcher entries`() {
-        assertFalse(bounce("com.android.settings"))
-        assertFalse(bounce("com.sec.android.app.launcher"))
     }
 
     @Test
@@ -93,7 +87,7 @@ class BounceRuleTest {
     @Test
     fun `the launcher lookup is skipped when a cheaper check already decided`() {
         var lookups = 0
-        BounceRule.shouldBounce("com.spotify.music", ctx) { lookups++; true }
+        BounceRule.shouldBounce("com.spotify.music", ctx) { lookups++; true } // not blocked
         BounceRule.shouldBounce(OWN, ctx) { lookups++; true }
         BounceRule.shouldBounce("com.instagram.android", ctx.copy(inCall = true)) { lookups++; true }
         assertEquals(0, lookups)
@@ -105,8 +99,9 @@ class DumbBounceTest {
     private var on = true
     private var inCall = false
     private val env = object : BounceEnvironment {
-        override fun keptPackages() = setOf("com.spotify.music")
-        override fun systemPackages() = setOf("com.android.settings")
+        override fun isBlocked(packageName: String) = packageName in setOf(
+            "com.instagram.android", "com.reddit.frontpage", "com.google.android.contacts", "com.whatsapp",
+        )
         override fun inCall() = inCall
         override fun hasLauncherEntry(packageName: String) = packageName != "com.android.systemui"
     }
@@ -129,10 +124,10 @@ class DumbBounceTest {
     }
 
     @Test
-    fun `off, in a call, kept, settings and no-launcher packages never bounce`() {
+    fun `off, in a call, open and no-launcher packages never bounce`() {
         assertFalse(bounce.shouldBounce("com.spotify.music"))
         assertFalse(bounce.shouldBounce("com.android.settings"))
-        assertFalse(bounce.shouldBounce("com.android.systemui"))
+        assertFalse("blocked but no launcher entry", bounce.shouldBounce("com.android.systemui"))
         inCall = true
         assertFalse(bounce.shouldBounce("com.instagram.android"))
         inCall = false

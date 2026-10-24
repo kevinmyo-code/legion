@@ -3,13 +3,12 @@ package com.kevin.legion.dumb
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
-import android.provider.Settings
 import android.telecom.TelecomManager
 
 /** The Android answers the bounce rule needs, behind a seam so [DumbBounce] is testable. */
 interface BounceEnvironment {
-    fun keptPackages(): Set<String>
-    fun systemPackages(): Set<String>
+    /** [BlockPolicy.isBlocked]: the one blocking decision. */
+    fun isBlocked(packageName: String): Boolean
     fun inCall(): Boolean
     fun hasLauncherEntry(packageName: String): Boolean
 }
@@ -38,8 +37,7 @@ class DumbBounce(
         val context = BounceContext(
             modeOn = true,
             ownPackage = ownPackage,
-            keptPackages = env.keptPackages(),
-            systemPackages = env.systemPackages(),
+            isBlocked = env::isBlocked,
             inCall = env.inCall(),
             graceActive = allowance.graceActive(),
             allowedAfterChosenPerson = BounceAllowance.ALLOW_APP_AFTER_CHOSEN_PERSON &&
@@ -85,23 +83,17 @@ class TtlCache<T>(private val ttlMs: Long, private val clock: () -> Long, privat
 }
 
 /**
- * The real phone. The kept set, the Settings package and the per-package launcher check are cached
- * briefly: window changes arrive in bursts and each lookup is a package-manager call.
+ * The real phone. The per-package launcher check is cached briefly: window changes arrive in bursts
+ * and each lookup is a package-manager call. What is blocked comes from [policy].
  */
 class AndroidBounceEnvironment(
     private val context: Context,
-    private val resolver: KeptAppResolver,
-    mapsChoice: () -> MapsChoice = { MapsChoice.GOOGLE_MAPS },
+    private val policy: BlockPolicy,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : BounceEnvironment {
-    // Google Maps is added live from the setting inside LiveKeptPackages; the rest is cached.
-    private val kept = LiveKeptPackages(resolver, mapsChoice, CACHE_MS, clock)
-    private val system = TtlCache(CACHE_MS, clock) { systemPackages(context) }
     private val launcherCache = HashMap<String, Pair<Boolean, Long>>()
 
-    override fun keptPackages(): Set<String> = kept.get()
-
-    override fun systemPackages(): Set<String> = system.get()
+    override fun isBlocked(packageName: String): Boolean = policy.isBlocked(packageName)
 
     override fun inCall(): Boolean = runCatching {
         val telecom = context.getSystemService(TelecomManager::class.java)
@@ -126,16 +118,5 @@ class AndroidBounceEnvironment(
 
     private companion object {
         const val CACHE_MS = 60_000L
-
-        /** Settings, plus whoever answers a Home press (LEGION when it is the home app; the launcher if not). */
-        fun systemPackages(context: Context): Set<String> = buildSet {
-            val pm = context.packageManager
-            val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            listOf(Intent(Settings.ACTION_SETTINGS), Intent(Settings.ACTION_APPLICATION_SETTINGS), home).forEach {
-                pm.resolveActivity(it, 0)?.activityInfo?.packageName?.let(::add)
-            }
-            // "android" is the system's resolver/chooser, which is what an unset default resolves to.
-            remove("android")
-        }
     }
 }

@@ -26,8 +26,8 @@ import com.kevin.legion.MidnightApplication
 import com.kevin.legion.ui.MainActivity
 
 /**
- * "Matrix mode is on" (prototype `Bounce.dc.html`, ADR 0062): shown over LEGION's home after a hidden
- * app was sent away. The hidden app's label is the only thing it says about that app. "Back to
+ * "Matrix mode is on" (prototype `Bounce.dc.html`, ADR 0062): shown over LEGION's home after a blocked
+ * app was sent away. The blocked app's label is the only thing it says about that app. "Back to
  * home" closes it (Home was already pressed, so LEGION's home is underneath); the small link starts
  * the 60 second leave wait and opens the Leave flow.
  */
@@ -69,12 +69,14 @@ fun DumbBounceScreen(appLabel: String, onBack: () -> Unit, onLeave: () -> Unit) 
         ) {
             Text("Matrix mode is on", color = DumbColors.text, fontSize = 26.sp, fontWeight = FontWeight.Medium)
             Text(
-                "$appLabel is hidden right now. Its notifications are being held for later.",
+                "$appLabel is blocked in Matrix mode. To unblock it, open Matrix mode settings (tap the " +
+                    "line under the date on Home) and tap $appLabel under Blocked apps. Its notifications " +
+                    "are being held for later.",
                 color = DumbColors.body,
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.widthIn(max = 280.dp),
+                modifier = Modifier.widthIn(max = 320.dp),
             )
         }
         Column(Modifier.fillMaxWidth().padding(top = 48.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

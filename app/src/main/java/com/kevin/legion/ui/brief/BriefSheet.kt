@@ -45,8 +45,9 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 /**
  * The Brief button's modal, owning its [BriefViewModel]. Drawn while [open]; every open reads the
  * brief again, and dismissing it drops the newsletter summary. Opened only by a tap (ticket 02,
- * ruling 2: never a notification, never unsolicited speech). [linksOpen] is false in dumb mode, where
- * a browser is not a kept app, so links are shown as text and not opened.
+ * ruling 2: never a notification, never unsolicited speech). [linksOpen] false shows links as text
+ * instead of opening them. Nothing passes false since 2026-10-24, when Matrix mode stopped hiding
+ * the browser (it used to be false there); the parameter stays as the switch.
  */
 @Composable
 fun BriefSheetHost(open: Boolean, onDismiss: () -> Unit, linksOpen: Boolean = true) {

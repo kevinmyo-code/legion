@@ -92,7 +92,8 @@ fun DumbHome(
         openFolderPicker()
     }
     var booksOpen by remember { mutableStateOf(false) }
-    // Ai-upgrade ticket 02: the same Brief modal HOME's chip opens, links shown as text (no browser here).
+    // Ai-upgrade ticket 02: the same Brief modal HOME's chip opens, links open in the
+    // browser again (Matrix mode no longer hides it).
     var briefOpen by remember { mutableStateOf(false) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { booksViewModel.refresh() }
     // A book that opened closes the sheet, as on the normal HOME: the reader is what is left to see.
@@ -194,7 +195,7 @@ fun DumbHome(
             )
         }
         if (panel.open) ChatPanelSheet(typedChat, onTalk = talk, onClose = panel::hide)
-        com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false }, linksOpen = false)
+        com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false })
     }
 }
 

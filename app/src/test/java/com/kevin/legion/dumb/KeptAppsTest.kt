@@ -87,12 +87,18 @@ class KeptAppsTest {
     }
 
     @Test
-    fun `a kept WhatsApp is never bounced but another hidden app still is`() {
+    fun `a kept WhatsApp is never bounced but a seed-list feed app still is`() {
+        val kept = FakeResolver(whatsapp = "com.whatsapp").keptPackages()
+        val sources = object : BlockSources {
+            override fun keptPackages() = kept
+            override fun systemPackages() = emptySet<String>()
+            override fun exemptPackages() = emptySet<String>()
+            override fun category(packageName: String) = AppCategoryTag.OTHER
+        }
         val ctx = BounceContext(
             modeOn = true,
             ownPackage = "com.kevin.legion",
-            keptPackages = FakeResolver(whatsapp = "com.whatsapp").keptPackages(),
-            systemPackages = emptySet(),
+            isBlocked = { BlockModel.decide(it, "com.kevin.legion", sources, null).blocked },
             inCall = false,
             graceActive = false,
             allowedAfterChosenPerson = false,

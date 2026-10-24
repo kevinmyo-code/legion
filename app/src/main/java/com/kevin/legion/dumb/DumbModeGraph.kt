@@ -20,6 +20,16 @@ class DumbModeGraph(private val app: Application) {
     val mapsChoice: MapsChoiceStore by lazy {
         PrefsMapsChoiceStore(app.getSharedPreferences(PrefsDumbModeStore.PREFS, Context.MODE_PRIVATE))
     }
+    private val matrixPrefs by lazy { app.getSharedPreferences(PrefsDumbModeStore.PREFS, Context.MODE_PRIVATE) }
+
+    /** The one blocking decision (ADR 0062, 2026-10-24): the bounce, the settings list and the drawer all ask it. */
+    val blockPolicy: BlockPolicy by lazy {
+        BlockPolicy(
+            ownPackage = app.packageName,
+            sources = AndroidBlockSources(app, AndroidKeptAppResolver(app), mapsChoice::get),
+            overrides = PrefsAppOverrides(matrixPrefs),
+        )
+    }
     val people: ChosenPeople by lazy { ChosenPeople(PrefsChosenPeopleStore(app)) }
     val digest: HeldDigest by lazy { HeldDigest(PrefsDigestPersistence(app)) }
     val alertSwitch: AlertFallbackSwitch by lazy { AlertFallbackSwitch(app) }
@@ -37,7 +47,7 @@ class DumbModeGraph(private val app: Application) {
         DumbBounce(
             isOn = { controller.state.value.on },
             ownPackage = app.packageName,
-            env = AndroidBounceEnvironment(app, AndroidKeptAppResolver(app), mapsChoice::get),
+            env = AndroidBounceEnvironment(app, blockPolicy),
             allowance = BounceAllowance(),
         )
     }

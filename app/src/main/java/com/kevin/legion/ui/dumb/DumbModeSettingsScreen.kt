@@ -70,7 +70,7 @@ fun DumbModeSettingsScreen(onBack: () -> Unit, onOpenHome: () -> Unit) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "A short list instead of a phone. Other apps' notifications are held, strangers' calls " +
-                        "are silent, and hidden apps send you home. Leaving takes a 60 second wait and a sentence.",
+                        "are silent, and blocked apps send you home. Leaving takes a 60 second wait and a sentence.",
                     style = LegionType.stamp,
                     color = sem.faint,
                 )
@@ -96,6 +96,9 @@ fun DumbModeSettingsScreen(onBack: () -> Unit, onOpenHome: () -> Unit) {
 
                 Spacer(Modifier.height(8.dp))
                 MapsChoiceSection()
+
+                Spacer(Modifier.height(8.dp))
+                BlockedAppsSection()
 
                 Spacer(Modifier.height(8.dp))
                 KeptAppsSection()
@@ -224,9 +227,10 @@ private fun KeptAppsSection() {
     val context = LocalContext.current
     val sem = LocalLegionSemantics.current
     val resolver = remember(context) { AndroidKeptAppResolver(context) }
-    Text("Kept apps", style = MaterialTheme.typography.labelLarge)
+    Text("Matrix home list", style = MaterialTheme.typography.labelLarge)
     Text(
-        "Everything else is hidden, including the browser, and new installs are hidden automatically.",
+        "The short list on Matrix home. These are never blocked by category or the feed-app list; every other " +
+            "app stays open unless it is blocked under Blocked apps.",
         style = LegionType.stamp,
         color = sem.faint,
     )

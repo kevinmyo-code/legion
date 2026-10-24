@@ -7,14 +7,12 @@ package com.kevin.legion.dumb
 data class BounceContext(
     val modeOn: Boolean,
     val ownPackage: String,
-    /** The four resolved external kept apps (dialer, SMS, camera, music). */
-    val keptPackages: Set<String>,
     /**
-     * Packages that must never be bounced: the system Settings (it stays reachable, the mode is
-     * friction and not a lock) and whichever app is the phone's HOME. Bouncing the home app would
-     * loop: Home, bounce, Home, bounce.
+     * [BlockModel]'s verdict, the one source: false for LEGION, Settings (it stays reachable, the
+     * mode is friction and not a lock) and the phone's HOME app (bouncing it would loop: Home,
+     * bounce, Home, bounce), for kept apps, and for anything not tagged a feed.
      */
-    val systemPackages: Set<String>,
+    val isBlocked: (String) -> Boolean,
     /** A phone or VoIP call is in progress. */
     val inCall: Boolean,
     /** LEGION itself just opened a system picker (contacts, folder) and expects another app's window. */
@@ -24,8 +22,9 @@ data class BounceContext(
 )
 
 /**
- * Whether a window change should be bounced home (ADR 0062). Bounces ONLY a package that:
- * (a) has a launcher activity, (b) is not kept, (c) is not LEGION. A package with no launcher entry
+ * Whether a window change should be bounced home (ADR 0062, amended 2026-10-24 from an allowlist to a
+ * blocklist). Bounces ONLY a package that: (a) has a launcher activity, (b) [BounceContext.isBlocked]
+ * says is blocked, (c) is not LEGION. A package with no launcher entry
  * (SystemUI, keyboards, the in-call screen, the permission controller, the package installer, the
  * share sheet) is never bounced, and nothing is bounced during a call or while Settings is the
  * window.
@@ -37,10 +36,9 @@ object BounceRule {
             ctx.inCall ||
             ctx.graceActive ||
             packageName == ctx.ownPackage ||
-            packageName in ctx.keptPackages ||
-            packageName in ctx.systemPackages ||
             ctx.allowedAfterChosenPerson
-        return !exempt && hasLauncherEntry(packageName.orEmpty())
+        val pkg = packageName.orEmpty()
+        return !exempt && ctx.isBlocked(pkg) && hasLauncherEntry(pkg)
     }
 }
 

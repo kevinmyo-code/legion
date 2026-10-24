@@ -159,6 +159,13 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Matrix mode (ADR 0062, 2026-10-24) never blocks by category whatever answers a link, a
+             mailto or SMS (Play tags the browsers and Gmail Social). The https query above covers links;
+             this one covers mail. The default SMS app comes from Telephony, not a query. -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
         <!-- Books read-aloud (ADR 0061): without this, API 30+ hides the installed text-to-speech
              engines and Listen would report "no engine" on a phone that has one. -->
         <intent>
