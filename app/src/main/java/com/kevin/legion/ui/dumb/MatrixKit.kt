@@ -76,6 +76,20 @@ internal fun MatrixRow(
     }
 }
 
+/** A two-line text row that is NOT tappable: a figure and the words that qualify it. No false button. */
+@Composable
+internal fun MatrixInfoRow(
+    label: String,
+    modifier: Modifier = Modifier,
+    tone: MatrixTone = MatrixTone.HEADING,
+    detail: String? = null,
+) {
+    Column(modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(label, color = tone.color(), fontFamily = DumbMono, fontSize = 18.sp)
+        detail?.let { Text(it, color = MatrixColors.dim, fontFamily = DumbMono, fontSize = 13.sp) }
+    }
+}
+
 /** A plain text line that does nothing when tapped: a heading, a status, a sentence of what did not happen. */
 @Composable
 internal fun MatrixNote(text: String, tone: MatrixTone = MatrixTone.BODY) {

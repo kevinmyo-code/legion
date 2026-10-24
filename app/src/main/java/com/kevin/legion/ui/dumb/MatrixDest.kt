@@ -12,10 +12,13 @@ internal enum class MatrixDest(val label: String) {
     BRIEF("Brief"),
     NOTES("Notes"),
     VOICE_NOTES("Voice notes"),
+    LEDGER("Ledger"),
+    PANTRY("Pantry"),
+    FLEET("Fleet"),
     ;
 
     companion object {
         /** What the LEGION index lists, in order. [INDEX] is the index itself and is not listed. */
-        val indexed: List<MatrixDest> = listOf(LISTS, CALENDAR, BRIEF, NOTES, VOICE_NOTES)
+        val indexed: List<MatrixDest> = listOf(LISTS, CALENDAR, BRIEF, NOTES, VOICE_NOTES, LEDGER, PANTRY, FLEET)
     }
 }

@@ -63,6 +63,24 @@ object CarAspectSummaries {
     data class CarRow(val title: String, val subtitle: String)
 
     /**
+     * The one line "mileage · what is due next" for [next], or the honest reason there is none. Pulled
+     * out of [fleet] unchanged (2026-10-24, matrix-open ticket 06) so Matrix mode's Fleet screen says
+     * exactly what this row says - guess caveats included - from one function rather than a copy.
+     */
+    internal fun serviceSubtitle(mileageLabel: String, next: VehicleController.NextService?): String = when {
+        next == null -> "$mileageLabel · no maintenance schedule yet"
+        next.odometerUnset -> "odometer not set · say your mileage to enable due-dates"
+        next.byMiles != null ->
+            "$mileageLabel · ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi" +
+                (if (next.byMiles.isGuess) " - guess, unconfirmed" else "")
+        next.byTime != null ->
+            "$mileageLabel · ${next.byTime.serviceName} in ${next.byTime.remaining} days" +
+                (if (next.byTime.isGuess) " - guess, unconfirmed" else "")
+        next.allDue -> "$mileageLabel · everything scheduled is already due"
+        else -> "$mileageLabel · nothing due yet"
+    }
+
+    /**
      * Fleet ROOT row: the active vehicle's display name plus the soonest not-yet-due maintenance item
      * on either axis (miles or time) - the same [VehicleController.nextService] read `ui/TodayScreen.kt`
      * and `ui/FleetScreen.kt` already build their own DUE rows from, not a new query. This is the
@@ -91,18 +109,7 @@ object CarAspectSummaries {
         // it or dropping the caveat for brevity.
         val mileageLabel = VehicleController.mileageLabel(vehicle).ifBlank { "odometer not set" }
         val next = VehicleController.nextService(context, vehicle)
-        val subtitle = when {
-            next == null -> "$mileageLabel · no maintenance schedule yet"
-            next.odometerUnset -> "odometer not set · say your mileage to enable due-dates"
-            next.byMiles != null ->
-                "$mileageLabel · ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi" +
-                    (if (next.byMiles.isGuess) " - guess, unconfirmed" else "")
-            next.byTime != null ->
-                "$mileageLabel · ${next.byTime.serviceName} in ${next.byTime.remaining} days" +
-                    (if (next.byTime.isGuess) " - guess, unconfirmed" else "")
-            next.allDue -> "$mileageLabel · everything scheduled is already due"
-            else -> "$mileageLabel · nothing due yet"
-        }
+        val subtitle = serviceSubtitle(mileageLabel, next)
         // CORRECTED 2026-08-18, second pass (Kevin, live: two tabs read "Talk to LEGI..." and
         // "Fleet · 2017 ..." on an 800x480 head unit - both truncated). The tab BAR has almost no
         // room; a static "Fleet" is what LegionMediaLibraryService.libraryRootChildren now titles
