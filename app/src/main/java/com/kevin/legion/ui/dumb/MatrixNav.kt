@@ -8,6 +8,8 @@ internal fun MatrixDestinationHost(dest: MatrixDest, onOpen: (MatrixDest) -> Uni
     when (dest) {
         MatrixDest.INDEX -> MatrixIndexScreen(onOpen, onBack)
         MatrixDest.LISTS -> MatrixListsScreen(onBack)
+        MatrixDest.CALENDAR -> MatrixCalendarScreen(onBack)
+        MatrixDest.BRIEF -> MatrixBriefScreen(onBack)
     }
 }
 

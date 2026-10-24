@@ -66,13 +66,13 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
 /**
  * HOME while dumb mode is on: the Leave flow when a leave is pending, Home A otherwise. Owns the
  * [DumbModeViewModel], the Books sheet (Books has no route of its own) and the typed assistant panel;
- * Maps, To-dos and Calendar are LEGION's own routes and arrive as callbacks.
+ * Maps is LEGION's own route and arrives as a callback; To-dos, Calendar and Brief are Matrix text screens
+ * (matrix-open tickets 03 and 04) held on [matrixStack], not routes.
  */
 @Composable
 @Suppress("LongMethod", "CyclomaticComplexMethod") // one screen wrapper wiring the sub-surfaces, as HomeScreen does
 fun DumbHome(
     onOpenMaps: () -> Unit,
-    onOpenCalendar: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -92,9 +92,6 @@ fun DumbHome(
     }
     var booksOpen by remember { mutableStateOf(false) }
     var allAppsOpen by remember { mutableStateOf(false) }
-    // Ai-upgrade ticket 02: the same Brief modal HOME's chip opens, links open in the
-    // browser again (Matrix mode no longer hides it).
-    var briefOpen by remember { mutableStateOf(false) }
     // Matrix screens (matrix-open 03-06): a stack so Back steps out one level. A HOME row pushes one
     // screen; the LEGION row pushes the index, which pushes the rest.
     var matrixStack by remember { mutableStateOf(emptyList<MatrixDest>()) }
@@ -178,8 +175,8 @@ fun DumbHome(
             when (entry) {
                 KeptEntry.MAPS -> openMaps()
                 KeptEntry.TODOS -> matrixStack = listOf(MatrixDest.LISTS)
-                KeptEntry.CALENDAR -> onOpenCalendar()
-                KeptEntry.BRIEF -> briefOpen = true
+                KeptEntry.CALENDAR -> matrixStack = listOf(MatrixDest.CALENDAR)
+                KeptEntry.BRIEF -> matrixStack = listOf(MatrixDest.BRIEF)
                 KeptEntry.BOOKS -> booksOpen = true
                 KeptEntry.ALL_APPS -> allAppsOpen = true
                 KeptEntry.LEGION -> matrixStack = listOf(MatrixDest.INDEX)
@@ -213,7 +210,6 @@ fun DumbHome(
             )
         }
         if (panel.open) ChatPanelSheet(typedChat, onTalk = talk, onClose = panel::hide)
-        com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false })
     }
 }
 

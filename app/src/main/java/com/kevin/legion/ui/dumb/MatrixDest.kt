@@ -8,10 +8,12 @@ package com.kevin.legion.ui.dumb
 internal enum class MatrixDest(val label: String) {
     INDEX("LEGION"),
     LISTS("Lists"),
+    CALENDAR("Calendar"),
+    BRIEF("Brief"),
     ;
 
     companion object {
         /** What the LEGION index lists, in order. [INDEX] is the index itself and is not listed. */
-        val indexed: List<MatrixDest> = listOf(LISTS)
+        val indexed: List<MatrixDest> = listOf(LISTS, CALENDAR, BRIEF)
     }
 }
