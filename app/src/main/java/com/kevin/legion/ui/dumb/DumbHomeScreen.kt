@@ -72,7 +72,6 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
 @Suppress("LongMethod", "CyclomaticComplexMethod") // one screen wrapper wiring the sub-surfaces, as HomeScreen does
 fun DumbHome(
     onOpenMaps: () -> Unit,
-    onOpenTodos: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -96,6 +95,9 @@ fun DumbHome(
     // Ai-upgrade ticket 02: the same Brief modal HOME's chip opens, links open in the
     // browser again (Matrix mode no longer hides it).
     var briefOpen by remember { mutableStateOf(false) }
+    // Matrix screens (matrix-open 03-06): a stack so Back steps out one level. A HOME row pushes one
+    // screen; the LEGION row pushes the index, which pushes the rest.
+    var matrixStack by remember { mutableStateOf(emptyList<MatrixDest>()) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { booksViewModel.refresh() }
     // A book that opened closes the sheet, as on the normal HOME: the reader is what is left to see.
     val booksOpened = booksState.notice?.takeIf { !it.failed }
@@ -155,7 +157,14 @@ fun DumbHome(
         return
     }
 
-    if (allAppsOpen) {
+    val matrixTop = matrixStack.lastOrNull()
+    if (matrixTop != null) {
+        MatrixDestinationHost(
+            dest = matrixTop,
+            onOpen = { matrixStack = matrixStack + it },
+            onBack = { matrixStack = matrixStack.dropLast(1) },
+        )
+    } else if (allAppsOpen) {
         MatrixAllApps(
             policy = graph.blockPolicy,
             onBack = { allAppsOpen = false },
@@ -168,11 +177,12 @@ fun DumbHome(
             message = null
             when (entry) {
                 KeptEntry.MAPS -> openMaps()
-                KeptEntry.TODOS -> onOpenTodos()
+                KeptEntry.TODOS -> matrixStack = listOf(MatrixDest.LISTS)
                 KeptEntry.CALENDAR -> onOpenCalendar()
                 KeptEntry.BRIEF -> briefOpen = true
                 KeptEntry.BOOKS -> booksOpen = true
                 KeptEntry.ALL_APPS -> allAppsOpen = true
+                KeptEntry.LEGION -> matrixStack = listOf(MatrixDest.INDEX)
                 KeptEntry.ASSISTANT -> panel.show()
                 else -> message = launcher.launch(entry)
             }

@@ -50,7 +50,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
-| [[.scratch/matrix-open/map\|matrix-open]] | [[03-matrix-lists-and-to-dos\|03]] | build | Build: Matrix lists and to-dos |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[04-matrix-calendar-and-brief\|04]] | build | Build: Matrix calendar and brief |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[05-matrix-notes-and-voice-notes\|05]] | build | Build: Matrix notes and voice notes |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[06-matrix-ledger-pantry-and-fleet\|06]] | build | Build: Matrix ledger, pantry and fleet |
@@ -142,6 +141,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[09-sdk-in-the-build\|09]] | build | Mapbox in the build, behind the clone-and-run gate, with token setup |
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[01-day-and-night-styles\|01]] | build | Build: day and night map styles that are easy to read, switching like Google's |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[01-block-model\|01]] | build | Build: block model, category + seed list + overrides |
+| [[.scratch/matrix-open/map\|matrix-open]] | [[03-matrix-lists-and-to-dos\|03]] | build | Build: Matrix lists and to-dos |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
 | [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |

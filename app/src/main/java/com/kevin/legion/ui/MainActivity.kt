@@ -902,7 +902,6 @@ private fun LegionShell(
                     // Dumb phone mode swaps HOME's content for the short list (ADR 0062).
                     com.kevin.legion.ui.dumb.DumbHome(
                         onOpenMaps = { navController.navigate(LegionRoute.NAVIGATE) { launchSingleTop = true } },
-                        onOpenTodos = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
                         onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
                         onOpenSettings = {
                             navController.navigate(LegionRoute.SETTINGS_DUMB_MODE) { launchSingleTop = true }
