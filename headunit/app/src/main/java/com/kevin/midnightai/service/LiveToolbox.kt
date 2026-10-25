@@ -9,7 +9,6 @@ import com.kevin.midnightai.ai.CompanionIdentity
 import com.kevin.midnightai.ai.SubAgent
 import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.ai.KeyHealth
-import com.kevin.midnightai.ai.SpendGate
 import com.kevin.midnightai.backend.engine.EngineConfig
 import com.kevin.midnightai.backend.engine.EngineHttp
 import com.kevin.midnightai.backend.engine.EngineMcpClient
@@ -597,8 +596,8 @@ object LiveToolbox {
             name = "list_build_history",
             description = "Read back the car's build history - what's been done, installed, or bought " +
                 "and when. Use when the driver asks what's on the build sheet, what they've done to the " +
-                "car, or wants a build rundown (e.g. for selling it). The history is always available; " +
-                "dollar amounts are only included when the spend log is unlocked.",
+                "car, or wants a build rundown (e.g. for selling it). Costs are included wherever the " +
+                "driver stated one. Car only: the driver's household or monthly spending is ask_engine.",
             params = obj("type" to schema("string", "Optional category filter.",
                 enum = listOf("mod", "part", "repair", "consumable", "other"))),
             required = listOf(),
@@ -606,21 +605,11 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "get_spend",
-            description = "Report how much has been spent on the car - the grand total or one category. " +
-                "Spending is PRIVATE and hidden by default: if this returns locked, do NOT reveal any " +
-                "numbers - tell the driver in character it's between you and the owner and you need the " +
-                "passphrase (they unlock with unlock_spend). Only use when the driver explicitly asks " +
-                "about money, cost, or total spent.",
+            description = "Report how much has been spent ON THE CAR (its build sheet) - the grand total " +
+                "or one category. Only when the driver asks what the car has cost. 'How much did I " +
+                "spend this month' or 'my monthly spending' is ask_engine, never this.",
             params = obj("category" to schema("string", "Optional category, e.g. 'mods' or 'maintenance'.")),
             required = listOf(),
-        ))
-
-        fns.put(fn(
-            name = "unlock_spend",
-            description = "Unlock the private spend figures when the driver offers the spend passphrase. " +
-                "Call this with whatever word or phrase they give as the passphrase.",
-            params = obj("passphrase" to schema("string", "The passphrase the driver said.")),
-            required = listOf("passphrase"),
         ))
 
         fns.put(fn(
@@ -639,15 +628,6 @@ object LiveToolbox {
                     "prompt. True only after the driver has just confirmed."),
             ),
             required = listOf("confirmed"),
-        ))
-
-        fns.put(fn(
-            name = "set_spend_passphrase",
-            description = "Set or change the passphrase that locks the car's spend figures, when the " +
-                "driver wants to protect how much they've spent. If a passphrase is already set, it can " +
-                "only be changed after it's been unlocked.",
-            params = obj("passphrase" to schema("string", "The word or phrase to use as the passphrase.")),
-            required = listOf("passphrase"),
         ))
 
         fns.put(fn(
@@ -808,8 +788,6 @@ object LiveToolbox {
             "log_build_entry" -> logBuildEntry(context, args)
             "list_build_history" -> listBuildHistory(context, args.optString("type"))
             "get_spend" -> getSpend(context, args.optString("category"))
-            "unlock_spend" -> unlockSpend(context, args.optString("passphrase"))
-            "set_spend_passphrase" -> setSpendPassphrase(context, args.optString("passphrase"))
             "activate_garage" -> activateGarage(context, args)
             "start_trivia_game" -> result(
                 success = true,
@@ -938,12 +916,10 @@ object LiveToolbox {
     }
 
     /**
-     * Reads back build history (what/when - always available). Per-entry costs are
-     * included only when the spend log is unlocked; otherwise costsHidden flags
-     * that the figures are gated (history still returns).
+     * Reads back build history, costs included. The voice spend gate was retired 2026-10-24
+     * (Kevin): its "locked" answer was refusing questions about household money too.
      */
     private suspend fun listBuildHistory(context: Context, type: String): JSONObject {
-        val unlocked = SpendGate.isUnlocked(context)
         val entries = BuildSheetController.history(context, type)
         val arr = JSONArray()
         for (e in entries) {
@@ -951,19 +927,14 @@ object LiveToolbox {
             if (e.mileage != null) o.put("mileage", e.mileage)
             if (e.vendor.isNotBlank()) o.put("vendor", e.vendor)
             if (e.notes.isNotBlank()) o.put("notes", e.notes)
-            if (unlocked && e.cost != null) o.put("cost", e.cost)
+            if (e.cost != null) o.put("cost", e.cost)
             arr.put(o)
         }
-        return JSONObject().put("success", true).put("count", entries.size)
-            .put("costsHidden", !unlocked).put("entries", arr)
+        return JSONObject().put("success", true).put("count", entries.size).put("entries", arr)
     }
 
-    /** Reports total / per-category spend - gated by [SpendGate]. */
+    /** Reports the car's total / per-category build-sheet spend. */
     private suspend fun getSpend(context: Context, category: String): JSONObject {
-        if (!SpendGate.isUnlocked(context)) {
-            return JSONObject().put("success", false).put("locked", true)
-                .put("message", "The spend log is locked. Ask the owner for the passphrase and I'll open it.")
-        }
         val byCat = BuildSheetController.spendByCategory(context)
         val cat = category.trim().lowercase()
         if (cat.isNotBlank()) {
@@ -975,25 +946,6 @@ object LiveToolbox {
         return JSONObject().put("success", true)
             .put("total", BuildSheetController.totalSpend(context))
             .put("byCategory", catObj)
-    }
-
-    /** Unlocks the spend figures if the passphrase matches. */
-    private fun unlockSpend(context: Context, passphrase: String): JSONObject {
-        if (passphrase.isBlank()) return result(success = false, message = "I need the passphrase.")
-        return if (SpendGate.unlock(context, passphrase))
-            result(success = true, message = "Unlocked - I can talk numbers now.")
-        else result(success = false, message = "That's not it. The spend stays sealed.")
-    }
-
-    /** Sets/changes the spend passphrase (change requires being unlocked). */
-    private fun setSpendPassphrase(context: Context, passphrase: String): JSONObject {
-        if (passphrase.isBlank()) return result(success = false, message = "Tell me the word or phrase you want to use.")
-        if (SpendGate.hasPassphrase(context) && !SpendGate.isUnlocked(context)) {
-            return result(success = false,
-                message = "There's already a passphrase - say the current one first, then I can change it.")
-        }
-        SpendGate.setPassphrase(context, passphrase)
-        return result(success = true, message = "Done. Your spend's locked behind that now - don't forget it.")
     }
 
     /**

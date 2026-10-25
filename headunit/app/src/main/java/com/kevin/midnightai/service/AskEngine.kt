@@ -393,7 +393,8 @@ class AskEngine(
         const val DESCRIPTION = "Read or change the driver's personal life in their own LEGION " +
             "engine: grocery/shopping lists and every other personal checklist, to-dos, calendar " +
             "events, voice notes, weight, meals, sleep, workout plan, personal memory, plus " +
-            "ledger, pantry and places. Call it for any add, tick, read-back or question about " +
+            "ledger (including how much the driver spent this month), pantry and places. Call it " +
+            "for any add, tick, read-back or question about " +
             "these; never say you can't see or add to a list without calling it. If the engine is " +
             "unreachable it says nothing was read or written. Answer comes back as text to speak."
 
