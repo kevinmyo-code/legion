@@ -138,7 +138,6 @@ Data reads (zero token cost, DB / OBD lookups):
 | check_readiness | Live Mode-01-PID-01 emissions monitors |
 | recall_memory | Keyword grep, RECALL_SCAN=200, RECALL_LIMIT=6 |
 | get_time | Trusted date/weekday/local time + UTC offset from `time/TrustedClock` (network-synced, never the head unit's clock/zone). For long sessions where the prompt's date line may be stale |
-| list_build_history / get_spend | DB reads |
 | get_specs / check_recalls / lookup_vin | NHTSA vPIC + stored spec |
 | get_current_location | The driver's current coordinates from `LocationController` |
 

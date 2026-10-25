@@ -916,6 +916,7 @@ class GeminiLiveSession(
             // turn's playback stats. Before the mic decision below, so the mic re-open's
             // drain wait sees that audio start moving.
             audioQueue.trySend(PlaybackItem.EndOfTurn)
+            val turnChunksAtEnd = turnChunks
             val replyMs = if (turnChunks > 0 && lastHeardMs > 0L) turnFirstChunkMs - lastHeardMs else null
             if (turnChunks > 0) {
                 MidnightEvents.voiceAudioArrival(
@@ -938,9 +939,14 @@ class GeminiLiveSession(
             // The full-text audit goes to the drive log only, never Crashlytics (ConvoAudit's doc).
             ConvoAudit.heard(heard, bytesThisTurn)
             ConvoAudit.said(companionTurnText.toString().trim())
-            ConvoAudit.turnTiming(replyMs?.takeIf { it >= 0 }, toolCallsThisTurn)
-            lastHeardMs = 0L
-            toolCallsThisTurn = 0
+            // A tool-using exchange is two turns: the call turn (no audio) and the spoken answer.
+            // Both counters carry across until audio plays, so the answer's line measures last
+            // word to first audio across the tool round trip, and counts its tool calls.
+            if (turnChunksAtEnd > 0) {
+                ConvoAudit.turnTiming(replyMs?.takeIf { it >= 0 }, toolCallsThisTurn)
+                lastHeardMs = 0L
+                toolCallsThisTurn = 0
+            }
             // Force this turn to surface as a retrievable Crashlytics non-fatal if the driver was
             // actually listened to (vadMode = a real conversational turn, not a proactive/
             // onboarding line) but almost nothing was forwarded - a plain breadcrumb alone never
