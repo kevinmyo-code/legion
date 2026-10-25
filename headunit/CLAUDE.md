@@ -159,7 +159,7 @@ Actions (side effects, zero tokens):
 | log_service / log_build_entry | Service + build ledger. `log_service` = "I just did this now": writes a `service_record` AND stamps the maintenance item at the current mileage |
 | log_past_service | Backfills when a service was LAST done: absolute mileage, rough miles-ago, a date, or a confirmed never-done. Writes ONLY the maintenance item, never a `service_record` - a remembered approximation must not enter the precise ledger. Future dates rejected. **If the driver says they don't know, the tool is not called at all** and the item stays UNKNOWN; guessing an anchor is worse than having none |
 | tag_place / forget_place / set_reminder | PlaceController |
-| unlock_spend / set_spend_passphrase | SpendGate (hashed passphrase + 5min unlock) |
+| get_spend / list_build_history | The CAR build sheet only, ungated by voice (Kevin, 2026-10-24: the passphrase gate was refusing questions about household money). `unlock_spend` / `set_spend_passphrase` are gone. Household or monthly spending is `ask_engine` (engine MCP `monthly_spend`). The Logbook screen still reads `SpendGate` |
 | register_vehicle / set_odometer | VehicleController. `register_vehicle` returns after the vehicle row is saved and says the maintenance lookup has only STARTED (it runs detached; `onboardPendingVehicles` retries it at service start while the row is `onboarded=false`) |
 | show_saved_places | UI-scoped; `visible` true/false shows or hides the list (`hide_saved_places` no longer exists; `restyle_avatar`/`restyle_background` were removed 2026-09-27 with in-app image generation) |
 | play_mixtape | Name-resolve to MixtapePlayer.play (starts a saved mixtape) |
@@ -195,7 +195,7 @@ New tool checklist: snake_case verb_noun, one responsibility, updated in this ta
 | Drive monitor | 1min | Started/stopped/10k milestone/2hr break; idle-chatter cadence (45min quiet, 60min cooldown, 30% chance) |
 | Arrival monitor | 20s | Places check-in; reminder proactives (waits up to 30s for busy conv) |
 | Weather | 30min / 60s retry | Warm cache for proactive context |
-| Drive log | 3min snapshot, 60s after start | `diag/DriveLogLoop`: logcat -> bounded on-disk log (`diag/DriveLog`, ~2 MB); uploads to the engine at service start and at drive end (the drive monitor's stop branch), and from Settings > System > Drive logs. Deleted only on a 2xx; offline keeps it (2026-10-15) |
+| Drive log | 1min snapshot, 3min upload, 60s after start | `diag/DriveLogLoop`: logcat -> bounded on-disk log (`diag/DriveLog`, ~2 MB); uploads to the engine at service start, every 3 minutes (`periodic`, 2026-10-24: the ignition is cut at the stop, so `drive_end` never arrived), at drive end, and from Settings > System > Drive logs. Deleted only on a 2xx; offline keeps it (2026-10-15). It also carries the conversation audit (`diag/ConvoAudit`: heard, said, tool calls with args, result and ms, reply latency), written to the drive log only and never to Crashlytics |
 
 Proactive lines route through ProactiveBus. Gated on onboarding done, not busy, not in-call.
 

@@ -18,6 +18,7 @@ enum class UploadReason(val wire: String) {
     DRIVE_END("drive_end"),
     STARTUP("startup"),
     MANUAL("manual"),
+    PERIODIC("periodic"),
 }
 
 /** What an upload attempt did, in words the Settings row can show as-is. */
