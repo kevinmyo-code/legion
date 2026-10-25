@@ -1129,9 +1129,11 @@ object LiveToolbox {
             description = "Report this month's categorised operating spend for the US ledger " +
                 "entity - the SAME figure the Money screen's SPEND pane shows. Money moved between " +
                 "the user's own accounts (a card payment, a savings transfer) is excluded from " +
-                "this total; ALWAYS say how many transactions and how much were excluded, exactly " +
-                "as the response's excluded_own_account_movements fields state - never present the " +
-                "total as if nothing was left out. Transactions with no category are ALSO excluded " +
+                "this total; ALWAYS say how much was excluded (and how many transactions, when the " +
+                "count is not null), exactly as the response's note and " +
+                "excluded_own_account_movements fields state - never present the " +
+                "total as if nothing was left out. The figure comes from the engine; when source is " +
+                "phone_copy, ALWAYS say source_note too. Transactions with no category are ALSO excluded " +
                 "from this total: whenever uncategorized_cents is above zero, say so out loud using " +
                 "uncategorized_note - that money was spent, it is simply not classified yet, and a " +
                 "total presented without it would understate the month. Transactions filed under a " +
@@ -4544,6 +4546,9 @@ object LiveToolbox {
         return JSONObject().put("categories", org.json.JSONArray(names))
     }
 
+    /** How long the voice answer waits for the engine before using the phone's own copy. */
+    private const val ENGINE_SPEND_TIMEOUT_MS = 5_000L
+
     /**
      * `get_monthly_spend` - reads the SAME [LedgerController.budgetVsActual] call the Money
      * screen's `ui.ledger.BudgetSection` renders, so the voice path can never quietly disagree with
@@ -4560,6 +4565,32 @@ object LiveToolbox {
     private suspend fun getMonthlySpend(context: Context): JSONObject {
         // "This month" is the driver's month, not UTC's - matches setBudget's own reasoning above.
         val month = YearMonth.now(java.time.ZoneId.systemDefault())
+        // Engine first (2026-10-24): the spend rules run once, there, for every client. The phone's
+        // own copy answers only when the engine cannot, and says so (EngineMonthlySpend's doc).
+        val http = EngineHttp(EngineConfig(context.applicationContext))
+        val reason = if (!http.isUsable()) {
+            "not signed in to the engine"
+        } else {
+            val got = kotlinx.coroutines.withTimeoutOrNull(ENGINE_SPEND_TIMEOUT_MS) {
+                http.get(
+                    com.kevin.legion.ledger.EngineMonthlySpend.PATH,
+                    mapOf("month" to month.toString(), "currency" to LedgerEntity.US.currency.name),
+                )
+            }
+            when {
+                got == null -> "it did not answer within ${ENGINE_SPEND_TIMEOUT_MS / 1000} seconds"
+                got.isSuccess -> return runCatching {
+                    com.kevin.legion.ledger.EngineMonthlySpend.toToolJson(JSONObject(got.getOrThrow().body))
+                }.getOrElse { localMonthlySpend(context, month, "its answer could not be read") }
+                else -> (got.exceptionOrNull() as? com.kevin.legion.backend.engine.EngineHttpException)
+                    ?.failure?.sentence?.trimEnd('.') ?: "the request failed"
+            }
+        }
+        return localMonthlySpend(context, month, reason)
+    }
+
+    /** [getMonthlySpend]'s offline fallback: the phone's own copy, labelled as such. */
+    private suspend fun localMonthlySpend(context: Context, month: YearMonth, engineReason: String): JSONObject {
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, month)
         val totalCents = budget.spentCents
         val unverified = budget.uncategorized.hasProvisionalRows ||
@@ -4573,6 +4604,8 @@ object LiveToolbox {
         val uncategorizedNote = uncategorizedExcludedSentence(budget.uncategorized, budget.entity.currency)
         return JSONObject()
             .put("success", true)
+            .put("source", "phone_copy")
+            .put("source_note", com.kevin.legion.ledger.EngineMonthlySpend.fallbackNote(engineReason))
             .put("currency", budget.entity.currency.name)
             .put("month", month.toString())
             .put("total_spent_cents", totalCents)
