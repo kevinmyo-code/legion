@@ -497,3 +497,43 @@ def test_the_throttle_is_per_token_and_audited(mcp_on, household_user, monkeypat
     assert (
         McpCall.objects.filter(outcome=Outcome.THROTTLED, token_name="looping model").count() == 1
     )
+
+
+# =============================================================================
+# monthly_spend (2026-10-24): the head unit's money question had no tool here
+# =============================================================================
+
+
+def test_monthly_spend_is_the_spend_routes_figure_and_says_its_caveats(
+    mcp_write, auth_client, household_a
+):
+    from tests.test_spend_api import SPEND, line, statement
+
+    statement(
+        household_a,
+        "7823",
+        "BofA card",
+        [
+            line("2026-09-05", "HEB", -1_000, "Groceries"),
+            line("2026-09-06", "DINER", -700, "Dining"),
+            line("2026-09-07", "MYSTERY", -300),
+        ],
+    )
+    route = auth_client.get(SPEND, {"month": "2026-09"}).data
+    is_error, text, structured = call(mcp_write, "monthly_spend", {"month": "2026-09"})
+    assert not is_error, text
+    assert structured["accounts"] == route["accounts"]
+    assert "17.00 USD" in text
+    assert "3.00 was spent but has no category" in text
+
+
+def test_monthly_spend_on_an_empty_month_is_an_empty_record_not_an_error(mcp_write):
+    is_error, text, _ = call(mcp_write, "monthly_spend", {"month": "2026-01"})
+    assert not is_error, text
+    assert "not proof nothing was spent" in text
+
+
+def test_monthly_spend_refuses_a_bad_month_in_words(mcp_write):
+    is_error, text, _ = call(mcp_write, "monthly_spend", {"month": "2026-13"})
+    assert is_error
+    assert text.startswith("Nothing was read.")

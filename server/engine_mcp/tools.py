@@ -834,6 +834,69 @@ def _last_ticked(request, args) -> ToolResult:
 # =============================================================================
 # The registry
 # =============================================================================
+# Monthly spend (2026-10-24). The head unit's `ask_engine` had no way to answer
+# "what did I spend this month": no tool here read it, so the model reached for
+# the car's build sheet instead. This reads `api.ledger_spend.spend_for`, the
+# body `GET /api/ledger/spend` returns, so the figure is the web's figure.
+# =============================================================================
+
+
+def _monthly_spend(request, args) -> ToolResult:
+    from django.db import connection
+
+    from api.ledger_spend import spend_for
+    from api.spend import BadRequest, resolve_month
+
+    currency = (args.get("currency") or "USD").upper()
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT statement_timestamp()")
+        now = cursor.fetchone()[0]
+    try:
+        month = resolve_month(args.get("month"), args.get("tz"), now)
+    except BadRequest as exc:
+        return refused(f"Nothing was read. {exc}")
+    body = spend_for(request, month, currency)
+    total = sum(a["spend_cents"] for a in body["accounts"])
+    if not body["accounts"]:
+        return ok(
+            f"The engine read this household's ledger and found no {currency} spend for "
+            f"{body['month']}. That is an empty month on file, not proof nothing was spent.",
+            structured=body,
+        )
+    parts = [
+        f"Categorised spend for {body['month']} is {_cents_words(total)} {currency}, the same "
+        f"figure the Money page shows."
+    ]
+    if body["categories"]:
+        top = sorted(body["categories"], key=lambda c: -c["spend_cents"])[:5]
+        parts.append(
+            "Largest categories: "
+            + ", ".join(f"{c['category']} {_cents_words(c['spend_cents'])}" for c in top)
+            + "."
+        )
+    if body["uncategorised_cents"]:
+        parts.append(
+            f"A further {_cents_words(body['uncategorised_cents'])} was spent but has no "
+            f"category yet, so it is NOT in that total; say so."
+        )
+    excluded = body["excluded"]
+    moved = excluded["own_account_moves_cents"] + excluded["not_spending_cents"]
+    if moved:
+        parts.append(
+            f"{_cents_words(moved)} moved between the household's own accounts or under "
+            f"not-spending categories and is left out; say so."
+        )
+    if any(a["unverified"] for a in body["accounts"]) or body["uncategorised_unverified"]:
+        parts.append("Part of this figure is UNVERIFIED (no gate checked those rows); say so.")
+    if not body["complete"]:
+        parts.append(
+            "The month is not fully covered by the bank data on file, so the figure may be "
+            "incomplete; say so."
+        )
+    return ok(" ".join(parts), structured=body)
+
+
+# =============================================================================
 
 
 @dataclass(frozen=True)
@@ -960,6 +1023,26 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"item": {"type": "string", "minLength": 1}}, ("item",)),
         handler=_last_ticked,
+    ),
+    EngineTool(
+        name="monthly_spend",
+        title="How much was spent this month",
+        description=(
+            "The household's categorised spending for one budget month (default: the current "
+            "one), from the bank data on file: the total, the largest categories, and what was "
+            "left out. This is the answer to 'how much have I spent this month' or 'my monthly "
+            "spending'; it is never the car's build sheet. Optional `month` (YYYY-MM), `tz` "
+            "(the zone that decides which month is current) and `currency` (default USD). "
+            "Repeat every caveat the result states."
+        ),
+        input_schema=_object(
+            {
+                "month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+                "tz": {"type": "string"},
+                "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
+            }
+        ),
+        handler=_monthly_spend,
     ),
     EngineTool(
         name="write_record",

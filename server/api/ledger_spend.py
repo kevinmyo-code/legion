@@ -93,6 +93,46 @@ class SpendSerializer(serializers.Serializer):
     )
 
 
+def spend_for(request, month, currency: str) -> dict:
+    """One budget month's spend body for the request's household. The route
+    and the engine MCP tool (`engine_mcp/tools.py` `monthly_spend`) both call
+    this, so a figure read over MCP is the figure the web shows."""
+    rows = [
+        {
+            **row,
+            "provenance": "UNRECONCILED"
+            if row["provenance"] in UNVERIFIED_PROVENANCE
+            else row["provenance"],
+        }
+        for row in with_effective_category(scoped(LedgerTransaction, request)).values(
+            "id",
+            "created_at",
+            "account_last4",
+            "account_nickname",
+            "currency",
+            "txn_date",
+            "description",
+            "amount_cents",
+            "effective_category",
+            "provenance",
+        )
+    ]
+    categories = (
+        scoped(Category, request)
+        .filter(deleted_at__isnull=True)
+        .values("name", "excluded_from_spend")
+    )
+    targets = (
+        scoped(BudgetTarget, request)
+        .filter(deleted_at__isnull=True)
+        .values("category", "currency", "amount_cents", "effective_from_month")
+    )
+    statements = scoped(Statement, request).values(
+        "account_last4", "currency", "period_start", "period_end"
+    )
+    return household_spend(rows, list(categories), list(targets), list(statements), month, currency)
+
+
 class SpendView(APIView):
     @extend_schema(
         operation_id="api_ledger_spend_retrieve",
@@ -150,40 +190,5 @@ class SpendView(APIView):
         except BadRequest as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        rows = [
-            {
-                **row,
-                "provenance": "UNRECONCILED"
-                if row["provenance"] in UNVERIFIED_PROVENANCE
-                else row["provenance"],
-            }
-            for row in with_effective_category(scoped(LedgerTransaction, request)).values(
-                "id",
-                "created_at",
-                "account_last4",
-                "account_nickname",
-                "currency",
-                "txn_date",
-                "description",
-                "amount_cents",
-                "effective_category",
-                "provenance",
-            )
-        ]
-        categories = (
-            scoped(Category, request)
-            .filter(deleted_at__isnull=True)
-            .values("name", "excluded_from_spend")
-        )
-        targets = (
-            scoped(BudgetTarget, request)
-            .filter(deleted_at__isnull=True)
-            .values("category", "currency", "amount_cents", "effective_from_month")
-        )
-        statements = scoped(Statement, request).values(
-            "account_last4", "currency", "period_start", "period_end"
-        )
-        body = household_spend(
-            rows, list(categories), list(targets), list(statements), month, currency
-        )
+        body = spend_for(request, month, currency)
         return Response(SpendSerializer(body).data)
