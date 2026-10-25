@@ -22,6 +22,25 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Where we stopped - 2026-10-24 night (head unit logs + spend)
+
+- **Branch `fix/headunit-logs-and-spend`** (worktree `../legion-hu`, off `dev` `4c198992`), 6 commits,
+  NOT merged, NOT pushed unless noted. Head unit 745 / 0, phone 5059 / 0 (JUnit XML). **Server suite
+  NOT run** (no local Postgres URL in hand).
+  - Engine MCP `monthly_spend` (shares `spend_for` with `GET /api/ledger/spend`).
+  - `device_logs.reason` gains `periodic` + migration `devicelogs/0002`.
+  - Head unit: voice SpendGate removed (`unlock_spend`/`set_spend_passphrase` gone), uploads every
+    3 min, conversation audit `diag/ConvoAudit` (drive log only, never Crashlytics), git sha in
+    versionName.
+  - Phone: `get_monthly_spend` asks the engine first, phone copy only as a labelled fallback.
+- **Why:** all 47 head-unit log batches were `startup`; `drive_end` never fired (ignition cut at the
+  stop). The "spend log is locked" refusal was the head unit's SpendGate; the engine had no spend tool.
+- **Owed, in order:** (1) server `uv run pytest`; (2) Kevin's OK to deploy engine (migration on live
+  DB + Cloud Run) BEFORE installing the head unit APK; (3) install, drive, check `device_logs
+  --reason periodic` and `--grep audit`; (4) Kevin: drop SpendGate from the Logbook screen too?
+- **Voice latency audit:** `.scratch/voice-latency/audit-2026-10-24.md`. Nothing built; waiting on
+  Kevin's picks and on a measured drive.
+
 ## Where we stopped - 2026-10-11 (session 8d51fa39)
 
 - **2026-10-14 refs:** `origin/dev` = `768e750d`, `origin/main` = `c4b96481` (dev NOT merged to main).
