@@ -14,10 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
-import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -44,7 +40,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.kevin.legion.R
 import com.kevin.legion.dumb.AndroidKeptAppResolver
 import com.kevin.legion.dumb.DumbModeViewModel
 import com.kevin.legion.dumb.DumbUiState
@@ -191,6 +186,7 @@ fun DumbHome(
             message = null
             talk()
         },
+        talkDisplay = rememberMatrixTalkDisplay(),
     )
     SoftTheme {
         if (booksOpen) {
@@ -216,7 +212,7 @@ fun DumbHome(
 /** Home A, stateless (prototype `Main.dc.html`): clock, date, running time, the kept list, the footer. */
 @Composable
 @Suppress("LongMethod") // one screen; the rain Box wrapper put it one line over
-fun DumbHomeContent(
+internal fun DumbHomeContent(
     ui: DumbUiState,
     message: String?,
     onEntry: (KeptEntry) -> Unit,
@@ -224,6 +220,7 @@ fun DumbHomeContent(
     onOpenSettings: () -> Unit = {},
     onOpenClock: () -> Unit = {},
     onTalk: () -> Unit = {},
+    talkDisplay: MatrixTalkDisplay = MatrixTalkResolver.IDLE,
 ) {
     Box(Modifier.fillMaxSize().background(DumbColors.ground)) {
     // The rain runs only while the screen is resumed; the scrim keeps the list above 4.5:1 over it.
@@ -272,8 +269,10 @@ fun DumbHomeContent(
                 Text(it, color = DumbColors.body, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
             }
         }
+        // What the mic is doing, in words, right above it (Kevin, 2026-10-27).
+        LiveMatrixTalkLine(talkDisplay)
         Row(
-            Modifier.fillMaxWidth().padding(top = 4.dp),
+            Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -284,26 +283,11 @@ fun DumbHomeContent(
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
             )
             // Push-to-talk, always on screen: the Assistant row sits below the fold (Kevin, 2026-10-23).
-            TalkButton(onTalk)
+            TalkButton(onTalk, talkDisplay)
             Spacer(Modifier.width(12.dp))
             PillButton("Leave", onLeave, primary = false)
         }
     }
-    }
-}
-
-/** Round mic button: one tap starts a voice turn, the same path as the chat panel's Talk. */
-@Composable
-internal fun TalkButton(onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .border(1.dp, DumbColors.outline, CircleShape)
-            .clickable(role = Role.Button, onClickLabel = "Talk to the assistant", onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(painterResource(R.drawable.ms_mic), contentDescription = "Talk to the assistant", tint = DumbColors.text)
     }
 }
 
