@@ -12,12 +12,42 @@ class MatrixTalkStateTest {
     private fun live(phase: Phase) =
         MatrixTalkResolver.resolve(phase, notice = null, micGranted = true, silenced = false)
 
+    private fun working(notice: String? = null) =
+        MatrixTalkResolver.resolve(Phase.THINKING, notice, micGranted = true, silenced = false, toolRunning = true)
+
     @Test
     fun `every phase has its own label, its own motion and its own spoken sentence`() {
         val all = Phase.entries.map(::live)
         assertEquals(Phase.entries.size, all.map { it.label }.toSet().size)
         assertEquals(Phase.entries.size, all.map { it.motion }.toSet().size)
         assertEquals(Phase.entries.size, all.map { it.spoken }.toSet().size)
+    }
+
+    @Test
+    fun `a running tool reads WORKING with its own motion, distinct from every phase`() {
+        val d = working()
+        assertEquals("> WORKING", d.label)
+        assertEquals(MatrixTalkMotion.RUNNER, d.motion)
+        assertTrue(d.live)
+        assertFalse(d.showLevel)
+        val phases = Phase.entries.map(::live)
+        assertFalse(phases.any { it.label == d.label || it.motion == d.motion || it.spoken == d.spoken })
+    }
+
+    @Test
+    fun `the tool flag only means WORKING during THINKING`() {
+        listOf(Phase.IDLE, Phase.CONNECTING, Phase.LISTENING, Phase.SPEAKING).forEach { phase ->
+            assertEquals(
+                live(phase),
+                MatrixTalkResolver.resolve(phase, null, micGranted = true, silenced = false, toolRunning = true),
+            )
+        }
+    }
+
+    @Test
+    fun `a notice still outranks a running tool`() {
+        val d = working(notice = "NO SIGNAL")
+        assertEquals("! NO SIGNAL", d.label)
     }
 
     @Test

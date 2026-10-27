@@ -86,7 +86,14 @@ object CompanionPhase {
     private val _silenced = MutableStateFlow(false)
     val silenced: StateFlow<Boolean> = _silenced.asStateFlow()
 
-    fun set(phase: Phase) {
+    // True while the phase is THINKING because a tool call is in flight (the controller's
+    // "Working..." status), so a screen can tell "running a tool" from "thinking" (Kevin,
+    // 2026-10-27). Always false outside THINKING. Published by [set], never on its own.
+    private val _toolRunning = MutableStateFlow(false)
+    val toolRunning: StateFlow<Boolean> = _toolRunning.asStateFlow()
+
+    fun set(phase: Phase, toolRunning: Boolean = false) {
+        _toolRunning.value = toolRunning && phase == Phase.THINKING
         // Reaching LISTENING means a conversation really connected, so any failure notice still
         // in the replay buffer is stale: without this a late subscriber (the strip recomposing)
         // replayed "NO CONNECTION" over a working conversation (2026-10-02). The strip clears its

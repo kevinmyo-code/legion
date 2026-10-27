@@ -4,7 +4,7 @@ import com.kevin.legion.service.Phase
 import kotlin.math.log10
 
 /** The motion beside a Matrix talk label. Each live phase gets its own, so two never move alike. */
-internal enum class MatrixTalkMotion { NONE, SPINNER, CURSOR, DOTS, WAVE }
+internal enum class MatrixTalkMotion { NONE, SPINNER, CURSOR, DOTS, RUNNER, WAVE }
 
 /**
  * What Matrix HOME's push-to-talk shows: the state line above the footer and the mic button's look.
@@ -41,12 +41,19 @@ internal object MatrixTalkResolver {
 
     val IDLE: MatrixTalkDisplay = forPhase(Phase.IDLE)
 
-    fun resolve(phase: Phase, notice: String?, micGranted: Boolean, silenced: Boolean): MatrixTalkDisplay =
+    /** [toolRunning] is [com.kevin.legion.service.CompanionPhase.toolRunning]: THINKING because a tool is in flight. */
+    fun resolve(
+        phase: Phase,
+        notice: String?,
+        micGranted: Boolean,
+        silenced: Boolean,
+        toolRunning: Boolean = false,
+    ): MatrixTalkDisplay =
         when {
             !micGranted -> warning(
                 label = "! MIC NOT ALLOWED",
-                detail = "type to the assistant instead",
-                spoken = "Microphone not allowed. Type to the assistant instead.",
+                detail = "tap the mic for Settings",
+                spoken = "Microphone not allowed. Tap the mic for Settings.",
             )
             silenced -> warning(
                 label = "! CAN'T HEAR YOU",
@@ -54,6 +61,7 @@ internal object MatrixTalkResolver {
                 spoken = "Can't hear you. Another app has the microphone.",
             )
             notice != null -> warning(label = "! ${notice.uppercase()}", detail = null, spoken = notice)
+            toolRunning && phase == Phase.THINKING -> WORKING
             else -> forPhase(phase)
         }
 
@@ -80,6 +88,15 @@ internal object MatrixTalkResolver {
         )
     }
 
+    /**
+     * THINKING while a tool call is in flight: the controller's "Working..." status. No tool name: the
+     * names are model-facing identifiers (`investigate`, `ledger_query`) and read badly as words.
+     */
+    val WORKING = MatrixTalkDisplay(
+        "> WORKING", "tool running; tap to stop", MatrixTone.HEADING, MatrixTalkMotion.RUNNER,
+        showLevel = false, live = true, spoken = "Working on it. Tap the mic to stop.",
+    )
+
     private fun warning(label: String, detail: String?, spoken: String) = MatrixTalkDisplay(
         label, detail, MatrixTone.WARNING, MatrixTalkMotion.NONE, showLevel = false, live = false, spoken = spoken,
     )
@@ -101,6 +118,7 @@ internal object MatrixTalkResolver {
         MatrixTalkMotion.SPINNER to listOf(" /", " -", " \\", " |"),
         MatrixTalkMotion.CURSOR to listOf(" ", "_"),
         MatrixTalkMotion.DOTS to listOf("   ", ".  ", ".. ", "..."),
+        MatrixTalkMotion.RUNNER to listOf(" [=  ]", " [ = ]", " [  =]", " [ = ]"),
         MatrixTalkMotion.WAVE to listOf(" )  ", " )) ", " )))"),
     )
 

@@ -220,7 +220,7 @@ class LiveSessionController(context: Context) {
         _phase.value = phase
         // Mirror to the process-global holder so the Cruise screen (Activity) can
         // reflect the live state too, not just the service-drawn floating button.
-        CompanionPhase.set(phase)
+        CompanionPhase.set(phase, toolRunning = activeToolCalls > 0) // 2026-10-27: WORKING vs THINKING
     }
 
     // --- public entry points (service / overlay) -------------------------
