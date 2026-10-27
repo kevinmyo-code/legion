@@ -33,7 +33,7 @@ Format and the test for whether something deserves an ADR:
 | 0017 | [[0017-room-migrations-additive\|Room migrations are additive, verbatim, and exported]] | locked | 2026-07-31 | - |
 | 0018 | [[0018-pull-based-tools\|New domains get tools, not pre-injected context]] | locked | 2026-07-30 | - |
 | 0019 | [[0019-write-tools-are-visible\|Write tools are visible; only reads hide behind dispatchers]] | accepted | 2026-08-18 | - |
-| 0020 | [[0020-companion-identity-per-profile\|The companion is named per profile; LEGION is the app]] | locked | 2026-07-30 | 2026-08-16 |
+| 0020 | [[0020-companion-identity-per-profile\|The companion is named per profile; LEGION is the app]] | locked | 2026-07-30 | 2026-10-27 |
 | 0021 | [[0021-city-pop-retired\|The city-pop design language and everything attached to it is retired]] | locked | 2026-07-30 | - |
 | 0025 | [[0025-warmth-allowed-compulsion-banned\|Warmth is allowed; compulsion mechanics are not]] | accepted | 2026-08-02 | - |
 | 0026 | [[0026-crisis-detector-boundary\|Genuine distress stops the character]] | locked | 2026-08-02 | - |
@@ -54,7 +54,6 @@ Format and the test for whether something deserves an ADR:
 | 0044 | [[0044-django-is-the-engine\|Django is the engine]] | accepted | 2026-09-05 | - |
 | 0045 | [[0045-households-are-tenants\|Households are tenants]] | accepted | 2026-09-08 | - |
 | 0046 | [[0046-fixed-wake-and-sleep-phrases\|A fixed wake and sleep phrase pair, implemented in two different places]] | accepted | 2026-09-10 | - |
-| 0047 | [[0047-switching-companion-is-a-handover\|Switching companion is a socket rebuild and a spoken handover]] | accepted | 2026-09-10 | - |
 | 0049 | [[0049-a-tick-is-a-tap-not-a-purchase\|A tick is a tap, not a purchase]] | accepted | 2026-09-16 | - |
 | 0050 | [[0050-legion-may-be-the-home-app\|LEGION may be the phone's home app]] | accepted | 2026-09-27 | - |
 | 0051 | [[0051-design-language-soft-material\|Design language: soft Material]] | accepted | 2026-09-27 | - |
@@ -69,6 +68,7 @@ Format and the test for whether something deserves an ADR:
 | 0060 | [[0060-tetris-race-through-the-engine\|Built-in Tetris, and a household score race held transiently by the engine]] | accepted | 2026-10-18 | - |
 | 0061 | [[0061-books-launcher\|Books are a HOME launcher with LEGION's own reader, read from a folder grant]] | accepted | 2026-10-19 | - |
 | 0062 | [[0062-dumb-phone-mode\|Dumb phone mode is a manual switch that shrinks HOME, holds notifications and silences strangers]] | accepted | 2026-10-22 | - |
+| 0063 | [[0063-alfred-is-the-only-phone-persona\|The phone has one persona, Alfred]] | accepted | 2026-10-27 | - |
 
 ## Superseded
 
@@ -85,3 +85,4 @@ Kept with their original text. What was believed before, and why it changed.
 | 0037 | [[0037-the-aspect-engine-is-the-spine\|The aspect engine is the spine]] | [[0039-per-aspect-typed-tables\|0039-per-aspect-typed-tables]] |
 | 0038 | [[0038-byo-supabase-is-the-system-of-record\|A BYO Supabase project is the system of record]] | [[0044-django-is-the-engine\|0044-django-is-the-engine]] |
 | 0043 | [[0043-django-is-the-second-client\|Django is the second client, and what it may be hosted for]] | [[0044-django-is-the-engine\|0044-django-is-the-engine]] |
+| 0047 | [[0047-switching-companion-is-a-handover\|Switching companion is a socket rebuild and a spoken handover]] | [[0063-alfred-is-the-only-phone-persona\|0063-alfred-is-the-only-phone-persona]] |

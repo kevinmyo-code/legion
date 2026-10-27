@@ -6683,3 +6683,17 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   `voice_turn_decision`) so a drive can tune it.
 - Not changed, still Kevin's: `START_SENSITIVITY_LOW` (phone, 2026-10-02), VAD 900 ms, head unit Live
   model, filler lines, BLOCKING tools.
+
+## 2026-10-27 - Phone: Alfred is the only persona (Kevin)
+
+- Ruling: the phone has ONE assistant persona, Alfred. Dorothy, Kratos and Marcus are removed.
+- **Meditations is deleted entirely**: the Marcus-only reader, the `consult_meditations` tool, the
+  bundled George Long text, and their tests.
+- **Companions:** the roster/picker UI and the `switch_companion` voice tool are removed, with the
+  spoken handover behind them (ADR 0047, now superseded by ADR 0063). A screen for Alfred's own
+  settings stays: name and voice.
+- **An install whose active profile is Dorothy, Kratos or Marcus resolves to Alfred.**
+  `personaFor(key)` returns `ALFRED` for any key. The `companion_profiles` table stays and no row is
+  deleted (additive-only migrations, sync contract unchanged). The active selection moves to an
+  Alfred row when the synced roster has one; otherwise the existing row answers as Alfred.
+- CLAUDE.md §1 Register bullet amended: the companion is Alfred, renameable, not picked per profile.

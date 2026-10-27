@@ -2,7 +2,7 @@
 status: locked
 decided: 2026-07-30
 decided-by: Kevin
-amended: 2026-08-16
+amended: 2026-10-27
 source: "CLAUDE.md §1"
 tags: [adr]
 ---
@@ -11,7 +11,7 @@ tags: [adr]
 
 ## Standing
 
-LOCKED, and CORRECTED 2026-08-16. The correction matters: an earlier reading of this decision as 'one global assistant identity' is wrong.
+LOCKED, and CORRECTED 2026-08-16. The correction matters: an earlier reading of this decision as 'one global assistant identity' is wrong. AMENDED 2026-10-27 (ADR 0063): the register is always Alfred; the name is still the household's to choose.
 
 ## Context
 
@@ -19,7 +19,7 @@ Midnight AI gave each car its own companion identity. Cars are data, not identit
 
 ## Decision
 
-LEGION is the app. The companion is user-named per profile via `companion_profiles`. `ai/Personas.kt` holds the register copy as `ALFRED` and `DOROTHY`; `ai/AssistantIdentity.kt` is a resolver whose `withName` swaps the persona's default name for the driver's.
+LEGION is the app. The companion is user-named per profile via `companion_profiles`. `ai/Personas.kt` holds the register copy as `ALFRED`, the only persona since 2026-10-27 (ADR 0063); `ai/AssistantIdentity.kt` is a resolver whose `withName` swaps the persona's default name for the driver's.
 
 ## Consequences
 

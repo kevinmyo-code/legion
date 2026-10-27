@@ -1,7 +1,8 @@
 ---
-status: accepted
+status: superseded
 decided: 2026-09-10
 decided-by: Kevin
+superseded-by: [0063-alfred-is-the-only-phone-persona]
 source: "[[decisions#2026-09-10 - Kratos, and handing the conversation to another companion by voice]]"
 tags: [adr]
 ---
@@ -9,6 +10,9 @@ tags: [adr]
 # 47. Switching companion is a socket rebuild and a spoken handover
 
 ## Standing
+
+**SUPERSEDED 2026-10-27 by ADR 0063: the phone has one persona, so there is no companion to switch
+to. The voice tool, the tap-to-switch and the handover are removed. The text below is kept as it was.**
 
 **Changing the active companion tears the Live socket down and opens a new one, and the conversation
 so far is not carried across.** The outgoing companion says one handover line, the incoming one

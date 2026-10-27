@@ -81,8 +81,9 @@ device model in a prompt had three separate agents reporting work on a phone tha
   exists only to invite and remove members. No approval workflows, ever.
 - **Register: Alfred/JARVIS is a BAND, not a name.** A tool with a personality. Not a mascot, not
   the car. Competent, dry, useful. The register copy lives in `ai/Personas.kt`; `AssistantIdentity`
-  resolves it. **LEGION is the app; the thing Kevin talks to is a named companion he picks per
-  profile**, and the persona's name is swappable. **Never hardcode an assistant name into copy.**
+  resolves it. **LEGION is the app; the phone has one companion persona, Alfred** (Kevin,
+  2026-10-27, ADR 0063: no roster, no switching), and its name is swappable. **Never hardcode an
+  assistant name into copy.**
 - **The assistant is a CONCIERGE, not a car companion (2026-08-20, Kevin).** The prompt layer
   called the user "the driver" throughout, and the model answered accordingly - a greeting about the
   weather came out as a greeting about the weather *for a drive*. It says "the user" now, and
