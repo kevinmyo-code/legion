@@ -339,6 +339,10 @@ class GeminiLiveSession(
     @Volatile private var framesWritten: Long = 0
     private var speakingThisTurn = false
 
+    // Timing probe (2026-10-27): cold start, reply and per-tool latency, written as
+    // LIVE_LATENCY lines to CarProbeLog and logcat. See [LiveLatency].
+    private val latency = LiveLatency()
+
     // Monotonic generation counter, bumped by [flushAudio] every time queued model
     // audio is discarded (barge-in tap in [beginConversation], the server's own
     // "interrupted" signal, [checkForCrisis], and now the short-capture retry in
@@ -616,6 +620,7 @@ class GeminiLiveSession(
         micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
     ) {
         if (!running.compareAndSet(false, true)) return
+        latency.start(System.currentTimeMillis())
         closed.set(false)
         this.micClaimant = micClaimant
         requestedResumeHandle = resumeHandle
@@ -906,7 +911,11 @@ class GeminiLiveSession(
                 put("response", response)
             }))
         })
-        return webSocket?.send(msg.toString()) ?: false
+        val sent = webSocket?.send(msg.toString()) ?: false
+        latency.toolResponse(id, System.currentTimeMillis())?.let { (tool, ms) ->
+            LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent")
+        }
+        return sent
     }
 
     /**
@@ -1170,6 +1179,9 @@ class GeminiLiveSession(
         // warm until the driver taps.
         if (root.has("setupComplete")) {
             warm.set(true)
+            latency.setupComplete(System.currentTimeMillis())?.let {
+                LiveLatency.log(LiveLatency.TAG, "cold_start_ms=$it")
+            }
             // The socket opened and the server accepted the setup: the key is valid and has quota
             // right now, so any recorded problem is stale. Same reasoning as SubAgent's own
             // noteOk on a 200 - a key that starts working again must stop being reported broken
@@ -1470,6 +1482,7 @@ class GeminiLiveSession(
                 // handled here, and with startOfSpeechSensitivity LOW the transcript is what
                 // arrives once the server has committed to hearing speech.
                 followUpEvent(FollowUpWindow.Event.UserSpeech)
+                latency.inputTranscript(System.currentTimeMillis())
                 userTurnText.append(it)
                 checkForCrisis()
             }
@@ -1522,6 +1535,9 @@ class GeminiLiveSession(
                     }
                     if (!speakingThisTurn) {
                         speakingThisTurn = true
+                        latency.firstAudio(System.currentTimeMillis())?.let {
+                            LiveLatency.log(LiveLatency.TAG, "reply_ms=$it")
+                        }
                         // Half-duplex: mute the mic while Zero speaks so his own
                         // voice (through the head-unit speakers) isn't captured and
                         // mistaken by the server VAD for the driver interrupting.
@@ -1554,6 +1570,7 @@ class GeminiLiveSession(
         }
         if (content.optBoolean("turnComplete")) {
             speakingThisTurn = false
+            latency.turnComplete()
             crisisFiredThisTurn = false
             val heard = userTurnText.toString().trim()
             // Hoisted 2026-09-07: three decisions below now need the companion's own line, and
@@ -1714,6 +1731,7 @@ class GeminiLiveSession(
         for (i in 0 until calls.length()) {
             val call = calls.optJSONObject(i) ?: continue
             val name = call.optString("name")
+            latency.toolCall(call.optString("id"), name, System.currentTimeMillis())
             // Ticket 15: flag the whole turn as mail-shaped the moment the ASK arrives, not
             // once dispatch returns - captureEpisodicTurn (below) checks this on turnComplete,
             // which can land before the owner's own dispatch/response round trip finishes in
@@ -2616,7 +2634,7 @@ class GeminiLiveSession(
                     followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech))
                 }
                 if (followUp.extensions > 0) {
-                    CarProbeLog.log(
+                    LiveLatency.log(
                         "LIVE_FOLLOWUP",
                         "extended ${followUp.extensions}: mic heard speech, no transcript yet; " +
                             "peakSinceMicOpen=$peakSinceMicOpen",
@@ -2626,7 +2644,7 @@ class GeminiLiveSession(
             FollowUpWindow.Action.CLOSE -> {
                 val heard = lastLocalSpeechAtMs
                 val sinceSpeech = if (heard > 0L) "${System.currentTimeMillis() - heard}" else "never"
-                CarProbeLog.log(
+                LiveLatency.log(
                     "LIVE_FOLLOWUP",
                     "closed after silence; msSinceLocalSpeech=$sinceSpeech peakSinceMicOpen=$peakSinceMicOpen",
                 )
