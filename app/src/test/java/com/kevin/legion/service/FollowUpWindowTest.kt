@@ -91,4 +91,54 @@ class FollowUpWindowTest {
         // The close reason is "stopped": the owner raises no notice and carries no handle.
         assertEquals(false, LiveSessionController.shouldNotifyThreadLoss(true, "stopped", false))
     }
+
+    // 2026-10-27: closing mid-sentence because the transcript had not arrived yet.
+
+    @Test fun recentLocalSpeechExtendsInsteadOfClosing() {
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.ARM),
+            run(Event.TurnComplete, Event.MicOpened, Event.Elapsed(0, msSinceLocalSpeech = 300)),
+        )
+    }
+
+    @Test fun oldLocalSpeechStillCloses() {
+        val stale = FollowUpWindow.LOCAL_SPEECH_RECENT_MS + 1
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.CLOSE),
+            run(Event.TurnComplete, Event.MicOpened, Event.Elapsed(0, msSinceLocalSpeech = stale)),
+        )
+    }
+
+    @Test fun extensionsAreBoundedSoNoiseCannotHoldTheWindowOpen() {
+        val noisy = Event.Elapsed(0, msSinceLocalSpeech = 0)
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.ARM, Action.ARM, Action.CLOSE),
+            run(Event.TurnComplete, Event.MicOpened, noisy, noisy, noisy),
+        )
+        assertEquals(2, FollowUpWindow.MAX_EXTENSIONS)
+    }
+
+    @Test fun transcriptDuringAnExtensionCancels() {
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.ARM, Action.CANCEL, Action.NONE),
+            run(
+                Event.TurnComplete, Event.MicOpened, Event.Elapsed(0, msSinceLocalSpeech = 0),
+                Event.UserSpeech, Event.Elapsed(0),
+            ),
+        )
+    }
+
+    @Test fun nextAnswerResetsTheExtensionBudget() {
+        val noisy = Event.Elapsed(0, msSinceLocalSpeech = 0)
+        assertEquals(
+            listOf(
+                Action.NONE, Action.ARM, Action.ARM, Action.ARM,
+                Action.CANCEL, Action.ARM, Action.ARM,
+            ),
+            run(
+                Event.TurnComplete, Event.MicOpened, noisy, noisy,
+                Event.TurnComplete, Event.MicOpened, noisy,
+            ),
+        )
+    }
 }

@@ -6670,3 +6670,16 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   progression + chapter label, never title or text; Readium's TypeScript toolkit on the web so EPUB
   locators match, with a "near" fallback said in words.
 - ADR 0061 amended a second time the same day. Tickets `.scratch/books/issues/07` to `10`.
+
+## 2026-10-27 - Voice: local mic level can extend the quiet window (Kevin's report, orchestrator call)
+
+- Report: "the conversation sometimes ends randomly while im still talking", phone and head unit.
+- Mechanism (traced, not measured): the phone's 8 s follow-up window (ticket 17) and the head unit's
+  10 s idle timer were cancelled only by the first input transcript, which trails speech onset. Speech
+  starting late in the window lost the race and the session closed or parked mid-sentence.
+- **Orchestrator call, changeable:** a mic buffer at peak >= 2000 within 1.5 s of the deadline runs
+  the window again, at most twice. The 8 s ruling stands for real silence; noise buys at most 16 s.
+  Threshold is GUESSED. Every extension and close is logged (phone `LIVE_FOLLOWUP`, head unit
+  `voice_turn_decision`) so a drive can tune it.
+- Not changed, still Kevin's: `START_SENSITIVITY_LOW` (phone, 2026-10-02), VAD 900 ms, head unit Live
+  model, filler lines, BLOCKING tools.

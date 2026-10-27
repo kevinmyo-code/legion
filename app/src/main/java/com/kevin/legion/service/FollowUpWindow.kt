@@ -19,7 +19,26 @@ object FollowUpWindow {
     /** Ticket 17 / ruling in ticket 16. The one number to change if the window is ever retuned. */
     const val WINDOW_MS = 8_000L
 
-    data class State(val awaitingMic: Boolean = false, val armed: Boolean = false)
+    /**
+     * 2026-10-27, Kevin: "the conversation sometimes ends randomly while im still talking". The
+     * only cancel is [Event.UserSpeech], the first input transcript, and the transcript trails
+     * speech onset by up to seconds (more with startOfSpeechSensitivity LOW). Speech that starts
+     * late in the window loses the race and the session closes mid-sentence. So the mic loop's own
+     * level counts: if it heard something loud within [LOCAL_SPEECH_RECENT_MS] of the deadline, the
+     * window runs again instead of closing - at most [MAX_EXTENSIONS] times, so road noise that
+     * clears [LOCAL_SPEECH_PEAK] cannot hold a conversation open forever (the ruling stays 8 s of
+     * quiet; noise buys at most 2 x 8 s more).
+     */
+    const val LOCAL_SPEECH_RECENT_MS = 1_500L
+    const val MAX_EXTENSIONS = 2
+    /** Peak amplitude (of 32767) counted as the driver talking. GUESSED, not measured in the car. */
+    const val LOCAL_SPEECH_PEAK = 2_000
+
+    data class State(
+        val awaitingMic: Boolean = false,
+        val armed: Boolean = false,
+        val extensions: Int = 0,
+    )
 
     sealed interface Event {
         /** The assistant's turn finished, in a conversation whose mic is about to reopen. */
@@ -30,8 +49,12 @@ object FollowUpWindow {
         data object UserSpeech : Event
         /** The model asked for a tool: a running tool is not silence. */
         data object ToolCall : Event
-        /** [WINDOW_MS] passed since arming. [toolsInFlight] is read at the moment it fires. */
-        data class Elapsed(val toolsInFlight: Int) : Event
+        /**
+         * [WINDOW_MS] passed since arming. [toolsInFlight] is read at the moment it fires;
+         * [msSinceLocalSpeech] is how long ago the mic last read a buffer at or above
+         * [LOCAL_SPEECH_PEAK] since it opened, null if it never did.
+         */
+        data class Elapsed(val toolsInFlight: Int, val msSinceLocalSpeech: Long? = null) : Event
     }
 
     enum class Action { NONE, ARM, CANCEL, CLOSE }
@@ -55,7 +78,12 @@ object FollowUpWindow {
                 !state.armed -> Decision(state, Action.NONE)
                 // A running tool is not silence. Disarm; the turn that follows it re-arms.
                 event.toolsInFlight > 0 -> Decision(State(), Action.NONE)
+                heardLocally(event.msSinceLocalSpeech) && state.extensions < MAX_EXTENSIONS ->
+                    Decision(State(armed = true, extensions = state.extensions + 1), Action.ARM)
                 else -> Decision(State(), Action.CLOSE)
             }
     }
+
+    private fun heardLocally(msSinceLocalSpeech: Long?): Boolean =
+        msSinceLocalSpeech != null && msSinceLocalSpeech <= LOCAL_SPEECH_RECENT_MS
 }

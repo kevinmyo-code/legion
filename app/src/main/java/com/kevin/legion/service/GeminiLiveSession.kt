@@ -293,6 +293,9 @@ class GeminiLiveSession(
     // speak-only idle close so there is still exactly one pending-close job per session.
     private var followUp = FollowUpWindow.State()
     private val toolCallsInFlight = java.util.concurrent.atomic.AtomicInteger(0)
+    // When the mic loop last read a buffer at or above [FollowUpWindow.LOCAL_SPEECH_PEAK], 0 if not
+    // since the mic opened. Lets the window see speech the transcript has not reported yet.
+    @Volatile private var lastLocalSpeechAtMs = 0L
     private var audioTrack: AudioTrack? = null
 
     /**
@@ -2028,6 +2031,7 @@ class GeminiLiveSession(
                         recordingStartedAtMs = System.currentTimeMillis()
                         bytesSinceOpen = 0L
                         peakSinceOpen = 0
+                        lastLocalSpeechAtMs = 0L
                         deafMicHandledThisOpen = false
                         // Physical open, fired AFTER startRecording() actually returns - the
                         // whole point of this event is that it lags the capturing=true intent
@@ -2126,6 +2130,7 @@ class GeminiLiveSession(
                 if (level > peakSinceOpen) peakSinceOpen = level
                 if (level > intervalPeak) intervalPeak = level
                 val nowMs = System.currentTimeMillis()
+                if (recording && level >= FollowUpWindow.LOCAL_SPEECH_PEAK) lastLocalSpeechAtMs = nowMs
                 if (recording && nowMs - lastLevelLogAtMs >= LEVEL_LOG_INTERVAL_MS) {
                     Log.d(TAG, "mic level: peak=$intervalPeak forwardedSinceOpen=$bytesSinceOpen " +
                         "openMs=${nowMs - recordingStartedAtMs}")
@@ -2601,10 +2606,21 @@ class GeminiLiveSession(
                 idleJob = io.launch {
                     delay(FollowUpWindow.WINDOW_MS)
                     if (!running.get()) return@launch
-                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get()))
+                    val heard = lastLocalSpeechAtMs
+                    val sinceSpeech = if (heard > 0L) System.currentTimeMillis() - heard else null
+                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech))
+                }
+                if (followUp.extensions > 0) {
+                    CarProbeLog.log(
+                        "LIVE_FOLLOWUP",
+                        "extended ${followUp.extensions}: mic heard speech, no transcript yet",
+                    )
                 }
             }
             FollowUpWindow.Action.CLOSE -> {
+                val heard = lastLocalSpeechAtMs
+                val sinceSpeech = if (heard > 0L) "${System.currentTimeMillis() - heard}" else "never"
+                CarProbeLog.log("LIVE_FOLLOWUP", "closed after silence; msSinceLocalSpeech=$sinceSpeech")
                 Log.d(TAG, "follow-up window expired after ${FollowUpWindow.WINDOW_MS}ms of silence")
                 emit(LiveEvent.FollowUpExpired)
                 closeSession("stopped")
