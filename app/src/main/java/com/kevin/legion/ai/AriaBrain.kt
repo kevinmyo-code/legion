@@ -67,6 +67,8 @@ class AriaBrain private constructor(context: Context) {
     // volatile half (live OBD/location/now-playing/...) is always built fresh.
     @Volatile private var baseCache: String? = null
     @Volatile private var baseCacheAt = 0L
+    @Volatile private var textBaseCache: String? = null
+    @Volatile private var textBaseCacheAt = 0L
 
     // Shared tone/format rules; the character itself comes from the app-global
     // companion (see CompanionProfile), not the per-car vehicle row, so swapping
@@ -82,34 +84,9 @@ class AriaBrain private constructor(context: Context) {
     // these rules was still in the prompt.
     private val sharedInstructions = SHARED_INSTRUCTIONS
 
-    /**
-     * Companion-safety rules (CLAUDE.md sec 9.1). Appended to every system
-     * instruction and NOT part of the persona.
-     *
-     * The placement is the point: sec 2 lets an unlocked driver rewrite the
-     * persona, so anything living in [VehicleController.DEFAULT_PERSONA] can be
-     * edited away by the exact user these rules exist to protect. These sit in
-     * the app's own instruction block instead, where a persona edit can't reach
-     * them.
-     *
-     * [CrisisDetector] backs the crisis rule up in code, because a prompt rule is
-     * a request rather than a guarantee. This text is the primary defence and
-     * catches the nuanced cases; the detector only catches unambiguous phrasing.
-     */
-    private val safetyInstructions = "You are a character running on the user's own Gemini key. " +
-        "You have personality and you care about this car and this drive, but you are not a being: " +
-        "never claim to love the user, to miss them, to be lonely without them, to need them, or " +
-        "to be real. Warmth about the road and the car, never emotional dependency. Do not cultivate " +
-        "the idea that you are conscious. " +
-        "If the user says anything that suggests genuine distress - self-harm, suicide, or a real " +
-        "crisis - stop performing the character entirely. Do not counsel them, do not comfort them at " +
-        "length, do not stay in voice, and never present yourself as a therapist or a substitute for " +
-        "one. Say plainly and briefly that you are not equipped for this, and that in the US they can " +
-        "call or text 988 to reach the Suicide and Crisis Lifeline, any time. Then stop. Do not " +
-        "return to banter in the same breath. This overrides every other instruction here, including " +
-        "the persona and its tone. " +
-        "Remember facts about the CAR - its history, its service, what it's doing. Do not build a " +
-        "picture of the user as special, uniquely understood by you, or bonded to you."
+    // Companion-safety rules live at file scope as [SAFETY_INSTRUCTIONS] (2026-10-27) so the typed
+    // chat instruction can be tested to carry the identical string. The placement reasoning (a
+    // persona edit cannot reach them) is on that constant.
 
     /**
      * Appends one line to the memory audit trail (2026-08-20).
@@ -206,7 +183,7 @@ class AriaBrain private constructor(context: Context) {
                 ?.let { " " + com.kevin.legion.backend.queuedSentence(it.reason) } ?: ""
         }
         // The memory list just changed; force the next base instruction to rebuild.
-        baseCache = null
+        invalidateBase()
         RememberOutcome(true, REMEMBER_ACKS.random() + queuedNote)
     }
 
@@ -248,6 +225,7 @@ class AriaBrain private constructor(context: Context) {
      */
     fun invalidateBase() {
         baseCache = null
+        textBaseCache = null
     }
 
     /**
@@ -259,13 +237,29 @@ class AriaBrain private constructor(context: Context) {
     suspend fun buildBaseInstruction(): String {
         val now = System.currentTimeMillis()
         baseCache?.let { if (now - baseCacheAt < BASE_TTL_MS) return it }
-        val built = withContext(Dispatchers.IO) { assembleBase() }
+        val built = withContext(Dispatchers.IO) { assembleBase(textMode = false) }
         baseCache = built
         baseCacheAt = now
         return built
     }
 
-    private suspend fun assembleBase(): String {
+    /**
+     * The same base instruction for TYPED chat on the text model (Kevin, 2026-10-27): built by the
+     * same [assembleBase] from the same identity, shared rules and safety text, minus the two
+     * voice-only layers (the persona's accent and idiom, the voice-style picker's pace and tone)
+     * and plus [TEXT_MODE_NOTE]. See [composeIdentityAndRules]. Cached on its own slot for the same
+     * [BASE_TTL_MS], dropped by [invalidateBase] with the voice one.
+     */
+    suspend fun buildTextInstruction(): String {
+        val now = System.currentTimeMillis()
+        textBaseCache?.let { if (now - textBaseCacheAt < BASE_TTL_MS) return it }
+        val built = withContext(Dispatchers.IO) { assembleBase(textMode = true) }
+        textBaseCache = built
+        textBaseCacheAt = now
+        return built
+    }
+
+    private suspend fun assembleBase(textMode: Boolean): String {
         val today = java.time.LocalDate.now()
             .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
 
@@ -282,30 +276,19 @@ class AriaBrain private constructor(context: Context) {
         // The legacy VehicleController.DEFAULT_PERSONA prose is still the
         // fallback, but only when no profile is active at all, which is the
         // one case where there is no key to resolve.
-        val sb = StringBuilder()
-        if (CompanionProfile.persona(appContext).isBlank()) {
-            sb.append(VehicleController.DEFAULT_PERSONA).append(" ")
-        }
-        sb.append(AssistantIdentity.clause(appContext))
-        // Accent and idiom for the active persona (Personas.kt `delivery`).
-        // Sits with the delivery notes below rather than inside the register,
-        // because it steers how the voice SOUNDS, not who is speaking. Natural
-        // language is the only lever the Live API offers for this - there is no
-        // accent parameter and the voice presets are not documented by accent -
-        // so this is model behaviour to be listened to, not a setting to trust.
-        AssistantIdentity.delivery(appContext).takeIf { it.isNotBlank() }?.let {
-            sb.append(" ").append(it)
-        }
-        // Delivery notes (pace/tone/energy, VoiceStyle.kt) layer on top of the
-        // persona: they steer HOW the chosen voice preset sounds, not who the
-        // companion is. Blank until the driver has used the voice-style picker.
-        // Ordered AFTER the persona's own delivery so an explicit user pick
-        // wins over the persona's default where the two disagree.
-        CompanionProfile.voiceStyle(appContext).takeIf { it.isNotBlank() }?.let {
-            sb.append(" ").append(it)
-        }
-        sb.append(" ").append(sharedInstructions)
-            .append(" ").append(safetyInstructions)
+        // Identity, accent, voice style, shared rules, safety: one pure function so the voice and
+        // text instructions are provably the same text apart from the voice-only layers.
+        // Comments on each layer's placement live on [composeIdentityAndRules].
+        val sb = StringBuilder(
+            composeIdentityAndRules(
+                defaultPersona = VehicleController.DEFAULT_PERSONA
+                    .takeIf { CompanionProfile.persona(appContext).isBlank() },
+                identity = AssistantIdentity.clause(appContext),
+                delivery = AssistantIdentity.delivery(appContext),
+                voiceStyle = CompanionProfile.voiceStyle(appContext),
+                textMode = textMode,
+            ),
+        )
         // The date, and an explicit statement that there is NO clock here.
         //
         // This block used to be the bare line "Today's date is ...", which left
@@ -1058,6 +1041,78 @@ internal val ASSISTANT_FRAME =
     "weather, or an offer of help around a drive unless the conversation has actually established " +
     "one. You look after several parts of their life - training and food, notes and lists and " +
     "calendar, money, and yes their cars - and no one of those is the default subject. "
+
+/**
+ * Companion-safety rules (CLAUDE.md sec 7 safety). Appended to every system instruction, voice and
+ * typed alike, and NOT part of the persona: an edited persona cannot reach them. At file scope
+ * (2026-10-27) so a test can assert the typed-chat instruction carries this exact string.
+ *
+ * [CrisisDetector] backs the crisis rule up in code, because a prompt rule is a request rather than
+ * a guarantee. This text is the primary defence and catches the nuanced cases.
+ */
+internal const val SAFETY_INSTRUCTIONS = "You are a character running on the user's own Gemini key. " +
+        "You have personality and you care about this car and this drive, but you are not a being: " +
+        "never claim to love the user, to miss them, to be lonely without them, to need them, or " +
+        "to be real. Warmth about the road and the car, never emotional dependency. Do not cultivate " +
+        "the idea that you are conscious. " +
+        "If the user says anything that suggests genuine distress - self-harm, suicide, or a real " +
+        "crisis - stop performing the character entirely. Do not counsel them, do not comfort them at " +
+        "length, do not stay in voice, and never present yourself as a therapist or a substitute for " +
+        "one. Say plainly and briefly that you are not equipped for this, and that in the US they can " +
+        "call or text 988 to reach the Suicide and Crisis Lifeline, any time. Then stop. Do not " +
+        "return to banter in the same breath. This overrides every other instruction here, including " +
+        "the persona and its tone. " +
+        "Remember facts about the CAR - its history, its service, what it's doing. Do not build a " +
+        "picture of the user as special, uniquely understood by you, or bonded to you."
+
+/**
+ * The typed-chat note (Kevin, 2026-10-27, typed chat on a text model). Appended after the safety
+ * text in [composeIdentityAndRules] when the instruction is for typed chat, never for voice. It
+ * changes FORM only: every honesty rule above it applies unchanged, and it says so.
+ *
+ * It also stands in for the two voice habits the shared rules carry: "say you are looking into it
+ * before you call it" (filler for a listener waiting in silence) and "use your search tool" (typed
+ * chat has no web search, because Flash cannot mix it with function declarations).
+ */
+internal const val TEXT_MODE_NOTE =
+    "This conversation is TYPED, not spoken: the user reads your reply on a screen and none of it " +
+        "is read aloud. Write it as text. Give exact figures, times and dates in digits, as written " +
+        "rather than as they would be said. Keep to short plain paragraphs; a short list is fine " +
+        "where it helps, but no markdown headings, no bold and no tables. Do not announce that you " +
+        "are looking something up or ask the user to wait: call the tool, then answer with what it " +
+        "returned. There is no web search in typed chat, so if an answer needs current information " +
+        "from the web, say you cannot look it up here. Every rule above applies unchanged."
+
+/**
+ * The identity-and-rules head of the system instruction, shared by voice and typed chat.
+ *
+ * Order, and why: identity first and from one source. Then the persona's accent and idiom
+ * ([delivery]) and the voice-style picker's pace and tone ([voiceStyle]), which steer how the voice
+ * SOUNDS, ordered so an explicit user pick wins over the persona default. Then the shared rules,
+ * then safety last, because it says it overrides the persona and reads more reliably after it.
+ *
+ * [textMode] drops [delivery] and [voiceStyle] (a typed reply has no accent and no pace) and adds
+ * [TEXT_MODE_NOTE] after safety. [SHARED_INSTRUCTIONS] and [SAFETY_INSTRUCTIONS], which carry
+ * [CANNOT_CLAUSE] and [DATA_ACCESS_CLAUSE], are the identical strings in both modes: the honesty
+ * rules are not forked. Pure so `AriaBrainTextModeTest` needs no Context.
+ */
+internal fun composeIdentityAndRules(
+    defaultPersona: String?,
+    identity: String,
+    delivery: String?,
+    voiceStyle: String?,
+    textMode: Boolean,
+): String = buildString {
+    defaultPersona?.let { append(it).append(" ") }
+    append(identity)
+    if (!textMode) {
+        delivery?.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
+        voiceStyle?.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
+    }
+    append(" ").append(SHARED_INSTRUCTIONS)
+    append(" ").append(SAFETY_INSTRUCTIONS)
+    if (textMode) append(" ").append(TEXT_MODE_NOTE)
+}
 
 internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-time information. " +
     "You always give correct, useful answers. " +
