@@ -264,7 +264,7 @@ class AriaBrain private constructor(context: Context) {
             .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
 
         // Identity first and from ONE source (AssistantIdentity - single global
-        // identity, no per-car branch). safetyInstructions goes last: it says it
+        // identity, no per-car branch). SAFETY_INSTRUCTIONS goes last: it says it
         // overrides the persona's tone, and a rule that overrides another reads
         // more reliably after the thing it overrides than before it.
         //

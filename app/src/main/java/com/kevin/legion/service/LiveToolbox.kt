@@ -2426,8 +2426,8 @@ object LiveToolbox {
      * What typed chat's text model is offered (2026-10-27): exactly the voice set
      * ([declarations]) minus [VOICE_SESSION_TOOLS]. The trimmed set, not [allDeclarations] with
      * the hidden reads exposed. Measured by `TextChatDeclarationSizeTest` (chars/4, Alfred): this
-     * set 91 tools, ~20,867 tokens; the full alternative 118 tools, ~24,943 tokens, about 4,100
-     * more. Live re-bills its block every turn, but REST re-bills it on every POST, and a typed turn
+     * set 91 tools, ~20,842 tokens; the full alternative 117 tools, ~24,685 tokens, about 3,800
+     * more (remeasured 2026-10-27 after the persona removal and the merge). Live re-bills its block every turn, but REST re-bills it on every POST, and a typed turn
      * that calls tools makes two to seven POSTs, so the saving that justified [DISPATCHED] for voice
      * applies here at least as strongly. Every write is declared directly in both sets (DISPATCHED
      * hides reads only), so the full set would buy one hop fewer on reads, not new capability. And

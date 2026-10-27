@@ -6748,7 +6748,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   resolution of `.scratch/web-assistant/issues/06-android-typed-chat.md` (2026-10-04)**, which sent a
   typed message into the Live session as a text turn with the audio muted and showed Google's
   transcript of the generated speech.
-- Voice stays on Gemini Live native audio. Alfred is the phone's only persona (another branch).
+- Voice stays on Gemini Live native audio. Alfred is the phone's only persona (entry above).
 - **What replaced it (built on `feat/typed-chat-text-model`):**
   - `gemini-3.8-flash` over REST on the user's own key, through `ai/GeminiRest.kt` (the HTTP boundary
     lifted out of `SubAgent`, so metering and KeyHealth are shared). No `thinkingConfig`, no
@@ -6758,8 +6758,9 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
     the voice-style layer, plus `TEXT_MODE_NOTE`. `SHARED_INSTRUCTIONS` and `SAFETY_INSTRUCTIONS`
     (with `CANNOT_CLAUSE` and `DATA_ACCESS_CLAUSE`) are the identical strings; a test pins it.
   - Same tools, one runner: `LiveToolbox.textDeclarations` is the voice set minus `end_conversation`
-    and `switch_companion`. Measured (chars/4, Alfred): 91 tools, ~20,867 tokens, against ~24,943 for
-    the full set with the dispatched reads exposed. REST re-bills the block on every POST of a turn,
+    (`switch_companion` is gone with the persona removal). Measured after merging onto that branch
+    (chars/4, Alfred): 91 tools, ~20,842 tokens, against ~24,685 for the full set with the
+    dispatched reads exposed. REST re-bills the block on every POST of a turn,
     so the trimmed set. Every call runs through the controller's own tool runner (`runTool`,
     extracted from `handleToolCall`), so no tool has a second implementation (ADR 0035).
   - Loop: 6 tool rounds plus one tool-free backstop, 120 s per turn. A write is reported done only on
