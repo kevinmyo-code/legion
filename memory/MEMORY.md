@@ -22,6 +22,14 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Voice cut-offs - 2026-10-27
+
+- Branch `fix/voice-cutoff-and-latency` (pushed): phone follow-up window and head unit idle timer
+  no longer close while the mic hears speech; phone `ask_engine`/`aspect_clerk` get the 45 s timeout.
+  JVM-tested only, **never on a device**. Threshold (peak 2000) is guessed.
+- Owed by Kevin: install both, one drive, read phone `LIVE_FOLLOWUP` (Car probe screen) and head unit
+  `voice_turn_decision` (`device_logs --grep idle`); rule on START_SENSITIVITY_LOW, HU model, filler.
+
 ## Where we stopped - 2026-10-11 (session 8d51fa39)
 
 - **2026-10-14 refs:** `origin/dev` = `768e750d`, `origin/main` = `c4b96481` (dev NOT merged to main).
