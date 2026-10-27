@@ -12,6 +12,7 @@ import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.CompanionSwitch
+import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
@@ -133,18 +134,44 @@ class LiveSessionController(context: Context) {
     // What to do once the socket finishes connecting (the setup handshake is
     // async). A warm/prewarmed socket is already connected, so these only matter
     // for a cold connect.
-    private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM, TYPED }
+    private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM }
     private var pendingAction = Pending.NONE
     private var pendingPrompt: String? = null
 
-    // Pending.TYPED only: live context to put in FRONT of the typed text on the wire, kept apart
-    // from [pendingPrompt] (the raw typed text) so the stored driver line never carries it.
-    private var pendingTypedContext: String? = null
-
-    // True from a typed message being sent until its turn completes (or voice takes over, or the
-    // socket closes). Read by the tool-call phase restore (a typed turn is still THINKING when its
-    // tool returns, not idle) and by [onTap] (push-to-talk over a typed reply).
-    private var typedTurnPending = false
+    /**
+     * Typed chat (Kevin, 2026-10-27): a text model, not this controller's Live session. It shares
+     * the voice path's instruction builder, tool declarations and tool runner ([runTool]), and is
+     * never handed [session]. See [TypedChat] and [onTyped].
+     */
+    private val typedChat = TypedChat(
+        scope = scope,
+        engine = TextChatEngine(
+            // runToolBounded already applies the voice path's own per-tool ceiling; the engine's is
+            // a backstop a little above it so the two never race to report the same timeout.
+            toolTimeoutMs = { name -> toolTimeoutFor(name) + 2_000L },
+        ),
+        hasKey = GeminiKeyProvider::hasKey,
+        isOnline = ::isOnline,
+        isCrisis = CrisisDetector::detect,
+        systemParts = { listOf(brain.buildTextInstruction(), brain.buildLiveContext()) },
+        declarations = { LiveToolbox.textDeclarations(CompanionProfile.persona(appContext)) },
+        runTool = { name, args, readThrough, turnSeq ->
+            val response = if (name in LiveToolbox.VOICE_SESSION_TOOLS) {
+                // Not declared to the text model; refused in words if it is called anyway, because
+                // end_conversation would otherwise arm a hang-up on the NEXT voice turn.
+                JSONObject().put("success", false).put("message", "That only works in a voice conversation.")
+            } else {
+                runToolBounded(name, args, readThrough)
+            }
+            auditToolCall(name, args, response, turnSeq)
+            response
+        },
+        speakerName = ::speakerName,
+        // The same teardown a crisis heard in speech gets: stop performing the character.
+        onCrisis = { handleEvent(LiveEvent.CrisisDetected) },
+        onInFlightChanged = ::typedPhase,
+        record = { TypedTurnRecorder.record(appContext, it) },
+    )
 
     // True while a hands-free conversation (server VAD) is running, vs. a
     // speak-only proactive session. Drives whether a completed turn returns to
@@ -360,12 +387,6 @@ class LiveSessionController(context: Context) {
         if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
         if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
 
-        // Push-to-talk over a typed reply still arriving: voice wins (TypedTurnPolicy's rules).
-        // GeminiLiveSession.beginConversation ends the playback mute; this is the panel's half.
-        if (typedTurnPending) {
-            typedTurnPending = false
-            AssistantChatStore.update { it.voiceTookOver() }
-        }
         if (s != null && s.isWarm()) {
             resumeWarm(s, fromWakeWord)
             return
@@ -385,55 +406,45 @@ class LiveSessionController(context: Context) {
     }
 
     /**
-     * A TYPED message from the assistant strip (web-assistant tickets 06 and 09). It goes into the
-     * same Live session as a text turn, so the tools, the honesty clause and what memory keeps are
-     * identical to voice; the reply is muted and shown as text. What happens for each state the
-     * session can be in - including every overlap with push-to-talk - is decided by the pure
-     * [TypedTurnPolicy]; this function only maps the session onto its [TypedTurnPolicy.Shape] and
-     * carries the decision out.
+     * A TYPED message from the assistant panel. **It goes to a text model, never to the Live
+     * session** (Kevin, 2026-10-27, superseding web-assistant ticket 06's muted-Live-turn design):
+     * no cold connect, no microphone or wake-word side effect, no follow-up window. [TypedChat] and
+     * the pure [TypedTurnPolicy] decide everything; this only forwards.
      *
-     * **There is deliberately no microphone check here.** Typing works with RECORD_AUDIO revoked,
-     * on a phone that is not allowed to listen, and a session opened for it never opens the mic.
-     * Every message that is not sent says so in the panel, in words ([AssistantChatStore]).
+     * **Typed during a live voice conversation:** answered in text, and the voice session is left
+     * exactly as it was - speech keeps playing, the mic keeps its state, the follow-up window keeps
+     * its own clock, and the phase is not touched ([typedPhase]). The text model sees the spoken
+     * lines through the panel history; the Live session does not see the typed exchange.
+     *
+     * **Not a real interaction for [shouldAutoReconnectAfterClose]** on purpose: keeping a prewarm
+     * socket alive costs setup tokens on every reconnect, and typing needs no socket.
+     *
+     * **There is deliberately no microphone check here.** Every message that is not sent says so
+     * in the panel, in words.
      */
     fun onTyped(text: String) {
-        // A typed message is a genuine signal for [shouldAutoReconnectAfterClose], like a tap.
-        lastRealInteractionMs = System.currentTimeMillis()
-        val typed = text.trim()
-        val s = session
-        val decision = TypedTurnPolicy.decide(
-            hasText = typed.isNotEmpty(),
-            hasKey = GeminiKeyProvider.hasKey(),
-            online = isOnline(),
-            shape = typedShape(s),
-            assistantSpeaking = _phase.value == Phase.SPEAKING,
-        )
-        when (decision) {
-            TypedTurnPolicy.Decision.Ignore -> Unit
-            is TypedTurnPolicy.Decision.Refuse -> AssistantChatStore.update { it.notSent(typed, decision.reason.words) }
-            TypedTurnPolicy.Decision.OpenSession -> startTypedSession(typed)
-            TypedTurnPolicy.Decision.ReplaceAndOpen -> {
-                s?.silentDestroy()
-                session = null
-                startTypedSession(typed)
-            }
-            TypedTurnPolicy.Decision.QueueUntilConnected -> {
-                pendingAction = Pending.TYPED
-                pendingPrompt = typed
-                pendingTypedContext = null
-                markTypedSent(typed)
-            }
-            is TypedTurnPolicy.Decision.SendOnWarm ->
-                if (s != null) sendTypedNow(s, typed, micClosed = true, interrupts = decision.interrupts)
-            is TypedTurnPolicy.Decision.SendInConversation ->
-                if (s != null) sendTypedNow(s, typed, micClosed = false, interrupts = decision.interrupts)
+        typedChat.onTyped(text)
+    }
+
+    /**
+     * The strip's phase while a typed turn is answered: THINKING, but only when nothing voice-side
+     * owns the phase (idle, no conversation). Restored to IDLE only if it is still the THINKING this
+     * set. A voice conversation's LISTENING/SPEAKING is never stomped by a typed turn.
+     */
+    private fun typedPhase(inFlight: Boolean) {
+        val voiceOwnsPhase = conversationMode || session?.inConversation == true || activeToolCalls > 0
+        if (voiceOwnsPhase) return
+        if (inFlight && _phase.value == Phase.IDLE) {
+            set(Phase.THINKING, "...")
+        } else if (!inFlight && _phase.value == Phase.THINKING && pendingAction == Pending.NONE) {
+            set(Phase.IDLE, IDLE_STATUS)
         }
     }
 
     /** "New conversation": clears the panel and ends the session so the model's context is fresh too. */
     fun newConversation() {
         AssistantChatStore.clear()
-        typedTurnPending = false
+        TypedTurnRecorder.newConversation()
         sessionResumeHandle = null
         pendingThreadLossNotice = false
         // A fresh socket for a fresh conversation. silentDestroy skips Closed, so the controller
@@ -450,93 +461,8 @@ class LiveSessionController(context: Context) {
         }
     }
 
-    private fun typedShape(s: GeminiLiveSession?): TypedTurnPolicy.Shape = when {
-        s == null -> TypedTurnPolicy.Shape.NO_SESSION
-        activeToolCalls > 0 -> TypedTurnPolicy.Shape.TOOL_RUNNING
-        s.inConversation -> TypedTurnPolicy.Shape.IN_CONVERSATION
-        s.isWarm() -> TypedTurnPolicy.Shape.WARM
-        pendingAction != Pending.NONE -> TypedTurnPolicy.Shape.CONNECTING_BUSY
-        !connectedThisSession -> TypedTurnPolicy.Shape.CONNECTING_IDLE
-        else -> TypedTurnPolicy.Shape.PROACTIVE_LINE
-    }
-
     /** The active companion's name, as stamped on the panel's ASSISTANT lines. */
     private fun speakerName(): String? = CompanionProfile.name(appContext).trim().ifBlank { null }
-
-    /** Records a typed message as sent and shows the assistant working on it. */
-    private fun markTypedSent(typed: String) {
-        typedTurnPending = true
-        AssistantChatStore.update { it.withSpeaker(speakerName()).typedSent(typed) }
-        set(Phase.THINKING, "...")
-    }
-
-    private fun sendTypedNow(s: GeminiLiveSession, typed: String, micClosed: Boolean, interrupts: Boolean) {
-        when (s.sendTypedTurn(typed, micClosed = micClosed)) {
-            TypedSendResult.SENT -> {
-                // Said after the send landed, so a socket that was already gone never claims a line
-                // about speech it stopped. "Stopped speaking" only when speech was playing.
-                if (interrupts) AssistantChatStore.update { it.interruptedByTyping() }
-                markTypedSent(typed)
-            }
-            // The crisis card (CompanionPhase.crisis) is the whole response; the message was not
-            // sent to the model and is not recorded as a sent message.
-            TypedSendResult.CRISIS -> Unit
-            TypedSendResult.SOCKET_GONE ->
-                AssistantChatStore.update { it.notSent(typed, TypedTurnPolicy.Refusal.SOCKET_GONE.words) }
-        }
-    }
-
-    /**
-     * No session to type into: connect one with the mic CLOSED (`vad = true, keepWarm = true` as
-     * [startConversation], but nothing here ever calls beginConversation, so no capture starts) and
-     * send on connect. The first turn on the socket carries the same live context a greeting does.
-     */
-    private fun startTypedSession(typed: String) {
-        val s = newSession()
-        session = s
-        pendingAction = Pending.TYPED
-        pendingPrompt = typed
-        pendingTypedContext = null
-        conversationMode = false
-        connectedThisSession = false
-        coldRetry = null
-        typedTurnPending = true
-        AssistantChatStore.update { it.withSpeaker(speakerName()).typedSent(typed) }
-        set(Phase.CONNECTING, "Connecting...")
-        scope.launch {
-            val connectionMode = resolveLiveConnectionMode()
-            if (connectionMode == null) {
-                s.silentDestroy(); session = null
-                pendingAction = Pending.NONE; pendingPrompt = null
-                typedTurnPending = false
-                set(Phase.IDLE, IDLE_STATUS)
-                AssistantChatStore.update { it.notSent("", TypedTurnPolicy.Refusal.NO_KEY.words, clearPending = true) }
-                return@launch
-            }
-            val base = brain.buildBaseInstruction()
-            val live = brain.buildLiveContext()
-            pendingTypedContext = live.takeIf { it.isNotBlank() }
-            s.start(
-                // The active persona's set, as every other open: declarations() alone left a typed
-                // turn after a switch to Marcus without consult_meditations (2026-10-05).
-                base, CompanionHandover.declarations(CompanionProfile.persona(appContext)),
-                vad = true, voiceName = CompanionProfile.voice(appContext),
-                keepWarm = true, connectionMode = connectionMode,
-                resumeHandle = sessionResumeHandle,
-            )
-        }
-    }
-
-    /** What the model receives for a queued typed turn: live context first on a cold socket, else the text alone. */
-    private fun typedWireText(typed: String): String =
-        pendingTypedContext?.let { "(Current context, use naturally if relevant:\n$it)\n\n$typed" } ?: typed
-
-    /** A typed message that had been shown as sent could not go out at connect. */
-    private fun failQueuedTyped(reason: TypedTurnPolicy.Refusal) {
-        typedTurnPending = false
-        set(Phase.IDLE, IDLE_STATUS)
-        AssistantChatStore.update { it.notSent("", reason.words, clearPending = true) }
-    }
 
     /**
      * Tells the person who asked that nothing is going to happen, and why.
@@ -946,23 +872,13 @@ class LiveSessionController(context: Context) {
     }
 
     /**
-     * The panel's half of a socket closing. A typed message still queued for a socket that never
-     * connected says it was NOT sent, with the reason Gemini gave when there is one; any other
-     * close marks the panel's conversation ended (what was said stays readable).
+     * The panel's half of a socket closing: marks a voice conversation ended (what was said stays
+     * readable). Typed turns never ride this socket, so there is no queued typed message to fail
+     * here; [ChatTranscript.sessionEnded] adds nothing when no spoken line was added since the
+     * last end, so a prewarm socket cycling under a typed-only chat leaves it alone.
      */
-    private fun closeOutTypedChat(event: LiveEvent.Closed) {
-        val neverConnected = pendingAction == Pending.TYPED && !connectedThisSession
-        typedTurnPending = false
-        if (neverConnected) {
-            val reason = when (event.reason) {
-                "key rejected" -> "Not sent: Gemini rejected the key. Check it in Setup."
-                "quota" -> "Not sent: Gemini quota or rate limit reached. See Setup."
-                else -> TypedTurnPolicy.Refusal.COULD_NOT_CONNECT.words
-            }
-            AssistantChatStore.update { it.notSent("", reason, clearPending = true) }
-        } else {
-            AssistantChatStore.update { it.sessionEnded() }
-        }
+    private fun closeOutTypedChat() {
+        AssistantChatStore.update { it.sessionEnded() }
     }
 
     private fun handleEvent(event: LiveEvent) {
@@ -992,24 +908,10 @@ class LiveSessionController(context: Context) {
                         pendingPrompt?.let { session?.speakOnWarm(it) }
                         set(Phase.IDLE, IDLE_STATUS)
                     }
-                    Pending.TYPED -> {
-                        val typed = pendingPrompt
-                        val sent = typed?.let {
-                            session?.sendTypedTurn(it, typedWireText(it), micClosed = true)
-                        }
-                        when (sent) {
-                            TypedSendResult.SENT, TypedSendResult.CRISIS -> Unit
-                            else -> failQueuedTyped(TypedTurnPolicy.Refusal.SOCKET_GONE)
-                        }
-                        // Already marked THINKING/CONNECTING by the queueing call; a crisis is
-                        // handled by its own event, which resets the phase.
-                        if (sent == TypedSendResult.SENT) set(Phase.THINKING, "...")
-                    }
                     Pending.NONE -> set(Phase.IDLE, IDLE_STATUS) // warm, ready to tap
                 }
                 pendingAction = Pending.NONE
                 pendingPrompt = null
-                pendingTypedContext = null
             }
             // Ticket 17: the 8 s follow-up window lapsed. A Closed("stopped") follows at once, which
             // raises no error notice and drops the resume handle; this is the part the person sees
@@ -1041,9 +943,8 @@ class LiveSessionController(context: Context) {
                 // should start clean, not carry the interrupted turn's context forward.
                 sessionResumeHandle = null
                 pendingThreadLossNotice = false
-                // The panel keeps what was said (the person can still read it) but is marked ended
-                // and any half-arrived typed reply is closed out; the crisis card is the response.
-                typedTurnPending = false
+                // The panel keeps what was said (the person can still read it) and a voice
+                // conversation is marked ended; the crisis card is the response.
                 AssistantChatStore.update { it.sessionEnded() }
                 CompanionPhase.setCaption("")
                 CompanionPhase.setCrisis()
@@ -1151,16 +1052,17 @@ class LiveSessionController(context: Context) {
                 // a tail by captionTail, so this event is right for a caption and wrong for a
                 // record. GeminiLiveSession.auditSpokenTurn writes the whole line at turn end.
             }
-            is LiveEvent.TypedReplyProgress -> AssistantChatStore.update { it.typedReplyProgress(event.text) }
+            // Typed turns no longer ride the Live socket (2026-10-27), so nothing sends one and this
+            // event cannot carry a typed reply here. Ignored rather than routed anywhere.
+            is LiveEvent.TypedReplyProgress -> Unit
             is LiveEvent.TurnTranscript -> {
-                if (event.typed) typedTurnPending = false
                 AssistantChatStore.update {
                     it.withSpeaker(speakerName()).turnComplete(event.heard, event.said, event.typed)
                 }
             }
             is LiveEvent.ToolCall -> handleToolCall(event)
             is LiveEvent.Closed -> {
-                closeOutTypedChat(event)
+                closeOutTypedChat()
                 val userInitiated = conversationMode
                 val everConnected = connectedThisSession
                 // Ticket 02: a real conversation just ended for a reason the driver did not
@@ -1250,7 +1152,6 @@ class LiveSessionController(context: Context) {
                 session = null
                 pendingAction = Pending.NONE
                 pendingPrompt = null
-                pendingTypedContext = null
                 pendingSpeakUserInitiated = false
                 conversationMode = false
                 connectedThisSession = false
@@ -1454,10 +1355,8 @@ class LiveSessionController(context: Context) {
         conversationMode = false
         sessionResumeHandle = plan.resumeHandle
         pendingThreadLossNotice = false
-        typedTurnPending = false
         pendingAction = Pending.NONE
         pendingPrompt = null
-        pendingTypedContext = null
         connectedThisSession = false
         if (plan.spokenHandover) {
             startHandover()
@@ -1535,108 +1434,12 @@ class LiveSessionController(context: Context) {
             set(Phase.THINKING, "Working...")
             try {
                 // A tool MUST always hand a response back, even on error/timeout, or
-                // Gemini stays mid-turn and the UI wedges. Bound every tool.
-                // The investigating specialists run a multi-round agent loop (up to a
-                // 30s budget plus a one-shot fallback), so they get a longer leash than
-                // the snappy data/action tools.
-                val timeout = if (call.name in SUB_AGENT_TOOLS) SUB_AGENT_TOOL_TIMEOUT_MS else TOOL_TIMEOUT_MS
-                val response: JSONObject = try {
-                    withTimeoutOrNull(timeout) {
-                        when (call.name) {
-                            // Session/UI-scoped tools the toolbox returns null for - we
-                            // own the session, the capture controller, and the activity.
-                            "show_saved_places" -> {
-                                if (call.args.optBoolean("visible", true)) openSavedPlaces()
-                                JSONObject().put("success", true)
-                            }
-                            // Ticket 11. Arm, do not fire - see [dismissAfterTurn].
-                            "end_conversation" -> {
-                                dismissAfterTurn = true
-                                JSONObject()
-                                    .put("success", true)
-                                    .put(
-                                        "instruction",
-                                        "Say one short in-character sign-off now, then stop. " +
-                                            "The conversation ends when you finish speaking.",
-                                    )
-                            }
-                            // Arm, do not fire - see [switchToProfileAfterTurn].
-                            "switch_companion" -> switchCompanionTool(call.args.optString("name"))
-                            "import_receipt" -> {
-                                openPantryImport()
-                                JSONObject().put("success", true)
-                            }
-                            // Voice-called modals (ADR 0040) - VoiceModalController.show() updates
-                            // the StateFlow VoiceModalHost is already collecting immediately, and
-                            // openVoiceModal's startActivity brings the app forward if it was
-                            // backgrounded. Both run every call, including a repeat one while the
-                            // app is already on top - VoiceModalPayload's shownAt (see its own doc)
-                            // is what makes a repeat "show my agenda" re-fire rather than being
-                            // read as an unchanged value.
-                            "show_agenda_modal" -> {
-                                VoiceModalController.show(VoiceModalTarget.AGENDA)
-                                openVoiceModal()
-                                JSONObject().put("success", true)
-                            }
-                            // "show_list_modal" retired (one-today ticket 10 slice C, "everything is
-                            // a checklist now") - VoiceModalTarget.WHOLE_LIST/`ui/NotesScreen.kt`
-                            // went with it. A model that still calls it by name falls through to
-                            // the `else` branch below, where LiveToolbox.dispatch's own explicit
-                            // retired-tool branch says so in words rather than silently no-opping
-                            // (§7) - same shape "show_groceries_modal" already established below.
-                            // "show_groceries_modal" retired (one-today ticket 10 slice B, "everything
-                            // is a checklist now") - VoiceModalTarget.GROCERIES/GroceryScreen went
-                            // with it. A model that still calls it by name falls through to the
-                            // `else` branch below, where LiveToolbox.dispatch's own explicit retired-
-                            // tool branch says so in words rather than silently no-opping (§7).
-                            // A generated view (`.scratch/one-today/issues/06-*.md`) - the one
-                            // tool in this `when` that actually computes something before it can
-                            // answer, because "runs a real query and never renders a model value"
-                            // has to happen SOMEWHERE, and every other branch here is a pure
-                            // session-scoped side effect with nothing to validate first. Parse ->
-                            // run -> show, in that order; a parse or run failure never calls
-                            // GeneratedViewController.show at all, so the screen only ever paints
-                            // a genuinely-run answer, never a placeholder for one that failed.
-                            "show_generated_view" -> {
-                                when (val parsed = parseGeneratedViewSpec(
-                                    shape = call.args.optString("shape"),
-                                    source = call.args.optString("source"),
-                                    aggregation = call.args.optString("aggregation"),
-                                    window = call.args.optString("window"),
-                                    grouping = call.args.optString("grouping"),
-                                    title = call.args.optString("title"),
-                                )) {
-                                    is GeneratedViewSpecParse.Invalid -> {
-                                        JSONObject().put("success", false).put("message", parsed.reason)
-                                    }
-                                    is GeneratedViewSpecParse.Valid -> {
-                                        when (val run = GeneratedViewQueryRunner.run(appContext, parsed.spec)) {
-                                            is GeneratedViewQueryRunner.RunResult.Refusal -> {
-                                                JSONObject().put("success", false).put("message", run.reason)
-                                            }
-                                            is GeneratedViewQueryRunner.RunResult.Rendered -> {
-                                                GeneratedViewController.show(run.payload)
-                                                openVoiceModal()
-                                                JSONObject().put("success", true)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn()
-                            // is what `remember`'s dispatch branch gates on - see that accessor's doc
-                            // for why the flag is read here, off the live session, rather than dispatch
-                            // reaching back into GeminiLiveSession itself.
-                            else -> LiveToolbox.dispatch(
-                                appContext, call.name, call.args, s.readThroughToolTouchedThisTurn(),
-                            ) ?: JSONObject().put("success", true)
-                        }
-                    } ?: JSONObject()
-                        .put("success", false)
-                        .put("message", "That took too long and timed out.")
-                } catch (e: Exception) {
-                    JSONObject().put("success", false).put("message", "Something went wrong running that.")
-                }
+                // Gemini stays mid-turn and the UI wedges. [runToolBounded] bounds every tool.
+                // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn() is what
+                // `remember`'s dispatch branch gates on - read here, off the live session, rather
+                // than dispatch reaching back into GeminiLiveSession itself.
+                val response: JSONObject =
+                    runToolBounded(call.name, call.args, s.readThroughToolTouchedThisTurn())
                 // The panel's tool line: only for a tool that came back with an explicit `success`
                 // (see [ChatTranscript.tool]) - a result that says nothing about success gets no
                 // line rather than a "done" nobody checked. Failure detail is the tool's own words.
@@ -1645,50 +1448,8 @@ class LiveSessionController(context: Context) {
                     val detail = if (ok) null else response.optString("message").takeIf { it.isNotBlank() }
                     AssistantChatStore.update { it.tool(call.name, ok, detail) }
                 }
-                // Ticket 23 (hands-and-senses, "an audit trail of every conversation and every
-                // tool call"): every tool call gets its own [ConversationAudit] row - name,
-                // arguments, and the result that actually came back, tagged with THIS turn's
-                // number so it regroups with the USER/COMPANION rows
-                // [GeminiLiveSession.auditConversationTurn] writes when the turn completes.
-                //
-                // **Per-call redaction, not whole-turn**, and that split is deliberate: unlike the
-                // free-text COMPANION row (which cannot be reliably attributed back to one tool
-                // call among several, so it is redacted whole whenever ANY tool this turn was
-                // excluded), a TOOL_RESULT row already carries its own [call.name] - a
-                // `list_vehicles` result sitting in the same turn as `ask_mail` can be told apart
-                // precisely and does not need to be sacrificed to protect the call beside it. See
-                // [com.kevin.legion.data.local.ConversationAudit]'s class doc for the full
-                // reasoning. Reuses [GeminiLiveSession.isEpisodicExcludedTool] - the exact
-                // production membership test against [LiveToolbox.EPISODIC_EXCLUDED_TOOLS] - so
-                // this never drifts into a second notion of read-through (ticket 23 decision 2).
-                //
-                // Best-effort and fire-and-forget: an audit write must never delay or fail a real
-                // tool response, which is why this is its own `scope.launch` rather than inline
-                // in the try/catch above that owns `response`.
-                run {
-                    val toolRedacted = GeminiLiveSession.isEpisodicExcludedTool(call.name)
-                    val turnSeqForRow = s.currentTurnSeq()
-                    val vehicleId = ActiveVehicle.current(appContext)
-                    scope.launch {
-                        runCatching {
-                            CarDatabase.getDatabase(appContext).conversationAuditDao().record(
-                                turnSeq = turnSeqForRow,
-                                kind = ConversationAudit.Kind.TOOL_RESULT,
-                                content = auditContent(response.toString(), toolRedacted),
-                                toolName = call.name,
-                                args = call.args.toString(),
-                                redacted = toolRedacted,
-                                vehicleId = vehicleId,
-                                // Retention must not delete a row the server has not confirmed -
-                                // see ConversationAuditDao.trimUploadedOlderThan. A TOOL_RESULT row
-                                // is the single most expensive kind to lose: it is the only record
-                                // of what a tool was asked and what it answered (ticket 20).
-                                uploadedThroughId =
-                                    com.kevin.legion.backend.conversationAuditUploadedThroughId(appContext),
-                            )
-                        }
-                    }
-                }
+                // Ticket 23: this turn's TOOL_RESULT audit row. See [auditToolCall].
+                auditToolCall(call.name, call.args, response, s.currentTurnSeq())
                 // Sending can throw if the socket died mid-tool; the close path handles
                 // recovery, so don't let it crash this scope. A THROWN exception isn't the
                 // only failure shape though: OkHttp's WebSocket.send returns false (never
@@ -1723,7 +1484,7 @@ class LiveSessionController(context: Context) {
                 // restore here would stomp a state a raced event already set.
                 activeToolCalls--
                 if (shouldRestoreAfterToolCall(activeToolCalls, _phase.value)) {
-                    if (typedTurnPending) {
+                    if (typedChat.inFlight && !conversationMode) {
                         // A typed turn's reply is still being written: not idle, not listening.
                         set(Phase.THINKING, "...")
                     } else if (conversationMode) {
@@ -1732,6 +1493,159 @@ class LiveSessionController(context: Context) {
                         set(Phase.IDLE, IDLE_STATUS)
                     }
                 }
+            }
+        }
+    }
+
+    /** The per-tool ceiling: the investigating specialists get a longer leash than plain tools. */
+    private fun toolTimeoutFor(name: String): Long =
+        if (name in SUB_AGENT_TOOLS) SUB_AGENT_TOOL_TIMEOUT_MS else TOOL_TIMEOUT_MS
+
+    /**
+     * [runTool] bounded by [toolTimeoutFor], never throwing: a timeout or a thrown tool comes back
+     * as `success: false` with the reason in words. Shared by the voice path ([handleToolCall]) and
+     * typed chat ([typedChat]).
+     */
+    private suspend fun runToolBounded(name: String, args: JSONObject, readThrough: Boolean): JSONObject = try {
+        withTimeoutOrNull(toolTimeoutFor(name)) { runTool(name, args, readThrough) }
+            ?: JSONObject()
+                .put("success", false)
+                .put("message", "That took too long and timed out.")
+    } catch (e: Exception) {
+        JSONObject().put("success", false).put("message", "Something went wrong running that.")
+    }
+
+    /**
+     * Runs one tool call: the controller-local tools (the ones that own the session, the activity
+     * or a modal) first, then [LiveToolbox.dispatch] for everything else. **The one tool runner**
+     * for voice and typed chat alike (ADR 0035: both paths call the same code, so no tool has a
+     * second implementation that can drift). Extracted from [handleToolCall] unchanged 2026-10-27.
+     */
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
+    private suspend fun runTool(name: String, args: JSONObject, readThrough: Boolean): JSONObject =
+        when (name) {
+            // Session/UI-scoped tools the toolbox returns null for - we
+            // own the session, the capture controller, and the activity.
+            "show_saved_places" -> {
+                if (args.optBoolean("visible", true)) openSavedPlaces()
+                JSONObject().put("success", true)
+            }
+            // Ticket 11. Arm, do not fire - see [dismissAfterTurn].
+            "end_conversation" -> {
+                dismissAfterTurn = true
+                JSONObject()
+                    .put("success", true)
+                    .put(
+                        "instruction",
+                        "Say one short in-character sign-off now, then stop. " +
+                            "The conversation ends when you finish speaking.",
+                    )
+            }
+            // Arm, do not fire - see [switchToProfileAfterTurn].
+            "switch_companion" -> switchCompanionTool(args.optString("name"))
+            "import_receipt" -> {
+                openPantryImport()
+                JSONObject().put("success", true)
+            }
+            // Voice-called modals (ADR 0040) - VoiceModalController.show() updates
+            // the StateFlow VoiceModalHost is already collecting immediately, and
+            // openVoiceModal's startActivity brings the app forward if it was
+            // backgrounded. Both run every call, including a repeat one while the
+            // app is already on top - VoiceModalPayload's shownAt (see its own doc)
+            // is what makes a repeat "show my agenda" re-fire rather than being
+            // read as an unchanged value.
+            "show_agenda_modal" -> {
+                VoiceModalController.show(VoiceModalTarget.AGENDA)
+                openVoiceModal()
+                JSONObject().put("success", true)
+            }
+            // "show_list_modal" retired (one-today ticket 10 slice C, "everything is
+            // a checklist now") - VoiceModalTarget.WHOLE_LIST/`ui/NotesScreen.kt`
+            // went with it. A model that still calls it by name falls through to
+            // the `else` branch below, where LiveToolbox.dispatch's own explicit
+            // retired-tool branch says so in words rather than silently no-opping
+            // (§7) - same shape "show_groceries_modal" already established below.
+            // "show_groceries_modal" retired (one-today ticket 10 slice B, "everything
+            // is a checklist now") - VoiceModalTarget.GROCERIES/GroceryScreen went
+            // with it. A model that still calls it by name falls through to the
+            // `else` branch below, where LiveToolbox.dispatch's own explicit retired-
+            // tool branch says so in words rather than silently no-opping (§7).
+            // A generated view (`.scratch/one-today/issues/06-*.md`) - the one
+            // tool in this `when` that actually computes something before it can
+            // answer, because "runs a real query and never renders a model value"
+            // has to happen SOMEWHERE, and every other branch here is a pure
+            // session-scoped side effect with nothing to validate first. Parse ->
+            // run -> show, in that order; a parse or run failure never calls
+            // GeneratedViewController.show at all, so the screen only ever paints
+            // a genuinely-run answer, never a placeholder for one that failed.
+            "show_generated_view" -> {
+                when (val parsed = parseGeneratedViewSpec(
+                    shape = args.optString("shape"),
+                    source = args.optString("source"),
+                    aggregation = args.optString("aggregation"),
+                    window = args.optString("window"),
+                    grouping = args.optString("grouping"),
+                    title = args.optString("title"),
+                )) {
+                    is GeneratedViewSpecParse.Invalid -> {
+                        JSONObject().put("success", false).put("message", parsed.reason)
+                    }
+                    is GeneratedViewSpecParse.Valid -> {
+                        when (val run = GeneratedViewQueryRunner.run(appContext, parsed.spec)) {
+                            is GeneratedViewQueryRunner.RunResult.Refusal -> {
+                                JSONObject().put("success", false).put("message", run.reason)
+                            }
+                            is GeneratedViewQueryRunner.RunResult.Rendered -> {
+                                GeneratedViewController.show(run.payload)
+                                openVoiceModal()
+                                JSONObject().put("success", true)
+                            }
+                        }
+                    }
+                }
+            }
+            // Ticket 21 (google-account-integration): readThrough
+            // is what `remember`'s dispatch branch gates on - see that accessor's doc
+            // for why the flag is read here, off the live session, rather than dispatch
+            // reaching back into GeminiLiveSession itself.
+            else -> LiveToolbox.dispatch(
+                appContext, name, args, readThrough,
+            ) ?: JSONObject().put("success", true)
+        }
+
+    /**
+     * Ticket 23 (hands-and-senses, "an audit trail of every conversation and every tool call"):
+     * every tool call gets its own [ConversationAudit] row - name, arguments, and the result that
+     * actually came back, tagged with [turnSeq] so it regroups with that turn's USER/COMPANION rows.
+     *
+     * **Per-call redaction, not whole-turn**: a TOOL_RESULT row carries its own tool name, so a
+     * `list_vehicles` result beside an `ask_mail` one can be told apart precisely. Reuses
+     * [GeminiLiveSession.isEpisodicExcludedTool], the exact production membership test against
+     * [LiveToolbox.EPISODIC_EXCLUDED_TOOLS], so this never drifts into a second notion of
+     * read-through (ticket 23 decision 2). Shared by voice and typed chat.
+     *
+     * Best-effort and fire-and-forget: an audit write must never delay or fail a real tool response.
+     */
+    private fun auditToolCall(name: String, args: JSONObject, response: JSONObject, turnSeq: Long) {
+        val toolRedacted = GeminiLiveSession.isEpisodicExcludedTool(name)
+        val vehicleId = ActiveVehicle.current(appContext)
+        scope.launch {
+            runCatching {
+                CarDatabase.getDatabase(appContext).conversationAuditDao().record(
+                    turnSeq = turnSeq,
+                    kind = ConversationAudit.Kind.TOOL_RESULT,
+                    content = auditContent(response.toString(), toolRedacted),
+                    toolName = name,
+                    args = args.toString(),
+                    redacted = toolRedacted,
+                    vehicleId = vehicleId,
+                    // Retention must not delete a row the server has not confirmed - see
+                    // ConversationAuditDao.trimUploadedOlderThan. A TOOL_RESULT row is the single
+                    // most expensive kind to lose: the only record of what a tool was asked and
+                    // what it answered (ticket 20).
+                    uploadedThroughId =
+                        com.kevin.legion.backend.conversationAuditUploadedThroughId(appContext),
+                )
             }
         }
     }

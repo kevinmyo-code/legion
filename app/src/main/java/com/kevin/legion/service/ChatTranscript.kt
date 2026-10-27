@@ -31,30 +31,66 @@ data class ChatEntry(
  * and audit paths, untouched by this class).
  *
  * "Ended" rather than cleared when the Live socket closes: the person can still read what was said,
- * the panel says "Conversation ended.", and the next real turn on a NEW session starts it afresh
+ * the panel says "Conversation ended.", and the next SPOKEN turn on a new session starts it afresh
  * (see [beginIfEnded]). Clearing the instant a voice chat closed would delete an answer they were
  * still reading, since a hands-free chat closes itself eight seconds after the reply.
+ *
+ * **Typed turns no longer ride the Live socket (Kevin, 2026-10-27).** They go to a text model that
+ * takes this panel as its history ([textHistory]), so a voice session closing must not wipe what a
+ * typed follow-up needs: [typedSent] continues a panel the voice socket ended, and only a companion
+ * switch (whose new companion genuinely does not know what was said) still starts it afresh. A
+ * socket that closes with no spoken line since the last end adds nothing, so the prewarm socket
+ * cycling under a typed-only chat never stamps "Conversation ended." into it.
  */
 data class ChatTranscript(
     val entries: List<ChatEntry> = emptyList(),
     /** A typed turn's reply still arriving: the text so far, shown as "Replying". Null when none. */
     val pendingTypedReply: String? = null,
     val ended: Boolean = false,
+    /** A spoken line was added since the panel last ended: the only case a socket close is news. */
+    val voiceSinceEnd: Boolean = false,
+    /** [ended] came from a voice socket closing, which a typed turn continues past rather than wipes. */
+    val endedByVoiceClose: Boolean = false,
     /** The active companion's name, stamped onto each ASSISTANT line as it is added. Null until known. */
     val speaker: String? = null,
     private val nextId: Long = 1,
 ) {
     val isEmpty: Boolean get() = entries.isEmpty() && pendingTypedReply == null
 
-    /** The person typed [text] and it was sent. Opens the pending reply. */
+    /**
+     * The person typed [text] and it was sent to the text model. Opens the pending reply. A panel a
+     * voice socket ended is continued, not wiped: the text model reads it as history.
+     */
     fun typedSent(text: String): ChatTranscript {
-        val base = beginIfEnded().flushPending(note = "Cut off because you sent another message.")
+        val continued =
+            if (ended && endedByVoiceClose) copy(ended = false, endedByVoiceClose = false) else beginIfEnded()
+        val base = continued.flushPending(note = "Cut off because you sent another message.")
         return base.add(ChatEntry.Kind.USER, text, ChatEntry.Via.TYPED).copy(pendingTypedReply = "")
     }
 
-    /** The typed reply so far (the session's full accumulated output transcription). */
-    fun typedReplyProgress(textSoFar: String): ChatTranscript =
-        if (pendingTypedReply == null) this else copy(pendingTypedReply = textSoFar)
+    /** The text model's reply to the pending typed message: shown, not spoken. */
+    fun typedReplied(said: String): ChatTranscript =
+        copy(pendingTypedReply = null).add(ChatEntry.Kind.ASSISTANT, said, ChatEntry.Via.TYPED)
+
+    /**
+     * The pending typed message went out and no reply came back. [words] says what did not happen
+     * (and which writes did), in the engine's words. Not "not sent": it was sent.
+     */
+    fun typedFailed(words: String): ChatTranscript =
+        copy(pendingTypedReply = null).add(ChatEntry.Kind.SYSTEM, words)
+
+    /**
+     * The panel as history for the text model: every USER and ASSISTANT line, typed or spoken, in
+     * order, including lines above a "Conversation ended." marker. Tool, system and not-sent lines
+     * are not conversation. The engine caps it ([TextChatEngine.capHistory]).
+     */
+    fun textHistory(): List<ChatTurn> = entries.mapNotNull {
+        when (it.kind) {
+            ChatEntry.Kind.USER -> ChatTurn(fromUser = true, text = it.text)
+            ChatEntry.Kind.ASSISTANT -> ChatTurn(fromUser = false, text = it.text)
+            else -> null
+        }
+    }
 
     /**
      * A turn finished. [typed] turns already have their USER line (from [typedSent]); a spoken turn
@@ -71,33 +107,16 @@ data class ChatTranscript(
                 t.add(ChatEntry.Kind.ASSISTANT, said, ChatEntry.Via.TYPED)
             }
         }
-        // A spoken turn finishing while a typed reply was still pending means the person talked
-        // over it (the session un-mutes on speech): voice won, say so rather than leave it pending.
-        t = t.voiceTookOver()
+        // A typed reply still pending is NOT closed out here: it comes from the text model, not
+        // this socket, and lands on its own when it arrives.
         if (heard.isNotBlank()) t = t.add(ChatEntry.Kind.USER, heard, ChatEntry.Via.SPOKEN)
         if (said.isNotBlank()) t = t.add(ChatEntry.Kind.ASSISTANT, said, ChatEntry.Via.SPOKEN)
-        return t
+        return if (heard.isNotBlank() || said.isNotBlank()) t.copy(voiceSinceEnd = true) else t
     }
 
-    /** Typing cut the assistant's speech short. */
-    fun interruptedByTyping(): ChatTranscript =
-        beginIfEnded().add(ChatEntry.Kind.SYSTEM, "Stopped speaking because you typed.")
-
-    /** Push-to-talk (or a wake word) began while a typed reply was still arriving: voice wins. */
-    fun voiceTookOver(): ChatTranscript {
-        if (pendingTypedReply == null) return this
-        return flushPending(note = "Stopped because you started talking.")
-    }
-
-    /**
-     * A typed message that was NOT sent, with the reason in words. [clearPending] is for a message
-     * that WAS shown as sent (so a reply was pending) and then could not be delivered at connect: the
-     * waiting reply is closed out and [text] is blank, since the USER line is already above it.
-     */
-    fun notSent(text: String, reason: String, clearPending: Boolean = false): ChatTranscript {
-        val base = if (clearPending) copy(pendingTypedReply = null) else beginIfEnded()
-        return base.add(ChatEntry.Kind.NOT_SENT, text, ChatEntry.Via.TYPED, note = reason)
-    }
+    /** A typed message that was NOT sent, with the reason in words. Never wipes the panel. */
+    fun notSent(text: String, reason: String): ChatTranscript =
+        add(ChatEntry.Kind.NOT_SENT, text, ChatEntry.Via.TYPED, note = reason)
 
     /**
      * One tool line, from a tool call that RETURNED. [ok] is the tool's own `success`; a tool whose
@@ -106,21 +125,26 @@ data class ChatTranscript(
      * it did not run, with the tool's own [detail] when it gave one.
      */
     fun tool(name: String, ok: Boolean, detail: String? = null): ChatTranscript =
-        beginIfEnded().add(
+        add(
             ChatEntry.Kind.TOOL,
             humanToolName(name),
             note = if (ok) null else "Did not run" + (detail?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""),
         )
 
-    /** The Live socket closed. Keeps what was said, says it ended, flushes a half-arrived reply. */
+    /**
+     * The Live socket closed. Keeps what was said and says the voice conversation ended, but only
+     * when a spoken line was added since the last end. A typed reply still pending is left alone:
+     * it belongs to the text model, not this socket.
+     */
     fun sessionEnded(): ChatTranscript {
-        if (isEmpty || ended) return this
-        val flushed = flushPending(note = "The conversation ended before this finished.")
-        return flushed.add(ChatEntry.Kind.SYSTEM, "Conversation ended.").copy(ended = true)
+        if (ended || !voiceSinceEnd) return this
+        return add(ChatEntry.Kind.SYSTEM, "Conversation ended.")
+            .copy(ended = true, voiceSinceEnd = false, endedByVoiceClose = true)
     }
 
-    /** The first line of a NEW session replaces an ended panel instead of stacking under it. */
-    fun beginIfEnded(): ChatTranscript = if (ended) ChatTranscript(speaker = speaker, nextId = nextId) else this
+    /** The first spoken line of a NEW session replaces an ended panel instead of stacking under it. */
+    fun beginIfEnded(): ChatTranscript =
+        if (ended) ChatTranscript(speaker = speaker, pendingTypedReply = pendingTypedReply, nextId = nextId) else this
 
     internal fun flushPending(note: String): ChatTranscript {
         val partial = pendingTypedReply ?: return this

@@ -35,9 +35,10 @@ object CompanionHandover {
     fun plan(inVoiceConversation: Boolean) =
         Plan(dropSession = true, resumeHandle = null, spokenHandover = inVoiceConversation)
 
-    /** The tool set for ANY session the controller opens, typed included: the active persona's. */
+    /**
+     * The tool set for ANY Live session the controller opens: the active persona's. Typed chat no
+     * longer opens a Live session (2026-10-27); it reads the same persona's set through
+     * [LiveToolbox.textDeclarations].
+     */
     fun declarations(personaKey: String?): JSONArray = LiveToolbox.declarationsFor(personaKey)
-
-    /** What a typed message sees right after a switch: no session, so it opens one. */
-    val shapeAfterSwitch: TypedTurnPolicy.Shape = TypedTurnPolicy.Shape.NO_SESSION
 }

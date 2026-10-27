@@ -30,19 +30,15 @@ class CompanionHandoverTest {
     }
 
     @Test
-    fun `the next typed turn after a switch opens a new session with the new persona's declarations`() {
-        // No session left: the typed-turn policy opens one (cold, mic closed).
-        val decision = TypedTurnPolicy.decide(
-            hasText = true, hasKey = true, online = true,
-            shape = CompanionHandover.shapeAfterSwitch, assistantSpeaking = false,
-        )
-        assertEquals(TypedTurnPolicy.Decision.OpenSession, decision)
-
-        // And what that session advertises follows the active persona, typed included.
+    fun `what a session and a typed turn advertise follows the active persona`() {
         val alfred = names(CompanionHandover.declarations(ALFRED.key))
         val marcus = names(CompanionHandover.declarations(MARCUS.key))
         assertFalse("consult_meditations" in alfred)
         assertTrue("consult_meditations" in marcus)
         assertEquals(alfred.toSet() + "consult_meditations", marcus.toSet())
+
+        // Typed chat (text model, 2026-10-27) reads the same persona's set.
+        assertTrue("consult_meditations" in names(LiveToolbox.textDeclarations(MARCUS.key)))
+        assertFalse("consult_meditations" in names(LiveToolbox.textDeclarations(ALFRED.key)))
     }
 }

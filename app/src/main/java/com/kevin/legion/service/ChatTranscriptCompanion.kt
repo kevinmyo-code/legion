@@ -13,7 +13,7 @@ fun ChatTranscript.withSpeaker(name: String?): ChatTranscript = if (name == spea
  * next turn starts a fresh one. An empty panel only learns the new name.
  */
 fun ChatTranscript.companionSwitched(newName: String?): ChatTranscript {
-    if (isEmpty || ended) return copy(speaker = newName)
+    if (isEmpty || ended) return copy(speaker = newName, endedByVoiceClose = false)
     val flushed = flushPending(note = "The conversation ended before this finished.")
     val line = (newName ?: "The new companion") + " is answering from here. They do not know what was said above."
     return flushed.add(ChatEntry.Kind.SYSTEM, line).copy(ended = true, speaker = newName)
