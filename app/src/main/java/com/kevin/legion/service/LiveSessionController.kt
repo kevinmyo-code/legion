@@ -156,7 +156,12 @@ class LiveSessionController(context: Context) {
                 // end_conversation would otherwise arm a hang-up on the NEXT voice turn.
                 JSONObject().put("success", false).put("message", "That only works in a voice conversation.")
             } else {
-                runToolBounded(name, args, readThrough)
+                typedToolStarted()
+                try {
+                    runToolBounded(name, args, readThrough)
+                } finally {
+                    typedToolFinished()
+                }
             }
             auditToolCall(name, args, response, turnSeq)
             response
@@ -211,6 +216,11 @@ class LiveSessionController(context: Context) {
     // plain Int is correct here; no AtomicInteger needed.
     private var activeToolCalls = 0
 
+    // How many tool calls a typed turn is mid-flight on (2026-10-27, Kevin: "separate thinking and
+    // tool running"). Separate from [activeToolCalls] because that one also means "voice owns the
+    // phase". Same Main.immediate confinement, so a plain Int.
+    private var typedToolCalls = 0
+
     /**
      * Constructs a fresh [GeminiLiveSession] and, alongside the caller's own wiring, starts
      * mirroring its [GeminiLiveSession.isSilenced] transitions to [CarProbeLog] (ticket 15 wave 2's
@@ -242,7 +252,8 @@ class LiveSessionController(context: Context) {
         _phase.value = phase
         // Mirror to the process-global holder so the Cruise screen (Activity) can
         // reflect the live state too, not just the service-drawn floating button.
-        CompanionPhase.set(phase, toolRunning = activeToolCalls > 0) // 2026-10-27: WORKING vs THINKING
+        // 2026-10-27: WORKING vs THINKING. A typed turn's tool counts only while voice is idle.
+        CompanionPhase.set(phase, toolRunning = toolRunningFor(activeToolCalls, typedToolCalls, voiceOwnsPhase()))
     }
 
     // --- public entry points (service / overlay) -------------------------
@@ -427,12 +438,32 @@ class LiveSessionController(context: Context) {
      * set. A voice conversation's LISTENING/SPEAKING is never stomped by a typed turn.
      */
     private fun typedPhase(inFlight: Boolean) {
-        val voiceOwnsPhase = conversationMode || session?.inConversation == true || activeToolCalls > 0
-        if (voiceOwnsPhase) return
+        if (voiceOwnsPhase()) return
         if (inFlight && _phase.value == Phase.IDLE) {
             set(Phase.THINKING, "...")
         } else if (!inFlight && _phase.value == Phase.THINKING && pendingAction == Pending.NONE) {
             set(Phase.IDLE, IDLE_STATUS)
+        }
+    }
+
+    /** A voice conversation or a voice tool call owns the strip's phase; typed chat must not touch it. */
+    private fun voiceOwnsPhase(): Boolean =
+        conversationMode || session?.inConversation == true || activeToolCalls > 0
+
+    /**
+     * A typed turn started a tool: show "Working..." (Matrix `> WORKING`) exactly as a voice tool
+     * does, but only over typed chat's own THINKING. A live voice conversation's phase is left alone.
+     */
+    private fun typedToolStarted() {
+        typedToolCalls++
+        if (typedToolMayRepublish(voiceOwnsPhase(), _phase.value)) set(Phase.THINKING, "Working...")
+    }
+
+    /** The typed turn's last tool finished: back to plain THINKING while the reply is written. */
+    private fun typedToolFinished() {
+        typedToolCalls--
+        if (typedToolCalls == 0 && typedToolMayRepublish(voiceOwnsPhase(), _phase.value)) {
+            set(Phase.THINKING, "...")
         }
     }
 
@@ -1616,6 +1647,21 @@ class LiveSessionController(context: Context) {
          * - so [LiveSessionControllerToolCallRestoreTest] can assert the refcount/guard logic
          * directly from a plain JVM test instead of only ever exercising it on-device.
          */
+        /**
+         * Whether the strip shows a tool RUNNING (WORKING) rather than thinking. A voice tool always
+         * counts; a typed turn's tool counts only when voice does not own the phase, so typing during
+         * a live voice conversation never turns voice's THINKING into WORKING.
+         */
+        internal fun toolRunningFor(voiceToolCalls: Int, typedToolCalls: Int, voiceOwnsPhase: Boolean): Boolean =
+            voiceToolCalls > 0 || (typedToolCalls > 0 && !voiceOwnsPhase)
+
+        /**
+         * Whether a typed tool starting or finishing may re-publish the phase: only over typed chat's
+         * own THINKING, never while voice owns the phase (LISTENING, SPEAKING, or its own THINKING).
+         */
+        internal fun typedToolMayRepublish(voiceOwnsPhase: Boolean, currentPhase: Phase): Boolean =
+            !voiceOwnsPhase && currentPhase == Phase.THINKING
+
         internal fun shouldRestoreAfterToolCall(remainingActiveToolCalls: Int, currentPhase: Phase): Boolean =
             remainingActiveToolCalls == 0 && currentPhase == Phase.THINKING
 
