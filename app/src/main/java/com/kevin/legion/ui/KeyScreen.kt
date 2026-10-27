@@ -39,6 +39,7 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiKeyValidator
 import com.kevin.legion.ai.KeyCheck
 import com.kevin.legion.ai.KeyHealth
+import com.kevin.legion.service.DebugSettings
 import com.kevin.legion.ai.GeminiUsageMeter
 import com.kevin.legion.backend.ConversationAuditReconcile
 import com.kevin.legion.backend.MembershipResult
@@ -802,6 +803,22 @@ fun KeyScreen(onBack: () -> Unit) {
                                 },
                             )
                         }
+                    }
+
+                    // Which model serves ask_engine (2026-10-27 latency comparison). Tap to switch;
+                    // each call's model and time land in the LIVE_LATENCY log.
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                        var askEngineModel by remember { mutableStateOf(DebugSettings.askEngineModel(context)) }
+                        DeckRow(
+                            label = "ask_engine model",
+                            value = askEngineModel,
+                            modifier = Modifier.clickable {
+                                val models = DebugSettings.ASK_ENGINE_MODELS
+                                val next = models[(models.indexOf(askEngineModel) + 1) % models.size]
+                                DebugSettings.setAskEngineModel(context, next)
+                                askEngineModel = next
+                            },
+                        )
                     }
 
                     Spacer(Modifier.height(12.dp))

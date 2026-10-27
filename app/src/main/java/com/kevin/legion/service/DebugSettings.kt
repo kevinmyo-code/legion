@@ -1,6 +1,7 @@
 ﻿package com.kevin.legion.service
 
 import android.content.Context
+import com.kevin.legion.ai.SubAgent
 
 /** Small toggles for debug/optional UI (currently the Zero subtitle overlay). */
 object DebugSettings {
@@ -8,6 +9,15 @@ object DebugSettings {
     private const val KEY_SUBTITLES = "subtitles"
     private const val KEY_RECALL_ALERTS = "recall_alerts"
     private const val KEY_OBD_EMULATOR = "obd_emulator"
+    private const val KEY_ASK_ENGINE_MODEL = "ask_engine_model"
+
+    /**
+     * The two models ask_engine's sub-agent may run on (2026-10-27, latency comparison). 3.8 Flash
+     * takes the same request body: investigate sends no generationConfig, so no thinkingConfig
+     * and no temperature, which is what commit 29057645 found 3.8 requires.
+     */
+    const val ASK_ENGINE_MODEL_ALT = "gemini-3.8-flash"
+    val ASK_ENGINE_MODELS = listOf(SubAgent.DEFAULT_MODEL, ASK_ENGINE_MODEL_ALT)
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -36,4 +46,16 @@ object DebugSettings {
 
     fun setObdEmulatorEnabled(context: Context, on: Boolean) =
         prefs(context).edit().putBoolean(KEY_OBD_EMULATOR, on).apply()
+
+    /**
+     * Which model serves ask_engine. Read in every build type; only the row that changes it is
+     * debug-only (KeyScreen's debug section), so a value set on a debug build carries over when
+     * `fast` is installed on top. Anything not in [ASK_ENGINE_MODELS] reads as the default.
+     */
+    fun askEngineModel(context: Context): String =
+        prefs(context).getString(KEY_ASK_ENGINE_MODEL, null)
+            ?.takeIf { it in ASK_ENGINE_MODELS } ?: SubAgent.DEFAULT_MODEL
+
+    fun setAskEngineModel(context: Context, model: String) =
+        prefs(context).edit().putString(KEY_ASK_ENGINE_MODEL, model).apply()
 }

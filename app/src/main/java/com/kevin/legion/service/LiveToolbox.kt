@@ -6356,16 +6356,26 @@ object LiveToolbox {
         val client = engineMcpClient ?: EngineConfig(context.applicationContext).let { config ->
             EngineMcpClient(EngineHttp(config), config::baseUrl).also { engineMcpClient = it }
         }
+        // Debug-selectable (2026-10-27): Flash-Lite by default, 3.8 Flash for a latency comparison.
+        // Logged per call so a LIVE_LATENCY capture says which model served it.
+        val model = DebugSettings.askEngineModel(context)
         return AskEngine(
             client = client,
             runAgent = { instruction, question, tools ->
-                SubAgent(systemInstruction = instruction, useSearch = false).investigate(
+                val startedAt = System.currentTimeMillis()
+                SubAgent(systemInstruction = instruction, useSearch = false, model = model).investigate(
                     context = "",
                     question = question,
                     tools = tools,
                     maxModelCalls = 4,
                     budgetMs = 40_000,
-                )
+                ).also { r ->
+                    LiveLatency.log(
+                        LiveLatency.TAG,
+                        "ask_engine_ms=${System.currentTimeMillis() - startedAt} model=$model " +
+                            "result=${r::class.simpleName}",
+                    )
+                }
             },
             identityClause = { AssistantIdentity.shortClause(context) },
             nowText = { java.time.OffsetDateTime.now().toString() },
