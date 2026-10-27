@@ -68,7 +68,7 @@ package com.kevin.legion.ui
  *              + fleet/cars          <- the car roster / active-car picker
  *              + fleet/telemetry     <- recorded obd_samples history
  * settings/    + settings/key
- *              + settings/companions <- companion profile picker (Part 2, 2026-08-02)
+ *              + settings/companions <- the companion's own name and voice (one persona, 2026-10-27)
  *              + settings/drive-sync <- Connect Google Drive (2026-08-03)
  *              + settings/spotify    <- Connect Spotify (2026-08-12)
  *              + settings/playbooks  <- edit advisor doctrine per topic (2026-08-18)
@@ -271,7 +271,7 @@ object LegionRoute {
     const val SETTINGS_PERMISSIONS_DIAGNOSTICS = "settings/permissions-diagnostics"
 
     const val SETTINGS_KEY = "settings/key"
-    /** The companion profile picker (roster, create/edit/delete/switch) - Part 2 of the multi-companion feature. */
+    /** The companion's own settings, name and voice (one persona, ADR 0063) - see [CompanionsScreen]. */
     const val SETTINGS_COMPANIONS = "settings/companions"
     /**
      * The GOOGLE row's destination (ticket 12,

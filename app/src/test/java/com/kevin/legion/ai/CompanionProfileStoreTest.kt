@@ -8,8 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Exercises [CompanionProfileStore.shouldSeedFromLegacy] and
- * [CompanionProfileStore.buildSeedProfile] - the pure profile<->legacy-field
+ * Exercises [CompanionProfileStore.shouldSeedFromLegacy],
+ * [CompanionProfileStore.buildSeedProfile] and [CompanionProfileStore.alfredFallback] - the pure profile<->legacy-field
  * logic behind the migration-from-a-single-identity path. Deliberately a
  * plain JUnit test, no Room/Context/SharedPreferences: [CompanionProfileStore
  * .ensureSeeded]/[CompanionProfileStore.materializeActive] themselves touch
@@ -99,58 +99,56 @@ class CompanionProfileStoreTest {
         assertTrue(decodeSelections(row.voiceStyleTraits).isEmpty())
     }
 
-    // --- canDelete / nextActiveAfterDeleting (Part 2 roster screen) ----------
+    // --- alfredFallback: one persona (Kevin, 2026-10-27, ADR 0063) ----------
 
-    private fun profile(id: String, updatedAt: Long) = CompanionProfileEntity(
+    private fun row(id: String, persona: String = "alfred") = CompanionProfileEntity(
         profileId = id,
         assistantName = id,
-        persona = "alfred",
+        persona = persona,
         traits = "",
         voice = "Charon",
         voiceStyle = "",
         voiceStyleTraits = "",
-        updatedAt = updatedAt,
+        updatedAt = 0L,
     )
 
     @Test
-    fun canDelete_lastRemainingProfile_refused() {
-        // The assistant must never end up with no identity at all.
-        assertFalse(CompanionProfileStore.canDelete(rosterSize = 1))
+    fun alfredFallback_activeAlfredRow_leftAlone() {
+        val roster = listOf(row("a"), row("b"))
+        assertNull(CompanionProfileStore.alfredFallback(roster, activeId = "b"))
     }
 
     @Test
-    fun canDelete_twoOrMoreProfiles_allowed() {
-        assertTrue(CompanionProfileStore.canDelete(rosterSize = 2))
-        assertTrue(CompanionProfileStore.canDelete(rosterSize = 5))
+    fun alfredFallback_activeRetiredPersona_movesToFirstAlfredRow() {
+        // Newest-edit-first roster: the first Alfred row wins.
+        val roster = listOf(row("d", "dorothy"), row("a1"), row("a2"))
+        assertEquals("a1", CompanionProfileStore.alfredFallback(roster, activeId = "d"))
     }
 
     @Test
-    fun canDelete_emptyRoster_refused() {
-        // Shouldn't happen in practice (ensureSeeded/onboarding always leaves
-        // at least one row), but a count of 0 must not read as "deletion is fine".
-        assertFalse(CompanionProfileStore.canDelete(rosterSize = 0))
+    fun alfredFallback_blankPersonaCountsAsAlfred() {
+        // A legacy seed with no key always resolved to Alfred; it is not moved.
+        val roster = listOf(row("legacy", ""), row("a"))
+        assertNull(CompanionProfileStore.alfredFallback(roster, activeId = "legacy"))
     }
 
     @Test
-    fun nextActiveAfterDeleting_picksFirstRemainingRowInRosterOrder() {
-        // Roster is newest-edit-first (the DAO's own ORDER BY), so the pick
-        // lands on the next-most-recently-touched profile.
-        val roster = listOf(profile("a", 300L), profile("b", 200L), profile("c", 100L))
-        assertEquals("b", CompanionProfileStore.nextActiveAfterDeleting(roster, deletedId = "a"))
+    fun alfredFallback_noAlfredRow_activeRowKept() {
+        // Nothing to move to: it already answers as Alfred through personaFor, and no row is created.
+        val roster = listOf(row("k", "kratos"), row("m", "marcus"))
+        assertNull(CompanionProfileStore.alfredFallback(roster, activeId = "k"))
     }
 
     @Test
-    fun nextActiveAfterDeleting_deletedRowNotFirst_stillSkipsOnlyThatOne() {
-        val roster = listOf(profile("a", 300L), profile("b", 200L), profile("c", 100L))
-        assertEquals("a", CompanionProfileStore.nextActiveAfterDeleting(roster, deletedId = "b"))
+    fun alfredFallback_danglingActiveId_picksAlfredRowElseFirstRow() {
+        assertEquals("a", CompanionProfileStore.alfredFallback(listOf(row("d", "dorothy"), row("a")), "gone"))
+        assertEquals("d", CompanionProfileStore.alfredFallback(listOf(row("d", "dorothy")), activeId = null))
     }
 
     @Test
-    fun nextActiveAfterDeleting_onlyRowWasTheDeletedOne_nullRatherThanCrashing() {
-        // canDelete gates this case in practice, but the function itself must
-        // degrade to null (not throw, not silently pick the deleted row).
-        val roster = listOf(profile("a", 300L))
-        assertNull(CompanionProfileStore.nextActiveAfterDeleting(roster, deletedId = "a"))
+    fun alfredFallback_emptyRoster_nothingToDo() {
+        assertNull(CompanionProfileStore.alfredFallback(emptyList(), activeId = null))
+        assertNull(CompanionProfileStore.alfredFallback(emptyList(), activeId = "gone"))
     }
 
     // --- activeIdResolves: the creation-adoption branch ---------------------

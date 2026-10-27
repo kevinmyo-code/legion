@@ -5,10 +5,9 @@ import android.content.Context
 /**
  * Single source of the assistant's identity clause for system instructions.
  *
- * No longer placeholder. The register comes from whichever [Persona] the
- * active companion profile names - Alfred, Dorothy, or a future one - so
- * switching profiles on a device genuinely changes who answers, not just the
- * name on the label.
+ * No longer placeholder. The register comes from the [Persona] the active
+ * companion profile names, resolved through [personaFor] - which is [ALFRED]
+ * for every key since the phone went to one persona (2026-10-27, ADR 0063).
  *
  * [CompanionProfile.persona] holds the persona key and
  * [CompanionProfile.name] the driver's chosen name for it, which may differ
@@ -56,7 +55,7 @@ object AssistantIdentity {
     /**
      * Substitutes a renamed profile's name into copy written for the persona's
      * default. Only rewrites a standalone occurrence of the default name, so
-     * "Dorothy" inside an ordinary word is never mangled; if the driver kept
+     * "Alfred" inside an ordinary word is never mangled; if the driver kept
      * the default, this is a no-op.
      */
     private fun withName(text: String, persona: Persona, name: String): String {

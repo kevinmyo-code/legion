@@ -4,9 +4,9 @@ package com.kevin.legion.ai
  * The companion's first-ever spoken hello.
  *
  * **Lines now come from the ACTIVE PERSONA** ([Personas.kt]), not this file's
- * bundled list - Alfred and Dorothy should not open with the same sentence.
- * [FIRST_GREETING_LINES] is kept only as the fallback for a profile whose
- * persona key resolves to nothing.
+ * bundled list, so the first hello is in Alfred's register.
+ * [FIRST_GREETING_LINES] is kept only as the fallback for a persona with no
+ * greetings.
  *
  * Naming, personality, and all setup now live in the tap/speak onboarding
  * wizard ([com.kevin.legion.ui.OnboardingManager]), so the first spoken

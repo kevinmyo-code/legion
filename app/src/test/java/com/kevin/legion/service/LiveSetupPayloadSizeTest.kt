@@ -154,8 +154,10 @@ class LiveSetupPayloadSizeTest {
      * Measured: Alfred ~23,385, Kratos ~23,719, Marcus ~24,099, so Marcus was ~61 tokens under the
      * old ceiling before it and ~99 over after. Headroom is now ~150 tokens for the worst persona.
      *
-     * **2026-10-27 (Kevin): Marcus and `consult_meditations` are deleted**, and `MarcusPayloadTest`
-     * with them. The Marcus figures above are history; the ceiling is left where it is.
+     * **2026-10-27 (Kevin): Alfred is the only persona.** Marcus and `consult_meditations` are
+     * deleted, `MarcusPayloadTest` with them, and Dorothy, Kratos and `switch_companion` with
+     * them. Every figure above for another persona is history; this test's subject was always
+     * Alfred, and the ceiling is left where it is.
      */
     private val ceilingTokens = 24_250
 

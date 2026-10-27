@@ -48,7 +48,6 @@ object VoiceGuideData {
                 Entry(name = "show_app", say = "Open the ledger", does = "Opens a screen in the app for you.", hands = "Is itself navigation - every screen it can open is also reachable directly from the app's own tabs."),
                 Entry(name = "finish_intro", say = "I'm done setting up", does = "Finishes first-run setup.", hands = "Onboarding screen's own final step."),
                 Entry(name = "end_conversation", say = "That will be all", does = "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight.", hands = "Voice only - closing the app or its notification is the nearest hands equivalent."),
-                Entry(name = "switch_companion", say = "Can I talk to Dorothy?", does = "Hands the conversation to a different companion. They answer from the next turn on, in their own voice, and they will not know what was said before the handover.", hands = "Companions screen - tap whichever one you want."),
             ),
         ),
         Group(
@@ -262,6 +261,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 128 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 128
+    /** Total entries across every group above - 127 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 127
 }

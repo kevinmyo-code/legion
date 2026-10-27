@@ -5,7 +5,8 @@ package com.kevin.legion.advisor
  * and every persona (ticket 10 answer call 3: "the persona owns TONE, the harness owns the RULES
  * ... every safety rule in this ticket lives in the AdvisorAgent harness prompt, not in a persona
  * fragment, so switching to Dorothy or to a custom persona changes how advice sounds and never
- * what it is allowed to say"). Nothing safety-relevant may ever live in a
+ * what it is allowed to say"; Dorothy is gone since 2026-10-27, the split stands). Nothing
+ * safety-relevant may ever live in a
  * [com.kevin.legion.ai.Persona] fragment instead - that would let a persona edit quietly change
  * what an advisor is willing to say, which is exactly the failure mode this split exists to close.
  *

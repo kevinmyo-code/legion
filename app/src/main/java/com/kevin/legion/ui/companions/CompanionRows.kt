@@ -12,7 +12,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,10 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.ai.BUILT_IN_PERSONAS
 import com.kevin.legion.ai.CURATED_VOICES
 import com.kevin.legion.ai.GeminiVoice
-import com.kevin.legion.ai.Persona
 import com.kevin.legion.ai.personaFor
 import com.kevin.legion.data.local.CompanionProfileEntity
 import com.kevin.legion.ui.theme.LegionSemantics
@@ -37,35 +34,22 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 
 /**
- * Companion-picker-specific rows and dialogs for `ui/CompanionsScreen.kt`. The
- * shared, aspect-agnostic furniture ([com.kevin.legion.ui.common.SectionHeader],
- * [com.kevin.legion.ui.common.Hairline]) lives in `ui/common/CommonRows.kt` and
- * IS reused by the screen directly - what lives here is a genuinely different
- * shape: a roster row needs a tap-to-switch target plus two independent
- * actions (EDIT/DELETE) rather than [com.kevin.legion.ui.common.ReadingRow]'s
- * plain label/value, the same way ledger's own [com.kevin.legion.ui.ledger.QuarantineRow]
- * earned its own row rather than reusing `ReadingRow`.
+ * The row and the editor for `ui/CompanionsScreen.kt`, the assistant's own settings. The shared,
+ * aspect-agnostic furniture ([com.kevin.legion.ui.common.Hairline]) lives in `ui/common/CommonRows.kt`
+ * and IS reused by the screen directly - what lives here is the one row that needs an EDIT action
+ * beside its label, rather than [com.kevin.legion.ui.common.ReadingRow]'s plain label/value.
  */
 
-// ------------------------------------------------------------------- roster row
+// --------------------------------------------------------------------- row
 
 /**
- * One roster row. **"Active on this phone" is spelled out, not a checkmark or
- * a colour** (task wording) - the roster SYNCS across both of Kevin's and his
- * wife's phones, but the active selection is device-local
- * ([com.kevin.legion.ai.ActiveCompanionProfile]'s doc comment), so a bare dot
- * or tint risks reading as "this is the profile" rather than "this is the one
- * THIS PHONE currently uses". Tapping a non-active row switches to it; tapping
- * the already-active row does nothing (there is nothing to switch to).
+ * The active profile: its name, the register's one-line description, and its voice, with EDIT.
+ * There is one persona (ADR 0063), so there is nothing to tap to switch to and nothing to delete.
  */
 @Composable
 fun CompanionRow(
     profile: CompanionProfileEntity,
-    isActive: Boolean,
-    canDelete: Boolean,
-    onActivate: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     val persona = personaFor(profile.persona)
@@ -73,7 +57,6 @@ fun CompanionRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(enabled = !isActive, onClick = onActivate)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -85,23 +68,9 @@ fun CompanionRow(
                 style = LegionType.stamp,
                 color = sem.faint,
             )
-            if (isActive) {
-                Spacer(Modifier.padding(top = 2.dp))
-                Text("ACTIVE ON THIS PHONE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-            }
         }
         TextButton(onClick = onEdit) {
             Text("EDIT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-        }
-        // Disabled rather than hidden when it's the last profile - a user
-        // who taps a disabled DELETE at least learns why, instead of silently
-        // wondering where the button went.
-        TextButton(onClick = onDelete, enabled = canDelete) {
-            // DESTRUCTIVE (ticket 13 re-home, ticket 04 answer §4): neutral ink until a confirming
-            // step, never a standing alarm colour. [DeleteCompanionDialog] is the actual point of
-            // no return and does not currently spend chrome on its own confirm button - that is
-            // outside this call site's scope, noted for whoever next touches that dialog.
-            Text("DELETE", style = LegionType.stamp, color = if (canDelete) MaterialTheme.colorScheme.onSurface else sem.ghost)
         }
     }
 }
@@ -116,21 +85,14 @@ fun CompanionRow(
 data class CompanionEditorState(
     val profileId: String?,
     val name: String,
-    val personaKey: String,
     val voice: String,
 )
 
 /**
- * The create/edit form. Persona and voice are independent pickers (task
- * wording: rename, change voice, change persona are each their own edit) -
- * changing persona in EDIT mode never touches the typed name or chosen voice.
- *
- * **In CREATE mode only**, picking a persona re-defaults the name and voice to
- * that [Persona]'s [Persona.defaultName]/[Persona.suggestedVoice], but ONLY
- * while the user hasn't touched either field yet ([nameTouched]/
- * [voiceTouched]) - so tapping through personas before typing anything always
- * shows a sensible starting point, but a user who already typed a custom
- * name and then changes their mind on persona doesn't lose it.
+ * The create/edit form: a name and a voice. There is no persona picker (one
+ * persona, ADR 0063); the screen writes [com.kevin.legion.ai.ALFRED]'s key on
+ * save. Create mode only happens on an install with no profile yet, and opens
+ * on Alfred's defaults.
  *
  * **Each voice option in the dropdown carries an audition control** - a
  * play/stop glyph, backed by [rememberVoiceAuditionPlayer], that lets the
@@ -148,49 +110,21 @@ fun CompanionEditorDialog(
     val sem = LocalLegionSemantics.current
     val isCreate = editing.profileId == null
     var name by remember(editing.profileId) { mutableStateOf(editing.name) }
-    var personaKey by remember(editing.profileId) { mutableStateOf(editing.personaKey) }
     var voice by remember(editing.profileId) { mutableStateOf(editing.voice) }
-    var nameTouched by remember(editing.profileId) { mutableStateOf(false) }
-    var voiceTouched by remember(editing.profileId) { mutableStateOf(false) }
     var voiceMenuExpanded by remember { mutableStateOf(false) }
     val auditionPlayer = rememberVoiceAuditionPlayer()
     val auditioning by auditionPlayer.playing
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isCreate) "New companion" else "Edit companion") },
+        title = { Text(if (isCreate) "Set up companion" else "Edit companion") },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it; nameTouched = true },
+                    onValueChange = { name = it },
                     label = { Text("Name") },
                 )
-                Spacer(Modifier.padding(top = 12.dp))
-                Text("Persona", style = MaterialTheme.typography.titleMedium)
-                BUILT_IN_PERSONAS.forEach { persona ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                personaKey = persona.key
-                                if (isCreate && !nameTouched) name = persona.defaultName
-                                if (isCreate && !voiceTouched) voice = persona.suggestedVoice
-                            }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = personaKey == persona.key, onClick = {
-                            personaKey = persona.key
-                            if (isCreate && !nameTouched) name = persona.defaultName
-                            if (isCreate && !voiceTouched) voice = persona.suggestedVoice
-                        })
-                        Column {
-                            Text(persona.defaultName, style = MaterialTheme.typography.bodyMedium)
-                            Text(persona.blurb, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
                 Spacer(Modifier.padding(top = 12.dp))
                 Text("Voice", style = MaterialTheme.typography.titleMedium)
                 val selectedVoiceLabel = CURATED_VOICES.firstOrNull { it.name == voice }
@@ -203,7 +137,6 @@ fun CompanionEditorDialog(
                                 text = { Text("${v.name} — ${v.descriptor}") },
                                 onClick = {
                                     voice = v.name
-                                    voiceTouched = true
                                     voiceMenuExpanded = false
                                 },
                                 // Its own clickable in trailingIcon's Text, distinct from
@@ -219,7 +152,7 @@ fun CompanionEditorDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onSave(editing.copy(name = name, personaKey = personaKey, voice = voice)) },
+                onClick = { onSave(editing.copy(name = name, voice = voice)) },
                 enabled = name.isNotBlank(),
             ) { Text("Save") }
         },
@@ -258,18 +191,6 @@ private fun VoiceAuditionGlyph(
     )
 }
 
-/** Confirms a delete before it fires - destructive, and it removes the row from every synced device. */
-@Composable
-fun DeleteCompanionDialog(profile: CompanionProfileEntity, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Delete ${profile.assistantName}?") },
-        text = { Text("This removes the profile everywhere it syncs, not just on this phone.") },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
 // ------------------------------------------------------------------------ previews
 
 private val previewAlfredProfile = CompanionProfileEntity(
@@ -283,36 +204,17 @@ private val previewAlfredProfile = CompanionProfileEntity(
     updatedAt = System.currentTimeMillis(),
 )
 
-@Preview(name = "Companion row: active", widthDp = 360)
+@Preview(name = "Companion row", widthDp = 360)
 @Composable
-private fun PreviewCompanionRowActive() = LegionTheme {
-    Surface { CompanionRow(previewAlfredProfile, isActive = true, canDelete = true, onActivate = {}, onEdit = {}, onDelete = {}) }
+private fun PreviewCompanionRow() = LegionTheme {
+    Surface { CompanionRow(previewAlfredProfile, onEdit = {}) }
 }
 
-@Preview(name = "Companion row: inactive, last profile (delete disabled)", widthDp = 360)
+@Preview(name = "Edit companion dialog", widthDp = 360, heightDp = 640)
 @Composable
-private fun PreviewCompanionRowInactiveLast() = LegionTheme {
-    Surface {
-        CompanionRow(
-            previewAlfredProfile.copy(assistantName = "Dorothy", persona = "dorothy", voice = "Vindemiatrix"),
-            isActive = false,
-            canDelete = false,
-            onActivate = {}, onEdit = {}, onDelete = {},
-        )
-    }
-}
-
-@Preview(name = "New companion dialog", widthDp = 360, heightDp = 640)
-@Composable
-private fun PreviewCompanionEditorCreate() = LegionTheme {
+private fun PreviewCompanionEditorEdit() = LegionTheme {
     CompanionEditorDialog(
-        editing = CompanionEditorState(profileId = null, name = "Alfred", personaKey = "alfred", voice = "Charon"),
+        editing = CompanionEditorState(profileId = "p1", name = "Alfred", voice = "Charon"),
         onDismiss = {}, onSave = {},
     )
-}
-
-@Preview(name = "Delete confirmation", widthDp = 360)
-@Composable
-private fun PreviewDeleteDialog() = LegionTheme {
-    DeleteCompanionDialog(previewAlfredProfile, onConfirm = {}, onDismiss = {})
 }

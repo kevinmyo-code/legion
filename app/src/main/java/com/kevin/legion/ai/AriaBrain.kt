@@ -983,8 +983,9 @@ internal val CANNOT_CLAUSE =
  * A capability denial is the costliest wrong answer: the user stops asking. Conditioned on the tool
  * RESULT, like [CANNOT_CLAUSE], and naming no tools, so it survives the next one. Deliberately
  * short: `LiveSetupPayloadSizeTest` holds the setup payload under a token ceiling and had ~45 tokens
- * of headroom when this was written. The call-the-tool-first half already lives in the "NEVER state a fact" rule below. At file scope for
- * the same reason as [CANNOT_CLAUSE]: never per-persona. Presence guarded by
+ * of headroom when this was written. The call-the-tool-first half already lives in the "NEVER
+ * state a fact" rule below. At file scope for the same reason as [CANNOT_CLAUSE]: never
+ * per-persona. Presence guarded by
  * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable.
  */
 internal const val DATA_ACCESS_CLAUSE =

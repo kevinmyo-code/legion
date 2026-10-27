@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,16 +22,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.ai.ActiveCompanionProfile
-import com.kevin.legion.ai.BUILT_IN_PERSONAS
+import com.kevin.legion.ai.ALFRED
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.data.local.CompanionProfileEntity
 import com.kevin.legion.ui.common.Hairline
-import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.companions.CompanionEditorDialog
 import com.kevin.legion.ui.companions.CompanionEditorState
 import com.kevin.legion.ui.companions.CompanionRow
-import com.kevin.legion.ui.companions.DeleteCompanionDialog
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -41,35 +36,27 @@ import java.util.UUID
 import kotlinx.coroutines.launch
 
 /**
- * `settings/companions` - the companion profile picker (Part 2 of the
- * multi-companion feature; Part 1 built the data model/sync, Part 3 wrote
- * Alfred/Dorothy's copy in [com.kevin.legion.ai.Personas]). Reached from
- * [SettingsScreen]'s "Companions" button, not a bottom-nav tab - same shape as
+ * `settings/companions` - the assistant's own settings: its name and its voice. Reached from
+ * [com.kevin.legion.ui.settings.AssistantSettingsScreen], not a bottom-nav tab - same shape as
  * `settings/key`.
  *
- * **Shows the roster, marks the ACTIVE one as device-local** (task wording):
- * the roster syncs to every device sharing the Google account, but which
- * profile is active does not ([ActiveCompanionProfile]'s doc comment), so a
- * user seeing their partner's profile in the list must not read the app as
- * confused about who it's talking to. [com.kevin.legion.ui.companions.CompanionRow]
- * spells out "ACTIVE ON THIS PHONE" rather than a bare marker for exactly that
- * reason.
+ * **One persona, no roster (Kevin, 2026-10-27, ADR 0063).** The phone has exactly one register,
+ * [ALFRED], so this screen edits the device's ACTIVE profile and nothing else: no picker, no
+ * tap-to-switch, no create or delete. A save always writes `persona = ALFRED.key`, so a row left
+ * over from a retired persona becomes an Alfred row the first time anyone edits it here.
  *
- * **Tap-to-switch is two calls, in order** (task wording, and
- * [ActiveCompanionProfile.setActiveProfileId]'s own doc comment): write
- * [ActiveCompanionProfile] first, then [CompanionProfileStore.materializeActive] -
- * both live inside [CompanionProfileStore.switchActive] so this screen only
- * ever calls the one function.
+ * **A fresh install has no profile yet** ([CompanionProfileStore.ensureSeeded] seeds only a legacy
+ * identity). EDIT then opens the editor on Alfred's defaults and the save creates the row;
+ * [CompanionProfileStore.saveProfile] adopts it as active because nothing else is.
  *
- * Split per `compose-state-holder-ui-split`: [CompanionsScreen] is the state
- * holder (owns the roster load, the two dialogs' open/closed state, and every
- * write), [CompanionsContent] is plain UI plus callbacks and is what the
- * `@Preview`s below exercise.
+ * Split per `compose-state-holder-ui-split`: [CompanionsScreen] is the state holder (owns the load,
+ * the editor's open/closed state, and the write), [CompanionsContent] is plain UI plus callbacks and
+ * is what the `@Preview`s below exercise.
  */
 data class CompanionsUiState(
     val loading: Boolean = true,
-    val roster: List<CompanionProfileEntity> = emptyList(),
-    val activeProfileId: String? = null,
+    /** The device's active profile, or null on an install that has none yet. */
+    val profile: CompanionProfileEntity? = null,
 )
 
 @Composable
@@ -77,55 +64,26 @@ fun CompanionsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(CompanionsUiState()) }
-    // Bumped after any write (create/edit/delete/switch) commits, to key the
-    // reload below - the same shape as LedgerScreen's reloadNonce.
+    // Bumped after a save commits, to key the reload below - the same shape as LedgerScreen's
+    // reloadNonce.
     var reloadNonce by remember { mutableStateOf(0) }
     var editing by remember { mutableStateOf<CompanionEditorState?>(null) }
-    var pendingDelete by remember { mutableStateOf<CompanionProfileEntity?>(null) }
 
     LaunchedEffect(reloadNonce) {
-        state = CompanionsUiState(
-            loading = false,
-            roster = CompanionProfileStore.roster(context),
-            activeProfileId = ActiveCompanionProfile.activeProfileId(context),
-        )
+        state = CompanionsUiState(loading = false, profile = CompanionProfileStore.activeProfile(context))
     }
 
     CompanionsContent(
         state = state,
         onBack = onBack,
-        onActivate = { profileId ->
-            scope.launch {
-                CompanionProfileStore.switchActive(context, profileId)
-                // Without this the switch never reached the running assistant: the base
-                // instruction stayed cached for two minutes and the warm socket kept the previous
-                // companion's voice and register, so tapping a different companion here changed
-                // the label and nothing audible. See notifyCompanionChanged's doc.
-                CompanionProfileStore.notifyCompanionChanged(context)
-                reloadNonce++
-            }
-        },
-        onCreate = {
-            // Defaults to the first built-in persona; the dialog itself keeps
-            // name/voice synced to whichever persona is picked until the
-            // user types/picks their own - see CompanionEditorDialog's doc.
-            val first = BUILT_IN_PERSONAS.first()
+        onEdit = {
+            val profile = state.profile
             editing = CompanionEditorState(
-                profileId = null,
-                name = first.defaultName,
-                personaKey = first.key,
-                voice = first.suggestedVoice,
+                profileId = profile?.profileId,
+                name = profile?.assistantName ?: ALFRED.defaultName,
+                voice = profile?.voice ?: ALFRED.suggestedVoice,
             )
         },
-        onEdit = { profile ->
-            editing = CompanionEditorState(
-                profileId = profile.profileId,
-                name = profile.assistantName,
-                personaKey = profile.persona,
-                voice = profile.voice,
-            )
-        },
-        onRequestDelete = { profile -> pendingDelete = profile },
     )
 
     editing?.let { form ->
@@ -134,21 +92,17 @@ fun CompanionsScreen(onBack: () -> Unit) {
             onDismiss = { editing = null },
             onSave = { saved ->
                 scope.launch {
-                    val existing = state.roster.firstOrNull { it.profileId == saved.profileId }
+                    val existing = state.profile?.takeIf { it.profileId == saved.profileId }
                     val entity = CompanionProfileEntity(
                         profileId = saved.profileId ?: UUID.randomUUID().toString(),
                         assistantName = saved.name.trim(),
-                        persona = saved.personaKey,
-                        // The picker built-ins have no PersonaSelection traits to carry
-                        // (task scope: no questionnaire wiring) - blank, same as every
-                        // other field the picker doesn't touch.
+                        persona = ALFRED.key,
                         traits = existing?.traits.orEmpty(),
                         voice = saved.voice,
                         voiceStyle = existing?.voiceStyle.orEmpty(),
                         voiceStyleTraits = existing?.voiceStyleTraits.orEmpty(),
-                        // Bumped to now on every save, create or edit - the sync clock
-                        // this task's spec calls out: an edit that doesn't bump it
-                        // silently loses to the other device's copy of the row.
+                        // Bumped to now on every save - the sync clock: an edit that doesn't bump
+                        // it silently loses to the other device's copy of the row.
                         updatedAt = System.currentTimeMillis(),
                     )
                     CompanionProfileStore.saveProfile(context, entity)
@@ -158,20 +112,6 @@ fun CompanionsScreen(onBack: () -> Unit) {
             },
         )
     }
-
-    pendingDelete?.let { toDelete ->
-        DeleteCompanionDialog(
-            profile = toDelete,
-            onConfirm = {
-                scope.launch {
-                    CompanionProfileStore.deleteProfile(context, toDelete.profileId)
-                    pendingDelete = null
-                    reloadNonce++
-                }
-            },
-            onDismiss = { pendingDelete = null },
-        )
-    }
 }
 
 /** Plain UI: [state] plus callbacks, no [CompanionProfileStore]/Room reference - see the file doc comment. */
@@ -179,10 +119,7 @@ fun CompanionsScreen(onBack: () -> Unit) {
 fun CompanionsContent(
     state: CompanionsUiState,
     onBack: () -> Unit,
-    onActivate: (profileId: String) -> Unit,
-    onCreate: () -> Unit,
-    onEdit: (CompanionProfileEntity) -> Unit,
-    onRequestDelete: (CompanionProfileEntity) -> Unit,
+    onEdit: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -195,13 +132,15 @@ fun CompanionsContent(
                 TextButton(onClick = onBack) {
                     Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("COMPANIONS", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                TextButton(onClick = onCreate) {
-                    Text("NEW", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
+                Text(
+                    "COMPANION",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
             Hairline()
 
+            val profile = state.profile
             when {
                 state.loading -> Text(
                     "Loading...",
@@ -209,21 +148,23 @@ fun CompanionsContent(
                     color = sem.ghost,
                     modifier = Modifier.padding(12.dp),
                 )
-                else -> {
-                    SectionHeader("PROFILES", state.roster.size.toString())
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(state.roster, key = { it.profileId }) { profile ->
-                            CompanionRow(
-                                profile = profile,
-                                isActive = profile.profileId == state.activeProfileId,
-                                canDelete = state.roster.size > 1,
-                                onActivate = { onActivate(profile.profileId) },
-                                onEdit = { onEdit(profile) },
-                                onDelete = { onRequestDelete(profile) },
-                            )
-                            Hairline()
-                        }
+                profile == null -> Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Not set up on this phone yet.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onEdit) {
+                        Text("SET UP", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                     }
+                }
+                else -> {
+                    CompanionRow(profile = profile, onEdit = onEdit)
+                    Hairline()
                 }
             }
         }
@@ -232,31 +173,25 @@ fun CompanionsContent(
 
 // ------------------------------------------------------------------------ previews
 
-private val previewRoster = listOf(
-    CompanionProfileEntity(
-        profileId = "p1", assistantName = "Alfred", persona = "alfred", traits = "",
-        voice = "Charon", voiceStyle = "", voiceStyleTraits = "", updatedAt = 2_000L,
-    ),
-    CompanionProfileEntity(
-        profileId = "p2", assistantName = "Dorothy", persona = "dorothy", traits = "",
-        voice = "Vindemiatrix", voiceStyle = "", voiceStyleTraits = "", updatedAt = 1_000L,
-    ),
+private val previewProfile = CompanionProfileEntity(
+    profileId = "p1", assistantName = "Alfred", persona = "alfred", traits = "",
+    voice = "Charon", voiceStyle = "", voiceStyleTraits = "", updatedAt = 2_000L,
 )
 
-@Preview(name = "Companions: loading", widthDp = 360, heightDp = 640)
+@Preview(name = "Companion: loading", widthDp = 360, heightDp = 640)
 @Composable
 private fun PreviewCompanionsLoading() = LegionTheme {
-    CompanionsContent(
-        CompanionsUiState(loading = true),
-        onBack = {}, onActivate = {}, onCreate = {}, onEdit = {}, onRequestDelete = {},
-    )
+    CompanionsContent(CompanionsUiState(loading = true), onBack = {}, onEdit = {})
 }
 
-@Preview(name = "Companions: two-profile roster", widthDp = 360, heightDp = 640)
+@Preview(name = "Companion: set up", widthDp = 360, heightDp = 640)
 @Composable
 private fun PreviewCompanionsPopulated() = LegionTheme {
-    CompanionsContent(
-        CompanionsUiState(loading = false, roster = previewRoster, activeProfileId = "p1"),
-        onBack = {}, onActivate = {}, onCreate = {}, onEdit = {}, onRequestDelete = {},
-    )
+    CompanionsContent(CompanionsUiState(loading = false, profile = previewProfile), onBack = {}, onEdit = {})
+}
+
+@Preview(name = "Companion: not set up yet", widthDp = 360, heightDp = 640)
+@Composable
+private fun PreviewCompanionsEmpty() = LegionTheme {
+    CompanionsContent(CompanionsUiState(loading = false, profile = null), onBack = {}, onEdit = {})
 }

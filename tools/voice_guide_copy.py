@@ -61,7 +61,6 @@ COPY = {
     "get_reported_crime_history": ("What's the crime history around here?", "Reported offenses for the nearest police or sheriff's agency, from the FBI's Crime Data Explorer - agency-wide, roughly a year old, and voluntarily reported. It will not tell you whether somewhere is \"safe\"; nothing can answer that honestly from this data.", "Voice only."),
     "show_app": ("Open the ledger", "Opens a screen in the app for you.", "Is itself navigation - every screen it can open is also reachable directly from the app's own tabs."),
     "end_conversation": ("That will be all", "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight.", "Voice only - closing the app or its notification is the nearest hands equivalent."),
-    "switch_companion": ("Can I talk to Dorothy?", "Hands the conversation to a different companion. They answer from the next turn on, in their own voice, and they will not know what was said before the handover.", "Companions screen - tap whichever one you want."),
     "finish_intro": ("I'm done setting up", "Finishes first-run setup.", "Onboarding screen's own final step."),
 
     # --- Your day ---
@@ -214,7 +213,7 @@ COPY = {
 }
 
 GROUPS = {
-    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation", "switch_companion"],
+    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation"],
     "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "complete_task", "tag_place", "rename_place", "forget_place", "show_saved_places", "show_agenda_modal", "show_generated_view", "ask_engine"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["navigate", "change_trip", "trip_status", "end_trip", "activate_garage", "control_volume"],

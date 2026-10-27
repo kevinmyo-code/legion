@@ -48,7 +48,7 @@ import kotlinx.coroutines.withContext
 /**
  * "Assistant" - the first of the five subscreens `settings/` split into (command-center ticket 02,
  * `.scratch/command-center/issues/02-settings-submenus.md`), replacing a slice of the old 718-line
- * `SettingsScreen.kt` wall. Owns the persona/companion picker link, the ignition switch, the
+ * `SettingsScreen.kt` wall. Owns the companion settings link, the ignition switch, the
  * playbook editor link, the wake word toggle, and conversation-adjacent behaviour (temperature
  * unit - spoken by the assistant, not just displayed).
  *
@@ -77,8 +77,8 @@ fun AssistantSettingsScreen(
     var activeName by remember { mutableStateOf<String?>(null) }
     var activeBlurb by remember { mutableStateOf<String?>(null) }
     // Bumped on ON_RESUME to key the reload below - a plain Unit key would only ever fire once,
-    // and this needs to re-fire every time the user comes back from Companions having edited or
-    // switched. Same shape the old monolith used for this same reload.
+    // and this needs to re-fire every time the user comes back from the Companion screen having
+    // edited it. Same shape the old monolith used for this same reload.
     var reloadNonce by remember { mutableStateOf(0) }
     var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
     var wakeTwoStage by remember { mutableStateOf(WakeWordPreferences.useTwoStage(context)) }
