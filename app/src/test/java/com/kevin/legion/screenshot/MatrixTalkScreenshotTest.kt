@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kevin.legion.service.Phase
+import com.kevin.legion.ui.dumb.MatrixTalkBarContent
 import com.kevin.legion.ui.dumb.MatrixTalkDisplay
 import com.kevin.legion.ui.dumb.MatrixTalkLine
 import com.kevin.legion.ui.dumb.MatrixTalkResolver
@@ -44,12 +45,29 @@ class MatrixTalkScreenshotTest {
 
     @Test
     fun `every phase, mic blocked and a notice, stacked`() {
-        val rows = Phase.entries.map { p -> phase(p) to (if (p == Phase.LISTENING) 5 else null) } + listOf(
+        val phases = Phase.entries.map { p -> phase(p) to (if (p == Phase.LISTENING) 5 else null) }
+        val thinkingAt = Phase.entries.indexOf(Phase.THINKING) + 1
+        val rows = phases.take(thinkingAt) + (MatrixTalkResolver.WORKING to null) + phases.drop(thinkingAt) + listOf(
             MatrixTalkResolver.resolve(Phase.IDLE, "CONNECTION LOST - TAP TO RETRY", true, false) to null,
             MatrixTalkResolver.resolve(Phase.IDLE, null, micGranted = false, silenced = false) to null,
             MatrixTalkResolver.resolve(Phase.LISTENING, null, micGranted = true, silenced = true) to null,
         )
         capture("matrix-talk-states.png", rows)
+    }
+
+    @Test
+    fun `the talk bar every Matrix screen sits on, idle, listening and working`() {
+        composeTestRule.setContent {
+            Column(
+                Modifier.fillMaxWidth().background(Color.Black).padding(vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                MatrixTalkBarContent(MatrixTalkResolver.IDLE, tick = null, levelCells = null, onTalk = {})
+                MatrixTalkBarContent(phase(Phase.LISTENING), tick = null, levelCells = 3, onTalk = {})
+                MatrixTalkBarContent(MatrixTalkResolver.WORKING, tick = null, levelCells = null, onTalk = {})
+            }
+        }
+        composeTestRule.onRoot().captureRoboImage("matrix-talk-bar.png")
     }
 
     private fun capture(fileName: String, rows: List<Pair<MatrixTalkDisplay, Int?>>) {

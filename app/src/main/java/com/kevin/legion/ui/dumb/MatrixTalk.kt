@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.dumb
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -40,6 +44,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.R
 import com.kevin.legion.dumb.rain.animationsOff
+import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.service.MicLevel
 import com.kevin.legion.service.Phase
@@ -60,6 +65,7 @@ internal fun rememberMatrixTalkDisplay(): MatrixTalkDisplay {
     val context = LocalContext.current
     val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
     val silenced by CompanionPhase.silenced.collectAsStateWithLifecycle()
+    val toolRunning by CompanionPhase.toolRunning.collectAsStateWithLifecycle()
     var micGranted by remember { mutableStateOf(hasRecordAudio(context)) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { micGranted = hasRecordAudio(context) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -72,10 +78,10 @@ internal fun rememberMatrixTalkDisplay(): MatrixTalkDisplay {
         }
     }
     LaunchedEffect(phase) { if (phase == Phase.LISTENING) notice = null }
-    return MatrixTalkResolver.resolve(phase, notice, micGranted, silenced)
+    return MatrixTalkResolver.resolve(phase, notice, micGranted, silenced, toolRunning)
 }
 
-private fun hasRecordAudio(context: android.content.Context): Boolean =
+internal fun hasRecordAudio(context: android.content.Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
 /**
@@ -170,5 +176,58 @@ internal fun TalkButton(onClick: () -> Unit, display: MatrixTalkDisplay = Matrix
             contentDescription = label,
             tint = if (display.live) DumbColors.ground else DumbColors.text,
         )
+    }
+}
+
+/**
+ * Matrix mode's talk bar: the Scaffold bottom bar while Matrix HOME, its text screens or All apps are
+ * showing, the way [com.kevin.legion.ui.assistant.AssistantStrip] is everywhere else (Kevin,
+ * 2026-10-27: *"make it like the normal mode where the bottom push to talk follows to other
+ * screens"*). One component and one state for every Matrix screen, so a turn started on one stays
+ * visible on the next. Same start path as the strip: ACTION_TALK to the service; with the mic not
+ * allowed a tap opens Settings, as the strip's does.
+ */
+@Composable
+fun MatrixTalkBar(onOpenSettings: () -> Unit) {
+    val context = LocalContext.current
+    val display = rememberMatrixTalkDisplay()
+    val talk: () -> Unit = {
+        if (hasRecordAudio(context)) {
+            context.startService(
+                Intent(context, AriaForegroundService::class.java).setAction(AriaForegroundService.ACTION_TALK),
+            )
+        } else {
+            onOpenSettings()
+        }
+    }
+    MatrixTalkBarFrame(display, talk) { LiveMatrixTalkLine(display, it) }
+}
+
+/** The bar, stateless, for screenshots: the line at [tick] / [levelCells] beside the mic. */
+@Composable
+internal fun MatrixTalkBarContent(display: MatrixTalkDisplay, tick: Int?, levelCells: Int?, onTalk: () -> Unit) {
+    MatrixTalkBarFrame(display, onTalk) { MatrixTalkLine(display, tick, levelCells, it) }
+}
+
+/** Black ground, a 1dp rule along the top edge, the line on the left and the mic on the right. */
+@Composable
+private fun MatrixTalkBarFrame(
+    display: MatrixTalkDisplay,
+    onTalk: () -> Unit,
+    line: @Composable (Modifier) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MatrixColors.ground)
+            .drawBehind {
+                drawLine(MatrixColors.rule, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+            }
+            .padding(start = 24.dp, end = 24.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        line(Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
+        TalkButton(onTalk, display)
     }
 }

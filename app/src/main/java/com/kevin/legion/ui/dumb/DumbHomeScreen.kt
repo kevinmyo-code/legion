@@ -12,8 +12,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -182,11 +180,6 @@ fun DumbHome(
         onLeave = viewModel::requestLeave,
         onOpenSettings = onOpenSettings,
         onOpenClock = { message = launcher.openAlarms() },
-        onTalk = {
-            message = null
-            talk()
-        },
-        talkDisplay = rememberMatrixTalkDisplay(),
     )
     SoftTheme {
         if (booksOpen) {
@@ -219,8 +212,6 @@ internal fun DumbHomeContent(
     onLeave: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onOpenClock: () -> Unit = {},
-    onTalk: () -> Unit = {},
-    talkDisplay: MatrixTalkDisplay = MatrixTalkResolver.IDLE,
 ) {
     Box(Modifier.fillMaxSize().background(DumbColors.ground)) {
     // The rain runs only while the screen is resumed; the scrim keeps the list above 4.5:1 over it.
@@ -269,8 +260,6 @@ internal fun DumbHomeContent(
                 Text(it, color = DumbColors.body, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
             }
         }
-        // What the mic is doing, in words, right above it (Kevin, 2026-10-27).
-        LiveMatrixTalkLine(talkDisplay)
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -282,9 +271,8 @@ internal fun DumbHomeContent(
                 fontSize = 13.sp,
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
             )
-            // Push-to-talk, always on screen: the Assistant row sits below the fold (Kevin, 2026-10-23).
-            TalkButton(onTalk, talkDisplay)
-            Spacer(Modifier.width(12.dp))
+            // Push-to-talk moved to the Matrix talk bar under every Matrix screen (Kevin, 2026-10-27),
+            // the Scaffold bottom bar [MatrixTalkBar]; it was this footer's round mic from 2026-10-23.
             PillButton("Leave", onLeave, primary = false)
         }
     }
