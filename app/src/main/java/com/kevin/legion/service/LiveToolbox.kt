@@ -153,8 +153,10 @@ object LiveToolbox {
      * ones included. [declarations] (the one actually sent to the Live setup message) filters this
      * down; [agentToolsFor] slices it back out per domain for a dispatcher's own sub-agent. Kept
      * `private` - nothing outside this file should ever advertise the unfiltered set to a model.
+     * (`internal` since 2026-10-27 only so `TextChatDeclarationSizeTest` can measure it against
+     * [declarations]; no production caller outside this file sends it.)
      */
-    private fun allDeclarations(): JSONArray {
+    internal fun allDeclarations(): JSONArray {
         val fns = JSONArray()
 
         // Category A - live-hardware tools (fleet-wide voice, ticket 01 §0). The
@@ -2452,6 +2454,44 @@ object LiveToolbox {
             for (i in 0 until extra.length()) fns.put(extra.getJSONObject(i))
         }
         return fns
+    }
+
+    /**
+     * Tools that steer the Live voice session itself and mean nothing to a typed turn on the text
+     * model: `end_conversation` arms a hang-up after the spoken reply, `switch_companion` arms a
+     * persona swap at the next Live turn boundary. Neither has a session to act on in typed chat.
+     */
+    val VOICE_SESSION_TOOLS = setOf("end_conversation", "switch_companion")
+
+    /**
+     * What typed chat's text model is offered (2026-10-27): exactly the voice set
+     * ([declarationsFor]) minus [VOICE_SESSION_TOOLS]. The trimmed set, not [allDeclarations] with
+     * the hidden reads exposed. Measured by `TextChatDeclarationSizeTest` (chars/4, Alfred): this
+     * set 91 tools, ~20,867 tokens; the full alternative 118 tools, ~24,943 tokens, about 4,100
+     * more. Live re-bills its block every turn, but REST re-bills it on every POST, and a typed turn
+     * that calls tools makes two to seven POSTs, so the saving that justified [DISPATCHED] for voice
+     * applies here at least as strongly. Every write is declared directly in both sets (DISPATCHED
+     * hides reads only), so the full set would buy one hop fewer on reads, not new capability. And
+     * one tool surface for both modes is one surface to keep honest.
+     */
+    fun textDeclarations(personaKey: String?): JSONArray {
+        val all = declarationsFor(personaKey)
+        val out = JSONArray()
+        for (i in 0 until all.length()) {
+            val decl = all.getJSONObject(i)
+            if (decl.getString("name") !in VOICE_SESSION_TOOLS) out.put(decl)
+        }
+        return out
+    }
+
+    /**
+     * Whether this call asks for a WRITE: a tool in [MUTATING_TOOLS], or a dispatcher (`ask_*`,
+     * `ask_engine`) the model called with `intent = "record"`. The typed chat engine tracks these
+     * so a write is reported done only when its own result came back `success: true` that turn.
+     */
+    fun isMutatingCall(name: String, args: JSONObject): Boolean {
+        val dispatcher = name == "ask_engine" || name in DISPATCHED.keys.map { "ask_$it" }
+        return name in MUTATING_TOOLS || (dispatcher && wantsWrite(args))
     }
 
     /**
