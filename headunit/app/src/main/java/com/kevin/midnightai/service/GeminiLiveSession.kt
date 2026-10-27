@@ -173,6 +173,9 @@ class GeminiLiveSession(
     @Volatile private var idleTimeoutMs = IDLE_TIMEOUT_MS
     @Volatile private var conversationActive = false
     private var warmHoldJob: Job? = null
+    // When the mic loop last read a buffer at or above [QuietWindow.SPEECH_PEAK], 0 if not since
+    // the mic opened. Lets the idle timer see speech the transcript has not reported yet.
+    @Volatile private var lastLocalSpeechAtMs = 0L
 
     // One-shot: the next completed turn parks warm instead of opening the mic.
     // Set when a proactive line is spoken on a warm socket, so the opener/alert is
@@ -1133,6 +1136,7 @@ class GeminiLiveSession(
                         record.startRecording()
                         everCaptured = true
                         recording = true
+                        lastLocalSpeechAtMs = 0L
                     } catch (e: Exception) {
                         Log.w(TAG, "Capture start/flush failed: ${e.message}")
                         delay(20)
@@ -1146,6 +1150,9 @@ class GeminiLiveSession(
                 // forward audio that belongs to an active turn.
                 if (!capturing) continue
                 bytesThisTurn += n
+                if (QuietWindow.peakAmplitude(buffer, n) >= QuietWindow.SPEECH_PEAK) {
+                    lastLocalSpeechAtMs = System.currentTimeMillis()
+                }
                 val b64 = Base64.encodeToString(buffer, 0, n, Base64.NO_WRAP)
                 sendRealtimeInput(JSONObject().put(
                     "audio",
@@ -1461,6 +1468,21 @@ class GeminiLiveSession(
                 ) {
                     delay(PENDING_TOOL_POLL_MS)
                 }
+                delay(idleTimeoutMs)
+            }
+            // The driver may be mid-sentence with no transcript back yet: the mic heard them.
+            var extensions = 0
+            while (running.get()) {
+                val heard = lastLocalSpeechAtMs
+                val sinceSpeech = if (heard > 0L) System.currentTimeMillis() - heard else null
+                if (!QuietWindow.shouldExtend(sinceSpeech, extensions)) {
+                    MidnightEvents.voiceTurnDecision(
+                        "idle park: msSinceLocalSpeech=${sinceSpeech ?: "never"} extensions=$extensions",
+                    )
+                    break
+                }
+                extensions++
+                MidnightEvents.voiceTurnDecision("idle extended $extensions: mic heard speech, no transcript yet")
                 delay(idleTimeoutMs)
             }
             if (!running.get()) return@launch
