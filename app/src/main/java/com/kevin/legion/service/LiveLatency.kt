@@ -13,6 +13,10 @@ import com.kevin.legion.car.CarProbeLog
  *   with no transcription (a typed turn, a proactive line) has no start mark and reports nothing.
  *   A tool call inside the turn is part of this figure; its own share is the tool line.
  * - **tool**: toolCall received to toolResponse sent, per call id, with the tool's name.
+ *
+ * Line format is `key_ms=<n>` plus `tool=`/`model=` where they apply (LiveToolbox.askEngine adds
+ * `ask_engine_ms=<n> model=<id>`). `tools/voice_latency.py` reads a `adb logcat -s LIVE_LATENCY`
+ * capture and prints count, p50, p95 and max per metric, so change both together.
  */
 internal class LiveLatency {
     private var startAtMs = 0L
