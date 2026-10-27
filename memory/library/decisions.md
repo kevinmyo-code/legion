@@ -6725,6 +6725,10 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Step-0 A25 spike approved.**
 - **Typed chat moves to a text model.** Built on branch `feat/typed-chat-text-model`.
 - Tools stay BLOCKING (commit 29057645 ruling, unchanged).
+- **A25 spike finding, acted on:** 3.8-live sends root `voiceActivity` ACTIVITY_START at speech
+  onset and inputTranscription only at the end, so the follow-up window now cancels on
+  ACTIVITY_START, and the local speech threshold drops from 2,000 to 150 (A25 speech peaked
+  200-400, room 16-31; one device).
 
 ## 2026-10-27 - Voice: the five read-only dispatchers become routers (Kevin's latency ask)
 

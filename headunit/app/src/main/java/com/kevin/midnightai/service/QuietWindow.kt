@@ -14,7 +14,12 @@ package com.kevin.midnightai.service
 internal object QuietWindow {
     const val RECENT_MS = 1_500L
     const val MAX_EXTENSIONS = 2
-    /** Peak amplitude (of 32767) counted as the driver talking. GUESSED, not measured in the car. */
+    /**
+     * Peak amplitude (of 32767) counted as the driver talking. GUESSED, not measured in the car.
+     * The phone measured speech at only ~200-400 on its own mic (A25, 2026-10-27; room 16-31) and
+     * dropped its threshold to 150. Left at 2,000 here on purpose: the head unit's mic and cabin
+     * differ, and this number must be set from its own drive log (`peakSinceMicOpen`).
+     */
     const val SPEECH_PEAK = 2_000
 
     fun shouldExtend(msSinceLocalSpeech: Long?, extensionsUsed: Int): Boolean =

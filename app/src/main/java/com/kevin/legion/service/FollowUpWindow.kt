@@ -31,8 +31,24 @@ object FollowUpWindow {
      */
     const val LOCAL_SPEECH_RECENT_MS = 1_500L
     const val MAX_EXTENSIONS = 2
-    /** Peak amplitude (of 32767) counted as the driver talking. GUESSED, not measured in the car. */
-    const val LOCAL_SPEECH_PEAK = 2_000
+    /**
+     * Peak amplitude (of 32767) counted as the user talking. MEASURED ON ONE DEVICE (A25 spike,
+     * 2026-10-27): Kevin's voice peaked at ~200-400 (logcat `mic level: peak=290/330/380`), the
+     * quiet room at 16-31. The old 2,000 was a guess that real speech on that mic never reached,
+     * so the local backup never fired. 150 sits clear of the room and under the speech; another
+     * phone or a car cabin may need its own number.
+     */
+    const val LOCAL_SPEECH_PEAK = 150
+
+    /**
+     * True when a root server message is `voiceActivity` of type `ACTIVITY_START` (2026-10-27,
+     * A25 spike). gemini-3.8-live sends `{"voiceActivity":{"type":"ACTIVITY_START",...}}` the
+     * moment it hears speech, while inputTranscription arrives only once, at the END of the
+     * utterance. ACTIVITY_START is therefore the earliest user-speech signal there is, and the
+     * one the window must cancel on. ACTIVITY_END is not a cancel and reads false.
+     */
+    fun isActivityStart(root: org.json.JSONObject): Boolean =
+        root.optJSONObject("voiceActivity")?.optString("type") == "ACTIVITY_START"
 
     data class State(
         val awaitingMic: Boolean = false,

@@ -1197,6 +1197,21 @@ class GeminiLiveSession(
         // half of why a dropped socket silently dropped the conversation's memory with it.
         root.optJSONObject("goAway")?.let { handleGoAway(it) }
         root.optJSONObject("sessionResumptionUpdate")?.let { handleSessionResumptionUpdate(it) }
+        // 2026-10-27 (A25 spike): 3.8-live reports speech onset at the root as voiceActivity, and
+        // inputTranscription only arrives when the user STOPS. Waiting for the transcript let the
+        // follow-up window close mid-sentence (ACTIVITY_START 16:31:13.214, window expired
+        // 16:31:16.047). ACTIVITY_START cancels exactly as the transcript branch does; that
+        // branch stays as the fallback. ACTIVITY_END is logged only.
+        root.optJSONObject("voiceActivity")?.let { va ->
+            LiveLatency.log(
+                "LIVE_FOLLOWUP",
+                "voiceActivity ${va.optString("type")} audioOffset=${va.optString("audioOffset")}",
+            )
+            if (FollowUpWindow.isActivityStart(root)) {
+                idleJob?.cancel()
+                followUpEvent(FollowUpWindow.Event.UserSpeech)
+            }
+        }
         // The sixth message field, and the one this class ignored for its whole life until
         // 2026-09-06. The Live API reports token usage alongside serverContent, and dropping it
         // meant NOTHING in this app had ever read a measured token count off a voice conversation -

@@ -738,6 +738,14 @@ class GeminiLiveSession(
         root.optJSONObject("toolCallCancellation")?.let { handleToolCallCancellation(it) }
         root.optJSONObject("goAway")?.let { handleGoAway(it) }
         // sessionResumptionUpdate is ignored in this version.
+        // 2026-10-27: the phone's gemini-3.8-live sends a root voiceActivity ACTIVITY_START at
+        // speech onset, long before the one inputTranscription at the end of the utterance. The
+        // same cancel here, harmless if this model never sends it.
+        root.optJSONObject("voiceActivity")?.let { va ->
+            val type = va.optString("type")
+            MidnightEvents.voiceTurnDecision("voiceActivity $type audioOffset=${va.optString("audioOffset")}")
+            if (type == "ACTIVITY_START") idleJob?.cancel()
+        }
     }
 
     /**
