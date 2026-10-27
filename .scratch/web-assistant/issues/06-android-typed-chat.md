@@ -4,7 +4,7 @@ ticket: "06"
 title: "Android typed chat: a text turn into the Live session, or a separate text model"
 type: decision
 status: resolved
-status-detail: "Opus proposal: typed turns into the same Live session, shown as text"
+status-detail: "SUPERSEDED 2026-10-27 (Kevin): typed chat goes to a text model, not the Live session"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -35,3 +35,10 @@ Live model answers in audio only, typed and spoken turns can share one session):
 - Typing while a voice reply is playing interrupts it (same as speaking over it).
 - With no session open, typing opens one (mic stays closed) so tools and honesty rules are identical
   to voice.
+
+## Superseded (2026-10-27)
+
+Kevin: *"typed chat should go to a normal text llm instead of the voice model"*. The answer above no
+longer stands. Typed chat goes to `gemini-3.8-flash` over REST with the same instruction builder, the
+same tools and the same tool runner, and never touches the Live session. Record:
+`memory/library/decisions.md` "2026-10-27 - Phone typed chat moves to a text model (Kevin)".

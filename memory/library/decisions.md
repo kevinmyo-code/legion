@@ -6670,3 +6670,38 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   progression + chapter label, never title or text; Readium's TypeScript toolkit on the web so EPUB
   locators match, with a "near" fallback said in words.
 - ADR 0061 amended a second time the same day. Tickets `.scratch/books/issues/07` to `10`.
+
+## 2026-10-27 - Phone typed chat moves to a text model (Kevin)
+
+- Kevin: *"typed chat should go to a normal text llm instead of the voice model"*. **Supersedes the
+  resolution of `.scratch/web-assistant/issues/06-android-typed-chat.md` (2026-10-04)**, which sent a
+  typed message into the Live session as a text turn with the audio muted and showed Google's
+  transcript of the generated speech.
+- Voice stays on Gemini Live native audio. Alfred is the phone's only persona (another branch).
+- **What replaced it (built on `feat/typed-chat-text-model`):**
+  - `gemini-3.8-flash` over REST on the user's own key, through `ai/GeminiRest.kt` (the HTTP boundary
+    lifted out of `SubAgent`, so metering and KeyHealth are shared). No `thinkingConfig`, no
+    `temperature` (commit 29057645), no `googleSearch` (cannot mix with function declarations on
+    Flash). Non-streaming for now.
+  - Same brain: `AriaBrain.buildTextInstruction()` is the voice builder minus the persona's accent and
+    the voice-style layer, plus `TEXT_MODE_NOTE`. `SHARED_INSTRUCTIONS` and `SAFETY_INSTRUCTIONS`
+    (with `CANNOT_CLAUSE` and `DATA_ACCESS_CLAUSE`) are the identical strings; a test pins it.
+  - Same tools, one runner: `LiveToolbox.textDeclarations` is the voice set minus `end_conversation`
+    and `switch_companion`. Measured (chars/4, Alfred): 91 tools, ~20,867 tokens, against ~24,943 for
+    the full set with the dispatched reads exposed. REST re-bills the block on every POST of a turn,
+    so the trimmed set. Every call runs through the controller's own tool runner (`runTool`,
+    extracted from `handleToolCall`), so no tool has a second implementation (ADR 0035).
+  - Loop: 6 tool rounds plus one tool-free backstop, 120 s per turn. A write is reported done only on
+    a `success: true` result that turn; failure wording names writes that completed and writes whose
+    outcome is unknown.
+  - History: the panel transcript, spoken and typed lines, newest 8,000 chars or 30 lines.
+  - **Typing during a live voice conversation answers in text and leaves the voice session alone**
+    (speech, mic, follow-up window and phase untouched). One typed message at a time; a second is
+    refused in words. A crisis phrase shows the crisis card and sends nothing.
+  - Typed turns still reach episodic memory and the conversation audit trail (`TypedTurnRecorder`),
+    with the read-through exclusion applied as on the voice path.
+- **Known asymmetry:** the text model sees spoken turns through the panel; the Live session does not
+  see typed turns. Owed: feed the last typed exchange into the next voice start's context.
+- Fixes that fell out: the 8 s follow-up window, the hot mic and the false "Listening" during a typed
+  turn are gone because typing no longer touches the socket; the panel is no longer wiped when the
+  voice socket closes before a typed follow-up.
