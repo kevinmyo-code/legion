@@ -219,10 +219,9 @@ object EngineToolbox {
                 "loop, and reports back what it actually did). Use it for multi-step requests " +
                 "(find a record, then change or delete it), for one sentence that produces " +
                 "several rows (\"log three sets, 185 for 5 each\"), or when you do not already " +
-                "know the record type's exact fields. It typically answers in one to a few " +
-                "seconds and stays SILENT while working - if a call runs past about 4 seconds say " +
-                "a short filler (\"working on it\") rather than leaving dead air, but do not " +
-                "narrate every call. Its answer always states rows written and rows failed in " +
+                "know the record type's exact fields. It answers in one to a few seconds and is " +
+                "silent while working, so say one brief line before calling it, never an outcome, " +
+                "and do not narrate every call. Its answer always states rows written and rows failed in " +
                 "words; speak that outcome back plainly and never claim more was written than it " +
                 "reports.$ROUTING_NOTE",
             params = obj("instruction" to schema("string", "The user's request, in their own words.")),

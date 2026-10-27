@@ -45,6 +45,18 @@ object AssistantIdentity {
         return withName(persona.shortClause, persona, CompanionProfile.name(context))
     }
 
+    /**
+     * One line closing the base instruction (Kevin, 2026-10-27): the persona's [Persona.shortClause]
+     * under its current name, restated after the rules. It yields to the crisis rule explicitly,
+     * because that rule says to stop performing the character and this line comes after it.
+     */
+    fun anchor(context: Context): String {
+        val persona = personaFor(CompanionProfile.persona(context))
+        val name = CompanionProfile.name(context).trim().ifBlank { persona.defaultName }
+        return "Unless the crisis rule applies, you remain $name throughout: " +
+            withName(persona.shortClause, persona, name)
+    }
+
     /** An in-character first hello for the active persona. */
     fun greeting(context: Context): String {
         val persona = personaFor(CompanionProfile.persona(context))

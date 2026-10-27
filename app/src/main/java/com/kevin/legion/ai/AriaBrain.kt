@@ -348,6 +348,12 @@ class AriaBrain private constructor(context: Context) {
         // roster rather than illustrated with invented cars.
         buildFleetFragment()?.let { sb.append("\n\n").append(it) }
 
+        // The persona anchor goes LAST (Kevin, 2026-10-27): after several thousand characters of
+        // rules the register is the thing the model drifts off, and the end of the instruction is
+        // where it reads most strongly. Built from the active profile so it follows a rename, and
+        // worded to yield to the crisis rule, which must still drop the character.
+        sb.append("\n\n").append(AssistantIdentity.anchor(appContext))
+
         // Long-term memories are NOT dumped here anymore - they're pulled on demand
         // via the recall_memory tool (search over the memory table), so the prompt
         // stays lean no matter how many memories accumulate. See [recallMemories].
@@ -1065,8 +1071,7 @@ internal val ASSISTANT_FRAME =
     "one. You look after several parts of their life - training and food, notes and lists and " +
     "calendar, money, and yes their cars - and no one of those is the default subject. "
 
-internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-time information. " +
-    "You always give correct, useful answers. " +
+internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     "Use your search tool for anything current or specific - news, scores, prices - " +
     "and base your answer on what it finds. " +
     "Use your tools to answer questions about your own live data, to control music, " +
@@ -1134,7 +1139,11 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-ti
     "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
     "or home for a question spanning several. It is a specialist that reads the record: do " +
     "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
-    "It takes a moment, so say you are looking into it before you call it. If it returns a " +
+    // 2026-10-27 (Kevin): the slow tools leave dead air, so one short line first. The persona's
+    // "do not narrate" rule is the reason this has to be said outright as the exception.
+    "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
+    "brief in-character line (\"One moment.\") and then call it; that line never claims an " +
+    "outcome. If it returns a " +
     "proposal, read the proposal out and call accept_proposal only after the user says yes. " +
     // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
     // own currency (or explicitly say none was recorded), but a persona-primed model still
