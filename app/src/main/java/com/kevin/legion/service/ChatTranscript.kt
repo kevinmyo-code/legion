@@ -125,7 +125,10 @@ data class ChatTranscript(
      * it did not run, with the tool's own [detail] when it gave one.
      */
     fun tool(name: String, ok: Boolean, detail: String? = null): ChatTranscript =
-        add(
+        // A pending typed reply means this line is typed chat's and must never wipe the panel.
+        // Otherwise it is a voice tool call, which arrives BEFORE its turnComplete and so has to
+        // start a fresh panel itself, or turnComplete's beginIfEnded would wipe it.
+        (if (pendingTypedReply != null) this else beginIfEnded()).add(
             ChatEntry.Kind.TOOL,
             humanToolName(name),
             note = if (ok) null else "Did not run" + (detail?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""),

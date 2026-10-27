@@ -98,6 +98,22 @@ class ChatTranscriptTest {
     }
 
     @Test
+    fun `a voice tool line on the first turn after a close survives that turn`() {
+        val ended = ChatTranscript().turnComplete("a", "b", typed = false).sessionEnded()
+        val t = ended.tool("get_current_time", ok = true).turnComplete("time?", "Four.", typed = false)
+        assertEquals(listOf(Kind.TOOL, Kind.USER, Kind.ASSISTANT), kinds(t))
+    }
+
+    @Test
+    fun `a typed tool line after the voice socket closed does not wipe the panel`() {
+        val t = ChatTranscript().turnComplete("a", "b", typed = false)
+            .typedSent("q")
+            .sessionEnded()
+            .tool("log_meal", ok = true)
+        assertEquals(listOf(Kind.USER, Kind.ASSISTANT, Kind.USER, Kind.SYSTEM, Kind.TOOL), kinds(t))
+    }
+
+    @Test
     fun `a closed session keeps what was said and says it ended`() {
         val t = ChatTranscript().turnComplete("a", "b", typed = false).sessionEnded()
         assertTrue(t.ended)
