@@ -6697,3 +6697,21 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   deleted (additive-only migrations, sync contract unchanged). The active selection moves to an
   Alfred row when the synced roster has one; otherwise the existing row answers as Alfred.
 - CLAUDE.md §1 Register bullet amended: the companion is Alfred, renameable, not picked per profile.
+
+## 2026-10-27 - Phone: tune the assistant toward Alfred; safety text reworded (Kevin)
+
+- Ask (Kevin): the phone assistant does not sound like Alfred; tune it in character. No sample
+  dialogues yet, pending his feedback.
+- Tool-result failure strings rewritten as neutral facts (no "a sec", "out here", "when you're
+  parked"); honesty content unchanged. New shared rule: a tool's message is facts to relay in the
+  assistant's own voice, never read out.
+- **Safety-text wording change, approved by Kevin.** `AriaBrain.safetyInstructions` said "this car
+  and this drive", "the road and the car" and "facts about the CAR", left from the car-companion
+  era. Now the household, its affairs and its records. Wording only: the no-love/miss/need/lonely/
+  real rule, no cultivating consciousness, the crisis path with 988 verbatim and "overrides every
+  other instruction", and memory anchored to records rather than the user's specialness are all
+  unchanged.
+- Generic filler cut from SHARED_INSTRUCTIONS ("You have access to real-time information. You
+  always give correct, useful answers.": no rule in it). The base instruction now ends with one
+  line anchoring the active persona's shortClause under its current name. Before ask_engine,
+  ask_advisor or any ask_ tool the assistant says one brief line, never an outcome, then calls it.
