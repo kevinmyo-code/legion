@@ -176,6 +176,9 @@ class GeminiLiveSession(
     // When the mic loop last read a buffer at or above [QuietWindow.SPEECH_PEAK], 0 if not since
     // the mic opened. Lets the idle timer see speech the transcript has not reported yet.
     @Volatile private var lastLocalSpeechAtMs = 0L
+    // Loudest buffer since the mic opened, logged with every park/extension so a drive shows what
+    // [QuietWindow.SPEECH_PEAK] should be.
+    @Volatile private var peakSinceMicOpen = 0
 
     // One-shot: the next completed turn parks warm instead of opening the mic.
     // Set when a proactive line is spoken on a warm socket, so the opener/alert is
@@ -1137,6 +1140,7 @@ class GeminiLiveSession(
                         everCaptured = true
                         recording = true
                         lastLocalSpeechAtMs = 0L
+                        peakSinceMicOpen = 0
                     } catch (e: Exception) {
                         Log.w(TAG, "Capture start/flush failed: ${e.message}")
                         delay(20)
@@ -1150,9 +1154,9 @@ class GeminiLiveSession(
                 // forward audio that belongs to an active turn.
                 if (!capturing) continue
                 bytesThisTurn += n
-                if (QuietWindow.peakAmplitude(buffer, n) >= QuietWindow.SPEECH_PEAK) {
-                    lastLocalSpeechAtMs = System.currentTimeMillis()
-                }
+                val peak = QuietWindow.peakAmplitude(buffer, n)
+                if (peak > peakSinceMicOpen) peakSinceMicOpen = peak
+                if (peak >= QuietWindow.SPEECH_PEAK) lastLocalSpeechAtMs = System.currentTimeMillis()
                 val b64 = Base64.encodeToString(buffer, 0, n, Base64.NO_WRAP)
                 sendRealtimeInput(JSONObject().put(
                     "audio",
@@ -1477,12 +1481,15 @@ class GeminiLiveSession(
                 val sinceSpeech = if (heard > 0L) System.currentTimeMillis() - heard else null
                 if (!QuietWindow.shouldExtend(sinceSpeech, extensions)) {
                     MidnightEvents.voiceTurnDecision(
-                        "idle park: msSinceLocalSpeech=${sinceSpeech ?: "never"} extensions=$extensions",
+                        "idle park: msSinceLocalSpeech=${sinceSpeech ?: "never"} extensions=$extensions " +
+                            "peakSinceMicOpen=$peakSinceMicOpen",
                     )
                     break
                 }
                 extensions++
-                MidnightEvents.voiceTurnDecision("idle extended $extensions: mic heard speech, no transcript yet")
+                MidnightEvents.voiceTurnDecision(
+                    "idle extended $extensions: mic heard speech, no transcript yet; peakSinceMicOpen=$peakSinceMicOpen",
+                )
                 delay(idleTimeoutMs)
             }
             if (!running.get()) return@launch

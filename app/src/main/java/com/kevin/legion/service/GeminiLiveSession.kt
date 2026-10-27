@@ -296,6 +296,9 @@ class GeminiLiveSession(
     // When the mic loop last read a buffer at or above [FollowUpWindow.LOCAL_SPEECH_PEAK], 0 if not
     // since the mic opened. Lets the window see speech the transcript has not reported yet.
     @Volatile private var lastLocalSpeechAtMs = 0L
+    // Loudest buffer since the mic opened, logged with every extension/close so a drive shows what
+    // [FollowUpWindow.LOCAL_SPEECH_PEAK] should be.
+    @Volatile private var peakSinceMicOpen = 0
     private var audioTrack: AudioTrack? = null
 
     /**
@@ -2032,6 +2035,7 @@ class GeminiLiveSession(
                         bytesSinceOpen = 0L
                         peakSinceOpen = 0
                         lastLocalSpeechAtMs = 0L
+                        peakSinceMicOpen = 0
                         deafMicHandledThisOpen = false
                         // Physical open, fired AFTER startRecording() actually returns - the
                         // whole point of this event is that it lags the capturing=true intent
@@ -2130,6 +2134,7 @@ class GeminiLiveSession(
                 if (level > peakSinceOpen) peakSinceOpen = level
                 if (level > intervalPeak) intervalPeak = level
                 val nowMs = System.currentTimeMillis()
+                if (recording && level > peakSinceMicOpen) peakSinceMicOpen = level
                 if (recording && level >= FollowUpWindow.LOCAL_SPEECH_PEAK) lastLocalSpeechAtMs = nowMs
                 if (recording && nowMs - lastLevelLogAtMs >= LEVEL_LOG_INTERVAL_MS) {
                     Log.d(TAG, "mic level: peak=$intervalPeak forwardedSinceOpen=$bytesSinceOpen " +
@@ -2613,14 +2618,18 @@ class GeminiLiveSession(
                 if (followUp.extensions > 0) {
                     CarProbeLog.log(
                         "LIVE_FOLLOWUP",
-                        "extended ${followUp.extensions}: mic heard speech, no transcript yet",
+                        "extended ${followUp.extensions}: mic heard speech, no transcript yet; " +
+                            "peakSinceMicOpen=$peakSinceMicOpen",
                     )
                 }
             }
             FollowUpWindow.Action.CLOSE -> {
                 val heard = lastLocalSpeechAtMs
                 val sinceSpeech = if (heard > 0L) "${System.currentTimeMillis() - heard}" else "never"
-                CarProbeLog.log("LIVE_FOLLOWUP", "closed after silence; msSinceLocalSpeech=$sinceSpeech")
+                CarProbeLog.log(
+                    "LIVE_FOLLOWUP",
+                    "closed after silence; msSinceLocalSpeech=$sinceSpeech peakSinceMicOpen=$peakSinceMicOpen",
+                )
                 Log.d(TAG, "follow-up window expired after ${FollowUpWindow.WINDOW_MS}ms of silence")
                 emit(LiveEvent.FollowUpExpired)
                 closeSession("stopped")
