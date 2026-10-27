@@ -123,6 +123,7 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
 
     val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
     val caption by CompanionPhase.caption.collectAsStateWithLifecycle()
+    val toolRunning by CompanionPhase.toolRunning.collectAsStateWithLifecycle()
 
     // Ticket 15's signal, finally reaching the driver. It used to stop at
     // CarProbeLog and the Settings diagnostic page, which meant the one state
@@ -211,7 +212,7 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
 
     CompositionLocalProvider(LocalTypedChat provides typedChat) {
         AssistantStripContent(
-            state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced),
+            state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced, toolRunning),
             onTap = talk,
         )
     }

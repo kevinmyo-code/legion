@@ -744,7 +744,14 @@ private fun LegionShell(
             // Renders nothing at all on DRIVING (ticket 20) - same "occupies zero space" shape this
             // slot already had.
             bottomBar = {
-                if (!isDrivingMode && !isDumbHome) {
+                // Matrix mode's own talk bar under Matrix HOME, its text screens and All apps (all
+                // on the HOME route), so push-to-talk follows across Matrix screens the way the strip
+                // follows across the rest (Kevin, 2026-10-27). The digest screen keeps no bar.
+                if (!isDrivingMode && isDumbHome && dumbState.on) {
+                    com.kevin.legion.ui.dumb.MatrixTalkBar(onOpenSettings = {
+                        navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
+                    })
+                } else if (!isDrivingMode && !isDumbHome) {
                     // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051) - the
                     // talk bar is shell chrome, converted along with StatusLine below; the NavHost
                     // content beside it stays on [LegionTheme] until its own ticket.

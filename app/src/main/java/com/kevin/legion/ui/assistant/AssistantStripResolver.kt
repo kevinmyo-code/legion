@@ -87,6 +87,28 @@ object AssistantStripResolver {
         )
     }
 
+    /**
+     * [resolve], plus whether THINKING is a tool call in flight
+     * ([com.kevin.legion.service.CompanionPhase.toolRunning]). Then the label reads [WORKING_LABEL],
+     * matching the controller's own "Working..." status (2026-10-27). Mic, silenced and notice
+     * still outrank it, because they replace the phase label entirely.
+     */
+    fun resolve(
+        phase: Phase,
+        caption: String,
+        notice: String?,
+        micGranted: Boolean,
+        silenced: Boolean,
+        toolRunning: Boolean,
+    ): State {
+        val state = resolve(phase, caption, notice, micGranted, silenced)
+        val phaseShown = state.label == phaseLabel(phase)
+        return if (toolRunning && phase == Phase.THINKING && phaseShown) state.copy(label = WORKING_LABEL) else state
+    }
+
+    /** THINKING while a tool runs, matching the controller's "Working..." status. */
+    const val WORKING_LABEL = "Working…"
+
     /** Legible-at-a-glance text for each [Phase]. Never rely on colour alone (CLAUDE.md §7). */
     fun phaseLabel(phase: Phase): String = when (phase) {
         Phase.IDLE -> "Tap to talk"

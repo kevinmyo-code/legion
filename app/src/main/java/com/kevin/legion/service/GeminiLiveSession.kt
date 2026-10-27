@@ -2164,6 +2164,7 @@ class GeminiLiveSession(
                 // accumulates every read; see [peakSinceOpen]'s declaration above for why the two
                 // accumulators are deliberately separate.
                 val level = MicSignal.peakAmplitude(buffer, n)
+                MicLevel.publish(level) // Matrix HOME's live level bar (2026-10-27)
                 if (level > peakSinceOpen) peakSinceOpen = level
                 if (level > intervalPeak) intervalPeak = level
                 val nowMs = System.currentTimeMillis()

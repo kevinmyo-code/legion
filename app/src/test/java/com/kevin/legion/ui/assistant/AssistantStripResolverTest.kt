@@ -137,4 +137,23 @@ class AssistantStripResolverTest {
         assertEquals(false, state.silenced)
         assertEquals(true, state.active)
     }
+
+    @Test
+    fun `a tool in flight reads Working, and only while THINKING`() {
+        val working = AssistantStripResolver.resolve(
+            phase = Phase.THINKING, caption = "", notice = null,
+            micGranted = true, silenced = false, toolRunning = true,
+        )
+        assertEquals("Working…", working.label)
+        val thinking = AssistantStripResolver.resolve(
+            phase = Phase.THINKING, caption = "", notice = null,
+            micGranted = true, silenced = false, toolRunning = false,
+        )
+        assertEquals("Thinking…", thinking.label)
+        val speaking = AssistantStripResolver.resolve(
+            phase = Phase.SPEAKING, caption = "", notice = null,
+            micGranted = true, silenced = false, toolRunning = true,
+        )
+        assertEquals("Speaking…", speaking.label)
+    }
 }
