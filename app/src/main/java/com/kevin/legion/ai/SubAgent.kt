@@ -1,7 +1,11 @@
 package com.kevin.legion.ai
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
@@ -84,11 +88,23 @@ sealed class FileActiveResult {
     object TimedOut : FileActiveResult()
 }
 
-class SubAgent(
-    private val systemInstruction: String = "",
-    private val useSearch: Boolean = true,
-    private val model: String = DEFAULT_MODEL,
+class SubAgent internal constructor(
+    private val systemInstruction: String,
+    private val useSearch: Boolean,
+    private val model: String,
+    /**
+     * Test seam (2026-10-27, router mode): when set, every POST goes here instead of over HTTP, so
+     * a JVM test can script Gemini's replies and count the calls. Null in production, which is
+     * the only value the public constructor below can pass.
+     */
+    private val transport: (suspend (JSONObject) -> HttpOutcome)?,
 ) {
+    constructor(
+        systemInstruction: String = "",
+        useSearch: Boolean = true,
+        model: String = DEFAULT_MODEL,
+    ) : this(systemInstruction, useSearch, model, null)
+
     /**
      * One-shot worker. [context] is the domain data block the caller assembled;
      * [question] is what to answer about it. Returns the worker's text, or null
@@ -344,20 +360,7 @@ class SubAgent(
             // real chance to run instead of being forced straight to prose.
             val forceAnswer = postNumber > maxModelCalls
 
-            val body = JSONObject().apply {
-                if (systemInstruction.isNotBlank()) {
-                    put("systemInstruction", JSONObject().put(
-                        "parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
-                }
-                put("contents", contents)
-                // NEVER google_search here - unsupported alongside function
-                // declarations on Flash; web search is the web_lookup tool.
-                put("tools", JSONArray().put(declarations))
-                if (forceAnswer) {
-                    put("toolConfig", JSONObject().put(
-                        "functionCallingConfig", JSONObject().put("mode", "NONE")))
-                }
-            }
+            val body = toolCallingBody(contents, declarations, forceAnswer)
 
             val json = when (val o = postRaw(body)) {
                 is HttpOutcome.Ok -> o.json
@@ -384,33 +387,11 @@ class SubAgent(
 
             val results = mutableListOf<AgentProtocol.ToolResult>()
             for (call in calls) {
-                val tool = toolsByName[call.name]
-                val response = if (tool == null) {
-                    JSONObject().put("error", "unknown tool")
-                } else {
-                    try {
-                        val out = withTimeoutOrNull(tool.timeoutMs) { tool.run(call.args) }
-                        if (out != null) {
-                            // Only recorded on a completed, non-throwing run - a timeout below
-                            // falls into the "timed out" branch, never marked as called.
-                            if (call.name in mutatingToolNames) mutatingToolsCalled.add(call.name)
-                            JSONObject().put("result", out)
-                        } else {
-                            Log.w(TAG, "investigate round $postNumber: ${call.name} timed out")
-                            JSONObject().put("error", "timed out")
-                        }
-                    } catch (e: Exception) {
-                        // A thrown tool used to vanish into the {"error": ...} fed back to the
-                        // model with no trace on-device (CLAUDE.md §4 rule 6's shape one layer up:
-                        // "called and failed" must not be invisible). Logged, not swallowed - this
-                        // is what would have shown ask_goals actually attempting (and losing) a
-                        // write during the defect this whole change traces back to, had one been
-                        // attempted and thrown instead of never being called at all.
-                        Log.w(TAG, "investigate round $postNumber: ${call.name} failed: ${e.message}")
-                        JSONObject().put("error", e.message ?: "tool failed")
-                    }
-                }
-                results.add(AgentProtocol.ToolResult(call.name, call.id, response))
+                val run = runTool(toolsByName[call.name], call, "investigate round $postNumber")
+                // Only recorded on a completed, non-throwing run - a timeout falls into the
+                // "timed out" branch of runTool, never marked as called.
+                if (run.output != null && call.name in mutatingToolNames) mutatingToolsCalled.add(call.name)
+                results.add(AgentProtocol.ToolResult(call.name, call.id, run.response))
             }
 
             // Unchanged timing from before this fix: the nudge starts feeding into round
@@ -423,7 +404,136 @@ class SubAgent(
         }
     }
 
-    private sealed class HttpOutcome {
+    /**
+     * Router mode (2026-10-27, Kevin: the voice agent feels slow). ONE model POST with [tools]
+     * declared. If the model calls tools, they run (in parallel - callers hand this only read-only
+     * tools, see LiveToolbox's DISPATCHED) under each tool's own [AgentTool.timeoutMs], and their
+     * RAW results come back framed by [frameRouteResults] for the Live model to phrase itself. No
+     * second POST composes prose, which is where [investigate] spends most of its time. If the
+     * model calls no tool, its text comes back as [investigate]'s would.
+     *
+     * Known cost: a question that needs two DEPENDENT tool steps (look something up, then use it
+     * as the next tool's argument) gets one round only. The model is told so in the question.
+     *
+     * Errors map to the same [AgentResult] variants [investigate] returns, so a caller's failure
+     * wording does not change: HTTP errors through [classify], transport failure [AgentResult.Offline],
+     * a blocked prompt, an empty reply, every requested tool failing, or [budgetMs] running out
+     * [AgentResult.Failed]. A PARTIAL failure is not a failure: the failed calls' errors ride
+     * along in the results so the Live model can say what it could not get.
+     */
+    suspend fun route(
+        question: String,
+        tools: List<AgentTool>,
+        budgetMs: Long = 30_000,
+        mutatingToolNames: Set<String> = emptySet(),
+    ): AgentResult = withContext(Dispatchers.IO) {
+        withTimeoutOrNull(budgetMs) { runRoute(question, tools, mutatingToolNames) } ?: AgentResult.Failed
+    }
+
+    private suspend fun runRoute(
+        question: String,
+        tools: List<AgentTool>,
+        mutatingToolNames: Set<String>,
+    ): AgentResult {
+        val contents = JSONArray().put(
+            JSONObject()
+                .put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", question + ROUTE_NOTE))),
+        )
+        return when (val o = postRaw(toolCallingBody(contents, AgentProtocol.declarations(tools), false))) {
+            is HttpOutcome.Ok -> routeReply(o.json, question, tools, mutatingToolNames)
+            is HttpOutcome.HttpError -> classify(o)
+            HttpOutcome.Network -> AgentResult.Offline
+        }
+    }
+
+    private suspend fun routeReply(
+        json: String,
+        question: String,
+        tools: List<AgentTool>,
+        mutatingToolNames: Set<String>,
+    ): AgentResult {
+        val calls = AgentProtocol.functionCalls(json)
+        return when {
+            AgentProtocol.blockReason(json) != null -> AgentResult.Failed
+            calls.isEmpty() -> AgentProtocol.answerText(json)?.let { AgentResult.Success(it) } ?: AgentResult.Failed
+            else -> runRoutedTools(question, calls, tools, mutatingToolNames)
+        }
+    }
+
+    private suspend fun runRoutedTools(
+        question: String,
+        calls: List<AgentProtocol.FunctionCall>,
+        tools: List<AgentTool>,
+        mutatingToolNames: Set<String>,
+    ): AgentResult {
+        Log.d(TAG, "route: called ${calls.map { it.name }}")
+        val toolsByName = tools.associateBy { it.name }
+        val runs = coroutineScope {
+            calls.map { call -> async { runTool(toolsByName[call.name], call, "route") } }.awaitAll()
+        }
+        val mutated = calls.zip(runs)
+            .filter { (call, run) -> run.output != null && call.name in mutatingToolNames }
+            .map { it.first.name }
+        return if (runs.all { it.output == null }) {
+            AgentResult.Failed
+        } else {
+            AgentResult.Success(
+                frameRouteResults(question, calls.map { it.name }.zip(runs.map { it.response })),
+                mutatingToolsCalled = mutated,
+            )
+        }
+    }
+
+    /** One tool execution: [output] is the tool's raw string on success, null on timeout/throw. */
+    private class ToolRun(val output: String?, val response: JSONObject)
+
+    /**
+     * Runs one requested [call] against [tool] under the tool's own [AgentTool.timeoutMs]. Shared
+     * by [investigate] and [route] so both report a missing tool, a timeout and a throw the same
+     * way. [label] only feeds the log line.
+     */
+    private suspend fun runTool(tool: AgentTool?, call: AgentProtocol.FunctionCall, label: String): ToolRun {
+        if (tool == null) return ToolRun(null, JSONObject().put("error", "unknown tool"))
+        return try {
+            val out = withTimeoutOrNull(tool.timeoutMs) { tool.run(call.args) }
+            if (out != null) {
+                ToolRun(out, JSONObject().put("result", out))
+            } else {
+                Log.w(TAG, "$label: ${call.name} timed out")
+                ToolRun(null, JSONObject().put("error", "timed out"))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A thrown tool used to vanish into the {"error": ...} fed back to the model with no
+            // trace on-device (CLAUDE.md §4 rule 6's shape one layer up: "called and failed" must
+            // not be invisible). Logged, not swallowed - this is what would have shown ask_goals
+            // actually attempting (and losing) a write during the 2026-08-17 defect, had one been
+            // attempted and thrown instead of never being called at all.
+            Log.w(TAG, "$label: ${call.name} failed: ${e.message}")
+            ToolRun(null, JSONObject().put("error", e.message ?: "tool failed"))
+        }
+    }
+
+    /** The function-calling request body [investigate] and [route] both send. */
+    private fun toolCallingBody(contents: JSONArray, declarations: JSONObject, forceAnswer: Boolean): JSONObject =
+        JSONObject().apply {
+            if (systemInstruction.isNotBlank()) {
+                put("systemInstruction", JSONObject().put(
+                    "parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
+            }
+            put("contents", contents)
+            // NEVER google_search here - unsupported alongside function
+            // declarations on Flash; web search is the web_lookup tool.
+            put("tools", JSONArray().put(declarations))
+            if (forceAnswer) {
+                put("toolConfig", JSONObject().put(
+                    "functionCallingConfig", JSONObject().put("mode", "NONE")))
+            }
+        }
+
+    internal sealed class HttpOutcome {
         class Ok(val json: String) : HttpOutcome()
         class HttpError(val code: Int, val body: String) : HttpOutcome()
         object Network : HttpOutcome()
@@ -438,6 +548,7 @@ class SubAgent(
      * connection opened on a job that's already dead.
      */
     private suspend fun postRaw(body: JSONObject): HttpOutcome {
+        transport?.let { return it(body) }
         var attempt = 0
         while (true) {
             val outcome = postOnce(body)
@@ -800,6 +911,39 @@ class SubAgent(
 
     companion object {
         private const val TAG = "SubAgent"
+
+        /** Appended to a [route] question: the model gets one turn, so it must ask for everything at once. */
+        private const val ROUTE_NOTE =
+            "\n\nYou get one turn: call every tool the answer needs now. Their results go to the " +
+                "user unedited, so if no tool fits, answer in plain spoken text."
+
+        /**
+         * The text [route] hands back when tools ran: a one-line frame, then each tool's name and
+         * its raw result (parsed back to JSON where it is JSON) or its error. Pure and internal so
+         * the shape is pinned by a test.
+         */
+        internal fun frameRouteResults(question: String, results: List<Pair<String, JSONObject>>): String {
+            val arr = JSONArray()
+            for ((name, response) in results) {
+                val entry = JSONObject().put("tool", name)
+                if (response.has("result")) {
+                    entry.put("result", parseOrRaw(response.optString("result")))
+                } else {
+                    entry.put("error", response.optString("error"))
+                }
+                arr.put(entry)
+            }
+            return "Results for \"$question\". Relay them in your own voice; state only what is here.\n$arr"
+        }
+
+        /** A tool's output as JSON when it parses as JSON, else the raw string unchanged. */
+        private fun parseOrRaw(s: String): Any = runCatching<Any> {
+            when (s.trimStart().firstOrNull()) {
+                '{' -> JSONObject(s)
+                '[' -> JSONArray(s)
+                else -> s
+            }
+        }.getOrDefault(s)
         private const val API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
         // Files API bases (voice-notes ticket 03) - a different host path than API_URL's

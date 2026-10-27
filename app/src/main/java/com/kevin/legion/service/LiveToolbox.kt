@@ -2334,7 +2334,7 @@ object LiveToolbox {
                 "mileage, specs, recalls, service history, maintenance schedules, or the build " +
                 "log. Read-only - it records NOTHING. Recording work that was done is " +
                 "log_service, log_past_service or log_build_entry, never here. Ask a " +
-                "plain-English question; the answer comes back as text to speak.",
+                "plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2346,7 +2346,7 @@ object LiveToolbox {
                 "eaten, slept, lifted or weighed in is a RECORD and goes to the named tool for " +
                 "it - log_meal, log_sleep, log_workout_set, log_bodyweight, create_workout_plan - " +
                 "never here, including when they frame it as progress toward a goal. Ask a " +
-                "plain-English question; the answer comes back as text to speak.",
+                "plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2360,7 +2360,7 @@ object LiveToolbox {
                 "mentions a goal in the same breath; reading about the cars goes to ask_fleet; " +
                 "groceries to manage_checklist (list=Groceries); and setting or closing a goal is " +
                 "set_goal/close_goal, not this. Ask a " +
-                "plain-English question; the answer comes back as text to speak.",
+                "plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2370,15 +2370,15 @@ object LiveToolbox {
                 "their estimated macros, and total grocery spend by currency. Read-only - it " +
                 "records nothing and cannot touch the shopping list. Adding to, ticking off, or " +
                 "reading back the CURRENT shopping list is manage_checklist (list=Groceries), " +
-                "not this. Ask a plain-English question; the answer comes back as text to speak.",
+                "not this. Ask a plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
         fns.put(fn(
             name = "ask_mail",
             description = "Anything about Kevin's Gmail: searching for messages or reading one in " +
-                "full. Read-only. Ask a plain-English question; the answer comes back as text to " +
-                "speak.",
+                "full. Read-only. Ask a plain-English question; raw results come back to " +
+                "relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2598,8 +2598,13 @@ object LiveToolbox {
                     .put("history", history)
             }
             "triage_symptom" -> triageSymptom(context, args)
+            // Router mode (2026-10-27): each dispatcher makes ONE sub-agent POST that picks
+            // tools, runs them, and hands their raw results to the live model to phrase
+            // (SubAgent.route). No second POST composes prose; that round was most of the wait.
+            // Safe because every DISPATCHED domain is read-only by construction.
+            //
             // The five dispatchers (see DISPATCHED's doc comment): each hands a bounded
-            // investigate loop only the real tools its own domain needs (agentToolsFor), so a
+            // sub-agent only the real tools its own domain needs (agentToolsFor), so a
             // dispatched tool's underlying behavior - including the CATEGORY_A_TOOLS guard above,
             // which still runs because these AgentTools call back into this same dispatch() - is
             // completely unchanged from before this ticket. Only who calls it, and how the result
@@ -2612,11 +2617,9 @@ object LiveToolbox {
                 "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = fleetDispatchGrounding(context)).investigate(
-                    context = "",
+                SubAgent(systemInstruction = fleetDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("fleet", context),
-                    maxModelCalls = 4,
                     budgetMs = 30_000,
                     mutatingToolNames = mutatingToolsFor("fleet"),
                 )
@@ -2625,11 +2628,9 @@ object LiveToolbox {
                 "Could not reach the health specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = bodyDispatchGrounding(context)).investigate(
-                    context = "",
+                SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("body", context),
-                    maxModelCalls = 4,
                     budgetMs = 30_000,
                     mutatingToolNames = mutatingToolsFor("body"),
                 )
@@ -2638,11 +2639,9 @@ object LiveToolbox {
                 "Could not reach the goals specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = goalsDispatchGrounding(context)).investigate(
-                    context = "",
+                SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("goals", context),
-                    maxModelCalls = 4,
                     budgetMs = 30_000,
                     mutatingToolNames = mutatingToolsFor("goals"),
                 )
@@ -2651,11 +2650,9 @@ object LiveToolbox {
                 "Could not reach the grocery specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = pantryDispatchGrounding(context)).investigate(
-                    context = "",
+                SubAgent(systemInstruction = pantryDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("pantry", context),
-                    maxModelCalls = 4,
                     budgetMs = 30_000,
                     mutatingToolNames = mutatingToolsFor("pantry"),
                 )
@@ -2664,11 +2661,9 @@ object LiveToolbox {
                 "Could not reach your mail. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = mailDispatchGrounding(context)).investigate(
-                    context = "",
+                SubAgent(systemInstruction = mailDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("mail", context),
-                    maxModelCalls = 4,
                     budgetMs = 30_000,
                     mutatingToolNames = mutatingToolsFor("mail"),
                 )
