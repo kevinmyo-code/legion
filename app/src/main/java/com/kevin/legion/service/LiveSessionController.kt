@@ -1673,7 +1673,10 @@ class LiveSessionController(context: Context) {
         // truly hung call wedge the turn forever. The five ask_* dispatchers
         // (2026-08-17, LiveToolbox.DISPATCHED's doc comment) run the SAME investigate
         // loop shape - they need the same longer leash, not the snappy tool timeout.
-        private const val SUB_AGENT_TOOL_TIMEOUT_MS = 45_000L
+        // 2026-10-27: the dispatchers now route (one POST plus tools) under
+        // LiveToolbox.DISPATCH_ROUTE_BUDGET_MS (42 s), which must stay below this so the
+        // dispatcher's own failure wording speaks rather than this generic timeout.
+        internal const val SUB_AGENT_TOOL_TIMEOUT_MS = 45_000L
         private val SUB_AGENT_TOOLS = setOf(
             "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start",
             "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail",

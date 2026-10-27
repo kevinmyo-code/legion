@@ -2440,11 +2440,32 @@ object LiveToolbox {
                 description = decl.getString("description"),
                 params = properties,
                 required = required,
-                timeoutMs = 8_000,
+                timeoutMs = agentToolTimeoutMs(name),
                 run = { args -> dispatch(context, name, args)?.toString() ?: "{}" },
             )
         }
     }
+
+    /**
+     * Per-tool leash inside a dispatcher's sub-agent (2026-10-27). A plain read gets
+     * [AGENT_TOOL_TIMEOUT_MS]. A specialist in [SPECIALIST_TOOLS] runs its own Gemini call or loop
+     * (investigate's 30 s budget, or one askTyped POST) and was cut at 8 s, so a slow specialist
+     * always came back "timed out". It gets [SPECIALIST_TOOL_TIMEOUT_MS], above its own budget.
+     *
+     * The chain must nest, outermost last, or the outer leash fires first and the inner one is
+     * dead code: [SPECIALIST_TOOL_TIMEOUT_MS] < [DISPATCH_ROUTE_BUDGET_MS] (route's whole budget:
+     * its one POST plus the tools) < LiveSessionController.SUB_AGENT_TOOL_TIMEOUT_MS (45 s).
+     * LiveToolboxAgentToolTimeoutTest pins the order.
+     */
+    internal fun agentToolTimeoutMs(name: String): Long =
+        if (name in SPECIALIST_TOOLS) SPECIALIST_TOOL_TIMEOUT_MS else AGENT_TOOL_TIMEOUT_MS
+
+    internal const val AGENT_TOOL_TIMEOUT_MS = 8_000L
+    internal const val SPECIALIST_TOOL_TIMEOUT_MS = 32_000L
+    internal const val DISPATCH_ROUTE_BUDGET_MS = 42_000L
+    internal val SPECIALIST_TOOLS = setOf(
+        "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start", "ask_advisor",
+    )
 
     /**
      * [domain]'s own tool names, narrowed to the ones [MUTATING_TOOLS] says actually write - the
@@ -2620,7 +2641,7 @@ object LiveToolbox {
                 SubAgent(systemInstruction = fleetDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("fleet", context),
-                    budgetMs = 30_000,
+                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
                     mutatingToolNames = mutatingToolsFor("fleet"),
                 )
             }
@@ -2631,7 +2652,7 @@ object LiveToolbox {
                 SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("body", context),
-                    budgetMs = 30_000,
+                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
                     mutatingToolNames = mutatingToolsFor("body"),
                 )
             }
@@ -2642,7 +2663,7 @@ object LiveToolbox {
                 SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("goals", context),
-                    budgetMs = 30_000,
+                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
                     mutatingToolNames = mutatingToolsFor("goals"),
                 )
             }
@@ -2653,7 +2674,7 @@ object LiveToolbox {
                 SubAgent(systemInstruction = pantryDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("pantry", context),
-                    budgetMs = 30_000,
+                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
                     mutatingToolNames = mutatingToolsFor("pantry"),
                 )
             }
@@ -2664,7 +2685,7 @@ object LiveToolbox {
                 SubAgent(systemInstruction = mailDispatchGrounding(context)).route(
                     question = args.optString("question"),
                     tools = agentToolsFor("mail", context),
-                    budgetMs = 30_000,
+                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
                     mutatingToolNames = mutatingToolsFor("mail"),
                 )
             }
