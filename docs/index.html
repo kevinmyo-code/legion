@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>242 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 41 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 56 are waiting on another ticket first. <b>129 are already built</b> and owe nothing but a run on the phone. 11 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 41 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 50 are waiting on another ticket first. <b>135 are already built</b> and owe nothing but a run on the phone. 11 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">242</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">46</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">129</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">56</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">135</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">50</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">92</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">86</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">11</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -459,16 +459,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>matrix-open</h2>
-<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">of 6 tickets</span></span>
-<span class="bar"><i style="flex:0"></i><b style="flex:6"></b></span>
+<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">6</span> built<span class="sep">&middot;</span><span class="dim">of 6 tickets</span></span>
+<span class="bar"><i style="flex:6"></i><b style="flex:0"></b></span>
 </header>
 <ul class="tl">
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">01</span><span class="body"><span class="tt">Build: block model, category + seed list + overrides</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">Build: All apps on Matrix HOME</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">Build: Matrix lists and to-dos</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">Build: Matrix calendar and brief</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Build: Matrix notes and voice notes</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Build: Matrix ledger, pantry and fleet</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Build: block model, category + seed list + overrides</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: dump ApplicationInfo.category of the installed feed apps; confirm Instagram bounces and shows the new copy, Chrome, Gmail and the banking app open, flip an app in Matrix settings &gt; Blocked apps and see the bounce follow at once, and open a Brief News link in the browser.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Build: All apps on Matrix HOME</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: All apps opens from Matrix HOME after Books, lists the banking app and not Instagram, an app opens from it without a bounce, the footer count matches Blocked apps, and tapping the footer opens Matrix settings.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">Build: Matrix lists and to-dos</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: To-dos on Matrix HOME opens the text lists screen; open a list, tick and untick an item, add one, delete one; a measured item takes a typed value; with the engine unreachable a tick reads Not synced yet; the LEGION row opens the index and Lists opens from it; Back steps out of the list, then to HOME; the Soft Lists screen is unchanged with Matrix off.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Build: Matrix calendar and brief</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: Calendar on Matrix HOME shows today and 7 days; add an event (title, date, time) and see it; edit it; delete it with the second tap; tick a task; Brief shows engine sections with status and Unverified lines, Refresh works, a link opens the browser; with the engine unreachable the Brief says so in words and the saved copy is labelled.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">Build: Matrix notes and voice notes</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: LEGION &gt; Notes lists notes, write one, open it, edit its text, tick it, delete it with the second tap; LEGION &gt; Voice notes: Record shows Recording and a running clock, Stop says it is saved and being transcribed (not ready), the recording appears, opens with its AI-labelled summary and transcript, Play audio plays, Rename works, Delete asks twice; deny the microphone and see what the refusal says.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">Build: Matrix ledger, pantry and fleet</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: LEGION &gt; Ledger shows balances with their as-of dates and the 20 newest transactions; an unverified or pending row says so in words on its own line; with the engine unreachable the screen says it is the phone copy; LEGION &gt; Pantry opens a receipt to printed prices and then separately labelled estimates; LEGION &gt; Fleet shows each car, its mileage and the next maintenance, matching the Fleet tab row. No writes exist on these three, so the one write for this ticket is none (read-only by scope).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 </ul>
 </section>
 <section class="map">
