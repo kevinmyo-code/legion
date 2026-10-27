@@ -248,7 +248,7 @@ class LiveSessionController(context: Context) {
         scope.launch {
             val base = brain.buildBaseInstruction()
             s.start(
-                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
+                base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, prewarmOnly = true,
                 // Ticket 02: carry forward whatever the last session confirmed - a prewarm
@@ -517,9 +517,7 @@ class LiveSessionController(context: Context) {
             val live = brain.buildLiveContext()
             pendingTypedContext = live.takeIf { it.isNotBlank() }
             s.start(
-                // The active persona's set, as every other open: declarations() alone left a typed
-                // turn after a switch to Marcus without consult_meditations (2026-10-05).
-                base, CompanionHandover.declarations(CompanionProfile.persona(appContext)),
+                base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -816,7 +814,7 @@ class LiveSessionController(context: Context) {
                 else -> "(Current context, use naturally if relevant:\n$live)\n\n$opener"
             }
             s.start(
-                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
+                base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -887,7 +885,7 @@ class LiveSessionController(context: Context) {
             }
             val base = brain.buildBaseInstruction()
             s.start(
-                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
+                base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -937,7 +935,7 @@ class LiveSessionController(context: Context) {
             }
             val base = brain.buildBaseInstruction()
             s.start(
-                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
+                base, LiveToolbox.declarations(),
                 vad = false, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = false, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
@@ -1497,7 +1495,7 @@ class LiveSessionController(context: Context) {
             val base = brain.buildBaseInstruction()
             pendingPrompt = HANDOVER_PROMPT
             s.start(
-                base, LiveToolbox.declarationsFor(CompanionProfile.persona(appContext)),
+                base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = null,

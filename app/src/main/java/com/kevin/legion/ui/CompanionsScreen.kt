@@ -34,7 +34,6 @@ import com.kevin.legion.ui.companions.CompanionEditorDialog
 import com.kevin.legion.ui.companions.CompanionEditorState
 import com.kevin.legion.ui.companions.CompanionRow
 import com.kevin.legion.ui.companions.DeleteCompanionDialog
-import com.kevin.legion.ui.companions.MeditationsDialog
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -83,7 +82,6 @@ fun CompanionsScreen(onBack: () -> Unit) {
     var reloadNonce by remember { mutableStateOf(0) }
     var editing by remember { mutableStateOf<CompanionEditorState?>(null) }
     var pendingDelete by remember { mutableStateOf<CompanionProfileEntity?>(null) }
-    var showMeditations by remember { mutableStateOf(false) }
 
     LaunchedEffect(reloadNonce) {
         state = CompanionsUiState(
@@ -128,10 +126,7 @@ fun CompanionsScreen(onBack: () -> Unit) {
             )
         },
         onRequestDelete = { profile -> pendingDelete = profile },
-        onMeditations = { showMeditations = true },
     )
-
-    if (showMeditations) MeditationsDialog(onDismiss = { showMeditations = false })
 
     editing?.let { form ->
         CompanionEditorDialog(
@@ -188,7 +183,6 @@ fun CompanionsContent(
     onCreate: () -> Unit,
     onEdit: (CompanionProfileEntity) -> Unit,
     onRequestDelete: (CompanionProfileEntity) -> Unit,
-    onMeditations: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -226,7 +220,6 @@ fun CompanionsContent(
                                 onActivate = { onActivate(profile.profileId) },
                                 onEdit = { onEdit(profile) },
                                 onDelete = { onRequestDelete(profile) },
-                                onMeditations = onMeditations,
                             )
                             Hairline()
                         }

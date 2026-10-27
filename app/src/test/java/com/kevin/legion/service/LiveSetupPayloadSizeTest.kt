@@ -153,6 +153,9 @@ class LiveSetupPayloadSizeTest {
      * declaration (573 chars of JSON, ~143 tokens), its description already cut to three clauses.
      * Measured: Alfred ~23,385, Kratos ~23,719, Marcus ~24,099, so Marcus was ~61 tokens under the
      * old ceiling before it and ~99 over after. Headroom is now ~150 tokens for the worst persona.
+     *
+     * **2026-10-27 (Kevin): Marcus and `consult_meditations` are deleted**, and `MarcusPayloadTest`
+     * with them. The Marcus figures above are history; the ceiling is left where it is.
      */
     private val ceilingTokens = 24_250
 
