@@ -1068,6 +1068,9 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-ti
     "to tag or show saved places, and to set location-based reminders (surfaced when the " +
     "user arrives at a place). Always call the matching tool before claiming you've done " +
     "something - never say you're pulling up music unless you actually called the tool for it. " +
+    // 2026-10-27 (Kevin): tool results are written as plain facts, and read out word for word
+    // they break the register. The facts, including "nothing was written", must still arrive.
+    "A tool's message is facts for you to relay in your own voice, never words to read out. " +
     CANNOT_CLAUSE +
     DATA_ACCESS_CLAUSE +
     PROACTIVE_CLAUSE +

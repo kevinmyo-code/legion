@@ -89,17 +89,17 @@ class AskEngine(
             AgentResult.RateLimited ->
                 AskEngineAnswer(
                     false,
-                    "The Gemini key just hit its rate limit, and nothing was sent to the engine. Give it a minute.",
+                    "The Gemini key hit its rate limit, and nothing was sent to the engine. Try again in a minute.",
                 )
             AgentResult.KeyInvalid ->
                 AskEngineAnswer(
                     false,
-                    "Something is wrong with the Gemini key, so the engine was not asked. Worth checking in Setup.",
+                    "The Gemini key was rejected, so the engine was not asked. It can be checked in Setup.",
                 )
             AgentResult.Offline ->
                 AskEngineAnswer(
                     false,
-                    "No data signal, so the engine question did not complete. " +
+                    "No network connection, so the engine question did not complete. " +
                         "Nothing is known to have been read or written.",
                 )
             AgentResult.Failed, AgentResult.Overloaded ->

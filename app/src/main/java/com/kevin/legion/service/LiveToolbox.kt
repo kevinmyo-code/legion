@@ -2609,7 +2609,7 @@ object LiveToolbox {
             // why this file refused to guess it. Absent or unrecognised reads as a plain read,
             // which is exactly the pre-2026-08-18 behaviour.
             "ask_fleet" -> agentResult(
-                "I couldn't reach the fleet specialist just now - try again in a sec.",
+                "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
                 SubAgent(systemInstruction = fleetDispatchGrounding(context)).investigate(
@@ -2622,7 +2622,7 @@ object LiveToolbox {
                 )
             }
             "ask_body" -> agentResult(
-                "I couldn't reach the health specialist just now - try again in a sec.",
+                "Could not reach the health specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
                 SubAgent(systemInstruction = bodyDispatchGrounding(context)).investigate(
@@ -2635,7 +2635,7 @@ object LiveToolbox {
                 )
             }
             "ask_goals" -> agentResult(
-                "I couldn't reach the goals specialist just now - try again in a sec.",
+                "Could not reach the goals specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
                 SubAgent(systemInstruction = goalsDispatchGrounding(context)).investigate(
@@ -2648,7 +2648,7 @@ object LiveToolbox {
                 )
             }
             "ask_pantry" -> agentResult(
-                "I couldn't reach the grocery specialist just now - try again in a sec.",
+                "Could not reach the grocery specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
                 SubAgent(systemInstruction = pantryDispatchGrounding(context)).investigate(
@@ -2661,7 +2661,7 @@ object LiveToolbox {
                 )
             }
             "ask_mail" -> agentResult(
-                "I couldn't reach your mail just now - try again in a sec.",
+                "Could not reach your mail. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
                 SubAgent(systemInstruction = mailDispatchGrounding(context)).investigate(
@@ -3343,7 +3343,7 @@ object LiveToolbox {
      * [PACKAGE_NO_MATCH_MESSAGE]/[FLIGHT_NO_MATCH_MESSAGE] (no matching mail at all) and every
      * [GmailToolLogic.Cause] message (a Gmail-side problem, before any mail was ever found). */
     internal const val MAIL_EXTRACTION_FAILED_MESSAGE =
-        "I found the mail but couldn't read it through just now - try again in a sec."
+        "The mail was found but could not be read. Try again shortly."
 
     /** `track_package`. See this section's header comment for why the answer is composed the way
      * it is; this function only supplies the domain-specific query and extraction prompt.
@@ -4742,7 +4742,7 @@ object LiveToolbox {
         }
 
         if (!GeminiKeyProvider.hasKey()) {
-            return result(false, "I need a Gemini key to do that - add your own in Setup to keep going.")
+            return result(false, "No Gemini key is set, so this cannot run. One can be added in Setup.")
                 .apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
         }
 
@@ -4801,23 +4801,23 @@ object LiveToolbox {
         }
         GoalPlanResult.RateLimited -> {
             KeyHealth.noteRateLimited()
-            result(false, "The Gemini key just hit its rate limit - give it a minute and ask me again.")
+            result(false, "The Gemini key hit its rate limit. Try again in a minute.")
         }
         GoalPlanResult.KeyInvalid -> {
             KeyHealth.noteInvalid()
-            result(false, "Something's wrong with the Gemini key - worth checking it in Setup when you get a chance.")
+            result(false, "The Gemini key was rejected. It can be checked in Setup.")
         }
-        GoalPlanResult.Overloaded -> result(false, "The planner's overloaded right now - try again in a sec.")
-        GoalPlanResult.Offline -> result(false, "No data signal right now - ask me again when we're back in coverage.")
-        GoalPlanResult.Failed -> result(false, "I couldn't put a plan together just now - try again in a sec.")
+        GoalPlanResult.Overloaded -> result(false, "The planner is overloaded. Try again shortly.")
+        GoalPlanResult.Offline -> result(false, "No network connection. Try again once online.")
+        GoalPlanResult.Failed -> result(false, "Could not put a plan together. Try again shortly.")
         is GoalPlanResult.ParseFailed -> {
             KeyHealth.noteOk()
             val prose = outcome.rawText.trim()
             if (prose.isEmpty()) {
                 result(
                     true,
-                    "I've got some thoughts but couldn't put together a clean plan from them just " +
-                        "now - ask me again for another pass.",
+                    "The planner returned thoughts but no clean plan. Ask again for " +
+                        "another pass.",
                 )
             } else {
                 result(
@@ -4867,7 +4867,7 @@ object LiveToolbox {
             context,
             GoalPlan(rationale = "", pendingWorkoutGoal = workoutGoal),
         )
-        val message = accepted.workoutPlanMessage ?: "I couldn't put a workout plan together just now - try again in a sec."
+        val message = accepted.workoutPlanMessage ?: "Could not put a workout plan together. Try again shortly."
         // **This comment used to read "WorkoutController.generatePlan (which accept() calls)
         // returns a plain message string either way, never a structured outcome - the same
         // 'I couldn't ...' prefix create_workout_plan's own dispatch already treats as its one
@@ -5008,7 +5008,7 @@ object LiveToolbox {
         if (question.isBlank()) return result(false, "What's the question?")
 
         if (!GeminiKeyProvider.hasKey()) {
-            return result(false, "I need a Gemini key to do that - add your own in Setup to keep going.")
+            return result(false, "No Gemini key is set, so this cannot run. One can be added in Setup.")
         }
 
         val brief = AdvisorBriefs.forAspect(aspect)
@@ -5043,23 +5043,23 @@ object LiveToolbox {
         }
         AdvisorResult.RateLimited -> {
             KeyHealth.noteRateLimited()
-            result(false, "The Gemini key just hit its rate limit - give it a minute and ask me again.")
+            result(false, "The Gemini key hit its rate limit. Try again in a minute.")
         }
         AdvisorResult.KeyInvalid -> {
             KeyHealth.noteInvalid()
-            result(false, "Something's wrong with the Gemini key - worth checking it in Setup when you're parked.")
+            result(false, "The Gemini key was rejected. It can be checked in Setup.")
         }
-        AdvisorResult.Overloaded -> result(false, "The advisor's overloaded right now - try again in a sec.")
-        AdvisorResult.Offline -> result(false, "No data signal out here - ask me again when we're back in coverage.")
-        AdvisorResult.Failed -> result(false, "I couldn't reach the advisor just now - try again in a sec.")
+        AdvisorResult.Overloaded -> result(false, "The advisor is overloaded. Try again shortly.")
+        AdvisorResult.Offline -> result(false, "No network connection. Try again once online.")
+        AdvisorResult.Failed -> result(false, "Could not reach the advisor. Try again shortly.")
         is AdvisorResult.ParseFailed -> {
             KeyHealth.noteOk()
             val prose = outcome.rawText.trim()
             if (prose.isEmpty()) {
                 result(
                     true,
-                    "I've got some thoughts but couldn't put together a clean, concrete answer " +
-                        "from them just now - ask me again if you'd like another pass.",
+                    "The advisor returned thoughts but no clean, concrete answer. Ask " +
+                        "again for another pass.",
                 )
             } else {
                 result(
@@ -6009,7 +6009,7 @@ object LiveToolbox {
             "read" -> {
                 return when (val loaded = ChecklistController.itemsWithTickState(context, checklist.id)) {
                     is ChecklistController.ChecklistItemsResult.Failed ->
-                        result(false, "Couldn't read \"${checklist.name}\" just now - try again in a sec.")
+                        result(false, "Could not read \"${checklist.name}\". Try again shortly.")
                     is ChecklistController.ChecklistItemsResult.Loaded -> {
                         if (loaded.items.isEmpty()) {
                             return result(true, "\"${checklist.name}\" has no items yet.")
@@ -6272,7 +6272,7 @@ object LiveToolbox {
         // just render differently).
         val label = VehicleController.displayLabel(VehicleController.currentVehicle(context))
 
-        return agentResult("I couldn't reach the diagnostics specialist just now - try again in a sec.") {
+        return agentResult("Could not reach the diagnostics specialist. Try again shortly.") {
             DiagnosticAgent.diagnose(context, label, codes, question)
         }
     }
@@ -6317,7 +6317,7 @@ object LiveToolbox {
         if (!GeminiKeyProvider.hasKey()) {
             return result(
                 false,
-                "I need a Gemini key to do that - add your own in Setup to keep going.",
+                "No Gemini key is set, so this cannot run. One can be added in Setup.",
             )
         }
         return when (val r = call()) {
@@ -6327,14 +6327,14 @@ object LiveToolbox {
             }
             AgentResult.RateLimited -> {
                 KeyHealth.noteRateLimited()
-                result(false, "The Gemini key just hit its rate limit - give it a minute and ask me again.")
+                result(false, "The Gemini key hit its rate limit. Try again in a minute.")
             }
             AgentResult.KeyInvalid -> {
                 KeyHealth.noteInvalid()
-                result(false, "Something's wrong with the Gemini key - worth checking it in Setup when you're parked.")
+                result(false, "The Gemini key was rejected. It can be checked in Setup.")
             }
             AgentResult.Offline ->
-                result(false, "No data signal out here - ask me again when we're back in coverage.")
+                result(false, "No network connection. Try again once online.")
             AgentResult.Failed, AgentResult.Overloaded -> result(false, failMessage)
         }
     }
@@ -6355,7 +6355,7 @@ object LiveToolbox {
         if (!GeminiKeyProvider.hasKey()) {
             return result(
                 false,
-                "I need a Gemini key to do that - add your own in Setup to keep going. Nothing was read or written.",
+                "No Gemini key is set, so this cannot run. One can be added in Setup. Nothing was read or written.",
             )
         }
         val client = engineMcpClient ?: EngineConfig(context.applicationContext).let { config ->
@@ -6411,7 +6411,7 @@ object LiveToolbox {
             codes = ObdBluetoothManager.getDtcCodes()
         }
 
-        return agentResult("I couldn't reach the diagnostics specialist just now - try again in a sec.") {
+        return agentResult("Could not reach the diagnostics specialist. Try again shortly.") {
             SymptomAgent.triage(context, label, readings.toString().trim().trimEnd(';'), codes, symptom)
         }
     }
@@ -6602,7 +6602,7 @@ object LiveToolbox {
             return result(false, "No cold start captured yet - I watch the first minute after a cold morning start.")
         }
         val label = VehicleController.displayLabel(vehicle)
-        return agentResult("Couldn't reach the cold-start analyst - try again in a moment.") {
+        return agentResult("Could not reach the cold-start analyst. Try again shortly.") {
             ColdStartAgent.analyze(context, label)
         }
     }
@@ -6830,7 +6830,7 @@ object LiveToolbox {
         // bare here too, matching every other surface.
         val mileageLabel = VehicleController.mileageLabel(vehicle)
 
-        return agentResult("I couldn't reach the maintenance specialist just now - try again in a sec.") {
+        return agentResult("Could not reach the maintenance specialist. Try again shortly.") {
             MaintenanceAgent.answer(context, label, mileageLabel, items, question, vehicle.obdMac)
         }
     }
@@ -7269,7 +7269,7 @@ object LiveToolbox {
                 "Special app access, Notification access. Until then I can start a track on " +
                 "Spotify, but I can't pause or skip anything else."
         } else {
-            "I couldn't reach the music. Make sure something's actually playing."
+            "Could not reach the music player. Check that something is playing."
         }
 
     /**
@@ -7632,8 +7632,8 @@ object LiveToolbox {
             ))
             SpotifyWebApi.SearchOutcome.Unreachable -> SpotifyUriResolution.Failed(result(
                 success = false,
-                message = "I couldn't reach Spotify just now. Worth trying again when you have " +
-                    "a better connection.",
+                message = "Could not reach Spotify. Try again on a better " +
+                    "connection.",
             ))
             SpotifyWebApi.SearchOutcome.NoMatch -> SpotifyUriResolution.Failed(result(
                 success = false,
@@ -7685,7 +7685,7 @@ object LiveToolbox {
 
     private fun spotifyUnreachableResult(): JSONObject = result(
         success = false,
-        message = "I couldn't reach Spotify just now. Worth trying again when you have a better connection.",
+        message = "Could not reach Spotify. Try again on a better connection.",
     )
 
     /**
@@ -7930,8 +7930,8 @@ object LiveToolbox {
         }
         SpotifyWebApi.LibraryOutcome.Unreachable -> result(
             success = false,
-            message = "I couldn't reach Spotify just now for $sourceLabel. Worth trying again " +
-                "when you have a better connection.",
+            message = "Could not reach Spotify for $sourceLabel. Try again " +
+                "on a better connection.",
         )
         is SpotifyWebApi.LibraryOutcome.Failed -> result(
             success = false,

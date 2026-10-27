@@ -42,7 +42,7 @@ class EngineToolboxClerkResultTest {
     fun `offline fails without claiming a write happened`() = runBlocking {
         val out = EngineToolbox.clerkResult("fallback") { AgentResult.Offline }
         assertFalse(out.getBoolean("success"))
-        assertTrue(out.getString("message").contains("signal"))
+        assertTrue(out.getString("message").contains("No network connection"))
     }
 
     @Test

@@ -532,7 +532,7 @@ object EngineToolbox {
             return result(false, "Tell me what to log, find, change, or remove and I can act on it.")
         }
         if (!GeminiKeyProvider.hasKey()) {
-            return result(false, "I need a Gemini key to do that - add your own in Setup to keep going.")
+            return result(false, "No Gemini key is set, so this cannot run. One can be added in Setup.")
         }
 
         val zone = ZoneId.systemDefault()
@@ -563,7 +563,7 @@ object EngineToolbox {
             engineAgentTool(context, "delete_record"),
         )
 
-        return clerkResult("I couldn't reach the record-keeping worker just now - try again in a sec.") {
+        return clerkResult("Could not reach the record-keeping worker. Try again shortly.") {
             SubAgent(systemInstruction = system, useSearch = false).investigate(
                 context = "",
                 question = instruction,
@@ -613,9 +613,9 @@ object EngineToolbox {
      * free-prose `question` with no declared intent. */
     internal suspend fun clerkResult(failMessage: String, call: suspend () -> AgentResult): JSONObject = when (val r = call()) {
         is AgentResult.Success -> result(true, r.text)
-        AgentResult.RateLimited -> result(false, "The Gemini key just hit its rate limit - give it a minute and ask again.")
-        AgentResult.KeyInvalid -> result(false, "Something's wrong with the Gemini key - worth checking it in Setup.")
-        AgentResult.Offline -> result(false, "No data signal right now - ask again once you're back online.")
+        AgentResult.RateLimited -> result(false, "The Gemini key hit its rate limit. Try again in a minute.")
+        AgentResult.KeyInvalid -> result(false, "The Gemini key was rejected. It can be checked in Setup.")
+        AgentResult.Offline -> result(false, "No network connection. Try again once online.")
         AgentResult.Failed, AgentResult.Overloaded -> result(false, failMessage)
     }
 
@@ -749,7 +749,7 @@ object EngineToolbox {
             structuredOutput = StructuredOutputRequest(createAspectSchema()),
         )
         val draftJson = (response as? AgentResult.Success)?.text?.let { runCatching { JSONObject(it) }.getOrNull() }
-            ?: return result(false, "I couldn't draft that aspect just now - try again in a sec.")
+            ?: return result(false, "Could not draft that aspect. Try again shortly.")
 
         val token = stashDraft(draftJson, targetAspectName = null)
         return JSONObject()
@@ -886,7 +886,7 @@ object EngineToolbox {
             structuredOutput = StructuredOutputRequest(updateAspectSchema()),
         )
         val draftJson = (response as? AgentResult.Success)?.text?.let { runCatching { JSONObject(it) }.getOrNull() }
-            ?: return result(false, "I couldn't draft that change just now - try again in a sec.")
+            ?: return result(false, "Could not draft that change. Try again shortly.")
 
         val token = stashDraft(draftJson, targetAspectName = aspectName)
         return JSONObject()

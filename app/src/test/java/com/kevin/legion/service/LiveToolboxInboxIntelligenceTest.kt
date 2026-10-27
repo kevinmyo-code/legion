@@ -212,7 +212,7 @@ class LiveToolboxInboxIntelligenceTest {
         assertTrue(
             "the extraction failure happens strictly AFTER a match was found and read - the " +
                 "wording must say so, or a driver can't tell which stage failed",
-            LiveToolbox.MAIL_EXTRACTION_FAILED_MESSAGE.contains("found the mail"),
+            LiveToolbox.MAIL_EXTRACTION_FAILED_MESSAGE.contains("mail was found"),
         )
     }
 }
