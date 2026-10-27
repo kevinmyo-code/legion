@@ -6715,3 +6715,25 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   always give correct, useful answers.": no rule in it). The base instruction now ends with one
   line anchoring the active persona's shortClause under its current name. Before ask_engine,
   ask_advisor or any ask_ tool the assistant says one brief line, never an outcome, then calls it.
+
+## 2026-10-27 - Voice turn-taking rulings (Kevin)
+
+- **End of turn: reopen the 900 ms VAD silence and START_SENSITIVITY_LOW** for a local
+  end-of-turn detector. Server VAD stays the default, and is the off-switch.
+- **Barge-in is off on car Bluetooth in v1.**
+- **Barge-in during a write tool reports what happened, with no undo.**
+- **Step-0 A25 spike approved.**
+- **Typed chat moves to a text model.** Built on branch `feat/typed-chat-text-model`.
+- Tools stay BLOCKING (commit 29057645 ruling, unchanged).
+
+## 2026-10-27 - Voice: the five read-only dispatchers become routers (Kevin's latency ask)
+
+- `ask_fleet`, `ask_body`, `ask_goals`, `ask_pantry` and `ask_mail` now call `SubAgent.route`: one
+  Flash-Lite POST picks the domain's tools, they run in parallel, and their raw results go back to
+  Live framed as results to relay in its own voice. No second POST composes prose. Was
+  `SubAgent.investigate`, up to four sequential POSTs.
+- Safe because every DISPATCHED domain holds no mutating tool by construction (2026-08-18).
+  Failure wording is unchanged (same `AgentResult` variants).
+- Known cost: a question needing two dependent tool steps gets one round.
+- `ask_engine` is NOT a router: its judge/Tally honesty logic reads the composed answer and its
+  engine tools can write. Its model is now debug-selectable (Flash-Lite default, 3.8 Flash).
