@@ -7,7 +7,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -97,7 +96,7 @@ class SubAgent internal constructor(
      * a JVM test can script Gemini's replies and count the calls. Null in production, which is
      * the only value the public constructor below can pass.
      */
-    private val transport: (suspend (JSONObject) -> HttpOutcome)?,
+    private val transport: (suspend (JSONObject) -> RestOutcome)?,
 ) {
     constructor(
         systemInstruction: String = "",
@@ -135,7 +134,7 @@ class SubAgent internal constructor(
     ): String? = withContext(Dispatchers.IO) {
         val body = buildAskBody(context, question, imageBytes, imageMimeType, fileUri = fileUri, fileMimeType = fileMimeType)
         when (val o = postRaw(body)) {
-            is HttpOutcome.Ok -> extractText(o.json)
+            is RestOutcome.Ok -> extractText(o.json)
             else -> null
         }
     }
@@ -162,7 +161,7 @@ class SubAgent internal constructor(
     ): AskOutcome = withContext(Dispatchers.IO) {
         val body = buildAskBody(context, question, imageBytes, imageMimeType, fileUri = fileUri, fileMimeType = fileMimeType)
         when (val o = postRaw(body)) {
-            is HttpOutcome.Ok -> {
+            is RestOutcome.Ok -> {
                 val (promptTokens, candidatesTokens) = parseUsageMetadata(o.json)
                 AskOutcome(extractText(o.json), promptTokens, candidatesTokens)
             }
@@ -245,7 +244,7 @@ class SubAgent internal constructor(
             fileUri = fileUri, fileMimeType = fileMimeType,
         )
         when (val o = postRaw(body)) {
-            is HttpOutcome.Ok -> {
+            is RestOutcome.Ok -> {
                 val text = extractText(o.json)
                 if (text != null) {
                     // See [parseFinishReason]'s doc comment - a MAX_TOKENS finish means the
@@ -256,8 +255,8 @@ class SubAgent internal constructor(
                     AgentResult.Failed
                 }
             }
-            is HttpOutcome.HttpError -> classify(o)
-            HttpOutcome.Network -> AgentResult.Offline
+            is RestOutcome.HttpError -> classify(o)
+            RestOutcome.Network -> AgentResult.Offline
         }
     }
 
@@ -363,9 +362,9 @@ class SubAgent internal constructor(
             val body = toolCallingBody(contents, declarations, forceAnswer)
 
             val json = when (val o = postRaw(body)) {
-                is HttpOutcome.Ok -> o.json
-                is HttpOutcome.HttpError -> return classify(o)
-                HttpOutcome.Network -> return AgentResult.Offline
+                is RestOutcome.Ok -> o.json
+                is RestOutcome.HttpError -> return classify(o)
+                RestOutcome.Network -> return AgentResult.Offline
             }
 
             if (AgentProtocol.blockReason(json) != null) return AgentResult.Failed
@@ -441,9 +440,9 @@ class SubAgent internal constructor(
                 .put("parts", JSONArray().put(JSONObject().put("text", question + ROUTE_NOTE))),
         )
         return when (val o = postRaw(toolCallingBody(contents, AgentProtocol.declarations(tools), false))) {
-            is HttpOutcome.Ok -> routeReply(o.json, question, tools, mutatingToolNames)
-            is HttpOutcome.HttpError -> classify(o)
-            HttpOutcome.Network -> AgentResult.Offline
+            is RestOutcome.Ok -> routeReply(o.json, question, tools, mutatingToolNames)
+            is RestOutcome.HttpError -> classify(o)
+            RestOutcome.Network -> AgentResult.Offline
         }
     }
 
@@ -533,134 +532,18 @@ class SubAgent internal constructor(
             }
         }
 
-    internal sealed class HttpOutcome {
-        class Ok(val json: String) : HttpOutcome()
-        class HttpError(val code: Int, val body: String) : HttpOutcome()
-        object Network : HttpOutcome()
-    }
-
     /**
-     * POST the body, retrying once after a 1s pause on a transport failure.
-     * NEVER retries a cancelled call: [postOnce] rethrows [kotlinx.coroutines.CancellationException]
-     * (it does not fall into the generic catch below, since it isn't an `Exception` subtype path we
-     * swallow inside [postOnce] - see that fun's own comment), so this loop unwinds via the
-     * suspend-cancellation machinery before `attempt == 0` can ever re-enter with a fresh, doomed
-     * connection opened on a job that's already dead.
+     * The POST itself lives in [GeminiRest] (2026-10-27), lifted out unchanged so the typed chat
+     * engine shares this exact boundary: retry once on a transport failure, cancellable I/O,
+     * metering through [GeminiUsageMeter], and [KeyHealth] recording. See [GeminiRest.post].
      */
-    private suspend fun postRaw(body: JSONObject): HttpOutcome {
+    private suspend fun postRaw(body: JSONObject): RestOutcome {
         transport?.let { return it(body) }
-        var attempt = 0
-        while (true) {
-            val outcome = postOnce(body)
-            if (outcome is HttpOutcome.Network && attempt == 0) {
-                attempt++
-                delay(1_000)
-                continue
-            }
-            return outcome
-        }
+        return GeminiRest.post(model, body)
     }
 
-    /**
-     * The actual HTTP round-trip. `HttpURLConnection` I/O is blocking Java, not a suspend fun, so a
-     * coroutine parked in `connection.outputStream`/`.responseCode`/`.inputStream` is deaf to
-     * cancellation - the thread only notices once the socket itself returns, which without this fix
-     * meant every timeout wrapping this call ([AgentTool.timeoutMs], [investigate]'s [budgetMs],
-     * and [com.kevin.legion.service.LiveSessionController.handleToolCall]'s 45s tool-call ceiling)
-     * was inert down to the raw connect/read timeouts below. Two fixes make cancellation real:
-     *
-     * 1. `withContext(Dispatchers.IO)` moves the blocking calls onto the IO dispatcher and, more
-     *    importantly, makes this suspend point cancellable - `withContext` checks for cancellation
-     *    on entry/exit and rethrows [kotlinx.coroutines.CancellationException] at ITS OWN boundary,
-     *    never swallowed by the `catch (e: Exception)` inside the block below (`CancellationException`
-     *    thrown BY withContext itself, after the block returns, is outside that catch's scope).
-     * 2. `invokeOnCompletion` on this call's own [kotlinx.coroutines.Job] forces the blocked socket
-     *    read to unblock the moment the coroutine is cancelled, by calling `connection.disconnect()`
-     *    from whatever thread cancels it. That makes the parked `responseCode`/`inputStream` call
-     *    throw immediately instead of waiting out the full 30s read timeout. The disconnect races
-     *    ordinary completion, so the handle is always disposed in `finally` regardless of which side
-     *    won - a completed call disposing a no-op handle is harmless, a cancelled call disposing an
-     *    already-fired one is also harmless.
-     *
-     * Socket-level `connectTimeout`/`readTimeout` stay as the backstop for a network stall that
-     * happens with NO caller timeout at all (there is none such today, but it's cheap insurance);
-     * they are no longer the thing actually bounding a stuck call in practice.
-     */
-    private suspend fun postOnce(body: JSONObject): HttpOutcome = withContext(Dispatchers.IO) {
-        val url = URL("$API_URL/$model:generateContent?key=${GeminiKeyProvider.key()}")
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            doOutput = true
-            connectTimeout = 15000
-            readTimeout = 30000
-        }
-        // Cancellation fires disconnect() on whatever thread cancels this coroutine, so the
-        // blocked write/read below throws instead of sitting out the full socket timeout.
-        val cancelHandle = coroutineContext.job.invokeOnCompletion { cause ->
-            if (cause != null) runCatching { connection.disconnect() }
-        }
-        try {
-            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            val code = connection.responseCode
-            if (code >= 400) {
-                val err = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                Log.e(TAG, "SubAgent error $code: $err")
-                HttpOutcome.HttpError(code, err)
-            } else {
-                val json = connection.inputStream.bufferedReader().use { it.readText() }
-                // Meter EVERY REST call, here at the one HTTP boundary rather than at the thirty
-                // call sites (2026-09-06, "my gemini credits burned really fast"). `ask`,
-                // `askTyped`, `askWithUsage` and `investigate` all funnel through postRaw into
-                // this function, so one line covers every present caller and cannot be forgotten
-                // by the next one added - which is exactly how [askWithUsage] ended up the only
-                // metered path in the app despite [parseUsageMetadata] existing since August.
-                // Fire-and-forget and self-swallowing inside the meter; nothing here can fail the
-                // call it is measuring.
-                val (prompt, candidates) = parseUsageMetadata(json)
-                GeminiUsageMeter.recordRestCall(model, prompt, candidates, parseTotalTokens(json))
-                // A 200 is proof the key is both valid and has quota, so any recorded problem is
-                // stale. Clearing it here rather than at the tool sites means a key that starts
-                // working again stops being reported as broken with nobody having to dismiss
-                // anything. noteOk is a no-op when there was nothing recorded.
-                KeyHealth.noteOk()
-                HttpOutcome.Ok(json)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "SubAgent request failed: ${e.message}", e)
-            HttpOutcome.Network
-        } finally {
-            cancelHandle.dispose()
-            connection.disconnect()
-        }
-    }
-
-    /**
-     * Map an HTTP error to a typed result (mirrors [GeminiKeyValidator]'s key check).
-     *
-     * Also records the verdict in [KeyHealth] with the server's OWN status and message attached
-     * (2026-09-06). Before this, the 429 and key-rejected branches were classified correctly and
-     * the reason reached [KeyHealth] from only a handful of hand-wired tool sites - and even those
-     * wrote to a field with no readers. Recording it here means every REST path feeds the same
-     * diagnosis, and it carries evidence rather than a bare label, so the Setup sentence can say
-     * what was actually seen instead of asserting a cause nobody checked.
-     */
-    private fun classify(e: HttpOutcome.HttpError): AgentResult = when {
-        e.code == 429 -> {
-            KeyHealth.noteRateLimited("HTTP 429 from Gemini: ${e.body}")
-            AgentResult.RateLimited
-        }
-        e.code == 401 || e.code == 403 -> {
-            KeyHealth.noteInvalid("HTTP ${e.code} from Gemini: ${e.body}")
-            AgentResult.KeyInvalid
-        }
-        e.code == 400 && e.body.contains("API_KEY_INVALID") -> {
-            KeyHealth.noteInvalid("HTTP 400 API_KEY_INVALID from Gemini")
-            AgentResult.KeyInvalid
-        }
-        e.code == 500 || e.code == 503 -> AgentResult.Overloaded
-        else -> AgentResult.Failed
-    }
+    /** Map an HTTP error to a typed result and record it in [KeyHealth]. See [GeminiRest.classify]. */
+    private fun classify(e: RestOutcome.HttpError): AgentResult = GeminiRest.classify(e)
 
     /**
      * The Files API's resumable upload, two legs, exactly as
@@ -944,7 +827,6 @@ class SubAgent internal constructor(
                 else -> s
             }
         }.getOrDefault(s)
-        private const val API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
         // Files API bases (voice-notes ticket 03) - a different host path than API_URL's
         // `/v1beta/models`, both under the same generativelanguage.googleapis.com host and the

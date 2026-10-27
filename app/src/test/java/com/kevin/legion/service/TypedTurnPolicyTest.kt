@@ -2,94 +2,64 @@ package com.kevin.legion.service
 
 import com.kevin.legion.service.TypedTurnPolicy.Decision
 import com.kevin.legion.service.TypedTurnPolicy.Refusal
-import com.kevin.legion.service.TypedTurnPolicy.Shape
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
- * The overlap rules between a typed turn and a spoken one (web-assistant ticket 09). Plain JVM,
- * same shape as [OneShotGateTest]-style pure tests: [TypedTurnPolicy] has no Android dependency.
+ * Typed chat's routing rules (Kevin, 2026-10-27: typed chat goes to a text model). Plain JVM:
+ * [TypedTurnPolicy] has no Android dependency. The voice session's state is deliberately not an
+ * input any more, which is what these tests pin by having no way to pass one.
  */
 class TypedTurnPolicyTest {
 
     private fun decide(
-        shape: Shape,
-        speaking: Boolean = false,
         hasText: Boolean = true,
+        crisis: Boolean = false,
         hasKey: Boolean = true,
         online: Boolean = true,
-    ) = TypedTurnPolicy.decide(hasText, hasKey, online, shape, speaking)
+        busy: Boolean = false,
+    ) = TypedTurnPolicy.decide(hasText, crisis, hasKey, online, busy)
 
     @Test
     fun `blank text is ignored, not refused`() {
-        for (shape in Shape.entries) assertEquals(Decision.Ignore, decide(shape, hasText = false))
+        assertEquals(Decision.Ignore, decide(hasText = false))
+        assertEquals(Decision.Ignore, decide(hasText = false, crisis = true, hasKey = false, online = false))
     }
 
     @Test
-    fun `no key says set up Gemini in Setup, in words, for every shape`() {
-        for (shape in Shape.entries) {
-            val d = decide(shape, hasKey = false) as Decision.Refuse
-            assertEquals(Refusal.NO_KEY, d.reason)
-        }
-        assertEquals(
-            "The assistant isn't set up: add a Gemini key in Setup.",
-            Refusal.NO_KEY.words,
-        )
+    fun `an ordinary message is sent to the text model`() {
+        assertEquals(Decision.Send, decide())
+    }
+
+    @Test
+    fun `a crisis phrase wins over everything, even no key, no connection or a busy turn`() {
+        assertEquals(Decision.Crisis, decide(crisis = true))
+        assertEquals(Decision.Crisis, decide(crisis = true, hasKey = false, online = false, busy = true))
+    }
+
+    @Test
+    fun `no key says set up Gemini in Setup, in words`() {
+        assertEquals(Decision.Refuse(Refusal.NO_KEY), decide(hasKey = false))
+        assertEquals("The assistant isn't set up: add a Gemini key in Setup.", Refusal.NO_KEY.words)
     }
 
     @Test
     fun `offline refuses with the reason`() {
-        assertEquals(Decision.Refuse(Refusal.OFFLINE), decide(Shape.WARM, online = false))
+        assertEquals(Decision.Refuse(Refusal.OFFLINE), decide(online = false))
     }
 
     @Test
-    fun `no session opens one`() {
-        assertEquals(Decision.OpenSession, decide(Shape.NO_SESSION))
+    fun `a second message while one is being answered is not sent, and says so`() {
+        assertEquals(Decision.Refuse(Refusal.BUSY), decide(busy = true))
+        assertEquals(
+            "Not sent: still answering your last message. Try again when it finishes.",
+            Refusal.BUSY.words,
+        )
     }
 
     @Test
-    fun `a prewarm still connecting queues the message`() {
-        assertEquals(Decision.QueueUntilConnected, decide(Shape.CONNECTING_IDLE))
-    }
-
-    @Test
-    fun `a socket connecting for voice refuses rather than racing the greeting`() {
-        assertEquals(Decision.Refuse(Refusal.CONNECTING), decide(Shape.CONNECTING_BUSY))
-    }
-
-    @Test
-    fun `a running tool refuses, because a second user turn into that gap is unsafe`() {
-        assertEquals(Decision.Refuse(Refusal.TOOL_RUNNING), decide(Shape.TOOL_RUNNING))
-        assertEquals(Decision.Refuse(Refusal.TOOL_RUNNING), decide(Shape.TOOL_RUNNING, speaking = true))
-    }
-
-    @Test
-    fun `a warm socket sends with the mic closed, and interrupts only when a line is playing`() {
-        assertEquals(Decision.SendOnWarm(interrupts = false), decide(Shape.WARM))
-        assertEquals(Decision.SendOnWarm(interrupts = true), decide(Shape.WARM, speaking = true))
-    }
-
-    @Test
-    fun `typing during a voice conversation sends, and interrupts when the assistant is speaking`() {
-        assertEquals(Decision.SendInConversation(interrupts = false), decide(Shape.IN_CONVERSATION))
-        assertEquals(Decision.SendInConversation(interrupts = true), decide(Shape.IN_CONVERSATION, speaking = true))
-    }
-
-    @Test
-    fun `a proactive line mid-delivery is replaced by a fresh typed session`() {
-        assertEquals(Decision.ReplaceAndOpen, decide(Shape.PROACTIVE_LINE))
-    }
-
-    @Test
-    fun `no refusal sentence mentions the microphone, because typing needs none`() {
-        for (r in Refusal.entries) assertTrue(r.name, !r.words.contains("mic", ignoreCase = true))
-    }
-
-    @Test
-    fun `every refusal says in words that the message was not sent or the assistant is not set up`() {
-        for (r in Refusal.entries) {
-            assertTrue(r.name, r.words.startsWith("Not sent") || r == Refusal.NO_KEY)
-        }
+    fun `no refusal mentions the microphone - typing needs none`() {
+        for (r in Refusal.entries) assertFalse(r.words, r.words.contains("mic", ignoreCase = true))
     }
 }

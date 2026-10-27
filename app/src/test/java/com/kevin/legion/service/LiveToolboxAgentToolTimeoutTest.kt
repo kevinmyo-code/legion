@@ -2,6 +2,7 @@ package com.kevin.legion.service
 
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AgentTool
+import com.kevin.legion.ai.RestOutcome
 import com.kevin.legion.ai.SubAgent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -50,7 +51,7 @@ class LiveToolboxAgentToolTimeoutTest {
                 ),
             ),
         ).toString()
-        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { SubAgent.HttpOutcome.Ok(reply) }
+        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { RestOutcome.Ok(reply) }
         fun slow(name: String) = AgentTool(
             name = name,
             description = "d",

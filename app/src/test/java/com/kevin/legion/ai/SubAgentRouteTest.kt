@@ -18,7 +18,7 @@ class SubAgentRouteTest {
 
     private val posts = mutableListOf<JSONObject>()
 
-    private fun agent(vararg replies: SubAgent.HttpOutcome): SubAgent {
+    private fun agent(vararg replies: RestOutcome): SubAgent {
         val queue = ArrayDeque(replies.toList())
         return SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { body ->
             posts.add(body)
@@ -26,7 +26,7 @@ class SubAgentRouteTest {
         }
     }
 
-    private fun callsReply(vararg calls: Pair<String, JSONObject>): SubAgent.HttpOutcome {
+    private fun callsReply(vararg calls: Pair<String, JSONObject>): RestOutcome {
         val parts = JSONArray()
         for ((name, args) in calls) {
             parts.put(JSONObject().put("functionCall", JSONObject().put("name", name).put("args", args)))
@@ -36,7 +36,7 @@ class SubAgentRouteTest {
 
     private fun textReply(text: String) = ok(JSONArray().put(JSONObject().put("text", text)))
 
-    private fun ok(parts: JSONArray) = SubAgent.HttpOutcome.Ok(
+    private fun ok(parts: JSONArray) = RestOutcome.Ok(
         JSONObject().put(
             "candidates",
             JSONArray().put(JSONObject().put("content", JSONObject().put("role", "model").put("parts", parts))),
@@ -81,10 +81,10 @@ class SubAgentRouteTest {
     @Test
     fun `failures map to the same variants as investigate`() = runBlocking {
         val tools = listOf(tool("get_codes") { "{}" })
-        assertSame(AgentResult.Offline, agent(SubAgent.HttpOutcome.Network).route("q", tools))
-        assertSame(AgentResult.Overloaded, agent(SubAgent.HttpOutcome.HttpError(503, "")).route("q", tools))
-        assertSame(AgentResult.Failed, agent(SubAgent.HttpOutcome.HttpError(404, "")).route("q", tools))
-        val blocked = SubAgent.HttpOutcome.Ok(
+        assertSame(AgentResult.Offline, agent(RestOutcome.Network).route("q", tools))
+        assertSame(AgentResult.Overloaded, agent(RestOutcome.HttpError(503, "")).route("q", tools))
+        assertSame(AgentResult.Failed, agent(RestOutcome.HttpError(404, "")).route("q", tools))
+        val blocked = RestOutcome.Ok(
             JSONObject().put("promptFeedback", JSONObject().put("blockReason", "SAFETY")).toString(),
         )
         assertSame(AgentResult.Failed, agent(blocked).route("q", tools))

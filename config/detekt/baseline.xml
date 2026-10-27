@@ -778,7 +778,7 @@
     <ID>LongMethod:LiveSessionController.kt:LiveSessionController$private fun handleToolCall(call: LiveEvent.ToolCall)</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$fun declarations(): JSONArray</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject</ID>
-    <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private fun allDeclarations(): JSONArray</ID>
+    <ID>LongMethod:LiveToolbox.kt:LiveToolbox$internal fun allDeclarations(): JSONArray</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun readVehicleSensor(context: Context, args: JSONObject): JSONObject</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun scheduleItem( context: Context, list: ItemList, item: com.kevin.legion.data.local.ListItem, args: JSONObject, ): JSONObject</ID>
