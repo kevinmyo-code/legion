@@ -213,6 +213,15 @@ class MidnightApplication : Application() {
         // StateFlow on every app-start/stop, so it must be live before the first one can fire, not
         // seeded lazily by whoever happens to open MirrorSyncActivity first.
         MirrorFolderPreferences.init(this)
+        // The conversation log's spool and engine upload (conversation-records ticket 03): live before
+        // the first Live session, and anything an earlier run left is sent once the network is up.
+        // Gated off under Robolectric like the lines above: every test runs this onCreate.
+        if (!isRunningUnderRobolectric()) {
+            runCatching {
+                com.kevin.legion.service.conversationlog.ConversationLog.init(this)
+                com.kevin.legion.service.conversationlog.ConversationLog.uploadAtStart()
+            }.onFailure { MidnightEvents.appStartWorkFailed("conversation_log", it) }
+        }
 
         // Named companion profiles (multi-companion, 2026-08-02): seed one
         // profile from a pre-existing single identity if this install predates

@@ -4,6 +4,7 @@ import android.util.Log
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.LookupProbe
 import com.kevin.legion.car.CarProbeLog
+import com.kevin.legion.service.conversationlog.ConversationLog
 
 /**
  * Per-turn timing for the Live voice loop (2026-10-27, Kevin: the voice agent feels slow). Pure
@@ -83,20 +84,23 @@ internal class LiveLatency {
 
         /**
          * Writes one line to BOTH sinks: [CarProbeLog] is in-memory only and readable on the
-         * screen, and the A25 needs logcat. Used for LIVE_LATENCY and LIVE_FOLLOWUP alike.
+         * screen, and the A25 needs logcat. Used for LIVE_LATENCY and LIVE_FOLLOWUP alike. The four
+         * conversation tags also go to the engine spool ([ConversationLog]); any other tag is ignored there.
          */
         fun log(tag: String, message: String) {
             CarProbeLog.log(tag, message)
             Log.i(tag, message)
+            ConversationLog.record(tag, message)
         }
 
         /**
-         * Logcat only, never [CarProbeLog]: the sibling of [log] for [LiveAudit]'s LIVE_AUDIT lines.
-         * One line per transcript chunk would flood the on-screen probe buffer, and the audit
-         * setting promises the lines are readable only over ADB.
+         * [LiveAudit]'s sink (conversation-records ticket 03): logcat when the mirror switch is on, the
+         * engine spool when "Keep on this phone and send to the engine" is on. Never [CarProbeLog]:
+         * one line per transcript chunk would flood the on-screen probe buffer.
          */
-        fun logcat(tag: String, message: String) {
-            Log.i(tag, message)
+        fun audit(tag: String, message: String) {
+            if (ConversationLog.logcatMirror) Log.i(tag, message)
+            ConversationLog.record(tag, message)
         }
 
         /**
