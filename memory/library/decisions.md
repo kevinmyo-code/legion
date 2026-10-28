@@ -6899,3 +6899,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   holding line without a tool call or after the result; a record is written only on request;
   time-varying figures only from a tool or search result. Async-lookups ticket 07. No ADR: ADR 0065
   governs async lookups and this tunes their behaviour under it.
+
+## 2026-10-28 - Phone: conversation batches go to the engine (Kevin)
+
+- **Kevin:** *"all logs on engine. both headunit and phone."* (conversation-records ticket 01).
+- **Ruling, as built (conversation-records ticket 03):** the phone spools every `LIVE_AUDIT`,
+  `LIVE_LATENCY`, `LIVE_FOLLOWUP` and `LIVE_TOOL_CANCEL` line, logcat `threadtime`-shaped, to a
+  bounded spool (`files/conversationlog/`, about 4 MB, batches sealed at 512 KB, oldest dropped
+  first) and uploads sealed batches to `POST /api/device-logs/` with `reason=conversation`: at the
+  end of every Live session, every 3 minutes while one is live, at app start when anything is
+  spooled, and on "Send now". A batch is deleted only on a 2xx; anything else keeps it and backs off
+  (30 s doubling to 10 min); an engine without the `conversation` reason is said once in the log.
+  No engine configured means nothing is sent and the spool stays on the phone.
+- **Setting:** "Conversation log" in Assistant settings, two switches: "Keep on this phone and send
+  to the engine" (default on) and the logcat mirror (the old "Conversation audit log (logcat)"
+  switch, same preference key). Section 7 binds unchanged: `LiveAudit` redacts before a line exists.
+- `device_label` is the phone's make and model only: the phone's engine client stores no member
+  name. The engine already records the uploading member (`DeviceLog.user`, from the token).

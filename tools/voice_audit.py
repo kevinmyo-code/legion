@@ -1,7 +1,8 @@
 r"""Print a readable timeline of what was said and done in each Live voice session.
 
 The phone writes LIVE_AUDIT lines from GeminiLiveSession through LiveAudit (async-lookups ticket 05;
-the "Conversation audit log (logcat)" switch in Assistant settings, default on). One line per event,
+the "Conversation log" row in Assistant settings; its logcat switch is default on, and conversation-records
+ticket 03 also spools these lines and uploads them to the engine as reason=conversation). One line per event,
 the free-text field always last, JSON-quoted, capped at 400 characters with a "..." marker:
 
     session_start model=<id> async_set=<a,b|none>
