@@ -69,6 +69,7 @@ Format and the test for whether something deserves an ADR:
 | 0061 | [[0061-books-launcher\|Books are a HOME launcher with LEGION's own reader, read from a folder grant]] | accepted | 2026-10-19 | - |
 | 0062 | [[0062-dumb-phone-mode\|Dumb phone mode is a manual switch that shrinks HOME, holds notifications and silences strangers]] | accepted | 2026-10-22 | - |
 | 0063 | [[0063-alfred-is-the-only-phone-persona\|The phone has one persona, Alfred]] | accepted | 2026-10-27 | - |
+| 0064 | [[0064-phone-turn-taking-local-end-of-turn-and-barge-in\|The phone ends turns locally, and you can talk over Alfred]] | accepted | 2026-10-27 | - |
 
 ## Superseded
 

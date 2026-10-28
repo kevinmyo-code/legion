@@ -6777,3 +6777,41 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - Fixes that fell out: the 8 s follow-up window, the hot mic and the false "Listening" during a typed
   turn are gone because typing no longer touches the socket; the panel is no longer wiped when the
   voice socket closes before a typed follow-up.
+
+## 2026-10-27 - Voice: local end of turn (extend-only) and call-style barge-in (Kevin)
+
+- **Rulings (Kevin):** smart end of turn goes **straight to on**, no shadow mode. Call-style audio
+  for barge-in (he heard it on the A25 speaker: "sounds fine"). **Barge-in off on car Bluetooth in
+  v1**; those sessions keep half-duplex and server VAD. Barge-in during a write tool **reports what
+  happened, no undo**. Server VAD stays the fallback and the switch-off state.
+- **After the A25 timing, Kevin chose option B: Smart Turn EXTEND-ONLY with a 700 ms base**, which
+  replaces design section 11's "end at the first Smart Turn pass, floor 500 ms". Measured with
+  `TURN_BENCH` (fast build, phone dozing, loadavg 18-19; Samsung's loadavg runs high when idle):
+  - first port, 2 threads: features p50 172 ms; inference p50 276-530 ms, p95 393-819 ms. That is
+    over the 300 ms gate, so the build stopped there.
+  - optimised features: full extraction p50 ~88 ms, a re-check 18 ms (cached frames).
+  - inference with 4 threads: p50 160-168 ms, p95 219-487 ms. With 2 threads: p50 280-530 ms.
+  - the first check of a silence (3 s turn) came back within the 508 ms window before the base in
+    20/20, 15/20, 20/20 and 3/20 runs. The 3/20 run was during a load spike (loadavg 33).
+- **Parameters:**
+  - Silero start >= 0.5, end < 0.35, 32 ms windows, 200 ms confirm, 400 ms pre-roll.
+  - Smart Turn check at 192 ms of silence, threshold 0.5, on the whole turn (last 8 s,
+    front-padded, starting 200 ms before onset).
+  - Activity ends at 700 ms of silence unless held. Re-checks run back to back, never overlapping.
+    Cap 2,500 ms. Speech resuming cancels everything.
+  - Barge-in: Silero >= 0.8 for 256 ms above 1.5x the reply's p90 echo level (12,000 until learned,
+    floor 3,000), one stray window tolerated.
+  - Self-interrupt: less than 160 ms of speech in the 1.2 s after a fire. Two of them turn barge-in
+    off for the conversation, said in words.
+  - Smart Turn runs on 4 threads (orchestrator call on the A25 data; section 11 had 2).
+- **Fallbacks:** if Smart Turn fails to load or throws, turns end on 700 ms of silence. If Silero
+  fails, the conversation reconnects on server VAD with its resume handle. Each is said once on screen.
+- **Phone fixes in the same build:**
+  - With barge-in on, phase and the 8 s follow-up window arm when playback drains.
+  - The local follow-up signal uses Silero, not the mic level, so Alfred's echo no longer counts.
+  - A reply after an interrupt is primed for 200 ms.
+  - `toolCallCancellation` is handled: the response is not sent, and a cancelled write's outcome is
+    handed to the model at the next quiet moment.
+- **Reopens the 2026-10-27 "not changed, still Kevin's" list:** VAD 900 ms and
+  `START_SENSITIVITY_LOW` now govern only server-VAD sessions. ADR 0064.
+- Built on `feat/smart-turn-taking`.

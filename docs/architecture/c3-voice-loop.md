@@ -26,7 +26,7 @@ sequenceDiagram
     C->>G: newSession()
     Note over C,G: systemInstruction from AriaBrain<br/>tools from LiveToolbox.declarations()<br/>voice from CompanionProfile
     G->>G: open WSS, stream mic PCM
-    Note over G: server-side VAD
+    Note over G: turn ends on the phone (Silero + Smart Turn,<br/>extend-only, ADR 0064) or server VAD
     G-->>C: LiveEvent.ToolCall
     C->>T: dispatch(name, args)
 
@@ -53,6 +53,7 @@ The names are not self-explanatory and several are not where you would guess.
 | `service/WakeWordEngine.kt` | Vosk, on-device, opt-in. Grammar is `"hey <name>"` built from the active companion profile | Entry only |
 | `service/LiveSessionController.kt` | **The conversation state machine and sole socket owner.** Three doors in: prewarm, start conversation, start proactive, all funnelled through one `newSession()` | Core |
 | `service/GeminiLiveSession.kt` | The WebSocket, the mic loop, the playback path. Emits `LiveEvent`s | Core |
+| `service/turn/TurnTaker.kt` | Local end of turn and barge-in (ADR 0064): Silero over each mic buffer, `EndOfTurnPolicy` for activityStart/activityEnd, `BargeInGate` while Alfred speaks, Smart Turn checks on one shared thread | Core, inside the session's mic loop |
 | `service/LiveToolbox.kt` | Every tool declaration and the single `dispatch()` entry | Core |
 | `service/EngineToolbox.kt` | The nine aspect-engine meta-tools (generic record CRUD over `RecordStore`) plus the Flash clerk and the Pro schema generator. Declarations folded into `LiveToolbox.declarations()`, dispatch tried first in `LiveToolbox.dispatch()` before the per-domain tools | Core, but merged in rather than standalone |
 | `ai/SubAgent.kt` | Bounded investigate loop over Gemini REST. Its tool calls replay through the *same* `dispatch()` | Core |
