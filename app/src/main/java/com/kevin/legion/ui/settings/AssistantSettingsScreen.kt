@@ -250,7 +250,7 @@ fun AssistantSettingsScreen(
                 VoiceTurnRow(
                     title = "Conversation audit log (logcat)",
                     explanation = "writes what you and ${activeName ?: "the assistant"} say, and what each " +
-                        "lookup was asked and found, to the phone's developer log. Only a computer " +
+                        "tool was asked and gave back, to the phone's developer log. Only a computer " +
                         "connected over ADB can read it. What your mail says is left out. Applies " +
                         "from the next connection.",
                     enabled = auditLog,
