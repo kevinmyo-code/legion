@@ -34,7 +34,18 @@ REASON_MANUAL = "manual"
 # Every few minutes while the service runs (2026-10-24). The ignition is cut the moment the car
 # stops, so a drive-end upload never got the chance to run; this one does not wait for an end.
 REASON_PERIODIC = "periodic"
-REASONS: tuple[str, ...] = (REASON_DRIVE_END, REASON_STARTUP, REASON_MANUAL, REASON_PERIODIC)
+# A conversation batch (2026-10-28, Kevin: "all logs on engine. both headunit and phone"): only
+# LIVE_AUDIT and LIVE_LATENCY lines from a device's conversation spool, whatever triggered the
+# upload. The reason names the content, so `manage.py device_logs --reason conversation --render`
+# reads a conversation without a drive log mixed in.
+REASON_CONVERSATION = "conversation"
+REASONS: tuple[str, ...] = (
+    REASON_DRIVE_END,
+    REASON_STARTUP,
+    REASON_MANUAL,
+    REASON_PERIODIC,
+    REASON_CONVERSATION,
+)
 
 # One upload is refused above this, compressed or decompressed (the second is
 # the gzip-bomb guard). The head unit seals batches at about 1 MB, well under.
