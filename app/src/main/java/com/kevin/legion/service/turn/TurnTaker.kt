@@ -66,23 +66,29 @@ internal class TurnTaker(
 
     val inActivity: Boolean get() = synchronized(lock) { policy.inActivity }
 
-    /** A reply started playing (first model audio). */
+    /**
+     * A reply started playing (first model audio). A reply still open here (the next model turn began
+     * before the last one drained, so its drain watcher stood down) is ended and logged first.
+     */
     fun onReplyStart() = synchronized(lock) {
+        endReply()
         bargedThisReply = false
         if (bargeIn) gate.onReplyStart()
+        sink.log(BARGE_TAG, "armed=${gate.armedNow} disabled=${!bargeIn || gate.disabled}")
     }
 
-    /** The reply finished playing, or was flushed. */
-    fun onReplyEnd() = synchronized(lock) { gate.onReplyEnd() }
+    /** The reply finished playing, or was flushed. Logs its [BargeInGate.ReplyStats] once. */
+    fun onReplyEnd() = synchronized(lock) { endReply() }
 
     /** Barge-in off for the rest of the session (Bluetooth connected, self-interrupts). */
     fun disableBargeIn() = synchronized(lock) {
         bargeIn = false
-        gate.onReplyEnd()
+        endReply()
     }
 
     /** Forget any turn in progress (mic stopped, session closing). Sends nothing. */
     fun reset() = synchronized(lock) {
+        endReply()
         policy.reset()
         windowFill = 0
         silero.reset()
@@ -143,6 +149,12 @@ internal class TurnTaker(
         policy.reset()
         sink.onSileroFailed("${t.javaClass.simpleName}: ${t.message}")
         null
+    }
+
+    /** Ends the gate's reply and logs what it heard, if one was open. Must hold [lock]. */
+    private fun endReply() {
+        val s = gate.onReplyEnd() ?: return
+        sink.log(BARGE_TAG, replyEndLine(s))
     }
 
     /** One window through the echo gate. Returns STARTED/BARGED bits. Must hold [lock]. */
@@ -344,6 +356,13 @@ internal class TurnTaker(
         private const val STARTED = 1
         private const val BARGED = 2
         private const val ENDED = 4
+
+        /** The `reply_end` line: everything needed to say why a reply was not barged in on. */
+        fun replyEndLine(s: BargeInGate.ReplyStats): String =
+            "reply_end fired=${s.fired} windows=${s.windows} speech_windows=${s.speechWindows} " +
+                "loud_windows=${s.loudWindows} qualifying_windows=${s.qualifyingWindows} " +
+                "max_prob=${"%.2f".format(java.util.Locale.US, s.maxProb)} max_level=${s.maxLevel} " +
+                "longest_run_ms=${s.longestRunMs} echo_floor=${s.echoFloor} threshold=${s.threshold}"
 
         /** One thread for every session's Smart Turn checks, so checks never overlap. */
         private val INFERENCE: ExecutorService = Executors.newSingleThreadExecutor { r ->

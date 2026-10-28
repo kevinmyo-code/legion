@@ -3398,6 +3398,8 @@ class GeminiLiveSession(
     private fun closeSession(reason: String) {
         if (!closed.compareAndSet(false, true)) return
         running.set(false)
+        // The drain watcher stands down once running is false: end (and log) a reply still playing.
+        turnTaker?.onReplyEnd()
         warm.set(false)
         conversationActive = false
         if (capturing) audit.micClosed("session_end")
