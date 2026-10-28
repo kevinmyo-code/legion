@@ -323,12 +323,12 @@ object LiveToolbox {
                 "ECU. This also wipes the freeze frame and RESETS THE EMISSIONS READINESS MONITORS, " +
                 "so the car will fail an inspection until it has driven enough to reset them. " +
                 "Destructive and not reversible. ALWAYS call this first with confirmed=false - it " +
-                "reads the stored codes and returns the exact warning to recite to the user; only " +
+                "previews what would be erased and returns the exact warning to recite to the user; only " +
                 "call it again with confirmed=true after the user says yes in the very next turn. " +
                 "After sending, this re-reads the codes and reports what actually came back - only " +
                 "ever say 'cleared' if that is what this tool's own result says, never assume the " +
-                "send alone means it worked. Use when the user asks to clear codes, reset the " +
-                "check engine light, or erase trouble codes. Reads the OBD dongle in the car it is " +
+                "send alone means it worked. Use ONLY when the user asks to clear, reset or erase codes; " +
+                "to read or ask about codes, use ask_fleet. Reads the OBD dongle in the car it is " +
                 "plugged into right now. Cannot answer for any other car.",
             params = obj(
                 "confirmed" to schema("boolean", "False on the first call to read the codes and get " +
