@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>245 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 42 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 51 are waiting on another ticket first. <b>135 are already built</b> and owe nothing but a run on the phone. 11 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 42 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 51 are waiting on another ticket first. <b>136 are already built</b> and owe nothing but a run on the phone. 11 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">245</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">48</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">135</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n mint">47</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n mint">136</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">51</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">89</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">88</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">11</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -632,12 +632,12 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>async-lookups</h2>
-<span class="counts"><span class="k">3</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 4 tickets</span></span>
+<span class="counts"><span class="k">3</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 4 tickets</span></span>
 <span class="bar"><i style="flex:2"></i><b style="flex:1"></b></span>
 </header>
 <ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">Build: non-blocking read tools on the Live socket</span><span class="det">Unstarted. Branch feat/async-read-tools</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">Build: sub-agent fallback model and per-stage latency probes</span><span class="det">Unstarted. Branch feat/subagent-fallback</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Build: non-blocking read tools on the Live socket</span><span class="det">Built 2026-10-28 on feat/async-read-tools, suite green, assembleFast builds. Non-blocking set is ask_body and ask_pantry only: ask_fleet (lookup_vin upserts specs) and ask_goals (ask_advisor logs advice) reach writes, and the other four sit behind ask_fleet. So &#x27;any trouble codes?&#x27; still blocks; ticket 04&#x27;s device step needs a body or pantry question, or a ruling on lookup_vin. Matrix bar shows WORKING only in THINKING, not while a lookup runs under the holding line.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">Test: the A25 run that proves WHEN_IDLE speaks, and the lookup p50/p95</span><span class="det">Waits on 02 and 03 merged into one fast build</span></span><span class="chip c-test">test</span><span class="state">waiting on #02, #03</span></li>
 </ul>
 </section>

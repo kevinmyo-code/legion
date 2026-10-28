@@ -101,7 +101,8 @@ generated from the `*Toolbox.kt` files in `service/`, so a tool that exists is o
   decide when you are done, with Gemini's server VAD as the fallback. Call-style audio with echo
   cancellation lets you interrupt mid-reply.
 - **Tools:** read tools are grouped behind `ask_<domain>` routers so Live's per-turn tool block
-  stays small; write tools stay direct.
+  stays small; write tools stay direct. Writes always block, and a named read-only lookup may run
+  while the conversation carries on, its answer spoken when it lands (ADR 0065).
 - **Offline:** the phone reads its Room replica and queues writes when the engine is down, and says
   so.
 - **Every voice capability has a by-hand path** that calls the same controller (ADR 0035).

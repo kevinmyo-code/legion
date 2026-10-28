@@ -18,7 +18,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
-| [[.scratch/async-lookups/map\|async-lookups]] | [[02-non-blocking-read-tools\|02]] | build | Build: non-blocking read tools on the Live socket |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[03-fallback-model-and-probes\|03]] | build | Build: sub-agent fallback model and per-stage latency probes |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -85,6 +84,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/architecture/map\|architecture]] | [[05-detekt-with-a-baseline\|05]] | build | detekt joins the build, with a baseline and a 1000-line ceiling |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[18-build-widget-pager\|18]] | task | Build the widget pager and generated screens |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[19-build-dates-aspect\|19]] | task | Build the Dates aspect |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[02-non-blocking-read-tools\|02]] | build | Build: non-blocking read tools on the Live socket |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[08-receipts-whose-anchors-were-never-stored\|08]] | build | 08-receipts-whose-anchors-were-never-stored |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[09-backups-do-not-cover-files\|09]] | build | 09-backups-do-not-cover-files |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[10-fleet-cutover\|10]] | build | 10-fleet-cutover |
