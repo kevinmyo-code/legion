@@ -1721,11 +1721,13 @@ object LiveToolbox {
         // could only land on register_vehicle, which overwrites the active car -
         // and did, turning a 2020 Outlander with 5242 stored readings into a
         // Ford F-150 without ever creating the F-150.
+        // 2026-10-28: "add" was invited by a mere mention ("I also drive a..."), against
+        // WRITE_ON_REQUEST_CLAUSE. A mention gets an offer; only a request adds.
         fns.put(fn(
             name = "manage_vehicle",
             description = "Add a car to the fleet, fix a car's saved details, rename one, switch " +
-                "which car you're on, or archive/unarchive one. Use 'add' when the user mentions " +
-                "another car they own ('add my F-150', 'I also drive a...') - this is the ONLY way " +
+                "which car you're on, or archive/unarchive one. Use 'add' only when asked " +
+                "('add my F-150'); a car merely mentioned gets an offer first. This is the ONLY way " +
                 "to create a second car, and it does NOT change which car is active. Use 'correct' " +
                 "when a car has the wrong year/make/model saved; its drives and service history stay " +
                 "with it. Call list_vehicles first if you're not sure which car they mean.",
