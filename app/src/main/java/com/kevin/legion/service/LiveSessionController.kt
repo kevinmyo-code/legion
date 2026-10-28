@@ -138,6 +138,11 @@ class LiveSessionController(context: Context) {
      * the voice path's instruction builder, tool declarations and tool runner ([runTool]), and is
      * never handed [session]. See [TypedChat] and [onTyped].
      */
+    // Conversation-records ticket 03: typed turns write LIVE_AUDIT lines too (logcat and the engine spool).
+    private val typedAudit = TypedChatAudit(
+        enabled = { com.kevin.legion.service.conversationlog.ConversationLog.auditWantedAfterReading(appContext) },
+    )
+
     private val typedChat = TypedChat(
         scope = scope,
         engine = TextChatEngine(
@@ -151,6 +156,7 @@ class LiveSessionController(context: Context) {
         systemParts = { listOf(brain.buildTextInstruction(), brain.buildLiveContext()) },
         declarations = { LiveToolbox.textDeclarations() },
         runTool = { name, args, readThrough, turnSeq ->
+            val auditId = typedAudit.toolCall(name, args)
             val response = if (name in LiveToolbox.VOICE_SESSION_TOOLS) {
                 // Not declared to the text model; refused in words if it is called anyway, because
                 // end_conversation would otherwise arm a hang-up on the NEXT voice turn.
@@ -164,13 +170,17 @@ class LiveSessionController(context: Context) {
                 }
             }
             auditToolCall(name, args, response, turnSeq)
+            typedAudit.toolResult(auditId, name, response)
             response
         },
         speakerName = ::speakerName,
         // The same teardown a crisis heard in speech gets: stop performing the character.
         onCrisis = { handleEvent(LiveEvent.CrisisDetected) },
         onInFlightChanged = ::typedPhase,
-        record = { TypedTurnRecorder.record(appContext, it) },
+        record = {
+            TypedTurnRecorder.record(appContext, it)
+            typedAudit.turn(it)
+        },
     )
 
     // True while a hands-free conversation (server VAD) is running, vs. a
@@ -429,6 +439,7 @@ class LiveSessionController(context: Context) {
      * in the panel, in words.
      */
     fun onTyped(text: String) {
+        typedAudit.user(text)
         typedChat.onTyped(text)
     }
 

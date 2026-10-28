@@ -61,6 +61,7 @@ object VoiceTurnSettings {
     private const val KEY_BARGE_IN = "barge_in"
     private const val KEY_ASYNC_LOOKUPS = "async_lookups"
     private const val KEY_AUDIT_LOG = "conversation_audit_log"
+    private const val KEY_KEEP_CONVERSATION_LOG = "conversation_log_keep_and_send"
 
     /**
      * ADR 0065's default: ON (Kevin, 2026-10-28). Whether a `WHEN_IDLE` result makes
@@ -71,6 +72,9 @@ object VoiceTurnSettings {
 
     /** Kevin, 2026-10-28: "cant u like record what i say in the logs too so u can see everything and audit". */
     internal const val AUDIT_LOG_DEFAULT = true
+
+    /** Conversation-records ticket 03 (Kevin, 2026-10-28: "all logs on engine"): spool and upload, default ON. */
+    internal const val KEEP_CONVERSATION_LOG_DEFAULT = true
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -97,4 +101,14 @@ object VoiceTurnSettings {
      */
     fun auditLog(context: Context): Boolean = prefs(context).getBoolean(KEY_AUDIT_LOG, AUDIT_LOG_DEFAULT)
     fun setAuditLog(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_AUDIT_LOG, on).apply()
+
+    /**
+     * "Keep on this phone and send to the engine" (conversation-records ticket 03): the LIVE_AUDIT and
+     * LIVE_LATENCY lines also go to the bounded spool and up to the household's engine as
+     * `reason=conversation` ([com.kevin.legion.service.conversationlog.ConversationLog]). Default ON.
+     */
+    fun keepConversationLog(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_KEEP_CONVERSATION_LOG, KEEP_CONVERSATION_LOG_DEFAULT)
+    fun setKeepConversationLog(context: Context, on: Boolean) =
+        prefs(context).edit().putBoolean(KEY_KEEP_CONVERSATION_LOG, on).apply()
 }

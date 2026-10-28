@@ -1,5 +1,7 @@
 package com.kevin.legion.service
 
+import com.kevin.legion.service.conversationlog.ConversationLog
+
 /**
  * The conversation audit log (async-lookups ticket 05, 2026-10-28, Kevin: "cant u like record what
  * i say in the logs too so u can see everything and audit"). One `LIVE_AUDIT` logcat line per
@@ -21,14 +23,16 @@ package com.kevin.legion.service
  * `response="[redacted: third-party content]"`. Chunks spoken before the mail tool was asked for
  * stay in clear: no mail content exists yet when they are logged. The user's own words always log.
  *
- * Writes through [sink], which is [LiveLatency.logcat] in production (logcat only, never the
- * on-screen probe buffer). Off ([enabled] false) means no line at all. Thread-safe: the socket thread and the tool
- * dispatcher both call in.
+ * Writes through [sink], which is [LiveLatency.audit] in production (logcat and/or the engine spool,
+ * never the on-screen probe buffer). Off ([enabled] false) means no line at all. [onSession] hears
+ * every session start and end whatever [enabled] says, so the engine spool can seal and upload.
+ * Thread-safe: the socket thread and the tool dispatcher both call in.
  */
 @Suppress("TooManyFunctions") // one function per LIVE_AUDIT event, the format's whole surface
 internal class LiveAudit(
-    private val sink: (String) -> Unit = { LiveLatency.logcat(TAG, it) },
+    private val sink: (String) -> Unit = { LiveLatency.audit(TAG, it) },
     private val isReadThroughTool: (String) -> Boolean = { GeminiLiveSession.isEpisodicExcludedTool(it) },
+    private val onSession: (Boolean) -> Unit = { ConversationLog.onSession(it) },
 ) {
     @Volatile var enabled = false
 
@@ -42,10 +46,14 @@ internal class LiveAudit(
         resetTurn()
         val async = asyncSet.sorted().joinToString(",").ifEmpty { "none" }
         emit("session_start model=${token(model)} async_set=$async")
+        onSession(true)
     }
 
     @Synchronized
-    fun sessionEnd(reason: String) = emit("session_end reason=${quote(reason)}")
+    fun sessionEnd(reason: String) {
+        emit("session_end reason=${quote(reason)}")
+        onSession(false)
+    }
 
     /** [final] is the transcription's own `finished` flag, or true for a whole-turn line. */
     @Synchronized

@@ -3,6 +3,8 @@ package com.kevin.legion.backend.engine
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.delete
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -14,6 +16,8 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import java.io.IOException
 
@@ -113,7 +117,7 @@ class EngineBinary(val status: Int, val bytes: ByteArray, val headers: Map<Strin
  * also swallows `kotlinx.coroutines.CancellationException` and would report a caller's own
  * cancellation as "the server is unreachable".
  */
-@Suppress("TooManyFunctions") // one method per HTTP verb the engine takes, plus the binary POST for books
+@Suppress("TooManyFunctions") // one method per HTTP verb the engine takes, plus the binary and multipart POSTs
 class EngineHttp(
     private val config: EngineConfig,
     private val client: HttpClient = defaultClient(),
@@ -197,6 +201,42 @@ class EngineHttp(
             )
         }
     }
+
+    /**
+     * `POST <path>` as `multipart/form-data`: the text [fields], then one file part named
+     * [fileField] carrying [fileBytes] (conversation-records ticket 03, the phone's
+     * `POST /api/device-logs/`). The file part's `Content-Disposition` carries `filename=`, which is
+     * what makes Django treat it as an upload rather than a plain field (DRF's `FileField` answers
+     * "No file was submitted" without it). A non-2xx is classified as every other call is.
+     */
+    suspend fun postMultipart(
+        path: String,
+        fields: Map<String, String>,
+        fileField: String,
+        fileName: String,
+        fileBytes: ByteArray,
+        fileMimeType: String,
+    ): Result<EngineOk> =
+        send(path) { url ->
+            client.post(url) {
+                authorize()
+                setBody(
+                    MultiPartFormDataContent(
+                        formData {
+                            fields.forEach { (name, value) -> append(name, value) }
+                            append(
+                                fileField,
+                                fileBytes,
+                                Headers.build {
+                                    append(HttpHeaders.ContentType, fileMimeType)
+                                    append(HttpHeaders.ContentDisposition, "filename=\"$fileName\"")
+                                },
+                            )
+                        },
+                    ),
+                )
+            }
+        }
 
     suspend fun patch(path: String, jsonBody: String): Result<EngineOk> =
         send(path) { url ->

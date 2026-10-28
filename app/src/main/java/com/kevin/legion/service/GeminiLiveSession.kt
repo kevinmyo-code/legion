@@ -700,7 +700,7 @@ class GeminiLiveSession(
         bargeSetting = VoiceTurnSettings.bargeIn(appContext)
         nonBlockingTools =
             if (VoiceTurnSettings.asyncLookups(appContext)) LiveToolbox.NON_BLOCKING_READ_TOOLS else emptySet()
-        audit.enabled = VoiceTurnSettings.auditLog(appContext)
+        audit.enabled = com.kevin.legion.service.conversationlog.ConversationLog.auditWantedAfterReading(appContext)
         audit.sessionStart(MODEL.removePrefix("models/"), nonBlockingTools)
         turnConfig = TurnConfig.SERVER_VAD
         turnTaker = null
