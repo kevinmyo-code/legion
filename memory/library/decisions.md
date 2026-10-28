@@ -6815,3 +6815,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Reopens the 2026-10-27 "not changed, still Kevin's" list:** VAD 900 ms and
   `START_SENSITIVITY_LOW` now govern only server-VAD sessions. ADR 0064.
 - Built on `feat/smart-turn-taking`.
+
+## 2026-10-28 - Conversation logs: all on the engine, both clients (Kevin)
+
+- Ruling, verbatim: *"all logs on engine. both headunit and phone."*
+- Both the phone and the head unit upload their conversation audit (`LIVE_AUDIT`) and its timing
+  (`LIVE_LATENCY`) to the household's engine, `POST /api/device-logs/` with the new reason
+  `conversation` (migration `devicelogs/0003`). One line format for both devices, the phone's
+  (async-lookups ticket 05), so one parser (`tools/voice_audit.py`, copied into
+  `server/devicelogs/` for `manage.py device_logs --render`) reads either.
+- Audio stays on the phone for now; it is not uploaded.
+- Section 7 is unchanged: third-party content is redacted before a line is written.
+- Map: `.scratch/conversation-records/`. Head unit built on `feat/headunit-conversation-logs`
+  (ticket 02), which also lands the periodic drive-log upload from `fix/headunit-logs-and-spend`
+  without its spend work. No ADR: no standing rule changed; transcripts on the household's own
+  engine were already allowed (headunit `LogRedactor`, Kevin 2026-10-15).
