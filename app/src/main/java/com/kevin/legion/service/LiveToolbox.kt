@@ -530,7 +530,7 @@ object LiveToolbox {
                 "user going to bed - do not wish them goodnight, do not comment on the hour, and " +
                 "do not treat it as a bedtime remark. It may well be the middle of the day. " +
                 "Acknowledge in two or three words and stop. " +
-                "Say a short in-character sign-off in the same turn; " +
+                "Say one dry sign-off line in your own register in the same turn; " +
                 "the conversation closes once you finish speaking, and the user can always call " +
                 "you again. Do NOT call this when the user is merely answering 'no' to something " +
                 "you asked, declining one suggestion, or pausing to think - those are ordinary " +

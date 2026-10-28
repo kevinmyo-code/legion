@@ -36,6 +36,8 @@ class AlfredRegisterTest {
             "\"Sir\" is for the moment that earns it; most answers have none." to "sir, sparingly",
             "No stock butler sign-offs" to "no stock sign-off",
             "one dry line, then stop" to "a sign-off is one dry line",
+            "Butler stock like \"Very good\" or \"Right away\" is out" to
+                "the stock butler lines run 3 heard are named as out (ticket 07, F4)",
         )
         for ((phrase, why) in rules) {
             assertTrue("missing from ALFRED.clause: $why", clause.contains(phrase))

@@ -55,6 +55,23 @@ class LiveToolboxEndConversationTest {
         )
     }
 
+    /**
+     * Ticket 04 run 3 (F4): the old result text produced "Very good, Sir.". The instruction asks
+     * for the register's own dry line and names no stock phrase (async-lookups ticket 07).
+     */
+    @Test
+    fun `the sign-off instruction asks for a dry line and names no stock phrase`() {
+        val text = LiveSessionController.END_CONVERSATION_INSTRUCTION
+        assertTrue(text.contains("one dry line in your own register"))
+        assertTrue(text.contains("then stop"))
+        for (stock in listOf("very good", "right away", "sir", "in-character sign-off")) {
+            assertTrue("the instruction must not name \"$stock\"", stock !in text.lowercase())
+        }
+        val description = declaration().optString("description")
+        assertTrue(description.contains("one dry sign-off line in your own register"))
+        assertTrue("very good" !in description.lowercase())
+    }
+
     @Test
     fun `the description forbids firing on an ordinary no`() {
         val text = declaration().optString("description").lowercase()

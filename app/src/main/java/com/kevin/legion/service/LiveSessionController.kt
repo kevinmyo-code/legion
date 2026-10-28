@@ -1365,11 +1365,7 @@ class LiveSessionController(context: Context) {
                 dismissAfterTurn = true
                 JSONObject()
                     .put("success", true)
-                    .put(
-                        "instruction",
-                        "Say one short in-character sign-off now, then stop. " +
-                            "The conversation ends when you finish speaking.",
-                    )
+                    .put("instruction", END_CONVERSATION_INSTRUCTION)
             }
             "import_receipt" -> {
                 openPantryImport()
@@ -1565,6 +1561,16 @@ class LiveSessionController(context: Context) {
 
     companion object {
         private const val IDLE_STATUS = "Tap to talk"
+
+        /**
+         * `end_conversation`'s result text. Async-lookups ticket 07 (ticket 04 run 3, F4): "Say one
+         * short in-character sign-off" produced the stock "Very good, Sir." the register forbids. It
+         * asks for the register's own dry line and names no phrase, because a phrase named here,
+         * even as an example, is the one the model reaches for.
+         */
+        internal const val END_CONVERSATION_INSTRUCTION =
+            "Sign off now with one dry line in your own register, about this conversation, then " +
+                "stop. The conversation ends when you finish speaking."
         // Ticket 17's closing tone: ToneGenerator volume (0-100), length, and how long to wait
         // before releasing the generator.
         private const val CLOSING_TONE_VOLUME = 50
