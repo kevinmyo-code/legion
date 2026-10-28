@@ -6850,3 +6850,17 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   it on the A25; if it behaves like `SILENT`, the default flips to off
   (`VoiceTurnSettings.ASYNC_LOOKUPS_DEFAULT`). Timeouts unchanged until ticket 04 measures.
 - Built on `feat/async-read-tools`.
+
+## 2026-10-28 - Voice: a conversation audit log in logcat (Kevin)
+
+- **Kevin, after the A25 lookup test:** *"cant u like record what i say in the logs too so u can see
+  everything and audit"*. The `fast` build cannot be read over Room, so the audit lives in logcat.
+- **What:** `LIVE_AUDIT` lines (`service/LiveAudit.kt`): what the user said, what the assistant said,
+  each tool's args and result, turn and mic events. Logcat only, never the on-screen probe log.
+  `tools/voice_audit.py` turns a capture into a timeline. Async-lookups ticket 05.
+- **Default ON,** because Kevin asked for it. "Conversation audit log (logcat)" in Assistant settings
+  turns it off; off writes no line.
+- **Mail turns are redacted (CLAUDE.md sec 7):** a turn that ran a tool in
+  `EPISODIC_EXCLUDED_TOOLS` logs the assistant's speech and the mail tool's result as
+  `[redacted: third-party content]`. The user's own words still log. No ADR: a logging sink under an
+  existing rule, not a new ruling.

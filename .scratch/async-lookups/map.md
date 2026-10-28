@@ -4,8 +4,8 @@ title: "Lookups answer while Alfred keeps talking"
 charted: 2026-10-28
 charted-by: "Kevin + Fable"
 effort: "`.scratch/async-lookups/`"
-tickets: 4
-open: 3
+tickets: 5
+open: 4
 status: open
 tags: [map]
 ---
@@ -45,6 +45,7 @@ capture says how long each stage of a lookup took.
 - 02 build: non-blocking read tools on the Live socket, holding-line prompt rule, setting, tests
 - 03 build: sub-agent fallback model and per-stage latency probes
 - 04 test: the A25 run that proves `WHEN_IDLE` speaks the result on `gemini-3.8-live`, and the p50/p95 report
+- 05 build: conversation audit log, `LIVE_AUDIT` lines with what was said and each tool's args and result, read by `tools/voice_audit.py` (Kevin, 2026-10-28)
 
 ## The gate
 
