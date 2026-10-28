@@ -13,8 +13,8 @@ import kotlin.math.sqrt
 /**
  * Smart Turn v3.2's input features, computed natively: the same numbers as Hugging Face's
  * `WhisperFeatureExtractor(chunk_length=8)` called with `do_normalize=True` on 16 kHz mono float
- * audio that has already been cut to its last 8 s and zero-padded at the FRONT (pipecat-ai/smart-turn
- * `inference.py`, and the offline eval in the 2026-10-27 turn-taking work).
+ * audio cut to its last 8 s and zero-padded at the FRONT (pipecat-ai/smart-turn `inference.py`, and
+ * the offline eval behind the 2026-10-27 turn-taking work).
  *
  * The pipeline, step for step with transformers 5.x's numpy path (`_np_extract_fbank_features`):
  * 1. zero mean, unit variance over all 128,000 samples (`var + 1e-7`, population variance);
@@ -23,88 +23,164 @@ import kotlin.math.sqrt
  * 4. 80 Slaney-scale, Slaney-normalised triangular mel filters over 0..8000 Hz, floor 1e-10, log10;
  * 5. drop the last frame (800 remain), clamp to `max - 8`, then `(x + 4) / 4`.
  *
- * Output is `[80 * 800]`, mel-major (`m * 800 + t`), which is the row-major layout of the model's
- * `[1, 80, 800]` input. `WhisperLogMelGoldenTest` holds it against vectors produced by the Python
- * extractor. Not thread-safe: one instance per inference thread, buffers are reused.
+ * **Cheaper than it looks, on purpose (A25, 2026-10-27: the first port took 172 ms).** The DFT is a
+ * real-input FFT (one 200-point complex FFT plus a split), in floats. And because step 1 is affine,
+ * a frame's normalised spectrum is `(X_raw - mean * DFT(window)) / std`: [extractTurn] keeps each
+ * frame's RAW spectrum keyed by its position in the turn, so a re-check later in the same silence
+ * only transforms the frames it has not seen. That needs the frame grid to stay put between checks,
+ * so [extractTurn] uses the turn's length rounded down to a whole hop (at most 9.9 ms of the newest
+ * audio, which at a check is silence).
+ *
+ * Output is `[80 * 800]`, mel-major (`m * 800 + t`), the row-major layout of the model's
+ * `[1, 80, 800]` input. `WhisperLogMelGoldenTest` holds it against vectors from the Python
+ * extractor. Not thread-safe: one instance per inference thread.
  */
 internal class WhisperLogMel {
-    private val window = DoubleArray(N_FFT) { 0.5 - 0.5 * cos(2.0 * PI * it / N_FFT) }
-    private val fft = Fft400()
+    private val window = FloatArray(N_FFT) { (0.5 - 0.5 * cos(2.0 * PI * it / N_FFT)).toFloat() }
+    private val rfft = RealFft400()
     private val melLo = IntArray(N_MELS)
-    private val melWeights = arrayOfNulls<DoubleArray>(N_MELS)
+    private val melWeights = arrayOfNulls<FloatArray>(N_MELS)
 
-    private val padded = DoubleArray(N_SAMPLES + N_FFT)
-    private val re = DoubleArray(N_FFT)
-    private val im = DoubleArray(N_FFT)
-    private val power = DoubleArray(N_BINS)
+    // DFT of the window itself: what a constant (the mean) contributes to every frame.
+    private val windowRe = FloatArray(N_BINS)
+    private val windowIm = FloatArray(N_BINS)
+
+    private val frame = FloatArray(N_FFT)
+    private val power = FloatArray(N_BINS)
+    private val scratchRe = FloatArray(N_BINS)
+    private val scratchIm = FloatArray(N_BINS)
+    private val out = FloatArray(N_MELS * N_FRAMES)
+
+    // Raw (un-normalised) spectra of frames that lie wholly inside the turn, keyed by hop index.
+    private val cache = HashMap<Int, FloatArray>()
+    private var cacheTurn: Any? = null
+
+    /** Frames transformed (not served from the cache) by the last call. For logs and tests. */
+    var lastFramesComputed = 0
+        private set
 
     init {
         buildMelFilters()
+        rfft.transform(window, windowRe, windowIm)
     }
 
-    /** The last [N_SAMPLES] of [audio], zero-padded at the front when shorter. */
-    fun prepare(audio: FloatArray): FloatArray {
-        if (audio.size == N_SAMPLES) return audio
-        val out = FloatArray(N_SAMPLES)
-        if (audio.size > N_SAMPLES) {
-            System.arraycopy(audio, audio.size - N_SAMPLES, out, 0, N_SAMPLES)
-        } else {
-            System.arraycopy(audio, 0, out, N_SAMPLES - audio.size, audio.size)
+    /**
+     * Features for [audio] exactly as the Python extractor computes them: any length, last 8 s,
+     * front zero-padding. Allocates its result; uses no cache.
+     */
+    fun extract(audio: FloatArray): FloatArray = compute(audio, audio.size, null).copyOf()
+
+    /**
+     * Features for the first [length] samples of [turn], a buffer that only ever grows within one
+     * turn (same array or a longer copy, same [turnKey]). Spectra of frames already seen in this
+     * turn are reused. Returns an internal buffer, valid until the next call.
+     */
+    fun extractTurn(turn: FloatArray, length: Int, turnKey: Any): FloatArray {
+        if (turnKey !== cacheTurn) {
+            cache.clear()
+            cacheTurn = turnKey
         }
-        return out
+        val aligned = length - length % HOP
+        return compute(turn, aligned, cache)
     }
 
-    /** Features for [audio] (any length; see [prepare]). */
-    fun extract(audio: FloatArray): FloatArray {
-        val x = prepare(audio)
-        normaliseAndPad(x)
-        val out = FloatArray(N_MELS * N_FRAMES)
-        var globalMax = Double.NEGATIVE_INFINITY
+    /** Drops cached spectra; the next [extractTurn] starts a new turn. */
+    fun resetTurn() {
+        cache.clear()
+        cacheTurn = null
+    }
+
+    private fun compute(audio: FloatArray, length: Int, frameCache: HashMap<Int, FloatArray>?): FloatArray {
+        // Window = audio[length - N_SAMPLES, length), negative indices are the front zero-padding.
+        val base = length - N_SAMPLES
+        var sum = 0.0
+        val first = max(0, base)
+        for (i in first until length) sum += audio[i]
+        val mean = sum / N_SAMPLES
+        var sq = 0.0
+        for (i in first until length) {
+            val d = audio[i] - mean
+            sq += d * d
+        }
+        // The zero-padded samples each contribute mean^2.
+        sq += (N_SAMPLES - (length - first)) * mean * mean
+        val std = sqrt(sq / N_SAMPLES + 1e-7)
+        val m = mean.toFloat()
+        val invVar = (1.0 / (std * std)).toFloat()
+
+        var computed = 0
+        var globalMax = Float.NEGATIVE_INFINITY
+        val half = N_FFT / 2
         for (t in 0 until N_FRAMES) {
-            frameSpectrum(t * HOP)
-            for (m in 0 until N_MELS) {
-                val w = melWeights[m]!!
-                val lo = melLo[m]
-                var acc = 0.0
+            // Frame start in padded-window coordinates is t*HOP; in audio coordinates subtract half.
+            val startInWindow = t * HOP - half
+            val absStart = base + startInWindow
+            val inside = startInWindow >= 0 && startInWindow + N_FFT <= N_SAMPLES
+            val key = (absStart + half) / HOP
+            val cached = if (inside && frameCache != null) frameCache[key] else null
+            val spec: FloatArray
+            if (cached != null) {
+                spec = cached
+            } else {
+                for (i in 0 until N_FFT) frame[i] = rawAt(audio, length, base, startInWindow + i) * window[i]
+                rfft.transform(frame, scratchRe, scratchIm)
+                computed++
+                if (inside && frameCache != null) {
+                    spec = FloatArray(2 * N_BINS)
+                    System.arraycopy(scratchRe, 0, spec, 0, N_BINS)
+                    System.arraycopy(scratchIm, 0, spec, N_BINS, N_BINS)
+                    frameCache[key] = spec
+                } else {
+                    spec = SHARED_SCRATCH_MARKER
+                }
+            }
+            for (k in 0 until N_BINS) {
+                val re: Float
+                val im: Float
+                if (spec === SHARED_SCRATCH_MARKER) {
+                    re = scratchRe[k]; im = scratchIm[k]
+                } else {
+                    re = spec[k]; im = spec[N_BINS + k]
+                }
+                val r = re - m * windowRe[k]
+                val i = im - m * windowIm[k]
+                power[k] = (r * r + i * i) * invVar
+            }
+            for (mel in 0 until N_MELS) {
+                val w = melWeights[mel]!!
+                val lo = melLo[mel]
+                var acc = 0f
                 for (i in w.indices) acc += w[i] * power[lo + i]
-                val v = log10(max(MEL_FLOOR, acc))
-                out[m * N_FRAMES + t] = v.toFloat()
+                val v = log10(max(MEL_FLOOR, acc.toDouble())).toFloat()
+                out[mel * N_FRAMES + t] = v
                 if (v > globalMax) globalMax = v
             }
         }
-        // Frame 800 (the 801st) is computed by the Python extractor and then dropped before the max,
-        // so it is never computed here at all.
-        val floor = (globalMax - DYNAMIC_RANGE).toFloat()
+        lastFramesComputed = computed
+        if (frameCache != null) {
+            // Frames that slid out of the 8 s window will never be asked for again.
+            val minKey = (base + 0) / HOP - 1
+            frameCache.keys.removeAll { it < minKey }
+        }
+        // The 801st frame is computed by the Python extractor and then dropped before the max, so
+        // it is never computed here at all.
+        val floor = globalMax - DYNAMIC_RANGE
         for (i in out.indices) out[i] = (max(out[i], floor) + 4f) / 4f
         return out
     }
 
-    private fun normaliseAndPad(x: FloatArray) {
-        var sum = 0.0
-        for (v in x) sum += v
-        val mean = sum / x.size
-        var sq = 0.0
-        for (v in x) {
-            val d = v - mean
-            sq += d * d
+    /**
+     * The un-normalised sample at padded-window index [j] (0..N_SAMPLES+N_FFT): numpy 'reflect' at
+     * both ends of the 8 s window (the edge sample is not repeated), zero-padding before the audio.
+     */
+    private fun rawAt(audio: FloatArray, length: Int, base: Int, j: Int): Float {
+        val w = when {
+            j < 0 -> -j
+            j >= N_SAMPLES -> 2 * (N_SAMPLES - 1) - j
+            else -> j
         }
-        val inv = 1.0 / sqrt(sq / x.size + 1e-7)
-        val half = N_FFT / 2
-        for (i in x.indices) padded[half + i] = (x[i] - mean) * inv
-        // numpy 'reflect': the edge sample is not repeated.
-        for (i in 0 until half) {
-            padded[half - 1 - i] = padded[half + 1 + i]
-            padded[half + N_SAMPLES + i] = padded[half + N_SAMPLES - 2 - i]
-        }
-    }
-
-    private fun frameSpectrum(start: Int) {
-        for (i in 0 until N_FFT) {
-            re[i] = padded[start + i] * window[i]
-            im[i] = 0.0
-        }
-        fft.transform(re, im)
-        for (k in 0 until N_BINS) power[k] = re[k] * re[k] + im[k] * im[k]
+        val idx = base + w
+        return if (idx < 0 || idx >= length) 0f else audio[idx]
     }
 
     private fun buildMelFilters() {
@@ -121,10 +197,10 @@ internal class WhisperLogMel {
                 val up = (upper - fftFreqs[k]) / (upper - centre)
                 max(0.0, min(down, up)) * enorm
             }
-            val first = weights.indexOfFirst { it > 0.0 }.coerceAtLeast(0)
-            val last = weights.indexOfLast { it > 0.0 }.coerceAtLeast(first)
-            melLo[m] = first
-            melWeights[m] = weights.copyOfRange(first, last + 1)
+            val firstBin = weights.indexOfFirst { it > 0.0 }.coerceAtLeast(0)
+            val lastBin = weights.indexOfLast { it > 0.0 }.coerceAtLeast(firstBin)
+            melLo[m] = firstBin
+            melWeights[m] = FloatArray(lastBin - firstBin + 1) { weights[firstBin + it].toFloat() }
         }
     }
 
@@ -137,7 +213,8 @@ internal class WhisperLogMel {
         const val N_MELS = 80
         const val N_FRAMES = 800
         private const val MEL_FLOOR = 1e-10
-        private const val DYNAMIC_RANGE = 8.0
+        private const val DYNAMIC_RANGE = 8f
+        private val SHARED_SCRATCH_MARKER = FloatArray(0)
 
         // Slaney mel scale (librosa / transformers `mel_scale="slaney"`).
         private const val MIN_LOG_HZ = 1000.0
@@ -153,21 +230,52 @@ internal class WhisperLogMel {
 }
 
 /**
- * A 400-point complex FFT (Stockham autosort, decimation in frequency, radices 4, 4, 5, 5), so the
- * 801 frames of one Smart Turn check cost a few million multiply-adds instead of the 64 million a
- * plain DFT would. Output is in natural order, in place.
+ * The 400-point DFT of a real frame, bins 0..200: the 200-point complex FFT of the even/odd sample
+ * pairs, then the standard split `X[k] = E[k] + W^k O[k]`.
  */
-internal class Fft400 {
+internal class RealFft400 {
     private val n = 400
-    private val radices = intArrayOf(4, 4, 5, 5)
-    private val cosT = DoubleArray(n) { cos(-2.0 * PI * it / n) }
-    private val sinT = DoubleArray(n) { sin(-2.0 * PI * it / n) }
-    private val yr = DoubleArray(n)
-    private val yi = DoubleArray(n)
-    private val ar = DoubleArray(5)
-    private val ai = DoubleArray(5)
+    private val half = 200
+    private val fft = StockhamFft(half, intArrayOf(4, 2, 5, 5))
+    private val zr = FloatArray(half)
+    private val zi = FloatArray(half)
+    private val wr = FloatArray(half + 1) { cos(-2.0 * PI * it / n).toFloat() }
+    private val wi = FloatArray(half + 1) { sin(-2.0 * PI * it / n).toFloat() }
 
-    fun transform(re: DoubleArray, im: DoubleArray) {
+    fun transform(x: FloatArray, outRe: FloatArray, outIm: FloatArray) {
+        for (i in 0 until half) {
+            zr[i] = x[2 * i]
+            zi[i] = x[2 * i + 1]
+        }
+        fft.transform(zr, zi)
+        for (k in 0..half) {
+            val a = k % half
+            val b = (half - k) % half
+            // E = (Z[a] + conj(Z[b])) / 2 ; O = (Z[a] - conj(Z[b])) / 2i
+            val er = 0.5f * (zr[a] + zr[b])
+            val ei = 0.5f * (zi[a] - zi[b])
+            val or = 0.5f * (zi[a] + zi[b])
+            val oi = -0.5f * (zr[a] - zr[b])
+            outRe[k] = er + wr[k] * or - wi[k] * oi
+            outIm[k] = ei + wr[k] * oi + wi[k] * or
+        }
+    }
+}
+
+/** In-place complex FFT of size [n] = product of [radices] (Stockham autosort, natural order out). */
+internal class StockhamFft(private val n: Int, private val radices: IntArray) {
+    private val cosT = FloatArray(n) { cos(-2.0 * PI * it / n).toFloat() }
+    private val sinT = FloatArray(n) { sin(-2.0 * PI * it / n).toFloat() }
+    private val yr = FloatArray(n)
+    private val yi = FloatArray(n)
+    private val ar = FloatArray(radices.max())
+    private val ai = FloatArray(radices.max())
+
+    init {
+        require(radices.fold(1) { a, b -> a * b } == n) { "radices must multiply to $n" }
+    }
+
+    fun transform(re: FloatArray, im: FloatArray) {
         var xr = re
         var xi = im
         var tr = yr
@@ -185,14 +293,17 @@ internal class Fft400 {
                         ai[j] = xi[q + stride * (p + j * m)]
                     }
                     for (k in 0 until r) {
-                        var sr = 0.0
-                        var si = 0.0
+                        var sr = 0f
+                        var si = 0f
+                        var idx = 0
+                        val step = k * rootStep
                         for (j in 0 until r) {
-                            val idx = (j * k * rootStep) % n
                             val c = cosT[idx]
                             val s = sinT[idx]
                             sr += ar[j] * c - ai[j] * s
                             si += ar[j] * s + ai[j] * c
+                            idx += step
+                            if (idx >= n) idx -= n
                         }
                         val tw = (k * p * twStep) % n
                         val c = cosT[tw]
@@ -203,7 +314,6 @@ internal class Fft400 {
                     }
                 }
             }
-            // Ping-pong.
             val sr = xr; xr = tr; tr = sr
             val si = xi; xi = ti; ti = si
             len = m

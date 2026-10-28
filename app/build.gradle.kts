@@ -444,6 +444,8 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     testImplementation(libs.junit)
+    // Runs the bundled turn models in TurnModelsGoldenTest (desktop natives; same Java API as Android).
+    testImplementation(libs.onnxruntime.jvm)
     testImplementation("org.json:json:20231013")
     // MockEngine for SupabaseEventsBackend's real fetchChangedSince path (events sync final
     // slice) - see gradle/libs.versions.toml's own comment on this artifact.

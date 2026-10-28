@@ -23,6 +23,7 @@ internal object TurnBench {
     private const val WARMUP = 3
     private const val RUNS = 20
     private const val SILERO_WINDOWS = 300
+    private const val RECHECK_STEP = 4_800
 
     /** [threads] other than the shipped [SmartTurnModel.INFERENCE_THREADS] loads a second session to compare. */
     fun run(context: Context, threads: Int = SmartTurnModel.INFERENCE_THREADS): String {
@@ -53,6 +54,16 @@ internal object TurnBench {
             feat[i] = t1 - t0
             infer[i] = t2 - t1
         }
+        // A re-check 300 ms later in the same silence: only the new frames are transformed.
+        val turn = FloatArray(WhisperLogMel.N_SAMPLES + RUNS * RECHECK_STEP) { (rnd.nextFloat() - 0.5f) * 0.002f }
+        val recheck = LongArray(RUNS)
+        val key = Any()
+        mel.extractTurn(turn, WhisperLogMel.N_SAMPLES, key)
+        for (i in 0 until RUNS) {
+            val t0 = System.nanoTime()
+            mel.extractTurn(turn, WhisperLogMel.N_SAMPLES + (i + 1) * RECHECK_STEP, key)
+            recheck[i] = System.nanoTime() - t0
+        }
         val stream = ready.silero.stream()
         val window = FloatArray(SileroVad.WINDOW) { (rnd.nextFloat() - 0.5f) * 0.002f }
         val silero = LongArray(SILERO_WINDOWS)
@@ -66,6 +77,7 @@ internal object TurnBench {
         if (model !== ready.smartTurn) (model as? AutoCloseable)?.close()
         val line = "runs=$RUNS load_ms=${ready.loadMs} " +
             "feat_ms_p50=${ms(pct(feat, 50))} feat_ms_p95=${ms(pct(feat, 95))} " +
+            "recheck_feat_ms_p50=${ms(pct(recheck, 50))} recheck_feat_ms_p95=${ms(pct(recheck, 95))} " +
             "infer_ms_p50=${ms(pct(infer, 50))} infer_ms_p95=${ms(pct(infer, 95))} " +
             "total_ms_p50=${ms(pct(total, 50))} total_ms_p95=${ms(pct(total, 95))} " +
             "silero_us_p50=${pct(silero, 50) / 1000} silero_us_p95=${pct(silero, 95) / 1000} " +
