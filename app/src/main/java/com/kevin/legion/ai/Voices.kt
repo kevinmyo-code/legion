@@ -18,8 +18,8 @@ data class GeminiVoice(val name: String, val descriptor: String) {
     val sampleRawName: String get() = "voice_sample_${name.lowercase()}"
 }
 
-/** Falls back to this when a car has no voice chosen (matches GeminiLiveSession's VOICE). Warm + female — the mascot is Zero. */
-const val DEFAULT_VOICE = "Sulafat"
+/** Falls back to this when no voice is chosen (matches GeminiLiveSession's VOICE). Puck, Kevin 2026-10-28. */
+const val DEFAULT_VOICE = "Puck"
 
 val CURATED_VOICES = listOf(
     GeminiVoice("Zephyr", "Bright"),

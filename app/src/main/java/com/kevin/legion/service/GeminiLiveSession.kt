@@ -3716,9 +3716,10 @@ class GeminiLiveSession(
             })
         }
 
-        // Prebuilt Gemini voice. Deeper/informative reads suit the Zero persona;
-        // other options include Puck, Kore, Fenrir, Aoede. Swap freely.
-        private const val VOICE = "Sulafat"
+        // Prebuilt Gemini voice when the profile has none saved. Puck (Kevin, 2026-10-28,
+        // "lets do puck"): the accent lives in the voice, not the prompt. A saved profile voice
+        // wins over this. Matches [com.kevin.legion.ai.DEFAULT_VOICE].
+        private const val VOICE = "Puck"
 
         private const val INPUT_RATE = 16000   // Live API requires 16 kHz input
         private const val OUTPUT_RATE = 24000  // Live API emits 24 kHz output
