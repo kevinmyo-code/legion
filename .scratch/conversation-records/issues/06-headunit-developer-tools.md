@@ -39,7 +39,7 @@ wording in the pure `diag/DeveloperTools.kt`, tested by `DeveloperToolsTest`):
   Wi-Fi/Ethernet IPv4 from `ConnectivityManager` link properties, and a 300 ms probe of
   127.0.0.1:5555. Below it `adb connect <ip>:5555`, long-press to copy ("Copied").
 - **Try to enable ADB over Wi-Fi (needs root)**: TRY, then RUN AS ROOT to confirm. Runs
-  `su -c "setprop service.adb.tcp.port 5555 && stop adbd && start adbd"` and on API 30+
+  `su -c "setprop persist.adb.tcp.port 5555 && setprop service.adb.tcp.port 5555 && stop adbd && start adbd"` and on API 30+
   `su -c "settings put global adb_wifi_enabled 1"`, 5 s cap each, then re-probes the port. The
   verdict comes from the probe, never from the exit code alone.
 - The note: ADB over Wi-Fi is open to anyone on the same network while it is on.

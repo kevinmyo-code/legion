@@ -114,12 +114,12 @@ class DeveloperToolsTest {
     @Test
     fun `root commands add adb_wifi_enabled only on API 30 and up`() {
         assertEquals(
-            listOf("setprop service.adb.tcp.port 5555 && stop adbd && start adbd"),
+            listOf("setprop persist.adb.tcp.port 5555 && setprop service.adb.tcp.port 5555 && stop adbd && start adbd"),
             DeveloperTools.rootCommands(28),
         )
         assertEquals(
             listOf(
-                "setprop service.adb.tcp.port 5555 && stop adbd && start adbd",
+                "setprop persist.adb.tcp.port 5555 && setprop service.adb.tcp.port 5555 && stop adbd && start adbd",
                 "settings put global adb_wifi_enabled 1",
             ),
             DeveloperTools.rootCommands(30),
@@ -161,8 +161,9 @@ class DeveloperToolsTest {
 
     @Test
     fun `root detail names what su did`() {
-        assertEquals("su could not be started.", DeveloperTools.rootDetail(false, null))
-        assertEquals("su did not finish within 5 s and was stopped.", DeveloperTools.rootDetail(true, null))
-        assertEquals("su exit code: 1", DeveloperTools.rootDetail(true, 1))
+        val props = " Props asked for: persist.adb.tcp.port=5555, service.adb.tcp.port=5555."
+        assertEquals("su could not be started.$props", DeveloperTools.rootDetail(false, null))
+        assertEquals("su did not finish within 5 s and was stopped.$props", DeveloperTools.rootDetail(true, null))
+        assertEquals("su exit code: 1$props", DeveloperTools.rootDetail(true, 1))
     }
 }

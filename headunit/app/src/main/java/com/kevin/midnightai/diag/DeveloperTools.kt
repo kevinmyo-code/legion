@@ -151,9 +151,16 @@ object DeveloperTools {
 
     // --- Root attempt --------------------------------------------------------------------------
 
+    const val PERSIST_PORT_PROP = "persist.adb.tcp.port"
+    const val SERVICE_PORT_PROP = "service.adb.tcp.port"
+
     /** Each entry runs as `su -c "<entry>"`. */
     fun rootCommands(apiLevel: Int): List<String> = buildList {
-        add("setprop service.adb.tcp.port $ADB_TCP_PORT && stop adbd && start adbd")
+        // persist.adb.tcp.port too: some vendor adbd builds read only that key (Kevin 2026-10-28).
+        add(
+            "setprop $PERSIST_PORT_PROP $ADB_TCP_PORT && setprop $SERVICE_PORT_PROP $ADB_TCP_PORT && " +
+                "stop adbd && start adbd",
+        )
         if (apiLevel >= API_WIRELESS_DEBUGGING) add("settings put global $ADB_WIFI_ENABLED 1")
     }
 
@@ -181,7 +188,7 @@ object DeveloperTools {
         !suExists -> "su could not be started."
         exitCode == null -> "su did not finish within ${ROOT_TIMEOUT_MS / 1000} s and was stopped."
         else -> "su exit code: $exitCode"
-    }
+    } + " Props asked for: $PERSIST_PORT_PROP=$ADB_TCP_PORT, $SERVICE_PORT_PROP=$ADB_TCP_PORT."
 
     const val EXPOSURE_NOTE =
         "ADB over Wi-Fi is open to anyone on the same network while it is on."
