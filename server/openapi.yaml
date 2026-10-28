@@ -13171,11 +13171,15 @@ components:
       - drive_end
       - startup
       - manual
+      - periodic
+      - conversation
       type: string
       description: |-
         * `drive_end` - drive_end
         * `startup` - startup
         * `manual` - manual
+        * `periodic` - periodic
+        * `conversation` - conversation
     Receipt:
       type: object
       description: |-
