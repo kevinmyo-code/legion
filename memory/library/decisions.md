@@ -6914,5 +6914,6 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Setting:** "Conversation log" in Assistant settings, two switches: "Keep on this phone and send
   to the engine" (default on) and the logcat mirror (the old "Conversation audit log (logcat)"
   switch, same preference key). Section 7 binds unchanged: `LiveAudit` redacts before a line exists.
+  Typed chat (text model) writes the same lines through `TypedChatAudit`.
 - `device_label` is the phone's make and model only: the phone's engine client stores no member
   name. The engine already records the uploading member (`DeviceLog.user`, from the token).

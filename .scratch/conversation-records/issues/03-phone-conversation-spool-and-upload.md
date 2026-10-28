@@ -44,7 +44,11 @@ Built on `feat/phone-conversation-upload`, suite green, owing the A25 run.
 - Upload: `ConversationUploader.kt` through `EngineHttp.postMultipart`; triggers in
   `ConversationLog.kt` (session end, every 3 minutes while live, app start, "Send now").
 - Setting: "Conversation log" row, two switches, "Send now" with the result in words.
+- Typed chat (the text model, which never touches the Live session) writes the same LIVE_AUDIT
+  lines through `service/TypedChatAudit.kt`.
 - Verification step 1 (JVM): `ConversationRecorderTest` proves a spooled batch is byte-identical to
-  the lines `LiveAudit` emitted and renders it through `tools/voice_audit.py` (the same parser the
-  engine's `--render` uses). Done.
+  the lines `LiveAudit` emitted and renders it through `tools/voice_audit.py`. Done. The engine's
+  copy (`server/devicelogs/voice_audit.py` on `feat/headunit-conversation-logs`, which `render.py`
+  imports) was run by hand on a spooled-shape batch and rendered it; that copy is older than
+  `tools/voice_audit.py` here, so re-copy it after the merge (its header says byte-for-byte).
 - Verification step 2 (A25, then `manage.py device_logs --reason conversation --render`): owed.
