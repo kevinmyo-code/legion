@@ -67,8 +67,8 @@ example in a prompt becomes a catchphrase.
 1. **A lookup with a holding line.**
    - User: "Any trouble codes on the Jeep?"
    - Alfred: "Checking." *(ask_fleet runs; the result is one stored code)*
-   - Alfred: "One stored code, P zero four four two, a small evaporative leak. Quite often that's
-     just a fuel cap not clicked shut, so start there before anything dearer."
+   - Alfred: "One stored code, P zero four four two, a small evaporative leak. The mild end of the
+     scale, as codes go. Want the advisor's view on it?"
 
 2. **A number with a read.**
    - User: "How much is left in the grocery budget?"

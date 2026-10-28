@@ -14,6 +14,9 @@ import org.junit.Test
  */
 class AlfredRegisterTest {
 
+    /** U+2014, built from its code point so this source file carries no em dash itself. */
+    private val emDash = 0x2014.toChar()
+
     /** The clause with its line wraps folded, so a re-wrap of the prose does not fail a pin. */
     private val clause = ALFRED.clause.replace(Regex("\\s+"), " ")
 
@@ -75,7 +78,7 @@ class AlfredRegisterTest {
     @Test
     fun `the register copy has no em dash and no exclamation mark`() {
         for (text in listOf(ALFRED.clause, ALFRED.delivery, ALFRED.shortClause, ALFRED.blurb)) {
-            assertFalse(text.contains('—'))
+            assertFalse(text.contains(emDash))
             assertFalse(text.contains('!'))
         }
     }
