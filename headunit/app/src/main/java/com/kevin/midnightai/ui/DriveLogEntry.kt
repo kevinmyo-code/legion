@@ -92,6 +92,9 @@ fun DriveLogEntry(modifier: Modifier = Modifier) {
                     } else {
                         uploader.upload(UploadReason.MANUAL)
                     }
+                    // The conversation spool goes too, under its own reason; its result is kept
+                    // in its own status so this row still shows the drive log's.
+                    DriveLogUploader.createForConversation(context)?.upload(UploadReason.CONVERSATION)
                     refresh()
                     working = false
                 }

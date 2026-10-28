@@ -3,13 +3,18 @@
     python manage.py device_logs --last 3
     python manage.py device_logs --last 10 --grep spotify
     python manage.py device_logs --last 1 --reason drive_end --household <uuid>
+    python manage.py device_logs --last 3 --reason conversation --render
 
 Prints the newest N batches (by `received_at`, the server's clock), oldest of
 those first so the text reads in time order, each under a one-line header.
 `--grep` keeps only lines containing the text (case-insensitive) and drops
-batches with no match. This is an operator command on the engine's own
-database, so it is not household-scoped unless `--household` says so; the HTTP
-surface (`POST /api/device-logs/`) is scoped at `household_of`.
+batches with no match. `--render` prints each batch as the conversation timeline
+`tools/voice_audit.py` prints for a phone capture (`devicelogs/render.py`: who said what,
+each tool call and result, reply latency), instead of the raw lines; it pairs with
+`--reason conversation` and cannot be combined with `--grep`. This is an
+operator command on the engine's own database, so it is not household-scoped
+unless `--household` says so; the HTTP surface (`POST /api/device-logs/`) is
+scoped at `household_of`.
 
 Against the deployed engine (Cloud Run Job, see `deploy/cloudrun/README.md`):
 
@@ -23,6 +28,7 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 
 from devicelogs.models import REASONS, DeviceLog
+from devicelogs.render import render
 from devicelogs.views import inflate_capped
 
 
@@ -34,11 +40,21 @@ class Command(BaseCommand):
         parser.add_argument("--grep", default=None, help="Keep only lines containing this text.")
         parser.add_argument("--reason", choices=REASONS, default=None)
         parser.add_argument("--household", default=None, help="Household uuid; default is all.")
+        parser.add_argument(
+            "--render",
+            action="store_true",
+            help="Print each batch as a conversation timeline (LIVE_AUDIT / LIVE_LATENCY lines).",
+        )
+        parser.add_argument(
+            "--verbose", action="store_true", help="With --render: also mic and activity lines."
+        )
 
     def handle(self, *args, **options):
         last = options["last"]
         if last < 1:
             raise CommandError("--last must be at least 1.")
+        if options["render"] and options["grep"]:
+            raise CommandError("--render reads whole batches; it cannot be combined with --grep.")
         rows = DeviceLog.objects.all()
         if options["household"]:
             rows = rows.filter(household_id=options["household"])
@@ -58,7 +74,10 @@ class Command(BaseCommand):
                 self.stdout.write(f"=== {row.id} unreadable: {exc}")
                 continue
             lines = text.splitlines()
-            if needle:
+            if options["render"]:
+                rendered = render(text, verbose=options["verbose"])
+                lines = rendered or ["(no LIVE_AUDIT or LIVE_LATENCY lines in this batch)"]
+            elif needle:
                 lines = [line for line in lines if needle in line.lower()]
                 if not lines:
                     continue

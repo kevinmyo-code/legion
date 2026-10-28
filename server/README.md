@@ -106,13 +106,19 @@ pruned on upload). To read it:
 python manage.py device_logs --last 3                      # newest 3 batches, in time order
 python manage.py device_logs --last 10 --grep spotify      # only matching lines
 python manage.py device_logs --last 1 --reason drive_end --household <uuid>
+python manage.py device_logs --last 3 --reason conversation --render   # conversation timeline
 ```
 
 Each batch prints under a header with the device, app version, reason (`drive_end`, `startup`,
-`manual`) and the DEVICE's clock window (untrusted: the unit's clock has reset itself). Against the
+`manual`, `periodic`, `conversation`) and the DEVICE's clock window (untrusted: the unit's clock has reset itself). Against the
 deployed engine, run it as a Cloud Run Job execution (`deploy/cloudrun/README.md`):
 `gcloud run jobs execute legion-worker --region us-south1 --wait --args=manage.py,device_logs,--last,3`
 and read the execution's log output.
+
+A `conversation` batch holds only a device's `LIVE_AUDIT` and `LIVE_LATENCY` lines (2026-10-28,
+"all logs on engine. both headunit and phone"). `--render` prints it as the timeline
+`tools/voice_audit.py` prints for a phone capture; `devicelogs/voice_audit.py` is a byte-for-byte
+copy of that tool (see `devicelogs/render.py`), and a test fails while the two differ.
 
 ## The OpenAPI contract: `server/openapi.yaml`
 

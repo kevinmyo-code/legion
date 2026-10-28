@@ -125,6 +125,18 @@ def test_an_unknown_reason_is_refused_400(token_a):
     assert DeviceLog.objects.count() == 0
 
 
+def test_a_periodic_upload_is_accepted(token_a):
+    response = token_a.post(URL, _payload(reason="periodic"), format="multipart")
+    assert response.status_code == 201, response.data
+    assert DeviceLog.objects.get().reason == "periodic"
+
+
+def test_a_conversation_upload_is_accepted(token_a):
+    response = token_a.post(URL, _payload(reason="conversation"), format="multipart")
+    assert response.status_code == 201, response.data
+    assert DeviceLog.objects.get().reason == "conversation"
+
+
 def test_an_upload_prunes_this_households_old_batches_only(token_a, token_b, household_a, household_b):
     old = timezone.now() - datetime.timedelta(days=RETENTION_DAYS + 1)
     stale_a = DeviceLog.objects.create(

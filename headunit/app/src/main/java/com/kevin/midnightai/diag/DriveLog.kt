@@ -30,6 +30,7 @@ import java.util.concurrent.Executors
  */
 object DriveLog {
     @Volatile private var store: DriveLogStore? = null
+    @Volatile private var conversationStore: DriveLogStore? = null
     @Volatile private var appContext: Context? = null
 
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "drivelog").apply { isDaemon = true } }
@@ -40,11 +41,20 @@ object DriveLog {
     /** The store, for the uploader and the Settings row. Null before [init]. */
     fun store(): DriveLogStore? = store
 
+    /**
+     * The conversation spool (2026-10-28): [ConvoAudit] and [ConvoLatency] lines only, in their own
+     * bounded store so a batch uploads as `reason=conversation` with nothing else in it and the
+     * engine's `device_logs --render` reads it whole. Same bounds and same delete-only-on-2xx rule
+     * as the drive log. Null before [init].
+     */
+    fun conversationStore(): DriveLogStore? = conversationStore
+
     fun init(context: Context) {
         if (store != null) return
         val app = context.applicationContext
         appContext = app
         val s = DriveLogStore(File(app.filesDir, "drivelog"))
+        conversationStore = DriveLogStore(File(app.filesDir, "convolog"))
         store = s
         io.execute {
             runCatching {
@@ -55,18 +65,35 @@ object DriveLog {
     }
 
     /** Append one breadcrumb line. Cheap: captures the time now and queues the write. */
-    fun breadcrumb(message: String) {
-        val s = store ?: return
+    fun breadcrumb(message: String) = write(store, "Breadcrumb", message)
+
+    /**
+     * Append one conversation line under [tag] (`LIVE_AUDIT` or `LIVE_LATENCY`) to the
+     * conversation spool, logcat-shaped so `tools/voice_audit.py` parses it as a capture. Written
+     * straight to disk, never through logcat: a unit whose logcat is unreadable keeps every line.
+     */
+    fun conversation(tag: String, message: String) = write(conversationStore, tag, message)
+
+    /** Runs [block] on the log thread after every write queued before it. */
+    fun afterQueuedWrites(block: () -> Unit) {
+        io.execute { runCatching(block) }
+    }
+
+    private fun write(target: DriveLogStore?, tag: String, message: String) {
+        val s = target ?: return
         val atMs = System.currentTimeMillis()
         val pid = android.os.Process.myPid()
         val tid = android.os.Process.myTid()
         io.execute {
             runCatching {
-                val line = "${stamp.format(Date(atMs))} $pid $tid I Breadcrumb: ${message.replace('\n', ' ')}"
-                s.append(listOf(LogRedactor.redact(line)))
+                s.append(listOf(LogRedactor.redact(threadtime(stamp.format(Date(atMs)), pid, tid, tag, message))))
             }
         }
     }
+
+    /** One `logcat -v threadtime`-shaped line: `MM-dd HH:mm:ss.SSS pid tid I Tag: message`. */
+    internal fun threadtime(stamp: String, pid: Int, tid: Int, tag: String, message: String): String =
+        "$stamp $pid $tid I $tag: ${message.replace('\n', ' ')}"
 
     /**
      * Copy new lines from this app's logcat into the store. Blocks while `logcat` runs (a second

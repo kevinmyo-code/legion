@@ -163,6 +163,7 @@ private enum class Section {
     CONN_PHONES,
     SYSTEM_RESET,
     SYSTEM_LOGS,
+    SYSTEM_DEVELOPER_TOOLS,
 }
 
 @Composable
@@ -271,6 +272,7 @@ fun ControlPanel(
             Section.SYSTEM_REVERSE_CAMERA -> ReverseCameraPickerScreen(onBack = { section = null })
             Section.SYSTEM_RESET -> ResetSection(context, onReset) { section = null }
             Section.SYSTEM_LOGS -> SystemLogsSection { section = null }
+            Section.SYSTEM_DEVELOPER_TOOLS -> DeveloperToolsSection(context) { section = null }
         }
     } else {
         // key(): the toggle rows hold remembered state, and the same slot is reused
@@ -423,6 +425,11 @@ private fun settingsRows(
             openRow("Permissions", "Microphone, media access", Section.SYSTEM_PERMISSIONS),
             openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES),
             openRow("Drive logs", "Upload this unit's own log to your engine after each drive", Section.SYSTEM_LOGS),
+            openRow(
+                "Developer tools",
+                "Android Settings, Developer options, Wireless debugging, ADB status",
+                Section.SYSTEM_DEVELOPER_TOOLS,
+            ),
             openRow("Reset", "Start over or wipe data", Section.SYSTEM_RESET),
         )
     }

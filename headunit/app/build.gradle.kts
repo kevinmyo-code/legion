@@ -51,7 +51,12 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        // The commit is in the name (2026-10-24) so `device_logs.app_version_name` answers "is the
+        // latest build installed". Falls back to "1.0" outside a git checkout (clone-and-run).
+        versionName = "1.0+" + (runCatching {
+            providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }
+                .standardOutput.asText.get().trim()
+        }.getOrNull()?.takeIf { it.isNotEmpty() } ?: "nogit")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

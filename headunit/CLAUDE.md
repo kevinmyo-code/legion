@@ -195,7 +195,7 @@ New tool checklist: snake_case verb_noun, one responsibility, updated in this ta
 | Drive monitor | 1min | Started/stopped/10k milestone/2hr break; idle-chatter cadence (45min quiet, 60min cooldown, 30% chance) |
 | Arrival monitor | 20s | Places check-in; reminder proactives (waits up to 30s for busy conv) |
 | Weather | 30min / 60s retry | Warm cache for proactive context |
-| Drive log | 3min snapshot, 60s after start | `diag/DriveLogLoop`: logcat -> bounded on-disk log (`diag/DriveLog`, ~2 MB); uploads to the engine at service start and at drive end (the drive monitor's stop branch), and from Settings > System > Drive logs. Deleted only on a 2xx; offline keeps it (2026-10-15) |
+| Drive log | 1min snapshot, 3min upload, 60s after start | `diag/DriveLogLoop`: logcat -> bounded on-disk log (`diag/DriveLog`, ~2 MB); uploads to the engine at service start, every 3 minutes (`periodic`, 2026-10-24: the ignition is cut at the stop, so `drive_end` never arrived), at drive end, and from Settings > System > Drive logs. Deleted only on a 2xx; offline keeps it (2026-10-15). The conversation audit has its own spool (2026-10-28, phone parity: `diag/ConvoAudit` LIVE_AUDIT and `diag/ConvoLatency` LIVE_LATENCY lines in the phone's formats, `DriveLog.conversationStore`, `filesDir/convolog`, ~2 MB), written straight to disk and never to logcat or Crashlytics; it uploads as `conversation` at session end, on the 3-minute tick, at start, at drive end and from the Settings button, and `manage.py device_logs --reason conversation --render` reads it |
 
 Proactive lines route through ProactiveBus. Gated on onboarding done, not busy, not in-call.
 

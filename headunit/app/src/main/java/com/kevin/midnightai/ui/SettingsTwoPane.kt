@@ -323,7 +323,7 @@ private fun SettingsPane(
 }
 
 @Composable
-private fun SettingsRowCard(spec: SettingsRowSpec) {
+internal fun SettingsRowCard(spec: SettingsRowSpec) {
     val action = spec.action
     // A button row is tappable anywhere on the card (a head-unit finger lands loosely); a toggle
     // row is NOT, so a stray tap on the text can never flip a preference.

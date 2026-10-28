@@ -10,6 +10,10 @@ exclude = ["*/migrations/*"]
 [tool.ruff.lint.per-file-ignores]
 # Two PL/pgSQL RAISE messages run by migrations; rewrapping them means new trigger DDL.
 "ingest/category_overrides.py" = ["E501"]
+# A byte-for-byte copy of tools/voice_audit.py (devicelogs/render.py says why); lint the original.
+"devicelogs/voice_audit.py" = ["E501", "B007"]
+# Pinned device log lines, verbatim: wrapping them would change what they pin.
+"tests/test_device_logs_render.py" = ["E501"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "legion.settings"
