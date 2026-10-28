@@ -33,6 +33,7 @@ import com.kevin.legion.ai.personaFor
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.WakeWordPreferences
+import com.kevin.legion.service.conversationlog.ConversationLog
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.ui.ActiveCompanionRow
 import com.kevin.legion.ui.IgnitionRow
@@ -45,6 +46,7 @@ import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.help.VoiceGuideData
 import com.kevin.legion.util.Temp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -90,6 +92,9 @@ fun AssistantSettingsScreen(
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
     var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
     var auditLog by remember { mutableStateOf(VoiceTurnSettings.auditLog(context)) }
+    var keepConversationLog by remember { mutableStateOf(VoiceTurnSettings.keepConversationLog(context)) }
+    var conversationSending by remember { mutableStateOf(false) }
+    var conversationResult by remember { mutableStateOf(ConversationLog.lastResult) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
 
     suspend fun reloadActiveProfile() {
@@ -244,19 +249,31 @@ fun AssistantSettingsScreen(
                     },
                 )
 
-                // Async-lookups ticket 05: LIVE_AUDIT lines in logcat, off means none at all. Read when
-                // the socket opens, like the switch above.
+                // Conversation-records ticket 03 (was async-lookups ticket 05's logcat-only row): the
+                // engine spool and upload, the logcat mirror, and "Send now". Both off means no
+                // LIVE_AUDIT line at all. Read when the socket opens, like the switch above.
                 Spacer(Modifier.height(8.dp))
-                VoiceTurnRow(
-                    title = "Conversation audit log (logcat)",
-                    explanation = "writes what you and ${activeName ?: "the assistant"} say, and what each " +
-                        "tool was asked and gave back, to the phone's developer log. Only a computer " +
-                        "connected over ADB can read it. What your mail says is left out. Applies " +
-                        "from the next connection.",
-                    enabled = auditLog,
-                    onToggle = { on ->
+                ConversationLogRow(
+                    keepAndSend = keepConversationLog,
+                    logcatMirror = auditLog,
+                    sending = conversationSending,
+                    lastResult = conversationResult,
+                    onKeepAndSend = { on ->
+                        VoiceTurnSettings.setKeepConversationLog(context, on)
+                        ConversationLog.applySettings(context)
+                        keepConversationLog = on
+                    },
+                    onLogcatMirror = { on ->
                         VoiceTurnSettings.setAuditLog(context, on)
+                        ConversationLog.applySettings(context)
                         auditLog = on
+                    },
+                    onSendNow = {
+                        conversationSending = true
+                        scope.launch {
+                            conversationResult = ConversationLog.sendNow().sentence
+                            conversationSending = false
+                        }
                     },
                 )
 
