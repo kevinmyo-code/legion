@@ -3,12 +3,12 @@ map: async-lookups
 ticket: "03"
 title: "Build: sub-agent fallback model and per-stage latency probes"
 type: build
-status: open
-status-detail: "Unstarted. Branch feat/subagent-fallback"
+status: built
+status-detail: "Built 2026-10-28 on feat/subagent-fallback. 3.5-flash-lite falls back once to 3.8-flash on 429/500/503; route_ms, investigate_ms and subagent_fallback LIVE_LATENCY lines; voice_latency.py Lookups table. 5406 tests, 0 failures. Owed: an A25 capture with real p50/p95 (ticket 04)."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
