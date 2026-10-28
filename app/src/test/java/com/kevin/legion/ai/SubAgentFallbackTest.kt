@@ -175,6 +175,28 @@ class SubAgentFallbackTest {
     }
 
     @Test
+    fun `the fallback line names the lookup and the probe names the model that answered`() = runBlocking {
+        val tool = AgentTool(name = "get_codes", description = "d") { "{}" }
+        val probe = LookupProbe("ask_fleet")
+        agent(tooMany, call("get_codes")).route("q", listOf(tool), probe = probe)
+        assertEquals(
+            listOf("subagent_fallback from=$lite to=$flash reason=RateLimited tool=ask_fleet"),
+            fallbackLines(),
+        )
+        assertEquals(flash, probe.model)
+        // The retry is part of the round, not a second one.
+        assertEquals(1, probe.rounds)
+    }
+
+    @Test
+    fun `with no fallback the probe names the requested model`() = runBlocking {
+        val probe = LookupProbe("ask_engine")
+        agent(text("fine")).investigate("", "q", emptyList(), probe = probe)
+        assertEquals(lite, probe.model)
+        assertTrue(fallbackLines().isEmpty())
+    }
+
+    @Test
     fun `the fallback is per call, not per instance`() = runBlocking {
         val sub = agent(tooMany, text("one"), text("two"))
         sub.askTyped("", "q1")

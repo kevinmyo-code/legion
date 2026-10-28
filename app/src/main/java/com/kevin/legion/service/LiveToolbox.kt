@@ -2678,56 +2678,71 @@ object LiveToolbox {
                 "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = fleetDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("fleet", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("fleet"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = fleetDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("fleet", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("fleet"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_body" -> agentResult(
                 "Could not reach the health specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("body", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("body"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("body", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("body"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_goals" -> agentResult(
                 "Could not reach the goals specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("goals", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("goals"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("goals", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("goals"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_pantry" -> agentResult(
                 "Could not reach the grocery specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = pantryDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("pantry", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("pantry"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = pantryDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("pantry", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("pantry"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_mail" -> agentResult(
                 "Could not reach your mail. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = mailDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("mail", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("mail"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = mailDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("mail", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("mail"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_engine" -> askEngine(context, args, touchedReadThroughToolThisTurn)
             "get_health" -> getHealth(context)
@@ -6398,6 +6413,19 @@ object LiveToolbox {
         }
     }
 
+    /**
+     * Runs one `ask_<domain>` dispatcher's [SubAgent.route] with a fresh [LookupProbe] named [tool],
+     * then writes its `route_ms=` LIVE_LATENCY line (async-lookups ticket 03). A line per call, the
+     * failures included, so a capture can say which stage a slow or failed lookup spent its time in.
+     */
+    private suspend fun probedRoute(
+        tool: String,
+        run: suspend (com.kevin.legion.ai.LookupProbe) -> AgentResult,
+    ): AgentResult {
+        val probe = com.kevin.legion.ai.LookupProbe(tool)
+        return run(probe).also { LiveLatency.log(LiveLatency.TAG, LiveLatency.routeLine(probe, it)) }
+    }
+
     /** One client for the process so its short `tools/list` cache survives between utterances;
      * it reads the engine address and token live from [EngineConfig] on every call. */
     private var engineMcpClient: EngineMcpClient? = null
@@ -6421,24 +6449,28 @@ object LiveToolbox {
             EngineMcpClient(EngineHttp(config), config::baseUrl).also { engineMcpClient = it }
         }
         // Debug-selectable (2026-10-27): Flash-Lite by default, 3.8 Flash for a latency comparison.
-        // Logged per call so a LIVE_LATENCY capture says which model served it.
+        // Logged per call so a LIVE_LATENCY capture says which model served it: the probe's model,
+        // which is the fallback's when one fired (async-lookups ticket 03), not the one asked for.
         val model = DebugSettings.askEngineModel(context)
         return AskEngine(
             client = client,
             runAgent = { instruction, question, tools ->
                 val startedAt = System.currentTimeMillis()
+                val probe = com.kevin.legion.ai.LookupProbe("ask_engine")
                 SubAgent(systemInstruction = instruction, useSearch = false, model = model).investigate(
                     context = "",
                     question = question,
                     tools = tools,
                     maxModelCalls = 4,
                     budgetMs = 40_000,
+                    probe = probe,
                 ).also { r ->
                     LiveLatency.log(
                         LiveLatency.TAG,
-                        "ask_engine_ms=${System.currentTimeMillis() - startedAt} model=$model " +
+                        "ask_engine_ms=${System.currentTimeMillis() - startedAt} model=${probe.model} " +
                             "result=${r::class.simpleName}",
                     )
+                    LiveLatency.log(LiveLatency.TAG, LiveLatency.investigateLine(probe, r))
                 }
             },
             identityClause = { AssistantIdentity.shortClause(context) },

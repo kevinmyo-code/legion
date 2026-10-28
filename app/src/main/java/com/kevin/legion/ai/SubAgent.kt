@@ -318,6 +318,9 @@ class SubAgent internal constructor(
      * then does round `maxModelCalls + 1` force a tool-free answer as the true backstop. This
      * spends at most one extra POST, only when the model is still mid-call at the old cutoff -
      * a normal answer at or before round [maxModelCalls] costs exactly what it always did.
+     *
+     * [probe] (async-lookups ticket 03), when given, gets this call's total time, its round count
+     * and the model that answered. See [LookupProbe].
      */
     suspend fun investigate(
         context: String,
@@ -326,12 +329,28 @@ class SubAgent internal constructor(
         maxModelCalls: Int = 4,
         budgetMs: Long = 30_000,
         mutatingToolNames: Set<String> = emptySet(),
-    ): AgentResult = withContext(Dispatchers.IO + CallState(this, model)) {
+        probe: LookupProbe? = null,
+    ): AgentResult = probed(probe) {
         // CallState pins the answering model for the whole loop: once a round falls back, every
         // later round stays on the fallback (see [postRaw]).
         withTimeoutOrNull(budgetMs) {
             runInvestigation(context, question, tools, maxModelCalls, mutatingToolNames)
         } ?: AgentResult.Failed
+    }
+
+    /**
+     * Runs one [investigate] or [route] call on [Dispatchers.IO] with a fresh [CallState], and
+     * stamps [probe] (async-lookups ticket 03). The clock starts before the caller's budget and
+     * stops in `finally`, so a call cut at its budget still reports its total.
+     */
+    private suspend fun probed(probe: LookupProbe?, block: suspend () -> AgentResult): AgentResult {
+        probe?.model = model
+        val startedAt = System.currentTimeMillis()
+        return try {
+            withContext(Dispatchers.IO + CallState(this, model, probe)) { block() }
+        } finally {
+            probe?.totalMs = System.currentTimeMillis() - startedAt
+        }
     }
 
     private suspend fun runInvestigation(
@@ -426,13 +445,17 @@ class SubAgent internal constructor(
      * a blocked prompt, an empty reply, every requested tool failing, or [budgetMs] running out
      * [AgentResult.Failed]. A PARTIAL failure is not a failure: the failed calls' errors ride
      * along in the results so the Live model can say what it could not get.
+     *
+     * [probe] (async-lookups ticket 03), when given, gets this call's stage timings: the router
+     * POST, the tool fan-out, the tools asked for, and the model that answered. See [LookupProbe].
      */
     suspend fun route(
         question: String,
         tools: List<AgentTool>,
         budgetMs: Long = 30_000,
         mutatingToolNames: Set<String> = emptySet(),
-    ): AgentResult = withContext(Dispatchers.IO + CallState(this, model)) {
+        probe: LookupProbe? = null,
+    ): AgentResult = probed(probe) {
         withTimeoutOrNull(budgetMs) { runRoute(question, tools, mutatingToolNames) } ?: AgentResult.Failed
     }
 
@@ -475,8 +498,15 @@ class SubAgent internal constructor(
     ): AgentResult {
         Log.d(TAG, "route: called ${calls.map { it.name }}")
         val toolsByName = tools.associateBy { it.name }
-        val runs = coroutineScope {
-            calls.map { call -> async { runTool(toolsByName[call.name], call, "route") } }.awaitAll()
+        val probe = callState().probe
+        probe?.toolNames = calls.map { it.name }
+        val fanOutAt = System.currentTimeMillis()
+        val runs = try {
+            coroutineScope {
+                calls.map { call -> async { runTool(toolsByName[call.name], call, "route") } }.awaitAll()
+            }
+        } finally {
+            probe?.toolsMs = System.currentTimeMillis() - fanOutAt
         }
         val mutated = calls.zip(runs)
             .filter { (call, run) -> run.output != null && call.name in mutatingToolNames }
@@ -550,18 +580,30 @@ class SubAgent internal constructor(
      * returned as it came. A transport failure keeps [GeminiRest.post]'s own one retry on the same
      * model and never escalates here.
      *
+     * One call here is one round on the call's [LookupProbe]: its time (the fallback retry
+     * included) adds to [LookupProbe.postMs], and [LookupProbe.model] follows the model each POST
+     * went to, so the caller's log names the model that actually answered.
+     *
      * The POST itself lives in [GeminiRest] (2026-10-27): retry once on a transport failure,
      * cancellable I/O, metering through [GeminiUsageMeter], and [KeyHealth] recording.
      */
     private suspend fun postRaw(body: JSONObject): RestOutcome {
         val state = callState()
-        val first = send(state.model, body)
-        val reason = (first as? RestOutcome.HttpError)?.let(GeminiRest::fallbackReason)
-        if (reason == null || state.model == FALLBACK_MODEL) return first
-        val from = state.model
-        state.model = FALLBACK_MODEL
-        LiveLatency.log(LiveLatency.TAG, LiveLatency.fallbackLine(from, FALLBACK_MODEL, reason, null))
-        return send(FALLBACK_MODEL, body)
+        val probe = state.probe
+        probe?.let { it.rounds++ }
+        val postAt = System.currentTimeMillis()
+        try {
+            val first = send(state.model, body)
+            val reason = (first as? RestOutcome.HttpError)?.let(GeminiRest::fallbackReason)
+            if (reason == null || state.model == FALLBACK_MODEL) return first
+            val from = state.model
+            state.model = FALLBACK_MODEL
+            probe?.model = FALLBACK_MODEL
+            LiveLatency.log(LiveLatency.TAG, LiveLatency.fallbackLine(from, FALLBACK_MODEL, reason, probe?.tool))
+            return send(FALLBACK_MODEL, body)
+        } finally {
+            probe?.let { it.postMs += System.currentTimeMillis() - postAt }
+        }
     }
 
     private suspend fun send(model: String, body: JSONObject): RestOutcome =
@@ -580,9 +622,9 @@ class SubAgent internal constructor(
      * Per-call POST state, carried in the coroutine context so [runInvestigation]'s signature
      * (keyed by `config/detekt/baseline.xml`) stays as it is. Per call, not per instance: the
      * vehicle agents hold one SubAgent for the process, and a fallback must not outlive the call
-     * that needed it.
+     * that needed it. [probe] is the caller's [LookupProbe], null for a one-shot call.
      */
-    private class CallState(val owner: SubAgent, @Volatile var model: String) :
+    private class CallState(val owner: SubAgent, @Volatile var model: String, val probe: LookupProbe? = null) :
         AbstractCoroutineContextElement(CallState) {
         companion object Key : CoroutineContext.Key<CallState>
     }
