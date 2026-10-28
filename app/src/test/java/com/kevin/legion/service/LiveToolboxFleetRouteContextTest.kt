@@ -117,7 +117,8 @@ class LiveToolboxFleetRouteContextTest {
         assertEquals("1998 Jeep Cherokee", askedFor)
         val text = (r as AgentResult.Success).text
         // The frame still echoes only the user's words, never the fleet line.
-        assertTrue(text, text.startsWith("Results for the user's question \"Are there any trouble codes on the Jeep?\"."))
+        val frame = "Results for the user's question \"Are there any trouble codes on the Jeep?\"."
+        assertTrue(text, text.startsWith(frame))
         assertFalse(text, text.contains("Cars on file"))
         assertTrue(text, text.contains("P0442"))
     }
