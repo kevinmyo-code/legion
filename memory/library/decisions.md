@@ -6830,3 +6830,12 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   (ticket 02), which also lands the periodic drive-log upload from `fix/headunit-logs-and-spend`
   without its spend work. No ADR: no standing rule changed; transcripts on the household's own
   engine were already allowed (headunit `LogRedactor`, Kevin 2026-10-15).
+
+## 2026-10-28 - Head unit: Developer tools in Settings (Kevin)
+
+- Ruling, verbatim: *"open devoptions directly as well as the wireless debugging row from our ui if
+  possible. all of it"*. Settings > System > Developer tools opens Android Settings, Developer
+  options, About device and (API 30+) Wireless debugging, shows ADB status, and offers a
+  confirm-gated root attempt at ADB over Wi-Fi whose verdict comes from probing port 5555.
+  Ticket `.scratch/conversation-records/issues/06-headunit-developer-tools.md`. No ADR: no
+  standing rule changed.

@@ -35,6 +35,12 @@ tool's result. The head unit has no mail tool and the engine's MCP exposes none 
 - [All conversation logs on the engine](issues/01-all-conversation-logs-on-the-engine.md) - Kevin,
   2026-10-28: both clients upload; audio stays on the phone for now.
 
+## Built alongside
+
+- [Developer tools on the head unit](issues/06-headunit-developer-tools.md) - Kevin, 2026-10-28:
+  open Developer options and Wireless debugging from Settings, ADB status, a root attempt. Not part
+  of the destination; it rode the same branch.
+
 ## Not yet specified
 
 - Retention for conversation batches. Today they share `devicelogs.RETENTION_DAYS` (60) with drive

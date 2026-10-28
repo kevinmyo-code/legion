@@ -113,6 +113,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[12-newsletter-summarizer\|12]] | build | Newsletters summarize themselves, no setup required |
 | [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[02-headunit-audit-parity-and-upload\|02]] | build | Build: head unit conversation audit at phone parity, spooled and uploaded as conversation |
+| [[.scratch/conversation-records/map\|conversation-records]] | [[06-headunit-developer-tools\|06]] | build | Build: Developer tools on the head unit: open developer options and wireless debugging, ADB status, root enable attempt; Kevin 2026-10-28 |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[01-mode-home-leave\|01]] | build | Build: mode state, Home A, Leave flow, tile, settings row |
@@ -296,7 +297,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
-| [[.scratch/conversation-records/map\|conversation-records]] | 5 | 4 | [[.scratch/conversation-records/conversation-records.canvas\|open]] |
+| [[.scratch/conversation-records/map\|conversation-records]] | 6 | 5 | [[.scratch/conversation-records/conversation-records.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
 | [[.scratch/django-engine/map\|django-engine]] | 16 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
