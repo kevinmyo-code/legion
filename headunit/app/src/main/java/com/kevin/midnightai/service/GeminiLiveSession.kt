@@ -21,6 +21,8 @@ import com.kevin.midnightai.BuildConfig
 import com.kevin.midnightai.ai.CrisisDetector
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.diag.ConvoAudit
+import com.kevin.midnightai.diag.ConvoLatency
+import com.kevin.midnightai.diag.DriveLogLoop
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.data.local.EpisodicTurn
 import com.kevin.midnightai.media.MusicController
@@ -314,10 +316,12 @@ class GeminiLiveSession(
     // audio (e.g. an emulator replaying host audio) rather than a code fault.
     private val userTurnText = StringBuilder()
 
-    // The conversation audit's timing (diag/ConvoAudit): when the driver's last word was
-    // transcribed this turn, and how many tool calls the turn made. Reset on turnComplete.
-    @Volatile private var lastHeardMs = 0L
-    @Volatile private var toolCallsThisTurn = 0
+    // The conversation audit (diag/ConvoAudit, LIVE_AUDIT) and its timing (diag/ConvoLatency,
+    // LIVE_LATENCY), in the phone's line formats. Both write to the conversation spool on disk,
+    // which uploads to the household's engine as `reason=conversation`; never logcat, never
+    // Crashlytics.
+    private val audit = ConvoAudit()
+    private val latency = ConvoLatency()
 
     // Guards LiveEvent.CrisisDetected to once per turn. The detector runs on every
     // partial transcript delta, and the transcript only grows within a turn, so a
@@ -404,6 +408,8 @@ class GeminiLiveSession(
         }
         sessionInterruptions = 0
         sessionRebuffers.set(0)
+        audit.sessionStart(MODEL.removePrefix("models/"))
+        latency.start(System.currentTimeMillis())
         // Consumer for audioQueue - see its declaration for why playback runs on
         // its own coroutine instead of inline in the WebSocket callback, and
         // playbackExecutor for why that coroutine has its own audio-priority thread.
@@ -453,6 +459,7 @@ class GeminiLiveSession(
             if (speakingThisTurn) discardModelAudioUntilTurnComplete = true
             flushAudio()
             speakingThisTurn = false
+            audit.interrupted("barge_in")
         }
         conversationActive = true
         vadMode = true
@@ -478,6 +485,7 @@ class GeminiLiveSession(
             if (speakingThisTurn) discardModelAudioUntilTurnComplete = true
             flushAudio()
             speakingThisTurn = false
+            audit.interrupted("barge_in")
         }
     }
 
@@ -547,6 +555,7 @@ class GeminiLiveSession(
         // forwardedBytes tells the two apart - mic never opened, vs opened and
         // forwarded nothing.
         MidnightEvents.micState(open = true, why = if (firstOpen) "first open" else "turn handback")
+        audit.micOpen(if (firstOpen) "first_open" else "turn_handback")
         capturing = true
         // DIAGNOSTIC (B10, remove once root-caused): pairs with the "forwarded N
         // bytes" turn-transcript log - if a turn logs ~0 bytes forwarded, this
@@ -609,9 +618,9 @@ class GeminiLiveSession(
             // The server already cancelled this call; answering it now would be a stale reply
             // to a turn that no longer exists.
             Log.d(TAG, "Dropping response for cancelled tool call $name")
+            auditToolResult(id, name, response, sent = false)
             return
         }
-        ConvoAudit.toolResult(id, name, response.toString())
         val msg = JSONObject().put("toolResponse", JSONObject().apply {
             put("functionResponses", JSONArray().put(JSONObject().apply {
                 put("id", id)
@@ -619,7 +628,24 @@ class GeminiLiveSession(
                 put("response", response)
             }))
         })
-        webSocket?.send(msg.toString())
+        val sent = webSocket?.send(msg.toString()) ?: false
+        auditToolResult(id, name, response, sent)
+    }
+
+    private fun auditToolResult(id: String, name: String, response: JSONObject, sent: Boolean) {
+        val ms = latency.toolResponse(id, sent, System.currentTimeMillis())
+        audit.toolResult(ConvoAudit.ToolResult(
+            id = id,
+            name = name,
+            success = ConvoAudit.successOf(
+                hasSuccess = response.has("success"),
+                success = response.optBoolean("success"),
+                hasError = response.has("error"),
+            ),
+            ms = ms,
+            sent = sent,
+            responseJson = response.toString(),
+        ))
     }
 
     val isActive: Boolean get() = running.get() && !closed.get()
@@ -735,6 +761,7 @@ class GeminiLiveSession(
         // opens on the first turnComplete), speak a proactive line, or just stay
         // warm until the driver taps.
         if (root.has("setupComplete")) {
+            latency.setupComplete(System.currentTimeMillis())
             warm.set(true)
             emit(LiveEvent.Connected)
             return
@@ -752,6 +779,11 @@ class GeminiLiveSession(
             val type = va.optString("type")
             MidnightEvents.voiceTurnDecision("voiceActivity $type audioOffset=${va.optString("audioOffset")}")
             if (type == "ACTIVITY_START") idleJob?.cancel()
+            // The server's own activity events: this unit runs server VAD and sends none.
+            when (type) {
+                "ACTIVITY_START" -> audit.activityStart()
+                "ACTIVITY_END" -> audit.activityEnd()
+            }
         }
     }
 
@@ -839,7 +871,8 @@ class GeminiLiveSession(
             if (it.isNotEmpty()) {
                 idleJob?.cancel() // driver is talking - cancel any pending auto-close
                 userTurnText.append(it)
-                lastHeardMs = System.currentTimeMillis()
+                latency.inputTranscript(System.currentTimeMillis())
+                audit.user(it, final = content.optJSONObject("inputTranscription")?.optBoolean("finished") == true)
                 checkForCrisis()
             }
         }
@@ -855,6 +888,7 @@ class GeminiLiveSession(
             content.optJSONObject("outputTranscription")?.optString("text")?.let {
                 if (it.isNotEmpty()) {
                     companionTurnText.append(it)
+                    audit.assistant(it)
                     emit(LiveEvent.Subtitle(captionTail(companionTurnText)))
                 }
             }
@@ -877,6 +911,7 @@ class GeminiLiveSession(
                         // voice (through the head-unit speakers) isn't captured and
                         // mistaken by the server VAD for the driver interrupting.
                         if (vadMode) {
+                            if (capturing) audit.micClosed("half_duplex")
                             capturing = false
                             MidnightEvents.micState(open = false, why = "half-duplex: companion speaking")
                         }
@@ -888,6 +923,7 @@ class GeminiLiveSession(
                     // head unit anyway): summarized once per turn at turnComplete.
                     val now = System.currentTimeMillis()
                     if (turnChunks == 0) {
+                        latency.firstAudio(now)
                         turnFirstChunkMs = now
                         turnMaxChunkGapMs = 0
                     } else {
@@ -909,6 +945,7 @@ class GeminiLiveSession(
             // server (barge-in, possibly his own voice reaching the mic) rather than
             // playback underruns. micOpen=false rules out our mic as the trigger.
             sessionInterruptions++
+            audit.interrupted("server")
             MidnightEvents.voiceInterrupted(sessionInterruptions, speaking = speakingThisTurn, micOpen = capturing)
             turnChunks = 0
             discardModelAudioUntilTurnComplete = false
@@ -931,7 +968,6 @@ class GeminiLiveSession(
             // drain wait sees that audio start moving.
             audioQueue.trySend(PlaybackItem.EndOfTurn)
             val turnChunksAtEnd = turnChunks
-            val replyMs = if (turnChunks > 0 && lastHeardMs > 0L) turnFirstChunkMs - lastHeardMs else null
             if (turnChunks > 0) {
                 MidnightEvents.voiceAudioArrival(
                     chunks = turnChunks,
@@ -950,17 +986,14 @@ class GeminiLiveSession(
             // (§14), so a logcat-only diagnostic is invisible in the one place
             // the bug is reported from. Debug-only - it carries the driver's speech.
             if (BuildConfig.DEBUG) MidnightEvents.voiceTurn(heard, bytesThisTurn)
-            // The full-text audit goes to the drive log only, never Crashlytics (ConvoAudit's doc).
-            ConvoAudit.heard(heard, bytesThisTurn)
-            ConvoAudit.said(companionTurnText.toString().trim())
+            // The full-text audit goes to the conversation spool only, never Crashlytics
+            // (ConvoAudit's doc). The whole turn once more as final=true, as the phone does.
+            if (heard.isNotEmpty()) audit.user(heard, final = true)
+            audit.turnComplete()
             // A tool-using exchange is two turns: the call turn (no audio) and the spoken answer.
-            // Both counters carry across until audio plays, so the answer's line measures last
-            // word to first audio across the tool round trip, and counts its tool calls.
-            if (turnChunksAtEnd > 0) {
-                ConvoAudit.turnTiming(replyMs?.takeIf { it >= 0 }, toolCallsThisTurn)
-                lastHeardMs = 0L
-                toolCallsThisTurn = 0
-            }
+            // The reply mark carries across until audio plays, so the answer's reply_ms measures
+            // last word to first audio across the tool round trip.
+            latency.turnComplete(hadAudio = turnChunksAtEnd > 0)
             // Force this turn to surface as a retrievable Crashlytics non-fatal if the driver was
             // actually listened to (vadMode = a real conversational turn, not a proactive/
             // onboarding line) but almost nothing was forwarded - a plain breadcrumb alone never
@@ -1032,8 +1065,8 @@ class GeminiLiveSession(
             val name = call.optString("name")
             // Recorded BEFORE emit so the idle timer sees it however fast the turn completes.
             pendingToolCalls[id] = name
-            toolCallsThisTurn++
-            ConvoAudit.toolCall(id, name, call.optJSONObject("args")?.toString() ?: "{}")
+            latency.toolCall(id, name, System.currentTimeMillis())
+            audit.toolCall(id, name, call.optJSONObject("args")?.toString() ?: "{}")
             emit(LiveEvent.ToolCall(
                 id = id,
                 name = name,
@@ -1054,7 +1087,7 @@ class GeminiLiveSession(
             val name = pendingToolCalls.remove(id) ?: continue // already answered
             cancelledToolCalls += id
             MidnightEvents.toolCancelled(name)
-            ConvoAudit.toolCancelled(id, name)
+            audit.toolCancelled(id)
         }
     }
 
@@ -1541,6 +1574,7 @@ class GeminiLiveSession(
     private fun parkWarm() {
         idleJob?.cancel(); idleJob = null
         conversationActive = false
+        if (capturing) audit.micClosed("park")
         capturing = false
         suppressMicNextTurn = false
         restoreAudio()
@@ -1786,6 +1820,7 @@ class GeminiLiveSession(
         running.set(false)
         warm.set(false)
         conversationActive = false
+        endAudit("session_end", reason)
         capturing = false
         warmHoldJob?.cancel(); warmHoldJob = null
         idleJob?.cancel(); idleJob = null
@@ -1819,10 +1854,11 @@ class GeminiLiveSession(
      * [closed] first also makes any later OkHttp onFailure -> closeSession a no-op.
      */
     fun silentDestroy() {
-        closed.set(true)
+        val wasOpen = !closed.getAndSet(true)
         running.set(false)
         warm.set(false)
         conversationActive = false
+        if (wasOpen) endAudit("superseded", "superseded")
         capturing = false
         warmHoldJob?.cancel(); warmHoldJob = null
         idleJob?.cancel(); idleJob = null
@@ -1839,6 +1875,13 @@ class GeminiLiveSession(
         io.cancel()
         main.cancel()
         playbackExecutor.shutdown()
+    }
+
+    /** The session's last audit lines, then the conversation spool goes up (DriveLogLoop). */
+    private fun endAudit(micReason: String, reason: String) {
+        if (capturing) audit.micClosed(micReason)
+        audit.sessionEnd(reason)
+        runCatching { DriveLogLoop.uploadConversationSoon(appContext) }
     }
 
     private fun emit(event: LiveEvent) {

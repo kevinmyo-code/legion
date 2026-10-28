@@ -5,6 +5,7 @@ import com.kevin.midnightai.fleetupload.FleetUpload
 import com.kevin.midnightai.fleetupload.FleetUploadReason
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -27,6 +28,13 @@ import kotlinx.coroutines.withContext
  * A drive's log therefore sat on the unit until the next start. Now at most [UPLOAD_INTERVAL_MS]
  * of it is lost at the ignition cut (still on disk, sent at the next start).
  *
+ * **The conversation spool rides the same triggers (2026-10-28, Kevin: "all logs on engine. both
+ * headunit and phone").** [DriveLog.conversationStore] (LIVE_AUDIT and LIVE_LATENCY lines only) is
+ * uploaded as `conversation` at startup, on every periodic upload tick, at drive end, and at the
+ * end of each Live session ([uploadConversationSoon]). Offline it stays on disk, bounded like the
+ * drive log, and the next trigger retries it: the head unit has no ADB, so the spool is the only
+ * copy until the engine has it.
+ *
  * Car data (OBD samples and DTC events) is uploaded on the same three triggers plus a size-or-time
  * flush on the snapshot tick (`fleetupload/FleetUpload`).
  *
@@ -39,10 +47,15 @@ object DriveLogLoop {
     private const val UPLOAD_INTERVAL_MS = 3 * 60_000L
     private const val TICKS_PER_UPLOAD = (UPLOAD_INTERVAL_MS / SNAPSHOT_INTERVAL_MS).toInt()
 
+    // Outlives any one Live session (its scopes are cancelled right after it closes) and the
+    // service scope; the uploader's own lock serialises it with every other upload.
+    private val conversationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     suspend fun run(context: Context) {
         val app = context.applicationContext
         delay(STARTUP_DELAY_MS)
         runCatching { DriveLogUploader.create(app)?.upload(UploadReason.STARTUP) }
+        uploadConversation(app)
         // Car data rides the same triggers (2026-10-17): no second scheduler.
         runCatching { FleetUpload.create(app).upload(FleetUploadReason.STARTUP) }
         var saidUnreadable = false
@@ -61,6 +74,7 @@ object DriveLogLoop {
             // Offline is fine: a failed upload leaves the batch on disk for the next tick.
             if (++tick % TICKS_PER_UPLOAD == 0) {
                 runCatching { DriveLogUploader.create(app)?.upload(UploadReason.PERIODIC) }
+                uploadConversation(app)
             }
             delay(SNAPSHOT_INTERVAL_MS)
         }
@@ -70,7 +84,22 @@ object DriveLogLoop {
         val app = context.applicationContext
         scope.launch {
             runCatching { DriveLogUploader.create(app)?.upload(UploadReason.DRIVE_END) }
+            uploadConversation(app)
             runCatching { FleetUpload.create(app).upload(FleetUploadReason.DRIVE_END) }
         }
+    }
+
+    /**
+     * Called when a Live session ends: once every conversation line already queued is on disk,
+     * seal the spool and send it (`conversation`). Fire-and-forget; a failure keeps the batch for
+     * the next trigger.
+     */
+    fun uploadConversationSoon(context: Context) {
+        val app = context.applicationContext
+        DriveLog.afterQueuedWrites { conversationScope.launch { uploadConversation(app) } }
+    }
+
+    private suspend fun uploadConversation(app: Context) {
+        runCatching { DriveLogUploader.createForConversation(app)?.upload(UploadReason.CONVERSATION) }
     }
 }

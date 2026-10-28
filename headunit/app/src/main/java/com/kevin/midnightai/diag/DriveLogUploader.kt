@@ -19,6 +19,10 @@ enum class UploadReason(val wire: String) {
     STARTUP("startup"),
     MANUAL("manual"),
     PERIODIC("periodic"),
+    // The conversation spool (2026-10-28): LIVE_AUDIT and LIVE_LATENCY lines only, whatever the
+    // trigger (session end, the periodic tick, startup, the Settings button). The reason names the
+    // CONTENT here, so the engine can tell a conversation batch from a drive log.
+    CONVERSATION("conversation"),
 }
 
 /** What an upload attempt did, in words the Settings row can show as-is. */
@@ -137,6 +141,26 @@ class DriveLogUploader(
         /** The production wiring: the shared store, the device's engine sign-in, prefs-backed status. */
         fun create(context: Context): DriveLogUploader? {
             val store = DriveLog.store() ?: return null
+            return wire(context, store, DriveLogStatus(context), snapshot = { DriveLog.snapshotLogcat() })
+        }
+
+        /**
+         * The conversation spool's uploader (2026-10-28): same endpoint, same delete-only-on-2xx
+         * rule, no logcat snapshot (its lines are written straight to disk), and its own status so
+         * it never overwrites the drive-log row in Settings. Always send with
+         * [UploadReason.CONVERSATION].
+         */
+        fun createForConversation(context: Context): DriveLogUploader? {
+            val store = DriveLog.conversationStore() ?: return null
+            return wire(context, store, DriveLogStatus(context, DriveLogStatus.CONVERSATION_PREFS), snapshot = {})
+        }
+
+        private fun wire(
+            context: Context,
+            store: DriveLogStore,
+            status: UploadStatusSink,
+            snapshot: () -> Unit,
+        ): DriveLogUploader {
             val config = EngineConfig(context)
             // A token saved after boot was not known at DriveLog.init; register it before any
             // batch is redacted for upload.
@@ -149,16 +173,16 @@ class DriveLogUploader(
                     versionName = BuildConfig.VERSION_NAME,
                     versionCode = BuildConfig.VERSION_CODE,
                 ),
-                status = DriveLogStatus(context),
-                snapshot = { DriveLog.snapshotLogcat() },
+                status = status,
+                snapshot = snapshot,
             )
         }
     }
 }
 
 /** SharedPreferences-backed last-upload record for the Settings row. */
-class DriveLogStatus(context: Context) : UploadStatusSink {
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+class DriveLogStatus(context: Context, prefsName: String = PREFS) : UploadStatusSink {
+    private val prefs = context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     override fun record(atMs: Long, ok: Boolean, sentence: String) {
         prefs.edit()
@@ -175,10 +199,11 @@ class DriveLogStatus(context: Context) : UploadStatusSink {
 
     fun lastSentence(): String? = prefs.getString(KEY_SENTENCE, null)
 
-    private companion object {
-        const val PREFS = "drive_log_status"
-        const val KEY_AT = "last_at_ms"
-        const val KEY_OK = "last_ok"
-        const val KEY_SENTENCE = "last_sentence"
+    companion object {
+        private const val PREFS = "drive_log_status"
+        const val CONVERSATION_PREFS = "conversation_log_status"
+        private const val KEY_AT = "last_at_ms"
+        private const val KEY_OK = "last_ok"
+        private const val KEY_SENTENCE = "last_sentence"
     }
 }
