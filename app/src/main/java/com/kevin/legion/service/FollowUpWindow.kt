@@ -115,16 +115,17 @@ object FollowUpWindow {
         Event.ToolResponse ->
             if (state.armed || state.heldForTool) Decision(State(armed = true), Action.ARM)
             else Decision(state, Action.NONE)
-        is Event.Elapsed ->
-            when {
-                !state.armed -> Decision(state, Action.NONE)
-                // A running tool is not silence. Stand down; the answer's turn, or the tool's own
-                // response (ADR 0065), re-arms.
-                event.toolsInFlight > 0 -> Decision(State(heldForTool = true), Action.NONE)
-                heardLocally(event.msSinceLocalSpeech) && state.extensions < MAX_EXTENSIONS ->
-                    Decision(State(armed = true, extensions = state.extensions + 1), Action.ARM)
-                else -> Decision(State(), Action.CLOSE)
-            }
+        is Event.Elapsed -> elapsed(state, event)
+    }
+
+    private fun elapsed(state: State, event: Event.Elapsed): Decision = when {
+        !state.armed -> Decision(state, Action.NONE)
+        // A running tool is not silence. Stand down; the answer's turn, or the tool's own
+        // response (ADR 0065), re-arms.
+        event.toolsInFlight > 0 -> Decision(State(heldForTool = true), Action.NONE)
+        heardLocally(event.msSinceLocalSpeech) && state.extensions < MAX_EXTENSIONS ->
+            Decision(State(armed = true, extensions = state.extensions + 1), Action.ARM)
+        else -> Decision(State(), Action.CLOSE)
     }
 
     private fun heardLocally(msSinceLocalSpeech: Long?): Boolean =

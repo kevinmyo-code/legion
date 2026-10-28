@@ -23,7 +23,9 @@ class LiveBlockingBehaviorTest {
     private fun decl(name: String) = JSONObject().put("name", name).put("description", "d")
 
     private fun behaviors(out: JSONArray): Map<String, String> =
-        (0 until out.length()).associate { out.getJSONObject(it).getString("name") to out.getJSONObject(it).getString("behavior") }
+        (0 until out.length()).associate {
+            out.getJSONObject(it).getString("name") to out.getJSONObject(it).getString("behavior")
+        }
 
     @Test
     fun `every declaration is stamped BLOCKING when nothing is named non-blocking`() {
@@ -45,7 +47,9 @@ class LiveBlockingBehaviorTest {
 
     @Test
     fun `an explicit behavior is left alone`() {
-        val input = JSONArray().put(decl("a").put("behavior", "NON_BLOCKING")).put(decl("b").put("behavior", "BLOCKING"))
+        val input = JSONArray()
+            .put(decl("a").put("behavior", "NON_BLOCKING"))
+            .put(decl("b").put("behavior", "BLOCKING"))
         assertEquals(
             mapOf("a" to "NON_BLOCKING", "b" to "BLOCKING"),
             behaviors(GeminiLiveSession.withToolBehavior(input, setOf("b"))),
@@ -97,7 +101,9 @@ class LiveBlockingBehaviorTest {
 
     @Test
     fun `a blocking result carries no scheduling`() {
-        val msg = GeminiLiveSession.toolResponseMessage("id2", "log_meal", JSONObject().put("success", true), async = false)
+        val msg = GeminiLiveSession.toolResponseMessage(
+            "id2", "log_meal", JSONObject().put("success", true), async = false,
+        )
         val body = msg.getJSONObject("toolResponse").getJSONArray("functionResponses").getJSONObject(0)
             .getJSONObject("response")
         assertFalse(body.has("scheduling"))

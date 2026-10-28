@@ -110,4 +110,26 @@ class AriaBrainHonestyClauseTest {
             assertTrue(!DATA_ACCESS_CLAUSE.contains(tool))
         }
     }
+
+    /**
+     * ADR 0065 (async-lookups ticket 02): a read-only lookup may run NON_BLOCKING, so the model can
+     * keep talking while it runs. The risk is a fact spoken before the data exists; this pins the
+     * clause that forbids it. Presence only, like everything here.
+     */
+    @Test
+    fun `the lookup holding-line clause is wired in and forbids an early fact`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("One moment."))
+        for (forbidden in listOf("figure", "date", "name", "fact", "outcome")) {
+            assertTrue("the holding line must forbid a $forbidden", LOOKUP_HOLD_CLAUSE.contains(forbidden))
+        }
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("never state one the result has not yet given"))
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("say nothing more"))
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("answer from it"))
+        // Conditioned on the result, not on a list of lookups: no dispatcher is named but the two
+        // the 2026-10-27 clause already named as examples.
+        for (tool in listOf("ask_body", "ask_pantry", "ask_fleet", "ask_mail")) {
+            assertTrue(!LOOKUP_HOLD_CLAUSE.contains(tool))
+        }
+    }
 }

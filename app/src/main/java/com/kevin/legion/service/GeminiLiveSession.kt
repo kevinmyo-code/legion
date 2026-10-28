@@ -1158,7 +1158,9 @@ class GeminiLiveSession(
     ): JSONObject {
         val tools = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
         if (functionDeclarations.length() > 0) {
-            tools.put(JSONObject().put("functionDeclarations", withToolBehavior(functionDeclarations, nonBlockingTools)))
+            tools.put(
+                JSONObject().put("functionDeclarations", withToolBehavior(functionDeclarations, nonBlockingTools)),
+            )
         }
 
         val setup = JSONObject().apply {

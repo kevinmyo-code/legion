@@ -998,8 +998,8 @@ internal const val DATA_ACCESS_CLAUSE =
 internal const val LOOKUP_HOLD_CLAUSE =
     "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
         "brief in-character line (\"One moment.\") and then call it. That line holds no figure, " +
-        "date, name, fact or outcome. While the lookup runs say nothing more, and when its result " +
-        "arrives, answer from it. "
+        "date, name, fact or outcome, and you never state one the result has not yet given. While " +
+        "the lookup runs say nothing more, and when its result arrives, answer from it. "
 
 /**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08
