@@ -1006,6 +1006,16 @@ internal const val DATA_ACCESS_CLAUSE =
  * question. The last three sentences tie it back: it is this turn's result, answer from it, and a
  * result that lacks what was asked is described, never denied. No holding line was spoken on that
  * turn, so the rule does not depend on one. Presence pinned; obedience is owed to the next phone run.
+ *
+ * **The dead holding line (ticket 04 run 3 and 3c, A25, 2026-10-28; async-lookups ticket 07).**
+ * Three turns were a holding line and nothing else: "Checking." spoken 0.7 s AFTER its result had
+ * arrived (F1); "Let me look." after the user said "what?" over a pending result (F2); and
+ * "Checking." on a general question with no tool call at all (run 3c, 11:47). Each lost the answer,
+ * and the follow-up window then closed the conversation. The last three sentences: the line only
+ * ever covers a tool call made with it; a result already present gets an answer, not a line; and a
+ * user who speaks over a pending result gets their new words answered first and the result after,
+ * in the same turn. [com.kevin.legion.service.turn.HoldingLineWatch] is the guarded code fallback
+ * when the model does it anyway. Presence pinned; obedience is owed to the next phone run.
  */
 internal const val LOOKUP_HOLD_CLAUSE =
     "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
@@ -1017,7 +1027,13 @@ internal const val LOOKUP_HOLD_CLAUSE =
         "question that asked for it, whether or not you said a holding line. It counts as a " +
         "result from this turn: answer from it exactly as if it had come back before you " +
         "stopped speaking. Never say you do not have it when the result is in front of you; if " +
-        "it genuinely lacks what was asked, say what it does contain and what it does not. "
+        "it genuinely lacks what was asked, say what it does contain and what it does not. " +
+        "Say the holding line only in the same breath as the tool call it covers; if you are not " +
+        "calling a tool there is nothing to check, so do not say it, and a question you can " +
+        "answer yourself gets the answer. If the result is already in front of you when you " +
+        "begin to speak, there is no holding line to say: answer. If the user speaks while a " +
+        "result is pending or has just arrived, answer their new words first, then give that " +
+        "result in the same turn unless they cancelled it. "
 
 /**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08

@@ -161,4 +161,25 @@ class AriaBrainHonestyClauseTest {
         assertTrue(CANNOT_CLAUSE.contains("in this turn"))
         assertTrue(DATA_ACCESS_CLAUSE.contains("this turn"))
     }
+
+    /**
+     * Ticket 04 run 3 and 3c (A25, 2026-10-28; async-lookups ticket 07): "Checking." after the
+     * result had arrived, "Let me look." after the user spoke over a pending result, and "Checking."
+     * with no tool call at all. Every earlier sentence of the clause is pinned above and stays.
+     */
+    @Test
+    fun `a holding line covers a tool call, never a result already in hand`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        for (phrase in listOf(
+            "Say the holding line only in the same breath as the tool call it covers",
+            "if you are not calling a tool there is nothing to check, so do not say it",
+            "a question you can answer yourself gets the answer",
+            "If the result is already in front of you when you begin to speak, there is no holding " +
+                "line to say: answer.",
+            "If the user speaks while a result is pending or has just arrived, answer their new " +
+                "words first, then give that result in the same turn unless they cancelled it.",
+        )) {
+            assertTrue("the holding-line rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
+        }
+    }
 }

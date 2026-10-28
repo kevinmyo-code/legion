@@ -214,4 +214,100 @@ class FollowUpWindowTest {
             run(Event.TurnComplete, Event.MicOpened, Event.Elapsed(1), Event.UserSpeech, Event.ToolResponse),
         )
     }
+
+    // Async-lookups ticket 07 (ticket 04 run 3, F1/F2): a sent result holds the window until a
+    // SUBSTANTIVE turn answers it, capped at ANSWER_HOLD_CAP_MS after the result.
+
+    private fun decisions(vararg events: Event): List<FollowUpWindow.Decision> {
+        var state = State()
+        return events.map { FollowUpWindow.step(state, it).also { d -> state = d.state } }
+    }
+
+    @Test fun holdCapIsTwentySeconds() = assertEquals(20_000L, FollowUpWindow.ANSWER_HOLD_CAP_MS)
+
+    @Test fun resultThenHoldingLineTurnStaysOpenAndReArms() {
+        // F1: "Checking." after the result. Its turn completes, the mic opens, 8 s of silence.
+        val d = decisions(
+            Event.TurnComplete, Event.MicOpened, Event.Elapsed(1), Event.ToolResponse,
+            Event.ModelSpeech, Event.TurnComplete, Event.MicOpened,
+            Event.Elapsed(0, msSinceHold = 9_500L),
+        )
+        assertEquals(
+            listOf(
+                Action.NONE, Action.ARM, Action.NONE, Action.ARM,
+                Action.CANCEL, Action.NONE, Action.ARM,
+                Action.ARM, // held: the answer is still owed
+            ),
+            d.map { it.action },
+        )
+        assertEquals("held_for_answer", d.last().reason)
+    }
+
+    @Test fun resultThenSubstantiveTurnClosesAsUsual() {
+        val d = decisions(
+            Event.TurnComplete, Event.MicOpened, Event.Elapsed(1), Event.ToolResponse,
+            Event.ModelSpeech, Event.Answered, Event.TurnComplete, Event.MicOpened,
+            Event.Elapsed(0, msSinceHold = 9_500L),
+        )
+        assertEquals("answered", d[5].reason)
+        assertEquals(Action.CLOSE, d.last().action)
+        assertEquals(null, d.last().reason)
+    }
+
+    @Test fun resultWithNoTurnAtAllClosesAtTheCap() {
+        val d = decisions(
+            Event.TurnComplete, Event.MicOpened, Event.Elapsed(1), Event.ToolResponse,
+            Event.Elapsed(0, msSinceHold = 8_000L),
+            Event.Elapsed(0, msSinceHold = 16_000L),
+            Event.Elapsed(0, msSinceHold = 24_000L),
+        )
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.NONE, Action.ARM, Action.ARM, Action.ARM, Action.CLOSE),
+            d.map { it.action },
+        )
+        assertEquals("answer_hold_cap", d.last().reason)
+        assertEquals(State(), d.last().state)
+    }
+
+    @Test fun userSpeechDoesNotReleaseTheHold() {
+        // F2: the user said "what?" after the result; the model then said "Let me look."
+        val d = decisions(
+            Event.TurnComplete, Event.MicOpened, Event.ToolResponse, Event.UserSpeech,
+            Event.ModelSpeech, Event.TurnComplete, Event.MicOpened,
+            Event.Elapsed(0, msSinceHold = 12_000L),
+        )
+        assertEquals(Action.ARM, d.last().action)
+        assertEquals("held_for_answer", d.last().reason)
+    }
+
+    @Test fun answeredWithNothingHeldChangesNothing() {
+        val d = decisions(Event.Answered)
+        assertEquals(Action.NONE, d.single().action)
+        assertEquals(null, d.single().reason)
+    }
+
+    @Test fun bareHoldingLineTurnHoldsInsteadOfArmingTheNormalClose() {
+        // Run 3c, 11:47:13: "Checking." with no tool call and nothing pending, then 8.1 s of silence.
+        val d = decisions(
+            Event.ModelSpeech, Event.HoldingLineTurn, Event.TurnComplete, Event.MicOpened,
+            Event.Elapsed(0, msSinceHold = 8_100L),
+            Event.Elapsed(0, msSinceHold = 16_200L),
+            Event.Elapsed(0, msSinceHold = 24_300L),
+        )
+        assertEquals("holding_line", d[1].reason)
+        assertEquals(
+            listOf(Action.NONE, Action.NONE, Action.NONE, Action.ARM, Action.ARM, Action.ARM, Action.CLOSE),
+            d.map { it.action },
+        )
+        assertEquals("answer_hold_cap", d.last().reason)
+    }
+
+    @Test fun bareHoldingLineThenAnAnswerClosesAsUsual() {
+        val d = decisions(
+            Event.HoldingLineTurn, Event.TurnComplete, Event.MicOpened, Event.ModelSpeech,
+            Event.Answered, Event.TurnComplete, Event.MicOpened, Event.Elapsed(0, msSinceHold = 9_000L),
+        )
+        assertEquals(Action.CLOSE, d.last().action)
+        assertEquals(null, d.last().reason)
+    }
 }

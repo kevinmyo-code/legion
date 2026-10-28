@@ -76,19 +76,18 @@ internal class StillCheckingNudge(
      */
     @Synchronized
     fun due(nowMs: Long, quiet: Boolean): Nudge? {
-        if (!quiet || blocking.isNotEmpty()) return null
-        val call = async.values.maxByOrNull { it.startedAtMs } ?: return null
-        val threshold = when (call.nudges) {
+        val call = async.values.maxByOrNull { it.startedAtMs }?.takeIf { quiet && blocking.isEmpty() }
+        val threshold = when (call?.nudges) {
             0 -> firstAfterMs
             1 -> againAfterMs
-            else -> return null
+            else -> null
         }
-        val elapsed = nowMs - call.startedAtMs
         val tooSoon = lastNudgeAtMs > 0L && nowMs - lastNudgeAtMs < firstAfterMs
-        if (elapsed < threshold || tooSoon) return null
+        val ready = call != null && threshold != null && nowMs - call.startedAtMs >= threshold
+        if (!ready || tooSoon) return null
         call.nudges++
         lastNudgeAtMs = nowMs
-        return Nudge(call.name, elapsed)
+        return Nudge(call.name, nowMs - call.startedAtMs)
     }
 
     companion object {

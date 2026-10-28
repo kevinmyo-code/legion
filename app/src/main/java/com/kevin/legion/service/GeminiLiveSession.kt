@@ -39,6 +39,7 @@ import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
+import com.kevin.legion.service.turn.HoldingLineWatch
 import com.kevin.legion.service.turn.StillCheckingNudge
 import com.kevin.legion.service.turn.TurnConfig
 import com.kevin.legion.service.turn.TurnModels
@@ -447,6 +448,13 @@ class GeminiLiveSession(
     // lookups while talking" off (empty set) nothing ever fires. Ticked by [nudgeJob].
     private val stillChecking = StillCheckingNudge()
     private var nudgeJob: Job? = null
+    // Async-lookups ticket 07 (ticket 04 run 3, F1/F2 and the 11:47 turn of run 3c): a model turn
+    // that is only a holding line, after its result or with no tool behind it, gets one nudge, and
+    // the follow-up window holds ([FollowUpWindow.State.heldForAnswer]) from [answerHoldSinceMs].
+    private val holdingWatch = HoldingLineWatch()
+    @Volatile private var answerHoldSinceMs = 0L
+    // First audio of the model's current turn, 0 before it; read and reset at turnComplete.
+    @Volatile private var modelTurnStartedAtMs = 0L
     @Volatile private var callAudio: CallAudioMode? = null
     private var routeCallback: android.media.AudioDeviceCallback? = null
     // Re-prime after a flush ([flushAudio]): the next reply's first chunks queue on a paused track.
@@ -699,7 +707,7 @@ class GeminiLiveSession(
         playbackActive = false
         awaitingReply = false
         sileroFallbackPending = false
-        stillChecking.clear()
+        clearAnswerTracking()
         if (vad && (smartSetting || bargeSetting)) TurnModels.preload(appContext)
         this.voiceName = voiceName
         this.keepWarm = keepWarm
@@ -1002,6 +1010,11 @@ class GeminiLiveSession(
         val msg = toolResponseMessage(id, name, response, async)
         val sent = webSocket?.send(msg.toString()) ?: false
         val timed = latency.toolResponse(id, System.currentTimeMillis())
+        if (async && sent) {
+            val at = System.currentTimeMillis()
+            holdingWatch.onAsyncResultSent(name, at)
+            answerHoldSinceMs = at
+        }
         timed?.let { (tool, ms) ->
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent" + if (async) " async=true" else "")
         }
@@ -1679,6 +1692,7 @@ class GeminiLiveSession(
                     if (!speakingThisTurn) {
                         speakingThisTurn = true
                         val firstAt = System.currentTimeMillis()
+                        if (modelTurnStartedAtMs == 0L) modelTurnStartedAtMs = firstAt
                         latency.firstAudio(firstAt)?.let {
                             LiveLatency.log(LiveLatency.TAG, "reply_ms=$it")
                         }
@@ -1797,6 +1811,15 @@ class GeminiLiveSession(
             // LIVE_AUDIT: the whole spoken turn once more as one final line (chunks above may be
             // partial), then the turn's end, before the read-through flag below is cleared.
             if (!wasTyped && heard.isNotEmpty()) audit.user(heard, final = true)
+            // Ticket 07: classified before the per-turn tool flag is cleared below; acted on after
+            // the turn's own bookkeeping ([onHoldingOutcome]).
+            val holdingOutcome = holdingWatch.onTurnComplete(
+                modelTurnStartedAtMs,
+                said,
+                toolCalled = toolCalledThisTurn,
+                lookupInFlight = toolCallsInFlight.get() > 0,
+            )
+            modelTurnStartedAtMs = 0L
             audit.turnComplete()
             mailToolCalledThisTurn = false
             toolCalledThisTurn = false
@@ -1872,6 +1895,7 @@ class GeminiLiveSession(
                     followUpEvent(FollowUpWindow.Event.TurnComplete)
                     if (turnTaker?.bargeIn == true) watchPlaybackDrain()
                     deliverCancelNotesIfQuiet()
+                    if (!wasTyped) onHoldingOutcome(holdingOutcome)
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
                 else -> {
@@ -1927,6 +1951,46 @@ class GeminiLiveSession(
             ))
         }
         if (stillChecking.hasPending()) startNudgeTicker()
+    }
+
+    /**
+     * Async-lookups ticket 07: acts on [HoldingLineWatch]'s verdict on the turn that just completed.
+     * A holding line after its result, or one with nothing behind it, gets one system note and holds
+     * the follow-up window; a substantive turn releases the hold. A note is not sent while the user is
+     * already speaking (their new turn will be answered instead, the hold still stands).
+     */
+    private fun onHoldingOutcome(outcome: HoldingLineWatch.Outcome) {
+        when (outcome) {
+            HoldingLineWatch.Outcome.NONE -> Unit
+            HoldingLineWatch.Outcome.ANSWERED -> {
+                answerHoldSinceMs = 0L
+                followUpEvent(FollowUpWindow.Event.Answered)
+            }
+            HoldingLineWatch.Outcome.LATE_HOLDING -> {
+                val tool = holdingWatch.pendingTool()
+                if (tool != null && turnTaker?.inActivity != true) {
+                    sendNudge(HoldingLineWatch.lateInstruction(tool))
+                    audit.nudge("late_holding_line", tool)
+                }
+            }
+            HoldingLineWatch.Outcome.EMPTY_HOLDING -> {
+                answerHoldSinceMs = System.currentTimeMillis()
+                followUpEvent(FollowUpWindow.Event.HoldingLineTurn)
+                if (turnTaker?.inActivity != true) {
+                    sendNudge(HoldingLineWatch.EMPTY_INSTRUCTION)
+                    audit.nudge("empty_holding_line", "none")
+                }
+            }
+        }
+    }
+
+    /** Ticket 07's per-conversation state: the still-checking clock, the holding-line watch, the hold. */
+    private fun clearAnswerTracking() {
+        nudgeJob?.cancel(); nudgeJob = null
+        stillChecking.clear()
+        holdingWatch.clear()
+        answerHoldSinceMs = 0L
+        modelTurnStartedAtMs = 0L
     }
 
     /**
@@ -3156,6 +3220,8 @@ class GeminiLiveSession(
     private fun followUpEvent(event: FollowUpWindow.Event) {
         val decision = FollowUpWindow.step(followUp, event)
         followUp = decision.state
+        decision.reason?.let { LiveLatency.log("LIVE_FOLLOWUP", "answer hold: $it") }
+        if (decision.reason == "answer_hold_cap") answerHoldSinceMs = 0L
         when (decision.action) {
             FollowUpWindow.Action.NONE -> {}
             FollowUpWindow.Action.CANCEL -> idleJob?.cancel()
@@ -3166,7 +3232,9 @@ class GeminiLiveSession(
                     if (!running.get()) return@launch
                     val heard = lastLocalSpeechAtMs
                     val sinceSpeech = if (heard > 0L) System.currentTimeMillis() - heard else null
-                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech))
+                    val hold = answerHoldSinceMs
+                    val sinceHold = if (hold > 0L) System.currentTimeMillis() - hold else null
+                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech, sinceHold))
                 }
                 if (followUp.extensions > 0) {
                     LiveLatency.log(
@@ -3207,6 +3275,9 @@ class GeminiLiveSession(
      */
     private fun parkWarm(backstop: Boolean = false) {
         idleJob?.cancel(); idleJob = null
+        // Ticket 07: a warm socket must not carry a pending nudge or answer hold into the next
+        // conversation.
+        clearAnswerTracking()
         conversationActive = false
         if (capturing) audit.micClosed("park")
         capturing = false
@@ -3331,8 +3402,7 @@ class GeminiLiveSession(
         capturing = false
         audit.sessionEnd(reason)
         warmHoldJob?.cancel(); warmHoldJob = null
-        nudgeJob?.cancel(); nudgeJob = null
-        stillChecking.clear()
+        clearAnswerTracking()
         idleJob?.cancel(); idleJob = null
         micJob?.cancel(); micJob = null
         audioPlaybackJob?.cancel(); audioPlaybackJob = null
@@ -3373,8 +3443,7 @@ class GeminiLiveSession(
         capturing = false
         if (wasOpen) audit.sessionEnd("superseded")
         warmHoldJob?.cancel(); warmHoldJob = null
-        nudgeJob?.cancel(); nudgeJob = null
-        stillChecking.clear()
+        clearAnswerTracking()
         idleJob?.cancel(); idleJob = null
         micJob?.cancel(); micJob = null
         audioPlaybackJob?.cancel(); audioPlaybackJob = null
