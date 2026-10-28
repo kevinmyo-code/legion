@@ -52,7 +52,7 @@ internal data class TurnConfig(
 }
 
 /**
- * The three Settings > Assistant voice switches (hands path, ADR 0035). Read when a session starts;
+ * The Settings > Assistant voice switches (hands path, ADR 0035). Read when a session starts;
  * a change applies to the next socket.
  */
 object VoiceTurnSettings {
@@ -60,6 +60,7 @@ object VoiceTurnSettings {
     private const val KEY_SMART_END = "smart_end_of_turn"
     private const val KEY_BARGE_IN = "barge_in"
     private const val KEY_ASYNC_LOOKUPS = "async_lookups"
+    private const val KEY_AUDIT_LOG = "conversation_audit_log"
 
     /**
      * ADR 0065's default: ON (Kevin, 2026-10-28). Whether a `WHEN_IDLE` result makes
@@ -67,6 +68,9 @@ object VoiceTurnSettings {
      * this line becomes `false` and nothing else changes: off means every declaration is BLOCKING.
      */
     internal const val ASYNC_LOOKUPS_DEFAULT = true
+
+    /** Kevin, 2026-10-28: "cant u like record what i say in the logs too so u can see everything and audit". */
+    internal const val AUDIT_LOG_DEFAULT = true
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -85,4 +89,12 @@ object VoiceTurnSettings {
      */
     fun asyncLookups(context: Context): Boolean = prefs(context).getBoolean(KEY_ASYNC_LOOKUPS, ASYNC_LOOKUPS_DEFAULT)
     fun setAsyncLookups(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_ASYNC_LOOKUPS, on).apply()
+
+    /**
+     * "Conversation audit log (logcat)" (async-lookups ticket 05): LIVE_AUDIT lines with what the user
+     * and the assistant say and what each tool was asked and returned ([com.kevin.legion.service.LiveAudit]).
+     * Default ON (Kevin, 2026-10-28, asked for it). Read once per socket, like [asyncLookups].
+     */
+    fun auditLog(context: Context): Boolean = prefs(context).getBoolean(KEY_AUDIT_LOG, AUDIT_LOG_DEFAULT)
+    fun setAuditLog(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_AUDIT_LOG, on).apply()
 }

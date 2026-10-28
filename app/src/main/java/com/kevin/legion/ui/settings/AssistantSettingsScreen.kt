@@ -89,6 +89,7 @@ fun AssistantSettingsScreen(
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
     var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
+    var auditLog by remember { mutableStateOf(VoiceTurnSettings.auditLog(context)) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
 
     suspend fun reloadActiveProfile() {
@@ -240,6 +241,22 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceTurnSettings.setAsyncLookups(context, on)
                         asyncLookups = on
+                    },
+                )
+
+                // Async-lookups ticket 05: LIVE_AUDIT lines in logcat, off means none at all. Read when
+                // the socket opens, like the switch above.
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Conversation audit log (logcat)",
+                    explanation = "writes what you and ${activeName ?: "the assistant"} say, and what each " +
+                        "lookup was asked and found, to the phone's developer log. Only a computer " +
+                        "connected over ADB can read it. What your mail says is left out. Applies " +
+                        "from the next connection.",
+                    enabled = auditLog,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setAuditLog(context, on)
+                        auditLog = on
                     },
                 )
 

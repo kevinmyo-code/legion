@@ -360,6 +360,10 @@ class GeminiLiveSession(
     // LIVE_LATENCY lines to CarProbeLog and logcat. See [LiveLatency].
     private val latency = LiveLatency()
 
+    // Conversation audit log (async-lookups ticket 05): LIVE_AUDIT lines, logcat only. On/off read
+    // in [start] from "Conversation audit log (logcat)". See [LiveAudit].
+    private val audit = LiveAudit()
+
     // Monotonic generation counter, bumped by [flushAudio] every time queued model
     // audio is discarded (barge-in tap in [beginConversation], the server's own
     // "interrupted" signal, [checkForCrisis], and now the short-capture retry in
@@ -682,6 +686,8 @@ class GeminiLiveSession(
         bargeSetting = VoiceTurnSettings.bargeIn(appContext)
         nonBlockingTools =
             if (VoiceTurnSettings.asyncLookups(appContext)) LiveToolbox.NON_BLOCKING_READ_TOOLS else emptySet()
+        audit.enabled = VoiceTurnSettings.auditLog(appContext)
+        audit.sessionStart(MODEL.removePrefix("models/"), nonBlockingTools)
         turnConfig = TurnConfig.SERVER_VAD
         turnTaker = null
         playbackActive = false
@@ -856,6 +862,7 @@ class GeminiLiveSession(
         // forwardedBytes tells the two apart - mic never opened, vs opened and
         // forwarded nothing.
         MidnightEvents.micState(open = true, why = if (firstOpen) "first open" else "turn handback")
+        audit.micOpen(if (firstOpen) "first_open" else "turn_handback")
         capturing = true
         // DIAGNOSTIC (B10, remove once root-caused): pairs with the "forwarded N
         // bytes" turn-transcript log - if a turn logs ~0 bytes forwarded, this
@@ -943,6 +950,7 @@ class GeminiLiveSession(
         }
         typedTurnInFlight = true
         val sent = sendText(wireText)
+        if (sent) audit.user(text, final = true, typed = true)
         if (!sent) {
             typedTurnInFlight = false
             userTurnText.setLength(0)
@@ -975,7 +983,8 @@ class GeminiLiveSession(
                 "finished after cancellation tool=$name success=${response.optBoolean("success", false)} " +
                     "response not sent",
             )
-            latency.toolResponse(id, System.currentTimeMillis())
+            val ms = latency.toolResponse(id, System.currentTimeMillis())?.second ?: -1L
+            auditToolResult(id, name, response, ms, async = false, sent = false)
             deliverCancelNotesIfQuiet()
             return true
         }
@@ -984,10 +993,30 @@ class GeminiLiveSession(
         if (async) followUpEvent(FollowUpWindow.Event.ToolResponse)
         val msg = toolResponseMessage(id, name, response, async)
         val sent = webSocket?.send(msg.toString()) ?: false
-        latency.toolResponse(id, System.currentTimeMillis())?.let { (tool, ms) ->
+        val timed = latency.toolResponse(id, System.currentTimeMillis())
+        timed?.let { (tool, ms) ->
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent" + if (async) " async=true" else "")
         }
+        auditToolResult(id, name, response, timed?.second ?: -1L, async, sent)
         return sent
+    }
+
+    /** The LIVE_AUDIT `tool_result` line ([LiveAudit]); `ms=-1` for an id that was never timed. */
+    @Suppress("LongParameterList") // one log line's fields, passed straight through
+    private fun auditToolResult(
+        id: String,
+        name: String,
+        response: JSONObject,
+        ms: Long,
+        async: Boolean,
+        sent: Boolean,
+    ) {
+        val success = LiveAudit.successOf(
+            hasSuccess = response.has("success"),
+            success = response.optBoolean("success", false),
+            hasError = response.has("error"),
+        )
+        audit.toolResult(LiveAudit.ToolResult(id, name, success, ms, async, sent, response.toString()))
     }
 
     /** Whether this socket declared [name] NON_BLOCKING (ADR 0065). False for every tool when the setting is off. */
@@ -1586,6 +1615,7 @@ class GeminiLiveSession(
                 // arrives once the server has committed to hearing speech.
                 followUpEvent(FollowUpWindow.Event.UserSpeech)
                 latency.inputTranscript(System.currentTimeMillis())
+                audit.user(it, final = content.optJSONObject("inputTranscription")?.optBoolean("finished") == true)
                 userTurnText.append(it)
                 checkForCrisis()
             }
@@ -1601,6 +1631,7 @@ class GeminiLiveSession(
         if (subtitles) {
             content.optJSONObject("outputTranscription")?.optString("text")?.let {
                 if (it.isNotEmpty()) {
+                    audit.assistant(it, readThrough = mailToolCalledThisTurn)
                     companionTurnText.append(it)
                     if (typedTurnInFlight) {
                         emit(LiveEvent.TypedReplyProgress(companionTurnText.toString()))
@@ -1657,6 +1688,7 @@ class GeminiLiveSession(
                             } else {
                                 capturing = false
                                 MidnightEvents.micState(open = false, why = "half-duplex: companion speaking")
+                                audit.micClosed("half_duplex")
                             }
                         }
                         duckNow()
@@ -1682,6 +1714,7 @@ class GeminiLiveSession(
         }
 
         if (content.optBoolean("interrupted")) {
+            audit.interrupted("server")
             flushAudio()
             speakingThisTurn = false
             emit(LiveEvent.Interrupted)
@@ -1751,6 +1784,10 @@ class GeminiLiveSession(
                     toolCalled = toolCalledThisTurn,
                 ),
             )
+            // LIVE_AUDIT: the whole spoken turn once more as one final line (chunks above may be
+            // partial), then the turn's end, before the read-through flag below is cleared.
+            if (!wasTyped && heard.isNotEmpty()) audit.user(heard, final = true)
+            audit.turnComplete()
             mailToolCalledThisTurn = false
             toolCalledThisTurn = false
             userTurnText.setLength(0)
@@ -1866,10 +1903,12 @@ class GeminiLiveSession(
             // that the model ASKED for a tool, which is already proof this turn did something,
             // whatever the dispatch later returns.
             toolCalledThisTurn = true
+            val args = call.optJSONObject("args") ?: JSONObject()
+            audit.toolCall(call.optString("id"), name, isNonBlockingTool(name), args.toString())
             emit(LiveEvent.ToolCall(
                 id = call.optString("id"),
                 name = name,
-                args = call.optJSONObject("args") ?: JSONObject(),
+                args = args,
             ))
         }
     }
@@ -2036,6 +2075,7 @@ class GeminiLiveSession(
         val list = (0 until ids.length()).map { ids.optString(it) }.filter { it.isNotBlank() }
         cancelledTools.onCancellation(list)
         LiveLatency.log("LIVE_TOOL_CANCEL", "toolCallCancellation ids=$list")
+        list.forEach { audit.toolCancelled(it) }
     }
 
     /**
@@ -2060,6 +2100,7 @@ class GeminiLiveSession(
     private val turnSink = object : TurnTaker.Sink {
         override fun sendActivityStart() {
             sendRealtimeInput(JSONObject().put("activityStart", JSONObject()))
+            audit.activityStart()
         }
 
         override fun sendAudio(pcm: ByteArray, offset: Int, length: Int) {
@@ -2072,6 +2113,7 @@ class GeminiLiveSession(
 
         override fun sendActivityEnd() {
             sendRealtimeInput(JSONObject().put("activityEnd", JSONObject()))
+            audit.activityEnd()
             awaitingReply = true
             latency.activityEnd(System.currentTimeMillis())
         }
@@ -2098,6 +2140,7 @@ class GeminiLiveSession(
         }
 
         override fun onBargeIn(fire: com.kevin.legion.service.turn.BargeInGate.Event.Fire) {
+            audit.interrupted("barge_in")
             flushAudio()
             speakingThisTurn = false
             emit(LiveEvent.Interrupted)
@@ -3107,6 +3150,7 @@ class GeminiLiveSession(
     private fun parkWarm(backstop: Boolean = false) {
         idleJob?.cancel(); idleJob = null
         conversationActive = false
+        if (capturing) audit.micClosed("park")
         capturing = false
         suppressMicNextTurn = false
         playbackActive = false
@@ -3225,7 +3269,9 @@ class GeminiLiveSession(
         running.set(false)
         warm.set(false)
         conversationActive = false
+        if (capturing) audit.micClosed("session_end")
         capturing = false
+        audit.sessionEnd(reason)
         warmHoldJob?.cancel(); warmHoldJob = null
         idleJob?.cancel(); idleJob = null
         micJob?.cancel(); micJob = null
@@ -3259,11 +3305,13 @@ class GeminiLiveSession(
      * [closed] first also makes any later OkHttp onFailure -> closeSession a no-op.
      */
     fun silentDestroy() {
-        closed.set(true)
+        val wasOpen = !closed.getAndSet(true)
         running.set(false)
         warm.set(false)
         conversationActive = false
+        if (wasOpen && capturing) audit.micClosed("superseded")
         capturing = false
+        if (wasOpen) audit.sessionEnd("superseded")
         warmHoldJob?.cancel(); warmHoldJob = null
         idleJob?.cancel(); idleJob = null
         micJob?.cancel(); micJob = null
