@@ -34,6 +34,10 @@ nothing factual until the result arrives, and the result itself carries the figu
 
 1. **Writes stay BLOCKING.** `LiveToolbox.isMutatingTool(name)` true means BLOCKING, no exceptions,
    and a test asserts the non-blocking set is disjoint from it.
+   1a. **What a write is (Kevin, 2026-10-28, asked during the ticket 02 build):** a user-visible
+   record change the assistant could claim as an outcome. Internal bookkeeping does not count:
+   `lookup_vin`'s spec-cache refresh and `ask_advisor`'s advice-log row are bookkeeping, so
+   `ask_fleet` and `ask_goals` stay in the set.
 2. **Read-only, slow lookups may be NON_BLOCKING**, opted in by name, on the Live socket only. The
    first set: `ask_fleet`, `ask_body`, `ask_goals`, `ask_pantry`, `ask_advisor`, `diagnose_codes`,
    `triage_symptom`, `ask_maintenance`, `check_cold_start`. Each is read-only today; the builder

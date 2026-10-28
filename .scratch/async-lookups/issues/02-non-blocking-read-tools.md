@@ -4,7 +4,7 @@ ticket: "02"
 title: "Build: non-blocking read tools on the Live socket"
 type: build
 status: built
-status-detail: "Built 2026-10-28 on feat/async-read-tools, suite green, assembleFast builds. Non-blocking set is ask_body and ask_pantry only: ask_fleet (lookup_vin upserts specs) and ask_goals (ask_advisor logs advice) reach writes, and the other four sit behind ask_fleet. So 'any trouble codes?' still blocks; ticket 04's device step needs a body or pantry question, or a ruling on lookup_vin. Matrix bar shows WORKING only in THINKING, not while a lookup runs under the holding line."
+status-detail: "Built 2026-10-28 on feat/async-read-tools, suite green, assembleFast builds. Non-blocking set: ask_fleet, ask_body, ask_goals, ask_pantry (Kevin 2026-10-28: bookkeeping is not a write). Follow-up: the WORKING indicator shows only in THINKING, not while a lookup runs under the holding line (step 4)."
 blockers: []
 blocked-by: []
 open-blockers: 0

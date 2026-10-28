@@ -3009,21 +3009,25 @@ object LiveToolbox {
      * **Only a read may be here.** The 2026-09-27 all-blocking ruling exists because a write could
      * be called "done" before its result existed. A read has no outcome to misreport; its risk is a
      * fact spoken early, and `LOOKUP_HOLD_CLAUSE` in `ai/AriaBrain.kt` closes that in the prompt.
-     * A dispatcher counts as a write if ANY tool behind it writes, listed in [MUTATING_TOOLS] or not.
      *
-     * Ticket 01 offered nine names; seven are out, traced 2026-10-28:
-     * - `ask_fleet`: its domain holds `lookup_vin`, which upserts the car's spec row
-     *   (`VehicleSpecController.refreshFromVin`). Not in [MUTATING_TOOLS] today.
-     * - `ask_goals`: its domain holds `ask_advisor`.
-     * - `ask_advisor`: inserts an `advisor_advice` row on every answer (`AdvisorAgent.ask`).
-     * - `diagnose_codes`, `triage_symptom`, `ask_maintenance`, `check_cold_start`: read-only, but
-     *   hidden behind `ask_fleet` ([DISPATCHED]), so they never reach the Live socket and a stamp
-     *   on them would do nothing.
+     * **What counts as a write (Kevin, 2026-10-28, ADR 0065):** a user-visible record change the
+     * assistant could claim as an outcome. Internal bookkeeping is not one. A dispatcher may be here
+     * when nothing behind it makes such a change; [isMutatingTool] must still be false for it.
+     *
+     * Ticket 01 offered nine names, traced 2026-10-28:
+     * - `ask_fleet`: IN. `lookup_vin` behind it refreshes the car's cached spec row
+     *   (`VehicleSpecController.refreshFromVin`), which is bookkeeping by that ruling.
+     * - `ask_goals`: IN. `ask_advisor` behind it logs an `advisor_advice` row (`AdvisorAgent.ask`),
+     *   also bookkeeping. A proposal it returns is only applied by `accept_proposal`, which blocks.
+     * - `ask_body`, `ask_pantry`: IN. Plain reads.
+     * - `ask_advisor`, `diagnose_codes`, `triage_symptom`, `ask_maintenance`, `check_cold_start`:
+     *   behind `ask_goals`/`ask_fleet` ([DISPATCHED]), so they never reach the Live socket and a
+     *   stamp on them would do nothing. They run non-blocking as part of their dispatcher.
      *
      * Never: `ask_engine` and `aspect_clerk` (can write), `ask_mail` (the read-through rule keys off
      * the turn a mail tool ran in). `LiveNonBlockingReadToolsTest` pins all of this.
      */
-    val NON_BLOCKING_READ_TOOLS: Set<String> = setOf("ask_body", "ask_pantry")
+    val NON_BLOCKING_READ_TOOLS: Set<String> = setOf("ask_fleet", "ask_body", "ask_goals", "ask_pantry")
 
     /**
      * Every tool whose result must never reach [com.kevin.legion.data.local.EpisodicTurn]/

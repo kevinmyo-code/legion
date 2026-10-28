@@ -6832,13 +6832,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   carry `behavior`. The result goes back with `scheduling: WHEN_IDLE` inside `response`; never
   `INTERRUPT`, never `SILENT`. A setting, "Answer lookups while talking", default on, beside the
   ADR 0064 switches; off means every declaration blocks, from the next connection.
-- **Ticket 01 offered nine names; the build shipped two, `ask_body` and `ask_pantry`** (traced
-  2026-10-28). `ask_fleet` is out because `lookup_vin` behind it upserts the car's spec row
-  (`VehicleSpecController.refreshFromVin`), and `lookup_vin` is not in `MUTATING_TOOLS`.
-  `ask_goals` is out because `ask_advisor` behind it inserts an `advisor_advice` row on every
-  answer. `diagnose_codes`, `triage_symptom`, `ask_maintenance` and `check_cold_start` are
-  read-only but hidden behind `ask_fleet`, so they never reach the Live socket. Consequence: the
-  map's own example, "any trouble codes?", still runs through a blocking `ask_fleet`.
+- **What counts as a write (Kevin, 2026-10-28, via AskUserQuestion, "No, bookkeeping is not a
+  write"):** a user-visible record change the assistant could claim as an outcome. Internal
+  bookkeeping does not count. The builder had first read the rule as "a dispatcher is a write if
+  anything behind it writes" and shipped only `ask_body` and `ask_pantry`; this ruling replaces
+  that reading.
+- **The set is `ask_fleet`, `ask_body`, `ask_goals`, `ask_pantry`.** `lookup_vin`'s spec-cache
+  refresh (`VehicleSpecController.refreshFromVin`, behind `ask_fleet`) and `ask_advisor`'s
+  `advisor_advice` row (behind `ask_goals`) are bookkeeping. `ask_advisor`, `diagnose_codes`,
+  `triage_symptom`, `ask_maintenance` and `check_cold_start` sit behind those dispatchers and never
+  reach the Live socket themselves. "Any trouble codes?" now runs non-blocking through `ask_fleet`.
+- **Known gap, left alone:** `lookup_vin` writes a cache row but is not in `MUTATING_TOOLS`, so the
+  fleet sub-agent's boundary clause says it records nothing.
 - **Never in v1:** `ask_engine` and `aspect_clerk` (can write), `ask_mail` (the read-through rule
   keys off the turn a mail tool ran in), the head unit (3.1 Flash Live has no asynchronous calls).
 - **Unverified:** whether `gemini-3.8-live` speaks a `WHEN_IDLE` result unprompted. Ticket 04 runs
