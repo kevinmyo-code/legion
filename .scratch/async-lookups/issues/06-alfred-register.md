@@ -132,8 +132,8 @@ for sir and mr as well"*, and on the accent: *"drop the accent. yes. lets do puc
   situation, so "never at the user" stands verbatim.
 - **Greetings** rewritten too: the old ones were butler lines and two claimed to have looked at
   things no tool had read. The new ones claim nothing.
-- **Payload:** `LiveSetupPayloadSizeTest` 23,713 to 23,618 estimated tokens (system instruction
-  10,155 to 9,779 chars; the `manage_vehicle` reword, same day, is 6 chars shorter).
+- **Payload:** `LiveSetupPayloadSizeTest` 23,713 to 23,616 estimated tokens (system instruction
+  10,155 to 9,774 chars; the `manage_vehicle` reword, same day, is 6 chars shorter).
 - **Verified:** `compileDebugKotlin -Pnokey`; `testDebugUnitTest` 5,492 tests, 0 failures (5,489
   plus three new `AlfredRegisterTest` cases); `detekt` the 4 pre-existing findings; `assembleFast`
   builds (not installed); `voice_guide.py --check` no drift. Owed: a phone run, listening for no

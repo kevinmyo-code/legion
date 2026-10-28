@@ -6919,6 +6919,6 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   fondness in deeds. Greetings rewritten to claim nothing.
 - **Same batch:** `manage_vehicle` no longer says to 'add' when a car is mentioned; a mention gets an
   offer, only a request adds (agrees with `WRITE_ON_REQUEST_CLAUSE`).
-- Setup payload 23,713 to 23,618 estimated tokens. Examples in async-lookups ticket 06. No ADR: ADR
+- Setup payload 23,713 to 23,616 estimated tokens. Examples in async-lookups ticket 06. No ADR: ADR
   0063 names the one persona, not its register. ADR 0046 cites "Very good, sir" only as why
   `end_conversation` speaks before closing; the sign-off it describes is now one plain line.
