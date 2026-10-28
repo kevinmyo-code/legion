@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import com.kevin.midnightai.BuildConfig
 import com.kevin.midnightai.ai.CrisisDetector
 import com.kevin.midnightai.ai.GeminiKeyProvider
+import com.kevin.midnightai.diag.ConvoAudit
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.data.local.EpisodicTurn
 import com.kevin.midnightai.media.MusicController
@@ -313,6 +314,11 @@ class GeminiLiveSession(
     // audio (e.g. an emulator replaying host audio) rather than a code fault.
     private val userTurnText = StringBuilder()
 
+    // The conversation audit's timing (diag/ConvoAudit): when the driver's last word was
+    // transcribed this turn, and how many tool calls the turn made. Reset on turnComplete.
+    @Volatile private var lastHeardMs = 0L
+    @Volatile private var toolCallsThisTurn = 0
+
     // Guards LiveEvent.CrisisDetected to once per turn. The detector runs on every
     // partial transcript delta, and the transcript only grows within a turn, so a
     // match on one delta matches on every delta after it. Reset on turnComplete.
@@ -605,6 +611,7 @@ class GeminiLiveSession(
             Log.d(TAG, "Dropping response for cancelled tool call $name")
             return
         }
+        ConvoAudit.toolResult(id, name, response.toString())
         val msg = JSONObject().put("toolResponse", JSONObject().apply {
             put("functionResponses", JSONArray().put(JSONObject().apply {
                 put("id", id)
@@ -832,6 +839,7 @@ class GeminiLiveSession(
             if (it.isNotEmpty()) {
                 idleJob?.cancel() // driver is talking - cancel any pending auto-close
                 userTurnText.append(it)
+                lastHeardMs = System.currentTimeMillis()
                 checkForCrisis()
             }
         }
@@ -922,6 +930,7 @@ class GeminiLiveSession(
             // turn's playback stats. Before the mic decision below, so the mic re-open's
             // drain wait sees that audio start moving.
             audioQueue.trySend(PlaybackItem.EndOfTurn)
+            val replyMs = if (turnChunks > 0 && lastHeardMs > 0L) turnFirstChunkMs - lastHeardMs else null
             if (turnChunks > 0) {
                 MidnightEvents.voiceAudioArrival(
                     chunks = turnChunks,
@@ -940,6 +949,12 @@ class GeminiLiveSession(
             // (§14), so a logcat-only diagnostic is invisible in the one place
             // the bug is reported from. Debug-only - it carries the driver's speech.
             if (BuildConfig.DEBUG) MidnightEvents.voiceTurn(heard, bytesThisTurn)
+            // The full-text audit goes to the drive log only, never Crashlytics (ConvoAudit's doc).
+            ConvoAudit.heard(heard, bytesThisTurn)
+            ConvoAudit.said(companionTurnText.toString().trim())
+            ConvoAudit.turnTiming(replyMs?.takeIf { it >= 0 }, toolCallsThisTurn)
+            lastHeardMs = 0L
+            toolCallsThisTurn = 0
             // Force this turn to surface as a retrievable Crashlytics non-fatal if the driver was
             // actually listened to (vadMode = a real conversational turn, not a proactive/
             // onboarding line) but almost nothing was forwarded - a plain breadcrumb alone never
@@ -1011,6 +1026,8 @@ class GeminiLiveSession(
             val name = call.optString("name")
             // Recorded BEFORE emit so the idle timer sees it however fast the turn completes.
             pendingToolCalls[id] = name
+            toolCallsThisTurn++
+            ConvoAudit.toolCall(id, name, call.optJSONObject("args")?.toString() ?: "{}")
             emit(LiveEvent.ToolCall(
                 id = id,
                 name = name,
@@ -1031,6 +1048,7 @@ class GeminiLiveSession(
             val name = pendingToolCalls.remove(id) ?: continue // already answered
             cancelledToolCalls += id
             MidnightEvents.toolCancelled(name)
+            ConvoAudit.toolCancelled(id, name)
         }
     }
 
