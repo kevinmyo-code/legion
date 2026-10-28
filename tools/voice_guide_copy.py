@@ -23,8 +23,10 @@ full of "never say X unless" caveats - and they read badly to a human.
 """
 
 INTRO = (
-    "LEGION is a voice assistant for the phone. Hold the button, or say \"hey\" and your companion's name if the wake "
-    "phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks "
+    "LEGION is a voice assistant for the phone. Tap the mic, or say \"hey\" and your companion's name if the wake "
+    "phrase is switched on, then just talk. It waits for you to finish a thought rather than cutting in at "
+    "the first pause, and on the phone's own speaker you can talk over it to stop it. Say \"that will be "
+    "all\" when you are done. It looks "
     "after cars, money, food, training, notes and mail - and it will tell you when it cannot do "
     "something rather than guessing."
 )
@@ -34,7 +36,7 @@ GROUP_BLURBS = {
     "Your day": "Calendar, lists, reminders and the round-up.",
     "The cars": "Diagnostics, maintenance and history. Most of it needs the OBD dongle plugged in.",
     "Driving": "Things that only make sense while you are actually out.",
-    "Money": "Bank statements, budgets and spending. Figures come from your own imported statements.",
+    "Money": "Bank feed, statements, budgets and spending. Figures come from your linked bank's own feed or your imported statements.",
     "Food and shopping": "Groceries, receipts and meals.",
     "Training and sleep": "Workouts, bodyweight and rest.",
     "Goals and advice": "Longer-term things, and the per-aspect advisors.",
@@ -195,9 +197,9 @@ COPY = {
     "why_did_you_say_that": ("Why did you say that?", "Explains what triggered the last thing it said on its own - the rule and the fact behind it.", "Voice only - no audit-trail screen."),
 
     # --- Settings and control ---
-    "set_companion_name": ("Call yourself Alfred", "Renames your companion.", "Settings > Assistant screen, name field."),
-    "set_personality": ("Be drier about it", "Changes the personality.", "Settings > Assistant screen, personality picker."),
-    "set_driver": ("My name is Kevin", "Tells it what to call you.", "Settings > Assistant screen, your name field."),
+    "set_companion_name": ("Call yourself Alfred", "Renames your companion.", "Settings > Assistant, then the assistant's own screen: name field."),
+    "set_personality": ("Be drier about it", "Changes the personality.", "Voice only - the assistant's settings screen edits its name and voice, not its personality."),
+    "set_driver": ("My name is Kevin", "Tells it what to call you.", "Voice only - no screen edits your name yet."),
 
     # --- Your own trackers ---
     "list_aspects": ("What are you tracking for me?", "Lists every area it tracks - cars, money, food, and anything you have set up yourself.", "Voice only for now - a dedicated screen for user-authored trackers has not been built yet."),

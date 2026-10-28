@@ -33,7 +33,7 @@ object VoiceGuideData {
         val entries: List<Entry>,
     )
 
-    const val INTRO: String = "LEGION is a voice assistant for the phone. Hold the button, or say \"hey\" and your companion's name if the wake phrase is switched on, then just talk. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
+    const val INTRO: String = "LEGION is a voice assistant for the phone. Tap the mic, or say \"hey\" and your companion's name if the wake phrase is switched on, then just talk. It waits for you to finish a thought rather than cutting in at the first pause, and on the phone's own speaker you can talk over it to stop it. Say \"that will be all\" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing."
 
     val GROUPS: List<Group> = listOf(
         Group(
@@ -118,7 +118,7 @@ object VoiceGuideData {
         ),
         Group(
             title = "Money",
-            blurb = "Bank statements, budgets and spending. Figures come from your own imported statements.",
+            blurb = "Bank feed, statements, budgets and spending. Figures come from your linked bank's own feed or your imported statements.",
             entries = listOf(
                 Entry(name = "get_balance", say = "What's my balance?", does = "Balance from your imported statements.", hands = "Money tab, balances."),
                 Entry(name = "get_spend", say = "How much did I spend on fuel?", does = "Spending in a category or over a period.", hands = "Money tab, spend view."),
@@ -239,9 +239,9 @@ object VoiceGuideData {
             title = "Settings and control",
             blurb = "Changing how it behaves, by voice.",
             entries = listOf(
-                Entry(name = "set_companion_name", say = "Call yourself Alfred", does = "Renames your companion.", hands = "Settings > Assistant screen, name field."),
-                Entry(name = "set_personality", say = "Be drier about it", does = "Changes the personality.", hands = "Settings > Assistant screen, personality picker."),
-                Entry(name = "set_driver", say = "My name is Kevin", does = "Tells it what to call you.", hands = "Settings > Assistant screen, your name field."),
+                Entry(name = "set_companion_name", say = "Call yourself Alfred", does = "Renames your companion.", hands = "Settings > Assistant, then the assistant's own screen: name field."),
+                Entry(name = "set_personality", say = "Be drier about it", does = "Changes the personality.", hands = "Voice only - the assistant's settings screen edits its name and voice, not its personality."),
+                Entry(name = "set_driver", say = "My name is Kevin", does = "Tells it what to call you.", hands = "Voice only - no screen edits your name yet."),
             ),
         ),
         Group(
