@@ -112,7 +112,7 @@ from collections import defaultdict
 TAG = "LIVE_LATENCY"
 _PAIR = re.compile(r"(\w+)=(\S+)")
 # Which key groups each metric: tool_ms by tool name, ask_engine_ms by model.
-GROUP_KEY = {"tool_ms": "tool", "ask_engine_ms": "model", "eot_ms": "eot_reason"}
+GROUP_KEY = {"tool_ms": "tool", "ask_engine_ms": "model", "eot_ms": "eot_reason", "nudge_ms": "tool"}
 # Lookup lines (ticket 03) go to the Lookups table only: route_tools_ms=0 on a call that ran no
 # tool would drag a per-metric fan-out figure down.
 LOOKUP_KEYS = {"route_ms", "route_post_ms", "route_tools_ms", "investigate_ms"}

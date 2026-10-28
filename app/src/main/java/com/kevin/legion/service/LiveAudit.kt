@@ -106,6 +106,14 @@ internal class LiveAudit(
     @Synchronized
     fun activityEnd() = emit("activity_end")
 
+    /**
+     * A system note the session sent the model mid-lookup (async-lookups ticket 07): [reason] is
+     * `still_checking` (with [afterMs], how long the call had run) or `late_holding_line`.
+     */
+    @Synchronized
+    fun nudge(reason: String, tool: String, afterMs: Long? = null) =
+        emit("nudge reason=${token(reason)} tool=${token(tool)}" + (afterMs?.let { " after_ms=$it" } ?: ""))
+
     @Synchronized
     fun micOpen(reason: String) = emit("mic_open reason=${token(reason)}")
 

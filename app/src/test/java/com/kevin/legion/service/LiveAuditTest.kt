@@ -64,6 +64,19 @@ class LiveAuditTest {
     }
 
     @Test
+    fun `nudge lines`() {
+        audit.nudge("still_checking", "ask_fleet", 4_012L)
+        audit.nudge("late_holding_line", "ask_body")
+        assertEquals(
+            listOf(
+                "nudge reason=still_checking tool=ask_fleet after_ms=4012",
+                "nudge reason=late_holding_line tool=ask_body",
+            ),
+            lines,
+        )
+    }
+
+    @Test
     fun `no async tools says none`() {
         audit.sessionStart("gemini-3.8-live", emptySet())
         assertEquals("session_start model=gemini-3.8-live async_set=none", lines.single())
