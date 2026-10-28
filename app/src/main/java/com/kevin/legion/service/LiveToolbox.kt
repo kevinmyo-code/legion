@@ -323,12 +323,12 @@ object LiveToolbox {
                 "ECU. This also wipes the freeze frame and RESETS THE EMISSIONS READINESS MONITORS, " +
                 "so the car will fail an inspection until it has driven enough to reset them. " +
                 "Destructive and not reversible. ALWAYS call this first with confirmed=false - it " +
-                "reads the stored codes and returns the exact warning to recite to the user; only " +
+                "previews what would be erased and returns the exact warning to recite to the user; only " +
                 "call it again with confirmed=true after the user says yes in the very next turn. " +
                 "After sending, this re-reads the codes and reports what actually came back - only " +
                 "ever say 'cleared' if that is what this tool's own result says, never assume the " +
-                "send alone means it worked. Use when the user asks to clear codes, reset the " +
-                "check engine light, or erase trouble codes. Reads the OBD dongle in the car it is " +
+                "send alone means it worked. Use ONLY when the user asks to clear, reset or erase codes; " +
+                "to read or ask about codes, use ask_fleet. Reads the OBD dongle in the car it is " +
                 "plugged into right now. Cannot answer for any other car.",
             params = obj(
                 "confirmed" to schema("boolean", "False on the first call to read the codes and get " +
@@ -530,7 +530,7 @@ object LiveToolbox {
                 "user going to bed - do not wish them goodnight, do not comment on the hour, and " +
                 "do not treat it as a bedtime remark. It may well be the middle of the day. " +
                 "Acknowledge in two or three words and stop. " +
-                "Say a short in-character sign-off in the same turn; " +
+                "Say one dry sign-off line in your own register in the same turn; " +
                 "the conversation closes once you finish speaking, and the user can always call " +
                 "you again. Do NOT call this when the user is merely answering 'no' to something " +
                 "you asked, declining one suggestion, or pausing to think - those are ordinary " +
@@ -1135,8 +1135,9 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "list_recent_meals",
-            description = "Read back recently logged meals. Calorie/macro figures are ESTIMATES, " +
-                "always phrase them as estimates, never as fact.",
+            description = "Read back recently logged meals, newest first, each with the date it " +
+                "was logged (yyyy-MM-dd and weekday, the phone's own day). Calorie/macro figures " +
+                "are ESTIMATES, always phrase them as estimates, never as fact.",
             params = obj("count" to schema("integer", "How many to return. Default 10.")),
             required = listOf(),
         ))
@@ -1720,11 +1721,13 @@ object LiveToolbox {
         // could only land on register_vehicle, which overwrites the active car -
         // and did, turning a 2020 Outlander with 5242 stored readings into a
         // Ford F-150 without ever creating the F-150.
+        // 2026-10-28: "add" was invited by a mere mention ("I also drive a..."), against
+        // WRITE_ON_REQUEST_CLAUSE. A mention gets an offer; only a request adds.
         fns.put(fn(
             name = "manage_vehicle",
             description = "Add a car to the fleet, fix a car's saved details, rename one, switch " +
-                "which car you're on, or archive/unarchive one. Use 'add' when the user mentions " +
-                "another car they own ('add my F-150', 'I also drive a...') - this is the ONLY way " +
+                "which car you're on, or archive/unarchive one. Use 'add' only when asked " +
+                "('add my F-150'); a car merely mentioned gets an offer first. This is the ONLY way " +
                 "to create a second car, and it does NOT change which car is active. Use 'correct' " +
                 "when a car has the wrong year/make/model saved; its drives and service history stay " +
                 "with it. Call list_vehicles first if you're not sure which car they mean.",
@@ -2231,8 +2234,11 @@ object LiveToolbox {
      * used to be a third example here but is RETIRED, one-today ticket 10 slice C, 2026-09-05 - its
      * own `dispatch` branch returns a named failure message now, never null), and every
      * money/notes/media/place/core tool.
+     *
+     * Internal, not private, so `LiveNonBlockingReadToolsTest` reads the REAL domain lists when it
+     * proves [NON_BLOCKING_READ_TOOLS] holds no dispatcher that can reach a write (ADR 0065).
      */
-    private val DISPATCHED: Map<String, List<String>> = mapOf(
+    internal val DISPATCHED: Map<String, List<String>> = mapOf(
         // WRITES CAME BACK OUT, 2026-08-18 (Kevin's call, measured). Every tool below is a READ.
         // The eight write tools this map used to hide - log_service, log_past_service,
         // log_build_entry, log_meal, log_sleep, log_bodyweight, log_workout_set,
@@ -2576,6 +2582,52 @@ object LiveToolbox {
         dispatchBoundaryClause("fleet") +
         Priming.dispatchClause(context, "fleet")
 
+    /**
+     * What the fleet router must know before its ONE round (ticket 04 run 2, A25, 2026-10-28).
+     * "Are there any trouble codes on the Jeep?" reached `ask_fleet`, and the router called only
+     * `list_vehicles`: every live codes tool (`get_codes`, `diagnose_codes`,
+     * `get_vehicle_data(trouble_codes)`) says it "cannot answer for any other car", and the router
+     * had no way to know which car the dongle was in, or whether it was in any. [SubAgent.route]
+     * gives it one POST, so the discovery call spent the round and the result held no codes.
+     *
+     * No fleet tool takes an id: the stored-record tools already take `vehicle` by name and resolve
+     * it through [withResolvedVehicle], which is why "next service on the Jeep" worked in one
+     * round. So this hands the router names, not ids: each car under the string that resolves
+     * (the nickname, matched exactly by [VehicleResolver]'s first tier, else the year-make-model
+     * spec, matched by its contains tier), which one is active, and where the dongle is. Appended
+     * to the router's system instruction, not the question, so [SubAgent.frameRouteResults] still
+     * echoes only the user's words. Billed on the router's REST call, not the Live setup payload.
+     *
+     * Pure so a JVM test pins it; the caller does the three reads `list_vehicles` does.
+     */
+    internal fun fleetRouteContext(vehicles: List<Vehicle>, activeId: String?, connectedId: String?): String {
+        if (vehicles.isEmpty()) {
+            return " No car is on file yet, so there is nothing to pass as `vehicle`."
+        }
+        fun key(v: Vehicle) = v.name.trim().ifBlank { VehicleController.identitySpec(v) }.ifBlank { v.obdMac }
+        fun entry(v: Vehicle): String {
+            val k = key(v)
+            val spec = VehicleController.identitySpec(v)
+            return if (spec.isBlank() || spec.equals(k, ignoreCase = true)) "\"$k\"" else "\"$k\" ($spec)"
+        }
+        val active = vehicles.firstOrNull { it.obdMac == activeId }
+        val connected = connectedId?.let { id -> vehicles.firstOrNull { it.obdMac == id } }
+        val dongle = when {
+            connectedId == null ->
+                "The OBD dongle is not connected to any car, so the live tools can read nothing right now."
+            connected == null ->
+                "The OBD dongle is plugged into a car that is not on file; the live tools read only that car."
+            else ->
+                "The OBD dongle is plugged into \"${key(connected)}\"; the live tools read only that car."
+        }
+        return " Cars on file: ${vehicles.joinToString(", ") { entry(it) }}." +
+            (active?.let { " Currently driving: \"${key(it)}\"." } ?: "") +
+            " $dongle For a car the dongle is not in, pass its quoted name as `vehicle` to the " +
+            "stored-record tools (code history, service, specs, recalls, build log, trends) in this " +
+            "same round. Every car is listed here, so call list_vehicles only when the question is " +
+            "about the cars themselves."
+    }
+
     private fun bodyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the user's meals, sleep, workouts, and bodyweight using the " +
         "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
@@ -2678,56 +2730,78 @@ object LiveToolbox {
                 "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = fleetDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("fleet", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("fleet"),
-                )
+                probedRoute(name) { probe ->
+                    // The router gets one round, so it is told which cars exist and where the
+                    // dongle is before it picks (ticket 04 run 2): see fleetRouteContext.
+                    val fleetLine = fleetRouteContext(
+                        com.kevin.legion.vehicle.FleetEngineStore.getAll(context),
+                        ActiveVehicle.current(context),
+                        ObdBluetoothManager.connectedDeviceAddress,
+                    )
+                    SubAgent(systemInstruction = fleetDispatchGrounding(context) + fleetLine).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("fleet", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("fleet"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_body" -> agentResult(
                 "Could not reach the health specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("body", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("body"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("body", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("body"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_goals" -> agentResult(
                 "Could not reach the goals specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("goals", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("goals"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("goals", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("goals"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_pantry" -> agentResult(
                 "Could not reach the grocery specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = pantryDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("pantry", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("pantry"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = pantryDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("pantry", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("pantry"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_mail" -> agentResult(
                 "Could not reach your mail. Try again shortly.",
                 requireMutation = wantsWrite(args),
             ) {
-                SubAgent(systemInstruction = mailDispatchGrounding(context)).route(
-                    question = args.optString("question"),
-                    tools = agentToolsFor("mail", context),
-                    budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                    mutatingToolNames = mutatingToolsFor("mail"),
-                )
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = mailDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("mail", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("mail"),
+                        probe = probe,
+                    )
+                }
             }
             "ask_engine" -> askEngine(context, args, touchedReadThroughToolThisTurn)
             "get_health" -> getHealth(context)
@@ -2996,6 +3070,35 @@ object LiveToolbox {
         // purchase-log ticket 08: action=log writes a bought entry on the engine.
         "bought_log",
     )
+
+    /**
+     * Live declarations stamped `behavior: NON_BLOCKING` (ADR 0065, async-lookups ticket 01/02,
+     * Kevin 2026-10-28): the model keeps talking while these run, and the result comes back with
+     * `scheduling: WHEN_IDLE`. Every other declaration stays BLOCKING
+     * ([GeminiLiveSession.withToolBehavior]). Empty on the wire when the Settings switch is off.
+     *
+     * **Only a read may be here.** The 2026-09-27 all-blocking ruling exists because a write could
+     * be called "done" before its result existed. A read has no outcome to misreport; its risk is a
+     * fact spoken early, and `LOOKUP_HOLD_CLAUSE` in `ai/AriaBrain.kt` closes that in the prompt.
+     *
+     * **What counts as a write (Kevin, 2026-10-28, ADR 0065):** a user-visible record change the
+     * assistant could claim as an outcome. Internal bookkeeping is not one. A dispatcher may be here
+     * when nothing behind it makes such a change; [isMutatingTool] must still be false for it.
+     *
+     * Ticket 01 offered nine names, traced 2026-10-28:
+     * - `ask_fleet`: IN. `lookup_vin` behind it refreshes the car's cached spec row
+     *   (`VehicleSpecController.refreshFromVin`), which is bookkeeping by that ruling.
+     * - `ask_goals`: IN. `ask_advisor` behind it logs an `advisor_advice` row (`AdvisorAgent.ask`),
+     *   also bookkeeping. A proposal it returns is only applied by `accept_proposal`, which blocks.
+     * - `ask_body`, `ask_pantry`: IN. Plain reads.
+     * - `ask_advisor`, `diagnose_codes`, `triage_symptom`, `ask_maintenance`, `check_cold_start`:
+     *   behind `ask_goals`/`ask_fleet` ([DISPATCHED]), so they never reach the Live socket and a
+     *   stamp on them would do nothing. They run non-blocking as part of their dispatcher.
+     *
+     * Never: `ask_engine` and `aspect_clerk` (can write), `ask_mail` (the read-through rule keys off
+     * the turn a mail tool ran in). `LiveNonBlockingReadToolsTest` pins all of this.
+     */
+    val NON_BLOCKING_READ_TOOLS: Set<String> = setOf("ask_fleet", "ask_body", "ask_goals", "ask_pantry")
 
     /**
      * Every tool whose result must never reach [com.kevin.legion.data.local.EpisodicTurn]/
@@ -5225,15 +5328,30 @@ object LiveToolbox {
     private suspend fun listRecentMeals(context: Context, count: Int): JSONObject {
         val meals = MealController.recentMeals(context, count.coerceIn(1, 100))
         val arr = JSONArray()
-        for (m in meals) {
-            val o = JSONObject().put("description", m.description)
-            m.caloriesKcal?.let { o.put("estimatedCaloriesKcal", it) }
-            m.proteinG?.let { o.put("estimatedProteinG", it) }
-            m.carbsG?.let { o.put("estimatedCarbsG", it) }
-            m.fatG?.let { o.put("estimatedFatG", it) }
-            arr.put(o)
-        }
+        for (m in meals) arr.put(mealRow(m))
         return JSONObject().put("success", true).put("count", meals.size).put("meals", arr)
+    }
+
+    /**
+     * One `list_recent_meals` row. The date it was logged, as an ISO date and a weekday in the
+     * phone's zone, the same local day [com.kevin.legion.meals.dayStartEpoch] buckets "today" by
+     * (async-lookups ticket 07; ticket 04 run 3, F7: without it, "what did I eat yesterday" could
+     * only be answered as "the records don't specify dates").
+     */
+    internal fun mealRow(
+        m: com.kevin.legion.data.local.MealLog,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    ): JSONObject {
+        val day = java.time.Instant.ofEpochMilli(m.loggedAt).atZone(zone).toLocalDate()
+        val o = JSONObject()
+            .put("description", m.description)
+            .put("date", day.toString())
+            .put("weekday", day.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US))
+        m.caloriesKcal?.let { o.put("estimatedCaloriesKcal", it) }
+        m.proteinG?.let { o.put("estimatedProteinG", it) }
+        m.carbsG?.let { o.put("estimatedCarbsG", it) }
+        m.fatG?.let { o.put("estimatedFatG", it) }
+        return o
     }
 
     /**
@@ -6398,6 +6516,19 @@ object LiveToolbox {
         }
     }
 
+    /**
+     * Runs one `ask_<domain>` dispatcher's [SubAgent.route] with a fresh [LookupProbe] named [tool],
+     * then writes its `route_ms=` LIVE_LATENCY line (async-lookups ticket 03). A line per call, the
+     * failures included, so a capture can say which stage a slow or failed lookup spent its time in.
+     */
+    private suspend fun probedRoute(
+        tool: String,
+        run: suspend (com.kevin.legion.ai.LookupProbe) -> AgentResult,
+    ): AgentResult {
+        val probe = com.kevin.legion.ai.LookupProbe(tool)
+        return run(probe).also { LiveLatency.log(LiveLatency.TAG, LiveLatency.routeLine(probe, it)) }
+    }
+
     /** One client for the process so its short `tools/list` cache survives between utterances;
      * it reads the engine address and token live from [EngineConfig] on every call. */
     private var engineMcpClient: EngineMcpClient? = null
@@ -6421,24 +6552,28 @@ object LiveToolbox {
             EngineMcpClient(EngineHttp(config), config::baseUrl).also { engineMcpClient = it }
         }
         // Debug-selectable (2026-10-27): Flash-Lite by default, 3.8 Flash for a latency comparison.
-        // Logged per call so a LIVE_LATENCY capture says which model served it.
+        // Logged per call so a LIVE_LATENCY capture says which model served it: the probe's model,
+        // which is the fallback's when one fired (async-lookups ticket 03), not the one asked for.
         val model = DebugSettings.askEngineModel(context)
         return AskEngine(
             client = client,
             runAgent = { instruction, question, tools ->
                 val startedAt = System.currentTimeMillis()
+                val probe = com.kevin.legion.ai.LookupProbe("ask_engine")
                 SubAgent(systemInstruction = instruction, useSearch = false, model = model).investigate(
                     context = "",
                     question = question,
                     tools = tools,
                     maxModelCalls = 4,
                     budgetMs = 40_000,
+                    probe = probe,
                 ).also { r ->
                     LiveLatency.log(
                         LiveLatency.TAG,
-                        "ask_engine_ms=${System.currentTimeMillis() - startedAt} model=$model " +
+                        "ask_engine_ms=${System.currentTimeMillis() - startedAt} model=${probe.model} " +
                             "result=${r::class.simpleName}",
                     )
+                    LiveLatency.log(LiveLatency.TAG, LiveLatency.investigateLine(probe, r))
                 }
             },
             identityClause = { AssistantIdentity.shortClause(context) },

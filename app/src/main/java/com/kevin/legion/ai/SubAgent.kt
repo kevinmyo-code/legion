@@ -6,13 +6,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
+import com.kevin.legion.service.LiveLatency
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
 /**
  * A focused Gemini worker the realtime voice loop delegates a single domain
@@ -93,10 +97,11 @@ class SubAgent internal constructor(
     private val model: String,
     /**
      * Test seam (2026-10-27, router mode): when set, every POST goes here instead of over HTTP, so
-     * a JVM test can script Gemini's replies and count the calls. Null in production, which is
-     * the only value the public constructor below can pass.
+     * a JVM test can script Gemini's replies and count the calls. It is handed the model each
+     * POST is aimed at, so a test can see the fallback (ticket 03) switch models. Null in
+     * production, which is the only value the public constructor below can pass.
      */
-    private val transport: (suspend (JSONObject) -> RestOutcome)?,
+    private val transport: (suspend (model: String, body: JSONObject) -> RestOutcome)?,
 ) {
     constructor(
         systemInstruction: String = "",
@@ -313,6 +318,9 @@ class SubAgent internal constructor(
      * then does round `maxModelCalls + 1` force a tool-free answer as the true backstop. This
      * spends at most one extra POST, only when the model is still mid-call at the old cutoff -
      * a normal answer at or before round [maxModelCalls] costs exactly what it always did.
+     *
+     * [probe] (async-lookups ticket 03), when given, gets this call's total time, its round count
+     * and the model that answered. See [LookupProbe].
      */
     suspend fun investigate(
         context: String,
@@ -321,10 +329,28 @@ class SubAgent internal constructor(
         maxModelCalls: Int = 4,
         budgetMs: Long = 30_000,
         mutatingToolNames: Set<String> = emptySet(),
-    ): AgentResult = withContext(Dispatchers.IO) {
+        probe: LookupProbe? = null,
+    ): AgentResult = probed(probe) {
+        // CallState pins the answering model for the whole loop: once a round falls back, every
+        // later round stays on the fallback (see [postRaw]).
         withTimeoutOrNull(budgetMs) {
             runInvestigation(context, question, tools, maxModelCalls, mutatingToolNames)
         } ?: AgentResult.Failed
+    }
+
+    /**
+     * Runs one [investigate] or [route] call on [Dispatchers.IO] with a fresh [CallState], and
+     * stamps [probe] (async-lookups ticket 03). The clock starts before the caller's budget and
+     * stops in `finally`, so a call cut at its budget still reports its total.
+     */
+    private suspend fun probed(probe: LookupProbe?, block: suspend () -> AgentResult): AgentResult {
+        probe?.model = model
+        val startedAt = System.currentTimeMillis()
+        return try {
+            withContext(Dispatchers.IO + CallState(this, model, probe)) { block() }
+        } finally {
+            probe?.totalMs = System.currentTimeMillis() - startedAt
+        }
     }
 
     private suspend fun runInvestigation(
@@ -419,13 +445,17 @@ class SubAgent internal constructor(
      * a blocked prompt, an empty reply, every requested tool failing, or [budgetMs] running out
      * [AgentResult.Failed]. A PARTIAL failure is not a failure: the failed calls' errors ride
      * along in the results so the Live model can say what it could not get.
+     *
+     * [probe] (async-lookups ticket 03), when given, gets this call's stage timings: the router
+     * POST, the tool fan-out, the tools asked for, and the model that answered. See [LookupProbe].
      */
     suspend fun route(
         question: String,
         tools: List<AgentTool>,
         budgetMs: Long = 30_000,
         mutatingToolNames: Set<String> = emptySet(),
-    ): AgentResult = withContext(Dispatchers.IO) {
+        probe: LookupProbe? = null,
+    ): AgentResult = probed(probe) {
         withTimeoutOrNull(budgetMs) { runRoute(question, tools, mutatingToolNames) } ?: AgentResult.Failed
     }
 
@@ -468,8 +498,15 @@ class SubAgent internal constructor(
     ): AgentResult {
         Log.d(TAG, "route: called ${calls.map { it.name }}")
         val toolsByName = tools.associateBy { it.name }
-        val runs = coroutineScope {
-            calls.map { call -> async { runTool(toolsByName[call.name], call, "route") } }.awaitAll()
+        val probe = callState().probe
+        probe?.toolNames = calls.map { it.name }
+        val fanOutAt = System.currentTimeMillis()
+        val runs = try {
+            coroutineScope {
+                calls.map { call -> async { runTool(toolsByName[call.name], call, "route") } }.awaitAll()
+            }
+        } finally {
+            probe?.toolsMs = System.currentTimeMillis() - fanOutAt
         }
         val mutated = calls.zip(runs)
             .filter { (call, run) -> run.output != null && call.name in mutatingToolNames }
@@ -533,13 +570,63 @@ class SubAgent internal constructor(
         }
 
     /**
-     * The POST itself lives in [GeminiRest] (2026-10-27), lifted out unchanged so the typed chat
-     * engine shares this exact boundary: retry once on a transport failure, cancellable I/O,
-     * metering through [GeminiUsageMeter], and [KeyHealth] recording. See [GeminiRest.post].
+     * Every SubAgent POST goes through here, so [ask], [askWithUsage], [askTyped], [investigate]
+     * and [route] all get the fallback (async-lookups ticket 03).
+     *
+     * A 429 or a 500/503 ([GeminiRest.fallbackReason]) is retried ONCE, same body, on
+     * [FALLBACK_MODEL], and one `LIVE_LATENCY subagent_fallback` line is written. Never on a bad key
+     * (401/403/400 API_KEY_INVALID), never on a blocked prompt (that is a 200), never a second
+     * fallback: once the call's [CallState] is on [FALLBACK_MODEL] (or started there), an error is
+     * returned as it came. A transport failure keeps [GeminiRest.post]'s own one retry on the same
+     * model and never escalates here.
+     *
+     * One call here is one round on the call's [LookupProbe]: its time (the fallback retry
+     * included) adds to [LookupProbe.postMs], and [LookupProbe.model] follows the model each POST
+     * went to, so the caller's log names the model that actually answered.
+     *
+     * The POST itself lives in [GeminiRest] (2026-10-27): retry once on a transport failure,
+     * cancellable I/O, metering through [GeminiUsageMeter], and [KeyHealth] recording.
      */
     private suspend fun postRaw(body: JSONObject): RestOutcome {
-        transport?.let { return it(body) }
-        return GeminiRest.post(model, body)
+        val state = callState()
+        val probe = state.probe
+        probe?.let { it.rounds++ }
+        val postAt = System.currentTimeMillis()
+        try {
+            val first = send(state.model, body)
+            val reason = (first as? RestOutcome.HttpError)?.let(GeminiRest::fallbackReason)
+            if (reason == null || state.model == FALLBACK_MODEL) return first
+            val from = state.model
+            state.model = FALLBACK_MODEL
+            probe?.model = FALLBACK_MODEL
+            LiveLatency.log(LiveLatency.TAG, LiveLatency.fallbackLine(from, FALLBACK_MODEL, reason, probe?.tool))
+            return send(FALLBACK_MODEL, body)
+        } finally {
+            probe?.let { it.postMs += System.currentTimeMillis() - postAt }
+        }
+    }
+
+    private suspend fun send(model: String, body: JSONObject): RestOutcome =
+        transport?.invoke(model, body) ?: GeminiRest.post(model, body)
+
+    /**
+     * This call's [CallState]: the one [investigate]/[route] put in the coroutine context, or a
+     * fresh one for a one-shot [ask]/[askTyped]. [CallState.owner] is checked because a routed
+     * tool can construct and run ANOTHER SubAgent inside this call's context (a nested
+     * `web_lookup`), and that one must answer on its own model, not inherit this call's.
+     */
+    private suspend fun callState(): CallState =
+        currentCoroutineContext()[CallState]?.takeIf { it.owner === this } ?: CallState(this, model)
+
+    /**
+     * Per-call POST state, carried in the coroutine context so [runInvestigation]'s signature
+     * (keyed by `config/detekt/baseline.xml`) stays as it is. Per call, not per instance: the
+     * vehicle agents hold one SubAgent for the process, and a fallback must not outlive the call
+     * that needed it. [probe] is the caller's [LookupProbe], null for a one-shot call.
+     */
+    private class CallState(val owner: SubAgent, @Volatile var model: String, val probe: LookupProbe? = null) :
+        AbstractCoroutineContextElement(CallState) {
+        companion object Key : CoroutineContext.Key<CallState>
     }
 
     /** Map an HTTP error to a typed result and record it in [KeyHealth]. See [GeminiRest.classify]. */
@@ -804,6 +891,11 @@ class SubAgent internal constructor(
          * The text [route] hands back when tools ran: a one-line frame, then each tool's name and
          * its raw result (parsed back to JSON where it is JSON) or its error. Pure and internal so
          * the shape is pinned by a test.
+         *
+         * The frame names the question as the USER's and says to answer it (ticket 04 run 2,
+         * 2026-10-28): a non-blocking result arrives in a turn of its own with no user speech, and
+         * the model denied a full result there. Equally true on the blocking path, where the
+         * result lands inside the turn that asked.
          */
         internal fun frameRouteResults(question: String, results: List<Pair<String, JSONObject>>): String {
             val arr = JSONArray()
@@ -816,7 +908,8 @@ class SubAgent internal constructor(
                 }
                 arr.put(entry)
             }
-            return "Results for \"$question\". Relay them in your own voice; state only what is here.\n$arr"
+            return "Results for the user's question \"$question\". Answer that question from them in your own " +
+                "voice; state only what is here.\n$arr"
         }
 
         /** A tool's output as JSON when it parses as JSON, else the raw string unchanged. */
@@ -851,5 +944,13 @@ class SubAgent internal constructor(
         // same Flash-Lite tier (not the pricier full 3.6 Flash - that would
         // trade this class's whole cost/latency reason for existing).
         const val DEFAULT_MODEL = "gemini-3.5-flash-lite"
+
+        /**
+         * Where one POST goes after [DEFAULT_MODEL] answers 429 or 500/503 (async-lookups ticket
+         * 03). Flash-Lite stays the default for cost; this pricier model is paid for only on a
+         * failure that would otherwise be spoken to the user as one, once per POST, never twice.
+         * The id is the one voice notes and typed chat already run on, so it is known to exist.
+         */
+        const val FALLBACK_MODEL = "gemini-3.8-flash"
     }
 }

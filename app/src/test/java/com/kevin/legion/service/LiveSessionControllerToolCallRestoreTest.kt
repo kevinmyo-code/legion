@@ -46,4 +46,38 @@ class LiveSessionControllerToolCallRestoreTest {
     fun `a negative refcount never restores - defensive against a double-decrement bug`() {
         assertFalse(LiveSessionController.shouldRestoreAfterToolCall(-1, Phase.THINKING))
     }
+
+    // ADR 0065: a NON_BLOCKING lookup can start or finish while the model speaks its holding line
+    // or after the mic has reopened. These are the pure decisions handleToolCall makes for it.
+
+    @Test
+    fun `a blocking tool always moves the strip to THINKING`() {
+        for (phase in Phase.entries) {
+            assertTrue(LiveSessionController.toolStartEntersThinking(nonBlocking = false, currentPhase = phase))
+        }
+    }
+
+    @Test
+    fun `a non-blocking lookup never stomps the holding line`() {
+        assertFalse(LiveSessionController.toolStartEntersThinking(nonBlocking = true, currentPhase = Phase.SPEAKING))
+    }
+
+    @Test
+    fun `a non-blocking lookup called right after the user finished still shows the work`() {
+        assertTrue(LiveSessionController.toolStartEntersThinking(nonBlocking = true, currentPhase = Phase.LISTENING))
+        assertTrue(LiveSessionController.toolStartEntersThinking(nonBlocking = true, currentPhase = Phase.THINKING))
+    }
+
+    @Test
+    fun `a lookup finishing after the holding line leaves LISTENING and SPEAKING alone`() {
+        // Nothing restores, so the strip never flips back to THINKING and the mic is never touched.
+        assertFalse(LiveSessionController.shouldRestoreAfterToolCall(0, Phase.LISTENING))
+        assertFalse(LiveSessionController.shouldRestoreAfterToolCall(0, Phase.SPEAKING))
+    }
+
+    @Test
+    fun `a running lookup still reads as WORKING`() {
+        // activeToolCalls counts non-blocking calls too; CompanionPhase shows it while THINKING.
+        assertTrue(LiveSessionController.toolRunningFor(voiceToolCalls = 1, typedToolCalls = 0, voiceOwnsPhase = true))
+    }
 }

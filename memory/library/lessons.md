@@ -1125,3 +1125,23 @@ exercises a real upsert against a real schema. **A write path with no failure su
 path, it is a hope** - and this one was only found because somebody happened to have a phone attached
 and logcat open for a different reason. `.scratch/django-engine/issues/17-*.md` owns the fix and the
 check that should have existed.
+
+## L-2026-10-28: A brief's causal claim about code is `reasoned` until someone reads the signatures
+
+After the ticket 04 run 2 phone test (async-lookups), the orchestrator's brief told the builder, as
+fact, that "a codes read needs the vehicle id first". The builder traced it
+instead: **no fleet tool takes an id.** The stored-record tools take `vehicle` by name and the live
+codes tools read only the car the OBD dongle is plugged into. The router spent its one round on
+`list_vehicles` because it could not know which car was active or whether a dongle was connected.
+The real gap was fleet STATE (active car, dongle), and the fix (`LiveToolbox.fleetRouteContext`)
+appends that, not an id lookup.
+
+The claim was the orchestrator's reading of a symptom (the router called `list_vehicles`), stated
+as a mechanism nobody had checked. Built on as written, it would have pointed the fix at an id
+lookup and left the real gap open (reasoned).
+
+**Rule:** a brief's causal claim about code ("X needs Y first", "Z fails because W") is `reasoned`
+until someone has read the relevant tool or function signatures, and the brief tags it that way.
+The builder's first step on such a claim is to read the signatures, not to implement around it.
+This is CLAUDE.md sec 8's "briefs carry verification tags too", applied to a cause rather than a
+unit.

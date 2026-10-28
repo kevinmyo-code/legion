@@ -110,4 +110,115 @@ class AriaBrainHonestyClauseTest {
             assertTrue(!DATA_ACCESS_CLAUSE.contains(tool))
         }
     }
+
+    /**
+     * ADR 0065 (async-lookups ticket 02): a read-only lookup may run NON_BLOCKING, so the model can
+     * keep talking while it runs. The risk is a fact spoken before the data exists; this pins the
+     * clause that forbids it. Presence only, like everything here.
+     */
+    @Test
+    fun `the lookup holding-line clause is wired in and forbids an early fact`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        // The example is three varied lines since 2026-10-28 (ticket 06); the rules below are not.
+        for (line in listOf("Let me look.", "Checking.", "Give me a second with that.")) {
+            assertTrue(LOOKUP_HOLD_CLAUSE.contains(line))
+        }
+        for (forbidden in listOf("figure", "date", "name", "fact", "outcome")) {
+            assertTrue("the holding line must forbid a $forbidden", LOOKUP_HOLD_CLAUSE.contains(forbidden))
+        }
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("never state one the result has not yet given"))
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("say nothing more"))
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("answer from it"))
+        // Conditioned on the result, not on a list of lookups: no dispatcher is named but the two
+        // the 2026-10-27 clause already named as examples.
+        for (tool in listOf("ask_body", "ask_pantry", "ask_fleet", "ask_mail")) {
+            assertTrue(!LOOKUP_HOLD_CLAUSE.contains(tool))
+        }
+    }
+
+    /**
+     * Ticket 04 run 2 (A25, 2026-10-28): a `WHEN_IDLE` result arrived in its own turn, 1,083 ms after
+     * turn_complete, with five meals in it, and the model said "I don't have that information."
+     * The clause now ties a late result to the question that asked for it and counts it as this
+     * turn's result, so CANNOT_CLAUSE's and DATA_ACCESS_CLAUSE's "this turn" do not orphan it.
+     * Presence only: whether the model obeys is owed to the next phone run.
+     */
+    @Test
+    fun `a late lookup result belongs to its question and is never denied`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        for (phrase in listOf(
+            "arrives in its own turn",
+            "belongs to the question that asked for it",
+            "whether or not you said a holding line",
+            "counts as a result from this turn",
+            "Never say you do not have it when the result is in front of you",
+            "say what it does contain and what it does not",
+        )) {
+            assertTrue("the late-result rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
+        }
+        // The sibling rules it has to override still key on "this turn"; if either drops that
+        // wording, the override sentence above is the thing to revisit.
+        assertTrue(CANNOT_CLAUSE.contains("in this turn"))
+        assertTrue(DATA_ACCESS_CLAUSE.contains("this turn"))
+    }
+
+    /**
+     * Ticket 04 run 3, F6 (A25, 2026-10-28; async-lookups ticket 07): climate figures for a park in
+     * November with nothing behind them. A time-varying figure comes from a result or is not given;
+     * and weather is named in the search sentence so the declared search tool is the route.
+     */
+    @Test
+    fun `a figure that changes over time comes only from a result`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        for (phrase in listOf(
+            "Weather, prices, news, balances and anything else that changes over time come only " +
+                "from a tool or search result",
+            "with no tool or no result, say you cannot check it",
+            "never give a typical or usual figure instead",
+        )) {
+            assertTrue("the figures rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
+        }
+        assertTrue(SHARED_INSTRUCTIONS.contains("news, scores, prices, weather and forecasts"))
+    }
+
+    /**
+     * Ticket 04 run 3, F5 (A25, 2026-10-28; async-lookups ticket 07): a trip mentioned as a rough
+     * plan was put on the calendar unasked. A mention is not a request. Presence only.
+     */
+    @Test
+    fun `a record is written only when the user asks for it`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(WRITE_ON_REQUEST_CLAUSE))
+        for (phrase in listOf(
+            "Create or change a record only when the user asks for it.",
+            "A plan, intention or possibility mentioned in passing is not a request",
+            "offer once, in a clause, and act only on a yes",
+        )) {
+            assertTrue("the write rule must say: $phrase", WRITE_ON_REQUEST_CLAUSE.contains(phrase))
+        }
+        // Conditioned on the request, not on a list of tools.
+        for (tool in listOf("manage_item", "manage_checklist", "log_meal", "remember")) {
+            assertTrue(!WRITE_ON_REQUEST_CLAUSE.contains(tool))
+        }
+    }
+
+    /**
+     * Ticket 04 run 3 and 3c (A25, 2026-10-28; async-lookups ticket 07): "Checking." after the
+     * result had arrived, "Let me look." after the user spoke over a pending result, and "Checking."
+     * with no tool call at all. Every earlier sentence of the clause is pinned above and stays.
+     */
+    @Test
+    fun `a holding line covers a tool call, never a result already in hand`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        for (phrase in listOf(
+            "Say the holding line only in the same breath as the tool call it covers",
+            "if you are not calling a tool there is nothing to check, so do not say it",
+            "a question you can answer yourself gets the answer",
+            "If the result is already in front of you when you begin to speak, there is no holding " +
+                "line to say: answer.",
+            "If the user speaks while a result is pending or has just arrived, answer their new " +
+                "words first, then give that result in the same turn unless they cancelled it.",
+        )) {
+            assertTrue("the holding-line rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
+        }
+    }
 }

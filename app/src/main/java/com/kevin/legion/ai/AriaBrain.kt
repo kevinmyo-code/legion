@@ -966,6 +966,22 @@ internal val CANNOT_CLAUSE =
         "about something that never happened. "
 
 /**
+ * Writes only when asked (async-lookups ticket 07; ticket 04 run 3, F5, A25, 2026-10-28). The user
+ * said "we're planning to go to Palmetto State Park... next weekend, I guess", the model called
+ * `manage_item add` and put it on the calendar, and the user then said it was only a rough plan.
+ * No clause said a record is written only on request; the closest, the maintenance walkthrough's
+ * "user-initiated only", covers one flow. This is the general rule: a mention is not a request.
+ * It agrees with the register's "offer it once, in a clause. If they pass, it is gone" and with
+ * [CANNOT_CLAUSE], which governs what may be claimed after a write rather than whether to write.
+ * At file scope beside [CANNOT_CLAUSE], never per persona, naming no tool, so it survives the next
+ * write tool. Presence guarded by [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is
+ * owed to the next phone run.
+ */
+internal const val WRITE_ON_REQUEST_CLAUSE =
+    "Create or change a record only when the user asks for it. A plan, intention or possibility " +
+        "mentioned in passing is not a request: offer once, in a clause, and act only on a yes. "
+
+/**
  * Never deny access to the user's own data (voice audit findings 8 and 9, 2026-10-09). A successful
  * `get_current_location` result was answered with "I don't have your current location", and "Can you
  * see my bank statements?" got "I don't have access" with no tool call while the ledger tools exist.
@@ -980,6 +996,74 @@ internal val CANNOT_CLAUSE =
 internal const val DATA_ACCESS_CLAUSE =
     "Never say you have no access to, or no record of, the user's data unless a tool this turn " +
         "came back empty or failed; say which. "
+
+/**
+ * The holding line before a slow lookup, and what it may NOT contain (ADR 0065, async-lookups
+ * ticket 02, 2026-10-28). Extends the 2026-10-27 "One moment." rule (Kevin: the slow tools left
+ * dead air, and the persona's "do not narrate" rule needed this said outright as the exception).
+ * The example became three varied lines on 2026-10-28 (Kevin, livelier register, ticket 06): the
+ * on-device audit heard "One moment." before every lookup. Only the example changed; every rule
+ * after it is byte-identical.
+ *
+ * Since ADR 0065 a read-only lookup ([com.kevin.legion.service.LiveToolbox.NON_BLOCKING_READ_TOOLS])
+ * runs NON_BLOCKING: the model keeps the floor while it runs and the result arrives afterwards. The
+ * risk that opens is not an outcome verb (a read has none; [CANNOT_CLAUSE] still binds every write,
+ * and writes still block) but a FACT spoken before the data exists. This forbids it in the same
+ * shape the outcome rule uses: name what may not be said, and tie speech to the result. At file
+ * scope beside [CANNOT_CLAUSE], never per persona. Presence guarded by
+ * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable here, and ticket 04's
+ * phone run is the first time anyone hears it.
+ *
+ * **The late result (ticket 04 run 2, A25, 2026-10-28).** `ask_body` "What did I eat yesterday?"
+ * returned five meals with success=true, 1,083 ms after the model's turn_complete; the model's new
+ * turn said "I don't have that information." A `WHEN_IDLE` result opens a NEW turn with no user
+ * speech, and [CANNOT_CLAUSE] and [DATA_ACCESS_CLAUSE] both key on a tool "this turn". The
+ * reasoned (not proven) reading is that the model treated the late result as belonging to no
+ * question. The last three sentences tie it back: it is this turn's result, answer from it, and a
+ * result that lacks what was asked is described, never denied. No holding line was spoken on that
+ * turn, so the rule does not depend on one. Presence pinned; obedience is owed to the next phone run.
+ *
+ * **The dead holding line (ticket 04 run 3 and 3c, A25, 2026-10-28; async-lookups ticket 07).**
+ * Three turns were a holding line and nothing else: "Checking." spoken 0.7 s AFTER its result had
+ * arrived (F1); "Let me look." after the user said "what?" over a pending result (F2); and
+ * "Checking." on a general question with no tool call at all (run 3c, 11:47). Each lost the answer,
+ * and the follow-up window then closed the conversation. The last three sentences: the line only
+ * ever covers a tool call made with it; a result already present gets an answer, not a line; and a
+ * user who speaks over a pending result gets their new words answered first and the result after,
+ * in the same turn. [com.kevin.legion.service.turn.HoldingLineWatch] is the guarded code fallback
+ * when the model does it anyway. Presence pinned; obedience is owed to the next phone run.
+ *
+ * **Figures only from a result (ticket 04 run 3, F6).** Asked about the weather at a park in
+ * November, the model said "Let me look.Checking.", called nothing the phone can see, and gave
+ * climate figures ("mid-sixties to mid-seventies"); asked for the date itself it said it could not
+ * check forecasts. No function tool returns a forecast: `area_info` weather is NWS severe alerts at
+ * the live fix, `get_sitrep`'s weather is current conditions at the phone. `googleSearch` is
+ * declared in the setup, but the "use your search tool" sentence listed news, scores and prices and
+ * not weather, and nothing logs grounding, so whether a search ran is unauditable. The last
+ * sentence: a time-varying figure comes from a tool or search result or is not given, and a
+ * "typical" figure is not a substitute. Scoped to things that change, so a question the model can
+ * answer itself still gets the answer.
+ */
+internal const val LOOKUP_HOLD_CLAUSE =
+    "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
+        "brief in-character line, worded fresh each time (\"Let me look.\", \"Checking.\", " +
+        "\"Give me a second with that.\"), and then call it. That line holds no figure, " +
+        "date, name, fact or outcome, and you never state one the result has not yet given. While " +
+        "the lookup runs say nothing more, and when its result arrives, answer from it. A lookup " +
+        "result that arrives in its own turn, with no new words from the user, belongs to the " +
+        "question that asked for it, whether or not you said a holding line. It counts as a " +
+        "result from this turn: answer from it exactly as if it had come back before you " +
+        "stopped speaking. Never say you do not have it when the result is in front of you; if " +
+        "it genuinely lacks what was asked, say what it does contain and what it does not. " +
+        "Say the holding line only in the same breath as the tool call it covers; if you are not " +
+        "calling a tool there is nothing to check, so do not say it, and a question you can " +
+        "answer yourself gets the answer. If the result is already in front of you when you " +
+        "begin to speak, there is no holding line to say: answer. If the user speaks while a " +
+        "result is pending or has just arrived, answer their new words first, then give that " +
+        "result in the same turn unless they cancelled it. " +
+        "Weather, prices, news, balances and anything else that changes over time come only " +
+        "from a tool or search result; with no tool or no result, say you cannot check it, and " +
+        "never give a typical or usual figure instead. "
 
 /**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08
@@ -1127,7 +1211,8 @@ internal fun composeIdentityAndRules(
 }
 
 internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
-    "Use your search tool for anything current or specific - news, scores, prices - " +
+    "Use your search tool for anything current or specific - news, scores, prices, weather " +
+    "and forecasts - " +
     "and base your answer on what it finds. " +
     "Use your tools to answer questions about your own live data, to control music, " +
     "to tag or show saved places, and to set location-based reminders (surfaced when the " +
@@ -1137,6 +1222,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     // they break the register. The facts, including "nothing was written", must still arrive.
     "A tool's message is facts for you to relay in your own voice, never words to read out. " +
     CANNOT_CLAUSE +
+    WRITE_ON_REQUEST_CLAUSE +
     DATA_ACCESS_CLAUSE +
     PROACTIVE_CLAUSE +
     // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
@@ -1194,11 +1280,10 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
     "or home for a question spanning several. It is a specialist that reads the record: do " +
     "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
-    // 2026-10-27 (Kevin): the slow tools leave dead air, so one short line first. The persona's
-    // "do not narrate" rule is the reason this has to be said outright as the exception.
-    "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
-    "brief in-character line (\"One moment.\") and then call it; that line never claims an " +
-    "outcome. If it returns a " +
+    // 2026-10-27 (Kevin): the slow tools leave dead air, so one short line first. Extended
+    // 2026-10-28 for non-blocking lookups (ADR 0065); see the constant's own doc.
+    LOOKUP_HOLD_CLAUSE +
+    "If a lookup returns a " +
     "proposal, read the proposal out and call accept_proposal only after the user says yes. " +
     // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
     // own currency (or explicitly say none was recorded), but a persona-primed model still

@@ -33,6 +33,7 @@ import com.kevin.legion.ai.personaFor
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.WakeWordPreferences
+import com.kevin.legion.service.conversationlog.ConversationLog
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.ui.ActiveCompanionRow
 import com.kevin.legion.ui.IgnitionRow
@@ -45,6 +46,7 @@ import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.help.VoiceGuideData
 import com.kevin.legion.util.Temp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -88,6 +90,11 @@ fun AssistantSettingsScreen(
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
+    var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
+    var auditLog by remember { mutableStateOf(VoiceTurnSettings.auditLog(context)) }
+    var keepConversationLog by remember { mutableStateOf(VoiceTurnSettings.keepConversationLog(context)) }
+    var conversationSending by remember { mutableStateOf(false) }
+    var conversationResult by remember { mutableStateOf(ConversationLog.lastResult) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
 
     suspend fun reloadActiveProfile() {
@@ -224,6 +231,49 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceTurnSettings.setBargeIn(context, on)
                         bargeIn = on
+                    },
+                )
+
+                // ADR 0065: read-only lookups run while the conversation carries on. Read when the
+                // socket opens, so a warm connection keeps its old setting until it reconnects.
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Answer lookups while talking",
+                    explanation = "a slow lookup runs in the background after a short holding line, " +
+                        "and the answer is spoken when it lands. Anything that changes your records " +
+                        "still waits. Applies from the next connection.",
+                    enabled = asyncLookups,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setAsyncLookups(context, on)
+                        asyncLookups = on
+                    },
+                )
+
+                // Conversation-records ticket 03 (was async-lookups ticket 05's logcat-only row): the
+                // engine spool and upload, the logcat mirror, and "Send now". Both off means no
+                // LIVE_AUDIT line at all. Read when the socket opens, like the switch above.
+                Spacer(Modifier.height(8.dp))
+                ConversationLogRow(
+                    keepAndSend = keepConversationLog,
+                    logcatMirror = auditLog,
+                    sending = conversationSending,
+                    lastResult = conversationResult,
+                    onKeepAndSend = { on ->
+                        VoiceTurnSettings.setKeepConversationLog(context, on)
+                        ConversationLog.applySettings(context)
+                        keepConversationLog = on
+                    },
+                    onLogcatMirror = { on ->
+                        VoiceTurnSettings.setAuditLog(context, on)
+                        ConversationLog.applySettings(context)
+                        auditLog = on
+                    },
+                    onSendNow = {
+                        conversationSending = true
+                        scope.launch {
+                            conversationResult = ConversationLog.sendNow().sentence
+                            conversationSending = false
+                        }
                     },
                 )
 

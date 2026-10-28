@@ -6815,3 +6815,127 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Reopens the 2026-10-27 "not changed, still Kevin's" list:** VAD 900 ms and
   `START_SENSITIVITY_LOW` now govern only server-VAD sessions. ADR 0064.
 - Built on `feat/smart-turn-taking`.
+
+## 2026-10-28 - Voice: read-only lookups may run non-blocking; writes stay blocking (Kevin)
+
+- **Ruling (Kevin):** offered "non-blocking lookups plus the 3 s target" from the MoshiRAG
+  comparison, with the note that it reopens the 2026-09-27 all-blocking ruling (commit `29057645`);
+  Kevin: *"make an implementation plan and spin up opus agents to do it."* Map
+  `.scratch/async-lookups/`, ticket 01 (decision) and ticket 02 (build). ADR 0065.
+- **Why the 2026-09-27 reasoning does not reach reads:** it was about outcomes. A read has nothing
+  sent, booked, played or cleared to misreport. Its failure mode is a fact spoken before the data
+  exists, closed in the prompt (`LOOKUP_HOLD_CLAUSE` beside `CANNOT_CLAUSE`): one short holding line
+  with no figure, date, name, fact or outcome, nothing more while the lookup runs, then the answer
+  from the result.
+- **Rules:** a write (`LiveToolbox.isMutatingTool`) always blocks. A read opts in by name
+  (`LiveToolbox.NON_BLOCKING_READ_TOOLS`), Live socket only; typed chat's REST declarations never
+  carry `behavior`. The result goes back with `scheduling: WHEN_IDLE` inside `response`; never
+  `INTERRUPT`, never `SILENT`. A setting, "Answer lookups while talking", default on, beside the
+  ADR 0064 switches; off means every declaration blocks, from the next connection.
+- **What counts as a write (Kevin, 2026-10-28, via AskUserQuestion, "No, bookkeeping is not a
+  write"):** a user-visible record change the assistant could claim as an outcome. Internal
+  bookkeeping does not count. The builder had first read the rule as "a dispatcher is a write if
+  anything behind it writes" and shipped only `ask_body` and `ask_pantry`; this ruling replaces
+  that reading.
+- **The set is `ask_fleet`, `ask_body`, `ask_goals`, `ask_pantry`.** `lookup_vin`'s spec-cache
+  refresh (`VehicleSpecController.refreshFromVin`, behind `ask_fleet`) and `ask_advisor`'s
+  `advisor_advice` row (behind `ask_goals`) are bookkeeping. `ask_advisor`, `diagnose_codes`,
+  `triage_symptom`, `ask_maintenance` and `check_cold_start` sit behind those dispatchers and never
+  reach the Live socket themselves. "Any trouble codes?" now runs non-blocking through `ask_fleet`.
+- **Known gap, left alone:** `lookup_vin` writes a cache row but is not in `MUTATING_TOOLS`, so the
+  fleet sub-agent's boundary clause says it records nothing.
+- **Never in v1:** `ask_engine` and `aspect_clerk` (can write), `ask_mail` (the read-through rule
+  keys off the turn a mail tool ran in), the head unit (3.1 Flash Live has no asynchronous calls).
+- **Unverified:** whether `gemini-3.8-live` speaks a `WHEN_IDLE` result unprompted. Ticket 04 runs
+  it on the A25; if it behaves like `SILENT`, the default flips to off
+  (`VoiceTurnSettings.ASYNC_LOOKUPS_DEFAULT`). Timeouts unchanged until ticket 04 measures.
+- Built on `feat/async-read-tools`.
+
+## 2026-10-28 - Voice: a conversation audit log in logcat (Kevin)
+
+- **Kevin, after the A25 lookup test:** *"cant u like record what i say in the logs too so u can see
+  everything and audit"*. The `fast` build cannot be read over Room, so the audit lives in logcat.
+- **What:** `LIVE_AUDIT` lines (`service/LiveAudit.kt`): what the user said, what the assistant said,
+  each tool's args and result, turn and mic events. Logcat only, never the on-screen probe log.
+  `tools/voice_audit.py` turns a capture into a timeline. Async-lookups ticket 05.
+- **Default ON,** because Kevin asked for it. "Conversation audit log (logcat)" in Assistant settings
+  turns it off; off writes no line.
+- **Mail turns are redacted (CLAUDE.md sec 7):** a turn that ran a tool in
+  `EPISODIC_EXCLUDED_TOOLS` logs the assistant's speech and the mail tool's result as
+  `[redacted: third-party content]`. The user's own words still log. No ADR: a logging sink under an
+  existing rule, not a new ruling.
+
+## 2026-10-28 - Phone: a livelier register for Alfred, the manner and not the lines (Kevin)
+
+- **Kevin:** *"right now he sounds very generic, maybe because its alfred, can we make him more
+  lively and have a bit of personality? like you know how tony stark's jarvis talks"*. The day's
+  `LIVE_AUDIT` capture: every answer correct, every answer flat, the same holding line before each
+  lookup, a bare figure with no read, a stock butler sign-off.
+- **Ruling, agreed with Kevin:** quick, dry, quietly amused, competent. The MANNER of a film-butler
+  AI in our own words; no film dialogue or catchphrase quoted or paraphrased. One understated
+  remark per answer at most, never at the user; a number gets a read; reacts rather than recites;
+  the obvious next step offered once, never pushed (sec 7 compulsion rules bind); holding lines
+  vary; "sir" sparingly; a sign-off is one dry line.
+- **Unchanged:** every honesty rule (nothing before a result, estimates labelled, unknowns said
+  plainly), the concierge frame, and `LOOKUP_HOLD_CLAUSE`'s rules (only its example changed).
+  Honesty is written above wit inside the register itself.
+- `ALFRED.clause`, `delivery`, `shortClause` and `blurb` rewritten; "past sixty" and the stock
+  idiom list (including "quid", which invites a currency the shared rule forbids assuming) cut.
+  Examples live in async-lookups ticket 06, never in the prompt. No ADR: ADR 0063 already names
+  Alfred as the one persona and `Personas.kt` as its register; this is copy under it.
+
+## 2026-10-28 - Voice: a still-checking line at 4 s and 12 s of a running lookup (Kevin)
+
+- **Kevin, after ticket 04 run 3** (a two-call `ask_fleet` chain ran 9 s with no holding line, 13.8 s
+  of silence before the first audio): *"if checks are longer than x seconds, send another 'still
+  checking' etc msg"*.
+- **Ruling:** a NON_BLOCKING lookup still running at 4 s, with nobody speaking and no reply being
+  generated, gets one system note asking for a short still-checking line in character, no facts; at
+  most once more at 12 s. Never after the result, never while a blocking tool runs, never for a call
+  the user has spoken over. On whenever async lookups are on; no setting of its own.
+- **Same batch, same run:** a turn that is only a holding line, after its result or with no tool
+  behind it, gets one note to answer; the 8 s follow-up window holds while an answer is owed, capped
+  at 20 s (run 3 lost the answer and the conversation three times to that close). Prompt: no
+  holding line without a tool call or after the result; a record is written only on request;
+  time-varying figures only from a tool or search result. Async-lookups ticket 07. No ADR: ADR 0065
+  governs async lookups and this tunes their behaviour under it.
+
+## 2026-10-28 - Phone: Alfred's register is crew chief plus old friend; no butler, no sir, no accent (Kevin)
+
+- **Kevin:** *"i like a mix of 1 and 2. keep alfred is fine. no need for sir and mr as well"*, and
+  *"drop the accent. yes. lets do puck"*. Supersedes the register half of the same day's "livelier
+  register" entry above; its honesty and wit rules stand.
+- **Ruling:** a mix of a calm crew chief (numbers first, every figure gets a read, warm when it
+  counts) and an old friend (casual, dry, first-name terms, says what he thinks). The name stays
+  Alfred; he is a person called Alfred, never a butler, and the copy carries no butler or service
+  framing because the name already pulls that way. "Sir", "madam", "Mr", "Very good", "Right away"
+  and "Shall I" are named as never, in the clause and the anchor.
+- **Accent:** Received Pronunciation, British vocabulary and British dates cut from `delivery`; the
+  accent lives in the voice. Default voice Sulafat to Puck (`GeminiLiveSession.VOICE`,
+  `Voices.DEFAULT_VOICE`), `ALFRED.suggestedVoice` Charon to Puck. A profile with a saved voice
+  keeps it until changed on the Companion screen; no Room migration.
+- **Kept:** one understated remark at most, never at the user (the "teases a little" is held to the
+  situation, so this stands verbatim); offer once; honesty outranks wit; no exclamation marks;
+  fondness in deeds. Greetings rewritten to claim nothing.
+- **Same batch:** `manage_vehicle` no longer says to 'add' when a car is mentioned; a mention gets an
+  offer, only a request adds (agrees with `WRITE_ON_REQUEST_CLAUSE`).
+- Setup payload 23,713 to 23,616 estimated tokens. Examples in async-lookups ticket 06. No ADR: ADR
+  0063 names the one persona, not its register. ADR 0046 cites "Very good, sir" only as why
+  `end_conversation` speaks before closing; the sign-off it describes is now one plain line.
+## 2026-10-28 - Phone: conversation batches go to the engine (Kevin)
+
+- **Kevin:** *"all logs on engine. both headunit and phone."* (conversation-records ticket 01).
+- **Ruling, as built (conversation-records ticket 03):** the phone spools every `LIVE_AUDIT`,
+  `LIVE_LATENCY`, `LIVE_FOLLOWUP` and `LIVE_TOOL_CANCEL` line, logcat `threadtime`-shaped, to a
+  bounded spool (`files/conversationlog/`, about 4 MB, batches sealed at 512 KB, oldest dropped
+  first) and uploads sealed batches to `POST /api/device-logs/` with `reason=conversation`: at the
+  end of every Live session, every 3 minutes while one is live, at app start when anything is
+  spooled, and on "Send now". A batch is deleted only on a 2xx; anything else keeps it and backs off
+  (30 s doubling to 10 min); an engine without the `conversation` reason is said once in the log.
+  No engine configured means nothing is sent and the spool stays on the phone.
+- **Setting:** "Conversation log" in Assistant settings, two switches: "Keep on this phone and send
+  to the engine" (default on) and the logcat mirror (the old "Conversation audit log (logcat)"
+  switch, same preference key). Section 7 binds unchanged: `LiveAudit` redacts before a line exists.
+  Typed chat (text model) writes the same lines through `TypedChatAudit`.
+- `device_label` is the phone's make and model only: the phone's engine client stores no member
+  name. The engine already records the uploading member (`DeviceLog.user`, from the token).

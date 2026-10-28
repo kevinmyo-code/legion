@@ -41,6 +41,7 @@ sequenceDiagram
     end
 
     C->>G: sendToolResponse()
+    Note over C,G: writes BLOCK; a named read-only lookup is<br/>NON_BLOCKING, result sent WHEN_IDLE (ADR 0065)
     G-->>U: speech via AudioTrack
 ```
 

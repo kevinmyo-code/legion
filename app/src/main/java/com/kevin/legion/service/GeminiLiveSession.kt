@@ -39,6 +39,8 @@ import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
+import com.kevin.legion.service.turn.HoldingLineWatch
+import com.kevin.legion.service.turn.StillCheckingNudge
 import com.kevin.legion.service.turn.TurnConfig
 import com.kevin.legion.service.turn.TurnModels
 import com.kevin.legion.service.turn.TurnTaker
@@ -360,6 +362,10 @@ class GeminiLiveSession(
     // LIVE_LATENCY lines to CarProbeLog and logcat. See [LiveLatency].
     private val latency = LiveLatency()
 
+    // Conversation audit log (async-lookups ticket 05): LIVE_AUDIT lines, logcat only. On/off read
+    // in [start] from "Conversation audit log (logcat)". See [LiveAudit].
+    private val audit = LiveAudit()
+
     // Monotonic generation counter, bumped by [flushAudio] every time queued model
     // audio is discarded (barge-in tap in [beginConversation], the server's own
     // "interrupted" signal, [checkForCrisis], and now the short-capture retry in
@@ -425,6 +431,10 @@ class GeminiLiveSession(
     @Volatile private var turnTaker: TurnTaker? = null
     @Volatile private var smartSetting = false
     @Volatile private var bargeSetting = false
+    // ADR 0065: the tools this socket declared NON_BLOCKING, captured in [start] so the setup's
+    // declarations and [sendToolResponse]'s WHEN_IDLE always agree for the life of one socket.
+    // Empty when "Answer lookups while talking" is off: every declaration is then BLOCKING.
+    @Volatile private var nonBlockingTools: Set<String> = emptySet()
     // True from the reply's first audio chunk until it has drained or been flushed. Barge-in listens
     // only while this is true, and the local follow-up signal ignores what the mic hears meanwhile.
     @Volatile private var playbackActive = false
@@ -433,6 +443,18 @@ class GeminiLiveSession(
     // Silero threw mid-conversation: reconnect on server VAD at the next quiet moment.
     @Volatile private var sileroFallbackPending = false
     private val cancelledTools = CancelledToolReport()
+    // Async-lookups ticket 07 (Kevin, 2026-10-28): a lookup still running after 4 s, and again at
+    // 12 s, gets one still-checking line. Only NON_BLOCKING calls are registered, so with "Answer
+    // lookups while talking" off (empty set) nothing ever fires. Ticked by [nudgeJob].
+    private val stillChecking = StillCheckingNudge()
+    private var nudgeJob: Job? = null
+    // Async-lookups ticket 07 (ticket 04 run 3, F1/F2 and the 11:47 turn of run 3c): a model turn
+    // that is only a holding line, after its result or with no tool behind it, gets one nudge, and
+    // the follow-up window holds ([FollowUpWindow.State.heldForAnswer]) from [answerHoldSinceMs].
+    private val holdingWatch = HoldingLineWatch()
+    @Volatile private var answerHoldSinceMs = 0L
+    // First audio of the model's current turn, 0 before it; read and reset at turnComplete.
+    @Volatile private var modelTurnStartedAtMs = 0L
     @Volatile private var callAudio: CallAudioMode? = null
     private var routeCallback: android.media.AudioDeviceCallback? = null
     // Re-prime after a flush ([flushAudio]): the next reply's first chunks queue on a paused track.
@@ -676,11 +698,16 @@ class GeminiLiveSession(
         vadMode = vad
         smartSetting = VoiceTurnSettings.smartEndOfTurn(appContext)
         bargeSetting = VoiceTurnSettings.bargeIn(appContext)
+        nonBlockingTools =
+            if (VoiceTurnSettings.asyncLookups(appContext)) LiveToolbox.NON_BLOCKING_READ_TOOLS else emptySet()
+        audit.enabled = com.kevin.legion.service.conversationlog.ConversationLog.auditWantedAfterReading(appContext)
+        audit.sessionStart(MODEL.removePrefix("models/"), nonBlockingTools)
         turnConfig = TurnConfig.SERVER_VAD
         turnTaker = null
         playbackActive = false
         awaitingReply = false
         sileroFallbackPending = false
+        clearAnswerTracking()
         if (vad && (smartSetting || bargeSetting)) TurnModels.preload(appContext)
         this.voiceName = voiceName
         this.keepWarm = keepWarm
@@ -850,6 +877,7 @@ class GeminiLiveSession(
         // forwardedBytes tells the two apart - mic never opened, vs opened and
         // forwarded nothing.
         MidnightEvents.micState(open = true, why = if (firstOpen) "first open" else "turn handback")
+        audit.micOpen(if (firstOpen) "first_open" else "turn_handback")
         capturing = true
         // DIAGNOSTIC (B10, remove once root-caused): pairs with the "forwarded N
         // bytes" turn-transcript log - if a turn logs ~0 bytes forwarded, this
@@ -937,6 +965,7 @@ class GeminiLiveSession(
         }
         typedTurnInFlight = true
         val sent = sendText(wireText)
+        if (sent) audit.user(text, final = true, typed = true)
         if (!sent) {
             typedTurnInFlight = false
             userTurnText.setLength(0)
@@ -958,6 +987,8 @@ class GeminiLiveSession(
      * user-visible failure instead of a false success.
      */
     fun sendToolResponse(id: String, name: String, response: JSONObject): Boolean {
+        val async = isNonBlockingTool(name)
+        stillChecking.onResult(id)
         // Released before the send, so a dropped send cannot leave the count stuck above zero.
         toolCallsInFlight.updateAndGet { (it - 1).coerceAtLeast(0) }
         // The server cancelled this call (the user spoke over it): it no longer wants a response,
@@ -968,23 +999,49 @@ class GeminiLiveSession(
                 "finished after cancellation tool=$name success=${response.optBoolean("success", false)} " +
                     "response not sent",
             )
-            latency.toolResponse(id, System.currentTimeMillis())
+            val ms = latency.toolResponse(id, System.currentTimeMillis())?.second ?: -1L
+            auditToolResult(id, name, response, ms, async = false, sent = false)
             deliverCancelNotesIfQuiet()
             return true
         }
-        val msg = JSONObject().put("toolResponse", JSONObject().apply {
-            put("functionResponses", JSONArray().put(JSONObject().apply {
-                put("id", id)
-                put("name", name)
-                put("response", response)
-            }))
-        })
+        // ADR 0065: a lookup that outlived the holding line answers into a follow-up window that
+        // may already be counting. Restart it so the answer has a full window to begin in.
+        if (async) followUpEvent(FollowUpWindow.Event.ToolResponse)
+        val msg = toolResponseMessage(id, name, response, async)
         val sent = webSocket?.send(msg.toString()) ?: false
-        latency.toolResponse(id, System.currentTimeMillis())?.let { (tool, ms) ->
-            LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent")
+        val timed = latency.toolResponse(id, System.currentTimeMillis())
+        if (async && sent) {
+            val at = System.currentTimeMillis()
+            holdingWatch.onAsyncResultSent(name, at)
+            answerHoldSinceMs = at
         }
+        timed?.let { (tool, ms) ->
+            LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent" + if (async) " async=true" else "")
+        }
+        auditToolResult(id, name, response, timed?.second ?: -1L, async, sent)
         return sent
     }
+
+    /** The LIVE_AUDIT `tool_result` line ([LiveAudit]); `ms=-1` for an id that was never timed. */
+    @Suppress("LongParameterList") // one log line's fields, passed straight through
+    private fun auditToolResult(
+        id: String,
+        name: String,
+        response: JSONObject,
+        ms: Long,
+        async: Boolean,
+        sent: Boolean,
+    ) {
+        val success = LiveAudit.successOf(
+            hasSuccess = response.has("success"),
+            success = response.optBoolean("success", false),
+            hasError = response.has("error"),
+        )
+        audit.toolResult(LiveAudit.ToolResult(id, name, success, ms, async, sent, response.toString()))
+    }
+
+    /** Whether this socket declared [name] NON_BLOCKING (ADR 0065). False for every tool when the setting is off. */
+    fun isNonBlockingTool(name: String): Boolean = name in nonBlockingTools
 
     /**
      * Ticket 21 (google-account-integration, "close the remember leak"): read-only window onto
@@ -1131,6 +1188,7 @@ class GeminiLiveSession(
             subtitles = subtitles,
             resumeHandle = requestedResumeHandle,
             manualActivity = turnConfig.manualActivity,
+            nonBlockingTools = nonBlockingTools,
         )
 
     /**
@@ -1146,10 +1204,13 @@ class GeminiLiveSession(
         subtitles: Boolean,
         resumeHandle: String?,
         manualActivity: Boolean = false,
+        nonBlockingTools: Set<String> = emptySet(),
     ): JSONObject {
         val tools = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
         if (functionDeclarations.length() > 0) {
-            tools.put(JSONObject().put("functionDeclarations", withBlockingBehavior(functionDeclarations)))
+            tools.put(
+                JSONObject().put("functionDeclarations", withToolBehavior(functionDeclarations, nonBlockingTools)),
+            )
         }
 
         val setup = JSONObject().apply {
@@ -1286,6 +1347,7 @@ class GeminiLiveSession(
             )
             if (FollowUpWindow.isActivityStart(root)) {
                 idleJob?.cancel()
+                stillChecking.onUserActivity()
                 followUpEvent(FollowUpWindow.Event.UserSpeech)
             }
         }
@@ -1575,6 +1637,7 @@ class GeminiLiveSession(
                 // arrives once the server has committed to hearing speech.
                 followUpEvent(FollowUpWindow.Event.UserSpeech)
                 latency.inputTranscript(System.currentTimeMillis())
+                audit.user(it, final = content.optJSONObject("inputTranscription")?.optBoolean("finished") == true)
                 userTurnText.append(it)
                 checkForCrisis()
             }
@@ -1590,6 +1653,7 @@ class GeminiLiveSession(
         if (subtitles) {
             content.optJSONObject("outputTranscription")?.optString("text")?.let {
                 if (it.isNotEmpty()) {
+                    audit.assistant(it, readThrough = mailToolCalledThisTurn)
                     companionTurnText.append(it)
                     if (typedTurnInFlight) {
                         emit(LiveEvent.TypedReplyProgress(companionTurnText.toString()))
@@ -1628,6 +1692,7 @@ class GeminiLiveSession(
                     if (!speakingThisTurn) {
                         speakingThisTurn = true
                         val firstAt = System.currentTimeMillis()
+                        if (modelTurnStartedAtMs == 0L) modelTurnStartedAtMs = firstAt
                         latency.firstAudio(firstAt)?.let {
                             LiveLatency.log(LiveLatency.TAG, "reply_ms=$it")
                         }
@@ -1646,9 +1711,14 @@ class GeminiLiveSession(
                             } else {
                                 capturing = false
                                 MidnightEvents.micState(open = false, why = "half-duplex: companion speaking")
+                                audit.micClosed("half_duplex")
                             }
                         }
                         duckNow()
+                        // ADR 0065: a lookup's answer can start with the follow-up window already
+                        // counting (nobody spoke, so nothing cancelled it). Never close mid-reply;
+                        // this reply's own turnComplete re-arms.
+                        followUpEvent(FollowUpWindow.Event.ModelSpeech)
                         emit(LiveEvent.SpeakingStarted)
                     }
                     // DIAGNOSTIC (B12, remove once root-caused): timestamp each audio
@@ -1667,6 +1737,8 @@ class GeminiLiveSession(
         }
 
         if (content.optBoolean("interrupted")) {
+            audit.interrupted("server")
+            stillChecking.onUserActivity()
             flushAudio()
             speakingThisTurn = false
             emit(LiveEvent.Interrupted)
@@ -1736,6 +1808,19 @@ class GeminiLiveSession(
                     toolCalled = toolCalledThisTurn,
                 ),
             )
+            // LIVE_AUDIT: the whole spoken turn once more as one final line (chunks above may be
+            // partial), then the turn's end, before the read-through flag below is cleared.
+            if (!wasTyped && heard.isNotEmpty()) audit.user(heard, final = true)
+            // Ticket 07: classified before the per-turn tool flag is cleared below; acted on after
+            // the turn's own bookkeeping ([onHoldingOutcome]).
+            val holdingOutcome = holdingWatch.onTurnComplete(
+                modelTurnStartedAtMs,
+                said,
+                toolCalled = toolCalledThisTurn,
+                lookupInFlight = toolCallsInFlight.get() > 0,
+            )
+            modelTurnStartedAtMs = 0L
+            audit.turnComplete()
             mailToolCalledThisTurn = false
             toolCalledThisTurn = false
             userTurnText.setLength(0)
@@ -1810,6 +1895,7 @@ class GeminiLiveSession(
                     followUpEvent(FollowUpWindow.Event.TurnComplete)
                     if (turnTaker?.bargeIn == true) watchPlaybackDrain()
                     deliverCancelNotesIfQuiet()
+                    if (!wasTyped) onHoldingOutcome(holdingOutcome)
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
                 else -> {
@@ -1851,12 +1937,101 @@ class GeminiLiveSession(
             // that the model ASKED for a tool, which is already proof this turn did something,
             // whatever the dispatch later returns.
             toolCalledThisTurn = true
+            val args = call.optJSONObject("args") ?: JSONObject()
+            audit.toolCall(call.optString("id"), name, isNonBlockingTool(name), args.toString())
+            if (isNonBlockingTool(name)) {
+                stillChecking.onAsyncCall(call.optString("id"), name, System.currentTimeMillis())
+            } else {
+                stillChecking.onBlockingCall(call.optString("id"))
+            }
             emit(LiveEvent.ToolCall(
                 id = call.optString("id"),
                 name = name,
-                args = call.optJSONObject("args") ?: JSONObject(),
+                args = args,
             ))
         }
+        if (stillChecking.hasPending()) startNudgeTicker()
+    }
+
+    /**
+     * Async-lookups ticket 07: acts on [HoldingLineWatch]'s verdict on the turn that just completed.
+     * A holding line after its result, or one with nothing behind it, gets one system note and holds
+     * the follow-up window; a substantive turn releases the hold. A note is not sent while the user is
+     * already speaking (their new turn will be answered instead, the hold still stands).
+     */
+    private fun onHoldingOutcome(outcome: HoldingLineWatch.Outcome) {
+        when (outcome) {
+            HoldingLineWatch.Outcome.NONE -> Unit
+            HoldingLineWatch.Outcome.ANSWERED -> {
+                answerHoldSinceMs = 0L
+                followUpEvent(FollowUpWindow.Event.Answered)
+            }
+            HoldingLineWatch.Outcome.LATE_HOLDING -> {
+                val tool = holdingWatch.pendingTool()
+                if (tool != null && turnTaker?.inActivity != true) {
+                    sendNudge(HoldingLineWatch.lateInstruction(tool))
+                    audit.nudge("late_holding_line", tool)
+                }
+            }
+            HoldingLineWatch.Outcome.EMPTY_HOLDING -> {
+                answerHoldSinceMs = System.currentTimeMillis()
+                followUpEvent(FollowUpWindow.Event.HoldingLineTurn)
+                if (turnTaker?.inActivity != true) {
+                    sendNudge(HoldingLineWatch.EMPTY_INSTRUCTION)
+                    audit.nudge("empty_holding_line", "none")
+                }
+            }
+        }
+    }
+
+    /** Ticket 07's per-conversation state: the still-checking clock, the holding-line watch, the hold. */
+    private fun clearAnswerTracking() {
+        nudgeJob?.cancel(); nudgeJob = null
+        stillChecking.clear()
+        holdingWatch.clear()
+        answerHoldSinceMs = 0L
+        modelTurnStartedAtMs = 0L
+    }
+
+    /**
+     * Async-lookups ticket 07: ticks [stillChecking] while a NON_BLOCKING lookup runs and sends its
+     * nudge when one is due. Its own job, never [idleJob] (that one is the follow-up window's).
+     */
+    private fun startNudgeTicker() {
+        if (nudgeJob?.isActive == true) return
+        nudgeJob = io.launch {
+            while (running.get() && stillChecking.hasPending()) {
+                delay(NUDGE_TICK_MS)
+                val nudge = stillChecking.due(System.currentTimeMillis(), quietForNudge()) ?: continue
+                sendNudge(StillCheckingNudge.instruction(nudge.tool))
+                audit.nudge("still_checking", nudge.tool, nudge.afterMs)
+                LiveLatency.log(LiveLatency.TAG, "nudge_ms=${nudge.afterMs} tool=${nudge.tool}")
+            }
+        }
+    }
+
+    /**
+     * Nobody is speaking and no reply is being generated: the only moment a system note may go in,
+     * because `clientContent` "will interrupt any current model generation" (ai.google.dev/api/live).
+     * Same test as [deliverCancelNotesIfQuiet], plus playback and a typed turn (its reply is shown,
+     * not spoken, so a spoken-style holding line has no place in it), plus no sent result still
+     * waiting for its answer: the model spends 0.8-1.9 s generating that answer before its first
+     * audio (ticket 04 run 3) with no other flag up, and a note then would interrupt it.
+     */
+    private fun quietForNudge(): Boolean =
+        conversationActive && !typedTurnInFlight && !speakingThisTurn && !playbackActive &&
+            !awaitingReply && turnTaker?.inActivity != true && holdingWatch.pendingTool() == null
+
+    /**
+     * A system note to the model as a user-role text turn, the channel [CancelledToolReport]'s notes
+     * already use. The Live API has no other: the system instruction is setup config, and "you
+     * cannot update the configuration while the connection is open" (ai.google.dev/api/live). Marks
+     * a reply as awaited so a second note cannot follow before the model has answered this one.
+     */
+    private fun sendNudge(text: String): Boolean {
+        val sent = sendText(text)
+        if (sent) awaitingReply = true
+        return sent
     }
 
     // --- Turn-taking (2026-10-27, service/turn/) ---------------------------------------------------
@@ -2020,7 +2195,9 @@ class GeminiLiveSession(
         val ids = cancellation.optJSONArray("ids") ?: return
         val list = (0 until ids.length()).map { ids.optString(it) }.filter { it.isNotBlank() }
         cancelledTools.onCancellation(list)
+        stillChecking.onCancelled(list)
         LiveLatency.log("LIVE_TOOL_CANCEL", "toolCallCancellation ids=$list")
+        list.forEach { audit.toolCancelled(it) }
     }
 
     /**
@@ -2045,6 +2222,7 @@ class GeminiLiveSession(
     private val turnSink = object : TurnTaker.Sink {
         override fun sendActivityStart() {
             sendRealtimeInput(JSONObject().put("activityStart", JSONObject()))
+            audit.activityStart()
         }
 
         override fun sendAudio(pcm: ByteArray, offset: Int, length: Int) {
@@ -2057,12 +2235,14 @@ class GeminiLiveSession(
 
         override fun sendActivityEnd() {
             sendRealtimeInput(JSONObject().put("activityEnd", JSONObject()))
+            audit.activityEnd()
             awaitingReply = true
             latency.activityEnd(System.currentTimeMillis())
         }
 
         override fun onUserTurnStart(bargeIn: Boolean) {
             typedTurnInFlight = false
+            stillChecking.onUserActivity()
             idleJob?.cancel()
             followUpEvent(FollowUpWindow.Event.UserSpeech)
             LiveLatency.log("LIVE_FOLLOWUP", "local speech start bargeIn=$bargeIn")
@@ -2083,6 +2263,8 @@ class GeminiLiveSession(
         }
 
         override fun onBargeIn(fire: com.kevin.legion.service.turn.BargeInGate.Event.Fire) {
+            audit.interrupted("barge_in")
+            stillChecking.onUserActivity()
             flushAudio()
             speakingThisTurn = false
             emit(LiveEvent.Interrupted)
@@ -3040,6 +3222,8 @@ class GeminiLiveSession(
     private fun followUpEvent(event: FollowUpWindow.Event) {
         val decision = FollowUpWindow.step(followUp, event)
         followUp = decision.state
+        decision.reason?.let { LiveLatency.log("LIVE_FOLLOWUP", "answer hold: $it") }
+        if (decision.reason == "answer_hold_cap") answerHoldSinceMs = 0L
         when (decision.action) {
             FollowUpWindow.Action.NONE -> {}
             FollowUpWindow.Action.CANCEL -> idleJob?.cancel()
@@ -3050,7 +3234,9 @@ class GeminiLiveSession(
                     if (!running.get()) return@launch
                     val heard = lastLocalSpeechAtMs
                     val sinceSpeech = if (heard > 0L) System.currentTimeMillis() - heard else null
-                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech))
+                    val hold = answerHoldSinceMs
+                    val sinceHold = if (hold > 0L) System.currentTimeMillis() - hold else null
+                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech, sinceHold))
                 }
                 if (followUp.extensions > 0) {
                     LiveLatency.log(
@@ -3091,7 +3277,11 @@ class GeminiLiveSession(
      */
     private fun parkWarm(backstop: Boolean = false) {
         idleJob?.cancel(); idleJob = null
+        // Ticket 07: a warm socket must not carry a pending nudge or answer hold into the next
+        // conversation.
+        clearAnswerTracking()
         conversationActive = false
+        if (capturing) audit.micClosed("park")
         capturing = false
         suppressMicNextTurn = false
         playbackActive = false
@@ -3210,8 +3400,11 @@ class GeminiLiveSession(
         running.set(false)
         warm.set(false)
         conversationActive = false
+        if (capturing) audit.micClosed("session_end")
         capturing = false
+        audit.sessionEnd(reason)
         warmHoldJob?.cancel(); warmHoldJob = null
+        clearAnswerTracking()
         idleJob?.cancel(); idleJob = null
         micJob?.cancel(); micJob = null
         audioPlaybackJob?.cancel(); audioPlaybackJob = null
@@ -3244,12 +3437,15 @@ class GeminiLiveSession(
      * [closed] first also makes any later OkHttp onFailure -> closeSession a no-op.
      */
     fun silentDestroy() {
-        closed.set(true)
+        val wasOpen = !closed.getAndSet(true)
         running.set(false)
         warm.set(false)
         conversationActive = false
+        if (wasOpen && capturing) audit.micClosed("superseded")
         capturing = false
+        if (wasOpen) audit.sessionEnd("superseded")
         warmHoldJob?.cancel(); warmHoldJob = null
+        clearAnswerTracking()
         idleJob?.cancel(); idleJob = null
         micJob?.cancel(); micJob = null
         audioPlaybackJob?.cancel(); audioPlaybackJob = null
@@ -3464,38 +3660,66 @@ class GeminiLiveSession(
                 "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
         // Live-capable model. Swap here if Google promotes a newer Live model - but read
-        // [withBlockingBehavior] first. 3.1-flash-live-preview -> 3.8-live (2026-09-27, stable)
+        // [withToolBehavior] first. 3.1-flash-live-preview -> 3.8-live (2026-09-27, stable)
         // was NOT a drop-in: 3.8 made non-blocking function calls the default.
         private const val MODEL = "models/gemini-3.8-live"
 
         /**
-         * Stamps `behavior: BLOCKING` on every function declaration (2026-09-27).
+         * Stamps a `behavior` on every function declaration: `NON_BLOCKING` for a name in
+         * [nonBlocking], `BLOCKING` for everything else (2026-09-27, amended 2026-10-28 by ADR 0065).
          *
-         * `gemini-3.8-live` made NON_BLOCKING the default: the model keeps talking while a tool
-         * runs, and the result arrives after it has already spoken. **That breaks CLAUDE.md sec 7's
-         * outcome-verb rule outright** - an outcome verb may follow only a tool call that came back
-         * successful IN THAT TURN, and under non-blocking the model can say "done" before the
-         * result exists. `ai/AriaBrain.kt`'s `CANNOT_CLAUSE` is conditioned on the tool RESULT; a
-         * mode where the model speaks before seeing one makes the clause unobeyable, not merely
-         * disobeyed. Google's own Gemini did exactly this to Kevin's hotspot on 2026-09-17.
+         * **Writes block.** `gemini-3.8-live` made NON_BLOCKING the default: the model keeps talking
+         * while a tool runs, and the result arrives after it has already spoken. For a write that
+         * breaks CLAUDE.md sec 7's outcome-verb rule outright - an outcome verb may follow only a
+         * tool call that came back successful IN THAT TURN, and under non-blocking the model can say
+         * "done" before the result exists. `ai/AriaBrain.kt`'s `CANNOT_CLAUSE` is conditioned on the
+         * tool RESULT; a mode where the model speaks before seeing one makes it unobeyable. Google's
+         * own Gemini did exactly this to Kevin's hotspot on 2026-09-17.
+         *
+         * **Read-only lookups may not block.** A read has no outcome to misreport; its risk is a
+         * fact spoken before the data exists, which `LOOKUP_HOLD_CLAUSE` forbids in the prompt.
+         * [nonBlocking] is [LiveToolbox.NON_BLOCKING_READ_TOOLS], or empty when the Settings switch
+         * is off. Their results go back `WHEN_IDLE` ([toolResponseMessage]).
          *
          * Applied here at the single choke point rather than per declaration, so a tool added
-         * anywhere - `LiveToolbox`, `EngineToolbox`, a future file - cannot forget it. Copies,
-         * never mutates the caller's array. An explicit `behavior` already set is left alone.
+         * anywhere - `LiveToolbox`, `EngineToolbox`, a future file - cannot forget it and blocks by
+         * default. Copies, never mutates the caller's array. An explicit `behavior` already set is
+         * left alone. Live only: typed chat's REST declarations never pass through here.
          */
-        internal fun withBlockingBehavior(declarations: JSONArray): JSONArray {
+        internal fun withToolBehavior(declarations: JSONArray, nonBlocking: Set<String>): JSONArray {
             val out = JSONArray()
             for (i in 0 until declarations.length()) {
                 val decl = JSONObject(declarations.getJSONObject(i).toString())
-                if (!decl.has("behavior")) decl.put("behavior", "BLOCKING")
+                if (!decl.has("behavior")) {
+                    decl.put("behavior", if (decl.optString("name") in nonBlocking) "NON_BLOCKING" else "BLOCKING")
+                }
                 out.put(decl)
             }
             return out
         }
 
-        // Prebuilt Gemini voice. Deeper/informative reads suit the Zero persona;
-        // other options include Puck, Kore, Fenrir, Aoede. Swap freely.
-        private const val VOICE = "Sulafat"
+        /**
+         * The `toolResponse` message for one call. For a NON_BLOCKING tool ([async]) the result goes
+         * back with `scheduling: WHEN_IDLE` INSIDE `response`, beside the tool's own fields (Google's
+         * Live tools page, read 2026-10-28): a holding line in progress finishes, then the answer.
+         * Never `INTERRUPT` (it would cut the line off) and never `SILENT` (a lookup the user asked
+         * for must be spoken). A blocking tool's response carries no `scheduling`. Copies [response].
+         */
+        internal fun toolResponseMessage(id: String, name: String, response: JSONObject, async: Boolean): JSONObject {
+            val body = if (async) JSONObject(response.toString()).put("scheduling", "WHEN_IDLE") else response
+            return JSONObject().put("toolResponse", JSONObject().apply {
+                put("functionResponses", JSONArray().put(JSONObject().apply {
+                    put("id", id)
+                    put("name", name)
+                    put("response", body)
+                }))
+            })
+        }
+
+        // Prebuilt Gemini voice when the profile has none saved. Puck (Kevin, 2026-10-28,
+        // "lets do puck"): the accent lives in the voice, not the prompt. A saved profile voice
+        // wins over this. Matches [com.kevin.legion.ai.DEFAULT_VOICE].
+        private const val VOICE = "Puck"
 
         private const val INPUT_RATE = 16000   // Live API requires 16 kHz input
         private const val OUTPUT_RATE = 24000  // Live API emits 24 kHz output
@@ -3514,6 +3738,8 @@ class GeminiLiveSession(
         private const val PRIME_MAX_WAIT_MS = 250L
         /** Smart Turn scores kept on the end-of-turn line (the latest; st_checks counts all). */
         private const val EOT_SCORES_LOGGED = 4
+        // How often [startNudgeTicker] asks [StillCheckingNudge.due]; a nudge lands within this of 4 s.
+        private const val NUDGE_TICK_MS = 250L
         /** Turn-taking notices already said in words this process ([announceOnce]). */
         private val ANNOUNCED: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
         // Settle after playback has actually drained, before capture opens. Small

@@ -85,13 +85,13 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>242 tickets open</h1>
+<h1>249 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 41 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 50 are waiting on another ticket first. <b>135 are already built</b> and owe nothing but a run on the phone. 11 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 43 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 50 are waiting on another ticket first. <b>142 are already built</b> and owe nothing but a run on the phone. 11 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">242</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">249</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">46</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">135</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n mint">142</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">50</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
 <div class="stat"><span class="n mint">86</span><span class="stamp l">still to build</span></div>
@@ -410,6 +410,22 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
+<h2>async-lookups</h2>
+<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">6</span> built<span class="sep">&middot;</span><span class="dim">of 7 tickets</span></span>
+<span class="bar"><i style="flex:6"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Build: non-blocking read tools on the Live socket</span><span class="det">Built 2026-10-28 on feat/async-read-tools, suite green, assembleFast builds. Non-blocking set: ask_fleet, ask_body, ask_goals, ask_pantry (Kevin 2026-10-28: bookkeeping is not a write). Follow-up: the WORKING indicator shows only in THINKING, not while a lookup runs under the holding line (step 4). Ticket 04 run 2 fixes, built not yet on-device: (A) a late WHEN_IDLE result was denied, so LOOKUP_HOLD_CLAUSE now ties it to its question; (B) the fleet router spent its one round on list_vehicles, so it now gets the cars and the dongle state up front.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">Build: sub-agent fallback model and per-stage latency probes</span><span class="det">Built 2026-10-28 on feat/subagent-fallback. 3.5-flash-lite falls back once to 3.8-flash on 429/500/503; route_ms, investigate_ms and subagent_fallback LIVE_LATENCY lines; voice_latency.py Lookups table. 5406 tests, 0 failures. Owed: an A25 capture with real p50/p95 (ticket 04).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Test: the A25 run that proves WHEN_IDLE speaks, and the lookup p50/p95</span><span class="det">Gate answered yes: WHEN_IDLE speaks on gemini-3.8-live (run 1 passed the gate, runs 2 and 3 confirm it); run 2 found two failures (late result denied, fleet router spent its round on discovery), both fixed; run 3 (2026-10-28 11:24-11:31) held both fixes, 6 of 8 async lookups answered, eight findings F1-F8 built in ticket 07. Still owes the p50/p95 report pasted into decisions.md; run 3 lookup p50/p95: ask_fleet 1,141/8,994 ms (n=6), ask_goals 772/829 ms (n=2), ask_body 511 ms (n=1).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">Build: conversation audit log in logcat (LIVE_AUDIT)</span><span class="det">Built 2026-10-28 on feat/async-read-tools. LIVE_AUDIT lines, mail turns redacted, setting default on, tools/voice_audit.py. 5441 tests, 0 failures; assembleFast builds. Owed: an A25 capture read through voice_audit.py (ticket 04 run).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">Build: a livelier register for Alfred (quick, dry, quietly amused)</span><span class="det">Built 2026-10-28 on feat/async-read-tools, then re-registered the same day on Kevin&#x27;s second ruling: crew chief plus old friend, no butler, no sir or Mr, no accent in the prompt, voice Puck. AlfredRegisterTest pins it. Owed: a phone run read through tools/voice_audit.py.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">07</span><span class="body"><span class="tt">Build: ticket 04 run 3 follow-ups (still-checking nudge, dead holding lines, sign-off, writes, figures, meal dates)</span><span class="det">Built 2026-10-28 on feat/async-read-tools, 10 commits. Still-checking nudge at 4 s and 12 s (Kevin); dead-holding-line nudges and a 20 s answer hold on the follow-up window; sign-off, write-on-request and time-varying-figure prompt rules; meal dates; voice_audit.py fixes. 5,489 tests, 0 failures; detekt the 4 pre-existing; assembleFast builds. Owed: a phone run read through voice_audit.py --summary (nudges and what followed them).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
 <h2>dumb-phone</h2>
 <span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">6</span> built<span class="sep">&middot;</span><span class="dim">of 6 tickets</span></span>
 <span class="bar"><i style="flex:6"></i><b style="flex:0"></b></span>
@@ -712,6 +728,17 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </header>
 <ul class="tl">
 <li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Seven things are due Sunday and the assistant says it knows of none</span><span class="det">&gt;</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>conversation-records</h2>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="dim">of 1 tickets</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">Build: phone spools LIVE_AUDIT and LIVE_LATENCY to disk and uploads them as conversation</span><span class="det">Built 2026-10-28 on feat/phone-conversation-upload: spool, upload (reason=conversation, session end + 3 min + app start + Send now), two-switch setting, JVM tests incl. voice_audit.py render. Owes the A25 run: a conversation, then manage.py device_logs --reason conversation --render.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 </ul>
 </section>
 <section class="map">

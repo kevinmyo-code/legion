@@ -1,7 +1,10 @@
 package com.kevin.legion.service
 
 import android.util.Log
+import com.kevin.legion.ai.AgentResult
+import com.kevin.legion.ai.LookupProbe
 import com.kevin.legion.car.CarProbeLog
+import com.kevin.legion.service.conversationlog.ConversationLog
 
 /**
  * Per-turn timing for the Live voice loop (2026-10-27, Kevin: the voice agent feels slow). Pure
@@ -15,7 +18,8 @@ import com.kevin.legion.car.CarProbeLog
  * - **tool**: toolCall received to toolResponse sent, per call id, with the tool's name.
  *
  * Line format is `key_ms=<n>` plus `tool=`/`model=` where they apply (LiveToolbox.askEngine adds
- * `ask_engine_ms=<n> model=<id>`). `tools/voice_latency.py` reads a `adb logcat -s LIVE_LATENCY`
+ * `ask_engine_ms=<n> model=<id>`; async-lookups ticket 03 adds [routeLine], [investigateLine] and
+ * [fallbackLine]). `tools/voice_latency.py` reads a `adb logcat -s LIVE_LATENCY`
  * capture and prints count, p50, p95 and max per metric, so change both together.
  */
 internal class LiveLatency {
@@ -80,11 +84,47 @@ internal class LiveLatency {
 
         /**
          * Writes one line to BOTH sinks: [CarProbeLog] is in-memory only and readable on the
-         * screen, and the A25 needs logcat. Used for LIVE_LATENCY and LIVE_FOLLOWUP alike.
+         * screen, and the A25 needs logcat. Used for LIVE_LATENCY and LIVE_FOLLOWUP alike. The four
+         * conversation tags also go to the engine spool ([ConversationLog]); any other tag is ignored there.
          */
         fun log(tag: String, message: String) {
             CarProbeLog.log(tag, message)
             Log.i(tag, message)
+            ConversationLog.record(tag, message)
         }
+
+        /**
+         * [LiveAudit]'s sink (conversation-records ticket 03): logcat when the mirror switch is on, the
+         * engine spool when "Keep on this phone and send to the engine" is on. Never [CarProbeLog]:
+         * one line per transcript chunk would flood the on-screen probe buffer.
+         */
+        fun audit(tag: String, message: String) {
+            if (ConversationLog.logcatMirror) Log.i(tag, message)
+            ConversationLog.record(tag, message)
+        }
+
+        /**
+         * One sub-agent POST retried on the fallback model (async-lookups ticket 03):
+         * `subagent_fallback from=<model> to=<model> reason=<RateLimited|Overloaded> tool=<name>`.
+         * `tool=` is left out when the caller named no tool.
+         */
+        fun fallbackLine(from: String, to: String, reason: String, tool: String?): String =
+            "subagent_fallback from=$from to=$to reason=$reason" + (tool?.let { " tool=$it" } ?: "")
+
+        /**
+         * One routed lookup's stages (async-lookups ticket 03), from the [LookupProbe] that
+         * [com.kevin.legion.ai.SubAgent.route] filled. `route_tools=none` when the router called no
+         * tool, so the field is never empty (the parser reads `key=\S+`).
+         */
+        fun routeLine(probe: LookupProbe, result: AgentResult): String =
+            "route_ms=${probe.totalMs} route_post_ms=${probe.postMs} route_tools_ms=${probe.toolsMs} " +
+                "route_tool_count=${probe.toolNames.size} " +
+                "route_tools=${probe.toolNames.joinToString(",").ifEmpty { "none" }} " +
+                "tool=${probe.tool} model=${probe.model} result=${result::class.simpleName}"
+
+        /** One [com.kevin.legion.ai.SubAgent.investigate] call (async-lookups ticket 03). */
+        fun investigateLine(probe: LookupProbe, result: AgentResult): String =
+            "investigate_ms=${probe.totalMs} rounds=${probe.rounds} tool=${probe.tool} " +
+                "model=${probe.model} result=${result::class.simpleName}"
     }
 }

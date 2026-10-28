@@ -28,12 +28,14 @@ object AssistantIdentity {
     }
 
     /**
-     * Accent and idiom for the active persona ([Persona.delivery]).
+     * Speech shape for the active persona ([Persona.delivery]): no markdown,
+     * codes digit by digit. No accent since 2026-10-28 (Kevin); that lives in
+     * the voice preset.
      *
      * Deliberately NOT folded into [clause]: that is who is speaking, this is
      * how it should sound, and only the conversational (voice) path wants it.
      * [shortClause]'s sub-agent callers are text-only - a one-shot JSON
-     * extraction has no accent - so spending tokens on delivery there would buy
+     * extraction is never heard - so spending tokens on delivery there would buy
      * nothing.
      */
     fun delivery(context: Context): String =

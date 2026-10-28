@@ -138,6 +138,11 @@ class LiveSessionController(context: Context) {
      * the voice path's instruction builder, tool declarations and tool runner ([runTool]), and is
      * never handed [session]. See [TypedChat] and [onTyped].
      */
+    // Conversation-records ticket 03: typed turns write LIVE_AUDIT lines too (logcat and the engine spool).
+    private val typedAudit = TypedChatAudit(
+        enabled = { com.kevin.legion.service.conversationlog.ConversationLog.auditWantedAfterReading(appContext) },
+    )
+
     private val typedChat = TypedChat(
         scope = scope,
         engine = TextChatEngine(
@@ -151,6 +156,7 @@ class LiveSessionController(context: Context) {
         systemParts = { listOf(brain.buildTextInstruction(), brain.buildLiveContext()) },
         declarations = { LiveToolbox.textDeclarations() },
         runTool = { name, args, readThrough, turnSeq ->
+            val auditId = typedAudit.toolCall(name, args)
             val response = if (name in LiveToolbox.VOICE_SESSION_TOOLS) {
                 // Not declared to the text model; refused in words if it is called anyway, because
                 // end_conversation would otherwise arm a hang-up on the NEXT voice turn.
@@ -164,13 +170,17 @@ class LiveSessionController(context: Context) {
                 }
             }
             auditToolCall(name, args, response, turnSeq)
+            typedAudit.toolResult(auditId, name, response)
             response
         },
         speakerName = ::speakerName,
         // The same teardown a crisis heard in speech gets: stop performing the character.
         onCrisis = { handleEvent(LiveEvent.CrisisDetected) },
         onInFlightChanged = ::typedPhase,
-        record = { TypedTurnRecorder.record(appContext, it) },
+        record = {
+            TypedTurnRecorder.record(appContext, it)
+            typedAudit.turn(it)
+        },
     )
 
     // True while a hands-free conversation (server VAD) is running, vs. a
@@ -429,6 +439,7 @@ class LiveSessionController(context: Context) {
      * in the panel, in words.
      */
     fun onTyped(text: String) {
+        typedAudit.user(text)
         typedChat.onTyped(text)
     }
 
@@ -1256,7 +1267,12 @@ class LiveSessionController(context: Context) {
             // sub-agent's up-to-30s loop. The driver watched "Listening..." while
             // the app was actually busy. Move to THINKING for the duration.
             activeToolCalls++
-            set(Phase.THINKING, "Working...")
+            // ADR 0065: a NON_BLOCKING lookup can arrive after its holding line started playing.
+            // Leave SPEAKING alone; the count above still makes the strip read WORKING whenever
+            // the phase is THINKING, and the restore below already refuses a phase it did not set.
+            if (toolStartEntersThinking(s.isNonBlockingTool(call.name), _phase.value)) {
+                set(Phase.THINKING, "Working...")
+            }
             try {
                 // A tool MUST always hand a response back, even on error/timeout, or
                 // Gemini stays mid-turn and the UI wedges. [runToolBounded] bounds every tool.
@@ -1360,11 +1376,7 @@ class LiveSessionController(context: Context) {
                 dismissAfterTurn = true
                 JSONObject()
                     .put("success", true)
-                    .put(
-                        "instruction",
-                        "Say one short in-character sign-off now, then stop. " +
-                            "The conversation ends when you finish speaking.",
-                    )
+                    .put("instruction", END_CONVERSATION_INSTRUCTION)
             }
             "import_receipt" -> {
                 openPantryImport()
@@ -1560,6 +1572,16 @@ class LiveSessionController(context: Context) {
 
     companion object {
         private const val IDLE_STATUS = "Tap to talk"
+
+        /**
+         * `end_conversation`'s result text. Async-lookups ticket 07 (ticket 04 run 3, F4): "Say one
+         * short in-character sign-off" produced the stock "Very good, Sir." the register forbids. It
+         * asks for the register's own dry line and names no phrase, because a phrase named here,
+         * even as an example, is the one the model reaches for.
+         */
+        internal const val END_CONVERSATION_INSTRUCTION =
+            "Sign off now with one dry line in your own register, about this conversation, then " +
+                "stop. The conversation ends when you finish speaking."
         // Ticket 17's closing tone: ToneGenerator volume (0-100), length, and how long to wait
         // before releasing the generator.
         private const val CLOSING_TONE_VOLUME = 50
@@ -1677,6 +1699,16 @@ class LiveSessionController(context: Context) {
 
         internal fun shouldRestoreAfterToolCall(remainingActiveToolCalls: Int, currentPhase: Phase): Boolean =
             remainingActiveToolCalls == 0 && currentPhase == Phase.THINKING
+
+        /**
+         * Whether a voice tool starting moves the strip to THINKING ("Working..."). A blocking tool
+         * always does: the model has gone quiet until it answers. A NON_BLOCKING lookup (ADR 0065)
+         * does too when the user has just finished, but not while the model is SPEAKING its holding
+         * line: that would claim it had stopped. A lookup finishing in LISTENING or SPEAKING never
+         * moves the phase ([shouldRestoreAfterToolCall] wants THINKING), so it cannot close the mic.
+         */
+        internal fun toolStartEntersThinking(nonBlocking: Boolean, currentPhase: Phase): Boolean =
+            !nonBlocking || currentPhase != Phase.SPEAKING
 
         /**
          * Ticket 02's pure decision behind the [LiveEvent.Closed] branch's thread-loss flag:

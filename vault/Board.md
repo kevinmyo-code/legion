@@ -83,6 +83,12 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/architecture/map\|architecture]] | [[05-detekt-with-a-baseline\|05]] | build | detekt joins the build, with a baseline and a 1000-line ceiling |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[18-build-widget-pager\|18]] | task | Build the widget pager and generated screens |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[19-build-dates-aspect\|19]] | task | Build the Dates aspect |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[02-non-blocking-read-tools\|02]] | build | Build: non-blocking read tools on the Live socket |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[03-fallback-model-and-probes\|03]] | build | Build: sub-agent fallback model and per-stage latency probes |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[04-device-run-and-report\|04]] | test | Test: the A25 run that proves WHEN_IDLE speaks, and the lookup p50/p95 |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[05-conversation-audit-log\|05]] | build | Build: conversation audit log in logcat (LIVE_AUDIT) |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[06-alfred-register\|06]] | build | Build: a livelier register for Alfred (quick, dry, quietly amused) |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[07-run3-follow-ups\|07]] | build | Build: ticket 04 run 3 follow-ups (still-checking nudge, dead holding lines, sign-off, writes, figures, meal dates) |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[08-receipts-whose-anchors-were-never-stored\|08]] | build | 08-receipts-whose-anchors-were-never-stored |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[09-backups-do-not-cover-files\|09]] | build | 09-backups-do-not-cover-files |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[10-fleet-cutover\|10]] | build | 10-fleet-cutover |
@@ -109,6 +115,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[11-small-writes\|11]] | build | Three small writes: memory, proposals, pendings |
 | [[.scratch/command-center/map\|command-center]] | [[12-newsletter-summarizer\|12]] | build | Newsletters summarize themselves, no setup required |
 | [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
+| conversation-records (no map) | [[03-phone-conversation-spool-and-upload\|03]] | build | Build: phone spools LIVE_AUDIT and LIVE_LATENCY to disk and uploads them as conversation |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[01-mode-home-leave\|01]] | build | Build: mode state, Home A, Leave flow, tile, settings row |
@@ -286,12 +293,14 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
+| [[.scratch/async-lookups/map\|async-lookups]] | 7 | 6 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
+| conversation-records (no map) | 1 | 1 | [[.scratch/conversation-records/conversation-records.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
 | [[.scratch/django-engine/map\|django-engine]] | 16 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
