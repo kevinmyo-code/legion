@@ -119,7 +119,10 @@ class AriaBrainHonestyClauseTest {
     @Test
     fun `the lookup holding-line clause is wired in and forbids an early fact`() {
         assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
-        assertTrue(LOOKUP_HOLD_CLAUSE.contains("One moment."))
+        // The example is three varied lines since 2026-10-28 (ticket 06); the rules below are not.
+        for (line in listOf("Let me look.", "Checking.", "Give me a second with that.")) {
+            assertTrue(LOOKUP_HOLD_CLAUSE.contains(line))
+        }
         for (forbidden in listOf("figure", "date", "name", "fact", "outcome")) {
             assertTrue("the holding line must forbid a $forbidden", LOOKUP_HOLD_CLAUSE.contains(forbidden))
         }

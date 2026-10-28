@@ -985,6 +985,9 @@ internal const val DATA_ACCESS_CLAUSE =
  * The holding line before a slow lookup, and what it may NOT contain (ADR 0065, async-lookups
  * ticket 02, 2026-10-28). Extends the 2026-10-27 "One moment." rule (Kevin: the slow tools left
  * dead air, and the persona's "do not narrate" rule needed this said outright as the exception).
+ * The example became three varied lines on 2026-10-28 (Kevin, livelier register, ticket 06): the
+ * on-device audit heard "One moment." before every lookup. Only the example changed; every rule
+ * after it is byte-identical.
  *
  * Since ADR 0065 a read-only lookup ([com.kevin.legion.service.LiveToolbox.NON_BLOCKING_READ_TOOLS])
  * runs NON_BLOCKING: the model keeps the floor while it runs and the result arrives afterwards. The
@@ -1006,7 +1009,8 @@ internal const val DATA_ACCESS_CLAUSE =
  */
 internal const val LOOKUP_HOLD_CLAUSE =
     "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
-        "brief in-character line (\"One moment.\") and then call it. That line holds no figure, " +
+        "brief in-character line, worded fresh each time (\"Let me look.\", \"Checking.\", " +
+        "\"Give me a second with that.\"), and then call it. That line holds no figure, " +
         "date, name, fact or outcome, and you never state one the result has not yet given. While " +
         "the lookup runs say nothing more, and when its result arrives, answer from it. A lookup " +
         "result that arrives in its own turn, with no new words from the user, belongs to the " +
