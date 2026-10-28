@@ -91,6 +91,15 @@ internal class LiveLatency {
         }
 
         /**
+         * Logcat only, never [CarProbeLog]: the sibling of [log] for [LiveAudit]'s LIVE_AUDIT lines.
+         * One line per transcript chunk would flood the on-screen probe buffer, and the audit
+         * setting promises the lines are readable only over ADB.
+         */
+        fun logcat(tag: String, message: String) {
+            Log.i(tag, message)
+        }
+
+        /**
          * One sub-agent POST retried on the fallback model (async-lookups ticket 03):
          * `subagent_fallback from=<model> to=<model> reason=<RateLimited|Overloaded> tool=<name>`.
          * `tool=` is left out when the caller named no tool.
