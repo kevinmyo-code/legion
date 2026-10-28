@@ -5,12 +5,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins the 2026-10-28 register (Kevin: livelier, the manner of a film-butler AI in our own words),
- * the way [AriaBrainHonestyClauseTest] pins the honesty clauses. Async-lookups ticket 06.
+ * Pins the register, the way [AriaBrainHonestyClauseTest] pins the honesty clauses. Async-lookups
+ * ticket 06, rewritten 2026-10-28 on Kevin's second ruling that day: a calm crew chief mixed with
+ * an old friend, the name kept, no butler framing, no "sir" or "Mr", and no accent in the prompt.
  *
- * **Presence only.** Nothing inspects the spoken audio, so whether the model actually sounds
- * livelier is owed to a phone run read through `tools/voice_audit.py`. A green run here says the
- * words are in the prompt, nothing more.
+ * **Presence only.** Nothing inspects the spoken audio, so whether the model actually sounds like
+ * this is owed to a phone run read through `tools/voice_audit.py`. A green run here says the words
+ * are in the prompt (or out of it), nothing more.
  */
 class AlfredRegisterTest {
 
@@ -20,27 +21,63 @@ class AlfredRegisterTest {
     /** The clause with its line wraps folded, so a re-wrap of the prose does not fail a pin. */
     private val clause = ALFRED.clause.replace(Regex("\\s+"), " ")
 
+    /** Every piece of register copy the model or the Companion screen sees. */
+    private val copy = listOf(ALFRED.clause, ALFRED.delivery, ALFRED.shortClause, ALFRED.blurb) +
+        ALFRED.greetings
+
     /** The register's working rules, each named so a deletion says what was lost. */
     @Test
-    fun `the clause carries the livelier register`() {
+    fun `the clause carries the crew chief and old friend register`() {
         val rules = mapOf(
-            "quick, quietly amused" to "the temperament: quick, dry, quietly amused",
-            "you react rather than recite" to "reacts rather than recites",
+            "like an old friend" to "the old-friend half of the register",
+            "first-name terms" to "first-name terms, not a title",
+            "warm when it counts" to "the crew-chief warmth",
+            "Lead with the answer, numbers first." to "numbers first",
             "A number gets a read, not just the number" to "a number gets a read",
             "suspiciously round" to "the kind of read a number gets",
+            "you react rather than recite" to "reacts rather than recites",
+            "you say what you think" to "says what he thinks",
             "One understated remark per answer at most" to "wit is rationed to one remark",
             "never at the user" to "the remark is never at the user's expense",
             "offer it once, in a clause. If they pass, it is gone." to
                 "anticipation offered once, never pushed (section 7 compulsion rules)",
             "Vary your phrasing" to "no stock line repeated",
-            "\"Sir\" is for the moment that earns it; most answers have none." to "sir, sparingly",
-            "No stock butler sign-offs" to "no stock sign-off",
-            "one dry line, then stop" to "a sign-off is one dry line",
-            "Butler stock like \"Very good\" or \"Right away\" is out" to
-                "the stock butler lines run 3 heard are named as out (ticket 07, F4)",
+            "it shows in what you do rather than what you say" to "fondness shown in deeds",
+            "one short line, then stop" to "a sign-off is one line",
         )
         for ((phrase, why) in rules) {
             assertTrue("missing from ALFRED.clause: $why", clause.contains(phrase))
+        }
+    }
+
+    /** Kevin: "no need for sir and mr". Named outright, with the stock lines, in clause and anchor. */
+    @Test
+    fun `the forbidden address and stock lines are named outright`() {
+        assertTrue(clause.contains("Never say \"sir\", \"madam\" or \"Mr\""))
+        assertTrue(clause.contains("Never \"Very good\", \"Right away\" or \"Shall I\"."))
+        assertTrue(ALFRED.shortClause.contains("Never \"sir\" or \"Mr\"."))
+        assertFalse("the permissive sir rule is gone", clause.contains("earns it"))
+    }
+
+    /** He is a person called Alfred. The name pulls toward butler lines; the copy must not. */
+    @Test
+    fun `no butler framing anywhere in the register copy`() {
+        for (text in copy) {
+            assertFalse("butler framing in: $text", text.contains("butler", ignoreCase = true))
+            assertFalse("servant framing in: $text", text.contains("in service to"))
+        }
+    }
+
+    /** Kevin: "drop the accent". The accent lives in the voice preset, not the prompt. */
+    @Test
+    fun `the accent rules are gone`() {
+        for (text in copy) {
+            for (accent in listOf(
+                "British", "English", "Received Pronunciation", "Never American", "petrol",
+                "sixth of August",
+            )) {
+                assertFalse("accent rule '$accent' in: $text", text.contains(accent))
+            }
         }
     }
 
@@ -57,18 +94,18 @@ class AlfredRegisterTest {
         }
     }
 
-    /** The anchor restates shortClause last; it must carry the new manner, not the old flat one. */
+    /** The anchor restates shortClause last; it must carry the register, not the old flat one. */
     @Test
     fun `the short clause carries the register and drops the flat one`() {
         val s = ALFRED.shortClause
-        assertTrue(s.contains("Quick, dry, quietly amused"))
-        assertTrue(s.contains("a number gets a read"))
+        assertTrue(s.contains("an old friend on first-name terms"))
+        assertTrue(s.contains("Numbers first; a number gets a read."))
         assertTrue(s.contains("never at the user"))
         assertTrue(s.contains("Never guess a number you don't have."))
         assertFalse("the old flat instruction is gone", s.contains("Answer and stop"))
     }
 
-    /** The holding line is varied now; the fixed one the audit heard every time is gone. */
+    /** The holding line is varied; the fixed one the audit heard every time stays gone. */
     @Test
     fun `the fixed holding line is gone from the voice delivery`() {
         assertFalse(ALFRED.delivery.contains("\"One moment.\""))
@@ -79,7 +116,7 @@ class AlfredRegisterTest {
     /** CLAUDE.md section 9: no em dashes; the register itself forbids exclamation marks. */
     @Test
     fun `the register copy has no em dash and no exclamation mark`() {
-        for (text in listOf(ALFRED.clause, ALFRED.delivery, ALFRED.shortClause, ALFRED.blurb)) {
+        for (text in copy) {
             assertFalse(text.contains(emDash))
             assertFalse(text.contains('!'))
         }

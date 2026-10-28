@@ -43,8 +43,8 @@ class AriaBrainTextModeTest {
         val text = compose(textMode = true)
         assertEquals("$identity $SHARED_INSTRUCTIONS $SAFETY_INSTRUCTIONS $TEXT_MODE_NOTE", text)
         assertFalse(text.contains(delivery))
-        assertFalse(text.contains("British English accent"))
-        assertFalse(text.contains("the sixth of August"))
+        assertFalse(text.contains("heard, not read"))
+        assertFalse(text.contains("digit by digit"))
         assertFalse(text.contains(voiceStyle))
     }
 
