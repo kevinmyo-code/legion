@@ -20,7 +20,7 @@ class SubAgentRouteTest {
 
     private fun agent(vararg replies: RestOutcome): SubAgent {
         val queue = ArrayDeque(replies.toList())
-        return SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { body ->
+        return SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { _, body ->
             posts.add(body)
             queue.removeFirst()
         }
@@ -111,7 +111,7 @@ class SubAgentRouteTest {
 
     @Test
     fun `the whole route gives up at its budget`() = runBlocking {
-        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) {
+        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { _, _ ->
             delay(5_000)
             textReply("too late")
         }

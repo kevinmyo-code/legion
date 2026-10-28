@@ -19,7 +19,9 @@ sealed class RestOutcome {
 
 /**
  * The ONE HTTP boundary every Gemini REST `generateContent` call goes through: [SubAgent] (every
- * one-shot and investigate caller) and [TextChatEngine] (typed chat, 2026-10-27).
+ * one-shot and investigate caller) and [TextChatEngine] (typed chat, 2026-10-27). The fallback
+ * model retry (async-lookups ticket 03) sits one layer up, in [SubAgent]; [post] itself only ever
+ * talks to the model it is handed.
  *
  * Lifted out of [SubAgent] unchanged so the typed chat engine meters, records [KeyHealth] and
  * honours cancellation exactly the way every other REST caller does. The 2026-09-06 lesson ("my
@@ -129,5 +131,18 @@ object GeminiRest {
         }
         e.code == HTTP_SERVER_ERROR || e.code == HTTP_UNAVAILABLE -> AgentResult.Overloaded
         else -> AgentResult.Failed
+    }
+
+    /**
+     * Why [e] may be retried on [SubAgent.FALLBACK_MODEL] (async-lookups ticket 03): `"RateLimited"`
+     * for a 429, `"Overloaded"` for a 500 or 503, null for anything else. The same code split
+     * [classify] makes, but pure: it records nothing in [KeyHealth], so a 429 the fallback then
+     * recovers from leaves no stale "rate-limited" note behind. [classify] still runs on whatever
+     * outcome the caller finally gets.
+     */
+    fun fallbackReason(e: RestOutcome.HttpError): String? = when (e.code) {
+        HTTP_TOO_MANY -> "RateLimited"
+        HTTP_SERVER_ERROR, HTTP_UNAVAILABLE -> "Overloaded"
+        else -> null
     }
 }

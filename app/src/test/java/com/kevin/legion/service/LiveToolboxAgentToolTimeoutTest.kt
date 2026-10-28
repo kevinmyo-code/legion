@@ -51,7 +51,7 @@ class LiveToolboxAgentToolTimeoutTest {
                 ),
             ),
         ).toString()
-        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { RestOutcome.Ok(reply) }
+        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { _, _ -> RestOutcome.Ok(reply) }
         fun slow(name: String) = AgentTool(
             name = name,
             description = "d",

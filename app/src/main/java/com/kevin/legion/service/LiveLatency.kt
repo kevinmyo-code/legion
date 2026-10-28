@@ -86,5 +86,13 @@ internal class LiveLatency {
             CarProbeLog.log(tag, message)
             Log.i(tag, message)
         }
+
+        /**
+         * One sub-agent POST retried on the fallback model (async-lookups ticket 03):
+         * `subagent_fallback from=<model> to=<model> reason=<RateLimited|Overloaded> tool=<name>`.
+         * `tool=` is left out when the caller named no tool.
+         */
+        fun fallbackLine(from: String, to: String, reason: String, tool: String?): String =
+            "subagent_fallback from=$from to=$to reason=$reason" + (tool?.let { " tool=$it" } ?: "")
     }
 }
