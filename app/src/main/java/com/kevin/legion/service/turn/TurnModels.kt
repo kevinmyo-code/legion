@@ -128,7 +128,13 @@ internal object TurnModels {
     sealed interface State {
         data object NotStarted : State
         data object Loading : State
-        data class Ready(val silero: SileroVad, val smartTurn: SmartTurnModel, val loadMs: Long) : State
+        /** [smartTurn] null: it failed to load, and end of turn is silence-only ([smartTurnError]). */
+        data class Ready(
+            val silero: SileroVad,
+            val smartTurn: SmartTurnModel?,
+            val loadMs: Long,
+            val smartTurnError: String? = null,
+        ) : State
         data class Failed(val reason: String) : State
     }
 
@@ -136,10 +142,14 @@ internal object TurnModels {
         private set
     private val loaded = CountDownLatch(1)
 
-    /** Why local turn detection is off for the rest of this process, null while it is usable. */
+    /** Why local turn detection (Silero) is off for the rest of this process, null while usable. */
     @Volatile var broken: String? = null
         private set
 
+    /** Smart Turn alone failed (load or a throw): Silero still runs, end of turn is silence-only. */
+    @Volatile var smartTurnBroken: String? = null
+
+    /** Silero failed: no local turn detection at all for this process. */
     fun markBroken(reason: String) {
         if (broken == null) {
             broken = reason
@@ -160,10 +170,18 @@ internal object TurnModels {
             val result: State = try {
                 val env = OrtEnvironment.getEnvironment()
                 val silero = SileroVad(env, app.assets.open(SILERO_ASSET).use { it.readBytes() })
-                val smart = SmartTurnModel(env, app.assets.open(SMART_TURN_ASSET).use { it.readBytes() })
+                var smartError: String? = null
+                val smart = try {
+                    SmartTurnModel(env, app.assets.open(SMART_TURN_ASSET).use { it.readBytes() })
+                } catch (t: Throwable) {
+                    smartError = "${t.javaClass.simpleName}: ${t.message}"
+                    Log.w(TAG, "Smart Turn failed to load, end of turn is silence-only: $smartError", t)
+                    smartTurnBroken = smartError
+                    null
+                }
                 val ms = System.currentTimeMillis() - started
-                Log.i(TAG, "turn models loaded in ${ms}ms")
-                State.Ready(silero, smart, ms)
+                Log.i(TAG, "turn models loaded in ${ms}ms smartTurn=${smart != null}")
+                State.Ready(silero, smart, ms, smartError)
             } catch (t: Throwable) {
                 Log.w(TAG, "turn models failed to load: ${t.message}", t)
                 markBroken("model load failed: ${t.javaClass.simpleName}: ${t.message}")

@@ -29,7 +29,7 @@ internal object TurnBench {
     fun run(context: Context, threads: Int = SmartTurnModel.INFERENCE_THREADS): String {
         val ready = TurnModels.awaitReady(context, 30_000L)
             ?: return "models unavailable: ${TurnModels.broken ?: TurnModels.state}".also { Log.i(TAG, it) }
-        val model: TurnEndModel = if (threads == SmartTurnModel.INFERENCE_THREADS) {
+        val model: TurnEndModel = if (threads == SmartTurnModel.INFERENCE_THREADS && ready.smartTurn != null) {
             ready.smartTurn
         } else {
             SmartTurnModel(
