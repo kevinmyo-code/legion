@@ -891,6 +891,11 @@ class SubAgent internal constructor(
          * The text [route] hands back when tools ran: a one-line frame, then each tool's name and
          * its raw result (parsed back to JSON where it is JSON) or its error. Pure and internal so
          * the shape is pinned by a test.
+         *
+         * The frame names the question as the USER's and says to answer it (ticket 04 run 2,
+         * 2026-10-28): a non-blocking result arrives in a turn of its own with no user speech, and
+         * the model denied a full result there. Equally true on the blocking path, where the
+         * result lands inside the turn that asked.
          */
         internal fun frameRouteResults(question: String, results: List<Pair<String, JSONObject>>): String {
             val arr = JSONArray()
@@ -903,7 +908,8 @@ class SubAgent internal constructor(
                 }
                 arr.put(entry)
             }
-            return "Results for \"$question\". Relay them in your own voice; state only what is here.\n$arr"
+            return "Results for the user's question \"$question\". Answer that question from them in your own " +
+                "voice; state only what is here.\n$arr"
         }
 
         /** A tool's output as JSON when it parses as JSON, else the raw string unchanged. */

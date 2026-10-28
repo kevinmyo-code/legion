@@ -994,12 +994,26 @@ internal const val DATA_ACCESS_CLAUSE =
  * scope beside [CANNOT_CLAUSE], never per persona. Presence guarded by
  * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable here, and ticket 04's
  * phone run is the first time anyone hears it.
+ *
+ * **The late result (ticket 04 run 2, A25, 2026-10-28).** `ask_body` "What did I eat yesterday?"
+ * returned five meals with success=true, 1,083 ms after the model's turn_complete; the model's new
+ * turn said "I don't have that information." A `WHEN_IDLE` result opens a NEW turn with no user
+ * speech, and [CANNOT_CLAUSE] and [DATA_ACCESS_CLAUSE] both key on a tool "this turn". The
+ * reasoned (not proven) reading is that the model treated the late result as belonging to no
+ * question. The last three sentences tie it back: it is this turn's result, answer from it, and a
+ * result that lacks what was asked is described, never denied. No holding line was spoken on that
+ * turn, so the rule does not depend on one. Presence pinned; obedience is owed to the next phone run.
  */
 internal const val LOOKUP_HOLD_CLAUSE =
     "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
         "brief in-character line (\"One moment.\") and then call it. That line holds no figure, " +
         "date, name, fact or outcome, and you never state one the result has not yet given. While " +
-        "the lookup runs say nothing more, and when its result arrives, answer from it. "
+        "the lookup runs say nothing more, and when its result arrives, answer from it. A lookup " +
+        "result that arrives in its own turn, with no new words from the user, belongs to the " +
+        "question that asked for it, whether or not you said a holding line. It counts as a " +
+        "result from this turn: answer from it exactly as if it had come back before you " +
+        "stopped speaking. Never say you do not have it when the result is in front of you; if " +
+        "it genuinely lacks what was asked, say what it does contain and what it does not. "
 
 /**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08

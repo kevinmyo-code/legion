@@ -60,7 +60,8 @@ class SubAgentRouteTest {
         assertEquals(1, posts.size)
         assertTrue(r is AgentResult.Success)
         val text = (r as AgentResult.Success).text
-        val frame = "Results for \"any codes?\". Relay them in your own voice; state only what is here."
+        val frame = "Results for the user's question \"any codes?\". Answer that question from them in " +
+            "your own voice; state only what is here."
         assertTrue(text, text.startsWith(frame))
         val arr = JSONArray(text.substringAfter('\n'))
         assertEquals("get_codes", arr.getJSONObject(0).getString("tool"))

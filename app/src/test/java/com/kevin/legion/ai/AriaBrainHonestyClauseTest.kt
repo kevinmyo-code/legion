@@ -132,4 +132,30 @@ class AriaBrainHonestyClauseTest {
             assertTrue(!LOOKUP_HOLD_CLAUSE.contains(tool))
         }
     }
+
+    /**
+     * Ticket 04 run 2 (A25, 2026-10-28): a `WHEN_IDLE` result arrived in its own turn, 1,083 ms after
+     * turn_complete, with five meals in it, and the model said "I don't have that information."
+     * The clause now ties a late result to the question that asked for it and counts it as this
+     * turn's result, so CANNOT_CLAUSE's and DATA_ACCESS_CLAUSE's "this turn" do not orphan it.
+     * Presence only: whether the model obeys is owed to the next phone run.
+     */
+    @Test
+    fun `a late lookup result belongs to its question and is never denied`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        for (phrase in listOf(
+            "arrives in its own turn",
+            "belongs to the question that asked for it",
+            "whether or not you said a holding line",
+            "counts as a result from this turn",
+            "Never say you do not have it when the result is in front of you",
+            "say what it does contain and what it does not",
+        )) {
+            assertTrue("the late-result rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
+        }
+        // The sibling rules it has to override still key on "this turn"; if either drops that
+        // wording, the override sentence above is the thing to revisit.
+        assertTrue(CANNOT_CLAUSE.contains("in this turn"))
+        assertTrue(DATA_ACCESS_CLAUSE.contains("this turn"))
+    }
 }
