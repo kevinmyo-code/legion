@@ -30,7 +30,9 @@ out of the per-metric one:
 
 The Lookups table gives, per tool, count and p50/p95 of the total, the router POST and the fan-out
 (fan-out over calls that ran at least one tool), and how many fallbacks fired. model= is the model
-that answered: the fallback's when one fired.
+that answered: the fallback's when one fired. --csv appends the same figures after the per-metric
+rows: lookup_total_ms / lookup_post_ms / lookup_tools_ms grouped by tool, and a subagent_fallbacks
+count per tool.
 
 Smart Turn may only extend a turn (Kevin, 2026-10-27): the first check starts at 192 ms of silence
 and matters only if it lands before the 700 ms base. The table is followed by how often it did.
@@ -82,6 +84,13 @@ Stdlib only. Self-test: python -m doctest tools/voice_latency.py
 ('ask_fleet', 2, 2000, 3000, 900, 2800, 1000, 1000, 1)
 >>> fallback_count(sample)
 2
+>>> for r in lookup_csv_rows(sample): print(r)
+('lookup_total_ms', 'ask_engine', 1, 5200, 5200, 5200)
+('lookup_total_ms', 'ask_fleet', 2, 2000, 3000, 3000)
+('lookup_post_ms', 'ask_fleet', 2, 900, 2800, 2800)
+('lookup_tools_ms', 'ask_fleet', 1, 1000, 1000, 1000)
+('subagent_fallbacks', '', 1, '', '', '')
+('subagent_fallbacks', 'ask_fleet', 1, '', '', '')
 >>> first_check_in_time(sample)
 (1, 2)
 >>> percentile([5, 1, 3, 2, 4], 50)
@@ -161,10 +170,9 @@ def _int(value):
         return None
 
 
-def lookups(lines):
-    """Rows of (tool, count, total p50, total p95, post p50, post p95, fan-out p50, fan-out p95,
-    fallbacks), sorted by tool. A fallback line with no tool= counts under tool ''. None where a
-    figure has no samples: investigate has no router POST or fan-out of its own."""
+def _lookup_samples(lines):
+    """(total, post, fan, count, fallbacks), each keyed by tool. Fan-out samples only from calls
+    that ran at least one tool."""
     total, post, fan = defaultdict(list), defaultdict(list), defaultdict(list)
     count, fallbacks = defaultdict(int), defaultdict(int)
     for is_fallback, pairs in _lookup_pairs(lines):
@@ -182,6 +190,14 @@ def lookups(lines):
         fan_ms = _int(pairs.get("route_tools_ms"))
         if fan_ms is not None and (_int(pairs.get("route_tool_count")) or 0) > 0:
             fan[tool].append(fan_ms)
+    return total, post, fan, count, fallbacks
+
+
+def lookups(lines):
+    """Rows of (tool, count, total p50, total p95, post p50, post p95, fan-out p50, fan-out p95,
+    fallbacks), sorted by tool. A fallback line with no tool= counts under tool ''. None where a
+    figure has no samples: investigate has no router POST or fan-out of its own."""
+    total, post, fan, count, fallbacks = _lookup_samples(lines)
     return [
         (tool, count[tool],
          percentile(total[tool], 50), percentile(total[tool], 95),
@@ -190,6 +206,21 @@ def lookups(lines):
          fallbacks[tool])
         for tool in sorted(set(count) | set(fallbacks))
     ]
+
+
+def lookup_csv_rows(lines):
+    """The Lookups table in the per-metric CSV shape (metric, group, count, p50, p95, max), group
+    being the tool: lookup_total_ms, lookup_post_ms and lookup_tools_ms per tool that has samples,
+    then one subagent_fallbacks row per tool that fell back (count only)."""
+    total, post, fan, _, fallbacks = _lookup_samples(lines)
+    rows = []
+    for metric, buckets in (("lookup_total_ms", total), ("lookup_post_ms", post), ("lookup_tools_ms", fan)):
+        for tool in sorted(buckets):
+            v = buckets[tool]
+            rows.append((metric, tool, len(v), percentile(v, 50), percentile(v, 95), max(v)))
+    for tool in sorted(fallbacks):
+        rows.append(("subagent_fallbacks", tool, fallbacks[tool], "", "", ""))
+    return rows
 
 
 def fallback_count(lines):
@@ -241,6 +272,7 @@ def main(argv=None):
         w = csv.writer(sys.stdout, lineterminator="\n")
         w.writerow(HEADER)
         w.writerows(rows)
+        w.writerows(lookup_csv_rows(lines))
         return 0
     if not rows and not lookup_rows:
         print("no LIVE_LATENCY lines found")
