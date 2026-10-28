@@ -4,8 +4,8 @@ title: "Map: every conversation reaches the engine, from both clients"
 charted: 2026-10-28
 charted-by: "Kevin + Opus"
 effort: "`.scratch/conversation-records/`"
-tickets: 5
-open: 4
+tickets: 6
+open: 5
 status: open
 tags: [map]
 ---
