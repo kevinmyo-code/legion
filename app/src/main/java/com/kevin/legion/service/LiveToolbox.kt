@@ -1135,8 +1135,9 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "list_recent_meals",
-            description = "Read back recently logged meals. Calorie/macro figures are ESTIMATES, " +
-                "always phrase them as estimates, never as fact.",
+            description = "Read back recently logged meals, newest first, each with the date it " +
+                "was logged (yyyy-MM-dd and weekday, the phone's own day). Calorie/macro figures " +
+                "are ESTIMATES, always phrase them as estimates, never as fact.",
             params = obj("count" to schema("integer", "How many to return. Default 10.")),
             required = listOf(),
         ))
@@ -5325,15 +5326,27 @@ object LiveToolbox {
     private suspend fun listRecentMeals(context: Context, count: Int): JSONObject {
         val meals = MealController.recentMeals(context, count.coerceIn(1, 100))
         val arr = JSONArray()
-        for (m in meals) {
-            val o = JSONObject().put("description", m.description)
-            m.caloriesKcal?.let { o.put("estimatedCaloriesKcal", it) }
-            m.proteinG?.let { o.put("estimatedProteinG", it) }
-            m.carbsG?.let { o.put("estimatedCarbsG", it) }
-            m.fatG?.let { o.put("estimatedFatG", it) }
-            arr.put(o)
-        }
+        for (m in meals) arr.put(mealRow(m))
         return JSONObject().put("success", true).put("count", meals.size).put("meals", arr)
+    }
+
+    /**
+     * One `list_recent_meals` row. The date it was logged, as an ISO date and a weekday in the
+     * phone's zone, the same local day [com.kevin.legion.meals.dayStartEpoch] buckets "today" by
+     * (async-lookups ticket 07; ticket 04 run 3, F7: without it, "what did I eat yesterday" could
+     * only be answered as "the records don't specify dates").
+     */
+    internal fun mealRow(m: com.kevin.legion.data.local.MealLog, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): JSONObject {
+        val day = java.time.Instant.ofEpochMilli(m.loggedAt).atZone(zone).toLocalDate()
+        val o = JSONObject()
+            .put("description", m.description)
+            .put("date", day.toString())
+            .put("weekday", day.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US))
+        m.caloriesKcal?.let { o.put("estimatedCaloriesKcal", it) }
+        m.proteinG?.let { o.put("estimatedProteinG", it) }
+        m.carbsG?.let { o.put("estimatedCarbsG", it) }
+        m.fatG?.let { o.put("estimatedFatG", it) }
+        return o
     }
 
     /**
