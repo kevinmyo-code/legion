@@ -20,7 +20,7 @@ class SubAgentRouteTest {
 
     private fun agent(vararg replies: RestOutcome): SubAgent {
         val queue = ArrayDeque(replies.toList())
-        return SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { body ->
+        return SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { _, body ->
             posts.add(body)
             queue.removeFirst()
         }
@@ -82,7 +82,9 @@ class SubAgentRouteTest {
     fun `failures map to the same variants as investigate`() = runBlocking {
         val tools = listOf(tool("get_codes") { "{}" })
         assertSame(AgentResult.Offline, agent(RestOutcome.Network).route("q", tools))
-        assertSame(AgentResult.Overloaded, agent(RestOutcome.HttpError(503, "")).route("q", tools))
+        // A 503 is retried once on the fallback model (async-lookups ticket 03); both answer 503.
+        val unavailable = RestOutcome.HttpError(503, "")
+        assertSame(AgentResult.Overloaded, agent(unavailable, unavailable).route("q", tools))
         assertSame(AgentResult.Failed, agent(RestOutcome.HttpError(404, "")).route("q", tools))
         val blocked = RestOutcome.Ok(
             JSONObject().put("promptFeedback", JSONObject().put("blockReason", "SAFETY")).toString(),
@@ -111,7 +113,7 @@ class SubAgentRouteTest {
 
     @Test
     fun `the whole route gives up at its budget`() = runBlocking {
-        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) {
+        val sub = SubAgent("sys", false, SubAgent.DEFAULT_MODEL) { _, _ ->
             delay(5_000)
             textReply("too late")
         }

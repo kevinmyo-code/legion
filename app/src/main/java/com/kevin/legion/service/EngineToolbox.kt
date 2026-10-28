@@ -562,6 +562,8 @@ object EngineToolbox {
             engineAgentTool(context, "delete_record"),
         )
 
+        // One investigate_ms LIVE_LATENCY line per call (async-lookups ticket 03).
+        val probe = com.kevin.legion.ai.LookupProbe("aspect_clerk")
         return clerkResult("Could not reach the record-keeping worker. Try again shortly.") {
             SubAgent(systemInstruction = system, useSearch = false).investigate(
                 context = "",
@@ -570,7 +572,8 @@ object EngineToolbox {
                 maxModelCalls = 4,
                 budgetMs = 30_000,
                 mutatingToolNames = MUTATING_RECORD_TOOLS,
-            )
+                probe = probe,
+            ).also { LiveLatency.log(LiveLatency.TAG, LiveLatency.investigateLine(probe, it)) }
         }
     }
 
