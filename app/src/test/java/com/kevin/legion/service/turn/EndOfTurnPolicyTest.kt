@@ -163,4 +163,37 @@ class EndOfTurnPolicyTest {
         assertEquals(Action.StartActivity(0), p.forceStart())
         assertTrue(p.inActivity)
     }
+
+    /**
+     * A25, 2026-10-27, "call the bank and ...": Smart Turn held the first pause to 1,760 ms (16 checks
+     * at ~0.007), Kevin went on, and the second silence ended at the base after a late 0.578. The
+     * turn WAS extended, so the end line must say so, with 704 as the final silence.
+     */
+    @Test
+    fun `a turn held once and then ended at the base reports extended`() {
+        val p = speaking()
+        var id = actions(p, 192).filterIsInstance<Action.RequestCheck>().single().checkId
+        var n = 0
+        while (n < 49) { // to ~1,760 ms of silence, answering "not done" every 3 windows
+            n++
+            p.onWindow(quiet)
+            if (n % 3 == 0) id = (p.onCheckResult(id, 0.007f).single() as Action.RequestCheck).checkId
+        }
+        assertTrue(p.onWindow(speech).single() is Action.SpeechResumed)
+        val second = actions(p, 192).filterIsInstance<Action.RequestCheck>().single()
+        val third = p.onCheckResult(second.checkId, 0.099f).single() as Action.RequestCheck
+        assertTrue(p.onCheckResult(third.checkId, 0.578f).isEmpty())
+        val end = actions(p, 600).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.EXTENDED, end.reason)
+        assertEquals(704, end.silenceMs)
+        assertTrue(end.longestSilenceMs >= 1_700)
+    }
+
+    @Test
+    fun `a turn never held ends as base with its own silence as the longest`() {
+        val p = speaking()
+        val end = actions(p, 800).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.BASE, end.reason)
+        assertEquals(704, end.longestSilenceMs)
+    }
 }

@@ -2048,12 +2048,16 @@ class GeminiLiveSession(
         }
 
         override fun onEndOfTurn(end: EndOfTurnPolicy.Action.EndActivity) {
-            val scores = end.scores.joinToString(",") {
+            // Only the last few checks: a long hold runs a dozen and logcat truncates the line. Each
+            // check's own st_score line carries the full detail.
+            val scores = end.scores.takeLast(EOT_SCORES_LOGGED).joinToString(",") {
                 "%.2f@%d>%d".format(java.util.Locale.US, it.score, it.askedAtMs, it.arrivedAtMs)
             }
             LiveLatency.log(
                 LiveLatency.TAG,
-                "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} st_scores=${scores.ifEmpty { "none" }}",
+                "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} " +
+                    "eot_longest_silence_ms=${end.longestSilenceMs} st_checks=${end.scores.size} " +
+                    "st_scores=${scores.ifEmpty { "none" }}",
             )
         }
 
@@ -3493,6 +3497,8 @@ class GeminiLiveSession(
         /** 200 ms of 24 kHz audio queued before a reply after a flush starts playing. */
         private const val PRIME_FRAMES = 4_800
         private const val PRIME_MAX_WAIT_MS = 250L
+        /** Smart Turn scores kept on the end-of-turn line (the latest; st_checks counts all). */
+        private const val EOT_SCORES_LOGGED = 4
         /** Turn-taking notices already said in words this process ([announceOnce]). */
         private val ANNOUNCED: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
         // Settle after playback has actually drained, before capture opens. Small

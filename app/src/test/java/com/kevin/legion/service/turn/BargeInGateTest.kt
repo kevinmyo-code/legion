@@ -99,4 +99,32 @@ class BargeInGateTest {
         feed(g, 60, 0.9f, 20_000)
         assertNull(g.onWindow(0.99f, loud, true))
     }
+
+    /**
+     * A25, 2026-10-27, Kevin's second real barge-in: `fire prob=1.00 level=22914 echo_floor=0
+     * threshold=3000`, then `speech_after_ms=128`. A short "stop" leaves little speech after the
+     * fire, but a peak at seven times the threshold is not echo.
+     */
+    @Test
+    fun `a short loud stop against a quiet echo floor is not a self-interrupt`() {
+        val g = gate()
+        feed(g, 20, 0.1f, 0) // the reply's echo, learned near zero (AEC in call mode)
+        assertEquals(BargeInGate.MIN_LEVEL, g.threshold())
+        assertTrue(feed(g, windows, 1.0f, 22_914).single() is Event.Fire)
+        // 128 ms of speech left after the fire, then quiet.
+        val after = feed(g, 4, 0.9f, 15_000) + feed(g, 60, 0.05f, 200)
+        val verdict = after.filterIsInstance<Event.Verdict>().single()
+        assertEquals(128, verdict.speechMsAfter)
+        assertFalse(verdict.selfInterrupt)
+        assertEquals(0, g.selfInterrupts)
+    }
+
+    @Test
+    fun `a fire just over the threshold with nothing after is still a self-interrupt`() {
+        val g = gate()
+        feed(g, 20, 0.1f, 8_000) // echo floor 8,000 -> threshold 12,000
+        assertTrue(feed(g, windows, 0.95f, 13_000).single() is Event.Fire)
+        val verdict = feed(g, 60, 0.05f, 200).filterIsInstance<Event.Verdict>().single()
+        assertTrue(verdict.selfInterrupt)
+    }
 }

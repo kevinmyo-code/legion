@@ -12,15 +12,26 @@ package com.kevin.legion.service.turn
  * windows, tolerating one stray window, so a backchannel ("mm-hm", "okay") shorter than that never
  * stops the reply.
  *
- * After a fire it watches [VERDICT_MS]: if Silero hears less than [SELF_SPEECH_MS] of speech once the
- * reply was flushed, the trigger was most likely the echo, a self-interrupt. [MAX_SELF_INTERRUPTS]
- * of those turn barge-in off for the rest of the session.
+ * After a fire it watches [VERDICT_MS]. It is a self-interrupt (the echo set it off) only when BOTH
+ * hold: Silero hears less than [SELF_SPEECH_MS] of speech after the reply was flushed, AND the run
+ * that fired was never [CLEARLY_USER_FACTOR] x its threshold loud. The level clause is from the A25
+ * (2026-10-27): a real short "stop" fired at 22,914 against an echo floor near 0, had only 128 ms of
+ * speech left after the fire, and was counted as echo. Echo that clears the threshold does so
+ * narrowly; a voice at twice it is the user. [MAX_SELF_INTERRUPTS] of those turn barge-in off for
+ * the rest of the session.
  */
 internal class BargeInGate {
 
     sealed interface Event {
         data class Fire(val prob: Float, val level: Int, val echoFloor: Int, val threshold: Int, val sustainMs: Int) : Event
-        data class Verdict(val selfInterrupt: Boolean, val speechMsAfter: Int, val selfInterrupts: Int, val nowDisabled: Boolean) : Event
+        data class Verdict(
+            val selfInterrupt: Boolean,
+            val speechMsAfter: Int,
+            val fireLevel: Int,
+            val fireThreshold: Int,
+            val selfInterrupts: Int,
+            val nowDisabled: Boolean,
+        ) : Event
     }
 
     var disabled = false
@@ -37,6 +48,8 @@ internal class BargeInGate {
     private var armed = false
     private var verdictWindowsLeft = 0
     private var speechAfterMs = 0
+    private var fireLevel = 0
+    private var fireThreshold = 0
 
     /** A new reply started playing: forget the last reply's echo. */
     fun onReplyStart() {
@@ -75,6 +88,8 @@ internal class BargeInGate {
         }
         if (qualifyingMs < SUSTAIN_MS) return null
         val fire = Event.Fire(maxProb, maxLevel, echoFloor(), threshold, qualifyingMs)
+        fireLevel = maxLevel
+        fireThreshold = threshold
         armed = false
         resetRun()
         verdictWindowsLeft = VERDICT_MS / WINDOW_MS
@@ -85,10 +100,11 @@ internal class BargeInGate {
     private fun watch(prob: Float): Event? {
         if (prob >= SPEECH_PROB) speechAfterMs += WINDOW_MS
         if (--verdictWindowsLeft > 0) return null
-        val self = speechAfterMs < SELF_SPEECH_MS
+        val clearlyUser = fireLevel >= fireThreshold * CLEARLY_USER_FACTOR
+        val self = speechAfterMs < SELF_SPEECH_MS && !clearlyUser
         if (self) selfInterrupts++
         if (selfInterrupts >= MAX_SELF_INTERRUPTS) disabled = true
-        return Event.Verdict(self, speechAfterMs, selfInterrupts, disabled)
+        return Event.Verdict(self, speechAfterMs, fireLevel, fireThreshold, selfInterrupts, disabled)
     }
 
     private fun learn(level: Int) {
@@ -125,5 +141,7 @@ internal class BargeInGate {
         const val VERDICT_MS = 1_216
         const val SELF_SPEECH_MS = 160
         const val MAX_SELF_INTERRUPTS = 2
+        /** A fire whose peak was at least this many times its threshold was the user, not echo. */
+        const val CLEARLY_USER_FACTOR = 2
     }
 }

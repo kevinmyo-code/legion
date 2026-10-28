@@ -6,8 +6,10 @@ The phone writes these lines from GeminiLiveSession / LiveToolbox (see LiveLaten
     reply_ms=<n>                           last user transcript chunk to first reply audio
     tool_ms=<n> tool=<name> sent=<bool>    toolCall received to toolResponse sent
     ask_engine_ms=<n> model=<id> result=<type>
-    eot_ms=<n> eot_reason=<base|extended|cap|fallback> st_scores=<score@asked>arrived,...>
-                                           silence before the phone's activityEnd (local end of turn)
+    eot_ms=<n> eot_reason=<base|extended|cap|fallback> eot_longest_silence_ms=<n> st_checks=<n>
+        st_scores=<score@asked>arrived,...>  silence before the phone's activityEnd (local end of turn);
+                                           extended = a Smart Turn hold carried some silence of the
+                                           turn past 700 ms; st_scores holds the last 4 checks only
     eot_reply_ms=<n>                       the phone's activityEnd to first reply audio
     st_score=<p> st_asked_at_ms=<n> st_arrive_ms=<n> st_feat_ms=<n> st_infer_ms=<n> ...
                                            one Smart Turn check; asked/arrived are ms of silence
@@ -32,14 +34,15 @@ Stdlib only. Self-test: python -m doctest tools/voice_latency.py
 ... 10-27 16:20:29.000  1234  5679 I LIVE_LATENCY: ask_engine_ms=3000 model=gemini-3.8-flash result=Success
 ... 10-27 16:20:30.000  1234  5679 I LIVE_FOLLOWUP: closed after silence
 ... 10-27 16:21:00.000  1234  5679 I LIVE_LATENCY: st_score=0.120 st_check=1 st_asked_at_ms=192 st_arrive_ms=480 st_queue_ms=0 st_feat_ms=40 st_infer_ms=250 frames=800
-... 10-27 16:21:00.900  1234  5679 I LIVE_LATENCY: eot_ms=1100 eot_reason=extended st_scores=0.12@192>480,0.71@480>1100
+... 10-27 16:21:00.900  1234  5679 I LIVE_LATENCY: eot_ms=1100 eot_reason=extended eot_longest_silence_ms=1100 st_checks=2 st_scores=0.12@192>480,0.71@480>1100
 ... 10-27 16:21:05.000  1234  5679 I LIVE_LATENCY: st_score=0.900 st_check=3 st_asked_at_ms=192 st_arrive_ms=820 st_queue_ms=0 st_feat_ms=40 st_infer_ms=590 frames=800
-... 10-27 16:21:05.100  1234  5679 I LIVE_LATENCY: eot_ms=704 eot_reason=base st_scores=none
+... 10-27 16:21:05.100  1234  5679 I LIVE_LATENCY: eot_ms=704 eot_reason=base eot_longest_silence_ms=704 st_checks=1 st_scores=none
 ... '''.splitlines()
 >>> rows = summarise(parse(sample))
 >>> for r in rows: print(r)
 ('ask_engine_ms', 'gemini-3.8-flash', 1, 3000, 3000, 3000)
 ('cold_start_ms', '', 1, 900, 900, 900)
+('eot_longest_silence_ms', '', 2, 704, 1100, 1100)
 ('eot_ms', 'base', 1, 704, 704, 704)
 ('eot_ms', 'extended', 1, 1100, 1100, 1100)
 ('reply_ms', '', 2, 1200, 2400, 2400)

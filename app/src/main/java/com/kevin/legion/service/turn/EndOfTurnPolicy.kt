@@ -18,6 +18,11 @@ package com.kevin.legion.service.turn
  *   the first one scoring >= [THRESHOLD] ([Reason.EXTENDED]), or at [CAP_MS] ([Reason.CAP]). A
  *   "done" verdict that lands before [BASE_MS] still waits for [BASE_MS].
  * - A first result that lands after [BASE_MS] changes nothing: the turn already ended.
+ * - So the end is max(base, first "done") when held, and never earlier than [BASE_MS]: a "done" that
+ *   lands before the base releases the hold and the base ends the turn (seen on the A25, intended).
+ * - The reason reports the whole turn: [Reason.EXTENDED] whenever a hold carried ANY silence of this
+ *   turn past [BASE_MS] (without Smart Turn it would have ended there), even if the user then spoke
+ *   again and the final silence ended at the base. [Action.EndActivity.longestSilenceMs] says how far.
  * - Without a working Smart Turn ([smartAvailable] false) it is silence only, [Reason.FALLBACK].
  */
 internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
@@ -29,7 +34,16 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         data class StartActivity(val onsetWindows: Int) : Action
         /** Run Smart Turn on the turn as it stands; answer with [onCheckResult] carrying [checkId]. */
         data class RequestCheck(val checkId: Int, val silenceMs: Int) : Action
-        data class EndActivity(val reason: Reason, val silenceMs: Int, val scores: List<Score>) : Action
+        /**
+         * [silenceMs] is the silence since the user's last speech, the one that ended the turn;
+         * [longestSilenceMs] is the longest silence inside the turn, which a hold may have stretched.
+         */
+        data class EndActivity(
+            val reason: Reason,
+            val silenceMs: Int,
+            val scores: List<Score>,
+            val longestSilenceMs: Int = silenceMs,
+        ) : Action
         /** Speech came back during the silence; anything pending was cancelled. */
         data class SpeechResumed(val afterSilenceMs: Int) : Action
     }
@@ -44,6 +58,9 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
     private var silenceMs = 0
     private var hold = false
     private var anyResult = false
+    // This turn: a hold carried a silence past the base at least once, and the longest silence seen.
+    private var extendedThisTurn = false
+    private var longestSilenceMs = 0
     private var checkId = 0
     private var inFlight: Int? = null
     private var inFlightAskedAt = 0
@@ -101,6 +118,8 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         candidateWindows = 0
         resetSilence()
         scores.clear()
+        extendedThisTurn = false
+        longestSilenceMs = 0
         return Action.StartActivity(0)
     }
 
@@ -145,6 +164,8 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         candidateWindows = 0
         resetSilence()
         scores.clear()
+        extendedThisTurn = false
+        longestSilenceMs = 0
     }
 
     private fun confirmIfLongEnough(): List<Action> {
@@ -154,12 +175,16 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         candidateWindows = 0
         resetSilence()
         scores.clear()
+        extendedThisTurn = false
+        longestSilenceMs = 0
         return listOf(Action.StartActivity(onset))
     }
 
     private fun advanceSilence(): List<Action> {
         val before = silenceMs
         silenceMs += WINDOW_MS
+        if (silenceMs > longestSilenceMs) longestSilenceMs = silenceMs
+        if (hold && before < BASE_MS && silenceMs >= BASE_MS) extendedThisTurn = true
         val out = mutableListOf<Action>()
         if (smartAvailable && before < GATE_MS && silenceMs >= GATE_MS && inFlight == null && !anyResult) {
             out += request()
@@ -167,7 +192,13 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         when {
             silenceMs >= CAP_MS -> out += end(Reason.CAP)
             silenceMs >= BASE_MS && !hold -> {
-                out += end(if (smartAvailable) Reason.BASE else Reason.FALLBACK)
+                out += end(
+                    when {
+                        extendedThisTurn -> Reason.EXTENDED
+                        smartAvailable -> Reason.BASE
+                        else -> Reason.FALLBACK
+                    },
+                )
             }
         }
         return out
@@ -181,9 +212,11 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
     }
 
     private fun end(reason: Reason): List<Action> {
-        val action = Action.EndActivity(reason, silenceMs, scores.toList())
+        val action = Action.EndActivity(reason, silenceMs, scores.toList(), maxOf(longestSilenceMs, silenceMs))
         phase = Phase.IDLE
         resetSilence()
+        extendedThisTurn = false
+        longestSilenceMs = 0
         return listOf(action)
     }
 

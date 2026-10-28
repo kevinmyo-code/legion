@@ -156,6 +156,7 @@ internal class TurnTaker(
                     sink.log(
                         BARGE_TAG,
                         "verdict self_interrupt=${ev.selfInterrupt} speech_after_ms=${ev.speechMsAfter} " +
+                            "fire_level=${ev.fireLevel} fire_threshold=${ev.fireThreshold} " +
                             "self_interrupts=${ev.selfInterrupts} disabled=${ev.nowDisabled}",
                     )
                     if (ev.nowDisabled && bargeIn) {
