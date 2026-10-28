@@ -3,7 +3,9 @@
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AssistantIdentity
+import com.kevin.legion.ai.LookupProbe
 import com.kevin.legion.ai.SubAgent
+import com.kevin.legion.service.LiveLatency
 
 /**
  * The OBD-II diagnostics specialist - the first investigating [SubAgent] the
@@ -45,8 +47,14 @@ object DiagnosticAgent {
             }
         }
         val q = question.ifBlank { "What do these codes mean and what should I do about them?" }
+        // One investigate_ms LIVE_LATENCY line per call (async-lookups ticket 03). tool= is the
+        // voice tool that reaches this agent; it has exactly one caller in LiveToolbox. The
+        // one-shot fallback below, when it runs, is not in the line.
         val agent = agent(context)
-        return when (val r = agent.investigate(ctx, q, CarToolbelt.forDiagnostics(context))) {
+        val probe = LookupProbe("diagnose_codes")
+        val investigated = agent.investigate(ctx, q, CarToolbelt.forDiagnostics(context), probe = probe)
+        LiveLatency.log(LiveLatency.TAG, LiveLatency.investigateLine(probe, investigated))
+        return when (val r = investigated) {
             AgentResult.Failed, AgentResult.Overloaded -> fallback(agent, ctx, q)
             else -> r
         }

@@ -3,7 +3,9 @@
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AssistantIdentity
+import com.kevin.legion.ai.LookupProbe
 import com.kevin.legion.ai.SubAgent
+import com.kevin.legion.service.LiveLatency
 
 /**
  * The symptom-triage specialist [SubAgent] - the "ask the car what's wrong in
@@ -47,8 +49,14 @@ object SymptomAgent {
         }
         val q = "Triage this symptom: the most likely causes (most likely first), how urgent it " +
             "is, and what to check or do next."
+        // One investigate_ms LIVE_LATENCY line per call (async-lookups ticket 03). tool= is the
+        // voice tool that reaches this agent; it has exactly one caller in LiveToolbox. The
+        // one-shot fallback below, when it runs, is not in the line.
         val agent = agent(context)
-        return when (val r = agent.investigate(ctx, q, CarToolbelt.forSymptoms(context))) {
+        val probe = LookupProbe("triage_symptom")
+        val investigated = agent.investigate(ctx, q, CarToolbelt.forSymptoms(context), probe = probe)
+        LiveLatency.log(LiveLatency.TAG, LiveLatency.investigateLine(probe, investigated))
+        return when (val r = investigated) {
             AgentResult.Failed, AgentResult.Overloaded -> {
                 val text = agent.ask(ctx, q)
                 if (text != null) AgentResult.Success(text) else AgentResult.Failed

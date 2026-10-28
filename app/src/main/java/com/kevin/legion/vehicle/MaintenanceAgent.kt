@@ -3,7 +3,9 @@
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AssistantIdentity
+import com.kevin.legion.ai.LookupProbe
 import com.kevin.legion.ai.SubAgent
+import com.kevin.legion.service.LiveLatency
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.ServiceRecord
@@ -73,8 +75,14 @@ object MaintenanceAgent {
             }
         }
         val q = question.ifBlank { "What maintenance is due or coming up, and what should I take care of?" }
+        // One investigate_ms LIVE_LATENCY line per call (async-lookups ticket 03). tool= is the
+        // voice tool that reaches this agent; it has exactly one caller in LiveToolbox. The
+        // one-shot fallback below, when it runs, is not in the line.
         val agent = agent(context)
-        return when (val r = agent.investigate(ctx, q, CarToolbelt.forMaintenance(context))) {
+        val probe = LookupProbe("ask_maintenance")
+        val investigated = agent.investigate(ctx, q, CarToolbelt.forMaintenance(context), probe = probe)
+        LiveLatency.log(LiveLatency.TAG, LiveLatency.investigateLine(probe, investigated))
+        return when (val r = investigated) {
             AgentResult.Failed, AgentResult.Overloaded -> {
                 val text = agent.ask(ctx, q)
                 if (text != null) AgentResult.Success(text) else AgentResult.Failed
