@@ -33,11 +33,13 @@ import com.kevin.legion.ai.personaFor
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.WakeWordPreferences
+import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.ui.ActiveCompanionRow
 import com.kevin.legion.ui.IgnitionRow
 import com.kevin.legion.ui.SettingsNavRow
 import com.kevin.legion.ui.TemperatureUnitRow
 import com.kevin.legion.ui.WakePipelineRow
+import com.kevin.legion.ui.VoiceTurnRow
 import com.kevin.legion.ui.WakeWordRow
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.help.VoiceGuideData
@@ -84,6 +86,8 @@ fun AssistantSettingsScreen(
     var wakeTwoStage by remember { mutableStateOf(WakeWordPreferences.useTwoStage(context)) }
     val wakeTripped = WakeWordPreferences.twoStageTripped(context)
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
+    var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
+    var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
 
     suspend fun reloadActiveProfile() {
@@ -195,6 +199,31 @@ fun AssistantSettingsScreen(
                         WakeWordPreferences.setEnabled(context, on)
                         wakeWordOn = on
                         if (on) WakeWordEngine.start(context) else WakeWordEngine.stop()
+                    },
+                )
+
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Smart end of turn",
+                    explanation = "the phone decides when you have finished, and waits through a " +
+                        "pause that sounds mid-thought. Applies from the next conversation.",
+                    enabled = smartEndOfTurn,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setSmartEndOfTurn(context, on)
+                        smartEndOfTurn = on
+                    },
+                )
+
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    // The persona is renameable (CLAUDE.md sec 1): never a hardcoded name in copy.
+                    title = "Interrupt ${activeName ?: "the assistant"} (call-style audio)",
+                    explanation = "talk over a reply to stop it; the phone uses call audio while you " +
+                        "talk. Never over car Bluetooth. Applies from the next conversation.",
+                    enabled = bargeIn,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setBargeIn(context, on)
+                        bargeIn = on
                     },
                 )
 

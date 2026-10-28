@@ -845,3 +845,30 @@ private fun PreviewWakeWordNoCompanion() = LegionTheme {
 private fun PreviewProactiveSpeechOff() = LegionTheme {
     Surface { ProactiveSpeechRow(proactiveOn = false, companionName = "Alfred", onToggle = {}) }
 }
+
+/**
+ * One of the two turn-taking switches (2026-10-27, Settings > Assistant): the hands path for smart
+ * end of turn and call-style barge-in. Read when a conversation's socket opens, so a change applies to
+ * the next conversation; the explanation says so.
+ */
+@Composable
+fun VoiceTurnRow(title: String, explanation: String, enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    (if (enabled) "On - " else "Off - ") + explanation,
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            DeckSwitch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
