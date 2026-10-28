@@ -2579,6 +2579,52 @@ object LiveToolbox {
         dispatchBoundaryClause("fleet") +
         Priming.dispatchClause(context, "fleet")
 
+    /**
+     * What the fleet router must know before its ONE round (ticket 04 run 2, A25, 2026-10-28).
+     * "Are there any trouble codes on the Jeep?" reached `ask_fleet`, and the router called only
+     * `list_vehicles`: every live codes tool (`get_codes`, `diagnose_codes`,
+     * `get_vehicle_data(trouble_codes)`) says it "cannot answer for any other car", and the router
+     * had no way to know which car the dongle was in, or whether it was in any. [SubAgent.route]
+     * gives it one POST, so the discovery call spent the round and the result held no codes.
+     *
+     * No fleet tool takes an id: the stored-record tools already take `vehicle` by name and resolve
+     * it through [withResolvedVehicle], which is why "next service on the Jeep" worked in one
+     * round. So this hands the router names, not ids: each car under the string that resolves
+     * (the nickname, matched exactly by [VehicleResolver]'s first tier, else the year-make-model
+     * spec, matched by its contains tier), which one is active, and where the dongle is. Appended
+     * to the router's system instruction, not the question, so [SubAgent.frameRouteResults] still
+     * echoes only the user's words. Billed on the router's REST call, not the Live setup payload.
+     *
+     * Pure so a JVM test pins it; the caller does the three reads `list_vehicles` does.
+     */
+    internal fun fleetRouteContext(vehicles: List<Vehicle>, activeId: String?, connectedId: String?): String {
+        if (vehicles.isEmpty()) {
+            return " No car is on file yet, so there is nothing to pass as `vehicle`."
+        }
+        fun key(v: Vehicle) = v.name.trim().ifBlank { VehicleController.identitySpec(v) }.ifBlank { v.obdMac }
+        fun entry(v: Vehicle): String {
+            val k = key(v)
+            val spec = VehicleController.identitySpec(v)
+            return if (spec.isBlank() || spec.equals(k, ignoreCase = true)) "\"$k\"" else "\"$k\" ($spec)"
+        }
+        val active = vehicles.firstOrNull { it.obdMac == activeId }
+        val connected = connectedId?.let { id -> vehicles.firstOrNull { it.obdMac == id } }
+        val dongle = when {
+            connectedId == null ->
+                "The OBD dongle is not connected to any car, so the live tools can read nothing right now."
+            connected == null ->
+                "The OBD dongle is plugged into a car that is not on file; the live tools read only that car."
+            else ->
+                "The OBD dongle is plugged into \"${key(connected)}\"; the live tools read only that car."
+        }
+        return " Cars on file: ${vehicles.joinToString(", ") { entry(it) }}." +
+            (active?.let { " Currently driving: \"${key(it)}\"." } ?: "") +
+            " $dongle For a car the dongle is not in, pass its quoted name as `vehicle` to the " +
+            "stored-record tools (code history, service, specs, recalls, build log, trends) in this " +
+            "same round. Every car is listed here, so call list_vehicles only when the question is " +
+            "about the cars themselves."
+    }
+
     private fun bodyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the user's meals, sleep, workouts, and bodyweight using the " +
         "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
@@ -2682,7 +2728,14 @@ object LiveToolbox {
                 requireMutation = wantsWrite(args),
             ) {
                 probedRoute(name) { probe ->
-                    SubAgent(systemInstruction = fleetDispatchGrounding(context)).route(
+                    // The router gets one round, so it is told which cars exist and where the
+                    // dongle is before it picks (ticket 04 run 2): see fleetRouteContext.
+                    val fleetLine = fleetRouteContext(
+                        com.kevin.legion.vehicle.FleetEngineStore.getAll(context),
+                        ActiveVehicle.current(context),
+                        ObdBluetoothManager.connectedDeviceAddress,
+                    )
+                    SubAgent(systemInstruction = fleetDispatchGrounding(context) + fleetLine).route(
                         question = args.optString("question"),
                         tools = agentToolsFor("fleet", context),
                         budgetMs = DISPATCH_ROUTE_BUDGET_MS,
