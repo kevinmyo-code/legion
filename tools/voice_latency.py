@@ -39,9 +39,12 @@ and matters only if it lands before the 700 ms base. The table is followed by ho
 
 Capture on the host, then summarise:
 
-    adb logcat -v threadtime -s LIVE_LATENCY > live.txt
+    adb logcat -v threadtime -s LIVE_AUDIT LIVE_LATENCY LIVE_FOLLOWUP LIVE_TOOL_CANCEL > live.txt
     python tools/voice_latency.py live.txt
     python tools/voice_latency.py live.txt --csv > live.csv
+    python tools/voice_audit.py live.txt        # who said what, and each tool's args and result
+
+The same capture feeds tools/voice_audit.py; this script reads only its LIVE_LATENCY lines.
 
 Stdlib only. Self-test: python -m doctest tools/voice_latency.py
 
