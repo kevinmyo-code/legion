@@ -217,7 +217,7 @@ class LiveSessionControllerRefusalTest {
     fun `no refusal path in the controller emits a bare notice any more`() {
         // Every driver-facing refusal goes through refuse(), which logs the sentence whether or not
         // it is shown. Direct showNotice() calls are still correct for things that are NOT
-        // refusals, and there are exactly six in the file:
+        // refusals, and there are exactly seven in the file:
         //   1. inside refuse() itself - the one call every refused ask funnels through;
         //   2. consumeThreadLossNotice - a reconnect that lost the conversation thread;
         //   3. the Idle branch's thirty-minute forgotten-conversation backstop;
@@ -225,6 +225,9 @@ class LiveSessionControllerRefusalTest {
         //   5. handleToolCall, when a tool response could not be sent because the socket had gone;
         //   6. the FollowUpExpired branch's "Conversation closed" (wake-word ticket 17) - the 8 s
         //      window lapsed, a deliberate close, said in words.
+        //   7. the TurnNotice branch (2026-10-27): a turn-taking fallback or barge-in switching
+        //      off for the conversation, said once in words. A change in how listening works, not
+        //      a refused ask.
         // The count is pinned rather than the call banned: a sixth one should be a decision
         // somebody makes out loud.
         val direct = Regex("CompanionPhase\\.showNotice\\(").findAll(controllerSource()).count()
@@ -232,7 +235,7 @@ class LiveSessionControllerRefusalTest {
             "a new CompanionPhase.showNotice() appeared in LiveSessionController. If it is a " +
                 "refused ask, route it through refuse() so the reason is logged even when the " +
                 "screen stays quiet; if it is not, update this count and say which it is.",
-            6,
+            7,
             direct,
         )
     }
