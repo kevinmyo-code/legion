@@ -198,6 +198,16 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // sherpa-onnx's x86/x86_64/v7 builds carry a shared libonnxruntime.so that collides with
+        // onnxruntime-android's at merge time. abiFilters ships arm64 only, where sherpa links ORT
+        // statically and there is no collision, so these picks never reach an APK.
+        jniLibs {
+            pickFirsts += listOf(
+                "lib/x86/libonnxruntime.so",
+                "lib/x86_64/libonnxruntime.so",
+                "lib/armeabi-v7a/libonnxruntime.so",
+            )
+        }
     }
     sourceSets {
         // Room's exported schema JSONs (app/schemas/) are bundled as androidTest
@@ -382,6 +392,8 @@ dependencies {
     // Stage 0 (Silero VAD) and stage 1 (keyword spotting) of the two-stage wake detector,
     // wake-word ticket 18. Vosk stays for stage 2 only.
     implementation("${libs.sherpa.onnx.get()}@aar")
+    // Smart end of turn and barge-in (2026-10-27): Silero VAD v6.2 + Smart Turn v3.2 on ONNX Runtime.
+    implementation(libs.onnxruntime.android)
 
     // supabase-kt (backend-erp Phase 1, .scratch/backend-erp/issues/05-migration-path.md).
     // BOM first so auth-kt/postgrest-kt below resolve to ONE release with no version.ref of
