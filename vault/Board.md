@@ -18,6 +18,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[02-non-blocking-read-tools\|02]] | build | Build: non-blocking read tools on the Live socket |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[03-fallback-model-and-probes\|03]] | build | Build: sub-agent fallback model and per-stage latency probes |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[23-the-second-household-account\|23]] | build | 23-the-second-household-account |
@@ -182,6 +184,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/architecture/map\|architecture]] | [[03-bind-the-backend-interfaces\|03]] | build | Bind the backend interfaces  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
 | [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected  waiting on [[03-bind-the-backend-interfaces\|03]] |
 | [[.scratch/architecture/map\|architecture]] | [[06-convert-as-touched-and-the-shim-trigger\|06]] | decision | Convert as touched, and when the shim retires  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[04-device-run-and-report\|04]] | test | Test: the A25 run that proves WHEN_IDLE speaks, and the lookup p50/p95  waiting on [[02-non-blocking-read-tools\|02]], [[03-fallback-model-and-probes\|03]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[02-session-vault-and-login-handover\|02]] | build | Session vault and the login handover script  waiting on [[01-job-runner-and-freshness\|01]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[06-drive-statements-watcher\|06]] | build | drive_statements: raw bank statements from a Drive folder, through the gate  waiting on [[02-session-vault-and-login-handover\|02]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[08-web-freshness-line\|08]] | build | The web app says how fresh each feed is  waiting on [[01-job-runner-and-freshness\|01]] |
@@ -286,6 +289,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
+| [[.scratch/async-lookups/map\|async-lookups]] | 4 | 3 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |

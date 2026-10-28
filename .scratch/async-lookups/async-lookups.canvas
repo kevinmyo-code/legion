@@ -1,0 +1,60 @@
+{
+  "nodes": [
+    {
+      "id": "a52ebcaa66a30905",
+      "type": "file",
+      "file": ".scratch/async-lookups/issues/01-reads-may-be-non-blocking.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "50283658af8f2d5b",
+      "type": "file",
+      "file": ".scratch/async-lookups/issues/02-non-blocking-read-tools.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "326b9485987f37d9",
+      "type": "file",
+      "file": ".scratch/async-lookups/issues/03-fallback-model-and-probes.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "33d5ea24481b9a15",
+      "type": "file",
+      "file": ".scratch/async-lookups/issues/04-device-run-and-report.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "784d7bf14effbe4e",
+      "fromNode": "50283658af8f2d5b",
+      "fromSide": "right",
+      "toNode": "33d5ea24481b9a15",
+      "toSide": "left"
+    },
+    {
+      "id": "2d18788d7c3ccfbf",
+      "fromNode": "326b9485987f37d9",
+      "fromSide": "right",
+      "toNode": "33d5ea24481b9a15",
+      "toSide": "left"
+    }
+  ]
+}
