@@ -1,3 +1,6 @@
+// A timing harness: its sizes and percentiles are the measurement, not tuning knobs.
+@file:Suppress("MagicNumber", "LongMethod")
+
 package com.kevin.legion.service.turn
 
 import android.content.BroadcastReceiver
@@ -117,6 +120,7 @@ class TurnBenchReceiver : BroadcastReceiver() {
         val pending = goAsync()
         val app = context.applicationContext
         Thread({
+            @Suppress("TooGenericExceptionCaught") // a failed bench is logged, never a crash
             try {
                 TurnBench.run(app, intent.getIntExtra("threads", SmartTurnModel.INFERENCE_THREADS))
             } catch (t: Throwable) {

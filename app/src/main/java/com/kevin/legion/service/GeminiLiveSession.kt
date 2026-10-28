@@ -1909,19 +1909,22 @@ class GeminiLiveSession(
      * when it does, call-style audio goes on and the playback track is rebuilt on the voice-call path.
      */
     private fun prepareBargeIn() {
-        val tt = turnTaker ?: return
-        if (!tt.bargeIn) return
+        val tt = turnTaker?.takeIf { it.bargeIn } ?: return
         val route = CallAudioMode.route(audioManager)
         if (route == AudioRoute.BLUETOOTH || TelephonyController.isInCall) {
             tt.disableBargeIn()
-            LiveLatency.log(TurnTaker.BARGE_TAG, "off for this session: route=$route inCall=${TelephonyController.isInCall}")
+            LiveLatency.log(
+                TurnTaker.BARGE_TAG,
+                "off for this session: route=$route inCall=${TelephonyController.isInCall}",
+            )
             return
         }
         val mode = callAudio ?: CallAudioMode(audioManager).also { callAudio = it }
-        if (mode.isActive) return
-        LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter()} route=$route")
-        rebuildTrack()
-        registerRouteWatch()
+        if (!mode.isActive) {
+            LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter()} route=$route")
+            rebuildTrack()
+            registerRouteWatch()
+        }
     }
 
     /** A Bluetooth device appearing mid-conversation turns barge-in off for the session (v1 ruling). */
@@ -1929,9 +1932,8 @@ class GeminiLiveSession(
         if (routeCallback != null) return
         val cb = object : android.media.AudioDeviceCallback() {
             override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>) {
-                if (added.none { it.isSink && CallAudioMode.isBluetooth(it.type) }) return
-                val tt = turnTaker ?: return
-                if (!tt.bargeIn) return
+                val bluetooth = added.any { it.isSink && CallAudioMode.isBluetooth(it.type) }
+                val tt = turnTaker?.takeIf { bluetooth && it.bargeIn } ?: return
                 tt.disableBargeIn()
                 LiveLatency.log(TurnTaker.BARGE_TAG, "off for this session: Bluetooth connected")
                 exitCallAudio("bluetooth connected")
@@ -1961,6 +1963,25 @@ class GeminiLiveSession(
         }
         audioTrack = null
         framesWritten = 0
+    }
+
+    /**
+     * First chunk after a flush: hold the track paused and let a little audio queue up, so a reply
+     * after an interrupt does not start choppy ([primeNeeded]). Must hold [trackLock].
+     */
+    private fun startPrimingIfNeeded(t: AudioTrack) {
+        if (!primeNeeded) return
+        primeNeeded = false
+        priming = true
+        primedFrames = 0
+        if (t.playState == AudioTrack.PLAYSTATE_PLAYING) t.pause()
+    }
+
+    /** Counts audio queued during a priming hold and starts playback once there is enough. */
+    private fun notePrimed(frames: Int) {
+        if (!priming) return
+        primedFrames += frames
+        if (primedFrames >= PRIME_FRAMES) releasePrime()
     }
 
     /** Ends a priming hold ([primeNeeded]): the queued start of the reply plays. */
@@ -2083,7 +2104,11 @@ class GeminiLiveSession(
         override fun onSileroFailed(reason: String) {
             TurnModels.markBroken("Silero threw: $reason")
             turnTaker = null
-            announceOnce("silero", "LOCAL TURN DETECTION FAILED - SWITCHING TO BASIC LISTENING", "Silero failed: $reason")
+            announceOnce(
+                "silero",
+                "LOCAL TURN DETECTION FAILED - SWITCHING TO BASIC LISTENING",
+                "Silero failed: $reason",
+            )
             if (!turnConfig.manualActivity) return // server VAD carries on; barge-in is simply gone
             if (speakingThisTurn || awaitingReply) {
                 sileroFallbackPending = true
@@ -2731,14 +2756,7 @@ class GeminiLiveSession(
         val track = synchronized(trackLock) {
             val t = ensureTrackLocked() ?: return
             try {
-                // First chunk after a flush: hold the track paused and let a little audio queue up,
-                // so a reply after an interrupt does not start choppy ([primeNeeded]).
-                if (primeNeeded) {
-                    primeNeeded = false
-                    priming = true
-                    primedFrames = 0
-                    if (t.playState == AudioTrack.PLAYSTATE_PLAYING) t.pause()
-                }
+                startPrimingIfNeeded(t)
                 // Not while a navigation turn cue holds playback paused ([cueHold]); the chunk is
                 // still written and waits in the buffer, and [releaseAfterCue] resumes it.
                 if (!priming && t.playState != AudioTrack.PLAYSTATE_PLAYING &&
@@ -2773,10 +2791,7 @@ class GeminiLiveSession(
         // soon as the data is accepted into the buffer. awaitPlaybackDrained compares
         // this against the playback head to tell when Zero has really stopped talking.
         framesWritten += offset / BYTES_PER_FRAME
-        if (priming) {
-            primedFrames += offset / BYTES_PER_FRAME
-            if (primedFrames >= PRIME_FRAMES) releasePrime()
-        }
+        notePrimed(offset / BYTES_PER_FRAME)
         // DIAGNOSTIC (B12, remove once root-caused): pairs with the "audio chunk
         // recv" log - a large gap between recv and this write-complete timestamp
         // means the AudioTrack write blocked (stalled hardware/focus), which would

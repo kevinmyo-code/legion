@@ -46,20 +46,28 @@ internal class SileroVad(private val env: OrtEnvironment, modelBytes: ByteArray)
             input.fill(0f)
         }
 
+        private fun copyState(next: Array<Array<FloatArray>>) {
+            var i = 0
+            for (a in next) {
+                for (b in a) {
+                    System.arraycopy(b, 0, state, i, b.size)
+                    i += b.size
+                }
+            }
+        }
+
         override fun prob(window: FloatArray): Float {
             require(window.size == WINDOW) { "Silero window must be $WINDOW samples" }
             System.arraycopy(window, 0, input, CONTEXT, WINDOW)
             val x = OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, (CONTEXT + WINDOW).toLong()))
-            val st = OnnxTensor.createTensor(env, FloatBuffer.wrap(state), longArrayOf(2, 1, 128))
-            val sr = OnnxTensor.createTensor(env, java.nio.LongBuffer.wrap(longArrayOf(16_000L)), longArrayOf())
+            val st = OnnxTensor.createTensor(env, FloatBuffer.wrap(state), STATE_SHAPE)
+            val sr = OnnxTensor.createTensor(env, java.nio.LongBuffer.wrap(longArrayOf(SAMPLE_RATE)), longArrayOf())
             try {
                 session.run(mapOf("input" to x, "state" to st, "sr" to sr)).use { r ->
                     @Suppress("UNCHECKED_CAST")
                     val p = (r.get(0).value as Array<FloatArray>)[0][0]
                     @Suppress("UNCHECKED_CAST")
-                    val next = r.get(1).value as Array<Array<FloatArray>>
-                    var i = 0
-                    for (a in next) for (b in a) for (v in b) state[i++] = v
+                    copyState(r.get(1).value as Array<Array<FloatArray>>)
                     // Context for the next window is the tail of this input.
                     System.arraycopy(input, WINDOW, input, 0, CONTEXT)
                     return p
@@ -74,6 +82,8 @@ internal class SileroVad(private val env: OrtEnvironment, modelBytes: ByteArray)
         const val WINDOW = 512
         const val CONTEXT = 64
         private const val STATE_SIZE = 2 * 1 * 128
+        private val STATE_SHAPE = longArrayOf(2, 1, 128)
+        private const val SAMPLE_RATE = 16_000L
     }
 }
 
@@ -171,10 +181,12 @@ internal object TurnModels {
             val started = System.currentTimeMillis()
             // Assigned before the latch opens: a `state = try { } finally { countDown() }` opens it
             // first, and a waiter then reads Loading (seen on the A25, 2026-10-27).
+            @Suppress("TooGenericExceptionCaught") // any native load failure means fall back, said once
             val result: State = try {
                 val env = OrtEnvironment.getEnvironment()
                 val silero = SileroVad(env, app.assets.open(SILERO_ASSET).use { it.readBytes() })
                 var smartError: String? = null
+                @Suppress("TooGenericExceptionCaught") // same: Smart Turn alone falls back to silence
                 val smart = try {
                     SmartTurnModel(env, app.assets.open(SMART_TURN_ASSET).use { it.readBytes() })
                 } catch (t: Throwable) {

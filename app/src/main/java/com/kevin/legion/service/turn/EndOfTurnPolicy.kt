@@ -186,22 +186,24 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         if (silenceMs > longestSilenceMs) longestSilenceMs = silenceMs
         if (hold && before < BASE_MS && silenceMs >= BASE_MS) extendedThisTurn = true
         val out = mutableListOf<Action>()
-        if (smartAvailable && before < GATE_MS && silenceMs >= GATE_MS && inFlight == null && !anyResult) {
-            out += request()
-        }
+        if (crossedGate(before)) out += request()
         when {
             silenceMs >= CAP_MS -> out += end(Reason.CAP)
-            silenceMs >= BASE_MS && !hold -> {
-                out += end(
-                    when {
-                        extendedThisTurn -> Reason.EXTENDED
-                        smartAvailable -> Reason.BASE
-                        else -> Reason.FALLBACK
-                    },
-                )
-            }
+            silenceMs >= BASE_MS && !hold -> out += end(
+                when {
+                    extendedThisTurn -> Reason.EXTENDED
+                    smartAvailable -> Reason.BASE
+                    else -> Reason.FALLBACK
+                },
+            )
         }
         return out
+    }
+
+    /** This window crossed [GATE_MS] and the one check of this silence has not run yet. */
+    private fun crossedGate(before: Int): Boolean {
+        val crossed = before < GATE_MS && silenceMs >= GATE_MS
+        return crossed && smartAvailable && inFlight == null && !anyResult
     }
 
     private fun request(): Action.RequestCheck {

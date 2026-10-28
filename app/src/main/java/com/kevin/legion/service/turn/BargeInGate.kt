@@ -23,7 +23,13 @@ package com.kevin.legion.service.turn
 internal class BargeInGate {
 
     sealed interface Event {
-        data class Fire(val prob: Float, val level: Int, val echoFloor: Int, val threshold: Int, val sustainMs: Int) : Event
+        data class Fire(
+            val prob: Float,
+            val level: Int,
+            val echoFloor: Int,
+            val threshold: Int,
+            val sustainMs: Int,
+        ) : Event
         data class Verdict(
             val selfInterrupt: Boolean,
             val speechMsAfter: Int,
@@ -72,9 +78,13 @@ internal class BargeInGate {
      * One window. [playing] is true while the reply is audible. Returns a [Event.Fire] when the user
      * is talking over it, a [Event.Verdict] when a fire's watch period ends, otherwise null.
      */
-    fun onWindow(prob: Float, level: Int, playing: Boolean): Event? {
-        if (verdictWindowsLeft > 0) return watch(prob)
-        if (!armed || !playing || disabled) return null
+    fun onWindow(prob: Float, level: Int, playing: Boolean): Event? = when {
+        verdictWindowsLeft > 0 -> watch(prob)
+        !armed || !playing || disabled -> null
+        else -> listen(prob, level)
+    }
+
+    private fun listen(prob: Float, level: Int): Event? {
         val threshold = threshold()
         val qualifies = prob >= PROB && level >= threshold
         if (qualifies) {
@@ -113,7 +123,7 @@ internal class BargeInGate {
 
     private fun percentile(): Int {
         val s = levels.copyOf(learned).also { it.sort() }
-        val idx = ((ECHO_PERCENTILE / 100.0) * (s.size - 1)).toInt()
+        val idx = ((ECHO_PERCENTILE / PERCENT) * (s.size - 1)).toInt()
         return s[idx]
     }
 
@@ -133,6 +143,7 @@ internal class BargeInGate {
         const val ALLOWED_MISSES = 1
         const val ECHO_MARGIN = 1.5f
         const val ECHO_PERCENTILE = 90
+        private const val PERCENT = 100.0
         /** A25 call mode, 2026-10-27: echo peaked ~10,000. Used until the reply has taught its own. */
         const val DEFAULT_ECHO_FLOOR = 12_000
         const val MIN_LEVEL = 3_000

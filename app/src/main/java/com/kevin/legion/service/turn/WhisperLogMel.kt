@@ -1,3 +1,7 @@
+// Numerics transcribed from the reference extractor (FFT radices, Hann and mel constants), kept inline
+// so they read line for line against it; WhisperLogMelGoldenTest pins the result.
+@file:Suppress("MagicNumber", "LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
+
 package com.kevin.legion.service.turn
 
 import kotlin.math.PI

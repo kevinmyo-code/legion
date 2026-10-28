@@ -19,6 +19,7 @@ import java.util.concurrent.Executors
  * - server VAD with barge-in: everything goes up except while the reply is audible; a barge-in
  *   sends the ring first so the server's VAD hears the onset.
  */
+@Suppress("TooManyFunctions") // one small step per concern; splitting the class would split the lock
 internal class TurnTaker(
     config: TurnConfig,
     private val silero: SpeechProbStream,
@@ -100,8 +101,8 @@ internal class TurnTaker(
         var ended = false
         var i = 0
         while (i + 1 < n) {
-            val s = ((pcm[i].toInt() and 0xff) or (pcm[i + 1].toInt() shl 8)).toShort()
-            window[windowFill++] = s / 32768f
+            val s = ((pcm[i].toInt() and BYTE_MASK) or (pcm[i + 1].toInt() shl BITS_PER_BYTE)).toShort()
+            window[windowFill++] = s / PCM_SCALE
             i += 2
             if (windowFill == SileroVad.WINDOW) {
                 windowFill = 0
@@ -117,59 +118,67 @@ internal class TurnTaker(
     private fun processWindow(playing: Boolean): Int? {
         var level = 0
         for (v in window) {
-            val a = kotlin.math.abs((v * 32768f).toInt())
+            val a = kotlin.math.abs((v * PCM_SCALE).toInt())
             if (a > level) level = a
         }
-        val prob = try {
-            silero.prob(window)
-        } catch (t: Throwable) {
-            failed = true
-            if (policy.inActivity) sink.sendActivityEnd()
-            policy.reset()
-            sink.onSileroFailed("${t.javaClass.simpleName}: ${t.message}")
-            return null
-        }
+        val prob = sileroProb() ?: return null
         appendFloatRing()
         if (policy.inActivity) appendTurn(window, 0, window.size)
         if (prob >= EndOfTurnPolicy.START_PROB && !playing) sink.onLocalSpeech()
-        var outcome = 0
-        if (bargeIn) {
-            when (val ev = gate.onWindow(prob, level, playing)) {
-                is BargeInGate.Event.Fire -> {
-                    bargedThisReply = true
-                    outcome = outcome or BARGED
-                    sink.log(
-                        BARGE_TAG,
-                        "fire prob=${"%.2f".format(java.util.Locale.US, ev.prob)} level=${ev.level} " +
-                            "echo_floor=${ev.echoFloor} threshold=${ev.threshold} sustain_ms=${ev.sustainMs}",
-                    )
-                    if (manual) {
-                        policy.forceStart()?.let {
-                            beginTurnAudio(BargeInGate.SUSTAIN_MS / EndOfTurnPolicy.WINDOW_MS + 1)
-                            outcome = outcome or STARTED
-                        }
-                    }
-                    sink.onBargeIn(ev)
-                    sink.onUserTurnStart(bargeIn = true)
-                }
-                is BargeInGate.Event.Verdict -> {
-                    sink.log(
-                        BARGE_TAG,
-                        "verdict self_interrupt=${ev.selfInterrupt} speech_after_ms=${ev.speechMsAfter} " +
-                            "fire_level=${ev.fireLevel} fire_threshold=${ev.fireThreshold} " +
-                            "self_interrupts=${ev.selfInterrupts} disabled=${ev.nowDisabled}",
-                    )
-                    if (ev.nowDisabled && bargeIn) {
-                        bargeIn = false
-                        sink.onBargeInDisabled(ev.selfInterrupts)
-                    }
-                }
-                null -> Unit
-            }
-        }
+        var outcome = if (bargeIn) gateWindow(prob, level, playing) else 0
         // While the reply is audible the echo is speech too: only the gate may start a turn.
         if (manual && (!playing || policy.inActivity)) {
             outcome = outcome or handle(policy.onWindow(prob))
+        }
+        return outcome
+    }
+
+    /** Silero on [window]; null (and the session told) when it throws. */
+    @Suppress("TooGenericExceptionCaught") // anything from the native runtime means fall back
+    private fun sileroProb(): Float? = try {
+        silero.prob(window)
+    } catch (t: Throwable) {
+        failed = true
+        if (policy.inActivity) sink.sendActivityEnd()
+        policy.reset()
+        sink.onSileroFailed("${t.javaClass.simpleName}: ${t.message}")
+        null
+    }
+
+    /** One window through the echo gate. Returns STARTED/BARGED bits. Must hold [lock]. */
+    private fun gateWindow(prob: Float, level: Int, playing: Boolean): Int {
+        var outcome = 0
+        when (val ev = gate.onWindow(prob, level, playing)) {
+            is BargeInGate.Event.Fire -> {
+                bargedThisReply = true
+                outcome = outcome or BARGED
+                sink.log(
+                    BARGE_TAG,
+                    "fire prob=${"%.2f".format(java.util.Locale.US, ev.prob)} level=${ev.level} " +
+                        "echo_floor=${ev.echoFloor} threshold=${ev.threshold} sustain_ms=${ev.sustainMs}",
+                )
+                if (manual) {
+                    policy.forceStart()?.let {
+                        beginTurnAudio(BargeInGate.SUSTAIN_MS / EndOfTurnPolicy.WINDOW_MS + 1)
+                        outcome = outcome or STARTED
+                    }
+                }
+                sink.onBargeIn(ev)
+                sink.onUserTurnStart(bargeIn = true)
+            }
+            is BargeInGate.Event.Verdict -> {
+                sink.log(
+                    BARGE_TAG,
+                    "verdict self_interrupt=${ev.selfInterrupt} speech_after_ms=${ev.speechMsAfter} " +
+                        "fire_level=${ev.fireLevel} fire_threshold=${ev.fireThreshold} " +
+                        "self_interrupts=${ev.selfInterrupts} disabled=${ev.nowDisabled}",
+                )
+                if (ev.nowDisabled && bargeIn) {
+                    bargeIn = false
+                    sink.onBargeInDisabled(ev.selfInterrupts)
+                }
+            }
+            null -> Unit
         }
         return outcome
     }
@@ -239,6 +248,7 @@ internal class TurnTaker(
         val key = turnKey
         val asked = System.nanoTime()
         INFERENCE.execute {
+            @Suppress("TooGenericExceptionCaught") // a throwing check means silence-only from here on
             try {
                 val t0 = System.nanoTime()
                 val features = MEL.extractTurn(audio, len, key)
@@ -251,8 +261,8 @@ internal class TurnTaker(
                         LATENCY_TAG,
                         "st_score=${"%.3f".format(java.util.Locale.US, score)} st_check=${a.checkId} " +
                             "st_asked_at_ms=${a.silenceMs} st_arrive_ms=${policy.currentSilenceMs} " +
-                            "st_queue_ms=${(t0 - asked) / 1_000_000} st_feat_ms=${(t1 - t0) / 1_000_000} " +
-                            "st_infer_ms=${(t2 - t1) / 1_000_000} frames=$frames",
+                            "st_queue_ms=${(t0 - asked) / NANOS_PER_MS} st_feat_ms=${(t1 - t0) / NANOS_PER_MS} " +
+                            "st_infer_ms=${(t2 - t1) / NANOS_PER_MS} frames=$frames",
                     )
                     handle(policy.onCheckResult(a.checkId, score))
                 }
@@ -327,6 +337,10 @@ internal class TurnTaker(
         private const val FLOAT_RING = 16_000
         private const val INITIAL_TURN = 16_000 * 4
         private const val MAX_TURN = 16_000 * 16
+        private const val BYTE_MASK = 0xff
+        private const val BITS_PER_BYTE = 8
+        private const val PCM_SCALE = 32_768f
+        private const val NANOS_PER_MS = 1_000_000L
         private const val STARTED = 1
         private const val BARGED = 2
         private const val ENDED = 4
