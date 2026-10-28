@@ -4,7 +4,7 @@ ticket: "02"
 title: "Build: non-blocking read tools on the Live socket"
 type: build
 status: built
-status-detail: "Built 2026-10-28 on feat/async-read-tools, suite green, assembleFast builds. Non-blocking set: ask_fleet, ask_body, ask_goals, ask_pantry (Kevin 2026-10-28: bookkeeping is not a write). Follow-up: the WORKING indicator shows only in THINKING, not while a lookup runs under the holding line (step 4)."
+status-detail: "Built 2026-10-28 on feat/async-read-tools, suite green, assembleFast builds. Non-blocking set: ask_fleet, ask_body, ask_goals, ask_pantry (Kevin 2026-10-28: bookkeeping is not a write). Follow-up: the WORKING indicator shows only in THINKING, not while a lookup runs under the holding line (step 4). Ticket 04 run 2 fixes, built not yet on-device: (A) a late WHEN_IDLE result was denied, so LOOKUP_HOLD_CLAUSE now ties it to its question; (B) the fleet router spent its one round on list_vehicles, so it now gets the cars and the dongle state up front."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -89,6 +89,38 @@ Implements ticket 01. Phone only. Branch `feat/async-read-tools`, off `dev` at `
 - `./gradlew assembleFast` builds. Install is Kevin's (ticket 04).
 - On-device (ticket 04): "any trouble codes?" gives a holding line, then the answer arrives
   unprompted; the `LIVE_LATENCY` line shows the tool finished after the holding line started.
+
+## Findings from ticket 04 run 2 (A25, gemini-3.8-live, 2026-10-28)
+
+`WHEN_IDLE` works: after each async lookup the model ended its turn, the result arrived, and the
+model opened a new turn by itself. Two failures, both fixed on this branch, neither yet heard on
+the phone:
+
+- **A late result was denied.** `ask_body` "What did I eat yesterday?" came back with five meals,
+  1,083 ms after turn_complete; the new turn said "I don't have that information." No holding line
+  was spoken on that turn. Reasoned cause: `CANNOT_CLAUSE` and `DATA_ACCESS_CLAUSE` both key on a
+  tool "this turn", and a `WHEN_IDLE` result opens a turn with no user speech. Fix:
+  `LOOKUP_HOLD_CLAUSE` now says such a result belongs to the question that asked for it, counts as
+  this turn's result, is never denied, and when it lacks what was asked is described instead; the
+  router's relay frame names the question as the user's and says to answer it. Presence is pinned
+  in `AriaBrainHonestyClauseTest`; obedience needs the next phone run.
+- **The fleet router spent its one round on discovery.** "Any trouble codes on the Jeep?" made the
+  router call only `list_vehicles`. The premise that a codes read needs an id first is wrong: no
+  fleet tool takes an id, the stored-record tools already take `vehicle` by name, and the live
+  codes tools read only the car the dongle is in. The router could not know which car that was.
+  Fix: `LiveToolbox.fleetRouteContext` appends the cars (each under a name `VehicleResolver`
+  matches), the active car and the dongle state to the router's system instruction. Pinned in
+  `LiveToolboxFleetRouteContextTest`; whether the real router then picks a codes tool needs the
+  next phone run. With no dongle, the honest answer is stored code history plus "live codes need
+  the dongle", not a live read.
+- **First run, `clear_codes` mis-route (not fixed here).** "Any trouble codes" went to
+  `clear_codes`, which refused in 6 ms. Its description says the confirmed=false call "reads the
+  stored codes", which makes the one live-declared tool that mentions codes sound like a reader;
+  `ask_fleet` lists "trouble codes" only mid-list among nine other subjects. Proposed, for Kevin:
+  in `clear_codes`, "it reads the stored codes and returns" becomes "it previews what would be
+  erased and returns", and "Use when the user asks to clear codes, reset the check engine light,
+  or erase trouble codes." becomes "Use ONLY when the user asks to clear, reset or erase codes; to
+  read or ask about codes, use ask_fleet." Roughly token-neutral.
 
 ## Out of scope
 
