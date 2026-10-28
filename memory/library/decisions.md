@@ -6883,3 +6883,19 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   idiom list (including "quid", which invites a currency the shared rule forbids assuming) cut.
   Examples live in async-lookups ticket 06, never in the prompt. No ADR: ADR 0063 already names
   Alfred as the one persona and `Personas.kt` as its register; this is copy under it.
+
+## 2026-10-28 - Voice: a still-checking line at 4 s and 12 s of a running lookup (Kevin)
+
+- **Kevin, after ticket 04 run 3** (a two-call `ask_fleet` chain ran 9 s with no holding line, 13.8 s
+  of silence before the first audio): *"if checks are longer than x seconds, send another 'still
+  checking' etc msg"*.
+- **Ruling:** a NON_BLOCKING lookup still running at 4 s, with nobody speaking and no reply being
+  generated, gets one system note asking for a short still-checking line in character, no facts; at
+  most once more at 12 s. Never after the result, never while a blocking tool runs, never for a call
+  the user has spoken over. On whenever async lookups are on; no setting of its own.
+- **Same batch, same run:** a turn that is only a holding line, after its result or with no tool
+  behind it, gets one note to answer; the 8 s follow-up window holds while an answer is owed, capped
+  at 20 s (run 3 lost the answer and the conversation three times to that close). Prompt: no
+  holding line without a tool call or after the result; a record is written only on request;
+  time-varying figures only from a tool or search result. Async-lookups ticket 07. No ADR: ADR 0065
+  governs async lookups and this tunes their behaviour under it.

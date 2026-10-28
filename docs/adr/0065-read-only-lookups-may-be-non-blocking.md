@@ -52,7 +52,7 @@ outcome, then nothing until the result. Source: `.scratch/async-lookups/issues/0
   (one line, `VoiceTurnSettings.ASYNC_LOOKUPS_DEFAULT`). Ticket 04 is that test.
 - **The follow-up window waits for the lookup.** A lookup still running when the 8 s window
   ([ADR 0064](0064-phone-turn-taking-local-end-of-turn-and-barge-in.md)) expires holds the
-  conversation open, and its result re-arms the window, so an answer never spoken still ends it.
+  conversation open, and its result re-arms the window, so an answer never spoken still ends it. Since ticket 07 the window holds while an answer is owed (a sent result or a bare holding line), at most 20 s, so a holding line spoken after the result cannot end the conversation before the answer.
 - **A cancelled lookup is dropped.** Barge-in cancels it like any call; nothing was written, so
   there is nothing to report.
 - **The prompt rule is the only lever.** As with ADR 0031, a test guards the clause's presence,

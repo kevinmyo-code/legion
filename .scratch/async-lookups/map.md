@@ -4,8 +4,8 @@ title: "Lookups answer while Alfred keeps talking"
 charted: 2026-10-28
 charted-by: "Kevin + Fable"
 effort: "`.scratch/async-lookups/`"
-tickets: 6
-open: 5
+tickets: 7
+open: 0
 status: open
 tags: [map]
 ---
@@ -47,6 +47,7 @@ capture says how long each stage of a lookup took.
 - 04 test: the A25 run that proves `WHEN_IDLE` speaks the result on `gemini-3.8-live`, and the p50/p95 report
 - 05 build: conversation audit log, `LIVE_AUDIT` lines with what was said and each tool's args and result, read by `tools/voice_audit.py` (Kevin, 2026-10-28)
 - 06 build: a livelier register for Alfred (quick, dry, quietly amused; the manner, not the lines), holding lines varied (Kevin, 2026-10-28)
+- 07 build: ticket 04 run 3 follow-ups: a still-checking nudge at 4 s and 12 s (Kevin, 2026-10-28), a nudge for a holding line with nothing behind it and a 20 s answer hold on the follow-up window, sign-off, writes only when asked, time-varying figures only from a result, meal dates, `voice_audit.py` fixes
 
 ## The gate
 

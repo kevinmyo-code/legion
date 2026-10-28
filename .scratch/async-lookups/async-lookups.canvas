@@ -31,11 +31,21 @@
       "color": "1"
     },
     {
+      "id": "33d5ea24481b9a15",
+      "type": "file",
+      "file": ".scratch/async-lookups/issues/04-device-run-and-report.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "f56f064600504fdf",
       "type": "file",
       "file": ".scratch/async-lookups/issues/05-conversation-audit-log.md",
       "x": 0,
-      "y": 450,
+      "y": 600,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -45,36 +55,21 @@
       "type": "file",
       "file": ".scratch/async-lookups/issues/06-alfred-register.md",
       "x": 0,
-      "y": 600,
+      "y": 750,
       "width": 320,
       "height": 110,
       "color": "1"
     },
     {
-      "id": "33d5ea24481b9a15",
+      "id": "7e5187866094aeb4",
       "type": "file",
-      "file": ".scratch/async-lookups/issues/04-device-run-and-report.md",
-      "x": 520,
-      "y": 0,
+      "file": ".scratch/async-lookups/issues/07-run3-follow-ups.md",
+      "x": 0,
+      "y": 900,
       "width": 320,
       "height": 110,
       "color": "1"
     }
   ],
-  "edges": [
-    {
-      "id": "784d7bf14effbe4e",
-      "fromNode": "50283658af8f2d5b",
-      "fromSide": "right",
-      "toNode": "33d5ea24481b9a15",
-      "toSide": "left"
-    },
-    {
-      "id": "2d18788d7c3ccfbf",
-      "fromNode": "326b9485987f37d9",
-      "fromSide": "right",
-      "toNode": "33d5ea24481b9a15",
-      "toSide": "left"
-    }
-  ]
+  "edges": []
 }
