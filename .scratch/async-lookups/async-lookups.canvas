@@ -41,6 +41,16 @@
       "color": "1"
     },
     {
+      "id": "57c78c5cc28e7100",
+      "type": "file",
+      "file": ".scratch/async-lookups/issues/06-alfred-register.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "33d5ea24481b9a15",
       "type": "file",
       "file": ".scratch/async-lookups/issues/04-device-run-and-report.md",

@@ -86,6 +86,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/async-lookups/map\|async-lookups]] | [[02-non-blocking-read-tools\|02]] | build | Build: non-blocking read tools on the Live socket |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[03-fallback-model-and-probes\|03]] | build | Build: sub-agent fallback model and per-stage latency probes |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[05-conversation-audit-log\|05]] | build | Build: conversation audit log in logcat (LIVE_AUDIT) |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[06-alfred-register\|06]] | build | Build: a livelier register for Alfred (quick, dry, quietly amused) |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[08-receipts-whose-anchors-were-never-stored\|08]] | build | 08-receipts-whose-anchors-were-never-stored |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[09-backups-do-not-cover-files\|09]] | build | 09-backups-do-not-cover-files |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[10-fleet-cutover\|10]] | build | 10-fleet-cutover |
@@ -290,7 +291,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
-| [[.scratch/async-lookups/map\|async-lookups]] | 5 | 4 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
+| [[.scratch/async-lookups/map\|async-lookups]] | 6 | 5 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |

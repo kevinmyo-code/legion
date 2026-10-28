@@ -6864,3 +6864,22 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   `EPISODIC_EXCLUDED_TOOLS` logs the assistant's speech and the mail tool's result as
   `[redacted: third-party content]`. The user's own words still log. No ADR: a logging sink under an
   existing rule, not a new ruling.
+
+## 2026-10-28 - Phone: a livelier register for Alfred, the manner and not the lines (Kevin)
+
+- **Kevin:** *"right now he sounds very generic, maybe because its alfred, can we make him more
+  lively and have a bit of personality? like you know how tony stark's jarvis talks"*. The day's
+  `LIVE_AUDIT` capture: every answer correct, every answer flat, the same holding line before each
+  lookup, a bare figure with no read, a stock butler sign-off.
+- **Ruling, agreed with Kevin:** quick, dry, quietly amused, competent. The MANNER of a film-butler
+  AI in our own words; no film dialogue or catchphrase quoted or paraphrased. One understated
+  remark per answer at most, never at the user; a number gets a read; reacts rather than recites;
+  the obvious next step offered once, never pushed (sec 7 compulsion rules bind); holding lines
+  vary; "sir" sparingly; a sign-off is one dry line.
+- **Unchanged:** every honesty rule (nothing before a result, estimates labelled, unknowns said
+  plainly), the concierge frame, and `LOOKUP_HOLD_CLAUSE`'s rules (only its example changed).
+  Honesty is written above wit inside the register itself.
+- `ALFRED.clause`, `delivery`, `shortClause` and `blurb` rewritten; "past sixty" and the stock
+  idiom list (including "quid", which invites a currency the shared rule forbids assuming) cut.
+  Examples live in async-lookups ticket 06, never in the prompt. No ADR: ADR 0063 already names
+  Alfred as the one persona and `Personas.kt` as its register; this is copy under it.
