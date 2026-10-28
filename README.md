@@ -17,7 +17,7 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 | **Engine** | Django + DRF over Postgres, the only writer, scoped by household |
 | **Voice** | Gemini Live speech-to-speech, on-device end-of-turn detection, interruptible |
 | **AI on the side** | Flash-Lite sub-agents for domain lookups, a text model for typed chat, vision for receipts |
-| **Phone stack** | Kotlin, Jetpack Compose, Room, Hilt, ONNX Runtime |
+| **Phone stack** | Kotlin, Jetpack Compose, Room, ONNX Runtime |
 
 ## What it does
 
