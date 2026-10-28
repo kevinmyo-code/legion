@@ -30,11 +30,11 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 | Goals / Advisors | Budget and habit targets with a structured, schema-constrained LLM advisor pass, and a cross-aspect daily digest |
 | Music | Spotify voice control on the user's own client ID: play by name resolved against their own library before the catalogue, a 20-action control surface, now-playing read from Spotify's own pushed player state |
 | Navigation | In-app turn-by-turn on the Mapbox Navigation SDK and the household's own token (ADR 0054), with turn cues spoken in LEGION's own voice and voice tools over the live trip. No hand-off to another map app |
-| Companions | A named companion picked per profile. One of them, Marcus Aurelius, answers from a bundled public-domain translation of the Meditations, searched deterministically and cited by book and section |
+| Assistant | One assistant persona on the phone (ADR 0063): a dry, butler-register voice whose name and voice are the user's to change. Tap to talk or a wake phrase; it ends a turn when you finish a thought, not at the first pause, and on the phone's speaker can be interrupted mid-reply. Typed messages go to a text model with the same tools |
 | Games | A launcher on HOME, not an aspect (ADR 0058): ROMs read through a folder grant, launched in the emulator, with box art fetched once and cached |
 | Books | A launcher on HOME beside Games, not an aspect (ADR 0061): EPUB, PDF and CBZ read from a folder grant in LEGION's own reader (Readium for EPUB, the platform `PdfRenderer` for PDF, a zip-of-images viewer for comics), covers taken from the files, position and bookmarks kept on the phone, EPUBs read aloud with the phone's own voice. A CBR is listed and says it is not supported |
 
-Six life domains, one voice loop, two clients. LEGION may also be the phone's home app (ADR 0050,
+Six life domains, one voice loop, three clients. LEGION may also be the phone's home app (ADR 0050,
 opt-in through Android's own Settings). HOME is the calendar: a month grid and the chosen day's
 agenda, one row of six chips that open panel sheets (Games and Books among them), and a More button for the
 weather and the per-area tiles that tap through to their own screens.
@@ -152,10 +152,32 @@ The diagram shows the phone and the web app; the third client, the car head unit
 - **Voice loop:** `service/GeminiLiveSession.kt` (the Live socket),
   `service/LiveSessionController.kt` (turn state machine), `service/AriaForegroundService.kt`
   (keeps it alive as a foreground service).
+- **Turn-taking is decided on the phone** (ADR 0064). `service/turn/` runs Silero VAD v6.2 and
+  Pipecat Smart Turn v3.2 on ONNX Runtime: a turn ends after 700 ms of silence, and Smart Turn may
+  only extend it (re-checking up to a 2.5 s cap) when the audio of the turn so far sounds unfinished,
+  never end it early. Gemini's own server VAD (900 ms) stays the fallback: on car Bluetooth, if Silero fails
+  to load, or with the setting off. The cost is a second ONNX Runtime and about 11 MB of models in
+  the APK, because the speech engine's runtime is linked statically and cannot be reused.
+- **Barge-in:** during a conversation the phone switches to call-style audio with echo
+  cancellation and keeps the mic open while the assistant speaks (`service/turn/CallAudioMode.kt`,
+  `service/turn/BargeInGate.kt`). Speech interrupts only when it clears the reply's own learned
+  echo level; two false self-interrupts turn barge-in off for that conversation, said in words. A
+  write tool cut off by an interruption is reported, never silently undone. Off on car
+  Bluetooth for now.
+- **Typed chat is not the voice socket.** A typed message goes to `gemini-3.8-flash` over REST on
+  the user's own key (`service/TextChatEngine.kt`, `ai/GeminiRest.kt`), built from the same
+  instructions and dispatched through the same tool runner, so no tool has a second
+  implementation. Typing mid-conversation answers in text and leaves the voice session alone.
+  Known asymmetry: the text model sees spoken turns, but the Live session does not yet see typed
+  ones.
 - **Tool layer:** `service/LiveToolbox.kt` declares the tools Gemini can call and dispatches each
   one, with a few domains in their own `service/*Toolbox.kt` files beside it. Several domains hide
   their read tools behind a single `ask_<domain>` tool that hands the question to a bounded
-  sub-agent loop, because Gemini Live re-sends its entire tool block every
+  sub-agent. Five of them (`ask_fleet`, `ask_body`, `ask_goals`, `ask_pantry`, `ask_mail`) are
+  routers: one Flash-Lite call picks the domain's read tools, they run in parallel, and the raw
+  results go back to Live to say in its own voice (`SubAgent.route`). `ask_engine` keeps a
+  composing loop, because its honesty checks read the composed answer and its tools can write.
+  The split exists because Gemini Live re-sends its entire tool block every
   turn with no incremental update and no context caching, so tool count is a measured cost rather
   than a code-quality concern. Write tools were deliberately pulled back OUT of that split after
   two real mis-routed writes: a mis-routed read costs a worse answer, a mis-routed write either
@@ -245,7 +267,7 @@ memory. Last swept 2026-10-14.
 | Web client suite | **52 tests across 6 files**, green; `tsc --noEmit` and the production build both clean (2026-09-16; not recounted since, and the web client has grown a lot) |
 | Server suite | **718 passed, 42 skipped**, run against a real Postgres rather than SQLite (22 minutes) (2026-09-16; not recounted since) |
 | Room schema | **v76**, additive-only migrations, `exportSchema` on, no destructive fallback anywhere (2026-10-14) |
-| Voice surface | **129 tools across 16 groups**, every one carrying user-facing copy or the build fails (2026-10-14) |
+| Voice surface | **127 tools across 16 groups**, every one carrying user-facing copy or the build fails (2026-10-28) |
 | Django engine | Deployed to Cloud Run and serving the web client; its Postgres is the existing Supabase-hosted database (`deploy/cloudrun/README.md`). All nine sync aspects default to it. As of 2026-09-16 **only four had run end to end on a phone** (events, checklists, body, memory) and places and voice notes had their pull path exercised and nothing more. Ledger's pull path has since run on the A25: 906 bank-feed rows mirrored into Room and rendered (2026-10-11). **Pantry and fleet have never run against Django on hardware.** They were flipped because the Supabase path now fails a `household_id NOT NULL` constraint, not because they were proven |
 | Plaid bank feed | Live on the engine since 2026-10-11, scheduled every three hours. First run 835 new rows and 783 older file rows replaced; later runs added nothing new (2026-10-11) |
 | Mapbox navigation | Built; device-run fixes recorded on `.scratch/mapbox-nav/` ticket 10. **A real drive (ticket 12) is still open** (2026-10-14) |
