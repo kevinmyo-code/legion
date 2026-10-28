@@ -5336,7 +5336,10 @@ object LiveToolbox {
      * (async-lookups ticket 07; ticket 04 run 3, F7: without it, "what did I eat yesterday" could
      * only be answered as "the records don't specify dates").
      */
-    internal fun mealRow(m: com.kevin.legion.data.local.MealLog, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): JSONObject {
+    internal fun mealRow(
+        m: com.kevin.legion.data.local.MealLog,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    ): JSONObject {
         val day = java.time.Instant.ofEpochMilli(m.loggedAt).atZone(zone).toLocalDate()
         val o = JSONObject()
             .put("description", m.description)
