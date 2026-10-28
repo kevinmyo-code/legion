@@ -109,8 +109,12 @@ internal class SmartTurnModel(
     override fun close() = session.close()
 
     companion object {
-        /** Section 11 of the turn-taking design: 2 intra-op threads on the A25's big cores. */
-        const val INFERENCE_THREADS = 2
+        /**
+         * Section 11 planned 2. Measured on the A25 2026-10-27 (TURN_BENCH, phone dozing): 2 threads
+         * p50 280-530 ms, 4 threads p50 160 ms. The A25 has two big cores and six little ones, and
+         * 4 threads finished first every run, so 4.
+         */
+        const val INFERENCE_THREADS = 4
     }
 }
 

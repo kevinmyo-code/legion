@@ -118,9 +118,14 @@ internal class WhisperLogMel {
             val inside = startInWindow >= 0 && startInWindow + N_FFT <= N_SAMPLES
             val key = (absStart + half) / HOP
             val cached = if (inside && frameCache != null) frameCache[key] else null
+            // A frame wholly inside the front zero-padding has a raw spectrum of exactly zero; for a
+            // short turn that is most of the 8 s window, so skip its transform.
+            val allPadding = inside && absStart + N_FFT <= 0
             val spec: FloatArray
             if (cached != null) {
                 spec = cached
+            } else if (allPadding) {
+                spec = ZERO_SPECTRUM
             } else {
                 for (i in 0 until N_FFT) frame[i] = rawAt(audio, length, base, startInWindow + i) * window[i]
                 rfft.transform(frame, scratchRe, scratchIm)
@@ -215,6 +220,7 @@ internal class WhisperLogMel {
         private const val MEL_FLOOR = 1e-10
         private const val DYNAMIC_RANGE = 8f
         private val SHARED_SCRATCH_MARKER = FloatArray(0)
+        private val ZERO_SPECTRUM = FloatArray(2 * N_BINS)
 
         // Slaney mel scale (librosa / transformers `mel_scale="slaney"`).
         private const val MIN_LOG_HZ = 1000.0

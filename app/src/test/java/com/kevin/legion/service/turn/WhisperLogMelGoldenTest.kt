@@ -42,7 +42,8 @@ class WhisperLogMelGoldenTest {
         val mel = WhisperLogMel()
         val key = Any()
         mel.extractTurn(audio, 120_000, key)
-        assertEquals(WhisperLogMel.N_FRAMES, mel.lastFramesComputed)
+        // 120,000 samples leave 8,000 of front padding; frames wholly inside it are not transformed.
+        assertEquals(WhisperLogMel.N_FRAMES - 47, mel.lastFramesComputed) // frames 2..48
         val second = mel.extractTurn(audio, 128_000 + 9_600, key).copyOf()
         assertTrue("recomputed ${mel.lastFramesComputed}", mel.lastFramesComputed < 120)
         val fresh = WhisperLogMel().extract(audio.copyOf(128_000 + 9_600))
@@ -54,8 +55,11 @@ class WhisperLogMelGoldenTest {
         val audio = TurnGolden.audio("short")
         val mel = WhisperLogMel()
         mel.extractTurn(audio, audio.size, Any())
+        val first = mel.lastFramesComputed
         mel.extractTurn(audio, audio.size, Any())
-        assertEquals(WhisperLogMel.N_FRAMES, mel.lastFramesComputed)
+        assertEquals(first, mel.lastFramesComputed)
+        mel.extractTurn(audio, audio.size, Any().also { mel.resetTurn() })
+        assertEquals(first, mel.lastFramesComputed)
     }
 
     @Test

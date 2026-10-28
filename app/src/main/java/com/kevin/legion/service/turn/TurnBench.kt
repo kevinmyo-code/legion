@@ -24,6 +24,8 @@ internal object TurnBench {
     private const val RUNS = 20
     private const val SILERO_WINDOWS = 300
     private const val RECHECK_STEP = 4_800
+    /** EndOfTurnPolicy.BASE_MS - GATE_MS: the time a first check has to land and still count. */
+    private const val BASE_BUDGET_MS = EndOfTurnPolicy.BASE_MS - EndOfTurnPolicy.GATE_MS
 
     /** [threads] other than the shipped [SmartTurnModel.INFERENCE_THREADS] loads a second session to compare. */
     fun run(context: Context, threads: Int = SmartTurnModel.INFERENCE_THREADS): String {
@@ -54,6 +56,18 @@ internal object TurnBench {
             feat[i] = t1 - t0
             infer[i] = t2 - t1
         }
+        // The check that matters for extend-only: the FIRST one of a silence, on a typical 3 s turn
+        // (front-padded), asked at the 192 ms gate. It can extend the turn only if it is back before
+        // the 700 ms base, so count how often feature + inference time fits in 700 - 192 ms.
+        val shortTurn = FloatArray(3 * WhisperLogMel.SAMPLE_RATE) { (rnd.nextFloat() - 0.5f) * 0.02f }
+        val first = LongArray(RUNS)
+        var inTime = 0
+        for (i in 0 until RUNS) {
+            val t0 = System.nanoTime()
+            model.probability(mel.extractTurn(shortTurn, shortTurn.size, Any()))
+            first[i] = System.nanoTime() - t0
+            if (first[i] / 1_000_000 < BASE_BUDGET_MS) inTime++
+        }
         // A re-check 300 ms later in the same silence: only the new frames are transformed.
         val turn = FloatArray(WhisperLogMel.N_SAMPLES + RUNS * RECHECK_STEP) { (rnd.nextFloat() - 0.5f) * 0.002f }
         val recheck = LongArray(RUNS)
@@ -78,6 +92,8 @@ internal object TurnBench {
         val line = "runs=$RUNS load_ms=${ready.loadMs} " +
             "feat_ms_p50=${ms(pct(feat, 50))} feat_ms_p95=${ms(pct(feat, 95))} " +
             "recheck_feat_ms_p50=${ms(pct(recheck, 50))} recheck_feat_ms_p95=${ms(pct(recheck, 95))} " +
+            "first_check_ms_p50=${ms(pct(first, 50))} first_check_ms_p95=${ms(pct(first, 95))} " +
+            "first_check_before_base=$inTime/$RUNS " +
             "infer_ms_p50=${ms(pct(infer, 50))} infer_ms_p95=${ms(pct(infer, 95))} " +
             "total_ms_p50=${ms(pct(total, 50))} total_ms_p95=${ms(pct(total, 95))} " +
             "silero_us_p50=${pct(silero, 50) / 1000} silero_us_p95=${pct(silero, 95) / 1000} " +
