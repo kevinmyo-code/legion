@@ -19,7 +19,7 @@ package com.kevin.legion.service.turn
  * is still kept, now strictly consecutive; [ReplyStats.bestSpanWindows] is the figure that fires.
  *
  * After a fire it watches [VERDICT_MS]. It is a self-interrupt (the echo set it off) only when BOTH
- * hold: Silero hears less than [SELF_SPEECH_MS] of speech after the reply was flushed, AND the run
+ * hold: Silero hears less than [SELF_SPEECH_MS] of speech after the reply was flushed, AND the span
  * that fired was never [CLEARLY_USER_FACTOR] x its threshold loud. The level clause is from the A25
  * (2026-10-27): a real short "stop" fired at 22,914 against an echo floor near 0, had only 128 ms of
  * speech left after the fire, and was counted as echo. Echo that clears the threshold does so
