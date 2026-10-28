@@ -8,9 +8,15 @@ package com.kevin.legion.service.turn
  * call mode the echo peaked near 10,000 and Kevin's voice at 19,000-30,000 (one device, one room), so
  * a window counts only when Silero is confident ([PROB]) AND its peak is above the echo floor learned
  * from THIS reply ([ECHO_MARGIN] x the [ECHO_PERCENTILE]th percentile of the reply's windows so far;
- * [DEFAULT_ECHO_FLOOR] until [LEARN_WINDOWS] have been heard). It fires after [SUSTAIN_MS] of such
- * windows, tolerating one stray window, so a backchannel ("mm-hm", "okay") shorter than that never
- * stops the reply.
+ * [DEFAULT_ECHO_FLOOR] until [LEARN_WINDOWS] have been heard). It fires when at least [SUSTAIN_MS]
+ * of such windows ([SUSTAIN_WINDOWS]) fall within the last [SPAN_WINDOWS] (512 ms), in any order, so
+ * a backchannel ("mm-hm", "okay") shorter than that never stops the reply.
+ *
+ * Sliding window, not a consecutive run (A25, 2026-10-28, run 5): Kevin said "stop" into the mic at
+ * prob 1.00 and level 30,560 against a threshold of 3,000; 27 windows of the reply qualified, but
+ * Silero's prob jitters across a short plosive word, so the longest consecutive run (one miss
+ * tolerated) was 224 ms, one window short, and the reply never stopped. [ReplyStats.longestRunMs]
+ * is still kept, now strictly consecutive; [ReplyStats.bestSpanWindows] is the figure that fires.
  *
  * After a fire it watches [VERDICT_MS]. It is a self-interrupt (the echo set it off) only when BOTH
  * hold: Silero hears less than [SELF_SPEECH_MS] of speech after the reply was flushed, AND the run
@@ -59,7 +65,10 @@ internal class BargeInGate {
         val qualifyingWindows: Int,
         val maxProb: Float,
         val maxLevel: Int,
+        /** Longest strictly consecutive run of qualifying windows. */
         val longestRunMs: Int,
+        /** Most qualifying windows seen in any [SPAN_WINDOWS] span; it fires at [SUSTAIN_WINDOWS]. */
+        val bestSpanWindows: Int,
         val echoFloor: Int,
         val threshold: Int,
     )
@@ -71,10 +80,13 @@ internal class BargeInGate {
 
     private val levels = IntArray(MAX_LEARN)
     private var learned = 0
-    private var qualifyingMs = 0
-    private var misses = 0
-    private var maxProb = 0f
-    private var maxLevel = 0
+    /** Bit i set: the window i windows ago qualified. Only the low [SPAN_WINDOWS] bits are kept. */
+    private var span = 0
+    /** The last [SPAN_WINDOWS] windows' prob and level, so a fire reports the peak of its span. */
+    private val spanProb = FloatArray(SPAN_WINDOWS)
+    private val spanLevel = IntArray(SPAN_WINDOWS)
+    private var spanPos = 0
+    private var runMs = 0
     private var armed = false
     private var verdictWindowsLeft = 0
     private var speechAfterMs = 0
@@ -90,6 +102,7 @@ internal class BargeInGate {
     private var replyMaxProb = 0f
     private var replyMaxLevel = 0
     private var longestRunMs = 0
+    private var bestSpanWindows = 0
 
     /** Listening for the user over the current reply. */
     val armedNow: Boolean get() = armed
@@ -108,6 +121,7 @@ internal class BargeInGate {
         replyMaxProb = 0f
         replyMaxLevel = 0
         longestRunMs = 0
+        bestSpanWindows = 0
     }
 
     /**
@@ -121,7 +135,7 @@ internal class BargeInGate {
         replyOpen = false
         return ReplyStats(
             fired, windows, speechWindows, loudWindows, qualifyingWindows,
-            replyMaxProb, replyMaxLevel, longestRunMs, echoFloor(), threshold(),
+            replyMaxProb, replyMaxLevel, longestRunMs, bestSpanWindows, echoFloor(), threshold(),
         )
     }
 
@@ -141,27 +155,31 @@ internal class BargeInGate {
 
     private fun listen(prob: Float, level: Int): Event? {
         val threshold = threshold()
-        val speech = prob >= PROB
-        val loud = level >= threshold
-        val qualifies = speech && loud
-        windows++
-        if (speech) speechWindows++
-        if (loud) loudWindows++
-        if (qualifies) qualifyingWindows++
-        if (prob > replyMaxProb) replyMaxProb = prob
-        if (level > replyMaxLevel) replyMaxLevel = level
+        val qualifies = prob >= PROB && level >= threshold
+        count(prob, level, threshold, qualifies)
+        span = ((span shl 1) or (if (qualifies) 1 else 0)) and SPAN_MASK
+        spanProb[spanPos] = prob
+        spanLevel[spanPos] = level
+        spanPos = (spanPos + 1) % SPAN_WINDOWS
         if (qualifies) {
-            qualifyingMs += WINDOW_MS
-            misses = 0
-            if (prob > maxProb) maxProb = prob
-            if (level > maxLevel) maxLevel = level
-            if (qualifyingMs > longestRunMs) longestRunMs = qualifyingMs
+            runMs += WINDOW_MS
+            if (runMs > longestRunMs) longestRunMs = runMs
         } else {
             learn(level)
-            if (qualifyingMs > 0 && ++misses > ALLOWED_MISSES) resetRun()
+            runMs = 0
         }
-        if (qualifyingMs < SUSTAIN_MS) return null
-        val fire = Event.Fire(maxProb, maxLevel, echoFloor(), threshold, qualifyingMs)
+        val inSpan = Integer.bitCount(span)
+        if (inSpan > bestSpanWindows) bestSpanWindows = inSpan
+        if (inSpan < SUSTAIN_WINDOWS) return null
+        var maxProb = 0f
+        var maxLevel = 0
+        for (ago in 0 until SPAN_WINDOWS) {
+            if (span and (1 shl ago) == 0) continue
+            val i = (spanPos - 1 - ago + SPAN_WINDOWS) % SPAN_WINDOWS
+            if (spanProb[i] > maxProb) maxProb = spanProb[i]
+            if (spanLevel[i] > maxLevel) maxLevel = spanLevel[i]
+        }
+        val fire = Event.Fire(maxProb, maxLevel, echoFloor(), threshold, inSpan * WINDOW_MS)
         fireLevel = maxLevel
         fireThreshold = threshold
         fired = true
@@ -170,6 +188,16 @@ internal class BargeInGate {
         verdictWindowsLeft = VERDICT_MS / WINDOW_MS
         speechAfterMs = 0
         return fire
+    }
+
+    /** The reply's [ReplyStats] counters for one listened window. */
+    private fun count(prob: Float, level: Int, threshold: Int, qualifies: Boolean) {
+        windows++
+        if (prob >= PROB) speechWindows++
+        if (level >= threshold) loudWindows++
+        if (qualifies) qualifyingWindows++
+        if (prob > replyMaxProb) replyMaxProb = prob
+        if (level > replyMaxLevel) replyMaxLevel = level
     }
 
     private fun watch(prob: Float): Event? {
@@ -193,10 +221,8 @@ internal class BargeInGate {
     }
 
     private fun resetRun() {
-        qualifyingMs = 0
-        misses = 0
-        maxProb = 0f
-        maxLevel = 0
+        span = 0
+        runMs = 0
     }
 
     companion object {
@@ -205,7 +231,10 @@ internal class BargeInGate {
         const val SPEECH_PROB = 0.5f
         /** Design 9: "~100-250 ms"; the long end, so a two-syllable "okay" does not stop him. */
         const val SUSTAIN_MS = 256
-        const val ALLOWED_MISSES = 1
+        const val SUSTAIN_WINDOWS = SUSTAIN_MS / WINDOW_MS
+        /** 512 ms: the span [SUSTAIN_WINDOWS] must fall within (A25 run 5, 2026-10-28). */
+        const val SPAN_WINDOWS = 16
+        private const val SPAN_MASK = (1 shl SPAN_WINDOWS) - 1
         const val ECHO_MARGIN = 1.5f
         const val ECHO_PERCENTILE = 90
         private const val PERCENT = 100.0

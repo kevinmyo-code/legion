@@ -42,11 +42,15 @@ LIVE_BARGE_IN lines come from TurnTaker (call-mode barge-in, ADR 0064), one shor
     fire prob= level= echo_floor= threshold= sustain_ms=
     verdict self_interrupt=<bool> speech_after_ms= fire_level= fire_threshold= self_interrupts= disabled=
     reply_end fired=<bool> windows= speech_windows= loud_windows= qualifying_windows= max_prob=
-        max_level= longest_run_ms= echo_floor= threshold=
+        max_level= longest_run_ms= best_span= echo_floor= threshold=
+
+best_span (2026-10-28) is the most qualifying windows seen in any 512 ms span; the gate fires at 8.
+Older captures lack it, and every line here reads them as before.
 
 --summary adds a barge-in block. Each reply that did not fire is put down to one reason:
 (d) unheard: windows=0, the gate never listened (not armed, mic not fed, or not playing);
-(c) choppy: some windows qualified but no run reached the sustain (256 ms);
+(c) choppy: some windows qualified but never 8 (256 ms) within a 512 ms span ("best span N/8"
+    when the capture has best_span);
 (b) unsure: Silero never reached 0.8 (speech_windows=0);
 (a) quiet: Silero heard speech, but never above the echo threshold in the same window.
 "armed lines" fewer or more than "replies" means a reply start or end went unlogged.
@@ -200,6 +204,19 @@ barge-in: replies 1 (armed lines 1), fires 0, self-interrupts 0
   not fired: 1  max level 9120 vs threshold 12600  max prob 0.97  longest run 0ms
   why: (a) quiet x1
 
+A capture with best_span (2026-10-28) shows it, and a choppy reply says how close it came:
+
+>>> sample4 = r'''
+... 10-28 19:00:00.000  1234  5678 I LIVE_AUDIT: session_start model=gemini-3.8-live async_set=none
+... 10-28 19:00:01.000  1234  5679 I LIVE_BARGE_IN: armed=true disabled=false
+... 10-28 19:00:13.000  1234  5679 I LIVE_BARGE_IN: reply_end fired=false windows=394 speech_windows=53 loud_windows=39 qualifying_windows=27 max_prob=1.00 max_level=30560 longest_run_ms=224 best_span=7 echo_floor=543 threshold=3000
+... '''.splitlines()
+>>> [line for line in timeline(sample4) if "reply_end" in line]
+['19:00:13.000  barge reply_end no fire: 394 win, speech 53, loud 39, both 27, max p1.00 L30560/T3000, run 224ms, best span 7/8']
+>>> for line in summary(sample4)[-2:]: print(line)
+  not fired: 1  max level 30560 vs threshold 3000  max prob 1.00  longest run 224ms  best span 7/8
+  why: (c) choppy: best span 7/8 x1
+
 >>> parse_audit('user final=true text="He said \\"no\\" \\\\ ok..."')
 ('user', {'final': 'true', 'text': 'He said "no" \\ ok...'})
 >>> parse_audit('tool_result id=x name=ask_goals success=false ms=-1 scheduling=none sent=false response={"a": 1}')[1]['response']
@@ -214,6 +231,8 @@ from collections import Counter
 
 AUDIT = "LIVE_AUDIT"
 BARGE = "LIVE_BARGE_IN"
+# BargeInGate.SUSTAIN_WINDOWS: qualifying windows within a 512 ms span that fire.
+SUSTAIN_WINDOWS = 8
 TAGS = ("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL", BARGE, "LIVE_TURN")
 REDACTED = "[redacted: third-party content]"
 
@@ -304,8 +323,15 @@ def _barge(msg):
         return (f"barge reply_end {head}: {p.get('windows')} win, speech {p.get('speech_windows')}, "
                 f"loud {p.get('loud_windows')}, both {p.get('qualifying_windows')}, "
                 f"max p{p.get('max_prob')} L{p.get('max_level')}/T{p.get('threshold')}, "
-                f"run {p.get('longest_run_ms')}ms")
+                f"run {p.get('longest_run_ms')}ms{_span(p)}")
     return f"barge: {msg}"
+
+
+def _span(p):
+    """", best span N/8" from a reply_end with best_span, else "" (captures before 2026-10-28)."""
+    if "best_span" not in p:
+        return ""
+    return f", best span {p['best_span']}/{SUSTAIN_WINDOWS}"
 
 
 def _why(p):
@@ -314,11 +340,13 @@ def _why(p):
     >>> [_why(p) for p in ({"windows": "0"}, {"windows": "9", "qualifying_windows": "3"},
     ...                    {"windows": "9", "speech_windows": "0"}, {"windows": "9", "speech_windows": "4"})]
     ['(d) unheard', '(c) choppy', '(b) unsure', '(a) quiet']
+    >>> _why({"windows": "394", "qualifying_windows": "27", "best_span": "7"})
+    '(c) choppy: best span 7/8'
     """
     if int(p.get("windows", 0)) == 0:
         return "(d) unheard"
     if int(p.get("qualifying_windows", 0)) > 0:
-        return "(c) choppy"
+        return "(c) choppy" + _span(p).replace(",", ":", 1)
     if int(p.get("speech_windows", 0)) == 0:
         return "(b) unsure"
     return "(a) quiet"
@@ -339,8 +367,10 @@ def _barge_block(events):
         loudest = max(quiet, key=lambda p: int(p.get("max_level", 0)))
         top_prob = max(float(p.get("max_prob", 0)) for p in quiet)
         run = max(int(p.get("longest_run_ms", 0)) for p in quiet)
+        spans = [int(p["best_span"]) for p in quiet if "best_span" in p]
+        best = f"  best span {max(spans)}/{SUSTAIN_WINDOWS}" if spans else ""
         out.append(f"  not fired: {len(quiet)}  max level {loudest.get('max_level')} vs threshold "
-                   f"{loudest.get('threshold')}  max prob {top_prob:.2f}  longest run {run}ms")
+                   f"{loudest.get('threshold')}  max prob {top_prob:.2f}  longest run {run}ms{best}")
         why = Counter(_why(p) for p in quiet)
         out.append("  why: " + ", ".join(f"{k} x{v}" for k, v in sorted(why.items())))
     return out
