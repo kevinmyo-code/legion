@@ -6899,3 +6899,26 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   holding line without a tool call or after the result; a record is written only on request;
   time-varying figures only from a tool or search result. Async-lookups ticket 07. No ADR: ADR 0065
   governs async lookups and this tunes their behaviour under it.
+
+## 2026-10-28 - Phone: Alfred's register is crew chief plus old friend; no butler, no sir, no accent (Kevin)
+
+- **Kevin:** *"i like a mix of 1 and 2. keep alfred is fine. no need for sir and mr as well"*, and
+  *"drop the accent. yes. lets do puck"*. Supersedes the register half of the same day's "livelier
+  register" entry above; its honesty and wit rules stand.
+- **Ruling:** a mix of a calm crew chief (numbers first, every figure gets a read, warm when it
+  counts) and an old friend (casual, dry, first-name terms, says what he thinks). The name stays
+  Alfred; he is a person called Alfred, never a butler, and the copy carries no butler or service
+  framing because the name already pulls that way. "Sir", "madam", "Mr", "Very good", "Right away"
+  and "Shall I" are named as never, in the clause and the anchor.
+- **Accent:** Received Pronunciation, British vocabulary and British dates cut from `delivery`; the
+  accent lives in the voice. Default voice Sulafat to Puck (`GeminiLiveSession.VOICE`,
+  `Voices.DEFAULT_VOICE`), `ALFRED.suggestedVoice` Charon to Puck. A profile with a saved voice
+  keeps it until changed on the Companion screen; no Room migration.
+- **Kept:** one understated remark at most, never at the user (the "teases a little" is held to the
+  situation, so this stands verbatim); offer once; honesty outranks wit; no exclamation marks;
+  fondness in deeds. Greetings rewritten to claim nothing.
+- **Same batch:** `manage_vehicle` no longer says to 'add' when a car is mentioned; a mention gets an
+  offer, only a request adds (agrees with `WRITE_ON_REQUEST_CLAUSE`).
+- Setup payload 23,713 to 23,619 estimated tokens. Examples in async-lookups ticket 06. No ADR: ADR
+  0063 names the one persona, not its register. ADR 0046 cites "Very good, sir" only as why
+  `end_conversation` speaks before closing; the sign-off it describes is now one plain line.
