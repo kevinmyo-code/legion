@@ -51,4 +51,13 @@ class LiveLatencyTest {
         assertNull(l.toolResponse("a", 1_100))
         assertNull(l.toolResponse("never", 1_100))
     }
+
+    @Test
+    fun `eot reply runs from the activityEnd to the first audio, once`() {
+        val l = LiveLatency()
+        assertNull(l.firstAudioAfterActivityEnd(5_000))
+        l.activityEnd(10_000)
+        assertEquals(640L, l.firstAudioAfterActivityEnd(10_640))
+        assertNull(l.firstAudioAfterActivityEnd(10_700))
+    }
 }

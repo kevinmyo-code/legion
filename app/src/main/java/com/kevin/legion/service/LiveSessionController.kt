@@ -731,13 +731,13 @@ class LiveSessionController(context: Context) {
      * is committed in [handleEvent] once the socket actually connects, so a
      * failed connection doesn't burn the one-time introduction.
      */
-    private fun startConversation(fromWakeWord: Boolean = false) {
+    private fun startConversation(fromWakeWord: Boolean = false, listenOnly: Boolean = false) {
         val s = newSession()
         session = s
         pendingAction = Pending.CONVERSATION
         conversationMode = true
         connectedThisSession = false
-        coldRetry = { startConversation(fromWakeWord) }
+        coldRetry = { startConversation(fromWakeWord, listenOnly) }
         set(Phase.CONNECTING, "Connecting...")
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
@@ -762,6 +762,8 @@ class LiveSessionController(context: Context) {
             // and a lost thread still win - both are things he genuinely needs told.
             val opener = if (fromWakeWord) WAKE_ACK_PROMPT else GREETING_PROMPT
             pendingPrompt = when {
+                // A reconnect inside a running conversation (turn detector fallback): just listen.
+                listenOnly -> null
                 isFirst -> firstGreetingOpener(appContext)
                 lostThread -> THREAD_LOST_PROMPT
                 live.isBlank() -> opener
@@ -1023,10 +1025,13 @@ class LiveSessionController(context: Context) {
             // gated on conversationMode: a bare tap-to-listen (beginConversation with no
             // opener) also lands here directly from the Connected branch's THINKING state,
             // and this is the only event that would otherwise ever move it off THINKING.
-            is LiveEvent.MicOpened -> {
+            // PlaybackDrained is the same moment with the mic already open (barge-in): Alfred has
+            // finished speaking and is listening, so the phase must say so (A25, 2026-10-27).
+            is LiveEvent.MicOpened, is LiveEvent.PlaybackDrained -> {
                 oneShotGate.onMicOpened()
                 set(Phase.LISTENING, "Listening...")
             }
+            is LiveEvent.TurnNotice -> CompanionPhase.showNotice(event.text)
             // No phase change: SpeakingStarted already covers the ordinary half-duplex-mute
             // close (fires effectively simultaneously, off the same server message), and a
             // session-teardown close is about to be followed by its own Idle/Closed event
@@ -1071,6 +1076,14 @@ class LiveSessionController(context: Context) {
             }
             is LiveEvent.ToolCall -> handleToolCall(event)
             is LiveEvent.Closed -> {
+                // Silero failed mid-conversation: the session closed itself to come back on server
+                // VAD (said in words already, TurnNotice). Resume the same conversation, mic open,
+                // no greeting.
+                if (event.reason == GeminiLiveSession.TURN_FALLBACK_REASON && conversationMode && !destroyed) {
+                    session = null
+                    startConversation(listenOnly = true)
+                    return
+                }
                 closeOutTypedChat()
                 val userInitiated = conversationMode
                 val everConnected = connectedThisSession

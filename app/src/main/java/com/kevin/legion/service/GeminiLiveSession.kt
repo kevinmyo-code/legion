@@ -35,6 +35,14 @@ import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.data.local.record
 import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
+import com.kevin.legion.service.turn.AudioRoute
+import com.kevin.legion.service.turn.CallAudioMode
+import com.kevin.legion.service.turn.CancelledToolReport
+import com.kevin.legion.service.turn.EndOfTurnPolicy
+import com.kevin.legion.service.turn.TurnConfig
+import com.kevin.legion.service.turn.TurnModels
+import com.kevin.legion.service.turn.TurnTaker
+import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.vehicle.ActiveVehicle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +56,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -94,6 +103,14 @@ sealed interface LiveEvent {
      * [MicOpened] and so a future consumer doesn't need a second wiring pass.
      */
     data class MicClosed(val why: String) : LiveEvent
+    /**
+     * The reply finished PLAYING with the mic already open (barge-in keeps it open all conversation,
+     * so [MicOpened] never fires again after the first turn). The owner treats it like [MicOpened]:
+     * the phase goes SPEAKING -> LISTENING here (A25 2026-10-27: it stayed SPEAKING until a tap).
+     */
+    data object PlaybackDrained : LiveEvent
+    /** A turn-taking change the person should be told about in words, once (fallbacks, barge-in off). */
+    data class TurnNotice(val text: String) : LiveEvent
     /** Gemini wants a local tool run; reply via [GeminiLiveSession.sendToolResponse]. */
     data class ToolCall(val id: String, val name: String, val args: JSONObject) : LiveEvent
     /** Live transcript of what Zero is saying this turn (debug subtitle), accumulated. */
@@ -401,6 +418,28 @@ class GeminiLiveSession(
     // don't, so we never clip the start of the driver's reply.
     @Volatile private var vadMicOpenedOnce = false
 
+    // Turn-taking (2026-10-27, service/turn/): local end of turn (Silero + Smart Turn, extend-only)
+    // and call-style barge-in. [turnConfig] is decided when the socket opens, because manual activity
+    // detection lives in `setup`; barge-in is re-decided per conversation from the audio route.
+    @Volatile private var turnConfig: TurnConfig = TurnConfig.SERVER_VAD
+    @Volatile private var turnTaker: TurnTaker? = null
+    @Volatile private var smartSetting = false
+    @Volatile private var bargeSetting = false
+    // True from the reply's first audio chunk until it has drained or been flushed. Barge-in listens
+    // only while this is true, and the local follow-up signal ignores what the mic hears meanwhile.
+    @Volatile private var playbackActive = false
+    // activityEnd sent, model's turn not complete yet: not a quiet moment to hand it a note.
+    @Volatile private var awaitingReply = false
+    // Silero threw mid-conversation: reconnect on server VAD at the next quiet moment.
+    @Volatile private var sileroFallbackPending = false
+    private val cancelledTools = CancelledToolReport()
+    @Volatile private var callAudio: CallAudioMode? = null
+    private var routeCallback: android.media.AudioDeviceCallback? = null
+    // Re-prime after a flush ([flushAudio]): the next reply's first chunks queue on a paused track.
+    @Volatile private var primeNeeded = false
+    @Volatile private var priming = false
+    private var primedFrames = 0
+
     private val audioManager by lazy {
         appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
@@ -635,6 +674,14 @@ class GeminiLiveSession(
         micHandedOff = false
         capturing = false
         vadMode = vad
+        smartSetting = VoiceTurnSettings.smartEndOfTurn(appContext)
+        bargeSetting = VoiceTurnSettings.bargeIn(appContext)
+        turnConfig = TurnConfig.SERVER_VAD
+        turnTaker = null
+        playbackActive = false
+        awaitingReply = false
+        sileroFallbackPending = false
+        if (vad && (smartSetting || bargeSetting)) TurnModels.preload(appContext)
         this.voiceName = voiceName
         this.keepWarm = keepWarm
         this.idleTimeoutMs = idleTimeoutMs
@@ -671,7 +718,15 @@ class GeminiLiveSession(
         // its own coroutine instead of inline in the WebSocket callback.
         if (audioPlaybackJob?.isActive != true) {
             audioPlaybackJob = io.launch {
-                for (chunk in audioQueue) playAudio(chunk)
+                while (isActive) {
+                    // While priming, a reply that stops short of PRIME_FRAMES still starts playing.
+                    val chunk = if (priming) {
+                        withTimeoutOrNull(PRIME_MAX_WAIT_MS) { audioQueue.receive() }
+                    } else {
+                        audioQueue.receive()
+                    }
+                    if (chunk == null) releasePrime() else playAudio(chunk)
+                }
             }
         }
         // Ducking is scoped to the active conversation: taken when the mic first
@@ -719,6 +774,7 @@ class GeminiLiveSession(
         suppressMicNextTurn = false
         ConversationState.setBusy(true)
         MicArbiter.request(micClaimant, micPreemptionListener)
+        prepareBargeIn()
         return if (opener != null) {
             sendText(opener)
         } else {
@@ -904,6 +960,18 @@ class GeminiLiveSession(
     fun sendToolResponse(id: String, name: String, response: JSONObject): Boolean {
         // Released before the send, so a dropped send cannot leave the count stuck above zero.
         toolCallsInFlight.updateAndGet { (it - 1).coerceAtLeast(0) }
+        // The server cancelled this call (the user spoke over it): it no longer wants a response,
+        // and what the tool did is told to the user instead (Kevin, 2026-10-27: report, no undo).
+        if (cancelledTools.onFinished(id, name, response, LiveToolbox.isMutatingTool(name))) {
+            LiveLatency.log(
+                "LIVE_TOOL_CANCEL",
+                "finished after cancellation tool=$name success=${response.optBoolean("success", false)} " +
+                    "response not sent",
+            )
+            latency.toolResponse(id, System.currentTimeMillis())
+            deliverCancelNotesIfQuiet()
+            return true
+        }
         val msg = JSONObject().put("toolResponse", JSONObject().apply {
             put("functionResponses", JSONArray().put(JSONObject().apply {
                 put("id", id)
@@ -981,6 +1049,9 @@ class GeminiLiveSession(
             // all. Counted at onOpen, not at start(): this is a socket that actually connected and
             // is about to be billed for its setup prompt, not an attempt.
             GeminiUsageMeter.recordLiveConnect()
+            // Blocks this socket's reader thread for at most MODEL_WAIT_MS while the turn models
+            // finish loading; nothing arrives before the setup is sent anyway.
+            decideTurnConfig()
             webSocket.send(buildSetup(systemInstruction, functionDeclarations).toString())
         }
 
@@ -1059,6 +1130,7 @@ class GeminiLiveSession(
             vadMode = vadMode,
             subtitles = subtitles,
             resumeHandle = requestedResumeHandle,
+            manualActivity = turnConfig.manualActivity,
         )
 
     /**
@@ -1073,6 +1145,7 @@ class GeminiLiveSession(
         vadMode: Boolean,
         subtitles: Boolean,
         resumeHandle: String?,
+        manualActivity: Boolean = false,
     ): JSONObject {
         val tools = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
         if (functionDeclarations.length() > 0) {
@@ -1140,8 +1213,11 @@ class GeminiLiveSession(
             put("realtimeInputConfig", JSONObject().put(
                 "automaticActivityDetection",
                 JSONObject().apply {
-                    put("disabled", !vadMode)
-                    if (vadMode) {
+                    // Manual activity (2026-10-27): the phone sends activityStart/activityEnd from its
+                    // own end-of-turn policy, so the server's VAD and its tuning fields are off. The
+                    // A25 spike sent exactly `disabled: true` and nothing else.
+                    put("disabled", !vadMode || manualActivity)
+                    if (vadMode && !manualActivity) {
                         // Give the driver room to pause mid-sentence before the turn
                         // ends (see VAD_SILENCE_MS). Only in conversation mode - the
                         // speak-only path has no mic and never runs VAD.
@@ -1193,6 +1269,7 @@ class GeminiLiveSession(
 
         root.optJSONObject("serverContent")?.let { handleServerContent(it) }
         root.optJSONObject("toolCall")?.let { handleToolCall(it) }
+        root.optJSONObject("toolCallCancellation")?.let { handleToolCallCancellation(it) }
         // Ticket 02 (drive-test-2026-08-18): both used to be ignored outright, which is
         // half of why a dropped socket silently dropped the conversation's memory with it.
         root.optJSONObject("goAway")?.let { handleGoAway(it) }
@@ -1550,15 +1627,26 @@ class GeminiLiveSession(
                     }
                     if (!speakingThisTurn) {
                         speakingThisTurn = true
-                        latency.firstAudio(System.currentTimeMillis())?.let {
+                        val firstAt = System.currentTimeMillis()
+                        latency.firstAudio(firstAt)?.let {
                             LiveLatency.log(LiveLatency.TAG, "reply_ms=$it")
+                        }
+                        latency.firstAudioAfterActivityEnd(firstAt)?.let {
+                            LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=$it")
                         }
                         // Half-duplex: mute the mic while Zero speaks so his own
                         // voice (through the head-unit speakers) isn't captured and
                         // mistaken by the server VAD for the driver interrupting.
+                        // With barge-in the mic stays open and the echo gate listens instead.
                         if (vadMode) {
-                            capturing = false
-                            MidnightEvents.micState(open = false, why = "half-duplex: companion speaking")
+                            playbackActive = true
+                            val tt = turnTaker
+                            if (tt != null && tt.bargeIn) {
+                                tt.onReplyStart()
+                            } else {
+                                capturing = false
+                                MidnightEvents.micState(open = false, why = "half-duplex: companion speaking")
+                            }
                         }
                         duckNow()
                         emit(LiveEvent.SpeakingStarted)
@@ -1585,6 +1673,7 @@ class GeminiLiveSession(
         }
         if (content.optBoolean("turnComplete")) {
             speakingThisTurn = false
+            awaitingReply = false
             latency.turnComplete()
             crisisFiredThisTurn = false
             val heard = userTurnText.toString().trim()
@@ -1708,13 +1797,19 @@ class GeminiLiveSession(
                 // ends it (tapping the strip: LiveSessionController.onTap's
                 // `inConversation -> stop()`), when the socket dies (which flashes a
                 // notice), or on the crisis path.
+                // Silero failed mid-conversation and this reply is done: reconnect on server VAD now;
+                // the controller resumes the conversation with the same handle and opens the mic.
+                vadMode && sileroFallbackPending -> closeSession(TURN_FALLBACK_REASON)
                 vadMode -> {
                     openMicForUser()
                     armConversationBackstop()
                     // Ticket 17: the 8 s follow-up window. Starts when the mic is physically open
                     // (MicOpened), replacing the backstop job, so the clock never runs while the
-                    // assistant's own tail is still playing.
+                    // assistant's own tail is still playing. With barge-in the mic never closes,
+                    // so playback draining is the signal instead ([watchPlaybackDrain]).
                     followUpEvent(FollowUpWindow.Event.TurnComplete)
+                    if (turnTaker?.bargeIn == true) watchPlaybackDrain()
+                    deliverCancelNotesIfQuiet()
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
                 else -> {
@@ -1762,6 +1857,243 @@ class GeminiLiveSession(
                 args = call.optJSONObject("args") ?: JSONObject(),
             ))
         }
+    }
+
+    // --- Turn-taking (2026-10-27, service/turn/) ---------------------------------------------------
+
+    /**
+     * Decides [turnConfig] (and builds the [TurnTaker]) for this socket, before its setup is sent.
+     * A speak-only line and a session with both switches off keep today's server VAD.
+     */
+    private fun decideTurnConfig() {
+        if (!vadMode || !(smartSetting || bargeSetting)) {
+            turnConfig = TurnConfig.SERVER_VAD
+            return
+        }
+        val ready = TurnModels.awaitReady(appContext, MODEL_WAIT_MS)
+        val smartOk = ready?.smartTurn != null && TurnModels.smartTurnBroken == null
+        val config = TurnConfig.decide(
+            smartSetting = smartSetting,
+            bargeSetting = bargeSetting,
+            route = CallAudioMode.route(audioManager),
+            sileroReady = ready != null,
+            smartTurnReady = smartOk,
+        )
+        turnConfig = config
+        turnTaker = if (ready != null && (config.manualActivity || config.bargeIn)) {
+            TurnTaker(config, ready.silero.stream(), ready.smartTurn.takeIf { smartOk }, turnSink)
+        } else {
+            null
+        }
+        LiveLatency.log(
+            "LIVE_TURN",
+            "config manual=${config.manualActivity} bargeIn=${config.bargeIn} smartTurn=${config.smartTurn} " +
+                "(${config.note}) modelsLoadMs=${ready?.loadMs}",
+        )
+        when {
+            ready == null -> announceOnce(
+                "silero",
+                "LOCAL TURN DETECTION UNAVAILABLE - USING BASIC LISTENING",
+                "turn models unavailable: ${TurnModels.broken ?: TurnModels.state}",
+            )
+            smartSetting && !smartOk -> announceOnce(
+                "smart",
+                "SMART END OF TURN UNAVAILABLE - ENDING TURNS ON SILENCE",
+                "Smart Turn unavailable: ${TurnModels.smartTurnBroken ?: ready.smartTurnError}",
+            )
+        }
+    }
+
+    /**
+     * A conversation is starting: barge-in stays on only off Bluetooth and outside a phone call, and
+     * when it does, call-style audio goes on and the playback track is rebuilt on the voice-call path.
+     */
+    private fun prepareBargeIn() {
+        val tt = turnTaker ?: return
+        if (!tt.bargeIn) return
+        val route = CallAudioMode.route(audioManager)
+        if (route == AudioRoute.BLUETOOTH || TelephonyController.isInCall) {
+            tt.disableBargeIn()
+            LiveLatency.log(TurnTaker.BARGE_TAG, "off for this session: route=$route inCall=${TelephonyController.isInCall}")
+            return
+        }
+        val mode = callAudio ?: CallAudioMode(audioManager).also { callAudio = it }
+        if (mode.isActive) return
+        LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter()} route=$route")
+        rebuildTrack()
+        registerRouteWatch()
+    }
+
+    /** A Bluetooth device appearing mid-conversation turns barge-in off for the session (v1 ruling). */
+    private fun registerRouteWatch() {
+        if (routeCallback != null) return
+        val cb = object : android.media.AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>) {
+                if (added.none { it.isSink && CallAudioMode.isBluetooth(it.type) }) return
+                val tt = turnTaker ?: return
+                if (!tt.bargeIn) return
+                tt.disableBargeIn()
+                LiveLatency.log(TurnTaker.BARGE_TAG, "off for this session: Bluetooth connected")
+                exitCallAudio("bluetooth connected")
+            }
+        }
+        routeCallback = cb
+        audioManager.registerAudioDeviceCallback(cb, Handler(Looper.getMainLooper()))
+    }
+
+    private fun exitCallAudio(why: String) {
+        routeCallback?.let { runCatching { audioManager.unregisterAudioDeviceCallback(it) } }
+        routeCallback = null
+        val mode = callAudio ?: return
+        if (!mode.isActive) return
+        mode.exit(why)
+        rebuildTrack()
+    }
+
+    /** Drops the playback track so the next chunk builds one with the current usage. */
+    private fun rebuildTrack() = synchronized(trackLock) {
+        audioTrack?.let { track ->
+            runCatching {
+                track.pause()
+                track.flush()
+                track.release()
+            }
+        }
+        audioTrack = null
+        framesWritten = 0
+    }
+
+    /** Ends a priming hold ([primeNeeded]): the queued start of the reply plays. */
+    private fun releasePrime() = synchronized(trackLock) {
+        if (!priming) return@synchronized
+        priming = false
+        try {
+            audioTrack?.takeIf {
+                it.playState != AudioTrack.PLAYSTATE_PLAYING && ReplyAudioGate.mayStartPlayback(cue)
+            }?.play()
+        } catch (_: IllegalStateException) {
+            // Released under us: nothing to start.
+        }
+    }
+
+    /**
+     * Full duplex: the mic never reopens, so the reply's end is when playback drains. That is where
+     * the phase returns to LISTENING and the follow-up window starts (A25, 2026-10-27).
+     */
+    private fun watchPlaybackDrain() {
+        val generation = turnGeneration.get()
+        io.launch {
+            awaitPlaybackDrained()
+            if (!running.get() || speakingThisTurn || generation != turnGeneration.get()) return@launch
+            playbackActive = false
+            turnTaker?.onReplyEnd()
+            lastLocalSpeechAtMs = 0L
+            peakSinceMicOpen = 0
+            emit(LiveEvent.PlaybackDrained)
+            followUpEvent(FollowUpWindow.Event.PlaybackDrained)
+        }
+    }
+
+    /** `toolCallCancellation` (ai.google.dev/api/live): see [CancelledToolReport]. */
+    private fun handleToolCallCancellation(cancellation: JSONObject) {
+        val ids = cancellation.optJSONArray("ids") ?: return
+        val list = (0 until ids.length()).map { ids.optString(it) }.filter { it.isNotBlank() }
+        cancelledTools.onCancellation(list)
+        LiveLatency.log("LIVE_TOOL_CANCEL", "toolCallCancellation ids=$list")
+    }
+
+    /**
+     * Hands the model what a cancelled write did, as a user-role note, when nothing is in flight: not
+     * while Alfred speaks, not while the user is mid-turn, not while a reply is being generated.
+     * Otherwise the next turnComplete calls this again.
+     */
+    private fun deliverCancelNotesIfQuiet() {
+        if (!cancelledTools.hasNotes() || !conversationActive) return
+        if (speakingThisTurn || awaitingReply || turnTaker?.inActivity == true) return
+        val notes = cancelledTools.takeNotes()
+        val sent = sendText(notes.joinToString("\n") { it.text })
+        LiveLatency.log("LIVE_TOOL_CANCEL", "told the model about ${notes.size} cancelled write(s) sent=$sent")
+    }
+
+    /** Says a turn-taking fallback in words, once per process per [key]; always logs. */
+    private fun announceOnce(key: String, notice: String, log: String) {
+        LiveLatency.log("LIVE_TURN", log)
+        if (ANNOUNCED.add(key)) emit(LiveEvent.TurnNotice(notice))
+    }
+
+    private val turnSink = object : TurnTaker.Sink {
+        override fun sendActivityStart() {
+            sendRealtimeInput(JSONObject().put("activityStart", JSONObject()))
+        }
+
+        override fun sendAudio(pcm: ByteArray, offset: Int, length: Int) {
+            val b64 = Base64.encodeToString(pcm, offset, length, Base64.NO_WRAP)
+            sendRealtimeInput(JSONObject().put(
+                "audio",
+                JSONObject().put("mimeType", INPUT_MIME).put("data", b64),
+            ))
+        }
+
+        override fun sendActivityEnd() {
+            sendRealtimeInput(JSONObject().put("activityEnd", JSONObject()))
+            awaitingReply = true
+            latency.activityEnd(System.currentTimeMillis())
+        }
+
+        override fun onUserTurnStart(bargeIn: Boolean) {
+            typedTurnInFlight = false
+            idleJob?.cancel()
+            followUpEvent(FollowUpWindow.Event.UserSpeech)
+            LiveLatency.log("LIVE_FOLLOWUP", "local speech start bargeIn=$bargeIn")
+        }
+
+        override fun onEndOfTurn(end: EndOfTurnPolicy.Action.EndActivity) {
+            val scores = end.scores.joinToString(",") {
+                "%.2f@%d>%d".format(java.util.Locale.US, it.score, it.askedAtMs, it.arrivedAtMs)
+            }
+            LiveLatency.log(
+                LiveLatency.TAG,
+                "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} st_scores=${scores.ifEmpty { "none" }}",
+            )
+        }
+
+        override fun onBargeIn(fire: com.kevin.legion.service.turn.BargeInGate.Event.Fire) {
+            flushAudio()
+            speakingThisTurn = false
+            emit(LiveEvent.Interrupted)
+        }
+
+        override fun onBargeInDisabled(selfInterrupts: Int) {
+            announceOnce(
+                "barge-$episodicSessionId",
+                "INTERRUPTING TURNED OFF FOR THIS CONVERSATION",
+                "barge-in off for this session after $selfInterrupts self-interrupts",
+            )
+            io.launch { exitCallAudio("self-interrupts") }
+        }
+
+        override fun onLocalSpeech() {
+            lastLocalSpeechAtMs = System.currentTimeMillis()
+        }
+
+        override fun onSileroFailed(reason: String) {
+            TurnModels.markBroken("Silero threw: $reason")
+            turnTaker = null
+            announceOnce("silero", "LOCAL TURN DETECTION FAILED - SWITCHING TO BASIC LISTENING", "Silero failed: $reason")
+            if (!turnConfig.manualActivity) return // server VAD carries on; barge-in is simply gone
+            if (speakingThisTurn || awaitingReply) {
+                sileroFallbackPending = true
+            } else {
+                io.launch { closeSession(TURN_FALLBACK_REASON) }
+            }
+        }
+
+        override fun onSmartTurnFailed(reason: String) {
+            TurnModels.smartTurnBroken = reason
+            announceOnce("smart", "SMART END OF TURN FAILED - ENDING TURNS ON SILENCE", "Smart Turn failed: $reason")
+        }
+
+        override fun log(tag: String, message: String) = LiveLatency.log(tag, message)
     }
 
     // --- Microphone capture ---------------------------------------------
@@ -1974,7 +2306,9 @@ class GeminiLiveSession(
                         // conversation mode; a speak-only proactive line never opens
                         // the mic at all, so there is nothing here to retry.
                         val heldMs = System.currentTimeMillis() - recordingStartedAtMs
-                        val short = vadMode &&
+                        // Server VAD only: its premise is the server end-pointing on noise. Under
+                        // manual activity the phone decides the end, and bytes flow only inside one.
+                        val short = vadMode && !turnConfig.manualActivity &&
                             heldMs < SHORT_CAPTURE_RETRY_WINDOW_MS &&
                             bytesSinceOpen < SILENT_TURN_BYTES_THRESHOLD
                         if (short && !retriedThisTurn) {
@@ -2074,6 +2408,9 @@ class GeminiLiveSession(
                         // whole point of this event is that it lags the capturing=true intent
                         // flip by however long the awaitPlaybackDrained() wait above just took.
                         // See [LiveEvent.MicOpened]'s doc.
+                        // Half-duplex reopen: whatever was playing has drained. With barge-in the
+                        // first open can land on the greeting's tail; [watchPlaybackDrain] clears it.
+                        if (turnTaker?.bargeIn != true) playbackActive = false
                         emit(LiveEvent.MicOpened)
                         followUpEvent(FollowUpWindow.Event.MicOpened)
                     } catch (e: Exception) {
@@ -2169,7 +2506,11 @@ class GeminiLiveSession(
                 if (level > intervalPeak) intervalPeak = level
                 val nowMs = System.currentTimeMillis()
                 if (recording && level > peakSinceMicOpen) peakSinceMicOpen = level
-                if (recording && level >= FollowUpWindow.LOCAL_SPEECH_PEAK) lastLocalSpeechAtMs = nowMs
+                // With a TurnTaker, Silero speech outside playback sets this instead ([turnSink]):
+                // with the mic open during a reply, a level test would count Alfred's own echo.
+                if (turnTaker == null && recording && level >= FollowUpWindow.LOCAL_SPEECH_PEAK) {
+                    lastLocalSpeechAtMs = nowMs
+                }
                 if (recording && nowMs - lastLevelLogAtMs >= LEVEL_LOG_INTERVAL_MS) {
                     Log.d(TAG, "mic level: peak=$intervalPeak forwardedSinceOpen=$bytesSinceOpen " +
                         "openMs=${nowMs - recordingStartedAtMs}")
@@ -2250,6 +2591,16 @@ class GeminiLiveSession(
                 // A navigation turn cue is being said (or its tail is still playing): what the mic
                 // hears is the cue, not the user, so none of it goes to the model ([cueHold]).
                 if (cue.micHeld) continue
+                val taker = turnTaker
+                if (taker != null) {
+                    val sent = taker.feed(buffer, n, playbackActive)
+                    bytesThisTurn += sent
+                    bytesSinceOpen += sent
+                    continue
+                }
+                // Manual activity with no detector left (Silero failed): nothing may go up outside
+                // an activity, and the reconnect to server VAD is already pending.
+                if (turnConfig.manualActivity) continue
                 bytesThisTurn += n
                 bytesSinceOpen += n
                 val b64 = Base64.encodeToString(buffer, 0, n, Base64.NO_WRAP)
@@ -2332,7 +2683,15 @@ class GeminiLiveSession(
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    // Call-style audio for barge-in rides the voice-call path, where the AEC has
+                    // Alfred's audio as its reference (A25, 2026-10-27).
+                    .setUsage(
+                        if (callAudio?.isActive == true) {
+                            AudioAttributes.USAGE_VOICE_COMMUNICATION
+                        } else {
+                            AudioAttributes.USAGE_ASSISTANT
+                        },
+                    )
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -2368,9 +2727,21 @@ class GeminiLiveSession(
         val track = synchronized(trackLock) {
             val t = ensureTrackLocked() ?: return
             try {
+                // First chunk after a flush: hold the track paused and let a little audio queue up,
+                // so a reply after an interrupt does not start choppy ([primeNeeded]).
+                if (primeNeeded) {
+                    primeNeeded = false
+                    priming = true
+                    primedFrames = 0
+                    if (t.playState == AudioTrack.PLAYSTATE_PLAYING) t.pause()
+                }
                 // Not while a navigation turn cue holds playback paused ([cueHold]); the chunk is
                 // still written and waits in the buffer, and [releaseAfterCue] resumes it.
-                if (t.playState != AudioTrack.PLAYSTATE_PLAYING && ReplyAudioGate.mayStartPlayback(cue)) t.play()
+                if (!priming && t.playState != AudioTrack.PLAYSTATE_PLAYING &&
+                    ReplyAudioGate.mayStartPlayback(cue)
+                ) {
+                    t.play()
+                }
             } catch (_: IllegalStateException) {
                 // Lost the race anyway (released between the null check and play()). Dropping the
                 // chunk is correct: the only reason this track is gone is that the driver
@@ -2398,6 +2769,10 @@ class GeminiLiveSession(
         // soon as the data is accepted into the buffer. awaitPlaybackDrained compares
         // this against the playback head to tell when Zero has really stopped talking.
         framesWritten += offset / BYTES_PER_FRAME
+        if (priming) {
+            primedFrames += offset / BYTES_PER_FRAME
+            if (primedFrames >= PRIME_FRAMES) releasePrime()
+        }
         // DIAGNOSTIC (B12, remove once root-caused): pairs with the "audio chunk
         // recv" log - a large gap between recv and this write-complete timestamp
         // means the AudioTrack write blocked (stalled hardware/focus), which would
@@ -2419,6 +2794,10 @@ class GeminiLiveSession(
         // callback thread and the mic coroutine) and a lost increment here would
         // silently undo the whole point of this counter.
         turnGeneration.incrementAndGet()
+        playbackActive = false
+        turnTaker?.onReplyEnd()
+        primeNeeded = true
+        priming = false
         // Discard chunks not yet handed to the AudioTrack too, not just what's
         // already in its hardware buffer - otherwise stale queued audio could
         // still play out after the "interruption" once the consumer catches up.
@@ -2484,6 +2863,11 @@ class GeminiLiveSession(
     private suspend fun awaitPlaybackDrained() {
         val deadline = System.currentTimeMillis() + PLAYBACK_DRAIN_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
+            // A primed reply is queued on a paused track: not drained, just not started yet.
+            if (priming) {
+                delay(PLAYBACK_DRAIN_POLL_MS)
+                continue
+            }
             // Read the head under the lock (2026-08-11, same fix as [playAudio]): this loop runs on
             // the mic coroutine while teardown can release the track from another thread, so
             // reading `audioTrack` and then querying it as two steps is the same torn
@@ -2691,6 +3075,9 @@ class GeminiLiveSession(
         conversationActive = false
         capturing = false
         suppressMicNextTurn = false
+        playbackActive = false
+        turnTaker?.reset()
+        exitCallAudio("park")
         restoreAudio()
         ConversationState.setBusy(false)
         MicArbiter.release(micClaimant)
@@ -2815,6 +3202,7 @@ class GeminiLiveSession(
         }
         webSocket = null
         releaseTrack()
+        exitCallAudio("close")
         restoreAudio()
         ConversationState.setBusy(false)
         MicArbiter.release(micClaimant)
@@ -2852,6 +3240,7 @@ class GeminiLiveSession(
         }
         webSocket = null
         releaseTrack()
+        exitCallAudio("destroy")
         restoreAudio()
         ConversationState.setBusy(false)
         MicArbiter.release(micClaimant)
@@ -3097,6 +3486,15 @@ class GeminiLiveSession(
         private const val CHUNK_BYTES = 3200
 
         private const val MIC_HANDOFF_MS = 250L
+        /** Close reason when Silero failed and the conversation reconnects on server VAD. */
+        internal const val TURN_FALLBACK_REASON = "turn detector fallback"
+        /** How long socket open waits for the turn models before falling back to server VAD. */
+        private const val MODEL_WAIT_MS = 3_000L
+        /** 200 ms of 24 kHz audio queued before a reply after a flush starts playing. */
+        private const val PRIME_FRAMES = 4_800
+        private const val PRIME_MAX_WAIT_MS = 250L
+        /** Turn-taking notices already said in words this process ([announceOnce]). */
+        private val ANNOUNCED: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
         // Settle after playback has actually drained, before capture opens. Small
         // on purpose - awaitPlaybackDrained already waited for the real tail, this
         // is just a beat for the HAL to release the output path.

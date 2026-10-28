@@ -100,7 +100,9 @@ class AndroidBounceEnvironment(
         val audio = context.getSystemService(AudioManager::class.java)
         telecom?.isInCall == true ||
             audio?.mode == AudioManager.MODE_IN_CALL ||
-            audio?.mode == AudioManager.MODE_IN_COMMUNICATION
+            // The assistant's own call-style audio for barge-in is not a call (2026-10-27).
+            (audio?.mode == AudioManager.MODE_IN_COMMUNICATION &&
+                !com.kevin.legion.service.turn.CallAudioMode.ownCommActive)
     }.getOrDefault(false)
 
     @Synchronized

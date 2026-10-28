@@ -20,7 +20,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class LiveSetupFlagsTest {
 
-    private fun setup(vadMode: Boolean): JSONObject {
+    private fun setup(vadMode: Boolean, manualActivity: Boolean = false): JSONObject {
         val session = GeminiLiveSession(ApplicationProvider.getApplicationContext()) {}
         return session.buildSetupJson(
             systemInstruction = "x",
@@ -29,6 +29,7 @@ class LiveSetupFlagsTest {
             vadMode = vadMode,
             subtitles = false,
             resumeHandle = null,
+            manualActivity = manualActivity,
         ).getJSONObject("setup")
     }
 
@@ -62,5 +63,23 @@ class LiveSetupFlagsTest {
         val c = setup(true).getJSONObject("contextWindowCompression")
         assertEquals(32_000, c.getInt("triggerTokens"))
         assertEquals(16_000, c.getJSONObject("slidingWindow").getInt("targetTokens"))
+    }
+
+    // 2026-10-27: local end of turn sends activityStart/activityEnd itself, so the setup carries exactly
+    // what the A25 spike sent: `disabled: true` and no server tuning fields.
+    @Test
+    fun `manual activity disables server VAD and sends no tuning`() {
+        val aad = setup(vadMode = true, manualActivity = true).getJSONObject("realtimeInputConfig")
+            .getJSONObject("automaticActivityDetection")
+        assertTrue(aad.getBoolean("disabled"))
+        assertEquals(1, aad.length())
+    }
+
+    @Test
+    fun `server VAD stays the default`() {
+        val aad = setup(vadMode = true).getJSONObject("realtimeInputConfig")
+            .getJSONObject("automaticActivityDetection")
+        assertFalse(aad.getBoolean("disabled"))
+        assertTrue(aad.has("silenceDurationMs"))
     }
 }

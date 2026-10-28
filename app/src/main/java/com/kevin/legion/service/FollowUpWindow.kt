@@ -61,6 +61,11 @@ object FollowUpWindow {
         data object TurnComplete : Event
         /** The mic is physically capturing again. */
         data object MicOpened : Event
+        /**
+         * The reply finished playing while the mic stayed open (barge-in, 2026-10-27): the same
+         * moment [MicOpened] marks in half-duplex, which never comes when the mic never closes.
+         */
+        data object PlaybackDrained : Event
         /** The first input transcript text of the user's turn arrived. */
         data object UserSpeech : Event
         /** The model asked for a tool: a running tool is not silence. */
@@ -81,7 +86,7 @@ object FollowUpWindow {
         Event.TurnComplete ->
             // Re-arm path: a window still running from the previous answer is replaced.
             Decision(State(awaitingMic = true), if (state.armed) Action.CANCEL else Action.NONE)
-        Event.MicOpened ->
+        Event.MicOpened, Event.PlaybackDrained ->
             if (state.awaitingMic) Decision(State(armed = true), Action.ARM)
             else Decision(state, Action.NONE)
         Event.UserSpeech, Event.ToolCall ->

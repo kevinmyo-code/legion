@@ -21,12 +21,14 @@ import com.kevin.legion.car.CarProbeLog
 internal class LiveLatency {
     private var startAtMs = 0L
     private var lastInputAtMs = 0L
+    private var activityEndAtMs = 0L
     private val toolStarts = HashMap<String, Pair<String, Long>>()
 
     @Synchronized
     fun start(nowMs: Long) {
         startAtMs = nowMs
         lastInputAtMs = 0L
+        activityEndAtMs = 0L
         toolStarts.clear()
     }
 
@@ -42,6 +44,17 @@ internal class LiveLatency {
     /** Milliseconds since the last transcript chunk, consumed so a turn reports once. */
     @Synchronized
     fun firstAudio(nowMs: Long): Long? = elapsed(lastInputAtMs, nowMs).also { lastInputAtMs = 0L }
+
+    /** The phone ended the user's turn (manual activity, 2026-10-27). */
+    @Synchronized
+    fun activityEnd(nowMs: Long) {
+        activityEndAtMs = nowMs
+    }
+
+    /** Milliseconds from the phone's activityEnd to the first reply audio, consumed once. */
+    @Synchronized
+    fun firstAudioAfterActivityEnd(nowMs: Long): Long? =
+        elapsed(activityEndAtMs, nowMs).also { activityEndAtMs = 0L }
 
     /** A transcript chunk that lands after the reply started must not seed the next turn. */
     @Synchronized

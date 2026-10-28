@@ -2970,6 +2970,9 @@ object LiveToolbox {
      * `show_saved_places`/`import_receipt` are UI-scoped hand-offs - [dispatch]
      * itself writes nothing for them, the screen it launches does, downstream of this file entirely.
      */
+    /** Whether [name] writes (see [MUTATING_TOOLS]): a cancelled call's outcome must then be told. */
+    internal fun isMutatingTool(name: String): Boolean = name in MUTATING_TOOLS
+
     private val MUTATING_TOOLS = setOf(
         "clear_codes", "set_reminder", "tag_place", "rename_place", "forget_place", "set_odometer", "log_service",
         "log_past_service", "set_maintenance_interval", "register_vehicle", "remember",

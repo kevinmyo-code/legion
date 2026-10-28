@@ -141,4 +141,20 @@ class FollowUpWindowTest {
             ),
         )
     }
+
+    // 2026-10-27, barge-in keeps the mic open: the reply draining is the arming moment.
+    @Test fun playbackDrainedAfterTurnCompleteArms() {
+        assertEquals(listOf(Action.NONE, Action.ARM), run(Event.TurnComplete, Event.PlaybackDrained))
+    }
+
+    @Test fun playbackDrainedWithoutAnAnswerNeverArms() {
+        assertEquals(listOf(Action.NONE), run(Event.PlaybackDrained))
+    }
+
+    @Test fun localSpeechAfterDrainCancels() {
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.CANCEL),
+            run(Event.TurnComplete, Event.PlaybackDrained, Event.UserSpeech),
+        )
+    }
 }
