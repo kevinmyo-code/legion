@@ -5,7 +5,7 @@ charted: 2026-10-28
 charted-by: "Kevin + Fable"
 effort: "`.scratch/async-lookups/`"
 tickets: 7
-open: 0
+open: 6
 status: open
 tags: [map]
 ---

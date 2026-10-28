@@ -4,7 +4,7 @@ ticket: "04"
 title: "Test: the A25 run that proves WHEN_IDLE speaks, and the lookup p50/p95"
 type: test
 status: built
-status-detail: "Gate answered yes: WHEN_IDLE speaks on gemini-3.8-live (run 1 passed the gate, runs 2 and 3 confirm it); run 2 found two failures (late result denied, fleet router spent its round on discovery), both fixed; run 3 (2026-10-28 11:24-11:31) held both fixes, 6 of 8 async lookups answered, eight findings F1-F8 built in ticket 07. Still owes the p50/p95 report pasted into decisions.md; run 3 lookup p50/p95: ask_fleet 1,141/8,994 ms (n=6), ask_goals 772/829 ms (n=2), ask_body 511 ms (n=1)."
+status-detail: "Gate still yes. Run 4 (2026-10-28, A25, gemini-3.8-live, phone 5727ad00) held run 3's fixes: both async ask_fleet lookups (1.27 s, 5.69 s) answered unprompted from the WHEN_IDLE result, the late one answered not denied; still_checking nudge at 4.03 s got a holding line; the answer hold kept the conversation open. No sir or madam, a dollar figure read in words, a reminder written only on request, a sign-off after end_conversation. Not yet right: no holding line before either lookup (about 4 s of dead air on the 5.69 s one), the sign-off still reads butler-ish, barge-in never fired (a fix branch adds per-reply gate diagnostics). Owed: the p50/p95 paste into decisions.md and an engine-side render of the 4 uploaded conversation batches."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -54,6 +54,25 @@ fan-out), `reply_ms`, `eot_reply_ms`. Paste the table into this ticket's status-
    `WHEN_IDLE` result in the model's own next turn; "any trouble codes on the Jeep" reached
    `get_code_history` and read P1282 and P0700 twice. Eight findings, F1-F8, built in ticket 07
    (`07-run3-follow-ups.md`). Result-to-first-audio after a `WHEN_IDLE` result: 0.8 s, 1.8 s, 1.9 s.
+4. **Run 4 (2026-10-28, phone build `5727ad00`): run 3's fixes held; the holding line did not.**
+   - Both async `ask_fleet` lookups (1.27 s and 5.69 s) came back as `WHEN_IDLE` results and the
+     model answered each in a turn of its own, unprompted. The late result was answered from, not
+     denied. The fleet router went to `get_code_history`, then `diagnose_codes`.
+   - The `still_checking` nudge fired at 4.03 s on the 5.69 s lookup and the model spoke a holding
+     line after it. The follow-up window's answer hold kept the conversation open through the
+     lookup; run 3's failure, the window closing on an owed answer, did not recur.
+   - Register: no "sir" or "madam"; a dollar figure was read in words. A reminder was written only
+     when asked for, and a plan mentioned in passing was not written. A sign-off was spoken after
+     `end_conversation`.
+   - Not yet right: the model spoke no holding line of its own before either lookup; both times it
+     went straight to the tool call in silence, so the 5.69 s lookup had about 4 s of dead air
+     before the nudge prompted one. The sign-off still reads butler-ish. Barge-in never fired:
+     the gate was armed and the setting on, and there is no `LIVE_BARGE_IN fire` line in the
+     capture. A separate fix branch adds per-reply gate diagnostics.
+   - Conversation upload: the phone sent 4 batches of `LIVE_AUDIT` and `LIVE_LATENCY` lines to the
+     engine during the run (`CONVERSATION_LOG: Sent N lines`). The engine-side render
+     (`manage.py device_logs --reason conversation --render`) is not checked yet; it needs database
+     access Kevin has.
 
 ### Run 3, `python tools/voice_latency.py`
 

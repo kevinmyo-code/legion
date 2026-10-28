@@ -6,7 +6,7 @@ type: build
 status: built
 status-detail: "Built 2026-10-28 on feat/phone-conversation-upload: spool, upload (reason=conversation, session end + 3 min + app start + Send now), two-switch setting, JVM tests incl. voice_audit.py render. Owes the A25 run: a conversation, then manage.py device_logs --reason conversation --render."
 blockers: ["01"]
-blocked-by: ["01"]
+blocked-by: ["[[01-all-conversation-logs-on-the-engine]]"]
 open-blockers: 0
 ready: false
 tags: [ticket]
