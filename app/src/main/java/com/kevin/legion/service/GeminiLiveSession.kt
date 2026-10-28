@@ -2014,11 +2014,13 @@ class GeminiLiveSession(
      * Nobody is speaking and no reply is being generated: the only moment a system note may go in,
      * because `clientContent` "will interrupt any current model generation" (ai.google.dev/api/live).
      * Same test as [deliverCancelNotesIfQuiet], plus playback and a typed turn (its reply is shown,
-     * not spoken, so a spoken-style holding line has no place in it).
+     * not spoken, so a spoken-style holding line has no place in it), plus no sent result still
+     * waiting for its answer: the model spends 0.8-1.9 s generating that answer before its first
+     * audio (ticket 04 run 3) with no other flag up, and a note then would interrupt it.
      */
     private fun quietForNudge(): Boolean =
         conversationActive && !typedTurnInFlight && !speakingThisTurn && !playbackActive &&
-            !awaitingReply && turnTaker?.inActivity != true
+            !awaitingReply && turnTaker?.inActivity != true && holdingWatch.pendingTool() == null
 
     /**
      * A system note to the model as a user-role text turn, the channel [CancelledToolReport]'s notes

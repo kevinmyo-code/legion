@@ -4,7 +4,7 @@ ticket: "07"
 title: "Build: ticket 04 run 3 follow-ups (still-checking nudge, dead holding lines, sign-off, writes, figures, meal dates)"
 type: build
 status: built
-status-detail: "Built 2026-10-28 on feat/async-read-tools, 7 commits. Still-checking nudge at 4 s and 12 s (Kevin); dead-holding-line nudges and a 20 s answer hold on the follow-up window; sign-off, write-on-request and time-varying-figure prompt rules; meal dates; voice_audit.py fixes. 5,489 tests, 0 failures; detekt the 4 pre-existing; assembleFast builds. Owed: a phone run read through voice_audit.py --summary (nudges and what followed them)."
+status-detail: "Built 2026-10-28 on feat/async-read-tools, 10 commits. Still-checking nudge at 4 s and 12 s (Kevin); dead-holding-line nudges and a 20 s answer hold on the follow-up window; sign-off, write-on-request and time-varying-figure prompt rules; meal dates; voice_audit.py fixes. 5,489 tests, 0 failures; detekt the 4 pre-existing; assembleFast builds. Owed: a phone run read through voice_audit.py --summary (nudges and what followed them)."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -48,7 +48,9 @@ every result and every assistant line after it `[redacted]` in the audit log.
    `STILL_CHECKING_AFTER_MS = 4_000`, with nobody speaking and no reply being generated, gets one
    system note; at most once more at `STILL_CHECKING_AGAIN_AFTER_MS = 12_000`. The clock is each
    call's own start (F3's 9 s run was the second call of a chain). Never after the result, never
-   while a BLOCKING tool is in flight, never for a call the user has spoken over; cleared on
+   while a BLOCKING tool is in flight, never while another lookup's sent result is still waiting
+   for its answer (the model is generating it, 0.8-1.9 s before first audio, and a note would
+   interrupt it), never for a call the user has spoken over; cleared on
    cancellation, barge-in, speech onset, park and session end. No two nudges closer than 4 s.
    On whenever async lookups are on (only NON_BLOCKING calls are registered). Logs
    `LIVE_AUDIT nudge reason=still_checking tool=<name> after_ms=<n>` and
@@ -136,6 +138,8 @@ farewell.* Search sentence: *news, scores, prices, weather and forecasts*.
 - In pure server-VAD mode with no `voiceActivity` messages, nothing stops a still-checking nudge
   while the user is mid-sentence (transcripts arrive at utterance end). 3.8-live sends
   `ACTIVITY_START`, which clears the nudge.
+- The holding-line watch and its hold are not gated on "Answer lookups while talking": the 11:47
+  turn had nothing asynchronous about it, so the empty-holding-line nudge runs with the setting off.
 - With captions off there is no transcript, so a turn with speech counts as an answer and no
   holding-line nudge can fire.
 
