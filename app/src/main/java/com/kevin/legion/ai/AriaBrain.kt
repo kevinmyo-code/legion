@@ -1032,6 +1032,17 @@ internal const val DATA_ACCESS_CLAUSE =
  * user who speaks over a pending result gets their new words answered first and the result after,
  * in the same turn. [com.kevin.legion.service.turn.HoldingLineWatch] is the guarded code fallback
  * when the model does it anyway. Presence pinned; obedience is owed to the next phone run.
+ *
+ * **Figures only from a result (ticket 04 run 3, F6).** Asked about the weather at a park in
+ * November, the model said "Let me look.Checking.", called nothing the phone can see, and gave
+ * climate figures ("mid-sixties to mid-seventies"); asked for the date itself it said it could not
+ * check forecasts. No function tool returns a forecast: `area_info` weather is NWS severe alerts at
+ * the live fix, `get_sitrep`'s weather is current conditions at the phone. `googleSearch` is
+ * declared in the setup, but the "use your search tool" sentence listed news, scores and prices and
+ * not weather, and nothing logs grounding, so whether a search ran is unauditable. The last
+ * sentence: a time-varying figure comes from a tool or search result or is not given, and a
+ * "typical" figure is not a substitute. Scoped to things that change, so a question the model can
+ * answer itself still gets the answer.
  */
 internal const val LOOKUP_HOLD_CLAUSE =
     "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
@@ -1049,7 +1060,10 @@ internal const val LOOKUP_HOLD_CLAUSE =
         "answer yourself gets the answer. If the result is already in front of you when you " +
         "begin to speak, there is no holding line to say: answer. If the user speaks while a " +
         "result is pending or has just arrived, answer their new words first, then give that " +
-        "result in the same turn unless they cancelled it. "
+        "result in the same turn unless they cancelled it. " +
+        "Weather, prices, news, balances and anything else that changes over time come only " +
+        "from a tool or search result; with no tool or no result, say you cannot check it, and " +
+        "never give a typical or usual figure instead. "
 
 /**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08
@@ -1197,7 +1211,8 @@ internal fun composeIdentityAndRules(
 }
 
 internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
-    "Use your search tool for anything current or specific - news, scores, prices - " +
+    "Use your search tool for anything current or specific - news, scores, prices, weather " +
+    "and forecasts - " +
     "and base your answer on what it finds. " +
     "Use your tools to answer questions about your own live data, to control music, " +
     "to tag or show saved places, and to set location-based reminders (surfaced when the " +

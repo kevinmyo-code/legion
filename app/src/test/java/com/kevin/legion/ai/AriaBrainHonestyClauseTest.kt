@@ -163,6 +163,25 @@ class AriaBrainHonestyClauseTest {
     }
 
     /**
+     * Ticket 04 run 3, F6 (A25, 2026-10-28; async-lookups ticket 07): climate figures for a park in
+     * November with nothing behind them. A time-varying figure comes from a result or is not given;
+     * and weather is named in the search sentence so the declared search tool is the route.
+     */
+    @Test
+    fun `a figure that changes over time comes only from a result`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
+        for (phrase in listOf(
+            "Weather, prices, news, balances and anything else that changes over time come only " +
+                "from a tool or search result",
+            "with no tool or no result, say you cannot check it",
+            "never give a typical or usual figure instead",
+        )) {
+            assertTrue("the figures rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
+        }
+        assertTrue(SHARED_INSTRUCTIONS.contains("news, scores, prices, weather and forecasts"))
+    }
+
+    /**
      * Ticket 04 run 3, F5 (A25, 2026-10-28; async-lookups ticket 07): a trip mentioned as a rough
      * plan was put on the calendar unasked. A mention is not a request. Presence only.
      */
