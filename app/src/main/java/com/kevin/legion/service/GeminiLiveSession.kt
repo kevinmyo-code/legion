@@ -425,6 +425,10 @@ class GeminiLiveSession(
     @Volatile private var turnTaker: TurnTaker? = null
     @Volatile private var smartSetting = false
     @Volatile private var bargeSetting = false
+    // ADR 0065: the tools this socket declared NON_BLOCKING, captured in [start] so the setup's
+    // declarations and [sendToolResponse]'s WHEN_IDLE always agree for the life of one socket.
+    // Empty when "Answer lookups while talking" is off: every declaration is then BLOCKING.
+    @Volatile private var nonBlockingTools: Set<String> = emptySet()
     // True from the reply's first audio chunk until it has drained or been flushed. Barge-in listens
     // only while this is true, and the local follow-up signal ignores what the mic hears meanwhile.
     @Volatile private var playbackActive = false
@@ -676,6 +680,8 @@ class GeminiLiveSession(
         vadMode = vad
         smartSetting = VoiceTurnSettings.smartEndOfTurn(appContext)
         bargeSetting = VoiceTurnSettings.bargeIn(appContext)
+        nonBlockingTools =
+            if (VoiceTurnSettings.asyncLookups(appContext)) LiveToolbox.NON_BLOCKING_READ_TOOLS else emptySet()
         turnConfig = TurnConfig.SERVER_VAD
         turnTaker = null
         playbackActive = false
@@ -958,6 +964,7 @@ class GeminiLiveSession(
      * user-visible failure instead of a false success.
      */
     fun sendToolResponse(id: String, name: String, response: JSONObject): Boolean {
+        val async = isNonBlockingTool(name)
         // Released before the send, so a dropped send cannot leave the count stuck above zero.
         toolCallsInFlight.updateAndGet { (it - 1).coerceAtLeast(0) }
         // The server cancelled this call (the user spoke over it): it no longer wants a response,
@@ -972,19 +979,19 @@ class GeminiLiveSession(
             deliverCancelNotesIfQuiet()
             return true
         }
-        val msg = JSONObject().put("toolResponse", JSONObject().apply {
-            put("functionResponses", JSONArray().put(JSONObject().apply {
-                put("id", id)
-                put("name", name)
-                put("response", response)
-            }))
-        })
+        // ADR 0065: a lookup that outlived the holding line answers into a follow-up window that
+        // may already be counting. Restart it so the answer has a full window to begin in.
+        if (async) followUpEvent(FollowUpWindow.Event.ToolResponse)
+        val msg = toolResponseMessage(id, name, response, async)
         val sent = webSocket?.send(msg.toString()) ?: false
         latency.toolResponse(id, System.currentTimeMillis())?.let { (tool, ms) ->
-            LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent")
+            LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent" + if (async) " async=true" else "")
         }
         return sent
     }
+
+    /** Whether this socket declared [name] NON_BLOCKING (ADR 0065). False for every tool when the setting is off. */
+    fun isNonBlockingTool(name: String): Boolean = name in nonBlockingTools
 
     /**
      * Ticket 21 (google-account-integration, "close the remember leak"): read-only window onto
@@ -1131,6 +1138,7 @@ class GeminiLiveSession(
             subtitles = subtitles,
             resumeHandle = requestedResumeHandle,
             manualActivity = turnConfig.manualActivity,
+            nonBlockingTools = nonBlockingTools,
         )
 
     /**
@@ -1146,10 +1154,11 @@ class GeminiLiveSession(
         subtitles: Boolean,
         resumeHandle: String?,
         manualActivity: Boolean = false,
+        nonBlockingTools: Set<String> = emptySet(),
     ): JSONObject {
         val tools = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
         if (functionDeclarations.length() > 0) {
-            tools.put(JSONObject().put("functionDeclarations", withBlockingBehavior(functionDeclarations)))
+            tools.put(JSONObject().put("functionDeclarations", withToolBehavior(functionDeclarations, nonBlockingTools)))
         }
 
         val setup = JSONObject().apply {
@@ -1649,6 +1658,10 @@ class GeminiLiveSession(
                             }
                         }
                         duckNow()
+                        // ADR 0065: a lookup's answer can start with the follow-up window already
+                        // counting (nobody spoke, so nothing cancelled it). Never close mid-reply;
+                        // this reply's own turnComplete re-arms.
+                        followUpEvent(FollowUpWindow.Event.ModelSpeech)
                         emit(LiveEvent.SpeakingStarted)
                     }
                     // DIAGNOSTIC (B12, remove once root-caused): timestamp each audio
@@ -3464,33 +3477,60 @@ class GeminiLiveSession(
                 "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
         // Live-capable model. Swap here if Google promotes a newer Live model - but read
-        // [withBlockingBehavior] first. 3.1-flash-live-preview -> 3.8-live (2026-09-27, stable)
+        // [withToolBehavior] first. 3.1-flash-live-preview -> 3.8-live (2026-09-27, stable)
         // was NOT a drop-in: 3.8 made non-blocking function calls the default.
         private const val MODEL = "models/gemini-3.8-live"
 
         /**
-         * Stamps `behavior: BLOCKING` on every function declaration (2026-09-27).
+         * Stamps a `behavior` on every function declaration: `NON_BLOCKING` for a name in
+         * [nonBlocking], `BLOCKING` for everything else (2026-09-27, amended 2026-10-28 by ADR 0065).
          *
-         * `gemini-3.8-live` made NON_BLOCKING the default: the model keeps talking while a tool
-         * runs, and the result arrives after it has already spoken. **That breaks CLAUDE.md sec 7's
-         * outcome-verb rule outright** - an outcome verb may follow only a tool call that came back
-         * successful IN THAT TURN, and under non-blocking the model can say "done" before the
-         * result exists. `ai/AriaBrain.kt`'s `CANNOT_CLAUSE` is conditioned on the tool RESULT; a
-         * mode where the model speaks before seeing one makes the clause unobeyable, not merely
-         * disobeyed. Google's own Gemini did exactly this to Kevin's hotspot on 2026-09-17.
+         * **Writes block.** `gemini-3.8-live` made NON_BLOCKING the default: the model keeps talking
+         * while a tool runs, and the result arrives after it has already spoken. For a write that
+         * breaks CLAUDE.md sec 7's outcome-verb rule outright - an outcome verb may follow only a
+         * tool call that came back successful IN THAT TURN, and under non-blocking the model can say
+         * "done" before the result exists. `ai/AriaBrain.kt`'s `CANNOT_CLAUSE` is conditioned on the
+         * tool RESULT; a mode where the model speaks before seeing one makes it unobeyable. Google's
+         * own Gemini did exactly this to Kevin's hotspot on 2026-09-17.
+         *
+         * **Read-only lookups may not block.** A read has no outcome to misreport; its risk is a
+         * fact spoken before the data exists, which `LOOKUP_HOLD_CLAUSE` forbids in the prompt.
+         * [nonBlocking] is [LiveToolbox.NON_BLOCKING_READ_TOOLS], or empty when the Settings switch
+         * is off. Their results go back `WHEN_IDLE` ([toolResponseMessage]).
          *
          * Applied here at the single choke point rather than per declaration, so a tool added
-         * anywhere - `LiveToolbox`, `EngineToolbox`, a future file - cannot forget it. Copies,
-         * never mutates the caller's array. An explicit `behavior` already set is left alone.
+         * anywhere - `LiveToolbox`, `EngineToolbox`, a future file - cannot forget it and blocks by
+         * default. Copies, never mutates the caller's array. An explicit `behavior` already set is
+         * left alone. Live only: typed chat's REST declarations never pass through here.
          */
-        internal fun withBlockingBehavior(declarations: JSONArray): JSONArray {
+        internal fun withToolBehavior(declarations: JSONArray, nonBlocking: Set<String>): JSONArray {
             val out = JSONArray()
             for (i in 0 until declarations.length()) {
                 val decl = JSONObject(declarations.getJSONObject(i).toString())
-                if (!decl.has("behavior")) decl.put("behavior", "BLOCKING")
+                if (!decl.has("behavior")) {
+                    decl.put("behavior", if (decl.optString("name") in nonBlocking) "NON_BLOCKING" else "BLOCKING")
+                }
                 out.put(decl)
             }
             return out
+        }
+
+        /**
+         * The `toolResponse` message for one call. For a NON_BLOCKING tool ([async]) the result goes
+         * back with `scheduling: WHEN_IDLE` INSIDE `response`, beside the tool's own fields (Google's
+         * Live tools page, read 2026-10-28): a holding line in progress finishes, then the answer.
+         * Never `INTERRUPT` (it would cut the line off) and never `SILENT` (a lookup the user asked
+         * for must be spoken). A blocking tool's response carries no `scheduling`. Copies [response].
+         */
+        internal fun toolResponseMessage(id: String, name: String, response: JSONObject, async: Boolean): JSONObject {
+            val body = if (async) JSONObject(response.toString()).put("scheduling", "WHEN_IDLE") else response
+            return JSONObject().put("toolResponse", JSONObject().apply {
+                put("functionResponses", JSONArray().put(JSONObject().apply {
+                    put("id", id)
+                    put("name", name)
+                    put("response", body)
+                }))
+            })
         }
 
         // Prebuilt Gemini voice. Deeper/informative reads suit the Zero persona;

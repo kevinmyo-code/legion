@@ -2231,8 +2231,11 @@ object LiveToolbox {
      * used to be a third example here but is RETIRED, one-today ticket 10 slice C, 2026-09-05 - its
      * own `dispatch` branch returns a named failure message now, never null), and every
      * money/notes/media/place/core tool.
+     *
+     * Internal, not private, so `LiveNonBlockingReadToolsTest` reads the REAL domain lists when it
+     * proves [NON_BLOCKING_READ_TOOLS] holds no dispatcher that can reach a write (ADR 0065).
      */
-    private val DISPATCHED: Map<String, List<String>> = mapOf(
+    internal val DISPATCHED: Map<String, List<String>> = mapOf(
         // WRITES CAME BACK OUT, 2026-08-18 (Kevin's call, measured). Every tool below is a READ.
         // The eight write tools this map used to hide - log_service, log_past_service,
         // log_build_entry, log_meal, log_sleep, log_bodyweight, log_workout_set,
@@ -2996,6 +2999,31 @@ object LiveToolbox {
         // purchase-log ticket 08: action=log writes a bought entry on the engine.
         "bought_log",
     )
+
+    /**
+     * Live declarations stamped `behavior: NON_BLOCKING` (ADR 0065, async-lookups ticket 01/02,
+     * Kevin 2026-10-28): the model keeps talking while these run, and the result comes back with
+     * `scheduling: WHEN_IDLE`. Every other declaration stays BLOCKING
+     * ([GeminiLiveSession.withToolBehavior]). Empty on the wire when the Settings switch is off.
+     *
+     * **Only a read may be here.** The 2026-09-27 all-blocking ruling exists because a write could
+     * be called "done" before its result existed. A read has no outcome to misreport; its risk is a
+     * fact spoken early, and `LOOKUP_HOLD_CLAUSE` in `ai/AriaBrain.kt` closes that in the prompt.
+     * A dispatcher counts as a write if ANY tool behind it writes, listed in [MUTATING_TOOLS] or not.
+     *
+     * Ticket 01 offered nine names; seven are out, traced 2026-10-28:
+     * - `ask_fleet`: its domain holds `lookup_vin`, which upserts the car's spec row
+     *   (`VehicleSpecController.refreshFromVin`). Not in [MUTATING_TOOLS] today.
+     * - `ask_goals`: its domain holds `ask_advisor`.
+     * - `ask_advisor`: inserts an `advisor_advice` row on every answer (`AdvisorAgent.ask`).
+     * - `diagnose_codes`, `triage_symptom`, `ask_maintenance`, `check_cold_start`: read-only, but
+     *   hidden behind `ask_fleet` ([DISPATCHED]), so they never reach the Live socket and a stamp
+     *   on them would do nothing.
+     *
+     * Never: `ask_engine` and `aspect_clerk` (can write), `ask_mail` (the read-through rule keys off
+     * the turn a mail tool ran in). `LiveNonBlockingReadToolsTest` pins all of this.
+     */
+    val NON_BLOCKING_READ_TOOLS: Set<String> = setOf("ask_body", "ask_pantry")
 
     /**
      * Every tool whose result must never reach [com.kevin.legion.data.local.EpisodicTurn]/

@@ -157,4 +157,61 @@ class FollowUpWindowTest {
             run(Event.TurnComplete, Event.PlaybackDrained, Event.UserSpeech),
         )
     }
+
+    // ADR 0065: a NON_BLOCKING lookup. The holding line ends (TurnComplete), the mic opens and the
+    // window arms while the lookup is still in flight, and the answer arrives with nobody speaking.
+
+    @Test fun lookupOutlivingTheWindowReArmsWhenItsResultIsSent() {
+        assertEquals(
+            listOf(
+                Action.NONE, Action.ARM, // holding line done, mic open
+                Action.NONE, // 8 s, lookup still running: stand down, do not close
+                Action.ARM, // result sent: a full window for the answer to begin in
+                Action.CANCEL, // the answer starts playing
+                Action.NONE, Action.ARM, Action.CLOSE, // the answer's own turn re-arms normally
+            ),
+            run(
+                Event.TurnComplete, Event.MicOpened, Event.Elapsed(1), Event.ToolResponse,
+                Event.ModelSpeech, Event.TurnComplete, Event.MicOpened, Event.Elapsed(0),
+            ),
+        )
+    }
+
+    @Test fun resultInsideTheWindowRestartsItsClock() {
+        // Without this, a lookup finishing at 7.9 s left 0.1 s for the answer to start.
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.ARM, Action.CANCEL),
+            run(Event.TurnComplete, Event.MicOpened, Event.ToolResponse, Event.ModelSpeech),
+        )
+    }
+
+    @Test fun answerThatNeverComesStillEndsTheConversation() {
+        // If WHEN_IDLE behaved like SILENT (ticket 04's gate), the session must not stay open.
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.NONE, Action.ARM, Action.CLOSE),
+            run(Event.TurnComplete, Event.MicOpened, Event.Elapsed(1), Event.ToolResponse, Event.Elapsed(0)),
+        )
+    }
+
+    @Test fun modelSpeechNeverLetsTheWindowCloseMidReply() {
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.CANCEL, Action.NONE),
+            run(Event.TurnComplete, Event.MicOpened, Event.ModelSpeech, Event.Elapsed(0)),
+        )
+    }
+
+    @Test fun resultWithNoWindowChangesNothing() {
+        // A lookup that finished before its holding line did: the line's own turn arms as usual.
+        assertEquals(
+            listOf(Action.NONE, Action.NONE, Action.ARM),
+            run(Event.ToolResponse, Event.TurnComplete, Event.MicOpened),
+        )
+    }
+
+    @Test fun speechWhileTheLookupRunsClearsTheHold() {
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.NONE, Action.NONE, Action.NONE),
+            run(Event.TurnComplete, Event.MicOpened, Event.Elapsed(1), Event.UserSpeech, Event.ToolResponse),
+        )
+    }
 }

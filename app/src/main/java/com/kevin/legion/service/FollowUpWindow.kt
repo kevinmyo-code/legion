@@ -50,10 +50,17 @@ object FollowUpWindow {
     fun isActivityStart(root: org.json.JSONObject): Boolean =
         root.optJSONObject("voiceActivity")?.optString("type") == "ACTIVITY_START"
 
+    /**
+     * [heldForTool]: the window expired while a tool was still running, so it stood down without
+     * closing. Before ADR 0065 every tool blocked and its answer's turnComplete always re-armed. A
+     * NON_BLOCKING lookup can outlive the holding line; [Event.ToolResponse] re-arms from here, so a
+     * result the model never speaks still ends the conversation instead of leaving it open.
+     */
     data class State(
         val awaitingMic: Boolean = false,
         val armed: Boolean = false,
         val extensions: Int = 0,
+        val heldForTool: Boolean = false,
     )
 
     sealed interface Event {
@@ -70,6 +77,17 @@ object FollowUpWindow {
         data object UserSpeech : Event
         /** The model asked for a tool: a running tool is not silence. */
         data object ToolCall : Event
+        /**
+         * A NON_BLOCKING tool's result was handed back (ADR 0065). The answer it triggers needs a
+         * full window to begin in, whether the window is still counting or stood down for the tool.
+         */
+        data object ToolResponse : Event
+        /**
+         * The model started speaking. Normally the user spoke first and the window is already
+         * cancelled; a lookup's answer arrives with nobody speaking, so this is what stops the
+         * window closing the conversation mid-reply (ADR 0065).
+         */
+        data object ModelSpeech : Event
         /**
          * [WINDOW_MS] passed since arming. [toolsInFlight] is read at the moment it fires;
          * [msSinceLocalSpeech] is how long ago the mic last read a buffer at or above
@@ -89,16 +107,20 @@ object FollowUpWindow {
         Event.MicOpened, Event.PlaybackDrained ->
             if (state.awaitingMic) Decision(State(armed = true), Action.ARM)
             else Decision(state, Action.NONE)
-        Event.UserSpeech, Event.ToolCall ->
+        Event.UserSpeech, Event.ToolCall, Event.ModelSpeech ->
             Decision(
                 State(),
                 if (state.armed || state.awaitingMic) Action.CANCEL else Action.NONE,
             )
+        Event.ToolResponse ->
+            if (state.armed || state.heldForTool) Decision(State(armed = true), Action.ARM)
+            else Decision(state, Action.NONE)
         is Event.Elapsed ->
             when {
                 !state.armed -> Decision(state, Action.NONE)
-                // A running tool is not silence. Disarm; the turn that follows it re-arms.
-                event.toolsInFlight > 0 -> Decision(State(), Action.NONE)
+                // A running tool is not silence. Stand down; the answer's turn, or the tool's own
+                // response (ADR 0065), re-arms.
+                event.toolsInFlight > 0 -> Decision(State(heldForTool = true), Action.NONE)
                 heardLocally(event.msSinceLocalSpeech) && state.extensions < MAX_EXTENSIONS ->
                     Decision(State(armed = true, extensions = state.extensions + 1), Action.ARM)
                 else -> Decision(State(), Action.CLOSE)

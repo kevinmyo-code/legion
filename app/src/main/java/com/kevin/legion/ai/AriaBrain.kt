@@ -982,6 +982,26 @@ internal const val DATA_ACCESS_CLAUSE =
         "came back empty or failed; say which. "
 
 /**
+ * The holding line before a slow lookup, and what it may NOT contain (ADR 0065, async-lookups
+ * ticket 02, 2026-10-28). Extends the 2026-10-27 "One moment." rule (Kevin: the slow tools left
+ * dead air, and the persona's "do not narrate" rule needed this said outright as the exception).
+ *
+ * Since ADR 0065 a read-only lookup ([com.kevin.legion.service.LiveToolbox.NON_BLOCKING_READ_TOOLS])
+ * runs NON_BLOCKING: the model keeps the floor while it runs and the result arrives afterwards. The
+ * risk that opens is not an outcome verb (a read has none; [CANNOT_CLAUSE] still binds every write,
+ * and writes still block) but a FACT spoken before the data exists. This forbids it in the same
+ * shape the outcome rule uses: name what may not be said, and tie speech to the result. At file
+ * scope beside [CANNOT_CLAUSE], never per persona. Presence guarded by
+ * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is unverifiable here, and ticket 04's
+ * phone run is the first time anyone hears it.
+ */
+internal const val LOOKUP_HOLD_CLAUSE =
+    "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
+        "brief in-character line (\"One moment.\") and then call it. That line holds no figure, " +
+        "date, name, fact or outcome. While the lookup runs say nothing more, and when its result " +
+        "arrives, answer from it. "
+
+/**
  * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08
  * (`.scratch/proactive-mode/issues/08-proactive-register.md`), Kevin 2026-08-21.
  *
@@ -1194,11 +1214,10 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
     "or home for a question spanning several. It is a specialist that reads the record: do " +
     "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
-    // 2026-10-27 (Kevin): the slow tools leave dead air, so one short line first. The persona's
-    // "do not narrate" rule is the reason this has to be said outright as the exception.
-    "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
-    "brief in-character line (\"One moment.\") and then call it; that line never claims an " +
-    "outcome. If it returns a " +
+    // 2026-10-27 (Kevin): the slow tools leave dead air, so one short line first. Extended
+    // 2026-10-28 for non-blocking lookups (ADR 0065); see the constant's own doc.
+    LOOKUP_HOLD_CLAUSE +
+    "If a lookup returns a " +
     "proposal, read the proposal out and call accept_proposal only after the user says yes. " +
     // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
     // own currency (or explicitly say none was recorded), but a persona-primed model still

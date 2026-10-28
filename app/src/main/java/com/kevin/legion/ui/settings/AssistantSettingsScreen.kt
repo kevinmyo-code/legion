@@ -88,6 +88,7 @@ fun AssistantSettingsScreen(
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
+    var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
 
     suspend fun reloadActiveProfile() {
@@ -224,6 +225,21 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceTurnSettings.setBargeIn(context, on)
                         bargeIn = on
+                    },
+                )
+
+                // ADR 0065: read-only lookups run while the conversation carries on. Read when the
+                // socket opens, so a warm connection keeps its old setting until it reconnects.
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Answer lookups while talking",
+                    explanation = "a slow lookup runs in the background after a short holding line, " +
+                        "and the answer is spoken when it lands. Anything that changes your records " +
+                        "still waits. Applies from the next connection.",
+                    enabled = asyncLookups,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setAsyncLookups(context, on)
+                        asyncLookups = on
                     },
                 )
 

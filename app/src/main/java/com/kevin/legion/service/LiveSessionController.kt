@@ -1256,7 +1256,12 @@ class LiveSessionController(context: Context) {
             // sub-agent's up-to-30s loop. The driver watched "Listening..." while
             // the app was actually busy. Move to THINKING for the duration.
             activeToolCalls++
-            set(Phase.THINKING, "Working...")
+            // ADR 0065: a NON_BLOCKING lookup can arrive after its holding line started playing.
+            // Leave SPEAKING alone; the count above still makes the strip read WORKING whenever
+            // the phase is THINKING, and the restore below already refuses a phase it did not set.
+            if (toolStartEntersThinking(s.isNonBlockingTool(call.name), _phase.value)) {
+                set(Phase.THINKING, "Working...")
+            }
             try {
                 // A tool MUST always hand a response back, even on error/timeout, or
                 // Gemini stays mid-turn and the UI wedges. [runToolBounded] bounds every tool.
@@ -1677,6 +1682,16 @@ class LiveSessionController(context: Context) {
 
         internal fun shouldRestoreAfterToolCall(remainingActiveToolCalls: Int, currentPhase: Phase): Boolean =
             remainingActiveToolCalls == 0 && currentPhase == Phase.THINKING
+
+        /**
+         * Whether a voice tool starting moves the strip to THINKING ("Working..."). A blocking tool
+         * always does: the model has gone quiet until it answers. A NON_BLOCKING lookup (ADR 0065)
+         * does too when the user has just finished, but not while the model is SPEAKING its holding
+         * line: that would claim it had stopped. A lookup finishing in LISTENING or SPEAKING never
+         * moves the phase ([shouldRestoreAfterToolCall] wants THINKING), so it cannot close the mic.
+         */
+        internal fun toolStartEntersThinking(nonBlocking: Boolean, currentPhase: Phase): Boolean =
+            !nonBlocking || currentPhase != Phase.SPEAKING
 
         /**
          * Ticket 02's pure decision behind the [LiveEvent.Closed] branch's thread-loss flag:

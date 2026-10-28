@@ -52,13 +52,21 @@ internal data class TurnConfig(
 }
 
 /**
- * The two Settings > Assistant switches (hands path, ADR 0035). Read when a session starts; a change
- * applies to the next socket.
+ * The three Settings > Assistant voice switches (hands path, ADR 0035). Read when a session starts;
+ * a change applies to the next socket.
  */
 object VoiceTurnSettings {
     private const val PREFS = "voice_turn_settings"
     private const val KEY_SMART_END = "smart_end_of_turn"
     private const val KEY_BARGE_IN = "barge_in"
+    private const val KEY_ASYNC_LOOKUPS = "async_lookups"
+
+    /**
+     * ADR 0065's default: ON (Kevin, 2026-10-28). Whether a `WHEN_IDLE` result makes
+     * `gemini-3.8-live` speak unprompted is async-lookups ticket 04's device gate. If it does not,
+     * this line becomes `false` and nothing else changes: off means every declaration is BLOCKING.
+     */
+    internal const val ASYNC_LOOKUPS_DEFAULT = true
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -70,4 +78,11 @@ object VoiceTurnSettings {
     /** Default ON; never applies over Bluetooth ([TurnConfig.decide]). */
     fun bargeIn(context: Context): Boolean = prefs(context).getBoolean(KEY_BARGE_IN, true)
     fun setBargeIn(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_BARGE_IN, on).apply()
+
+    /**
+     * "Answer lookups while talking" (ADR 0065): [com.kevin.legion.service.LiveToolbox.NON_BLOCKING_READ_TOOLS]
+     * run NON_BLOCKING. Read once per socket, so a warm socket keeps its declarations until it reconnects.
+     */
+    fun asyncLookups(context: Context): Boolean = prefs(context).getBoolean(KEY_ASYNC_LOOKUPS, ASYNC_LOOKUPS_DEFAULT)
+    fun setAsyncLookups(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_ASYNC_LOOKUPS, on).apply()
 }
