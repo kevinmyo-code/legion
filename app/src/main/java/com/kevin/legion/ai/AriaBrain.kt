@@ -966,6 +966,22 @@ internal val CANNOT_CLAUSE =
         "about something that never happened. "
 
 /**
+ * Writes only when asked (async-lookups ticket 07; ticket 04 run 3, F5, A25, 2026-10-28). The user
+ * said "we're planning to go to Palmetto State Park... next weekend, I guess", the model called
+ * `manage_item add` and put it on the calendar, and the user then said it was only a rough plan.
+ * No clause said a record is written only on request; the closest, the maintenance walkthrough's
+ * "user-initiated only", covers one flow. This is the general rule: a mention is not a request.
+ * It agrees with the register's "offer it once, in a clause. If they pass, it is gone" and with
+ * [CANNOT_CLAUSE], which governs what may be claimed after a write rather than whether to write.
+ * At file scope beside [CANNOT_CLAUSE], never per persona, naming no tool, so it survives the next
+ * write tool. Presence guarded by [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is
+ * owed to the next phone run.
+ */
+internal const val WRITE_ON_REQUEST_CLAUSE =
+    "Create or change a record only when the user asks for it. A plan, intention or possibility " +
+        "mentioned in passing is not a request: offer once, in a clause, and act only on a yes. "
+
+/**
  * Never deny access to the user's own data (voice audit findings 8 and 9, 2026-10-09). A successful
  * `get_current_location` result was answered with "I don't have your current location", and "Can you
  * see my bank statements?" got "I don't have access" with no tool call while the ledger tools exist.
@@ -1191,6 +1207,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     // they break the register. The facts, including "nothing was written", must still arrive.
     "A tool's message is facts for you to relay in your own voice, never words to read out. " +
     CANNOT_CLAUSE +
+    WRITE_ON_REQUEST_CLAUSE +
     DATA_ACCESS_CLAUSE +
     PROACTIVE_CLAUSE +
     // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin

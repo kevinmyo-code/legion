@@ -163,6 +163,26 @@ class AriaBrainHonestyClauseTest {
     }
 
     /**
+     * Ticket 04 run 3, F5 (A25, 2026-10-28; async-lookups ticket 07): a trip mentioned as a rough
+     * plan was put on the calendar unasked. A mention is not a request. Presence only.
+     */
+    @Test
+    fun `a record is written only when the user asks for it`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(WRITE_ON_REQUEST_CLAUSE))
+        for (phrase in listOf(
+            "Create or change a record only when the user asks for it.",
+            "A plan, intention or possibility mentioned in passing is not a request",
+            "offer once, in a clause, and act only on a yes",
+        )) {
+            assertTrue("the write rule must say: $phrase", WRITE_ON_REQUEST_CLAUSE.contains(phrase))
+        }
+        // Conditioned on the request, not on a list of tools.
+        for (tool in listOf("manage_item", "manage_checklist", "log_meal", "remember")) {
+            assertTrue(!WRITE_ON_REQUEST_CLAUSE.contains(tool))
+        }
+    }
+
+    /**
      * Ticket 04 run 3 and 3c (A25, 2026-10-28; async-lookups ticket 07): "Checking." after the
      * result had arrived, "Let me look." after the user spoke over a pending result, and "Checking."
      * with no tool call at all. Every earlier sentence of the clause is pinned above and stays.
