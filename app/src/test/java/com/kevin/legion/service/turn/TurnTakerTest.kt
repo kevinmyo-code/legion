@@ -35,7 +35,8 @@ class TurnTakerTest {
         override fun onLocalSpeech() = Unit
         override fun onSileroFailed(reason: String) = Unit
         override fun onSmartTurnFailed(reason: String) = Unit
-        override fun log(tag: String, message: String) = Unit
+        val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
+        override fun log(tag: String, message: String) { logs += "$tag $message" }
     }
 
     private val quiet = ByteArray(3_200) // 100 ms of digital silence
@@ -130,5 +131,38 @@ class TurnTakerTest {
         assertEquals(1, sink.barged)
         assertTrue(t.feed(quiet, quiet.size, playing = true) > 0)
         assertTrue(sink.wire.none { it == "start" || it == "end" })
+    }
+
+    @Test
+    fun `each reply logs armed at start and one reply_end line with its stats`() {
+        val vad = ScriptedVad(0.95f)
+        val sink = RecordingSink()
+        val t = TurnTaker(TurnConfig(false, true, false, "test"), vad, null, sink)
+        t.onReplyStart()
+        repeat(4) { t.feed(loud(), 3_200, playing = true) }
+        t.onReplyEnd()
+        t.onReplyEnd() // flush then drain: the second end is silent
+        val barge = sink.logs.filter { it.startsWith(TurnTaker.BARGE_TAG) }
+        assertEquals("LIVE_BARGE_IN armed=true disabled=false", barge.first())
+        assertTrue(barge[1].startsWith("LIVE_BARGE_IN fire "))
+        assertEquals(
+            "LIVE_BARGE_IN reply_end fired=true windows=8 speech_windows=8 loud_windows=8 " +
+                "qualifying_windows=8 max_prob=0.95 max_level=18000 longest_run_ms=256 " +
+                "echo_floor=12000 threshold=18000",
+            barge[2],
+        )
+        assertEquals(3, barge.size)
+    }
+
+    @Test
+    fun `a reply still open when the next starts is ended and logged first`() {
+        val sink = RecordingSink()
+        val t = TurnTaker(TurnConfig(false, true, false, "test"), ScriptedVad(0.1f), null, sink)
+        t.onReplyStart()
+        t.feed(quiet, quiet.size, playing = true)
+        t.onReplyStart()
+        val barge = sink.logs.filter { it.startsWith(TurnTaker.BARGE_TAG) }
+            .map { it.substringAfter(" ").substringBefore(" ") }
+        assertEquals(listOf("armed=true", "reply_end", "armed=true"), barge)
     }
 }

@@ -19,6 +19,10 @@ package com.kevin.legion.service.turn
  * speech left after the fire, and was counted as echo. Echo that clears the threshold does so
  * narrowly; a voice at twice it is the user. [MAX_SELF_INTERRUPTS] of those turn barge-in off for
  * the rest of the session.
+ *
+ * The gate says nothing unless it fires, so each reply also keeps a [ReplyStats] (A25,
+ * 2026-10-28: armed on every reply, zero fires, and no way to tell why). [onReplyEnd] hands it back
+ * once per reply; it is null when no reply was open, so a second end (flush, then drain) is silent.
  */
 internal class BargeInGate {
 
@@ -40,6 +44,26 @@ internal class BargeInGate {
         ) : Event
     }
 
+    /**
+     * What the gate heard over one reply, counting only windows it listened to (armed, playing, not
+     * watching a verdict). [windows] 0 means it never heard the reply at all.
+     */
+    data class ReplyStats(
+        val fired: Boolean,
+        val windows: Int,
+        /** prob >= [PROB]. */
+        val speechWindows: Int,
+        /** level >= the threshold at that window. */
+        val loudWindows: Int,
+        /** Both: the windows a fire is built from. */
+        val qualifyingWindows: Int,
+        val maxProb: Float,
+        val maxLevel: Int,
+        val longestRunMs: Int,
+        val echoFloor: Int,
+        val threshold: Int,
+    )
+
     var disabled = false
         private set
     var selfInterrupts = 0
@@ -57,17 +81,48 @@ internal class BargeInGate {
     private var fireLevel = 0
     private var fireThreshold = 0
 
+    private var replyOpen = false
+    private var fired = false
+    private var windows = 0
+    private var speechWindows = 0
+    private var loudWindows = 0
+    private var qualifyingWindows = 0
+    private var replyMaxProb = 0f
+    private var replyMaxLevel = 0
+    private var longestRunMs = 0
+
+    /** Listening for the user over the current reply. */
+    val armedNow: Boolean get() = armed
+
     /** A new reply started playing: forget the last reply's echo. */
     fun onReplyStart() {
         learned = 0
         resetRun()
         armed = !disabled
+        replyOpen = true
+        fired = false
+        windows = 0
+        speechWindows = 0
+        loudWindows = 0
+        qualifyingWindows = 0
+        replyMaxProb = 0f
+        replyMaxLevel = 0
+        longestRunMs = 0
     }
 
-    /** Playback drained or was flushed without a fire. */
-    fun onReplyEnd() {
+    /**
+     * Playback drained or was flushed (with or without a fire). Returns the reply's stats, or null
+     * when no reply was open (already ended, or never started).
+     */
+    fun onReplyEnd(): ReplyStats? {
         armed = false
         resetRun()
+        if (!replyOpen) return null
+        replyOpen = false
+        return ReplyStats(
+            fired, windows, speechWindows, loudWindows, qualifyingWindows,
+            replyMaxProb, replyMaxLevel, longestRunMs, echoFloor(), threshold(),
+        )
     }
 
     fun echoFloor(): Int = if (learned < LEARN_WINDOWS) DEFAULT_ECHO_FLOOR else percentile()
@@ -86,12 +141,21 @@ internal class BargeInGate {
 
     private fun listen(prob: Float, level: Int): Event? {
         val threshold = threshold()
-        val qualifies = prob >= PROB && level >= threshold
+        val speech = prob >= PROB
+        val loud = level >= threshold
+        val qualifies = speech && loud
+        windows++
+        if (speech) speechWindows++
+        if (loud) loudWindows++
+        if (qualifies) qualifyingWindows++
+        if (prob > replyMaxProb) replyMaxProb = prob
+        if (level > replyMaxLevel) replyMaxLevel = level
         if (qualifies) {
             qualifyingMs += WINDOW_MS
             misses = 0
             if (prob > maxProb) maxProb = prob
             if (level > maxLevel) maxLevel = level
+            if (qualifyingMs > longestRunMs) longestRunMs = qualifyingMs
         } else {
             learn(level)
             if (qualifyingMs > 0 && ++misses > ALLOWED_MISSES) resetRun()
@@ -100,6 +164,7 @@ internal class BargeInGate {
         val fire = Event.Fire(maxProb, maxLevel, echoFloor(), threshold, qualifyingMs)
         fireLevel = maxLevel
         fireThreshold = threshold
+        fired = true
         armed = false
         resetRun()
         verdictWindowsLeft = VERDICT_MS / WINDOW_MS

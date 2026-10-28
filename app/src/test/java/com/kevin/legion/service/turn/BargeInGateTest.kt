@@ -127,4 +127,93 @@ class BargeInGateTest {
         val verdict = feed(g, 60, 0.05f, 200).filterIsInstance<Event.Verdict>().single()
         assertTrue(verdict.selfInterrupt)
     }
+
+    // ReplyStats: one per reply, enough to tell which of (a)-(d) kept a reply from firing.
+
+    @Test
+    fun `stats - a quiet voice is speech but never loud enough`() {
+        val g = gate()
+        assertTrue(feed(g, 20, 0.95f, 5_000).isEmpty())
+        val s = g.onReplyEnd()!!
+        assertFalse(s.fired)
+        assertEquals(20, s.windows)
+        assertEquals(20, s.speechWindows)
+        assertEquals(0, s.loudWindows)
+        assertEquals(0, s.qualifyingWindows)
+        assertEquals(0.95f, s.maxProb, 1e-6f)
+        assertEquals(5_000, s.maxLevel)
+        assertEquals(0, s.longestRunMs)
+        assertEquals(5_000, s.echoFloor)
+        assertEquals(7_500, s.threshold)
+    }
+
+    @Test
+    fun `stats - a loud voice Silero is unsure of never counts`() {
+        val g = gate()
+        feed(g, 20, 0.3f, 4_000)
+        assertTrue(feed(g, 10, 0.6f, 25_000).isEmpty())
+        val s = g.onReplyEnd()!!
+        assertEquals(30, s.windows)
+        assertEquals(0, s.speechWindows)
+        assertTrue(s.loudWindows > 0)
+        assertEquals(0, s.qualifyingWindows)
+        assertEquals(0.6f, s.maxProb, 1e-6f)
+        assertEquals(25_000, s.maxLevel)
+        assertEquals(0, s.longestRunMs)
+    }
+
+    @Test
+    fun `stats - choppy runs qualify but never sustain`() {
+        val g = gate()
+        repeat(4) {
+            assertTrue(feed(g, 3, 0.95f, loud).isEmpty())
+            assertTrue(feed(g, 2, 0.1f, 500).isEmpty())
+        }
+        val s = g.onReplyEnd()!!
+        assertFalse(s.fired)
+        assertEquals(20, s.windows)
+        assertEquals(12, s.qualifyingWindows)
+        assertEquals(3 * BargeInGate.WINDOW_MS, s.longestRunMs)
+        assertTrue(s.longestRunMs < BargeInGate.SUSTAIN_MS)
+    }
+
+    @Test
+    fun `stats - a reply the gate never heard has zero windows`() {
+        val g = gate()
+        feed(g, 20, 0.99f, loud, playing = false)
+        val s = g.onReplyEnd()!!
+        assertEquals(0, s.windows)
+        assertEquals(BargeInGate.DEFAULT_ECHO_FLOOR, s.echoFloor)
+        assertEquals((BargeInGate.DEFAULT_ECHO_FLOOR * BargeInGate.ECHO_MARGIN).toInt(), s.threshold)
+    }
+
+    @Test
+    fun `stats - a fire is recorded, verdict windows are not counted, and a second end is null`() {
+        val g = gate()
+        feed(g, windows, 0.95f, loud)
+        feed(g, 10, 0.05f, 300)
+        val s = g.onReplyEnd()!!
+        assertTrue(s.fired)
+        assertEquals(windows, s.windows)
+        assertEquals(windows, s.qualifyingWindows)
+        assertEquals(BargeInGate.SUSTAIN_MS, s.longestRunMs)
+        assertEquals(loud, s.maxLevel)
+        assertNull(g.onReplyEnd())
+    }
+
+    @Test
+    fun `stats - a new reply starts from zero`() {
+        val g = gate()
+        feed(g, windows, 0.95f, loud)
+        g.onReplyStart()
+        val s = g.onReplyEnd()!!
+        assertFalse(s.fired)
+        assertEquals(0, s.windows)
+        assertEquals(0f, s.maxProb, 0f)
+    }
+
+    @Test
+    fun `no reply open means no stats`() {
+        assertNull(BargeInGate().onReplyEnd())
+    }
 }

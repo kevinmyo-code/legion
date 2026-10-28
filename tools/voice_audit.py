@@ -1,5 +1,11 @@
 r"""Print a readable timeline of what was said and done in each Live voice session.
 
+CAPTURE FILTER: the capture below filters by tag, so a tag left off the `logcat -s` list is simply
+absent and the script cannot tell it from "never happened". LIVE_BARGE_IN and LIVE_TURN must be in
+it, or the barge-in block is empty:
+
+    adb logcat -v threadtime -s LIVE_AUDIT LIVE_LATENCY LIVE_FOLLOWUP LIVE_TOOL_CANCEL LIVE_BARGE_IN LIVE_TURN > live.txt
+
 The phone writes LIVE_AUDIT lines from GeminiLiveSession through LiveAudit (async-lookups ticket 05;
 the "Conversation log" row in Assistant settings; its logcat switch is default on, and conversation-records
 ticket 03 also spools these lines and uploads them to the engine as reason=conversation). One line per event,
@@ -27,11 +33,27 @@ response="[redacted: third-party content]" (CLAUDE.md sec 7). The user's own wor
 
 Timing lines come from LIVE_LATENCY (see tools/voice_latency.py): eot, reply, eot_reply, route,
 investigate, cold start, sub-agent fallbacks. LIVE_TOOL_CANCEL lines are shown as they are.
-LIVE_FOLLOWUP lines and activity/mic events are shown with --verbose.
+LIVE_FOLLOWUP lines and activity/mic events are shown with --verbose. LIVE_TURN lines (turn-taking
+config and fallbacks) are shown as they are.
 
-Capture on the host, then read:
+LIVE_BARGE_IN lines come from TurnTaker (call-mode barge-in, ADR 0064), one short line each:
 
-    adb logcat -v threadtime -s LIVE_AUDIT LIVE_LATENCY LIVE_FOLLOWUP LIVE_TOOL_CANCEL > live.txt
+    armed=<bool> disabled=<bool>                     a reply started playing
+    fire prob= level= echo_floor= threshold= sustain_ms=
+    verdict self_interrupt=<bool> speech_after_ms= fire_level= fire_threshold= self_interrupts= disabled=
+    reply_end fired=<bool> windows= speech_windows= loud_windows= qualifying_windows= max_prob=
+        max_level= longest_run_ms= echo_floor= threshold=
+
+--summary adds a barge-in block. Each reply that did not fire is put down to one reason:
+(d) unheard: windows=0, the gate never listened (not armed, mic not fed, or not playing);
+(c) choppy: some windows qualified but no run reached the sustain (256 ms);
+(b) unsure: Silero never reached 0.8 (speech_windows=0);
+(a) quiet: Silero heard speech, but never above the echo threshold in the same window.
+"armed lines" fewer or more than "replies" means a reply start or end went unlogged.
+
+Capture on the host (the full tag list above), then read:
+
+    adb logcat -v threadtime -s LIVE_AUDIT LIVE_LATENCY LIVE_FOLLOWUP LIVE_TOOL_CANCEL LIVE_BARGE_IN LIVE_TURN > live.txt
     python tools/voice_audit.py live.txt
     python tools/voice_audit.py live.txt --summary
 
@@ -147,6 +169,37 @@ A capture taken with --verbose keeps the mic and follow-up lines:
 
 Quoted text survives quotes, backslashes and truncation markers:
 
+Barge-in lines render short in the timeline, and --summary says why no reply fired:
+
+>>> sample3 = r'''
+... 10-28 18:00:00.000  1234  5678 I LIVE_AUDIT: session_start model=gemini-3.8-live async_set=none
+... 10-28 18:00:00.100  1234  5678 I LIVE_TURN: config manual=true bargeIn=true smartTurn=true (local end of turn, barge-in on phone_speaker)
+... 10-28 18:00:02.000  1234  5679 I LIVE_BARGE_IN: armed=true disabled=false
+... 10-28 18:00:02.500  1234  5679 I LIVE_AUDIT: assistant text="Here is the weather."
+... 10-28 18:00:05.000  1234  5679 I LIVE_AUDIT: turn_complete
+... 10-28 18:00:06.000  1234  5679 I LIVE_BARGE_IN: reply_end fired=false windows=120 speech_windows=14 loud_windows=0 qualifying_windows=0 max_prob=0.97 max_level=9120 longest_run_ms=0 echo_floor=8400 threshold=12600
+... 10-28 18:00:06.100  1234  5678 I LIVE_AUDIT: session_end reason="stopped"
+... '''.splitlines()
+>>> for line in timeline(sample3): print(line)
+== session 1  model=gemini-3.8-live  async=none
+18:00:00.000  session start
+18:00:00.100  turn: config manual=true bargeIn=true smartTurn=true (local end of turn, barge-in on phone_speaker)
+18:00:02.000  barge armed
+18:00:02.500  ASSISTANT: Here is the weather.
+18:00:05.000  turn complete
+18:00:06.000  barge reply_end no fire: 120 win, speech 14, loud 0, both 0, max p0.97 L9120/T12600, run 0ms
+18:00:06.100  session end (stopped)
+>>> for line in summary(sample3): print(line)
+== session 1  model=gemini-3.8-live
+turns: 1
+user lines: 0
+tools called: none
+async tools: none
+holding lines: 0
+barge-in: replies 1 (armed lines 1), fires 0, self-interrupts 0
+  not fired: 1  max level 9120 vs threshold 12600  max prob 0.97  longest run 0ms
+  why: (a) quiet x1
+
 >>> parse_audit('user final=true text="He said \\"no\\" \\\\ ok..."')
 ('user', {'final': 'true', 'text': 'He said "no" \\ ok...'})
 >>> parse_audit('tool_result id=x name=ask_goals success=false ms=-1 scheduling=none sent=false response={"a": 1}')[1]['response']
@@ -160,7 +213,8 @@ import sys
 from collections import Counter
 
 AUDIT = "LIVE_AUDIT"
-TAGS = ("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL")
+BARGE = "LIVE_BARGE_IN"
+TAGS = ("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL", BARGE, "LIVE_TURN")
 REDACTED = "[redacted: third-party content]"
 
 # threadtime: "10-28 16:20:00.000  1234  5678 I LIVE_AUDIT: message"
@@ -231,6 +285,67 @@ def _timing(msg):
     return None  # tool_ms (the TOOL <- line has it), st_score and the rest
 
 
+def _barge(msg):
+    """One LIVE_BARGE_IN line as a short timeline line."""
+    p = dict(_PAIR.findall(msg))
+    if msg.startswith("armed="):
+        if p.get("armed") == "true":
+            return "barge armed"
+        return f"barge NOT armed (disabled={p.get('disabled', '?')})"
+    if msg.startswith("fire"):
+        return (f"BARGE-IN fire level={p.get('level')} threshold={p.get('threshold')} "
+                f"prob={p.get('prob')} sustain={p.get('sustain_ms')}ms")
+    if msg.startswith("verdict"):
+        who = "SELF-INTERRUPT (echo)" if p.get("self_interrupt") == "true" else "user"
+        off = " -> barge-in OFF" if p.get("disabled") == "true" else ""
+        return f"barge verdict {who} speech_after={p.get('speech_after_ms')}ms{off}"
+    if msg.startswith("reply_end"):
+        head = "fired" if p.get("fired") == "true" else "no fire"
+        return (f"barge reply_end {head}: {p.get('windows')} win, speech {p.get('speech_windows')}, "
+                f"loud {p.get('loud_windows')}, both {p.get('qualifying_windows')}, "
+                f"max p{p.get('max_prob')} L{p.get('max_level')}/T{p.get('threshold')}, "
+                f"run {p.get('longest_run_ms')}ms")
+    return f"barge: {msg}"
+
+
+def _why(p):
+    """Why one non-fired reply_end did not fire: the (a)-(d) of the module doc.
+
+    >>> [_why(p) for p in ({"windows": "0"}, {"windows": "9", "qualifying_windows": "3"},
+    ...                    {"windows": "9", "speech_windows": "0"}, {"windows": "9", "speech_windows": "4"})]
+    ['(d) unheard', '(c) choppy', '(b) unsure', '(a) quiet']
+    """
+    if int(p.get("windows", 0)) == 0:
+        return "(d) unheard"
+    if int(p.get("qualifying_windows", 0)) > 0:
+        return "(c) choppy"
+    if int(p.get("speech_windows", 0)) == 0:
+        return "(b) unsure"
+    return "(a) quiet"
+
+
+def _barge_block(events):
+    """The --summary barge-in lines for one session, or [] when it logged none."""
+    msgs = [msg for _, tag, _, msg in events if tag == BARGE]
+    if not msgs:
+        return []
+    ends = [dict(_PAIR.findall(m)) for m in msgs if m.startswith("reply_end")]
+    armed = sum(1 for m in msgs if m.startswith("armed="))
+    fires = sum(1 for m in msgs if m.startswith("fire"))
+    selfs = sum(1 for m in msgs if m.startswith("verdict") and "self_interrupt=true" in m)
+    out = [f"barge-in: replies {len(ends)} (armed lines {armed}), fires {fires}, self-interrupts {selfs}"]
+    quiet = [p for p in ends if p.get("fired") != "true"]
+    if quiet:
+        loudest = max(quiet, key=lambda p: int(p.get("max_level", 0)))
+        top_prob = max(float(p.get("max_prob", 0)) for p in quiet)
+        run = max(int(p.get("longest_run_ms", 0)) for p in quiet)
+        out.append(f"  not fired: {len(quiet)}  max level {loudest.get('max_level')} vs threshold "
+                   f"{loudest.get('threshold')}  max prob {top_prob:.2f}  longest run {run}ms")
+        why = Counter(_why(p) for p in quiet)
+        out.append("  why: " + ", ".join(f"{k} x{v}" for k, v in sorted(why.items())))
+    return out
+
+
 def _sessions(lines):
     """Split records into sessions at session_start. Lines before the first start form session 0."""
     sessions, current, n = [], {"n": 0, "head": {}, "events": []}, 0
@@ -265,8 +380,16 @@ def _items(events, verbose):
 
     for time, tag, event, fields in events:
         if tag != AUDIT:
-            line = _timing(fields) if tag == "LIVE_LATENCY" else (
-                f"cancel: {fields}" if tag == "LIVE_TOOL_CANCEL" else (f"followup: {fields}" if verbose else None))
+            if tag == "LIVE_LATENCY":
+                line = _timing(fields)
+            elif tag == BARGE:
+                line = _barge(fields)
+            elif tag == "LIVE_TURN":
+                line = f"turn: {fields}"
+            elif tag == "LIVE_TOOL_CANCEL":
+                line = f"cancel: {fields}"
+            else:
+                line = f"followup: {fields}" if verbose else None
             if line:
                 flush()
                 items.append((time, "timing", line, None))
@@ -432,6 +555,7 @@ def summary(lines):
             out.append(f"nudges: {len(nudges)} (followed by a line: {followed})")
             for t, text, reply in nudges:
                 out.append(f"  {t}  {text} -> {reply or '(no line)'}")
+        out.extend(_barge_block(s["events"]))
     return out
 
 
