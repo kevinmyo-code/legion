@@ -1,7 +1,8 @@
 r"""Print a readable timeline of what was said and done in each Live voice session.
 
 The phone writes LIVE_AUDIT lines from GeminiLiveSession through LiveAudit (async-lookups ticket 05;
-the "Conversation audit log (logcat)" switch in Assistant settings, default on). One line per event,
+the "Conversation log" row in Assistant settings; its logcat switch is default on, and conversation-records
+ticket 03 also spools these lines and uploads them to the engine as reason=conversation). One line per event,
 the free-text field always last, JSON-quoted, capped at 400 characters with a "..." marker:
 
     session_start model=<id> async_set=<a,b|none>
@@ -14,6 +15,11 @@ the free-text field always last, JSON-quoted, capped at 400 characters with a ".
     tool_cancelled id=<id> name=<name>
     turn_complete | interrupted source=<server|barge_in> | activity_start | activity_end
     mic_open reason=<first_open|turn_handback> | mic_closed reason=<half_duplex|park|session_end|superseded>
+    nudge reason=<still_checking|late_holding_line|empty_holding_line> tool=<name|none> [after_ms=<n>]
+
+A nudge is a system note the phone sent the model (async-lookups ticket 07): still_checking when a
+lookup has run 4 s (and again at 12 s), late_holding_line when a turn after a lookup's result was only
+a holding line, empty_holding_line when a turn was only a holding line with no tool behind it.
 
 A turn that ran a mail tool (LiveToolbox.EPISODIC_EXCLUDED_TOOLS) logs its assistant speech as one
 text="[redacted: third-party content]" line, and that tool's result as
@@ -30,7 +36,11 @@ Capture on the host, then read:
     python tools/voice_audit.py live.txt --summary
 
 Holding line (--summary): an ASSISTANT line that ends before a `TOOL <-` of a tool called in the
-same turn, i.e. what was said while a lookup ran.
+same turn, i.e. what was said while a lookup ran. Transcript chunks of one line that a timing line
+split ("Checking the" / eot_reply / "records.") are merged first, so they count once.
+
+Output is forced to UTF-8: a Windows console defaults to cp1252, and a transcript can carry any
+character (a capture once crashed the script on U+2691).
 
 Stdlib only. Self-test: python -m doctest tools/voice_audit.py
 
@@ -96,6 +106,39 @@ tools called: ask_fleet x1, read_mail x1
 async tools: ask_fleet
 holding lines: 1
   16:20:04.300  One moment.  (before ask_fleet returned)
+
+Split chunks count as one holding line, and nudges are counted with what followed them:
+
+>>> sample2 = r'''
+... 10-28 11:27:44.000  1234  5678 I LIVE_AUDIT: session_start model=gemini-3.8-live async_set=ask_fleet
+... 10-28 11:27:44.824  1234  5679 I LIVE_AUDIT: tool_call id=c2 name=ask_fleet async=true args={}
+... 10-28 11:27:44.900  1234  5679 I LIVE_AUDIT: assistant text="Checking the"
+... 10-28 11:27:44.901  1234  5679 I LIVE_LATENCY: eot_reply_ms=946
+... 10-28 11:27:45.100  1234  5679 I LIVE_AUDIT: assistant text=" records."
+... 10-28 11:27:45.200  1234  5679 I LIVE_AUDIT: turn_complete
+... 10-28 11:27:48.900  1234  5679 I LIVE_AUDIT: nudge reason=still_checking tool=ask_fleet after_ms=4076
+... 10-28 11:27:48.901  1234  5679 I LIVE_LATENCY: nudge_ms=4076 tool=ask_fleet
+... 10-28 11:27:49.700  1234  5679 I LIVE_AUDIT: assistant text="Still at it."
+... 10-28 11:27:50.300  1234  5679 I LIVE_AUDIT: turn_complete
+... 10-28 11:27:53.900  1234  5680 I LIVE_AUDIT: tool_result id=c2 name=ask_fleet success=true ms=9076 scheduling=WHEN_IDLE sent=true response={"success":true}
+... 10-28 11:27:54.700  1234  5679 I LIVE_AUDIT: assistant text="Checking."
+... 10-28 11:27:55.500  1234  5679 I LIVE_AUDIT: turn_complete
+... 10-28 11:27:55.510  1234  5679 I LIVE_AUDIT: nudge reason=late_holding_line tool=ask_fleet
+... 10-28 11:27:57.000  1234  5679 I LIVE_AUDIT: session_end reason="stopped"
+... '''.splitlines()
+>>> [l for l in timeline(sample2) if "NUDGE" in l]
+['11:27:48.900  NUDGE still_checking ask_fleet after 4076ms', '11:27:55.510  NUDGE late_holding_line ask_fleet']
+>>> for line in summary(sample2): print(line)
+== session 1  model=gemini-3.8-live
+turns: 3
+user lines: 0
+tools called: ask_fleet x1
+async tools: ask_fleet
+holding lines: 1
+  11:27:44.900  Checking the records.  (before ask_fleet returned)
+nudges: 2 (followed by a line: 1)
+  11:27:48.900  still_checking ask_fleet after 4076ms -> Still at it.
+  11:27:55.510  late_holding_line ask_fleet -> (no line)
 
 A capture taken with --verbose keeps the mic and follow-up lines:
 
@@ -285,6 +328,9 @@ def _items(events, verbose):
             user_turn = []
         elif event == "interrupted":
             items.append((time, "event", f"interrupted ({fields.get('source', '?')})", None))
+        elif event == "nudge":
+            after = f" after {fields['after_ms']}ms" if "after_ms" in fields else ""
+            items.append((time, "nudge", f"{fields.get('reason', '?')} {fields.get('tool', 'none')}{after}", None))
         elif event == "mic_open":
             items.append((time, "event", f"mic open ({fields.get('reason', '')})", None))
         elif event == "mic_closed":
@@ -310,6 +356,8 @@ def timeline(lines, verbose=False):
         for time, kind, text, extra in _items(s["events"], verbose):
             if kind in ("USER", "ASSISTANT"):
                 out.append(f"{time}  {kind}: {text}")
+            elif kind == "nudge":
+                out.append(f"{time}  NUDGE {text}")
             else:
                 out.append(f"{time}  {text}")
             if kind == "result" and extra[1]:
@@ -337,12 +385,18 @@ def summary(lines):
                 names[fields.get("id")] = fields.get("name")
                 if fields.get("async") == "true":
                     async_tools.add(fields.get("name"))
-        # Turns, with the assistant lines and tool calls in each.
+        # Turns, with the assistant lines and tool calls in each. Consecutive assistant chunks with
+        # only timing lines between them are one line (a transcript split by eot_reply).
         holding = []
         turn_said, turn_calls = [], []
+        last_kind = None
         for i, (time, kind, text, extra) in enumerate(items + [(None, "turn", None, None)]):
             if kind == "ASSISTANT" and text != "[redacted]":
-                turn_said.append((i, time, text))
+                if last_kind == "ASSISTANT" and turn_said:
+                    idx, t, said = turn_said[-1]
+                    turn_said[-1] = (idx, t, _clean(said + " " + text))
+                else:
+                    turn_said.append((i, time, text))
             elif kind == "call":
                 turn_calls.append(extra)
             elif kind == "turn":
@@ -351,6 +405,21 @@ def summary(lines):
                     if late:
                         holding.append((t, said, names.get(late[0])))
                 turn_said, turn_calls = [], []
+            if kind != "timing":
+                last_kind = kind
+        # Nudges, each with the first assistant line after it, before the next nudge or session end.
+        nudges = []
+        for i, (time, kind, text, _) in enumerate(items):
+            if kind != "nudge":
+                continue
+            reply = None
+            for _, k2, t2, _ in items[i + 1:]:
+                if k2 == "nudge":
+                    break
+                if k2 == "ASSISTANT":
+                    reply = t2
+                    break
+            nudges.append((time, text, reply))
         out.append(f"turns: {sum(1 for _, k, _, _ in items if k == 'turn')}")
         out.append(f"user lines: {sum(1 for _, k, _, _ in items if k == 'USER')}")
         out.append("tools called: " + (", ".join(f"{n} x{c}" for n, c in sorted(calls.items())) or "none"))
@@ -358,6 +427,11 @@ def summary(lines):
         out.append(f"holding lines: {len(holding)}")
         for t, said, tool in holding:
             out.append(f"  {t}  {said}  (before {tool} returned)")
+        if nudges:
+            followed = sum(1 for _, _, reply in nudges if reply)
+            out.append(f"nudges: {len(nudges)} (followed by a line: {followed})")
+            for t, text, reply in nudges:
+                out.append(f"  {t}  {text} -> {reply or '(no line)'}")
     return out
 
 
@@ -369,7 +443,16 @@ def _read(path):
     return raw.decode("utf-8-sig", errors="replace").splitlines()
 
 
+def _utf8_stdout():
+    """Windows consoles default to cp1252; a transcript can carry any character."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
+
 def main(argv=None):
+    _utf8_stdout()
     ap = argparse.ArgumentParser(description="Timeline of LIVE_AUDIT lines from a logcat capture.")
     ap.add_argument("logfile", help="adb logcat -v threadtime capture, or - for stdin")
     ap.add_argument("--summary", action="store_true", help="per-session counts and holding lines")
