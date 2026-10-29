@@ -8,7 +8,8 @@ package com.kevin.legion.service.turn
  * call mode the echo peaked near 10,000 and Kevin's voice at 19,000-30,000 (one device, one room), so
  * a window counts only when Silero is confident ([PROB]) AND its peak is above the echo floor learned
  * from THIS reply ([ECHO_MARGIN] x the [ECHO_PERCENTILE]th percentile of the reply's windows so far;
- * [DEFAULT_ECHO_FLOOR] until [LEARN_WINDOWS] have been heard). It fires when at least [SUSTAIN_MS]
+ * until [LEARN_WINDOWS] have been heard, the floor the previous reply learned, or
+ * [DEFAULT_ECHO_FLOOR] when none has). It fires when at least [SUSTAIN_MS]
  * of such windows ([SUSTAIN_WINDOWS]) fall within the last [SPAN_WINDOWS] (512 ms), in any order, so
  * a backchannel ("mm-hm", "okay") shorter than that never stops the reply.
  *
@@ -25,6 +26,21 @@ package com.kevin.legion.service.turn
  * speech left after the fire, and was counted as echo. Echo that clears the threshold does so
  * narrowly; a voice at twice it is the user. [MAX_SELF_INTERRUPTS] of those turn barge-in off for
  * the rest of the session.
+ *
+ * The floor must learn the echo, not the user (A25, 2026-10-29, run 6). Two rules:
+ *  - **No learning from the user's own voice.** For [USER_GUARD_WINDOWS] (1 s) after the user was
+ *    last known to be talking (the gate's own fire, speech heard during a verdict watch, or
+ *    [onUserTurnEnd]), a window Silero calls speech ([SPEECH_PROB]) is not learned. Run 6: the reply
+ *    after a barge-in ("Understood.", 40 windows) began while Kevin was still talking, learned his
+ *    voice as echo (`echo_floor=9785 threshold=14677`), and his next words reached `best_span=7`,
+ *    one short, at five times the threshold that had just fired. The guard is a window count, so
+ *    it runs on in real time across the gap between replies. Under server VAD there is no
+ *    activity end, so only a fire arms it.
+ *  - **A reply starts from the last reply's floor.** Until a reply has learned [LEARN_WINDOWS], its
+ *    floor is the percentile the last reply that learned that many ended on; [DEFAULT_ECHO_FLOOR]
+ *    only before any has. Run 5 and 6 replies learned 400 to 550 on the A25 in call mode, so the
+ *    first 320 ms of every reply ran at a threshold of 18,000, thirty times the real echo. One gate
+ *    per [TurnTaker], one taker per socket: the seed never outlives the session.
  *
  * The gate says nothing unless it fires, so each reply also keeps a [ReplyStats] (A25,
  * 2026-10-28: armed on every reply, zero fires, and no way to tell why). [onReplyEnd] hands it back
@@ -80,6 +96,10 @@ internal class BargeInGate {
 
     private val levels = IntArray(MAX_LEARN)
     private var learned = 0
+    /** The floor the last reply that learned [LEARN_WINDOWS] ended on; null before one has. */
+    private var seedFloor: Int? = null
+    /** Windows left in which a speech window is the user's, not echo, and is not learned. */
+    private var userGuardLeft = 0
     /** Bit i set: the window i windows ago qualified. Only the low [SPAN_WINDOWS] bits are kept. */
     private var span = 0
     /** The last [SPAN_WINDOWS] windows' prob and level, so a fire reports the peak of its span. */
@@ -133,13 +153,22 @@ internal class BargeInGate {
         resetRun()
         if (!replyOpen) return null
         replyOpen = false
+        if (learned >= LEARN_WINDOWS) seedFloor = percentile()
         return ReplyStats(
             fired, windows, speechWindows, loudWindows, qualifyingWindows,
             replyMaxProb, replyMaxLevel, longestRunMs, bestSpanWindows, echoFloor(), threshold(),
         )
     }
 
-    fun echoFloor(): Int = if (learned < LEARN_WINDOWS) DEFAULT_ECHO_FLOOR else percentile()
+    /**
+     * The user's turn just ended (the caller sent `activityEnd`): they were talking a moment ago and
+     * may still be, so for [USER_GUARD_WINDOWS] their speech is not learned as echo.
+     */
+    fun onUserTurnEnd() {
+        userGuardLeft = USER_GUARD_WINDOWS
+    }
+
+    fun echoFloor(): Int = if (learned < LEARN_WINDOWS) seedFloor ?: DEFAULT_ECHO_FLOOR else percentile()
 
     fun threshold(): Int = maxOf(MIN_LEVEL, (echoFloor() * ECHO_MARGIN).toInt())
 
@@ -147,10 +176,13 @@ internal class BargeInGate {
      * One window. [playing] is true while the reply is audible. Returns a [Event.Fire] when the user
      * is talking over it, a [Event.Verdict] when a fire's watch period ends, otherwise null.
      */
-    fun onWindow(prob: Float, level: Int, playing: Boolean): Event? = when {
-        verdictWindowsLeft > 0 -> watch(prob)
-        !armed || !playing || disabled -> null
-        else -> listen(prob, level)
+    fun onWindow(prob: Float, level: Int, playing: Boolean): Event? {
+        if (userGuardLeft > 0) userGuardLeft--
+        return when {
+            verdictWindowsLeft > 0 -> watch(prob)
+            !armed || !playing || disabled -> null
+            else -> listen(prob, level)
+        }
     }
 
     private fun listen(prob: Float, level: Int): Event? {
@@ -165,7 +197,7 @@ internal class BargeInGate {
             runMs += WINDOW_MS
             if (runMs > longestRunMs) longestRunMs = runMs
         } else {
-            learn(level)
+            if (userGuardLeft == 0 || prob < SPEECH_PROB) learn(level)
             runMs = 0
         }
         val inSpan = Integer.bitCount(span)
@@ -187,6 +219,7 @@ internal class BargeInGate {
         resetRun()
         verdictWindowsLeft = VERDICT_MS / WINDOW_MS
         speechAfterMs = 0
+        userGuardLeft = USER_GUARD_WINDOWS
         return fire
     }
 
@@ -201,7 +234,10 @@ internal class BargeInGate {
     }
 
     private fun watch(prob: Float): Event? {
-        if (prob >= SPEECH_PROB) speechAfterMs += WINDOW_MS
+        if (prob >= SPEECH_PROB) {
+            speechAfterMs += WINDOW_MS
+            userGuardLeft = USER_GUARD_WINDOWS
+        }
         if (--verdictWindowsLeft > 0) return null
         val clearlyUser = fireLevel >= fireThreshold * CLEARLY_USER_FACTOR
         val self = speechAfterMs < SELF_SPEECH_MS && !clearlyUser
@@ -242,6 +278,9 @@ internal class BargeInGate {
         const val DEFAULT_ECHO_FLOOR = 12_000
         const val MIN_LEVEL = 3_000
         const val LEARN_WINDOWS = 10
+        /** 1 s after the user was last heard: their speech is not the reply's echo (run 6). */
+        const val USER_GUARD_MS = 1_000
+        const val USER_GUARD_WINDOWS = USER_GUARD_MS / WINDOW_MS
         private const val MAX_LEARN = 2_000
         const val VERDICT_MS = 1_216
         const val SELF_SPEECH_MS = 160

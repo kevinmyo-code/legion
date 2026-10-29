@@ -63,3 +63,14 @@ under 256 ms still never fires, and two short ones more than a span apart never 
 now seeds Smart Turn's turn audio and the wire pre-roll with the whole span plus one window
 (544 ms), so a word whose onset is up to 512 ms before the fire is not clipped. The self-interrupt
 verdict is unchanged.
+
+## Amendment, 2026-10-29: the echo floor learns the echo, not the user
+
+On the A25 in call mode (run 6), the reply after a barge-in began while Kevin was still talking and
+learned his voice as its echo (`echo_floor=9785 threshold=14677`); his next words reached 7 of the 8
+windows a fire needs, at five times the threshold that had just fired. Every other run 5 and 6 reply
+learned 400 to 550, yet each began at the 12,000 default (threshold 18,000). **Two rules now hold.**
+For 1 s after the user was last known to be talking (a fire, speech during the verdict watch, or the
+phone's `activityEnd`), a window Silero calls speech (>= 0.5) is not learned. And a reply starts from
+the floor the previous reply learned in the same session; 12,000 applies only before any reply has
+learned one. The trigger, the self-interrupt verdict and the pre-roll are unchanged.

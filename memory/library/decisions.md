@@ -6978,3 +6978,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Pre-roll:** a barge-in seeds the turn audio with 17 windows and sends 544 ms of ring on the wire
   (normal starts keep 400 ms), so the onset of the word is inside what the model hears.
 - ADR 0064 amended. Branch `fix/barge-in-sustain`.
+
+## 2026-10-29 - Voice: the barge-in echo floor stops learning the user
+
+- **Evidence, A25 call mode, run 6:** the reply after a barge-in (fire `prob=0.99 level=29738
+  threshold=3000`) began while Kevin was still talking. It learned his voice as echo:
+  `echo_floor=9785 threshold=14677`, and his next words had `speech_windows=19 loud_windows=7
+  best_span=7`, one window short. Every other run 5 and 6 reply learned 400 to 550, but began at the
+  12,000 default (threshold 18,000) for its first 10 windows.
+- **Change:** `BargeInGate` does not learn a window Silero calls speech (>= 0.5) within 1 s (31
+  windows) of the user last being heard: its own fire, speech during the verdict watch, or
+  `onUserTurnEnd()` (the phone's `activityEnd`, from `TurnTaker`). A reply's floor before it has
+  learned 10 windows is the last reply's learned floor in the same session; 12,000 only before any.
+  Pinned in `BargeInGateTest` with run 6's numbers.
+- Amends the 2026-10-27 entry's "12,000 until learned". ADR 0064 amended. Ticket
+  `.scratch/async-lookups/issues/08-run5-6-follow-ups.md` item 1.

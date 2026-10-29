@@ -179,4 +179,32 @@ class TurnTakerTest {
             .map { it.substringAfter(" ").substringBefore(" ") }
         assertEquals(listOf("armed=true", "reply_end", "armed=true"), barge)
     }
+
+    /** 100 ms at a peak of 9,784 (0x2638), run 6's learned "echo" that was the user. */
+    private fun mid() = ByteArray(3_200).also { b ->
+        for (i in b.indices step 2) {
+            b[i] = 0x38
+            b[i + 1] = 0x26
+        }
+    }
+
+    /** Run 6: the activity end arms the gate's guard, so the next reply does not learn the user. */
+    @Test
+    fun `the reply after an activity end does not learn the user still talking`() {
+        val vad = ScriptedVad(0.9f)
+        val sink = RecordingSink()
+        val t = TurnTaker(TurnConfig(true, true, false, "test"), vad, null, sink)
+        repeat(5) { t.feed(quiet, quiet.size, playing = false) }
+        vad.next = 0.05f
+        while (sink.endReason == null) t.feed(quiet, quiet.size, playing = false)
+        t.onReplyStart()
+        vad.next = 0.9f
+        repeat(3) { t.feed(mid(), 3_200, playing = true) } // still talking, under the default 18,000
+        vad.next = 0.05f
+        repeat(4) { t.feed(quiet, quiet.size, playing = true) } // the reply's echo
+        t.onReplyEnd()
+        val end = sink.logs.single { it.startsWith("${TurnTaker.BARGE_TAG} reply_end") }
+        assertTrue(end, end.contains("echo_floor=0 threshold=3000"))
+        assertEquals(0, sink.barged)
+    }
 }

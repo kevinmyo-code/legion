@@ -211,6 +211,8 @@ internal class TurnTaker(
                 is EndOfTurnPolicy.Action.RequestCheck -> requestCheck(a)
                 is EndOfTurnPolicy.Action.EndActivity -> {
                     sink.sendActivityEnd()
+                    // The user was talking until a moment ago: the next reply must not learn them.
+                    gate.onUserTurnEnd()
                     sink.onEndOfTurn(a)
                     out = out or ENDED
                 }
