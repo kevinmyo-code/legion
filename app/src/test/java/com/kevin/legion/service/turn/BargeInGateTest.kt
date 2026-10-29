@@ -280,6 +280,89 @@ class BargeInGateTest {
         assertEquals(0f, s.maxProb, 0f)
     }
 
+    // Run 6 (A25, 2026-10-29): the echo floor must learn the echo, not the user.
+
+    /**
+     * Run 6: a barge-in fired at `prob=0.99 level=29738 threshold=3000`; the reply after it
+     * ("Understood.", 40 windows) began while Kevin was still talking. With the guard his voice is
+     * not learned, the floor stays at the call-mode echo, and his next words fire.
+     */
+    @Test
+    fun `run 6 - the reply after a barge-in does not learn the user still talking`() {
+        val g = gate()
+        feed(g, 20, 0.1f, 500) // call-mode echo, floor near 500
+        val fire = feed(g, windows, 0.99f, 29_738).single() as Event.Fire
+        assertEquals(0.99f, fire.prob, 1e-6f)
+        assertEquals(29_738, fire.level)
+        assertEquals(BargeInGate.MIN_LEVEL, fire.threshold)
+        val verdict = feed(g, 60, 0.9f, 20_000).filterIsInstance<Event.Verdict>().single()
+        assertFalse(verdict.selfInterrupt)
+        g.onReplyEnd()
+
+        g.onReplyStart()
+        assertEquals(500, g.echoFloor()) // seeded from the last reply, not 12,000
+        assertTrue(feed(g, 8, 0.7f, 9_785).isEmpty()) // Kevin still talking: not learned
+        assertTrue(feed(g, 12, 0.1f, 500).isEmpty()) // the reply's own echo: learned
+        assertEquals(500, g.echoFloor())
+        assertEquals(BargeInGate.MIN_LEVEL, g.threshold())
+        val next = feed(g, windows, 0.95f, 13_000).single() as Event.Fire
+        assertEquals(BargeInGate.MIN_LEVEL, next.threshold)
+    }
+
+    /** The same reply with no guard and no seed: run 6's floor, and the next words never fire. */
+    @Test
+    fun `run 6 contrast - without the guard the floor learns the user`() {
+        val g = gate()
+        feed(g, 8, 0.7f, 9_785)
+        feed(g, 12, 0.1f, 500)
+        assertEquals(9_785, g.echoFloor())
+        assertEquals(14_677, g.threshold())
+        assertTrue(feed(g, 19, 0.95f, 13_000).isEmpty())
+        val s = g.onReplyEnd()!!
+        assertFalse(s.fired)
+        assertEquals(0, s.loudWindows)
+        // And it ratchets: the words that missed are learned too, raising the floor to them.
+        assertEquals(19_500, s.threshold)
+    }
+
+    @Test
+    fun `the guard after the user's turn ends runs one second of windows, played or not`() {
+        val g = BargeInGate()
+        g.onUserTurnEnd()
+        feed(g, 20, 0.1f, 300, playing = false) // 640 ms before the reply's first audio
+        g.onReplyStart()
+        feed(g, 10, 0.7f, 9_785) // still inside the second: not learned
+        assertEquals(BargeInGate.DEFAULT_ECHO_FLOOR, g.echoFloor())
+        feed(g, 10, 0.1f, 500)
+        assertEquals(500, g.echoFloor())
+        feed(g, 10, 0.7f, 9_785) // the second is over: learned as echo again
+        assertEquals(9_785, g.echoFloor())
+    }
+
+    @Test
+    fun `a reply starts from the last reply's learned floor`() {
+        val g = gate()
+        feed(g, 20, 0.1f, 500)
+        g.onReplyEnd()
+        g.onReplyStart()
+        assertEquals(500, g.echoFloor())
+        assertEquals(BargeInGate.MIN_LEVEL, g.threshold())
+        // 15,000 is under the 18,000 the default floor would have set for the first 10 windows.
+        assertTrue(feed(g, windows, 0.9f, 15_000).single() is Event.Fire)
+    }
+
+    @Test
+    fun `a reply too short to learn keeps the previous seed`() {
+        val g = gate()
+        feed(g, 20, 0.1f, 500)
+        g.onReplyEnd()
+        g.onReplyStart()
+        feed(g, BargeInGate.LEARN_WINDOWS - 1, 0.1f, 8_000)
+        g.onReplyEnd()
+        g.onReplyStart()
+        assertEquals(500, g.echoFloor())
+    }
+
     @Test
     fun `no reply open means no stats`() {
         assertNull(BargeInGate().onReplyEnd())

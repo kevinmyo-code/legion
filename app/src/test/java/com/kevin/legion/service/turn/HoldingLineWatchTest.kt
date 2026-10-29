@@ -127,4 +127,23 @@ class HoldingLineWatchTest {
         assertTrue(empty.contains("called no tool"))
         assertTrue(empty.contains("no tool for it"))
     }
+
+    /** Run 6 (A25, 2026-10-29): "Checking." with no tool, then "My apologies, I'm ready for your next request." */
+    @Test
+    fun `the empty holding line note says act in this turn, never apologise or wait`() {
+        val empty = HoldingLineWatch.EMPTY_INSTRUCTION
+        assertTrue(empty.contains("in this same turn"))
+        assertTrue(empty.contains("call the tool for the lookup you implied"))
+        assertTrue(empty.contains("answer the question from what you already have"))
+        assertTrue(empty.contains("Do not apologise"))
+        assertTrue(empty.contains("do not wait for the user to ask again"))
+        val late = HoldingLineWatch.lateInstruction("ask_fleet")
+        assertTrue(late.contains("Do not apologise"))
+        assertTrue(late.contains("do not wait for the user to ask again"))
+        for (note in listOf(empty, late)) {
+            assertTrue(note.endsWith(".)"))
+            assertFalse(note.contains("Alfred", ignoreCase = true))
+            assertFalse(note.contains("\u2014"))
+        }
+    }
 }

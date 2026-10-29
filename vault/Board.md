@@ -18,7 +18,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
-| [[.scratch/async-lookups/map\|async-lookups]] | [[08-run5-6-follow-ups\|08]] | build | Build: runs 5 and 6 follow-ups (echo floor learns the user, empty holding line nudge wording, clipped onset after a reply) |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[23-the-second-household-account\|23]] | build | 23-the-second-household-account |
@@ -91,6 +90,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/async-lookups/map\|async-lookups]] | [[05-conversation-audit-log\|05]] | build | Build: conversation audit log in logcat (LIVE_AUDIT) |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[06-alfred-register\|06]] | build | Build: a livelier register for Alfred (quick, dry, quietly amused) |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[07-run3-follow-ups\|07]] | build | Build: ticket 04 run 3 follow-ups (still-checking nudge, dead holding lines, sign-off, writes, figures, meal dates) |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[08-run5-6-follow-ups\|08]] | build | Build: runs 5 and 6 follow-ups (echo floor learns the user, empty holding line nudge wording, clipped onset after a reply) |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[08-receipts-whose-anchors-were-never-stored\|08]] | build | 08-receipts-whose-anchors-were-never-stored |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[09-backups-do-not-cover-files\|09]] | build | 09-backups-do-not-cover-files |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[10-fleet-cutover\|10]] | build | 10-fleet-cutover |
