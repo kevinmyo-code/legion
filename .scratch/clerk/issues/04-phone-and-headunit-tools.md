@@ -3,12 +3,12 @@ map: clerk
 ticket: "04"
 title: "Build: delegate_task, check_clerk, confirm_task, the done raise, Clerk screen; head unit tools"
 type: build
-status: open
+status: kiv
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

@@ -3,7 +3,7 @@ map: clerk
 ticket: "05"
 title: "Test: install the worker on Kevin's laptop and run the first task from the phone"
 type: test
-status: open
+status: kiv
 status-detail: ""
 blockers: ["02", "03", "04"]
 blocked-by: ["[[02-engine-clerk-app]]", "[[03-laptop-worker]]", "[[04-phone-and-headunit-tools]]"]

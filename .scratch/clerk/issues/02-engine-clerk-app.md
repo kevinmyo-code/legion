@@ -3,12 +3,12 @@ map: clerk
 ticket: "02"
 title: "Build: engine clerk app (tasks, workers, files, status)"
 type: build
-status: open
+status: kiv
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

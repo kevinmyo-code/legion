@@ -3,12 +3,12 @@ map: clerk
 ticket: "03"
 title: "Build: the laptop worker (poller, claude -p runner, result upload, install)"
 type: build
-status: open
+status: kiv
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
