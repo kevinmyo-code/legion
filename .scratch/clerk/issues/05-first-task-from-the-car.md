@@ -5,10 +5,10 @@ title: "Test: install the worker on Kevin's laptop and run the first task from t
 type: test
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
-open-blockers: 0
-ready: true
+blockers: ["02", "03", "04"]
+blocked-by: ["[[02-engine-clerk-app]]", "[[03-laptop-worker]]", "[[04-phone-and-headunit-tools]]"]
+open-blockers: 3
+ready: false
 tags: [ticket]
 ---
 

@@ -44,8 +44,8 @@
       "id": "17131b5c1bd29682",
       "type": "file",
       "file": ".scratch/clerk/issues/05-first-task-from-the-car.md",
-      "x": 0,
-      "y": 600,
+      "x": 520,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -54,12 +54,41 @@
       "id": "0ee7b56e5eb42b76",
       "type": "file",
       "file": ".scratch/clerk/issues/06-claude-code-sessions-reporter.md",
-      "x": 0,
-      "y": 750,
+      "x": 520,
+      "y": 150,
       "width": 320,
       "height": 110,
       "color": "1"
     }
   ],
-  "edges": []
+  "edges": [
+    {
+      "id": "e626ac6530b62076",
+      "fromNode": "c050f0c3ec2297d4",
+      "fromSide": "right",
+      "toNode": "17131b5c1bd29682",
+      "toSide": "left"
+    },
+    {
+      "id": "65e47cf00877eb90",
+      "fromNode": "3d05ffd9d9ee3650",
+      "fromSide": "right",
+      "toNode": "17131b5c1bd29682",
+      "toSide": "left"
+    },
+    {
+      "id": "3f908200dcd599c4",
+      "fromNode": "b4dab140121a2a79",
+      "fromSide": "right",
+      "toNode": "17131b5c1bd29682",
+      "toSide": "left"
+    },
+    {
+      "id": "1c29b261cc8efe98",
+      "fromNode": "c050f0c3ec2297d4",
+      "fromSide": "right",
+      "toNode": "0ee7b56e5eb42b76",
+      "toSide": "left"
+    }
+  ]
 }

@@ -38,8 +38,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/clerk/map\|clerk]] | [[02-engine-clerk-app\|02]] | build | Build: engine clerk app (tasks, workers, files, status) |
 | [[.scratch/clerk/map\|clerk]] | [[03-laptop-worker\|03]] | build | Build: the laptop worker (poller, claude -p runner, result upload, install) |
 | [[.scratch/clerk/map\|clerk]] | [[04-phone-and-headunit-tools\|04]] | build | Build: delegate_task, check_clerk, confirm_task, the done raise, Clerk screen; head unit tools |
-| [[.scratch/clerk/map\|clerk]] | [[05-first-task-from-the-car\|05]] | test | Test: install the worker on Kevin's laptop and run the first task from the phone |
-| [[.scratch/clerk/map\|clerk]] | [[06-claude-code-sessions-reporter\|06]] | build | Build: Claude Code sessions reporter (layer 1) and ask_claude |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[04-phone-user-turn-audio-clips\|04]] | build | Build: phone keeps user-turn audio clips with end-of-turn labels, capped and pullable |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[05-engine-conversation-view\|05]] | build | Build: engine page or report that renders a household's conversation batches |
@@ -210,6 +208,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/books/map\|books]] | [[09-build-reading-sync-phone\|09]] | build | Build: the phone syncs reading position and bookmarks with the engine  waiting on [[08-build-reading-sync-engine\|08]] |
 | [[.scratch/books/map\|books]] | [[10-build-web-reader\|10]] | build | Build: a Books page in the web app that reads a laptop folder, synced with the phone  waiting on [[08-build-reading-sync-engine\|08]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[04-net-worth-is-never-one-number\|04]] | build | Net worth as a figure plus what is unverified, never one number  waiting on [[02-what-a-net-worth-may-be\|02]] |
+| [[.scratch/clerk/map\|clerk]] | [[05-first-task-from-the-car\|05]] | test | Test: install the worker on Kevin's laptop and run the first task from the phone  waiting on [[02-engine-clerk-app\|02]], [[03-laptop-worker\|03]], [[04-phone-and-headunit-tools\|04]] |
+| [[.scratch/clerk/map\|clerk]] | [[06-claude-code-sessions-reporter\|06]] | build | Build: Claude Code sessions reporter (layer 1) and ask_claude  waiting on [[02-engine-clerk-app\|02]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The projects tool surface, and its hands path  waiting on [[06-the-azure-devops-sync\|06]] |
