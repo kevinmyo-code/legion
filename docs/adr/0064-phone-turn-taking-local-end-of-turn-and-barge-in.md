@@ -21,7 +21,8 @@ car Bluetooth, when Silero cannot load, or with the switch off.
   Turn can only extend a turn, never end one early.** No Smart Turn means silence only.
 - **Barge-in:** call-style audio (MODE_IN_COMMUNICATION, voice-communication playback and capture
   with AEC), only during a conversation. The mic stays open while Alfred speaks. Speech
-  interrupts only when Silero is confident for 256 ms above the reply's own echo. After two
+  interrupts only when Silero is confident and above the reply's own echo for 256 ms of any
+  512 ms (amended 2026-10-28, below). After two
   self-interrupts it turns off for that conversation, and the user is told so.
 - **Off on car Bluetooth in v1.** Those sessions keep half-duplex and server VAD.
 - **A write tool cancelled by an interruption is reported, never undone.**
@@ -49,3 +50,16 @@ on Silero plus a learned echo floor. Both on by default, off on Bluetooth. Code 
 - A barge-in starts an activity at once, with its pre-roll. If the trigger was Alfred's own echo,
   that echo is what the model hears. The self-interrupt cut-off limits how often this can happen;
   it does not prevent it.
+
+## Amendment, 2026-10-28: the trigger is 256 ms of qualifying windows within 512 ms
+
+The barge-in trigger was 256 ms of consecutive qualifying windows (Silero >= 0.8 and above the echo
+threshold), one stray window tolerated. On the A25 in call mode (run 5, build `191266c2`) Kevin said
+"stop" into the mic over a 12.6 s reply: Silero peaked at 1.00, the level at 30,560 against a
+threshold of 3,000, and 27 windows qualified, but Silero's probability jitters across a short plosive
+word, so the longest run was 224 ms, one window short, and the reply never stopped. **The gate now
+fires when 8 of the last 16 windows (256 ms within 512 ms) qualify, in any order.** A backchannel of
+under 256 ms still never fires, and two short ones more than a span apart never add up. A barge-in
+now seeds Smart Turn's turn audio and the wire pre-roll with the whole span plus one window
+(544 ms), so a word whose onset is up to 512 ms before the fire is not clipped. The self-interrupt
+verdict is unchanged.

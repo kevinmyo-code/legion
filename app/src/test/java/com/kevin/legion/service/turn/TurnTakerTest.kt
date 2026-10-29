@@ -119,6 +119,20 @@ class TurnTakerTest {
         assertEquals("start", sink.wire.first())
     }
 
+    /** 2026-10-28: the gate fires up to a 512 ms span after onset, so the wire pre-roll covers it. */
+    @Test
+    fun `a barge-in sends the gate's whole span as pre-roll`() {
+        val vad = ScriptedVad(0.95f)
+        val sink = RecordingSink()
+        val t = TurnTaker(TurnConfig(true, true, false, "test"), vad, null, sink)
+        t.onReplyStart()
+        repeat(10) { t.feed(quiet, quiet.size, playing = true) }
+        while (sink.barged == 0) t.feed(loud(), 3_200, playing = true)
+        assertEquals(listOf("start", "audio"), sink.wire.toList())
+        assertEquals(TurnTaker.BARGE_PRE_ROLL_MS * TurnTaker.BYTES_PER_MS, sink.bytes)
+        assertTrue(TurnTaker.BARGE_PRE_ROLL_MS > TurnTaker.PRE_ROLL_MS)
+    }
+
     @Test
     fun `server VAD with barge-in forwards nothing during the reply until a barge`() {
         val vad = ScriptedVad(0.95f)
@@ -147,7 +161,7 @@ class TurnTakerTest {
         assertTrue(barge[1].startsWith("LIVE_BARGE_IN fire "))
         assertEquals(
             "LIVE_BARGE_IN reply_end fired=true windows=8 speech_windows=8 loud_windows=8 " +
-                "qualifying_windows=8 max_prob=0.95 max_level=18000 longest_run_ms=256 " +
+                "qualifying_windows=8 max_prob=0.95 max_level=18000 longest_run_ms=256 best_span=8 " +
                 "echo_floor=12000 threshold=18000",
             barge[2],
         )

@@ -18,6 +18,8 @@ import java.util.concurrent.Executors
  *   [PRE_ROLL_MS] ring, so the 200 ms speech-start confirmation clips nothing.
  * - server VAD with barge-in: everything goes up except while the reply is audible; a barge-in
  *   sends the ring first so the server's VAD hears the onset.
+ * - a barge-in (either mode) sends [BARGE_PRE_ROLL_MS] of ring rather than [PRE_ROLL_MS]: the gate
+ *   can fire up to a 512 ms span after the first qualifying window (2026-10-28).
  */
 @Suppress("TooManyFunctions") // one small step per concern; splitting the class would split the lock
 internal class TurnTaker(
@@ -49,7 +51,7 @@ internal class TurnTaker(
     private val policy = EndOfTurnPolicy(smartAvailable = config.smartTurn && smartTurn != null)
     private val gate = BargeInGate()
 
-    private val ring = ByteArray(PRE_ROLL_BYTES)
+    private val ring = ByteArray(maxOf(PRE_ROLL_MS, BARGE_PRE_ROLL_MS) * BYTES_PER_MS)
     private var ringFill = 0
     private var ringPos = 0
     private val floatRing = FloatArray(FLOAT_RING)
@@ -171,7 +173,8 @@ internal class TurnTaker(
                 )
                 if (manual) {
                     policy.forceStart()?.let {
-                        beginTurnAudio(BargeInGate.SUSTAIN_MS / EndOfTurnPolicy.WINDOW_MS + 1)
+                        // The whole span the gate fired on, so the onset of a short word is in it.
+                        beginTurnAudio(BargeInGate.SPAN_WINDOWS + 1)
                         outcome = outcome or STARTED
                     }
                 }
@@ -231,7 +234,7 @@ internal class TurnTaker(
                 // activityStart goes out here, before the pre-roll, so the onset lands inside it.
                 started -> {
                     sink.sendActivityStart()
-                    sendRing()
+                    sendRing(if (barged) BARGE_PRE_ROLL_MS else PRE_ROLL_MS)
                 }
                 // An end inside this buffer was sent from handle(); the audio before it is in the
                 // turn already, and audio after it must not open a new one.
@@ -244,7 +247,7 @@ internal class TurnTaker(
         }
         // Server VAD with barge-in.
         return when {
-            barged -> sendRing()
+            barged -> sendRing(BARGE_PRE_ROLL_MS)
             !playing || bargedThisReply -> {
                 sink.sendAudio(pcm, 0, n)
                 n
@@ -293,11 +296,13 @@ internal class TurnTaker(
         ringFill = minOf(ring.size, ringFill + n)
     }
 
-    private fun sendRing(): Int {
-        if (ringFill == 0) return 0
-        val out = ByteArray(ringFill)
-        val start = (ringPos - ringFill + ring.size) % ring.size
-        for (i in 0 until ringFill) out[i] = ring[(start + i) % ring.size]
+    /** The newest [ms] of the ring (or all of it, if less is held). */
+    private fun sendRing(ms: Int): Int {
+        val len = minOf(ringFill, ms * BYTES_PER_MS)
+        if (len == 0) return 0
+        val out = ByteArray(len)
+        val start = (ringPos - len + ring.size) % ring.size
+        for (i in 0 until len) out[i] = ring[(start + i) % ring.size]
         sink.sendAudio(out, 0, out.size)
         return out.size
     }
@@ -343,7 +348,10 @@ internal class TurnTaker(
         const val BARGE_TAG = "LIVE_BARGE_IN"
         /** Design section 11: ~400 ms of mic audio kept for activityStart. */
         const val PRE_ROLL_MS = 400
-        private const val PRE_ROLL_BYTES = PRE_ROLL_MS * 32
+        /** The gate's span plus one window: its first qualifying window can be 512 ms back. */
+        const val BARGE_PRE_ROLL_MS = (BargeInGate.SPAN_WINDOWS + 1) * BargeInGate.WINDOW_MS
+        /** 16 kHz PCM16 mono. */
+        const val BYTES_PER_MS = 32
         /** Smart Turn's input starts 200 ms before speech onset (the offline eval's PREROLL). */
         private const val MODEL_PRE_ROLL_SAMPLES = 3_200
         private const val FLOAT_RING = 16_000
@@ -362,7 +370,8 @@ internal class TurnTaker(
             "reply_end fired=${s.fired} windows=${s.windows} speech_windows=${s.speechWindows} " +
                 "loud_windows=${s.loudWindows} qualifying_windows=${s.qualifyingWindows} " +
                 "max_prob=${"%.2f".format(java.util.Locale.US, s.maxProb)} max_level=${s.maxLevel} " +
-                "longest_run_ms=${s.longestRunMs} echo_floor=${s.echoFloor} threshold=${s.threshold}"
+                "longest_run_ms=${s.longestRunMs} best_span=${s.bestSpanWindows} " +
+                "echo_floor=${s.echoFloor} threshold=${s.threshold}"
 
         /** One thread for every session's Smart Turn checks, so checks never overlap. */
         private val INFERENCE: ExecutorService = Executors.newSingleThreadExecutor { r ->

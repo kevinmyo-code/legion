@@ -6963,3 +6963,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   confirm-gated root attempt at ADB over Wi-Fi whose verdict comes from probing port 5555.
   Ticket `.scratch/conversation-records/issues/06-headunit-developer-tools.md`. No ADR: no
   standing rule changed.
+
+## 2026-10-28 - Voice: barge-in fires on 256 ms of qualifying windows within 512 ms
+
+- **Evidence, A25 call mode, run 5 (build `191266c2`):** Kevin said "stop" over a 12.6 s reply.
+  `reply_end fired=false windows=394 speech_windows=53 loud_windows=39 qualifying_windows=27
+  max_prob=1.00 max_level=30560 longest_run_ms=224 echo_floor=543 threshold=3000`. Silero was
+  certain and the level was ten times the threshold, but its probability jitters across a short
+  plosive word, so the consecutive run (one miss tolerated) stopped one window short of 256 ms.
+- **Change:** `BargeInGate` fires when 8 of the last 16 windows (256 ms within 512 ms) qualify, in
+  any order. `ALLOWED_MISSES` is gone; `SUSTAIN_MS` stays 256 and `SUSTAIN_WINDOWS` derives from it.
+  A 192 ms "mm-hm" followed by silence still never fires (pinned by test). `reply_end` gains
+  `best_span=<n>`; `longest_run_ms` stays, now strictly consecutive.
+- **Pre-roll:** a barge-in seeds the turn audio with 17 windows and sends 544 ms of ring on the wire
+  (normal starts keep 400 ms), so the onset of the word is inside what the model hears.
+- ADR 0064 amended. Branch `fix/barge-in-sustain`.
