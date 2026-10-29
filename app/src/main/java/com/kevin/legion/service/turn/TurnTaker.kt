@@ -126,7 +126,8 @@ internal class TurnTaker(
             if (windowFill == SileroVad.WINDOW) {
                 windowFill = 0
                 val outcome = processWindow(playing) ?: return 0
-                if (outcome and STARTED != 0 && !started) {
+                // The first start or barge-in in this buffer (server VAD barges without a start).
+                if (outcome and (STARTED or BARGED) != 0 && !started && !barged) {
                     startTailBytes = n - i
                     startSincePlaying = windowsSincePlaying
                 }

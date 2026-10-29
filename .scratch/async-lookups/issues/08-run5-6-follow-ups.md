@@ -62,6 +62,10 @@ run 6 conversation already does right.
    reply holds 500 while Kevin's 9,785 windows are skipped, and his next words fire; the contrast
    case without the guard lands on 9,785 / 14,677 and ratchets to 19,500. The 192 ms backchannel
    test is unchanged. ADR 0064 and `decisions.md` amended.
+   Known consequence (reasoned, not seen): a reply that starts inside the guard learns only its
+   windows under 0.5 until the guard runs out, so on a device whose echo scores as speech at a high
+   level the floor can sit low for up to a second. The seed covers the first 10 learned windows and
+   the self-interrupt verdict caps the cost. Not a problem on the A25 (echo 400 to 550).
 2. **Nudge wording.** `HoldingLineWatch.EMPTY_INSTRUCTION`: call the tool for the lookup implied, or
    answer from what it has, in this same turn; no tool, say so in one line and offer the nearest
    thing. Both holding-line notes add "Do not apologise, and do not wait for the user to ask again."

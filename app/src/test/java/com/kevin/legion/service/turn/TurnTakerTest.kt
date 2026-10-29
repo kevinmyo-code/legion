@@ -149,6 +149,10 @@ class TurnTakerTest {
         assertEquals(1, sink.barged)
         assertTrue(t.feed(quiet, quiet.size, playing = true) > 0)
         assertTrue(sink.wire.none { it == "start" || it == "end" })
+        val line = sink.logs.single { it.startsWith("${TurnTaker.LATENCY_TAG} pre_roll_ms=") }
+        assertTrue(line, line.contains("barge=true"))
+        assertTrue(line, line.contains("pre_roll_onset_ms=${(BargeInGate.SPAN_WINDOWS + 1) * BargeInGate.WINDOW_MS}"))
+        assertTrue(line, !line.contains("pre_roll_tail_ms=0 "))
     }
 
     @Test

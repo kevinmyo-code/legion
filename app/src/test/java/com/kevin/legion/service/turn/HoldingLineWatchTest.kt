@@ -143,7 +143,7 @@ class HoldingLineWatchTest {
         for (note in listOf(empty, late)) {
             assertTrue(note.endsWith(".)"))
             assertFalse(note.contains("Alfred", ignoreCase = true))
-            assertFalse(note.contains("—"))
+            assertFalse(note.contains("\u2014"))
         }
     }
 }
