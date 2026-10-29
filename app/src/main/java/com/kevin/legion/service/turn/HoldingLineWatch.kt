@@ -85,6 +85,9 @@ internal class HoldingLineWatch {
 
     companion object {
         private const val MAX_WORDS = 5
+        /** Shared by both notes: the model acts on the question it was asked, not on the note. */
+        private const val NO_APOLOGY =
+            "Do not apologise, and do not wait for the user to ask again."
         private val HOLDING_WORDS = listOf("check", "look", "moment", "second")
         private val WORD = Regex("[\\p{L}\\p{N}']+")
 
@@ -105,12 +108,24 @@ internal class HoldingLineWatch {
         /** The system note for [Outcome.LATE_HOLDING], framed like [StillCheckingNudge.instruction]. */
         fun lateInstruction(tool: String): String =
             "(System note, not spoken by the user: the result of `$tool` has already arrived and " +
-                "is in front of you. Answer the user's question from it now, with no holding line.)"
+                "is in front of you. Answer the user's question from it now, with no holding line. " +
+                NO_APOLOGY + ")"
 
-        /** The system note for [Outcome.EMPTY_HOLDING]. */
+        /**
+         * The system note for [Outcome.EMPTY_HOLDING]. Run 6 (A25, 2026-10-29): the user asked for
+         * suggested events, the model said "Checking." with no tool call, the earlier wording ("either
+         * call the tool, or answer, or say plainly you have no tool") went in, and the model answered
+         * "My apologies, I'm ready for your next request." The user had to ask again. So it now says
+         * to act in this same turn, and never to apologise or wait for a repeat. The honest exit
+         * when no tool fits stays (ADR 0031), as one line, not the end of the help. No example line
+         * (ticket 06) and no assistant name (CLAUDE.md sec 1).
+         */
         const val EMPTY_INSTRUCTION =
             "(System note, not spoken by the user: you said you would check, but you called no " +
-                "tool and nothing is running. Either call the tool you meant now, or answer the " +
-                "question directly, or say plainly that you have no tool for it.)"
+                "tool and nothing is running. Do it now, in this same turn: call the tool for the " +
+                "lookup you implied, or answer the question from what you already have. If you " +
+                "have no tool for it, say so in one plain line and offer the nearest thing you can " +
+                "do. " + NO_APOLOGY + ")"
+
     }
 }
