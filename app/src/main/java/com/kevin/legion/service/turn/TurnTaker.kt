@@ -15,11 +15,14 @@ import java.util.concurrent.Executors
  *
  * Forwarding:
  * - manual activity: audio goes up only inside an activity; activityStart is followed by the
- *   [PRE_ROLL_MS] ring, so the 200 ms speech-start confirmation clips nothing.
+ *   [PRE_ROLL_MS] ring, so neither the 200 ms speech-start confirmation nor a word begun in the
+ *   reply's drain tail is clipped (see [PRE_ROLL_MS]).
  * - server VAD with barge-in: everything goes up except while the reply is audible; a barge-in
  *   sends the ring first so the server's VAD hears the onset.
- * - a barge-in (either mode) sends [BARGE_PRE_ROLL_MS] of ring rather than [PRE_ROLL_MS]: the gate
- *   can fire up to a 512 ms span after the first qualifying window (2026-10-28).
+ * - a barge-in (either mode) sends [BARGE_PRE_ROLL_MS] of ring: the gate can fire up to a 512 ms
+ *   span after the first qualifying window (2026-10-28).
+ * - every start logs one `pre_roll_ms=` [LATENCY_TAG] line ([logPreRoll]) saying how far back the
+ *   ring reached, so a clipped onset can be told apart from one the ring held.
  */
 @Suppress("TooManyFunctions") // one small step per concern; splitting the class would split the lock
 internal class TurnTaker(
@@ -65,6 +68,14 @@ internal class TurnTaker(
 
     private var bargedThisReply = false
     private var failed = false
+
+    // For the pre_roll line: the start's onset in windows, the bytes of its buffer after the window
+    // that confirmed it, and windows since the reply was last audible (-1: none yet this session),
+    // live and as it stood at the confirming window.
+    private var startOnsetWindows = 0
+    private var startTailBytes = 0
+    private var windowsSincePlaying = -1
+    private var startSincePlaying = -1
 
     val inActivity: Boolean get() = synchronized(lock) { policy.inActivity }
 
@@ -115,6 +126,10 @@ internal class TurnTaker(
             if (windowFill == SileroVad.WINDOW) {
                 windowFill = 0
                 val outcome = processWindow(playing) ?: return 0
+                if (outcome and STARTED != 0 && !started) {
+                    startTailBytes = n - i
+                    startSincePlaying = windowsSincePlaying
+                }
                 if (outcome and STARTED != 0) started = true
                 if (outcome and BARGED != 0) barged = true
                 if (outcome and ENDED != 0) ended = true
@@ -130,6 +145,11 @@ internal class TurnTaker(
             if (a > level) level = a
         }
         val prob = sileroProb() ?: return null
+        windowsSincePlaying = when {
+            playing -> 0
+            windowsSincePlaying < 0 -> -1
+            else -> minOf(windowsSincePlaying + 1, MAX_WINDOWS_SINCE_PLAYING)
+        }
         appendFloatRing()
         if (policy.inActivity) appendTurn(window, 0, window.size)
         if (prob >= EndOfTurnPolicy.START_PROB && !playing) sink.onLocalSpeech()
@@ -165,6 +185,7 @@ internal class TurnTaker(
         when (val ev = gate.onWindow(prob, level, playing)) {
             is BargeInGate.Event.Fire -> {
                 bargedThisReply = true
+                startOnsetWindows = BargeInGate.SPAN_WINDOWS + 1
                 outcome = outcome or BARGED
                 sink.log(
                     BARGE_TAG,
@@ -204,6 +225,7 @@ internal class TurnTaker(
         for (a in actions) {
             when (a) {
                 is EndOfTurnPolicy.Action.StartActivity -> {
+                    startOnsetWindows = a.onsetWindows
                     beginTurnAudio(a.onsetWindows)
                     out = out or STARTED
                     sink.onUserTurnStart(bargeIn = false)
@@ -236,7 +258,7 @@ internal class TurnTaker(
                 // activityStart goes out here, before the pre-roll, so the onset lands inside it.
                 started -> {
                     sink.sendActivityStart()
-                    sendRing(if (barged) BARGE_PRE_ROLL_MS else PRE_ROLL_MS)
+                    sendRing(if (barged) BARGE_PRE_ROLL_MS else PRE_ROLL_MS).also { logPreRoll(it, barged) }
                 }
                 // An end inside this buffer was sent from handle(); the audio before it is in the
                 // turn already, and audio after it must not open a new one.
@@ -249,13 +271,37 @@ internal class TurnTaker(
         }
         // Server VAD with barge-in.
         return when {
-            barged -> sendRing(BARGE_PRE_ROLL_MS)
+            barged -> sendRing(BARGE_PRE_ROLL_MS).also { logPreRoll(it, barge = true) }
             !playing || bargedThisReply -> {
                 sink.sendAudio(pcm, 0, n)
                 n
             }
             else -> 0
         }
+    }
+
+    /**
+     * One line per start (async-lookups ticket 08 item 3). `pre_roll_lead_ms` is how far the ring
+     * reached before the first window Silero (or the gate) counted: the pre-roll, less the onset,
+     * less the part of the mic buffer after the confirming window. `pre_roll_after_reply_ms` is the
+     * time from the reply's last audible window to the confirming one; when it equals
+     * `pre_roll_onset_ms` the candidate began on the first window after the drain, and the word may
+     * have begun inside it, where the policy does not listen.
+     */
+    private fun logPreRoll(sentBytes: Int, barge: Boolean) {
+        val sentMs = sentBytes / BYTES_PER_MS
+        val onsetMs = startOnsetWindows * BargeInGate.WINDOW_MS
+        val tailMs = startTailBytes / BYTES_PER_MS
+        val afterReply = if (startSincePlaying >= 0) {
+            " pre_roll_after_reply_ms=${startSincePlaying * BargeInGate.WINDOW_MS}"
+        } else {
+            ""
+        }
+        sink.log(
+            LATENCY_TAG,
+            "pre_roll_ms=$sentMs pre_roll_bytes=$sentBytes barge=$barge pre_roll_onset_ms=$onsetMs " +
+                "pre_roll_tail_ms=$tailMs pre_roll_lead_ms=${sentMs - onsetMs - tailMs}$afterReply",
+        )
     }
 
     private fun requestCheck(a: EndOfTurnPolicy.Action.RequestCheck) {
@@ -348,10 +394,25 @@ internal class TurnTaker(
     companion object {
         const val LATENCY_TAG = "LIVE_LATENCY"
         const val BARGE_TAG = "LIVE_BARGE_IN"
-        /** Design section 11: ~400 ms of mic audio kept for activityStart. */
-        const val PRE_ROLL_MS = 400
         /** The gate's span plus one window: its first qualifying window can be 512 ms back. */
         const val BARGE_PRE_ROLL_MS = (BargeInGate.SPAN_WINDOWS + 1) * BargeInGate.WINDOW_MS
+        /**
+         * Mic audio sent after activityStart on a normal (non-barge) start: 544 ms, the barge-in
+         * figure. Design section 11 said ~400 ms. Run 5 (A25, 2026-10-28): "stop" said as a reply
+         * ended reached the model as "top". What 400 ms covers, by reading:
+         *  - the start confirms on the 7th window at >= [EndOfTurnPolicy.START_PROB] (224 ms);
+         *  - the ring holds the whole 100 ms mic buffer (`GeminiLiveSession.CHUNK_BYTES`), written
+         *    before its windows are read, so up to ~100 ms of it lies after the confirming window;
+         *  - so 400 ms reaches only 76 to 176 ms before the first window Silero called speech, and
+         *    an unvoiced /s/ plus a /t/ closure, which Silero is slow to score, can be longer;
+         *  - right after a reply the policy is blind while `playing` is true: up to ~80 ms of drain
+         *    poll and settle plus one 100 ms buffer read under the old flag. A word begun there is
+         *    counted only from the first window after, and its onset can sit 500 ms before the start.
+         * 544 ms reaches 220 to 320 ms before the first speech window. The cost is up to 144 ms more
+         * room tone, or the reply's last echo, at the head of a turn that starts right after a drain.
+         * [EndOfTurnPolicy.START_PROB] is unchanged. The `pre_roll_ms=` line measures it on the phone.
+         */
+        const val PRE_ROLL_MS = BARGE_PRE_ROLL_MS
         /** 16 kHz PCM16 mono. */
         const val BYTES_PER_MS = 32
         /** Smart Turn's input starts 200 ms before speech onset (the offline eval's PREROLL). */
@@ -366,6 +427,8 @@ internal class TurnTaker(
         private const val STARTED = 1
         private const val BARGED = 2
         private const val ENDED = 4
+        /** Caps the pre_roll line's since-the-reply count (about 64 s); it only matters when short. */
+        private const val MAX_WINDOWS_SINCE_PLAYING = 2_000
 
         /** The `reply_end` line: everything needed to say why a reply was not barged in on. */
         fun replyEndLine(s: BargeInGate.ReplyStats): String =

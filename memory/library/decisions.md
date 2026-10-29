@@ -6993,3 +6993,21 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   Pinned in `BargeInGateTest` with run 6's numbers.
 - Amends the 2026-10-27 entry's "12,000 until learned". ADR 0064 amended. Ticket
   `.scratch/async-lookups/issues/08-run5-6-follow-ups.md` item 1.
+
+## 2026-10-29 - Voice: a normal turn start sends 544 ms of pre-roll
+
+- **Evidence, A25 call mode, run 5:** "stop" said as a reply ended reached the model as "top", and
+  the model called `end_conversation` on it.
+- **Reading, `TurnTaker`:** a start confirms on the 7th Silero window (224 ms after the first at
+  >= 0.5); the byte ring is written a whole 100 ms mic buffer at a time, so up to ~100 ms of what it
+  sends lies after the confirming window; right after a drain the policy is not fed while
+  `playbackActive` is still true (up to 20 ms poll plus 60 ms settle, plus one buffer read under the
+  old flag). The 400 ms pre-roll reached 76 to 176 ms before the first counted window; a word begun
+  in the drain tail can start 500 ms before the confirmation.
+- **Change:** `PRE_ROLL_MS` = `BARGE_PRE_ROLL_MS` = 544 ms (reach 220 to 320 ms). `START_PROB`
+  unchanged. Every start logs `LIVE_LATENCY pre_roll_ms= pre_roll_bytes= barge= pre_roll_onset_ms=
+  pre_roll_tail_ms= pre_roll_lead_ms= [pre_roll_after_reply_ms=]`; `tools/voice_latency.py` groups
+  `pre_roll_ms` and `pre_roll_lead_ms` by `barge`. Owed on the phone: those lines from an ordinary
+  conversation.
+- Amends the 2026-10-27 entry's "400 ms pre-roll" and the 2026-10-28 entry's "normal starts keep
+  400 ms". ADR 0064 amended. Ticket `.scratch/async-lookups/issues/08-run5-6-follow-ups.md` item 3.

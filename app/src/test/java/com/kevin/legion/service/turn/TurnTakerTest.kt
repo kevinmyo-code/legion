@@ -130,7 +130,11 @@ class TurnTakerTest {
         while (sink.barged == 0) t.feed(loud(), 3_200, playing = true)
         assertEquals(listOf("start", "audio"), sink.wire.toList())
         assertEquals(TurnTaker.BARGE_PRE_ROLL_MS * TurnTaker.BYTES_PER_MS, sink.bytes)
-        assertTrue(TurnTaker.BARGE_PRE_ROLL_MS > TurnTaker.PRE_ROLL_MS)
+        // Equal since ticket 08 item 3: a normal start after a drain needs the same reach.
+        assertTrue(TurnTaker.BARGE_PRE_ROLL_MS >= TurnTaker.PRE_ROLL_MS)
+        val line = sink.logs.single { it.startsWith("${TurnTaker.LATENCY_TAG} pre_roll_ms=") }
+        val bytes = TurnTaker.BARGE_PRE_ROLL_MS * TurnTaker.BYTES_PER_MS
+        assertTrue(line, line.contains("pre_roll_bytes=$bytes barge=true"))
     }
 
     @Test
@@ -206,5 +210,27 @@ class TurnTakerTest {
         val end = sink.logs.single { it.startsWith("${TurnTaker.BARGE_TAG} reply_end") }
         assertTrue(end, end.contains("echo_floor=0 threshold=3000"))
         assertEquals(0, sink.barged)
+    }
+
+    /** Ticket 08 item 3: a normal start right after a reply drains logs how far its pre-roll reached. */
+    @Test
+    fun `a normal start after a drain logs its pre-roll next to the barge one`() {
+        val vad = ScriptedVad(0.05f)
+        val sink = RecordingSink()
+        val t = TurnTaker(TurnConfig(true, true, false, "test"), vad, null, sink)
+        t.onReplyStart()
+        repeat(8) { t.feed(quiet, quiet.size, playing = true) }
+        t.onReplyEnd()
+        vad.next = 0.9f // the word starts on the first buffer after the drain
+        repeat(3) { t.feed(quiet, quiet.size, playing = false) }
+        val line = sink.logs.single { it.startsWith("${TurnTaker.LATENCY_TAG} pre_roll_ms=") }
+        val f = Regex("(\\w+)=(\\S+)").findAll(line).associate { it.groupValues[1] to it.groupValues[2] }
+        assertEquals("false", f["barge"])
+        assertEquals((TurnTaker.PRE_ROLL_MS * TurnTaker.BYTES_PER_MS).toString(), f["pre_roll_bytes"])
+        assertEquals("224", f["pre_roll_onset_ms"])
+        assertEquals(f["pre_roll_onset_ms"], f["pre_roll_after_reply_ms"])
+        val lead = f.getValue("pre_roll_lead_ms").toInt()
+        assertEquals(TurnTaker.PRE_ROLL_MS - 224 - f.getValue("pre_roll_tail_ms").toInt(), lead)
+        assertTrue(lead >= 220)
     }
 }

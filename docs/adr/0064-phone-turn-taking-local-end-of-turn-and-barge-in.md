@@ -73,4 +73,11 @@ learned 400 to 550, yet each began at the 12,000 default (threshold 18,000). **T
 For 1 s after the user was last known to be talking (a fire, speech during the verdict watch, or the
 phone's `activityEnd`), a window Silero calls speech (>= 0.5) is not learned. And a reply starts from
 the floor the previous reply learned in the same session; 12,000 applies only before any reply has
-learned one. The trigger, the self-interrupt verdict and the pre-roll are unchanged.
+learned one. The trigger and the self-interrupt verdict are unchanged.
+
+**Same day: a normal turn start sends 544 ms of pre-roll, not 400.** In run 5, "stop" said as a
+reply ended reached the model as "top". By reading: a start confirms 224 ms after Silero's first
+speech window, the ring also holds up to 100 ms of mic buffer after that window, and right after a
+drain the policy does not listen for up to ~180 ms, so 400 ms reached only 76 to 176 ms before the
+first counted window. 544 ms (the barge-in figure) reaches 220 to 320 ms. Every start now logs a
+`pre_roll_ms=` line so the phone can confirm it. Silero's start threshold is unchanged.
