@@ -46,6 +46,7 @@ package com.kevin.legion.service.turn
  * 2026-10-28: armed on every reply, zero fires, and no way to tell why). [onReplyEnd] hands it back
  * once per reply; it is null when no reply was open, so a second end (flush, then drain) is silent.
  */
+@Suppress("TooManyFunctions") // one pure fold; onUserTurnEnd (run 6) is its twelfth input
 internal class BargeInGate {
 
     sealed interface Event {
