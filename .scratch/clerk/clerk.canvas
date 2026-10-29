@@ -1,0 +1,65 @@
+{
+  "nodes": [
+    {
+      "id": "2d26ab66ad0e35f3",
+      "type": "file",
+      "file": ".scratch/clerk/issues/01-headless-cli-on-the-laptop.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c050f0c3ec2297d4",
+      "type": "file",
+      "file": ".scratch/clerk/issues/02-engine-clerk-app.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3d05ffd9d9ee3650",
+      "type": "file",
+      "file": ".scratch/clerk/issues/03-laptop-worker.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b4dab140121a2a79",
+      "type": "file",
+      "file": ".scratch/clerk/issues/04-phone-and-headunit-tools.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "17131b5c1bd29682",
+      "type": "file",
+      "file": ".scratch/clerk/issues/05-first-task-from-the-car.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0ee7b56e5eb42b76",
+      "type": "file",
+      "file": ".scratch/clerk/issues/06-claude-code-sessions-reporter.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}

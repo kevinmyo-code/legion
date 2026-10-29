@@ -35,6 +35,11 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
+| [[.scratch/clerk/map\|clerk]] | [[02-engine-clerk-app\|02]] | build | Build: engine clerk app (tasks, workers, files, status) |
+| [[.scratch/clerk/map\|clerk]] | [[03-laptop-worker\|03]] | build | Build: the laptop worker (poller, claude -p runner, result upload, install) |
+| [[.scratch/clerk/map\|clerk]] | [[04-phone-and-headunit-tools\|04]] | build | Build: delegate_task, check_clerk, confirm_task, the done raise, Clerk screen; head unit tools |
+| [[.scratch/clerk/map\|clerk]] | [[05-first-task-from-the-car\|05]] | test | Test: install the worker on Kevin's laptop and run the first task from the phone |
+| [[.scratch/clerk/map\|clerk]] | [[06-claude-code-sessions-reporter\|06]] | build | Build: Claude Code sessions reporter (layer 1) and ask_claude |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[04-phone-user-turn-audio-clips\|04]] | build | Build: phone keeps user-turn audio clips with end-of-turn labels, capped and pullable |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[05-engine-conversation-view\|05]] | build | Build: engine page or report that renders a household's conversation batches |
@@ -303,6 +308,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
+| [[.scratch/clerk/map\|clerk]] | 6 | 5 | [[.scratch/clerk/clerk.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/conversation-records/map\|conversation-records]] | 6 | 5 | [[.scratch/conversation-records/conversation-records.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
