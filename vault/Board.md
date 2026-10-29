@@ -18,6 +18,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
+| [[.scratch/async-lookups/map\|async-lookups]] | [[08-run5-6-follow-ups\|08]] | build | Build: runs 5 and 6 follow-ups (echo floor learns the user, empty holding line nudge wording, clipped onset after a reply) |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[23-the-second-household-account\|23]] | build | 23-the-second-household-account |
@@ -87,7 +88,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[19-build-dates-aspect\|19]] | task | Build the Dates aspect |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[02-non-blocking-read-tools\|02]] | build | Build: non-blocking read tools on the Live socket |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[03-fallback-model-and-probes\|03]] | build | Build: sub-agent fallback model and per-stage latency probes |
-| [[.scratch/async-lookups/map\|async-lookups]] | [[04-device-run-and-report\|04]] | test | Test: the A25 run that proves WHEN_IDLE speaks, and the lookup p50/p95 |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[05-conversation-audit-log\|05]] | build | Build: conversation audit log in logcat (LIVE_AUDIT) |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[06-alfred-register\|06]] | build | Build: a livelier register for Alfred (quick, dry, quietly amused) |
 | [[.scratch/async-lookups/map\|async-lookups]] | [[07-run3-follow-ups\|07]] | build | Build: ticket 04 run 3 follow-ups (still-checking nudge, dead holding lines, sign-off, writes, figures, meal dates) |
@@ -297,7 +297,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
-| [[.scratch/async-lookups/map\|async-lookups]] | 7 | 6 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
+| [[.scratch/async-lookups/map\|async-lookups]] | 8 | 6 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |

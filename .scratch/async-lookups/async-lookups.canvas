@@ -38,7 +38,7 @@
       "y": 450,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "f56f064600504fdf",
@@ -66,6 +66,16 @@
       "file": ".scratch/async-lookups/issues/07-run3-follow-ups.md",
       "x": 0,
       "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "699af96d37780c9d",
+      "type": "file",
+      "file": ".scratch/async-lookups/issues/08-run5-6-follow-ups.md",
+      "x": 0,
+      "y": 1050,
       "width": 320,
       "height": 110,
       "color": "1"

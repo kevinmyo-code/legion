@@ -3,8 +3,8 @@ map: async-lookups
 ticket: "04"
 title: "Test: the A25 run that proves WHEN_IDLE speaks, and the lookup p50/p95"
 type: test
-status: built
-status-detail: "Gate still yes. Run 4 (2026-10-28, A25, gemini-3.8-live, phone 5727ad00) held run 3's fixes: both async ask_fleet lookups (1.27 s, 5.69 s) answered unprompted from the WHEN_IDLE result, the late one answered not denied; still_checking nudge at 4.03 s got a holding line; the answer hold kept the conversation open. No sir or madam, a dollar figure read in words, a reminder written only on request, a sign-off after end_conversation. Not yet right: no holding line before either lookup (about 4 s of dead air on the 5.69 s one), the sign-off still reads butler-ish, barge-in never fired (a fix branch adds per-reply gate diagnostics). Owed: the p50/p95 paste into decisions.md and an engine-side render of the 4 uploaded conversation batches."
+status: resolved
+status-detail: "Runs 5 and 6 (2026-10-28/29, A25): holding lines spoken 2 of 2 before async lookups, still-checking nudge at 4 s, conversation held through a 10.4 s lookup; barge-in diagnosed (sustain rule rejected a 224 ms run at 10x threshold) and fixed on fix/barge-in-sustain, run 6 fired once at prob 0.99 level 29738, backchannel did not fire. Kevin 2026-10-29: enough testing, the voice is solid. Remaining follow-ups moved to ticket 08. Owed: engine-side render of the uploaded batches."
 blockers: []
 blocked-by: []
 open-blockers: 0

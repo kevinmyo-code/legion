@@ -4,7 +4,7 @@ title: "Lookups answer while Alfred keeps talking"
 charted: 2026-10-28
 charted-by: "Kevin + Fable"
 effort: "`.scratch/async-lookups/`"
-tickets: 7
+tickets: 8
 open: 6
 status: open
 tags: [map]
@@ -48,6 +48,7 @@ capture says how long each stage of a lookup took.
 - 05 build: conversation audit log, `LIVE_AUDIT` lines with what was said and each tool's args and result, read by `tools/voice_audit.py` (Kevin, 2026-10-28)
 - 06 build: a livelier register for Alfred (quick, dry, quietly amused; the manner, not the lines), holding lines varied (Kevin, 2026-10-28)
 - 07 build: ticket 04 run 3 follow-ups: a still-checking nudge at 4 s and 12 s (Kevin, 2026-10-28), a nudge for a holding line with nothing behind it and a 20 s answer hold on the follow-up window, sign-off, writes only when asked, time-varying figures only from a result, meal dates, `voice_audit.py` fixes
+- 08 build: runs 5 and 6 follow-ups (Kevin, 2026-10-29: enough testing, the voice is solid): the echo floor must stop learning the user's own voice, the empty-holding-line nudge must make the model act rather than apologise, and a word landing right after a reply drains must not reach the model clipped
 
 ## The gate
 
