@@ -66,6 +66,15 @@ machine. The same is reachable by hand on the Claude session screen.
 13. **What reaches the engine:** summaries, questions, task files on request, and session status.
     The main session's transcript stays on the laptop.
 
+14. **Alfred has his own email account** (*"alfreds own account sounds good"*, 2026-10-29, after
+    the use case "make Dad an Excel sheet of exchange rates and email it to him"). A Gmail created
+    for Alfred sends task mail, with Kevin cc'd on every send; Kevin's own Gmail is never used to
+    send from a laptop. Sending stays on the ask list (ruling 6): every send is a yes. Its app
+    password lives only in the worker config on the Alienware. Replies into that inbox are mail
+    other people wrote to Kevin: read-through only (CLAUDE.md section 7), never stored.
+15. **Open:** recurring tasks ("every Monday") in v1, and whether a recurring send to the same
+    person needs a yes each time or only the first.
+
 ## Shape on each laptop
 
 ```

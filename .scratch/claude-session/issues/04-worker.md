@@ -37,6 +37,12 @@ tags: [ticket]
 - `test_worker.py` (unittest): fake engine, fake `claude` emitting stream-json, two tasks at once,
   a follow-up, a cancel, a requested file, the 30 min stop, `CLAUDECODE` cleared.
 
+- `send_mail.py`: what a helper calls to send, only after the task's `needs_confirmation` came
+  back yes (ruling 14): from Alfred's Gmail over SMTP with the app password in the worker config,
+  `--to`, `--subject`, `--body`, `--attach` repeatable, Kevin always cc'd. Refuses without a
+  confirmation token the worker issues for that task. The send's success or failure goes into the
+  task's summary in words.
+
 ## Rules
 
 - No `ANTHROPIC_API_KEY`. The installed CLI on the subscription.
