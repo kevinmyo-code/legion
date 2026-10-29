@@ -276,11 +276,12 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 |---|---|---|---|
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[03-mcp-for-claude-and-gemini\|03]] | build | Build: engine MCP server on the 2026-07-28 spec with OAuth, connected to Claude and the Gemini app |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
-| [[.scratch/clerk/map\|clerk]] | [[02-engine-clerk-app\|02]] | build | Build: engine clerk app (tasks, workers, files, status) |
-| [[.scratch/clerk/map\|clerk]] | [[03-laptop-worker\|03]] | build | Build: the laptop worker (poller, claude -p runner, result upload, install) |
-| [[.scratch/clerk/map\|clerk]] | [[04-phone-and-headunit-tools\|04]] | build | Build: delegate_task, check_clerk, confirm_task, the done raise, Clerk screen; head unit tools |
-| [[.scratch/clerk/map\|clerk]] | [[05-first-task-from-the-car\|05]] | test | Test: install the worker on Kevin's laptop and run the first task from the phone |
-| [[.scratch/clerk/map\|clerk]] | [[06-claude-code-sessions-reporter\|06]] | build | Build: Claude Code sessions reporter (layer 1) and ask_claude |
+| [[.scratch/claude-session/map\|claude-session]] | [[02-spike-main-session\|02]] | build | Spike: a long-lived headless main session with background helpers, through a lock |
+| [[.scratch/claude-session/map\|claude-session]] | [[03-engine-app\|03]] | build | Build: engine claude app (tasks, machines, files, sessions, status) |
+| [[.scratch/claude-session/map\|claude-session]] | [[04-worker\|04]] | build | Build: the laptop worker (main session, helpers, report.py, install) |
+| [[.scratch/claude-session/map\|claude-session]] | [[05-phone\|05]] | build | Build: phone tools, the offer rule, results, the Claude session screen |
+| [[.scratch/claude-session/map\|claude-session]] | [[06-sessions-reporter\|06]] | build | Build: interactive Claude Code sessions reporter hooks |
+| [[.scratch/claude-session/map\|claude-session]] | [[07-alienware-run\|07]] | test | Test: the first run on the Alienware from the phone |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
@@ -308,7 +309,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
-| [[.scratch/clerk/map\|clerk]] | 6 | 5 | [[.scratch/clerk/clerk.canvas\|open]] |
+| [[.scratch/claude-session/map\|claude-session]] | 7 | 6 | [[.scratch/claude-session/claude-session.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/conversation-records/map\|conversation-records]] | 6 | 5 | [[.scratch/conversation-records/conversation-records.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |

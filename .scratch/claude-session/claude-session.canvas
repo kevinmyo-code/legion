@@ -1,0 +1,118 @@
+{
+  "nodes": [
+    {
+      "id": "ddf3e88365c2e6c0",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/01-rulings.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0ad173e1ee1562e5",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/02-spike-main-session.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1c27eaf97b90d9ea",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/03-engine-app.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f36e39fb6ad340f0",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/05-phone.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0fc1be01f882dc59",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/04-worker.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "619e558c5759ad7e",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/06-sessions-reporter.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2e9de5f1214d8c04",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/07-alienware-run.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "86b246f47199b65d",
+      "fromNode": "0ad173e1ee1562e5",
+      "fromSide": "right",
+      "toNode": "0fc1be01f882dc59",
+      "toSide": "left"
+    },
+    {
+      "id": "cebd89c50185de1d",
+      "fromNode": "1c27eaf97b90d9ea",
+      "fromSide": "right",
+      "toNode": "619e558c5759ad7e",
+      "toSide": "left"
+    },
+    {
+      "id": "0ed8165a87641710",
+      "fromNode": "1c27eaf97b90d9ea",
+      "fromSide": "right",
+      "toNode": "2e9de5f1214d8c04",
+      "toSide": "left"
+    },
+    {
+      "id": "866eaf0cb00f0d30",
+      "fromNode": "0fc1be01f882dc59",
+      "fromSide": "right",
+      "toNode": "2e9de5f1214d8c04",
+      "toSide": "left"
+    },
+    {
+      "id": "f3be11c9f7d12ebd",
+      "fromNode": "f36e39fb6ad340f0",
+      "fromSide": "right",
+      "toNode": "2e9de5f1214d8c04",
+      "toSide": "left"
+    },
+    {
+      "id": "a64a89e9dcf2ba5f",
+      "fromNode": "619e558c5759ad7e",
+      "fromSide": "right",
+      "toNode": "2e9de5f1214d8c04",
+      "toSide": "left"
+    }
+  ]
+}
