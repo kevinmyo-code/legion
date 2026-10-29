@@ -41,8 +41,8 @@ more"*, *"anything that goes to the claude session should be named or asked righ
 full access to this pc"*.
 
 Then, on the use case of emailing Dad an exchange-rate sheet: Alfred gets his own Gmail, Kevin
-cc'd on every send (*"alfreds own account sounds good"*). Map ruling 14. Recurring tasks are still
-open (ruling 15).
+cc'd on every send (*"alfreds own account sounds good"*). Map ruling 14. Recurring tasks are later, set
+by voice when they come (ruling 15).
 
 ## Records
 

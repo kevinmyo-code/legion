@@ -72,8 +72,10 @@ machine. The same is reachable by hand on the Claude session screen.
     send from a laptop. Sending stays on the ask list (ruling 6): every send is a yes. Its app
     password lives only in the worker config on the Alienware. Replies into that inbox are mail
     other people wrote to Kevin: read-through only (CLAUDE.md section 7), never stored.
-15. **Open:** recurring tasks ("every Monday") in v1, and whether a recurring send to the same
-    person needs a yes each time or only the first.
+15. **Recurring tasks: later, not v1.** *"we'll figure these routine tasks later on, itbe cool if
+    i can talk to alfred to set routine tasks too."* When they come, they are set up by voice
+    ("every Monday, send Dad the rates sheet") as well as by hand, and what still needs a yes per
+    run is decided then.
 
 ## Shape on each laptop
 
