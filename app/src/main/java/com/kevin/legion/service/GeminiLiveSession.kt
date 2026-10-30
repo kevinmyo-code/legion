@@ -40,6 +40,7 @@ import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.HoldingLineWatch
+import com.kevin.legion.service.turn.RefusalWatch
 import com.kevin.legion.service.turn.StillCheckingNudge
 import com.kevin.legion.service.turn.TurnConfig
 import com.kevin.legion.service.turn.TurnModels
@@ -452,6 +453,8 @@ class GeminiLiveSession(
     // that is only a holding line, after its result or with no tool behind it, gets one nudge, and
     // the follow-up window holds ([FollowUpWindow.State.heldForAnswer]) from [answerHoldSinceMs].
     private val holdingWatch = HoldingLineWatch()
+    // A stock refusal spoken over a successful tool result (2026-10-30): one system note per result.
+    private val refusalWatch = RefusalWatch()
     @Volatile private var answerHoldSinceMs = 0L
     // First audio of the model's current turn, 0 before it; read and reset at turnComplete.
     @Volatile private var modelTurnStartedAtMs = 0L
@@ -1019,6 +1022,7 @@ class GeminiLiveSession(
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$tool sent=$sent" + if (async) " async=true" else "")
         }
         auditToolResult(id, name, response, timed?.second ?: -1L, async, sent)
+        refusalWatch.onResultSent(name, response.optBoolean("success", false), sent, companionTurnText.length)
         return sent
     }
 
@@ -1819,6 +1823,8 @@ class GeminiLiveSession(
                 toolCalled = toolCalledThisTurn,
                 lookupInFlight = toolCallsInFlight.get() > 0,
             )
+            // Untrimmed: the watch's offsets were taken on the raw transcript.
+            val refusedTool = refusalWatch.onTurnComplete(companionTurnText.toString())
             modelTurnStartedAtMs = 0L
             audit.turnComplete()
             mailToolCalledThisTurn = false
@@ -1895,7 +1901,7 @@ class GeminiLiveSession(
                     followUpEvent(FollowUpWindow.Event.TurnComplete)
                     if (turnTaker?.bargeIn == true) watchPlaybackDrain()
                     deliverCancelNotesIfQuiet()
-                    if (!wasTyped) onHoldingOutcome(holdingOutcome)
+                    if (!wasTyped) onReplyOutcome(refusedTool, holdingOutcome)
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
                 else -> {
@@ -1954,6 +1960,22 @@ class GeminiLiveSession(
     }
 
     /**
+     * A stock refusal over a successful result ([RefusalWatch]) gets its one note and wins over the
+     * holding-line verdict for this turn; otherwise [onHoldingOutcome] decides. Not sent while the
+     * user is already speaking: their new words get answered instead.
+     */
+    private fun onReplyOutcome(refusedTool: String?, holdingOutcome: HoldingLineWatch.Outcome) {
+        if (refusedTool == null) {
+            onHoldingOutcome(holdingOutcome)
+            return
+        }
+        if (turnTaker?.inActivity != true) {
+            sendNudge(RefusalWatch.instruction(refusedTool))
+            audit.nudge("canned_refusal", refusedTool)
+        }
+    }
+
+    /**
      * Async-lookups ticket 07: acts on [HoldingLineWatch]'s verdict on the turn that just completed.
      * A holding line after its result, or one with nothing behind it, gets one system note and holds
      * the follow-up window; a substantive turn releases the hold. A note is not sent while the user is
@@ -1989,6 +2011,7 @@ class GeminiLiveSession(
         nudgeJob?.cancel(); nudgeJob = null
         stillChecking.clear()
         holdingWatch.clear()
+        refusalWatch.clear()
         answerHoldSinceMs = 0L
         modelTurnStartedAtMs = 0L
     }
