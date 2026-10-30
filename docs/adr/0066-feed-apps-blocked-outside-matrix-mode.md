@@ -61,6 +61,10 @@ Settings to unblock the app (which then stays unblocked).
 - An unfinished request lapses 10 minutes after the tap, and "Go back" drops it, so a pass is never one
   sentence away hours later.
 - The accessibility service's description now names both switches.
+- **2026-10-30, Kevin could not find the switch:** it also has its own "Feed blocker" row at the top
+  level of Settings (same preference as the Matrix mode screen's), and the accessibility service is
+  labelled "LEGION blocker" rather than "Matrix mode". The service class and component name are
+  unchanged, so an install over the top keeps it enabled.
 - The pass's expiry check runs on a `Handler`, which runs on uptime: in deep sleep it fires late, and the
   next window change is the backstop.
 - Compulsion test (CLAUDE.md section 7): nothing here is an unsolicited raise; the bounce answers an app
