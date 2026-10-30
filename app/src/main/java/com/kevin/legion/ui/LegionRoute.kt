@@ -417,6 +417,13 @@ object LegionRoute {
      */
     const val SETTINGS_HELP = "settings/help"
 
+    /**
+     * Wake-word tuning (wake-word ticket 20): enrollment takes and the sample-recording switches -
+     * see [com.kevin.legion.ui.settings.WakeTuningScreen]. Row lives on [SETTINGS_ASSISTANT] beside
+     * the wake pipeline switch.
+     */
+    const val SETTINGS_WAKE_TUNING = "settings/wake-tuning"
+
     /** Dumb phone mode's setup: the switch, every one-time grant in words, the kept apps (ADR 0062). */
     const val SETTINGS_DUMB_MODE = "settings/dumb-mode"
 

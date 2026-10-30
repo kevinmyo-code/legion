@@ -1114,7 +1114,11 @@ private fun LegionShell(
                     onOpenCompanions = { navController.navigate(LegionRoute.SETTINGS_COMPANIONS) },
                     onOpenPlaybooks = { navController.navigate(LegionRoute.SETTINGS_PLAYBOOKS) },
                     onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
+                    onOpenWakeTuning = { navController.navigate(LegionRoute.SETTINGS_WAKE_TUNING) },
                 )
+            }
+            composable(LegionRoute.SETTINGS_WAKE_TUNING) {
+                com.kevin.legion.ui.settings.WakeTuningScreen(onBack = { navController.popBackStack() })
             }
             // "What can I do" (command-center ticket 09, ADR 0035's in-app hands-path guide) - see
             // LegionRoute.SETTINGS_HELP's own doc comment. No sub-routes, same shape as

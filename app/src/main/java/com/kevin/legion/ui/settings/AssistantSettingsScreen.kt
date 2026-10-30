@@ -72,6 +72,7 @@ fun AssistantSettingsScreen(
     onOpenCompanions: () -> Unit,
     onOpenPlaybooks: () -> Unit,
     onOpenVoiceGuide: () -> Unit,
+    onOpenWakeTuning: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -291,6 +292,15 @@ fun AssistantSettingsScreen(
                             WakeWordEngine.start(context)
                         }
                     },
+                )
+
+                // Ticket 20: enrollment takes and the sample-recording switches, for tuning the wake
+                // phrase to the owner's own voice.
+                Spacer(Modifier.height(8.dp))
+                SettingsNavRow(
+                    label = "Tune the wake word to your voice",
+                    status = "Record the wake phrase a few ways, saved on this phone",
+                    onClick = onOpenWakeTuning,
                 )
 
                 // Ticket 07, amended 2026-08-18: the unit is a setting, not a fixed Celsius. Kept

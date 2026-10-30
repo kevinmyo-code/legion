@@ -330,6 +330,9 @@ object WakeWordEngine {
     private fun beginListening(loadedModel: Model, context: Context) {
         val grammar = JSONArray(targetWords + listOf("[unk]")).toString()
         val rec = Recognizer(loadedModel, SAMPLE_RATE, grammar)
+        // Ticket 20: per-word confidence in the confirm's result JSON, so the log says how sure
+        // Vosk was, not only what it picked. The match rule reads "text" and is unaffected.
+        rec.setWords(true)
         recognizer = rec
         detector = createDetector(context)
 
@@ -342,9 +345,19 @@ object WakeWordEngine {
             .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
             .build()
+        // Ticket 20: a tuning switch can capture raw (VOICE_RECOGNITION, no effects) so the two
+        // sources can be recorded and compared offline. Default stays VOICE_COMMUNICATION.
+        val raw = WakeWordPreferences.rawCapture(context)
+        val sourceName = if (raw) "VOICE_RECOGNITION" else "VOICE_COMMUNICATION"
         val builder = AudioRecord.Builder()
             // The whole point of the refactor.
-            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+            .setAudioSource(
+                if (raw) {
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION
+                } else {
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                },
+            )
             .setAudioFormat(format)
             .setBufferSizeInBytes(maxOf(minBuf, chunk * 4))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) builder.setPrivacySensitive(true)
@@ -369,7 +382,8 @@ object WakeWordEngine {
             return
         }
         record = r
-        effects = attachVoiceEffects(r.audioSessionId)
+        effects = if (raw) emptyList() else attachVoiceEffects(r.audioSessionId)
+        WakeSampleRecorder.configure(context, sourceName, effects.size, twoStage = detector != null)
         registerSilenceWatch(context, r)
 
         // Mirrors GeminiLiveSession's own capture line on purpose: ticket 12 was diagnosed by
@@ -377,7 +391,7 @@ object WakeWordEngine {
         // them said what it opened. Now both do.
         Log.d(
             TAG,
-            "AudioRecord opened: source=VOICE_COMMUNICATION sessionId=" + r.audioSessionId +
+            "AudioRecord opened: source=" + sourceName + " sessionId=" + r.audioSessionId +
                 " effects=" + effects.size + " state=" + r.state,
         )
         r.startRecording()
@@ -422,9 +436,11 @@ object WakeWordEngine {
             if (v > peak) peak = v
         }
         _peakLevel.value = peak
+        WakeSampleRecorder.onAudio(buf, n)
         when {
             twoStage != null -> {
-                if (twoStage.process(buf, n) { pcm -> confirmWithVosk(rec, pcm) }) triggerConversation(context)
+                val open = twoStage.process(buf, n, WakeSampleRecorder::onSignal) { pcm -> confirmWithVosk(rec, pcm) }
+                if (open) triggerConversation(context)
             }
             rec.acceptWaveForm(buf, n) -> handleResult(rec.result, isFinal = true, context)
             else -> handleResult(rec.partialResult, isFinal = false, context)
@@ -467,9 +483,17 @@ object WakeWordEngine {
         rec.acceptWaveForm(pcm, pcm.size)
         val raw = rec.finalResult
         rec.reset()
-        val text = runCatching { JSONObject(raw).optString("text", "") }.getOrDefault("").trim()
-        recordEvent("(confirm heard: \"$text\")", isFinal = true, hit = false)
-        return targetWords.any { w -> w.isNotBlank() && text.contains(w) }
+        val parsed = runCatching { JSONObject(raw) }.getOrNull()
+        val text = parsed?.optString("text", "").orEmpty().trim()
+        val accepted = targetWords.any { w -> w.isNotBlank() && text.contains(w) }
+        // Ticket 20: what Vosk heard goes to logcat now, not only the debug ring, with its per-word
+        // confidence and the ring's peak, so a rejected hit says why.
+        var ringPeak = 0
+        for (v in pcm) if (abs(v.toInt()) > ringPeak) ringPeak = abs(v.toInt())
+        val compact = parsed?.toString() ?: raw.orEmpty()
+        stageLog("confirm heard \"$text\" accepted=$accepted ringPeak=$ringPeak result=$compact")
+        WakeSampleRecorder.onSignal(WakeSignal.Confirm(text, compact, accepted))
+        return accepted
     }
 
     /** Hardware echo cancellation, noise suppression and gain, where the device has them. */
@@ -539,9 +563,17 @@ object WakeWordEngine {
     }
 
     private fun triggerConversation(context: Context) {
+        // Ticket 20: the enrollment screen is recording takes. A good take must not open a
+        // conversation, which would take the mic and end the session; it is logged instead.
+        if (WakeSampleRecorder.enrolling) {
+            stageLog("would open - enrollment running, not opening")
+            WakeSampleRecorder.onSignal(WakeSignal.Suppressed)
+            return
+        }
         val now = System.currentTimeMillis()
         if (now - lastTriggerAtMs < MIN_TRIGGER_GAP_MS) return
         lastTriggerAtMs = now
+        WakeSampleRecorder.onSignal(WakeSignal.Opened)
         // Release Vosk's own AudioRecord synchronously, right here, before Gemini's mic ever
         // opens - the watchdog's 500ms poll of ConversationState.isBusy is too slow (micLoop's
         // MIC_HANDOFF_MS is only 250ms), so without this there's a window where both AudioRecords
@@ -616,6 +648,8 @@ object WakeWordEngine {
             runCatching { r.release() }
         }
         record = null
+        // Ticket 20: the capture loop has stopped, so whatever sample was in progress is complete.
+        WakeSampleRecorder.flush()
 
         effects.forEach { runCatching { it.release() } }
         effects = emptyList()

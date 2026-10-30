@@ -4,6 +4,7 @@ import android.content.Context
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.KeywordSpotter
 import com.k2fsa.sherpa.onnx.KeywordSpotterConfig
+import com.k2fsa.sherpa.onnx.KeywordSpotterResult
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
@@ -29,6 +30,7 @@ class WakeTwoStageDetector private constructor(
     private var stream: OnlineStream,
     private val machine: WakeStageMachine,
     private val breaker: TwoStageBreaker,
+    private val log: (String) -> Unit,
 ) {
     // The last CONFIRM_SECONDS of audio, as a ring. Written every chunk, including silence: the
     // confirm window must contain the phrase's start, which arrives before the VAD flips on.
@@ -40,11 +42,24 @@ class WakeTwoStageDetector private constructor(
     // hand the library a torn state, so they are serialised rather than trusted to be sequential.
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "wake-two-stage") }
 
+    // Ticket 20: the hit's tokens and times, kept from the result that carried the keyword (the
+    // stream is replaced straight after, so it cannot be read again).
+    private var lastHit: KeywordSpotterResult? = null
+
+    // Ticket 20: per-utterance facts for the one log line at VAD off.
+    private var utteranceSamples = 0L
+    private var utterancePeak = 0
+    private var utteranceHit = false
+
     private val port = object : KeywordStreamPort {
         override fun accept(samples: FloatArray) = stream.acceptWaveform(samples, SAMPLE_RATE)
         override fun isReady() = spotter.isReady(stream)
         override fun decode() = spotter.decode(stream)
-        override fun keyword(): String = spotter.getResult(stream).keyword
+        override fun keyword(): String {
+            val r = spotter.getResult(stream)
+            if (r.keyword.isNotBlank()) lastHit = r
+            return r.keyword
+        }
         override fun fresh() {
             runCatching { stream.release() }
             stream = spotter.createStream()
@@ -54,12 +69,23 @@ class WakeTwoStageDetector private constructor(
     /**
      * Feeds one captured chunk. Returns true when stage 1 AND stage 2 agree and the caller should
      * open the session. [confirm] receives the buffered audio (oldest first) and answers whether
-     * the Vosk grammar hears the wake phrase in it.
+     * the Vosk grammar hears the wake phrase in it. [signal] hears every stage edge as data
+     * (ticket 20's sample recorder), on this detector's worker thread, before this returns.
      */
-    fun process(buf: ShortArray, n: Int, confirm: (ShortArray) -> Boolean): Boolean =
-        executor.submit(Callable { processOnWorker(buf, n, confirm) }).get()
+    fun process(
+        buf: ShortArray,
+        n: Int,
+        signal: (WakeSignal) -> Unit,
+        confirm: (ShortArray) -> Boolean,
+    ): Boolean = executor.submit(Callable { processOnWorker(buf, n, signal, confirm) }).get()
 
-    private fun processOnWorker(buf: ShortArray, n: Int, confirm: (ShortArray) -> Boolean): Boolean {
+    @Suppress("ReturnCount") // two early exits read plainer than a nested when
+    private fun processOnWorker(
+        buf: ShortArray,
+        n: Int,
+        signal: (WakeSignal) -> Unit,
+        confirm: (ShortArray) -> Boolean,
+    ): Boolean {
         push(buf, n)
         val floats = FloatArray(n) { buf[it] / SHORT_SCALE }
         vad.acceptWaveform(floats)
@@ -82,11 +108,39 @@ class WakeTwoStageDetector private constructor(
             breaker.markStarted()
             KwsFeeder.feed(port, feed).also { breaker.onDecodeOk() }
         }
+        if (!wasInSpeech && machine.inSpeech) {
+            utteranceSamples = 0L
+            utterancePeak = 0
+            utteranceHit = false
+            signal(WakeSignal.VadOn)
+        }
+        if (machine.inSpeech) trackUtterance(buf, n)
         // Speech ended: drop the stream rather than decode its partial tail.
-        if (wasInSpeech && !machine.inSpeech) port.fresh()
+        if (wasInSpeech && !machine.inSpeech) {
+            port.fresh()
+            log("utterance ${utteranceSamples * MS_PER_SECOND / SAMPLE_RATE} ms peak=$utterancePeak kws=" +
+                if (utteranceHit) "hit" else "miss")
+            signal(WakeSignal.VadOff)
+        }
         if (step !is WakeStageMachine.Step.Candidate) return false
+        utteranceHit = true
+        val hit = lastHit
+        lastHit = null
+        if (hit != null) {
+            log("KWS detail: keyword=${hit.keyword} tokens=${hit.tokens.joinToString(" ")} " +
+                "t=${hit.timestamps.joinToString(",") { "%.2f".format(it) }}")
+            signal(WakeSignal.KwsHit(hit.keyword, hit.tokens.toList(), hit.timestamps.toList()))
+        }
         val accepted = confirm(tail(ring.size))
         return machine.onConfirm(accepted) == WakeStageMachine.Verdict.OPEN
+    }
+
+    private fun trackUtterance(buf: ShortArray, n: Int) {
+        utteranceSamples += n
+        for (i in 0 until n) {
+            val v = kotlin.math.abs(buf[i].toInt())
+            if (v > utterancePeak) utterancePeak = v
+        }
     }
 
     fun release() {
@@ -121,6 +175,7 @@ class WakeTwoStageDetector private constructor(
     companion object {
         private const val SAMPLE_RATE = 16_000
         private const val SHORT_SCALE = 32768f
+        private const val MS_PER_SECOND = 1000L
         private const val CONFIRM_SECONDS = 2
         private const val PREROLL_SAMPLES = SAMPLE_RATE / 2
         private const val ASSET_DIR = "wake-kws"
@@ -210,7 +265,7 @@ class WakeTwoStageDetector private constructor(
                 val spotter = KeywordSpotter(null, kwsConfig)
                 val stream = spotter.createStream()
                 log("two-stage ready: keywords=" + keywords.trim().lines().joinToString(" | "))
-                return Created.Ready(WakeTwoStageDetector(vad, spotter, stream, WakeStageMachine(log), breaker))
+                return Created.Ready(WakeTwoStageDetector(vad, spotter, stream, WakeStageMachine(log), breaker, log))
             } catch (e: Throwable) {
                 return Created.Unavailable("${e.javaClass.simpleName}: ${e.message}")
             }

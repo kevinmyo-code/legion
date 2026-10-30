@@ -88,6 +88,9 @@ result from that validation was measured under an assumption LEGION no longer ho
 - [Can the A25's always-on audio chip listen for our phrase?](issues/19-dsp-hotword-spike.md) - no:
   no keyphrase enrollment app and no enrolled models on the phone. The Siri-style two-stage detector
   runs on the CPU instead: [ticket 18](issues/18-two-stage-detector.md).
+- [Tune the wake word to Kevin's own voice](issues/20-tune-to-kevins-voice.md) - 2026-10-30: one KWS
+  hit in five tries and that one rejected by Vosk. Logging and an enrollment recorder are built; the
+  offline sweep waits on his recordings.
 
 ## Not yet specified
 
