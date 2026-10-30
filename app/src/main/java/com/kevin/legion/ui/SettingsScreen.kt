@@ -117,7 +117,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             SettingsNavRow(
                 label = "Matrix mode",
-                status = "A short list instead of a phone. Held notifications, quiet strangers.",
+                status = "A short list instead of a phone, and the feed-app block (on always if you choose).",
                 onClick = onOpenDumbMode,
             )
 

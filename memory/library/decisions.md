@@ -7011,3 +7011,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   conversation.
 - Amends the 2026-10-27 entry's "400 ms pre-roll" and the 2026-10-28 entry's "normal starts keep
   400 ms". ADR 0064 amended. Ticket `.scratch/async-lookups/issues/08-run5-6-follow-ups.md` item 3.
+
+## 2026-10-30 - Feed apps blocked outside Matrix mode, with a 15 minute pass (Kevin)
+
+- **Feed apps are blocked in normal mode too**, behind a new switch "Block feed apps always" on the
+  Matrix mode settings screen. Same ladder as Matrix mode: seed list, Social/Video/News tag, manual
+  overrides. Own prefs key, not in `DumbModeState`; off by default (clone-and-run), Kevin flips it once.
+- **Escape is a timed pass:** the same 60 s wall-clock wait as Matrix leave, then the typed sentence
+  "I am choosing to open <app> for 15 minutes". Unlocks that ONE app for 15 minutes, then it re-blocks.
+  Persisted per package on the wall clock; nothing in memory a process kill or a lock can reset.
+- **Refused while Matrix mode is on.** Matrix leave stays the only Matrix exit.
+- **Expiry with the app still open** bounces it, from the last foreground window the service saw; no
+  window content is read.
+- Streak, digest, notification hold and code rain stay Matrix-only.
+- **No in-app URL blocking.** The browser stays exempt in `BlockModel`; Kevin sets phone-wide Private DNS
+  (NextDNS) himself to close the web hole.
+- Decided by the build: an unfinished request lapses after 10 minutes, and "Go back" drops it.
+- ADR 0066. Branch `feat/feed-block-always`.

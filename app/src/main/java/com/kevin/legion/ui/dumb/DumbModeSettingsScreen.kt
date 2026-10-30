@@ -86,6 +86,7 @@ fun DumbModeSettingsScreen(onBack: () -> Unit, onOpenHome: () -> Unit) {
                     },
                 )
                 DumbSetup.notActive(rows)?.let { Text(it, style = LegionType.stamp, color = sem.estimated) }
+                FeedBlockRow(accessibilityOn = facts.accessibilityEnabled)
 
                 Spacer(Modifier.height(8.dp))
                 Text("One-time grants", style = MaterialTheme.typography.labelLarge)
@@ -171,6 +172,47 @@ private fun ModeSwitchRow(on: Boolean, onTurnOn: () -> Unit, onLeave: () -> Unit
             } else {
                 Switch(checked = false, onCheckedChange = { onTurnOn() })
             }
+        }
+    }
+}
+
+/**
+ * "Block feed apps always" (ADR 0066): the blocked apps below are blocked outside Matrix mode too,
+ * with a 15 minute pass as the way in. Off by default; stored live, so the bounce sees a flip at once.
+ */
+@Composable
+private fun FeedBlockRow(accessibilityOn: Boolean) {
+    val context = LocalContext.current
+    val sem = LocalLegionSemantics.current
+    val store = remember(context) { (context.applicationContext as MidnightApplication).dumb.feedBlock }
+    var on by remember { mutableStateOf(store.get()) }
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                Text("Block feed apps always", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    when {
+                        !on -> "Off. Blocked apps are blocked only in Matrix mode."
+                        accessibilityOn ->
+                            "On. Blocked apps are blocked outside Matrix mode too. A 15 min pass opens one " +
+                                "after a 60 second wait and a sentence."
+                        else -> "On, but the accessibility service is off, so nothing is sent home yet."
+                    },
+                    style = LegionType.stamp,
+                    color = if (on && !accessibilityOn) sem.estimated else sem.faint,
+                )
+            }
+            Switch(
+                checked = on,
+                onCheckedChange = {
+                    store.set(it)
+                    on = it
+                },
+            )
         }
     }
 }

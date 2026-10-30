@@ -22,12 +22,25 @@ class DumbModeGraph(private val app: Application) {
     }
     private val matrixPrefs by lazy { app.getSharedPreferences(PrefsDumbModeStore.PREFS, Context.MODE_PRIVATE) }
 
+    /** "Block feed apps always" (ADR 0066): the feed block outside Matrix mode. Off by default. */
+    val feedBlock: FeedBlockSwitch by lazy { PrefsFeedBlockSwitch(matrixPrefs) }
+
+    /** The 15 minute pass (ADR 0066). Refused while Matrix mode is on. */
+    val feedPass: FeedPassController by lazy {
+        FeedPassController(PrefsFeedPassStore(matrixPrefs), matrixOn = { controller.state.value.on })
+    }
+
+    /** The bounce's gate: Matrix mode, or the always-on feed block (ADR 0066). */
+    fun bounceActive(): Boolean = controller.state.value.on || feedBlock.get()
+
     /** The one blocking decision (ADR 0062, 2026-10-24): the bounce, the settings list and the drawer all ask it. */
     val blockPolicy: BlockPolicy by lazy {
         BlockPolicy(
             ownPackage = app.packageName,
             sources = AndroidBlockSources(app, AndroidKeptAppResolver(app), mapsChoice::get),
             overrides = PrefsAppOverrides(matrixPrefs),
+            matrixOn = { controller.state.value.on },
+            passLeftMs = feedPass::passRemainingMs,
         )
     }
     val people: ChosenPeople by lazy { ChosenPeople(PrefsChosenPeopleStore(app)) }
@@ -43,11 +56,21 @@ class DumbModeGraph(private val app: Application) {
         )
     }
 
+    private val bounceEnv: AndroidBounceEnvironment by lazy { AndroidBounceEnvironment(app, blockPolicy) }
+
+    /**
+     * Whether a window from [packageName] counts as the foreground app for the pass expiry check
+     * (ADR 0066): it has a launcher entry, or it is LEGION, Settings or the Home app. Keyboards and
+     * SystemUI's shade do not.
+     */
+    fun countsAsForegroundApp(packageName: String): Boolean =
+        bounceEnv.hasLauncherEntry(packageName) || blockPolicy.verdict(packageName).reason == BlockReason.SYSTEM
+
     val bounce: DumbBounce by lazy {
         DumbBounce(
-            isOn = { controller.state.value.on },
+            isOn = ::bounceActive,
             ownPackage = app.packageName,
-            env = AndroidBounceEnvironment(app, blockPolicy),
+            env = bounceEnv,
             allowance = BounceAllowance(),
         )
     }

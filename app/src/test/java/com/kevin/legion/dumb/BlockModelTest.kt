@@ -169,4 +169,64 @@ class BlockModelTest {
     fun `every reason says something in words`() {
         BlockReason.entries.forEach { assertTrue(it.name, it.words.length > 5) }
     }
+
+    // The 15 minute pass rung (ADR 0066).
+
+    private val twelveMinutes = 12L * 60_000L
+    private fun passed(pkg: String, o: AppOverride? = null, matrixOn: Boolean = false, leftMs: Long? = twelveMinutes) =
+        BlockModel.decide(pkg, own, Sources(), o, PassFacts(matrixOn, leftMs))
+
+    @Test
+    fun `a running pass opens a feed app outside Matrix mode, with minutes left in words`() {
+        val v = passed("com.instagram.android")
+        assertEquals(BlockVerdict(false, BlockReason.PASS, "15 min pass, 12 min left"), v)
+        assertFalse(passed("com.discord").blocked)
+    }
+
+    @Test
+    fun `a pass beats a manual block`() {
+        assertEquals(BlockReason.PASS, passed("com.bank.app", AppOverride.BLOCK).reason)
+        assertFalse(passed("com.bank.app", AppOverride.BLOCK).blocked)
+    }
+
+    @Test
+    fun `a pass never counts in Matrix mode, so Matrix leave stays the only exit`() {
+        assertEquals(BlockVerdict(true, BlockReason.SEED), passed("com.instagram.android", matrixOn = true))
+        val blocked = passed("com.bank.app", AppOverride.BLOCK, matrixOn = true)
+        assertEquals(BlockVerdict(true, BlockReason.MANUAL_BLOCK), blocked)
+    }
+
+    @Test
+    fun `no pass, or a spent one, leaves the ladder as it was`() {
+        assertEquals(BlockVerdict(true, BlockReason.SEED), passed("com.instagram.android", leftMs = null))
+        assertEquals(BlockVerdict(true, BlockReason.SEED), passed("com.instagram.android", leftMs = 0L))
+    }
+
+    @Test
+    fun `system apps stay SYSTEM above the pass rung`() {
+        assertEquals(BlockVerdict(false, BlockReason.SYSTEM), passed("com.android.settings"))
+    }
+
+    @Test
+    fun `the policy reads the pass live and ignores it in Matrix mode`() {
+        var matrix = false
+        var left: Long? = twelveMinutes
+        val policy = BlockPolicy(own, Sources(), MemoryOverrides(), matrixOn = { matrix }, passLeftMs = { left })
+        assertFalse(policy.isBlocked("com.instagram.android"))
+        matrix = true
+        assertTrue(policy.isBlocked("com.instagram.android"))
+        matrix = false
+        left = null
+        assertTrue("the pass ran out, so it is blocked again", policy.isBlocked("com.instagram.android"))
+    }
+
+    @Test
+    fun `flipping a passed app changes what it is after the pass, not the pass`() {
+        val store = MemoryOverrides()
+        val policy = BlockPolicy(own, Sources(), store, passLeftMs = { twelveMinutes })
+        val after = policy.flip("com.instagram.android")
+        assertEquals(BlockVerdict(false, BlockReason.MANUAL_ALLOW), after)
+        assertEquals(AppOverride.ALLOW, store.get("com.instagram.android"))
+        assertEquals(BlockReason.PASS, policy.verdict("com.instagram.android").reason)
+    }
 }
