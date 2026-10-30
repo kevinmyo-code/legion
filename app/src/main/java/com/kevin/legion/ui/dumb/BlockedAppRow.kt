@@ -80,12 +80,7 @@ internal fun BlockedAppsSection() {
             Modifier
                 .fillMaxWidth()
                 .clickable(role = Role.Button, onClickLabel = if (row.blocked) "Unblock" else "Block") {
-                    val after = policy.flip(row.packageName)
-                    flipped = if (after.reason == BlockReason.SYSTEM) {
-                        "${row.label} cannot be blocked (${after.reason.words})."
-                    } else {
-                        "${row.label} is now ${if (after.blocked) "blocked" else "open"}: ${after.reason.words}."
-                    }
+                    flipped = flipWords(policy, row)
                     version++
                 },
             tonalElevation = 1.dp,
@@ -105,11 +100,20 @@ internal fun BlockedAppsSection() {
     }
 }
 
+/** Flips [row]'s app and says what changed, in words. A running pass is named: it runs out first. */
+private fun flipWords(policy: BlockPolicy, row: BlockedAppRow): String {
+    val after = policy.flip(row.packageName)
+    if (after.reason == BlockReason.SYSTEM) return "${row.label} cannot be blocked (${after.reason.words})."
+    val live = policy.verdict(row.packageName)
+    val passNote = if (live.reason == BlockReason.PASS) " Its pass runs first (${live.words})." else ""
+    return "${row.label} is now ${if (after.blocked) "blocked" else "open"}: ${after.words}.$passNote"
+}
+
 private suspend fun buildRows(context: android.content.Context, policy: BlockPolicy): List<BlockedAppRow> {
     val loaded = AppDrawerCache.peek() ?: runCatching { AppDrawerCache.refresh(context) }.getOrNull()
     val apps = loaded?.apps.orEmpty().distinctBy { it.packageName }
     return apps.map {
         val v = policy.verdict(it.packageName)
-        BlockedAppRow(it.label, it.packageName, v.blocked, v.reason.words)
+        BlockedAppRow(it.label, it.packageName, v.blocked, v.words)
     }.sortedWith(compareByDescending<BlockedAppRow> { it.blocked }.thenBy { it.label.lowercase() })
 }
