@@ -115,3 +115,8 @@ tools/mcp/*/.venv/
 # .dc.html sources and canvas.json beside them. The sources are what is worth keeping.
 docs/design/canvas/*.html
 !docs/design/canvas/*.dc.html
+
+# Wake eval (wake-word ticket 20): its venv, and recordings of Kevin's voice pulled off the phone.
+# The repo is public; the recordings must never be committed.
+.venv-wake/
+wake-samples/
