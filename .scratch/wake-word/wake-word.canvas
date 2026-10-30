@@ -121,6 +121,16 @@
       "color": "4"
     },
     {
+      "id": "2e7dec8b2c80a5ad",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/20-tune-to-kevins-voice.md",
+      "x": 0,
+      "y": 1800,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "a8179692d607a640",
       "type": "file",
       "file": ".scratch/wake-word/issues/03-measure-the-battery-cost.md",

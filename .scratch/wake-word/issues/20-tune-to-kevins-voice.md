@@ -8,7 +8,7 @@ status-detail: "Steps 1-3 built 2026-10-30 (attempt logging, sample recorder, en
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: false
+ready: true
 tags: [ticket]
 ---
 # Tune the wake word to Kevin's own voice
