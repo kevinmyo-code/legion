@@ -35,12 +35,14 @@ object WavEncoder {
     private const val BITS: Short = 16
     private const val BYTES_PER_SAMPLE = 2
     private const val MONO: Short = 1
+    // "RIFF" and its size field: the RIFF size counts everything after them.
+    private const val RIFF_PREFIX_BYTES = 8
 
     fun encode(pcm: ShortArray, sampleRate: Int): ByteArray {
         val dataBytes = pcm.size * BYTES_PER_SAMPLE
         val b = ByteBuffer.allocate(HEADER_BYTES + dataBytes).order(ByteOrder.LITTLE_ENDIAN)
         b.put("RIFF".toByteArray(Charsets.US_ASCII))
-        b.putInt(HEADER_BYTES - 8 + dataBytes)
+        b.putInt(HEADER_BYTES - RIFF_PREFIX_BYTES + dataBytes)
         b.put("WAVE".toByteArray(Charsets.US_ASCII))
         b.put("fmt ".toByteArray(Charsets.US_ASCII))
         b.putInt(FMT_CHUNK_BYTES)
