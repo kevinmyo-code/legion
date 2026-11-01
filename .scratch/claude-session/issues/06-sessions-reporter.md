@@ -28,3 +28,9 @@ my work laptop as well."* Read-only.
 - The worker's own main session is excluded (it reports through the worker).
 - `check_claude` and the screen read these rows (ticket 05). A session with no event for 30 min
   shows as idle; `SessionEnd` removes it from the list.
+
+## Addition (Kevin 2026-11-01: "yes to status extras")
+
+- A `Notification` hook also runs `session_hook.py`: state `waiting` (permission prompt or a
+  question for Kevin). The next `UserPromptSubmit` or tool activity returns it to `working`.
+  The phone shows "<project> session: waiting on you".
