@@ -49,3 +49,9 @@ tags: [ticket]
 - Scope: Alienware `--add-dir` every fixed drive; work laptop only its configured repos root.
 - Logs never contain request, summary or file paths.
 - The main session rotates daily (new session id), and on restart resumes the last one.
+
+## Addition (Kevin 2026-11-01: "yes to status extras")
+
+- Heartbeat carries `progress: {task_id: "<latest task_progress description>"}` for running tasks,
+  from the stream's `system/task_progress` events (mapped to the task via the Agent `tool_use_id`).
+  Description text only, capped at 120 chars; never logged locally.

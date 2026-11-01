@@ -58,3 +58,9 @@ state, a question, a found file.
 ## Voice guide
 
 Copy for each tool in `tools/voice_guide_copy.py`; `python tools/voice_guide.py` must pass.
+
+## Addition (Kevin 2026-11-01: "yes to status extras")
+
+- Sessions list shows state `waiting` as "waiting on you", highest in the list.
+- Running tasks show the helper's live step from `GET status/` / task `progress` ("searching
+  Downloads"); `check_claude` reads it out when asked what a task is doing.

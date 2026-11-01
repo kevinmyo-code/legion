@@ -40,3 +40,10 @@ Server only. Implements the map's API table exactly; the worker and the phone bu
 - Test database: never the production `DATABASE_URL`; a throwaway local Postgres, or tests written
   and reported unrun.
 - Deploy is Kevin's call.
+
+## Addition (Kevin 2026-11-01: "yes to status extras")
+
+- Heartbeat accepts `progress: {task_id: text}`; stored on the running task (`progress`,
+  `progress_at`), returned in task shapes and `GET status/`, cleared on finish.
+- `POST sessions/` accepts state `waiting` (from the `Notification` hook); `GET status/` sorts
+  waiting sessions first.
