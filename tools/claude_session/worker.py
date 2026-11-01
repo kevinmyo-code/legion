@@ -226,6 +226,7 @@ class Worker:
         for t in self.running():
             self.finish(t, "failed", SAY_RESTARTED)
         self.claude_version = self.read_claude_version()
+        self.prune(self.clock())
         self.save(force=True)
 
     def read_claude_version(self) -> str:

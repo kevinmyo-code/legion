@@ -3,8 +3,8 @@ map: claude-session
 ticket: "04"
 title: "Build: the laptop worker (main session, helpers, report.py, install)"
 type: build
-status: kiv
-status-detail: "Parked with the map (Kevin 2026-10-29: dont build it yet)."
+status: built
+status-detail: "Built 2026-11-01 on feat/claude-session-worker: suite green against a fake engine and fake claude. Owes: install.ps1 run by Kevin, a live run against the real CLI and the ticket 03 engine (ticket 07)."
 blockers: ["02"]
 blocked-by: ["[[02-spike-main-session]]"]
 open-blockers: 1
@@ -55,3 +55,24 @@ tags: [ticket]
 - Heartbeat carries `progress: {task_id: "<latest task_progress description>"}` for running tasks,
   from the stream's `system/task_progress` events (mapped to the task via the Agent `tool_use_id`).
   Description text only, capped at 120 chars; never logged locally.
+
+## Built (2026-11-01)
+
+`tools/claude_session/`, see its README. Contract choices ticket 03 must match or overrule:
+
+- **Cancel:** the worker posts `finish` with `status: failed`, summary "Cancelled before it
+  finished, as asked." (the API has no `cancelled` finish status). Engine may map
+  `cancel_requested` + `failed` to `cancelled`.
+- **Confirmation yes:** arrives as a new task with `parent` set to the `needs_confirmation` task
+  (no confirm endpoint). The worker issues a one-task token on any such follow-up; the main
+  session judges whether Kevin's words are a yes. An explicit `confirmed: true` on the claimed
+  task would be stronger.
+- **Claim payload read:** `id`, `request`, `parent`, `deliver`. A dict `{tasks: [...]}` is also
+  accepted.
+- **Heartbeat body adds** `progress: {"<task id>": "<step>"}`.
+- **Upload:** multipart fields `file_id` and `file`. Refused (logged only, nothing told to the
+  engine) when the path is not one that task listed, the file is gone, over 25 MB, or the machine
+  is `listed`.
+- **Work laptop:** `found` always sent empty; no WebFetch/WebSearch; shell limited to read-only
+  git, listing/reading commands and report.py by the hook.
+- Tasks running when the worker restarts finish `failed` ("restarted"); not re-sent.

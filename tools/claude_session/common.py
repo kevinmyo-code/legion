@@ -55,7 +55,7 @@ class Paths:
 
 def read_json(path: Path, default=None):
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:  # tolerate a BOM from PowerShell
             return json.load(f)
     except (OSError, ValueError):
         return default
