@@ -4,8 +4,8 @@ title: "Claude session: Alfred talks to Claude Code on Kevin's laptops"
 charted: 2026-10-29
 charted-by: "Kevin + Fable"
 effort: "`.scratch/claude-session/`"
-tickets: 7
-open: 6
+tickets: 8
+open: 7
 status: open
 tags: [map]
 ---
@@ -77,6 +77,16 @@ machine. The same is reachable by hand on the Claude session screen.
     ("every Monday, send Dad the rates sheet") as well as by hand, and what still needs a yes per
     run is decided then.
 
+16. **Alfred has his own WhatsApp number** (Kevin 2026-11-01, use case: *"ask alfred to open a
+    claude session, use it to find something on the internet, summarize it in a file format i
+    want, and then get that claude session to send it to my whatsapp number"*). WhatsApp Cloud API
+    (Meta), a business number for Alfred, the same pattern as his Gmail (ruling 14). The engine
+    sends, not the laptop: the file is already uploaded there and the Meta token stays on the
+    server. Ticket 08.
+17. **Naming your own WhatsApp in the request is the yes** for that one task ("...and send it to
+    my WhatsApp"). Only Kevin's own number; a send to anyone else stays on the ask list
+    (ruling 6). The phone sets `deliver: "whatsapp_self"` on the task when Kevin names it.
+
 ## Shape on each laptop
 
 ```
@@ -140,4 +150,5 @@ at read time.
 - 04 build (KIV): the worker `tools/claude_session/`
 - 05 build (KIV): phone tools, the offer rule, results, the Claude session screen
 - 06 build (KIV): interactive sessions reporter hooks
+- 08 build (open 2026-11-01): WhatsApp delivery to Kevin's own number from the engine
 - 07 test (KIV): on the Alienware: the Downloads find, the offer, locked screen, powered off, an ask-list stop, two tasks at once, a session check
