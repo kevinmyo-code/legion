@@ -47,7 +47,9 @@ can take several messages, start a background helper per task, stay free, and re
   (`needs_confirmation`). Everything else runs. On the Alienware (Kevin, 2026-11-01) this is
   permission mode `dontAsk`, a broad explicit allowlist, and a `PreToolUse` hook that denies the
   ask-list operations with a reason; the hook is the enforcement, the allowlist a second guard.
-  That is worker configuration (ticket 04), not engine code.
+  That is worker configuration (ticket 04), not engine code. Kevin's yes is a follow-up task with
+  `confirms: true`, accepted only when its parent is `needs_confirmation`; the worker unlocks the
+  asked step for that task alone.
 - **Delivery by mail (amended 2026-11-01).** Alfred has his own Gmail; every send is on the ask
   list, except that **naming his own email in the request is the yes for that one task** ("...and
   email it to me"): the phone sets `deliver: "email_self"` on the task, and the worker's

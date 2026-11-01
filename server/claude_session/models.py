@@ -145,6 +145,9 @@ class ClaudeTask(models.Model):
     )
     origin = models.TextField()
     deliver = models.TextField(null=True, blank=True)
+    # True only on a follow-up that is Kevin's yes to a `needs_confirmation`
+    # parent. The worker unlocks the asked ask-list step only when it is set.
+    confirms = models.BooleanField(default=False)
     request = models.TextField()
     status = models.TextField(default=QUEUED)
     summary = models.TextField(null=True, blank=True)

@@ -78,6 +78,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(primary_key=True, serialize=False)),
                 ('origin', models.TextField()),
                 ('deliver', models.TextField(blank=True, null=True)),
+                ('confirms', models.BooleanField(default=False)),
                 ('request', models.TextField()),
                 ('status', models.TextField(default='queued')),
                 ('summary', models.TextField(blank=True, null=True)),

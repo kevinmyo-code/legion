@@ -194,6 +194,42 @@ def test_a_listed_machine_may_email_a_summary_but_never_a_file(token_a):
     assert _beat(token_a, "work laptop", scope="listed")["files_requested"] == []
 
 
+# --- confirms: Kevin's yes to a needs_confirmation task --------------------------------
+
+
+def test_a_yes_to_a_needs_confirmation_task_carries_confirms_to_the_worker(token_a):
+    _beat(token_a)
+    asked = _create(token_a, machine="Alienware").data["id"]
+    _claim(token_a)
+    _finish(token_a, asked, status="needs_confirmation", question="OK to delete it?")
+
+    yes = _create(token_a, request="yes, delete it", parent=asked, confirms=True)
+    assert yes.status_code == 201, yes.data
+    assert yes.data["machine"]["name"] == "Alienware"
+    assert token_a.get(f"{API}tasks/{yes.data['id']}/").data["confirms"] is True
+    claimed = _claim(token_a).data
+    assert [(t["id"], t["parent"], t["confirms"]) for t in claimed] == [
+        (yes.data["id"], asked, True)
+    ]
+    # Default is false, and every row says so.
+    plain = _create(token_a, machine="Alienware").data["id"]
+    assert token_a.get(f"{API}tasks/{plain}/").data["confirms"] is False
+
+
+def test_confirms_is_refused_without_a_parent_waiting_for_a_yes(token_a):
+    _beat(token_a)
+    assert _create(token_a, machine="Alienware", confirms=True).status_code == 400
+    done = _create(token_a, machine="Alienware").data["id"]
+    _claim(token_a)
+    _finish(token_a, done, summary="found it")
+    refused = _create(token_a, parent=done, confirms=True)
+    assert refused.status_code == 400
+    assert "needs_confirmation" in refused.data["detail"]
+    assert ClaudeTask.objects.filter(confirms=True).count() == 0
+    # A plain follow-up to the same parent is fine.
+    assert _create(token_a, parent=done).status_code == 201
+
+
 # --- assign (Kevin 2026-11-01) -------------------------------------------------------
 
 

@@ -4,7 +4,7 @@ ticket: "03"
 title: "Build: engine claude app (tasks, machines, files, sessions, status)"
 type: build
 status: built
-status-detail: "Kevin 2026-11-01: build. Built on feat/claude-session-engine (server/claude_session/, ADR 0067); 42 tests green on a throwaway local Postgres, status extras, assign/ and ruling 18 included. Not deployed (Kevin's call); the prune crontab line owes install_schedule.py on deploy. deliver: email_self carried (rulings 16-17)."
+status-detail: "Kevin 2026-11-01: build. Built on feat/claude-session-engine (server/claude_session/, ADR 0067); 44 tests green on a throwaway local Postgres, status extras, assign/, ruling 18 and confirms included. Not deployed (Kevin's call); the prune crontab line owes install_schedule.py on deploy. deliver: email_self carried (rulings 16-17)."
 blockers: []
 blocked-by: []
 open-blockers: 0

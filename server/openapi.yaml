@@ -10309,6 +10309,10 @@ components:
           oneOf:
           - $ref: '#/components/schemas/ClaudeTaskDeliverEnum'
           - $ref: '#/components/schemas/NullEnum'
+        confirms:
+          type: boolean
+          default: false
+          description: Kevin's yes to the parent's question. Needs a parent in needs_confirmation.
       required:
       - origin
       - request
@@ -10400,6 +10404,8 @@ components:
           oneOf:
           - $ref: '#/components/schemas/ClaudeTaskDeliverEnum'
           - $ref: '#/components/schemas/NullEnum'
+        confirms:
+          type: boolean
         progress:
           type: string
           nullable: true
@@ -10409,6 +10415,7 @@ components:
           format: date-time
           nullable: true
       required:
+      - confirms
       - created_at
       - deliver
       - files

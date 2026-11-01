@@ -132,7 +132,7 @@ with `household.tenancy.scoped`. Tables `claude_tasks`, `claude_task_files`, `cl
 
 | Method and path | Who | Body and result |
 |---|---|---|
-| `POST tasks/` | phone, web | `{request, machine: name or null, parent: id or null, origin: "named" or "offered"}` returns `{id, status, machine: {name, state, last_seen_at} or null}`; `status` is `queued`, or `needs_machine` when unnamed and more than one machine is online |
+| `POST tasks/` | phone, web | `{request, machine: name or null, parent: id or null, origin: "named" or "offered", deliver: null or "email_self", confirms: bool}` (`confirms` true only with a `parent` in `needs_confirmation`, else 400: Kevin's yes, and the only thing that unlocks the asked ask-list step on the worker) returns `{id, status, machine: {name, state, last_seen_at} or null}`; `status` is `queued`, or `needs_machine` when unnamed and more than one machine is online |
 | `GET tasks/?limit=&status=&machine=` | phone, web | newest first: `{id, request, machine, status, summary, question, created_at, finished_at, files: [{id, name, size, uploaded}]}` |
 | `GET tasks/{id}/` | all | same shape |
 | `POST tasks/{id}/cancel/` | phone, web | queued becomes `cancelled`; running becomes `cancel_requested` |
@@ -151,7 +151,7 @@ States: `queued`, `running`, then `done`, `failed`, `needs_confirmation` or `can
 at read time.
 
 **As built (ticket 03, 2026-11-01), where the table was silent.** Task ids are integers. Task rows
-also carry `parent`, `origin`, `deliver` (null or `email_self`), and each file `requested`; in rows
+also carry `parent`, `origin`, `deliver` (null or `email_self`), `confirms`, and each file `requested`; in rows
 `machine` is the name string, on create it is the object. `finish` also accepts `status:
 "cancelled"`, only for a task in `cancel_requested` (the worker's exit after TaskStop). A computed
 failure puts its reason in `summary`; `finish` on it is refused 409. `needs_machine` is resolved by

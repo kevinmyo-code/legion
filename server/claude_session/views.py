@@ -51,6 +51,7 @@ from claude_session.models import (
     CANCELLED,
     FILE_MAX_BYTES,
     IN_FLIGHT,
+    NEEDS_CONFIRMATION,
     NEEDS_MACHINE,
     OFFLINE_AFTER_SECONDS,
     QUEUED,
@@ -130,6 +131,7 @@ def task_row(task: ClaudeTask, now) -> dict:
         "parent": task.parent_id,
         "origin": task.origin,
         "deliver": task.deliver,
+        "confirms": task.confirms,
         "progress": task.progress,
         "progress_at": task.progress_at,
     }
@@ -218,6 +220,13 @@ class TaskListCreateView(APIView):
                     http.HTTP_400_BAD_REQUEST,
                 )
 
+        if data["confirms"] and (parent is None or parent.status != NEEDS_CONFIRMATION):
+            return _detail(
+                "Nothing was sent. confirms is only for a follow-up to a task that is waiting "
+                "for Kevin's yes (needs_confirmation).",
+                http.HTTP_400_BAD_REQUEST,
+            )
+
         machine = None
         status = QUEUED
         if data["machine"]:
@@ -246,6 +255,7 @@ class TaskListCreateView(APIView):
             parent=parent,
             origin=data["origin"],
             deliver=data["deliver"],
+            confirms=data["confirms"],
             request=data["request"],
             status=status,
         )

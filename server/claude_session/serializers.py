@@ -58,6 +58,10 @@ class ClaudeTaskCreateSerializer(serializers.Serializer):
         choices=list(DELIVERIES), required=False, allow_null=True, default=None,
         help_text="email_self only when Kevin named his own email in the request (ruling 17).",
     )
+    confirms = serializers.BooleanField(
+        required=False, default=False,
+        help_text="Kevin's yes to the parent's question. Needs a parent in needs_confirmation.",
+    )
 
 
 class ClaudeAssignSerializer(serializers.Serializer):
@@ -170,6 +174,7 @@ class ClaudeTaskRowSerializer(serializers.Serializer):
     parent = serializers.IntegerField(allow_null=True)
     origin = serializers.ChoiceField(choices=list(ORIGINS))
     deliver = serializers.ChoiceField(choices=list(DELIVERIES), allow_null=True)
+    confirms = serializers.BooleanField()
     progress = serializers.CharField(allow_null=True, help_text="The current step while running.")
     progress_at = serializers.DateTimeField(allow_null=True)
 
