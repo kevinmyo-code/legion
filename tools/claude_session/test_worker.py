@@ -165,7 +165,10 @@ class TestTasks(WorkerCase):
         argv = s["argv"]
         settings = argv[argv.index("--settings") + 1]
         self.assertTrue(Path(settings).is_absolute())
-        self.assertIn("PreToolUse", Path(settings).read_text())
+        hooks = json.loads(Path(settings).read_text())["hooks"]["PreToolUse"][0]
+        self.assertTrue(hooks["matcher"].startswith("Bash|PowerShell|Write|Edit"))
+        self.assertNotIn("Read", hooks["matcher"], "full scope: no hook process per read")
+        self.assertIn("asklist_hook.py", hooks["hooks"][0]["command"])
         self.assertEqual(argv[argv.index("--setting-sources") + 1], "project,local")
         self.assertEqual(argv[argv.index("--permission-mode") + 1], "dontAsk")
         self.assertNotIn("bypassPermissions", argv)
@@ -330,6 +333,27 @@ class TestRestart(WorkerCase):
         self.wait(lambda: len(self.starts()) == 2, what="second start")
         argv = self.starts()[1]["argv"]
         self.assertEqual(argv[argv.index("--resume") + 1], sid)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows process checks")
+    def test_stale_pid_killed_only_when_it_is_ours(self):
+        import subprocess
+        sid = "11111111-2222-4333-8444-555555555555"
+        ours = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", sid])
+        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            write_json_atomic(self.paths.pid, {"pid": other.pid, "session": sid})
+            W.Worker(self.paths, self.cfg, power=NoPower(), base_env=self.env,
+                     engine=EngineClient(self.engine.url, TOKEN)).startup()
+            self.assertIsNone(other.poll(), "a recycled pid that is not ours is left alone")
+            write_json_atomic(self.paths.pid, {"pid": ours.pid, "session": sid})
+            W.Worker(self.paths, self.cfg, power=NoPower(), base_env=self.env,
+                     engine=EngineClient(self.engine.url, TOKEN)).startup()
+            self.assertIsNotNone(ours.wait(10))
+        finally:
+            for p in (ours, other):
+                if p.poll() is None:
+                    p.kill()
+                    p.wait()
 
     def test_daily_rotation_starts_a_new_session_when_idle(self):
         self.engine.queue(id=95, request=fake(sleep=0.1))

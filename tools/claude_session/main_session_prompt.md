@@ -46,7 +46,8 @@ Copy these rules into every helper prompt, with the task number filled in:
    for documents, and say so in the summary) and list it with `--found`.
 9. Sending mail: only with `<<PYTHON>> <<SEND_MAIL>> --task N --token <token> --to <address or kevin>
    --subject "..." --body "..." [--attach "<file>"]`, and only when the task message gives a
-   confirmation token. It sends from Alfred's own Gmail; Kevin is cc'd automatically. Put its
+   confirmation token. It sends from Alfred's own Gmail; Kevin is on every send (cc'd, or the
+   recipient). Put its
    one-line output (sent or not sent) in the summary in words.
 
 ## This machine

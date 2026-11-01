@@ -26,10 +26,12 @@ if ($task) {
 
 $pidFile = Join-Path $ConfigDir 'session.pid'
 if (Test-Path $pidFile) {
-    $sessionPid = (Get-Content $pidFile -Raw | ConvertFrom-Json).pid
-    $proc = Get-Process -Id $sessionPid -ErrorAction SilentlyContinue
-    if ($proc -and $proc.ProcessName -in @('claude', 'node')) {
-        & taskkill /PID $sessionPid /T /F | Out-Null
+    $info = Get-Content $pidFile -Raw | ConvertFrom-Json
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$info.pid)" -ErrorAction SilentlyContinue
+    # Pids are recycled: only stop the process whose command line carries the worker's session id,
+    # never Kevin's own claude.
+    if ($proc -and $info.session -and $proc.CommandLine -and $proc.CommandLine.Contains([string]$info.session)) {
+        & taskkill /PID $info.pid /T /F | Out-Null
         Write-Host 'Stopped the main Claude session.'
     }
 }

@@ -137,6 +137,19 @@ def process_image(pid: int) -> str:
     return out.split(",")[0].strip('"').lower() if out.startswith('"') else ""
 
 
+def process_cmdline(pid: int) -> str:
+    if sys.platform != "win32":
+        return ""
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {int(pid)}').CommandLine"],
+            capture_output=True, text=True, timeout=30, creationflags=0x08000000)
+        return out.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def helper_python() -> str:
     exe = Path(sys.executable)
     if exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
@@ -218,11 +231,16 @@ class Worker:
         """Once per worker process: settings file, stale child, tasks orphaned by a restart."""
         self.write_settings()
         pidinfo = read_json(self.paths.pid, None)
-        if pidinfo and pidinfo.get("pid"):
+        if pidinfo and pidinfo.get("pid") and pidinfo.get("session"):
+            # Pids are recycled: kill only a process whose command line carries our session uuid,
+            # never Kevin's own claude. An unverified orphan exits by itself when its stdin closes.
             image = process_image(pidinfo["pid"])
-            if image and image in [i.lower() for i in self.cfg["claude_images"]]:
+            if image and image in [i.lower() for i in self.cfg["claude_images"]] \
+                    and pidinfo["session"] in process_cmdline(pidinfo["pid"]):
                 kill_tree(int(pidinfo["pid"]))
                 log.info("stopped the previous main session process")
+            else:
+                log.info("previous main session pid not verified; left alone")
         for t in self.running():
             self.finish(t, "failed", SAY_RESTARTED)
         self.claude_version = self.read_claude_version()
@@ -241,7 +259,9 @@ class Worker:
     def write_settings(self) -> None:
         hook = HERE / "asklist_hook.py"
         command = f"{cmd_path(helper_python())} {cmd_path(hook)}"
-        matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|Read|Glob|Grep|WebFetch|WebSearch"
+        matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit"
+        if self.scope != "full":  # reads and web only need the hook on the work laptop
+            matcher += "|Read|Glob|Grep|WebFetch|WebSearch"
         write_json_atomic(self.paths.settings, {"hooks": {"PreToolUse": [
             {"matcher": matcher, "hooks": [{"type": "command", "command": command}]}]}})
 
