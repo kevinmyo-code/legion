@@ -43,6 +43,7 @@ GROUP_BLURBS = {
     "Music": "Spotify, mostly. Needs it connected in Setup.",
     "Mail and calendar": "Needs a Google account connected.",
     "Books": "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
+    "Claude session": "Claude Code on your own laptops, for what the phone can't do. Nothing goes unless you name it or say yes.",
     "Phone calls": "Needs phone permissions granted in Setup.",
     "Recordings": "Voice notes and meetings. Audio, a transcript and a summary are all kept until "
         "you delete them, and the summary is the assistant's reading of the transcript, not a "
@@ -68,6 +69,7 @@ COPY = {
     # --- Your day ---
     "manage_item": ("Remind me to renew my registration next month", "Adds, ticks off, reschedules, or removes a REMINDER - one with a due date/time, a place trigger, or a repeat. A plain to-do with none of those is a checklist line instead.", "Calendar tab, tap a day then tap a reminder row to edit its time, repeat, place, or remove it."),
     "manage_checklist": ("Tick off squats on bio", "Creates and manages your own reusable checklists - \"bio\", \"morning routine\", plain to-dos too - each optionally daily or weekly, each line optionally a number against a target instead of a plain tick. Your grocery/shopping list and your plain to-do list are both checklists, named \"Groceries\" and \"Todo\".", "Meters screen's LISTS pane - the checklists screen."),
+    "claude_session": ("Use Claude on my Alienware to find the AW4 wiring PDF in my Downloads", "Sends a task to the Claude session on your Alienware or work laptop, but only when you name Claude or say yes to the offer; it offers when its own tools can't do something. It says whether the machine is on or, if it's off, since when, and that the task is queued. It never calls a task done when it was only sent. Ask what your Claude session is doing to hear each machine, the running tasks and their current step, the results, and the open Claude Code sessions, the ones waiting on you first. When a task finishes you hear the result (or get a notification); a file it found is named with its size and only comes to your phone if you say yes. Answer its question with a yes, or follow up (\"now email it to me\"). The work laptop sends summaries only, never files. \"Stop telling me about Claude tasks\" turns the announcements off.", "Home, More, Claude session: machines, send a task, answer a question, Send to phone, the interactive sessions, and the switch for announcements."),
     "bought_log": ("When did we last buy shampoo?", "The household's shared bought log. Log something you bought (today, or on a date you say, with an optional store, price and note, and private if you ask), ask when you last bought something, or hear the newest entries. It answers with the exact entry it found and its date, and who logged it. No match means there is no record, not that you never bought it. A price is only what someone typed, never checked against the bank. If the engine can't be reached it says nothing was logged. Ticking a line on Groceries logs a purchase too.", "Lists, Bought log button: search 'When did we last buy...?' or log something by hand. A Groceries item shows 'last bought'."),
     "get_last_ticked": ("When did I last buy toothpaste?", "Looks back through your checklist tick history for a matching line, across every checklist you've ever made - even one you've since deleted. It only knows what you TICKED, never what you bought: no price, nothing verified, and no record just means nothing was ticked, not that you never bought it.", "Checklists screen, tap a line to see when it was last ticked."),
     "read_list": ("What have I got coming up?", "Reads back your open reminders, soonest due first, each with its date, place or repeat.", "Calendar tab, tap a day to see that day's reminders."),
@@ -226,6 +228,7 @@ GROUPS = {
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
     "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status"],
     "Books": ["books"],
+    "Claude session": ["claude_session"],
     "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Recordings": ["start_voice_note", "stop_voice_note", "read_voice_note", "list_voice_notes"],
     "Memory": ["remember", "recall_memory", "why_did_you_say_that"],

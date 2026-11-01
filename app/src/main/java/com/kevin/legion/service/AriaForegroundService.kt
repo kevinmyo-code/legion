@@ -245,6 +245,10 @@ class AriaForegroundService : Service() {
         serviceScope.launch {
             com.kevin.legion.games.race.GameInvitePolling.poller(this@AriaForegroundService).run()
         }
+        // Claude session results (claude-session ticket 05), on the same terms as the invites above.
+        serviceScope.launch {
+            com.kevin.legion.claude.ClaudeResultPolling.watcher(this@AriaForegroundService).run()
+        }
 
         // Companion-memory map, tickets 02 + 05 (2026-07-22): distill whatever's
         // left pending into durable memories, then look for patterns across

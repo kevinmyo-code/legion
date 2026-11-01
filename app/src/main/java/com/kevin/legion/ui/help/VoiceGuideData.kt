@@ -208,6 +208,13 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "Claude session",
+            blurb = "Claude Code on your own laptops, for what the phone can't do. Nothing goes unless you name it or say yes.",
+            entries = listOf(
+                Entry(name = "claude_session", say = "Use Claude on my Alienware to find the AW4 wiring PDF in my Downloads", does = "Sends a task to the Claude session on your Alienware or work laptop, but only when you name Claude or say yes to the offer; it offers when its own tools can't do something. It says whether the machine is on or, if it's off, since when, and that the task is queued. It never calls a task done when it was only sent. Ask what your Claude session is doing to hear each machine, the running tasks and their current step, the results, and the open Claude Code sessions, the ones waiting on you first. When a task finishes you hear the result (or get a notification); a file it found is named with its size and only comes to your phone if you say yes. Answer its question with a yes, or follow up (\"now email it to me\"). The work laptop sends summaries only, never files. \"Stop telling me about Claude tasks\" turns the announcements off.", hands = "Home, More, Claude session: machines, send a task, answer a question, Send to phone, the interactive sessions, and the switch for announcements."),
+            ),
+        ),
+        Group(
             title = "Phone calls",
             blurb = "Needs phone permissions granted in Setup.",
             entries = listOf(
@@ -261,6 +268,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 127 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 127
+    /** Total entries across every group above - 128 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 128
 }

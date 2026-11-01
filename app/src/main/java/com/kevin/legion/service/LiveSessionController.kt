@@ -643,8 +643,18 @@ class LiveSessionController(context: Context) {
      */
     private var pendingSpeakUserInitiated = false
 
+    /**
+     * [LiveNotes]' sink: a note from outside (a finished Claude session task) reaches the model only
+     * while a conversation is open. Read from a background poll, so the session is read once.
+     */
+    private val noteSink: (String) -> Boolean = { text: String ->
+        val s = session
+        s != null && s.inConversation && s.offerNote(text)
+    }.also { LiveNotes.register(it) }
+
     /** Tears down the active session and the controller's scope. */
     fun destroy() {
+        LiveNotes.unregister(noteSink)
         destroyed = true
         session?.destroy()
         session = null

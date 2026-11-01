@@ -998,6 +998,23 @@ internal const val DATA_ACCESS_CLAUSE =
         "came back empty or failed; say which. "
 
 /**
+ * The Claude session's offer rule (claude-session map rulings 2 and 3, ticket 05; ADR 0067).
+ * Nothing goes to a laptop unless the user named it or said yes: named ("use Claude on my
+ * Alienware to...") is sent; not named, the model offers only after its own tools cannot do it, with
+ * a one-line version of the task, and a yes counts only as the very next thing the user says. A sent
+ * task is queued, never done ([CANNOT_CLAUSE] applied to a result that arrives minutes later), and a
+ * found file is named and offered, never sent unasked (ruling 8). At file scope beside
+ * [CANNOT_CLAUSE], never per persona, and naming no assistant. Presence guarded by
+ * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is owed to a phone run (ticket 07).
+ */
+internal const val CLAUDE_SESSION_CLAUSE =
+    "Use claude_session send only if the user named Claude or their Claude session this turn, or said " +
+        "yes as their very next words after you offered it. Otherwise, only once your own tools cannot " +
+        "do it, offer once: \"That needs your Claude session. Want me to send it: <one-line version>?\" " +
+        "A sent task is queued, not done; its outcome comes only from check or its result. A found " +
+        "file: say its name and size and ask if they want it on their phone; never send one unasked. "
+
+/**
  * The holding line before a slow lookup, and what it may NOT contain (ADR 0065, async-lookups
  * ticket 02, 2026-10-28). Extends the 2026-10-27 "One moment." rule (Kevin: the slow tools left
  * dead air, and the persona's "do not narrate" rule needed this said outright as the exception).
@@ -1224,6 +1241,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     CANNOT_CLAUSE +
     WRITE_ON_REQUEST_CLAUSE +
     DATA_ACCESS_CLAUSE +
+    CLAUDE_SESSION_CLAUSE +
     PROACTIVE_CLAUSE +
     // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
     // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -

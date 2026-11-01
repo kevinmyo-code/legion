@@ -48,6 +48,8 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/PurchaseToolbox.kt',
     # books ticket 02: the one `books` tool (open a book, continue, read aloud).
     ROOT / 'app/src/main/java/com/kevin/legion/service/BooksToolbox.kt',
+    # claude-session ticket 05: the one `claude_session` tool (Kevin's Claude session on his laptops).
+    ROOT / 'app/src/main/java/com/kevin/legion/service/ClaudeSessionToolbox.kt',
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'

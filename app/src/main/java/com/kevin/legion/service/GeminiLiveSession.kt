@@ -2206,12 +2206,29 @@ class GeminiLiveSession(
      * Otherwise the next turnComplete calls this again.
      */
     private fun deliverCancelNotesIfQuiet() {
-        if (!cancelledTools.hasNotes() || !conversationActive) return
-        if (speakingThisTurn || awaitingReply || turnTaker?.inActivity == true) return
-        val notes = cancelledTools.takeNotes()
-        val sent = sendText(notes.joinToString("\n") { it.text })
-        LiveLatency.log("LIVE_TOOL_CANCEL", "told the model about ${notes.size} cancelled write(s) sent=$sent")
+        val hasOutside = outsideNotes.isNotEmpty()
+        val waiting = cancelledTools.hasNotes() || hasOutside
+        val busy = speakingThisTurn || awaitingReply || turnTaker?.inActivity == true
+        if (!waiting || !conversationActive || busy) return
+        val notes = cancelledTools.takeNotes().map { it.text } +
+            generateSequence { outsideNotes.poll() }.toList()
+        val sent = sendText(notes.joinToString("\n"))
+        LiveLatency.log("LIVE_TOOL_CANCEL", "told the model ${notes.size} note(s) (outside=$hasOutside) sent=$sent")
     }
+
+    /**
+     * A note from outside the conversation ([LiveNotes]: a finished Claude session task), queued
+     * for the same quiet moment a cancelled write's note waits for. False when no conversation is
+     * open, so the caller raises it another way instead.
+     */
+    fun offerNote(text: String): Boolean {
+        if (!running.get() || closed.get() || !conversationActive) return false
+        outsideNotes.add(text)
+        deliverCancelNotesIfQuiet()
+        return true
+    }
+
+    private val outsideNotes = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
     /** Says a turn-taking fallback in words, once per process per [key]; always logs. */
     private fun announceOnce(key: String, notice: String, log: String) {
