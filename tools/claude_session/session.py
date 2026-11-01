@@ -28,11 +28,15 @@ SETTING_SOURCES = "project,local"
 CREATE_NO_WINDOW = 0x08000000
 
 
+WORKER_MARKER = "LEGION_CLAUDE_WORKER"
+
+
 def child_env(base: dict, home: Path) -> dict:
     """Kevin's env minus anything that ties the child to a parent Claude Code session."""
     env = {k: v for k, v in base.items()
            if k != "CLAUDECODE" and not k.startswith("CLAUDE_CODE_") and k != "ANTHROPIC_API_KEY"}
     env["LEGION_CLAUDE_HOME"] = str(home)
+    env[WORKER_MARKER] = "1"  # session_hook.py skips the worker's own session (ticket 06)
     return env
 
 

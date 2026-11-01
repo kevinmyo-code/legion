@@ -29,6 +29,10 @@
   listed scope only: the repos folder.
 .PARAMETER StartNow
   Start the task right after registering it.
+.PARAMETER SessionHooks
+  Add the sessions reporter hooks (ticket 06) to ~/.claude/settings.json without asking.
+.PARAMETER NoSessionHooks
+  Do not ask about the sessions reporter hooks.
 
 .EXAMPLE
   .\tools\claude_session\install.ps1 -Name Alienware -Scope full -StartNow
@@ -43,7 +47,9 @@ param(
     [string]$ReposRoot,
     [switch]$NewToken,
     [switch]$NewMail,
-    [switch]$StartNow
+    [switch]$StartNow,
+    [switch]$SessionHooks,
+    [switch]$NoSessionHooks
 )
 
 $ErrorActionPreference = 'Stop'
@@ -150,6 +156,22 @@ Write-Host "Registered '$TaskName' (at logon, runs through a lock, not elevated)
 if ($StartNow) {
     Start-ScheduledTask -TaskName $TaskName
     Write-Host 'Started. Check with .\tools\claude_session\status.ps1'
+}
+
+# --- Interactive sessions reporter hooks (ticket 06) ----------------------------------------------
+# Merges SessionStart/UserPromptSubmit/Notification/Stop/SessionEnd hooks into Kevin's own
+# ~/.claude/settings.json. Keeps his hooks, writes a .bak-<stamp> copy first, safe to re-run.
+$UserSettings = Join-Path $env:USERPROFILE '.claude\settings.json'
+$Hook = Join-Path $Here 'session_hook.py'
+$addHooks = $SessionHooks
+if (-not $addHooks -and -not $NoSessionHooks) {
+    $ans = Read-Host "Report your own Claude Code sessions to LEGION (hooks in $UserSettings)? [y/N]"
+    $addHooks = $ans -match '^(y|yes)$'
+}
+if ($addHooks) {
+    $hookCmd = "`"$pyw`" `"$Hook`""
+    & $py $Hook --install-settings $UserSettings $hookCmd
+    if ($LASTEXITCODE -ne 0) { throw "Could not merge the session hooks into $UserSettings." }
 }
 
 Write-Host ''

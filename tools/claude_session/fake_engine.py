@@ -21,6 +21,8 @@ class FakeEngine:
         self.uploads: list[tuple[int, str, bytes]] = []
         self.cancel_requested: list[int] = []
         self.files_requested: list[dict] = []
+        self.sessions: list[dict] = []
+        self.delay = 0.0  # seconds to stall each request (timeout tests)
         self.down = False
         self.requests = 0
         engine = self
@@ -40,6 +42,9 @@ class FakeEngine:
             def do_POST(self):
                 n = int(self.headers.get("Content-Length") or 0)
                 raw = self.rfile.read(n) if n else b""
+                if engine.delay:
+                    import time
+                    time.sleep(engine.delay)
                 with engine.lock:
                     engine.requests += 1
                     if engine.down:
@@ -58,6 +63,9 @@ class FakeEngine:
                             return self._reply(204)
                         out, engine.queued = engine.queued, []
                         return self._reply(200, out)
+                    if p == "/api/claude/sessions/":
+                        engine.sessions.append(json.loads(raw))
+                        return self._reply(200, {"ok": True})
                     m = re.match(r"^/api/claude/tasks/(\d+)/finish/$", p)
                     if m:
                         engine.finishes.append((int(m.group(1)), json.loads(raw)))

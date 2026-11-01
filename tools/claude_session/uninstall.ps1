@@ -36,6 +36,14 @@ if (Test-Path $pidFile) {
     }
 }
 
+# Sessions reporter hooks (ticket 06): remove only ours from ~/.claude/settings.json, backup first.
+$UserSettings = Join-Path $env:USERPROFILE '.claude\settings.json'
+$Hook = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'session_hook.py'
+$py = (Get-Command python -ErrorAction SilentlyContinue).Source
+if ($py -and (Test-Path $UserSettings)) {
+    & $py $Hook --uninstall-settings $UserSettings
+}
+
 if ($Purge -and (Test-Path $ConfigDir)) {
     Remove-Item -Recurse -Force -Path $ConfigDir -Confirm:$false
     Write-Host "Deleted $ConfigDir. Revoke the device token in LEGION too."

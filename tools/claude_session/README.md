@@ -73,6 +73,19 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `mail` | `{address, app_password, kevin, smtp_host, smtp_port}`; on `listed` only text to `kevin` |
 | optional | `claude_cmd`, `heartbeat_s`, `task_cap_s`, `hang_s`, `add_dirs`, `keep_awake` |
 
+## Sessions reporter hooks (ticket 06)
+
+`session_hook.py` runs from SessionStart, UserPromptSubmit, Notification, Stop and SessionEnd hooks
+in Kevin's own `~/.claude/settings.json` and POSTs `sessions/` with state `working`, `working`,
+`waiting`, `idle`, `ended`. Same config and token as the worker. `full` sends the first 120
+characters of the prompt; `listed` sends none. 2 s timeout, always exits 0, prints nothing. No
+config: does nothing. The worker's own session sets `LEGION_CLAUDE_WORKER=1` and is skipped.
+
+`install.ps1` asks before merging the hooks in (`-SessionHooks` / `-NoSessionHooks` to skip the
+question); it keeps existing hooks, writes `settings.json.bak-<stamp>`, and is safe to re-run.
+`uninstall.ps1` removes only entries whose command names `session_hook.py`. By hand:
+`python session_hook.py --install-settings <path>` / `--uninstall-settings <path>`.
+
 ## Rules it enforces
 
 - **report.py is the truth**, not the main session's chat. A helper that ends without reporting
