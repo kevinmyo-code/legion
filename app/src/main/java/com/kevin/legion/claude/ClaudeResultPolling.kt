@@ -28,9 +28,10 @@ import kotlinx.coroutines.withContext
  * waits until LEGION is next opened; it is still on the Claude session screen.
  *
  * **Delivery, in order:** an open conversation takes it as a system note ([LiveNotes]); otherwise
- * it goes through the proactive registry ([ProactiveBus.speakIfAllowed], category Timing), which
- * speaks it when it may and posts it when it may not. A refusal that means "not right now" leaves
- * the task watched for the next poll.
+ * it goes through the proactive registry ([ProactiveBus.speakIfAllowed], its own "Claude tasks"
+ * category: on by default, outside the daily cap), which speaks it when it may and posts it when it
+ * may not. A spoken result that asks something listens about 20 s for the yes. A refusal that
+ * means "not right now" leaves the task watched for the next poll.
  */
 object ClaudeResultPolling {
     @Volatile private var watcher: ClaudeResultWatcher? = null
@@ -45,7 +46,7 @@ object ClaudeResultPolling {
     private fun build(app: Context): ClaudeResultWatcher = ClaudeResultWatcher(
         controller = { ClaudeSessionController.forContext(app) },
         watch = ClaudeWatchStore(app),
-        announce = { id, text -> announce(app, id, text) },
+        announce = { id, text, hint -> announce(app, id, text, hint) },
         saveFile = { name, bytes -> saveToDownloads(app, name, bytes) },
     )
 
@@ -68,25 +69,32 @@ object ClaudeResultPolling {
     }
 
     /** The system note for an open conversation: the facts, and what to do with them. */
-    internal fun note(text: String): String =
+    internal fun note(text: String, hint: String): String =
         "[Claude session result, for the user, from a task they sent] $text Tell the user this now, in " +
             "one or two short sentences in your own words. If it ends with a question, ask it, and act " +
-            "only on their yes. Say nothing else about it."
+            "only on their yes. $hint Say nothing else about it."
 
-    internal fun prompt(text: String): String =
+    internal fun prompt(text: String, hint: String): String =
         "A task the user sent to their Claude session has a result. The facts, and the only things you " +
             "may say about it: $text Tell the user in one or two short sentences, in your own words. " +
-            "Mention no other subject."
+            "If it ends with a question, ask it and act only on their yes. $hint Mention no other subject."
 
-    private suspend fun announce(context: Context, taskId: Int, text: String): ClaudeDelivery {
-        if (LiveNotes.offer(note(text))) return ClaudeDelivery.DELIVERED
+    /** How long a result that asks something listens for the yes (Kevin 2026-11-01: about 20 s). */
+    const val LISTEN_HOLD_MS = 20_000L
+
+    private suspend fun announce(context: Context, taskId: Int, text: String, hint: String): ClaudeDelivery {
+        if (LiveNotes.offer(note(text, hint))) return ClaudeDelivery.DELIVERED
+        val asks = hint.isNotBlank()
         val raise = ProactiveRaise(
             // One rule per task, so brushing off one result never suppresses the next task's.
             ruleId = "claude_task_result_$taskId",
-            category = ProactiveCategory.TIMING,
+            category = ProactiveCategory.CLAUDE_TASKS,
             reason = text,
             facts = text,
-            prompt = prompt(text),
+            prompt = prompt(text, hint),
+            // A question opens the mic for the yes; the follow-up window closes it (no ring to end).
+            listensForReply = asks,
+            listenHoldMs = if (asks) LISTEN_HOLD_MS else 0L,
         )
         return when (ProactiveBus.speakIfAllowed(context, raise)) {
             ProactiveBus.RaiseOutcome.NotNow -> ClaudeDelivery.RETRY

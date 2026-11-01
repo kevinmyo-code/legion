@@ -79,7 +79,17 @@ enum class ProactiveCategory(
      * is unprompted speech, so neither routes through this category or any other - see
      * [com.kevin.legion.sitrep.SitrepSettings]'s own class doc. `hasContent` goes back to `false`
      * per this file's own class doc rule until something else raises through DIGEST. */
-    DIGEST("digest", "Digest", "Round-ups and briefings, at a time you pick.", false);
+    DIGEST("digest", "Digest", "Round-ups and briefings, at a time you pick.", false),
+
+    /**
+     * The result of a task Kevin sent to his Claude session (claude-session ticket 05; Kevin
+     * 2026-11-01). **On by default and outside the daily cap** ([ProactiveBus.UNCAPPED_CATEGORIES],
+     * [DEFAULT_ON]): each line answers something he asked for. Still inside the master switch and
+     * quiet hours, and still the compulsion test's four: anchored to his task, actionable (a result,
+     * a question, a file to take), never about his absence, silenced by this switch, the Claude
+     * session screen's switch, or "stop telling me about Claude tasks".
+     */
+    CLAUDE_TASKS("claude_tasks", "Claude tasks", "Results of tasks you sent to your Claude session.", true);
 
     companion object {
         fun fromKey(key: String): ProactiveCategory? = entries.firstOrNull { it.key == key }
@@ -98,5 +108,13 @@ enum class ProactiveCategory(
          * assistant that speaks first before being asked to is the thing people uninstall.
          */
         val CARRIED_OVER_ON_UPGRADE = setOf(SAFETY, TIMING, FLEET)
+
+        /**
+         * On when no stored row says otherwise, on a fresh install AND on an existing one that
+         * predates the category (Kevin 2026-11-01: Claude task results default on). The one
+         * deliberate exception to "a fresh install is quiet": every line it carries answers a task
+         * he sent.
+         */
+        val DEFAULT_ON = setOf(CLAUDE_TASKS)
     }
 }

@@ -32,11 +32,12 @@ class ClaudeSessionViewModel(
     constructor(application: Application) :
         this(application, ClaudeSessionController.forContext(application), ClaudeWatchStore(application))
 
-    private val _state = MutableStateFlow(ClaudeSessionUiState(announcementsOn = !watch.silenced()))
+    private val _state = MutableStateFlow(ClaudeSessionUiState())
     val state: StateFlow<ClaudeSessionUiState> = _state.asStateFlow()
 
     init {
         refresh()
+        viewModelScope.launch { _state.update { it.copy(announcementsOn = watch.announcementsOn()) } }
     }
 
     fun refresh() {
@@ -72,8 +73,8 @@ class ClaudeSessionViewModel(
     fun setAnswer(text: String) = _state.update { it.copy(answer = text) }
 
     fun setAnnouncements(on: Boolean) {
-        watch.setSilenced(!on)
         _state.update { it.copy(announcementsOn = on) }
+        viewModelScope.launch { watch.setAnnouncements(on) }
     }
 
     /** A typed send is Kevin naming the Claude session by hand: origin `named`. */

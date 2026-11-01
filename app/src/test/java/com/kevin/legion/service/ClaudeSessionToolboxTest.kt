@@ -121,11 +121,16 @@ class ClaudeSessionToolboxTest {
     }
 
     @Test
-    fun `quiet turns the announcements off`() {
-        val store = ClaudeWatchStore(context)
-        store.setSilenced(false)
-        assertTrue(call("action" to "quiet").getBoolean("success"))
-        assertTrue(store.silenced())
-        store.setSilenced(false)
+    fun `quiet turns the announcements off and unquiet turns them back on`() = runBlocking {
+        val watch = com.kevin.legion.claude.FakeWatch()
+        ClaudeSessionToolbox.watchFactory = { watch }
+        try {
+            assertTrue(call("action" to "quiet").getBoolean("success"))
+            assertTrue(watch.silenced())
+            assertTrue(call("action" to "unquiet").getBoolean("success"))
+            assertFalse(watch.silenced())
+        } finally {
+            ClaudeSessionToolbox.watchFactory = ::ClaudeWatchStore
+        }
     }
 }

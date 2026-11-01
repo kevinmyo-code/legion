@@ -278,7 +278,9 @@ class AriaForegroundService : Service() {
         // listening directly). Used to be collected in AriaLiveScreen.
         serviceScope.launch {
             ProactiveBus.requestSpeak.collect {
-                sessionController.requestSpeak(it.prompt, it.listensForReply, it.carriesReadThroughContent)
+                sessionController.requestSpeak(
+                    it.prompt, it.listensForReply, it.carriesReadThroughContent, listenHoldMs = it.listenHoldMs,
+                )
             }
         }
         // The other half of a ring-listening window (2026-08-21): TelephonyController is a platform

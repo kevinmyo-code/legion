@@ -72,9 +72,10 @@ Copy for each tool in `tools/voice_guide_copy.py`; `python tools/voice_guide.py`
   `backend/engine/DjangoClaudeSessionBackend.kt` over `/api/claude/`, `ClaudeResultWatcher` +
   `ClaudeResultPolling`, `ClaudeWatchStore`.
 - **Departure: one tool, not four.** `service/ClaudeSessionToolbox.kt` declares ONE `claude_session`
-  tool with `action` = `send`, `check`, `answer`, `assign`, `send_file`, `quiet`, the trade
+  tool with `action` = `send`, `check`, `answer`, `assign`, `send_file`, `quiet`, `unquiet`, the trade
   `bought_log` and `books` made for `LiveSetupPayloadSizeTest`'s ceiling. `assign` answers "which
-  machine?" (Kevin 2026-11-01); `quiet` is "stop telling me about Claude tasks".
+  machine?" (Kevin 2026-11-01); `quiet` is "stop telling me about Claude tasks", `unquiet` "tell me
+  about Claude tasks again".
 - Machine choice: named wins; one online is chosen; more than one online is `needs_machine` then
   `assign/`; none online queues for the only machine there is, or asks which when there are several
   (nothing is created until he answers). No machine ever connected sends nothing.
@@ -85,8 +86,16 @@ Copy for each tool in `tools/voice_guide_copy.py`; `python tools/voice_guide.py`
   `AriaBrainHonestyClauseTest`.
 - Results: polled (`server/push/` is browser-only) on the Tetris invites' two loops, only while a
   task this phone sent is out. An open conversation gets a system note at the next quiet moment
-  (`LiveNotes`, `GeminiLiveSession.offerNote`); otherwise `ProactiveBus.speakIfAllowed`, category
-  Timing, one rule id per task. A requested file is downloaded to Downloads once uploaded.
+  (`LiveNotes`, `GeminiLiveSession.offerNote`); otherwise `ProactiveBus.speakIfAllowed`, one rule id
+  per task. A requested file is downloaded to Downloads once uploaded (Kevin 2026-11-01: keep).
+- **Kevin's answers, 2026-11-01:** results have their own proactive category, `CLAUDE_TASKS`
+  ("Claude tasks"), on by default (`ProactiveCategory.DEFAULT_ON`, also for an install that predates
+  it) and outside the 3-a-day spoken cap (`ProactiveBus.UNCAPPED_CATEGORIES`); still inside the
+  master switch and quiet hours. The screen switch and `quiet`/`unquiet` flip that category. A spoken
+  result that asks something (a file offer or a question) opens the mic: `ProactiveRaise.listenHoldMs`
+  (20 s) keeps the follow-up window re-arming (`FollowUpWindow` `listen_hold`), so it closes at the
+  first expiry after the hold, about 24 s after the mic opens; the user speaking ends the hold. The
+  ids a yes needs ride in a model-only hint, never the notification.
 - Screen: `ui/claudesession/`, from HOME's More sheet; machines, send box (machine picker, Email it
   to me), tasks (summary, question with Yes and an answer box, files with Send to phone, live step),
   sessions with "waiting on you" first, the announcements switch. Compose tests in

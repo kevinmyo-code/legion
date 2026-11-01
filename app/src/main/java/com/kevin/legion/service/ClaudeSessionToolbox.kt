@@ -5,6 +5,7 @@ import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudeSendResult
 import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.claude.ClaudeTaskDraft
+import com.kevin.legion.claude.ClaudeWatch
 import com.kevin.legion.claude.ClaudeWatchStore
 import com.kevin.legion.claude.ClaudeWording
 import org.json.JSONArray
@@ -30,11 +31,14 @@ object ClaudeSessionToolbox {
     /** Test seam: swapped for a controller over a fake backend. */
     internal var controllerFactory: (Context) -> ClaudeSessionController = ClaudeSessionController::forContext
 
+    /** Test seam for `quiet`/`unquiet`: production flips the proactive "Claude tasks" switch. */
+    internal var watchFactory: (Context) -> ClaudeWatch = ::ClaudeWatchStore
+
     private const val DESCRIPTION =
         "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check reads " +
             "machines, tasks and open sessions; answer follows up a task (yes=true only for his yes to its " +
             "question); assign picks the machine it asked for; send_file only after he says yes to having " +
-            "a file on his phone; quiet stops result announcements. A sent task is not done."
+            "a file on his phone; quiet/unquiet stop/restart result announcements. A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
         fn(
@@ -43,7 +47,7 @@ object ClaudeSessionToolbox {
             params = JSONObject()
                 .put(
                     "action",
-                    prop("string", null, listOf("send", "check", "answer", "assign", "send_file", "quiet")),
+                    prop("string", null, listOf("send", "check", "answer", "assign", "send_file", "quiet", "unquiet")),
                 )
                 .put("request", prop("string", "The task, or the follow-up, in his words."))
                 .put("machine", prop("string", "Only if named."))
@@ -97,8 +101,12 @@ object ClaudeSessionToolbox {
             "assign" -> needsTask(taskId) ?: sendResult(c.assign(taskId, args.optString("machine")))
             "send_file" -> needsTask(taskId) ?: sendResult(c.sendFile(taskId, args.optInt("file_id", 0)))
             "quiet" -> {
-                ClaudeWatchStore(context).setSilenced(true)
+                watchFactory(context).setAnnouncements(false)
                 result(true, "Result announcements are off. Results still wait on the Claude session screen.")
+            }
+            "unquiet" -> {
+                watchFactory(context).setAnnouncements(true)
+                result(true, "Result announcements are on again.")
             }
             else -> result(false, "Say whether to send, check, answer, assign or send a file. Nothing was sent.")
         }

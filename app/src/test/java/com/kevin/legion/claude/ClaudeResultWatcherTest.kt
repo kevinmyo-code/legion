@@ -16,12 +16,13 @@ class ClaudeResultWatcherTest {
     private val backend = FakeClaudeBackend()
     private val watch = FakeWatch()
     private val said = mutableListOf<Pair<Int, String>>()
+    private val hints = mutableListOf<String>()
     private var delivery = ClaudeDelivery.DELIVERED
     private val saved = mutableListOf<String>()
     private val watcher = ClaudeResultWatcher(
         controller = { ClaudeSessionController(backend) },
         watch = watch,
-        announce = { id, text -> said += id to text; delivery },
+        announce = { id, text, hint -> said += id to text; hints += hint; delivery },
         saveFile = { name, _ -> saved += name; true },
     )
 
@@ -49,6 +50,12 @@ class ClaudeResultWatcherTest {
         assertTrue(text, text.contains("AW4 wiring rev C.pdf (2.0 MB)"))
         assertTrue(text, text.endsWith("Want it on your phone?"))
         assertTrue(watch.tasks.isEmpty())
+        // The yes needs ids the user never hears: they ride in the hint, for the model only.
+        assertEquals(
+            "On a yes: claude_session send_file, task_id 41, file_id 9 (AW4 wiring rev C.pdf).",
+            hints.single(),
+        )
+        assertTrue(!text.contains("file_id"))
     }
 
     @Test
@@ -95,6 +102,7 @@ class ClaudeResultWatcherTest {
         runBlocking { watcher.pollOnce() }
         val text = said.single().second
         assertTrue(text, !text.contains("phone"))
+        assertEquals("a summaries-only result asks nothing, so the mic stays closed", "", hints.single())
     }
 
     @Test
@@ -110,5 +118,12 @@ class ClaudeResultWatcherTest {
         assertEquals(listOf("AW4 wiring rev C.pdf"), saved)
         assertEquals("AW4 wiring rev C.pdf is on your phone, in Downloads.", said.single().second)
         assertTrue(watch.files.isEmpty())
+    }
+
+    @Test
+    fun `a question's hint names the yes, and a plain result has none`() {
+        val asks = task(42, ClaudeTask.NEEDS_CONFIRMATION, question = "Email the sheet to Dad?")
+        assertEquals("On a yes: claude_session answer, task_id 42, yes true.", ClaudeResultWatcher.hint(asks, false))
+        assertEquals("", ClaudeResultWatcher.hint(task(43, ClaudeTask.FAILED), false))
     }
 }

@@ -1,6 +1,8 @@
 package com.kevin.legion.claude
 
 import android.content.Context
+import com.kevin.legion.service.ProactiveCategory
+import com.kevin.legion.service.ProactiveSettings
 
 /** A requested file the watcher fetches once the laptop has uploaded it. */
 data class WatchedFile(val taskId: Int, val fileId: Int, val name: String) {
@@ -19,7 +21,10 @@ data class WatchedFile(val taskId: Int, val fileId: Int, val name: String) {
 }
 
 /**
- * What [ClaudeResultWatcher] is waiting on, and the one durable "stop telling me" flag.
+ * What [ClaudeResultWatcher] is waiting on, and whether it may announce. The switch is the
+ * proactive registry's own "Claude tasks" category ([ProactiveCategory.CLAUDE_TASKS], Kevin
+ * 2026-11-01): the screen's switch, `quiet`/`unquiet` and Settings > Proactive all flip the one
+ * stored row, and the master switch silences it too.
  *
  * Only tasks THIS phone sent are watched (the engine's task list is the household's), so a result
  * is always anchored to something Kevin asked for (CLAUDE.md section 7, compulsion test (a)).
@@ -32,12 +37,18 @@ interface ClaudeWatch {
     fun watchedFiles(): Set<WatchedFile>
     fun watchFile(taskId: Int, fileId: Int, name: String)
     fun forgetFile(file: WatchedFile)
-    fun silenced(): Boolean
-    fun setSilenced(on: Boolean)
+    /** True when nothing may be announced: the category or the master switch is off. */
+    suspend fun silenced(): Boolean
+
+    /** The "Claude tasks" category switch alone, for the screen. */
+    suspend fun announcementsOn(): Boolean
+
+    suspend fun setAnnouncements(on: Boolean)
 }
 
 class ClaudeWatchStore(context: Context) : ClaudeWatch {
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val app = context.applicationContext
+    private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     override fun watchedTasks(): Set<Int> =
         prefs.getStringSet(KEY_TASKS, emptySet()).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
@@ -58,10 +69,19 @@ class ClaudeWatchStore(context: Context) : ClaudeWatch {
     @Synchronized
     override fun forgetFile(file: WatchedFile) = putFiles(watchedFiles() - file)
 
-    override fun silenced(): Boolean = prefs.getBoolean(KEY_SILENCED, false)
+    override suspend fun silenced(): Boolean {
+        ProactiveSettings.load(app)
+        return !ProactiveSettings.mayRaise(ProactiveCategory.CLAUDE_TASKS)
+    }
 
-    override fun setSilenced(on: Boolean) {
-        prefs.edit().putBoolean(KEY_SILENCED, on).apply()
+    override suspend fun announcementsOn(): Boolean {
+        ProactiveSettings.load(app)
+        return ProactiveSettings.categories.value[ProactiveCategory.CLAUDE_TASKS] == true
+    }
+
+    override suspend fun setAnnouncements(on: Boolean) {
+        ProactiveSettings.load(app)
+        ProactiveSettings.setCategory(app, ProactiveCategory.CLAUDE_TASKS, on)
     }
 
     private fun putTasks(ids: Set<Int>) {
@@ -76,6 +96,5 @@ class ClaudeWatchStore(context: Context) : ClaudeWatch {
         const val PREFS = "claude_session"
         const val KEY_TASKS = "watched_tasks"
         const val KEY_FILES = "watched_files"
-        const val KEY_SILENCED = "results_silenced"
     }
 }

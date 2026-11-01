@@ -27,7 +27,8 @@ enum class ClaudeDelivery { DELIVERED, RETRY }
 class ClaudeResultWatcher(
     private val controller: () -> ClaudeSessionController?,
     private val watch: ClaudeWatch,
-    private val announce: suspend (taskId: Int, text: String) -> ClaudeDelivery,
+    /** [text] is for the user; [hint] (may be blank) tells the model which call a yes makes. */
+    private val announce: suspend (taskId: Int, text: String, hint: String) -> ClaudeDelivery,
     private val saveFile: suspend (name: String, bytes: ByteArray) -> Boolean,
 ) {
     private val lock = Mutex()
@@ -58,8 +59,9 @@ class ClaudeResultWatcher(
     /** True when a finished task was announced. Silenced: forgotten unsaid. Not finished: kept. */
     private suspend fun settle(c: ClaudeSessionController, overview: ClaudeOverview, task: ClaudeTask): Boolean {
         if (!task.isFinished) return false
+        val only = overview.summariesOnly(task)
         val delivered = !watch.silenced() &&
-            announce(task.id, c.wording.result(task, overview.summariesOnly(task))) == ClaudeDelivery.DELIVERED
+            announce(task.id, c.wording.result(task, only), hint(task, only)) == ClaudeDelivery.DELIVERED
         if (delivered || watch.silenced()) watch.forgetTask(task.id)
         return delivered
     }
@@ -93,8 +95,30 @@ class ClaudeResultWatcher(
         watch.forgetFile(file)
         if (watch.silenced()) return false
         val text = if (saved) c.wording.fileSaved(file.name) else c.wording.fileSaveFailed(file.name)
-        announce(file.taskId, text)
+        announce(file.taskId, text, "")
         return true
+    }
+
+    companion object {
+        const val POLL_INTERVAL_MS = 30_000L
+        private const val LIMIT = 50
+        private const val NOT_FOUND = 404
+
+        /**
+         * For the model only, never the notification: which `claude_session` call the user's yes
+         * makes. Blank when the result asks nothing, which is also what keeps the mic closed.
+         */
+        fun hint(task: ClaudeTask, summariesOnly: Boolean): String {
+            val files = task.files.filterNot { it.uploaded }
+            return when {
+                task.needsConfirmation ->
+                    "On a yes: claude_session answer, task_id ${task.id}, yes true."
+                task.status == ClaudeTask.DONE && !summariesOnly && files.isNotEmpty() ->
+                    "On a yes: claude_session send_file, task_id ${task.id}, " +
+                        files.joinToString(" or ") { "file_id ${it.id} (${it.name})" } + "."
+                else -> ""
+            }
+        }
     }
 
     /** Polls forever at [intervalMs] until cancelled; a failed poll never ends the loop. */
@@ -112,9 +136,4 @@ class ClaudeResultWatcher(
         }
     }
 
-    companion object {
-        const val POLL_INTERVAL_MS = 30_000L
-        private const val LIMIT = 50
-        private const val NOT_FOUND = 404
-    }
 }

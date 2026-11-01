@@ -86,6 +86,7 @@ class FakeWatch : ClaudeWatch {
     override fun watchedFiles() = files.toSet()
     override fun watchFile(taskId: Int, fileId: Int, name: String) { files += WatchedFile(taskId, fileId, name) }
     override fun forgetFile(file: WatchedFile) { files -= file }
-    override fun silenced() = quiet
-    override fun setSilenced(on: Boolean) { quiet = on }
+    override suspend fun silenced() = quiet
+    override suspend fun announcementsOn() = !quiet
+    override suspend fun setAnnouncements(on: Boolean) { quiet = !on }
 }
