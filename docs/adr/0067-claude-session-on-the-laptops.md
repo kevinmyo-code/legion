@@ -12,8 +12,9 @@ tags: [adr]
 ## Standing
 
 **Alfred may send a task to Claude Code on Kevin's laptops only when Kevin named it, or said yes to
-a one-line offer as the very next thing he said.** The task runs headless on Kevin's own
-claude.ai subscription, never the API. The engine (ADR 0044) holds the task, its summary, any file
+a one-line offer as the very next thing he said.** The task runs headless on whichever claude.ai
+subscription the laptop's CLI is logged into (on the Alienware, Kevin's personal Max plan, limits
+shared with his own sessions), never the API. The engine (ADR 0044) holds the task, its summary, any file
 Kevin asked for and each machine's status, 30 days, tenanted by household (ADR 0045). The
 laptop's transcript never leaves the laptop. It is called "Claude session" in speech, on screen
 and in code.
