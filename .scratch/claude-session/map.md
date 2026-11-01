@@ -81,20 +81,31 @@ machine. The same is reachable by hand on the Claude session screen.
 
 ```
 Task Scheduler "LEGION Claude session" (at logon, runs through lock)
-  worker.py
-    heartbeat to engine every 20 s, claims messages, keeps the PC awake on mains
-    one main session:  claude -p --input-format stream-json --output-format stream-json
-                       --resume <main session id>  (long-lived; rotated daily)
-      receives "[task 41] find the AW4 wiring PDF in Downloads"
-      starts a background helper subagent per task, stays free for the next message
-      helpers report through:  python report.py --task 41 --status done --summary "..." [--file PATH]
+  worker.py   (env: CLAUDECODE and CLAUDE_CODE_* stripped)
+    heartbeat to engine every 20 s, claims messages, SetThreadExecutionState while on AC
+    one main session:
+      claude -p --input-format stream-json --output-format stream-json --verbose
+        --session-id <uuid> (first start) | --resume <uuid> (restart); rotated daily
+        --permission-mode dontAsk --permission-prompts none   (tested; work laptop + --add-dir repos)
+        Alienware full access (ruling 5): bypassPermissions + hook, UNTESTED (see ticket 02)
+        --allowedTools "Bash(python *)" "PowerShell(python *)" Agent Read Glob Grep ...
+        --settings <worker settings: PreToolUse ask-list hook> --setting-sources <explicit>
+        --append-system-prompt <main window rules>
+      stdin  {"type":"user","message":{"role":"user","content":"[task 41] ..."}}
+      main turn starts a background helper (Agent, run_in_background), replies one line, ends
+      stdout system/task_started, task_progress (live step), task_notification (done),
+             then an unprompted main turn + result per finished helper
+      helpers report through:  python report.py --task 41 --status done --summary "..."
+                               [--question "..."] [--file PATH]
     worker forwards report.py results to the engine
+    30 min cap: worker-side (no CLI turn cap flag)
+  ask list (ruling 6): PreToolUse hook denies with a reason; helper returns needs_confirmation
   hooks in ~/.claude/settings.json post interactive session status (ticket 06)
 ```
 
-Whether background helpers in a headless stream-json session run concurrently and report back
-reliably is ticket 02's question. Its fallback is one `claude -p` process per task with
-`--resume` for follow-ups, which still runs several tasks at once.
+Ticket 02 (2026-11-01) confirmed this shape on the Alienware: background helpers run concurrently
+in one headless stream-json session and their completions arrive unprompted. The per-task process
+fallback is not needed.
 
 ## The API
 
@@ -124,7 +135,7 @@ at read time.
 ## Tickets (all build tickets KIV until Kevin says build)
 
 - 01 decision (resolved 2026-10-29): rulings 1 to 13
-- 02 spike (KIV): long-lived headless main session with background helpers; lock and keep-awake
+- 02 spike (in progress 2026-11-01): shape confirmed; lock-screen run (Q7) pending
 - 03 build (KIV): engine `claude` app, ADR 0066
 - 04 build (KIV): the worker `tools/claude_session/`
 - 05 build (KIV): phone tools, the offer rule, results, the Claude session screen
