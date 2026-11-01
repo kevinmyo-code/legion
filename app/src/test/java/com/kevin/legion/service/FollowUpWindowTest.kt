@@ -310,4 +310,17 @@ class FollowUpWindowTest {
         assertEquals(Action.CLOSE, d.last().action)
         assertEquals(null, d.last().reason)
     }
+
+    /** Claude session ticket 05: a spoken result asking "want it on your phone?" listens ~20 s. */
+    @Test fun aListenHoldReArmsUntilItRunsOutThenCloses() {
+        assertEquals(
+            listOf(Action.NONE, Action.ARM, Action.ARM, Action.ARM, Action.CLOSE),
+            run(
+                Event.TurnComplete, Event.MicOpened,
+                Event.Elapsed(0, listenHoldLeftMs = 12_000L),
+                Event.Elapsed(0, listenHoldLeftMs = 4_000L),
+                Event.Elapsed(0, listenHoldLeftMs = 0L),
+            ),
+        )
+    }
 }

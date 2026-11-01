@@ -221,4 +221,28 @@ class AriaBrainHonestyClauseTest {
             assertTrue("the holding-line rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
         }
     }
+
+    /**
+     * Claude session ticket 05, rulings 2, 3 and 8: named or asked, a one-line offer, a yes only as
+     * the very next words, a sent task is not done, a found file is offered and never sent unasked.
+     */
+    @Test
+    fun `the claude session rule is named-or-asked, never done, and never sends a file unasked`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(CLAUDE_SESSION_CLAUSE))
+        for (phrase in listOf(
+            "only if the user named Claude or their Claude session this turn",
+            "said yes as their very next words after you offered it",
+            "only once your own tools cannot do it, offer once",
+            "That needs your Claude session. Want me to send it: <one-line version>?",
+            "A sent task is queued, not done",
+            "its outcome comes only from check or its result",
+            "say its name and size and ask if they want it on their phone",
+            "never send one unasked",
+        )) {
+            assertTrue("the Claude session rule must say: $phrase", CLAUDE_SESSION_CLAUSE.contains(phrase))
+        }
+        for (name in listOf("Alfred", "JARVIS", "Jarvis")) {
+            assertTrue("no assistant name in the rule ($name)", !CLAUDE_SESSION_CLAUSE.contains(name))
+        }
+    }
 }

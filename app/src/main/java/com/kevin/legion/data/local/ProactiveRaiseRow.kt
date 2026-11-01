@@ -80,9 +80,9 @@ interface ProactiveRaiseDao {
      * never spoken. */
     @Query(
         "SELECT COUNT(*) FROM proactive_raises WHERE spokenAt >= :since AND delivery = 'spoken' " +
-            "AND category != :uncappedCategory"
+            "AND category NOT IN (:uncappedCategories)"
     )
-    suspend fun spokenCountSince(since: Long, uncappedCategory: String): Int
+    suspend fun spokenCountSince(since: Long, uncappedCategories: List<String>): Int
 
     /** The most recent raise of one rule, whatever its delivery - suppression follows the rule
      * having been surfaced at all, not merely having been spoken. */

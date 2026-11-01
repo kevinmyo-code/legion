@@ -171,7 +171,7 @@ token in v1 (Kevin 2026-11-01); later, worker endpoints restricted to machine to
 - 02 spike (in progress 2026-11-01): shape confirmed; lock-screen run (Q7) pending
 - 03 build (built 2026-11-01, `feat/claude-session-engine`, not deployed): engine `claude_session` app, ADR 0067
 - 04 built (2026-11-01, branch feat/claude-session-worker): the worker `tools/claude_session/`; owes install and a live run (ticket 07)
-- 05 build (KIV): phone tools, the offer rule, results, the Claude session screen
+- 05 built (2026-11-01, branch feat/claude-session-phone): one `claude_session` voice tool (seven actions incl. unquiet), the offer clause, result announcements (own Claude tasks category), the Claude session screen; owes an A25 run (ticket 07)
 - 06 built (2026-11-01, branch feat/claude-session-hooks): `session_hook.py` + install/uninstall settings merge; owes a run against the real CLI (ticket 07)
 - 08 (dropped 2026-11-01): WhatsApp delivery; replaced by `deliver: email_self` in tickets 03/04
 - 07 test (KIV): on the Alienware: the Downloads find, the offer, locked screen, powered off, an ask-list stop, two tasks at once, a session check

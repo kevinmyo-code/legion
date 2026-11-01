@@ -203,6 +203,29 @@ class EngineHttp(
     }
 
     /**
+     * `GET <path>` with a binary 2xx reply (claude-session ticket 05: a file a laptop uploaded,
+     * `GET /api/claude/tasks/{id}/files/{file_id}/`). Decoding it as text would corrupt it. A
+     * non-2xx is classified exactly as every other call.
+     */
+    suspend fun getBytes(path: String): Result<EngineBinary> {
+        val baseUrl = config.baseUrl()
+        if (!EngineConfig.isValidBaseUrl(baseUrl)) return Result.failure(noAddress())
+        return try {
+            val response = client.get(baseUrl + path) { authorize() }
+            if (response.status.value in SUCCESS_RANGE) {
+                Result.success(EngineBinary(response.status.value, response.bodyAsBytes(), emptyMap()))
+            } else {
+                val error = classify(response).exceptionOrNull()
+                Result.failure(error ?: IllegalStateException("a non-2xx classified as success"))
+            }
+        } catch (e: IOException) {
+            Result.failure(
+                EngineHttpException(EngineFailure.Unreachable(baseUrl, unreachableMessage(baseUrl, e))),
+            )
+        }
+    }
+
+    /**
      * `POST <path>` as `multipart/form-data`: the text [fields], then one file part named
      * [fileField] carrying [fileBytes] (conversation-records ticket 03, the phone's
      * `POST /api/device-logs/`). The file part's `Content-Disposition` carries `filename=`, which is

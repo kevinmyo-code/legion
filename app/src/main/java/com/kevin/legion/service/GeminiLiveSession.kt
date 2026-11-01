@@ -2206,12 +2206,53 @@ class GeminiLiveSession(
      * Otherwise the next turnComplete calls this again.
      */
     private fun deliverCancelNotesIfQuiet() {
-        if (!cancelledTools.hasNotes() || !conversationActive) return
-        if (speakingThisTurn || awaitingReply || turnTaker?.inActivity == true) return
-        val notes = cancelledTools.takeNotes()
-        val sent = sendText(notes.joinToString("\n") { it.text })
-        LiveLatency.log("LIVE_TOOL_CANCEL", "told the model about ${notes.size} cancelled write(s) sent=$sent")
+        val hasOutside = outsideNotes.isNotEmpty()
+        val waiting = cancelledTools.hasNotes() || hasOutside
+        val busy = speakingThisTurn || awaitingReply || turnTaker?.inActivity == true
+        if (!waiting || !conversationActive || busy) return
+        val notes = cancelledTools.takeNotes().map { it.text } +
+            generateSequence { outsideNotes.poll() }.toList()
+        val sent = sendText(notes.joinToString("\n"))
+        LiveLatency.log("LIVE_TOOL_CANCEL", "told the model ${notes.size} note(s) (outside=$hasOutside) sent=$sent")
     }
+
+    /**
+     * A note from outside the conversation ([LiveNotes]: a finished Claude session task), queued
+     * for the same quiet moment a cancelled write's note waits for. False when no conversation is
+     * open, so the caller raises it another way instead.
+     */
+    fun offerNote(text: String): Boolean {
+        if (!running.get() || closed.get() || !conversationActive) return false
+        outsideNotes.add(text)
+        deliverCancelNotesIfQuiet()
+        return true
+    }
+
+    private val outsideNotes = java.util.concurrent.ConcurrentLinkedQueue<String>()
+
+    /**
+     * Keeps the follow-up window listening at least [ms] after the mic first opens, for a spoken
+     * line that asked a question ([ProactiveRaise.listenHoldMs]). The user speaking ends the hold;
+     * the window still closes on its own at the first expiry after it.
+     */
+    fun holdListenWindow(ms: Long) {
+        listenHoldMs = ms
+        listenHoldUntilMs = 0L
+    }
+
+    /** The user speaking ends a listen hold; the first arm after [holdListenWindow] starts its clock. */
+    private fun trackListenHold(event: FollowUpWindow.Event, action: FollowUpWindow.Action) {
+        if (event == FollowUpWindow.Event.UserSpeech) {
+            listenHoldMs = 0L
+            listenHoldUntilMs = 0L
+        } else if (action == FollowUpWindow.Action.ARM && listenHoldMs > 0L && listenHoldUntilMs == 0L) {
+            listenHoldUntilMs = System.currentTimeMillis() + listenHoldMs
+            listenHoldMs = 0L
+        }
+    }
+
+    @Volatile private var listenHoldMs = 0L
+    @Volatile private var listenHoldUntilMs = 0L
 
     /** Says a turn-taking fallback in words, once per process per [key]; always logs. */
     private fun announceOnce(key: String, notice: String, log: String) {
@@ -3222,6 +3263,7 @@ class GeminiLiveSession(
     private fun followUpEvent(event: FollowUpWindow.Event) {
         val decision = FollowUpWindow.step(followUp, event)
         followUp = decision.state
+        trackListenHold(event, decision.action)
         decision.reason?.let { LiveLatency.log("LIVE_FOLLOWUP", "answer hold: $it") }
         if (decision.reason == "answer_hold_cap") answerHoldSinceMs = 0L
         when (decision.action) {
@@ -3236,7 +3278,10 @@ class GeminiLiveSession(
                     val sinceSpeech = if (heard > 0L) System.currentTimeMillis() - heard else null
                     val hold = answerHoldSinceMs
                     val sinceHold = if (hold > 0L) System.currentTimeMillis() - hold else null
-                    followUpEvent(FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech, sinceHold))
+                    val listenLeft = (listenHoldUntilMs - System.currentTimeMillis()).coerceAtLeast(0L)
+                    followUpEvent(
+                        FollowUpWindow.Event.Elapsed(toolCallsInFlight.get(), sinceSpeech, sinceHold, listenLeft),
+                    )
                 }
                 if (followUp.extensions > 0) {
                     LiveLatency.log(

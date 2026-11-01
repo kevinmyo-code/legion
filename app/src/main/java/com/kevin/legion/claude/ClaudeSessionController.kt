@@ -1,0 +1,229 @@
+package com.kevin.legion.claude
+
+import android.content.Context
+import com.kevin.legion.backend.engine.DjangoClaudeSessionBackend
+import com.kevin.legion.backend.engine.EngineConfig
+import com.kevin.legion.backend.engine.EngineHttp
+
+/** What a send, an assign or a follow-up came to. [sentence] is always set and always honest. */
+sealed interface ClaudeSendResult {
+    val sentence: String
+
+    /** A 2xx: the task exists on the engine, `queued` for a machine. Never "done". */
+    data class Sent(val created: ClaudeCreated, override val sentence: String) : ClaudeSendResult
+
+    /**
+     * Not sent to any machine yet: Kevin must pick one (rulings 4, Kevin 2026-11-01). [taskId] is
+     * set when the engine already holds the task as `needs_machine` (answer through [assign]);
+     * null when nothing was created (answer by sending again with the machine named).
+     */
+    data class NeedsMachine(val taskId: Int?, val choices: List<String>, override val sentence: String) :
+        ClaudeSendResult
+
+    /** Nothing was sent, or (an unreadable 2xx) it is not known; [sentence] says which. */
+    data class NotSent(override val sentence: String) : ClaudeSendResult
+}
+
+/** The machines, the newest tasks and the interactive sessions, read together for check and the screen. */
+data class ClaudeOverview(val status: ClaudeStatus, val tasks: List<ClaudeTask>) {
+    fun machineFor(task: ClaudeTask): ClaudeMachine? =
+        status.machines.firstOrNull { it.name.equals(task.machine, ignoreCase = true) }
+
+    fun summariesOnly(task: ClaudeTask): Boolean = machineFor(task)?.summariesOnly == true
+}
+
+/**
+ * The one controller the `claude_session` voice tool, the result watcher and the Claude session
+ * screen all call (ADR 0035: two doors onto one implementation). Online only: there is no Room
+ * table; every call goes to the engine (`/api/claude/`, ADR 0067), and every result says in words
+ * what did and did not happen.
+ *
+ * **The rules it owns, so neither door can skip them:**
+ * - machine choice (ruling 4, Kevin 2026-11-01): a named machine wins; unnamed goes to the only
+ *   machine online; more than one online is a "which one?" answered through `assign/`. With none
+ *   online it queues for the only machine there is, or asks which when there are several.
+ * - `deliver: email_self` only when Kevin named his own email ([send]'s `emailMe`, ruling 17).
+ * - `confirms: true` only on Kevin's yes to a task that is `needs_confirmation` ([answer]).
+ * - no file from a `listed` machine ever reaches the phone ([sendFile], ruling 5).
+ *
+ * [onSent] is told each task id the engine accepted, so the result watcher can announce it.
+ */
+@Suppress("ReturnCount") // each rule is a guard clause that returns the sentence saying what did not happen
+class ClaudeSessionController(
+    private val backend: ClaudeSessionBackend,
+    val wording: ClaudeWording = ClaudeWording(),
+    private val onSent: (Int) -> Unit = {},
+    private val onFileRequested: (taskId: Int, fileId: Int, name: String) -> Unit = { _, _, _ -> },
+) {
+
+    suspend fun status(): ClaudeOutcome<ClaudeStatus> = backend.status()
+
+    suspend fun task(id: Int): ClaudeOutcome<ClaudeTask> = backend.task(id)
+
+    /** Status and the newest tasks, or the first failure. */
+    suspend fun overview(limit: Int = RECENT): ClaudeOutcome<ClaudeOverview> {
+        val status = backend.status()
+        if (status !is ClaudeOutcome.Ok) return status.asFailure()
+        val tasks = backend.tasks(limit)
+        if (tasks !is ClaudeOutcome.Ok) return tasks.asFailure()
+        return ClaudeOutcome.Ok(ClaudeOverview(status.value, tasks.value))
+    }
+
+    /**
+     * Sends a new task. [machine] is the spoken name or null; [origin] is `named` (Kevin asked for
+     * the Claude session) or `offered` (his yes to the offer). [emailMe] is true only when he asked
+     * for it to be emailed to himself.
+     */
+    suspend fun send(request: String, machine: String?, origin: String, emailMe: Boolean): ClaudeSendResult {
+        val text = request.trim()
+        if (text.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.EMPTY_REQUEST)
+        val status = backend.status()
+        if (status !is ClaudeOutcome.Ok) return ClaudeSendResult.NotSent(ClaudeWording.failed(status, "send it"))
+        val machines = status.value.machines
+        if (machines.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.NO_MACHINE_EVER)
+
+        val target: String? = if (!machine.isNullOrBlank()) {
+            ClaudeMachines.resolve(machine, machines.map { it.name })
+                ?: return ClaudeSendResult.NotSent(wording.unknownMachine(machine.trim(), machines.map { it.name }))
+        } else {
+            val online = machines.filter { it.isOnline }
+            when {
+                online.size == 1 -> online.single().name
+                online.size > 1 -> null // the engine holds it as needs_machine; Kevin answers via assign
+                machines.size == 1 -> machines.single().name
+                else -> {
+                    val names = machines.map { it.name }
+                    return ClaudeSendResult.NeedsMachine(null, names, wording.whichMachine(names, created = false))
+                }
+            }
+        }
+        val draft = ClaudeTaskDraft(
+            request = text,
+            machine = target,
+            parent = null,
+            origin = origin,
+            deliver = if (emailMe) ClaudeTaskDraft.DELIVER_EMAIL_SELF else null,
+            confirms = false,
+        )
+        val online = machines.filter { it.isOnline }.map { it.name }
+        return created(backend.create(draft), choices = online, followUp = false)
+    }
+
+    /** Kevin answered "which machine?" for a `needs_machine` task. */
+    suspend fun assign(taskId: Int, machine: String): ClaudeSendResult {
+        val status = backend.status()
+        val names = (status as? ClaudeOutcome.Ok)?.value?.machines?.map { it.name }.orEmpty()
+        val resolved = ClaudeMachines.resolve(machine, names) ?: machine.trim()
+        return created(backend.assign(taskId, resolved), choices = names, followUp = false)
+    }
+
+    /**
+     * A follow-up to task [taskId] (ruling 10): an answer to its question, or "now do X with it".
+     * [yes] is Kevin's yes to the task's question; it becomes `confirms: true` ONLY when the task is
+     * `needs_confirmation`, the one thing that unlocks the asked ask-list step on the worker. Every
+     * other follow-up carries no `confirms`.
+     */
+    suspend fun answer(taskId: Int, answer: String, yes: Boolean, emailMe: Boolean): ClaudeSendResult {
+        val text = answer.trim().ifEmpty { if (yes) "Yes, go ahead." else "" }
+        if (text.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.EMPTY_REQUEST)
+        val parent = backend.task(taskId)
+        if (parent !is ClaudeOutcome.Ok) {
+            return ClaudeSendResult.NotSent(ClaudeWording.failed(parent, "send the follow-up to task $taskId"))
+        }
+        val draft = ClaudeTaskDraft(
+            request = text,
+            machine = null, // the engine sends a follow-up to its parent's machine
+            parent = taskId,
+            origin = ClaudeTaskDraft.ORIGIN_NAMED,
+            deliver = if (emailMe) ClaudeTaskDraft.DELIVER_EMAIL_SELF else null,
+            confirms = yes && parent.value.needsConfirmation,
+        )
+        return created(backend.create(draft), choices = emptyList(), followUp = true)
+    }
+
+    /** Kevin said yes to "want it on your phone?". Refused for a summaries-only machine. */
+    suspend fun sendFile(taskId: Int, fileId: Int): ClaudeSendResult {
+        val overview = overviewFor(taskId)
+        if (overview !is ClaudeOutcome.Ok) {
+            return ClaudeSendResult.NotSent(ClaudeWording.failed(overview, "ask for that file"))
+        }
+        val (task, machine) = overview.value
+        if (machine?.summariesOnly == true) return ClaudeSendResult.NotSent(wording.summariesOnly(machine.name))
+        val file = task.files.firstOrNull { it.id == fileId }
+            ?: return ClaudeSendResult.NotSent("Task $taskId has no file $fileId. Nothing was requested.")
+        return when (val out = backend.sendFile(taskId, fileId)) {
+            is ClaudeOutcome.Ok -> {
+                onFileRequested(taskId, fileId, file.name)
+                ClaudeSendResult.Sent(
+                    ClaudeCreated(taskId, task.status, null),
+                    wording.fileRequested(file, task.machine),
+                )
+            }
+            else -> ClaudeSendResult.NotSent(ClaudeWording.failed(out, "ask for ${file.name}"))
+        }
+    }
+
+    suspend fun download(taskId: Int, fileId: Int): ClaudeOutcome<ByteArray> = backend.download(taskId, fileId)
+
+    private suspend fun overviewFor(taskId: Int): ClaudeOutcome<Pair<ClaudeTask, ClaudeMachine?>> {
+        val task = backend.task(taskId)
+        if (task !is ClaudeOutcome.Ok) return task.asFailure()
+        val status = backend.status()
+        if (status !is ClaudeOutcome.Ok) return status.asFailure()
+        val machine = status.value.machines.firstOrNull { it.name.equals(task.value.machine, ignoreCase = true) }
+        return ClaudeOutcome.Ok(task.value to machine)
+    }
+
+    private fun created(
+        out: ClaudeOutcome<ClaudeCreated>,
+        choices: List<String>,
+        followUp: Boolean,
+    ): ClaudeSendResult =
+        when (out) {
+            is ClaudeOutcome.Ok -> {
+                onSent(out.value.id)
+                if (out.value.status == ClaudeTask.NEEDS_MACHINE) {
+                    ClaudeSendResult.NeedsMachine(out.value.id, choices, wording.whichMachine(choices, created = true))
+                } else {
+                    ClaudeSendResult.Sent(out.value, wording.sent(out.value, followUp))
+                }
+            }
+            else -> ClaudeSendResult.NotSent(
+                ClaudeWording.failed(out, if (followUp) "send the follow-up" else "send it"),
+            )
+        }
+
+    companion object {
+        const val RECENT = 20
+
+        /** The production wiring: the engine over the saved address and token, results watched. */
+        fun forContext(context: Context): ClaudeSessionController {
+            val app = context.applicationContext
+            val watch = ClaudeWatchStore(app)
+            return ClaudeSessionController(
+                backend = DjangoClaudeSessionBackend(EngineHttp(EngineConfig(app))),
+                onSent = watch::watchTask,
+                onFileRequested = watch::watchFile,
+            )
+        }
+    }
+}
+
+/** Spoken machine names (ruling 4): "my Alienware" and "the work laptop" find the engine's rows. */
+@Suppress("ReturnCount")
+object ClaudeMachines {
+    const val ALIENWARE = "Alienware"
+    const val WORK_LAPTOP = "work laptop"
+
+    /** The engine's own name for what Kevin said, or null when no known machine matches. */
+    fun resolve(spoken: String, known: List<String>): String? {
+        val said = spoken.trim().lowercase().removePrefix("my ").removePrefix("the ").trim()
+        known.firstOrNull { it.equals(said, ignoreCase = true) }?.let { return it }
+        val canonical = when {
+            "alienware" in said || "gaming" in said -> ALIENWARE
+            "work" in said -> WORK_LAPTOP
+            else -> return null
+        }
+        return known.firstOrNull { it.equals(canonical, ignoreCase = true) }
+    }
+}

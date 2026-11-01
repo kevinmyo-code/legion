@@ -576,6 +576,7 @@ class LiveSessionController(context: Context) {
         listensForReply: Boolean = false,
         carriesReadThroughContent: Boolean = false,
         userInitiated: Boolean = false,
+        listenHoldMs: Long = 0L,
     ) {
         // Ticket 24: a proactive raise that needs to speak is the third genuine signal
         // [shouldAutoReconnectAfterClose] recognises, alongside a tap and a wake-word trigger
@@ -586,7 +587,10 @@ class LiveSessionController(context: Context) {
         // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
         // still lands in a turn already flagged. See GeminiLiveSession.markTurnReadThrough.
         if (carriesReadThroughContent) session?.markTurnReadThrough()
-        if (listensForReply) { speakAndListen(prompt, carriesReadThroughContent, userInitiated); return }
+        if (listensForReply) {
+            speakAndListen(prompt, carriesReadThroughContent, userInitiated, listenHoldMs)
+            return
+        }
         val s = session
         android.util.Log.d("LiveSessionController", "requestSpeak branch: ${speakBranchLabel(s)}")
         when {
@@ -643,8 +647,18 @@ class LiveSessionController(context: Context) {
      */
     private var pendingSpeakUserInitiated = false
 
+    /**
+     * [LiveNotes]' sink: a note from outside (a finished Claude session task) reaches the model only
+     * while a conversation is open. Read from a background poll, so the session is read once.
+     */
+    private val noteSink: (String) -> Boolean = { text: String ->
+        val s = session
+        s != null && s.inConversation && s.offerNote(text)
+    }.also { LiveNotes.register(it) }
+
     /** Tears down the active session and the controller's scope. */
     fun destroy() {
+        LiveNotes.unregister(noteSink)
         destroyed = true
         session?.destroy()
         session = null
@@ -812,6 +826,7 @@ class LiveSessionController(context: Context) {
         prompt: String,
         carriesReadThroughContent: Boolean = false,
         userInitiated: Boolean = false,
+        listenHoldMs: Long = 0L,
     ) {
         val existing = session
         if (existing != null && existing.inConversation) {
@@ -838,6 +853,7 @@ class LiveSessionController(context: Context) {
         // The mark in requestSpeak landed on the PREVIOUS session (or on nothing, cold). This one
         // is the session that will actually carry the turn.
         if (carriesReadThroughContent) s.markTurnReadThrough()
+        if (listenHoldMs > 0L) s.holdListenWindow(listenHoldMs)
         ringListening = true
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = prompt

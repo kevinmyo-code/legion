@@ -2418,6 +2418,10 @@ object LiveToolbox {
         val booksDecls = BooksToolbox.declarations()
         for (i in 0 until booksDecls.length()) fns.put(booksDecls.getJSONObject(i))
 
+        // claude-session ticket 05: Kevin's Claude session on his laptops, one action-dispatched declaration.
+        val claudeDecls = ClaudeSessionToolbox.declarations()
+        for (i in 0 until claudeDecls.length()) fns.put(claudeDecls.getJSONObject(i))
+
         return fns
     }
 
@@ -2693,6 +2697,7 @@ object LiveToolbox {
         EngineToolbox.dispatch(context, name, args)?.let { return it }
         PurchaseToolbox.dispatch(context, name, args)?.let { return it }
         BooksToolbox.dispatch(context, name, args)?.let { return it }
+        ClaudeSessionToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
@@ -3069,6 +3074,8 @@ object LiveToolbox {
         "complete_task",
         // purchase-log ticket 08: action=log writes a bought entry on the engine.
         "bought_log",
+        // claude-session ticket 05: send/answer/assign/send_file create or change a task on the engine.
+        "claude_session",
     )
 
     /**

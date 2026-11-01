@@ -98,6 +98,8 @@ data class HomeCallbacks(
     val onOpenMedia: () -> Unit,
     val onStartRecording: () -> Unit,
     val onStopRecording: () -> Unit,
+    /** The More sheet's Claude session row (claude-session ticket 05). */
+    val onOpenClaudeSession: () -> Unit = {},
 )
 
 /**
@@ -125,6 +127,8 @@ fun HomeScreen(
     onOpenList: (checklistId: Long) -> Unit = { onOpenLists() },
     /** Games sheet's Tetris tile: a household member's user id to race, or null for solo. */
     onPlayTetris: (opponentUserId: String?) -> Unit = {},
+    /** The More sheet's Claude session row. */
+    onOpenClaudeSession: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -275,6 +279,7 @@ fun HomeScreen(
             onOpenNews = onOpenNews,
             onOpenReports = onOpenReports,
             onOpenMedia = onOpenMedia,
+            onOpenClaudeSession = onOpenClaudeSession,
             onStartRecording = {
                 scope.launch {
                     when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
@@ -406,6 +411,7 @@ fun HomeContent(
                     onOpenRecordings = closing(tileCallbacks.onOpenRecordings),
                     onOpenNews = closing(tileCallbacks.onOpenNews),
                     onOpenReports = closing(tileCallbacks.onOpenReports),
+                    onOpenClaudeSession = closing(tileCallbacks.onOpenClaudeSession),
                 ),
                 onDismiss = { moreOpen = false },
             )
@@ -472,6 +478,8 @@ fun MoreSheetContent(
                 fillRemaining = false,
                 showCalendarAndLists = false,
             )
+            // Claude session (claude-session ticket 05): the hands path for the claude_session tool.
+            com.kevin.legion.ui.claudesession.ClaudeSessionMoreRow(callbacks.onOpenClaudeSession)
             // Dumb phone mode's switch-on (ADR 0062); hidden where the context is not the app.
             com.kevin.legion.ui.dumb.DumbModeMoreRow()
         }
