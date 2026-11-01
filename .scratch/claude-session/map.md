@@ -31,7 +31,9 @@ machine. The same is reachable by hand on the Claude session screen.
 
 1. **The subscription, not the API.** Headless Claude Code on a machine logged into Kevin's
    claude.ai account. No `ANTHROPIC_API_KEY`, no Agent SDK. *"i was hoping more of using my monthly
-   sub and not the api"*; *"i like A more."*
+   sub and not the api"*; *"i like A more."* Whichever account the machine's CLI is logged into is used (Kevin
+   2026-11-01: *"whatever is logged in on the laptop, thats ok"*); the Alienware is a personal
+   Max plan, limits shared with Kevin's own sessions.
 2. **Nothing is sent unless Kevin named it or said yes.** *"anything that goes to the claude session
    should be named or asked right."* Named ("use Claude on my Alienware to..."): sent. Not named:
    Alfred offers only after his own tools cannot do it, with a one-line version of the task (*"one
