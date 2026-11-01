@@ -207,6 +207,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/books/map\|books]] | [[09-build-reading-sync-phone\|09]] | build | Build: the phone syncs reading position and bookmarks with the engine  waiting on [[08-build-reading-sync-engine\|08]] |
 | [[.scratch/books/map\|books]] | [[10-build-web-reader\|10]] | build | Build: a Books page in the web app that reads a laptop folder, synced with the phone  waiting on [[08-build-reading-sync-engine\|08]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[04-net-worth-is-never-one-number\|04]] | build | Net worth as a figure plus what is unverified, never one number  waiting on [[02-what-a-net-worth-may-be\|02]] |
+| [[.scratch/claude-session/map\|claude-session]] | [[04-worker\|04]] | build | Build: the laptop worker (main session, helpers, report.py, install)  waiting on [[02-spike-main-session\|02]] |
 | [[.scratch/claude-session/map\|claude-session]] | [[08-whatsapp-delivery\|08]] | build | Build: WhatsApp delivery of task files to Kevin's own number  waiting on [[03-engine-app\|03]], [[04-worker\|04]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
@@ -279,7 +280,6 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 |---|---|---|---|
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[03-mcp-for-claude-and-gemini\|03]] | build | Build: engine MCP server on the 2026-07-28 spec with OAuth, connected to Claude and the Gemini app |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
-| [[.scratch/claude-session/map\|claude-session]] | [[04-worker\|04]] | build | Build: the laptop worker (main session, helpers, report.py, install) |
 | [[.scratch/claude-session/map\|claude-session]] | [[05-phone\|05]] | build | Build: phone tools, the offer rule, results, the Claude session screen |
 | [[.scratch/claude-session/map\|claude-session]] | [[06-sessions-reporter\|06]] | build | Build: interactive Claude Code sessions reporter hooks |
 | [[.scratch/claude-session/map\|claude-session]] | [[07-alienware-run\|07]] | test | Test: the first run on the Alienware from the phone |
