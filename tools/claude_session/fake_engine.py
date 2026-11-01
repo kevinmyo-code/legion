@@ -1,0 +1,91 @@
+"""A stand-in for the engine's `/api/claude/` worker endpoints (map "The API" table), for tests.
+
+Real HTTP on 127.0.0.1 so the worker's urllib client is exercised end to end.
+"""
+from __future__ import annotations
+
+import json
+import re
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+TOKEN = "test-device-key"
+
+
+class FakeEngine:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.queued: list[dict] = []
+        self.heartbeats: list[dict] = []
+        self.finishes: list[tuple[int, dict]] = []
+        self.uploads: list[tuple[int, str, bytes]] = []
+        self.cancel_requested: list[int] = []
+        self.files_requested: list[dict] = []
+        self.down = False
+        self.requests = 0
+        engine = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _reply(self, code, obj=None):
+                body = b"" if obj is None else json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(n) if n else b""
+                with engine.lock:
+                    engine.requests += 1
+                    if engine.down:
+                        return self._reply(503, {"detail": "down"})
+                    if self.headers.get("Authorization") != f"Token {TOKEN}":
+                        return self._reply(401, {"detail": "Invalid token."})
+                    p = self.path
+                    if p == "/api/claude/machines/heartbeat/":
+                        engine.heartbeats.append(json.loads(raw))
+                        out = {"cancel_requested": list(engine.cancel_requested),
+                               "files_requested": list(engine.files_requested)}
+                        engine.cancel_requested.clear()
+                        return self._reply(200, out)
+                    if p == "/api/claude/tasks/claim/":
+                        if not engine.queued:
+                            return self._reply(204)
+                        out, engine.queued = engine.queued, []
+                        return self._reply(200, out)
+                    m = re.match(r"^/api/claude/tasks/(\d+)/finish/$", p)
+                    if m:
+                        engine.finishes.append((int(m.group(1)), json.loads(raw)))
+                        return self._reply(200, {"id": int(m.group(1))})
+                    m = re.match(r"^/api/claude/tasks/(\d+)/files/$", p)
+                    if m:
+                        fid = re.search(rb'name="file_id"\r\n\r\n([^\r]*)', raw).group(1).decode()
+                        content = raw.split(b"\r\n\r\n", 2)[2].rsplit(b"\r\n--", 1)[0]
+                        engine.uploads.append((int(m.group(1)), fid, content))
+                        engine.files_requested = [f for f in engine.files_requested
+                                                  if str(f["file_id"]) != fid]
+                        return self._reply(201, {"id": fid})
+                    return self._reply(404, {"detail": "no route"})
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def queue(self, **task):
+        task.setdefault("parent", None)
+        task.setdefault("machine", None)
+        with self.lock:
+            self.queued.append(task)
+
+    def finished(self, tid: int):
+        with self.lock:
+            return [p for i, p in self.finishes if i == tid]
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()

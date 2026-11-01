@@ -170,7 +170,7 @@ token in v1 (Kevin 2026-11-01); later, worker endpoints restricted to machine to
 - 01 decision (resolved 2026-10-29): rulings 1 to 13
 - 02 spike (in progress 2026-11-01): shape confirmed; lock-screen run (Q7) pending
 - 03 build (built 2026-11-01, `feat/claude-session-engine`, not deployed): engine `claude_session` app, ADR 0067
-- 04 build (KIV): the worker `tools/claude_session/`
+- 04 built (2026-11-01, branch feat/claude-session-worker): the worker `tools/claude_session/`; owes install and a live run (ticket 07)
 - 05 build (KIV): phone tools, the offer rule, results, the Claude session screen
 - 06 build (KIV): interactive sessions reporter hooks
 - 08 (dropped 2026-11-01): WhatsApp delivery; replaced by `deliver: email_self` in tickets 03/04
