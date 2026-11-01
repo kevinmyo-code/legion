@@ -151,6 +151,9 @@ INSTALLED_APPS = [
     # books ticket 04: `POST /api/books/convert`, PDF in, EPUB out, nothing
     # kept (ticket 03 ruling 1). No models, so no migrations and no tenancy.
     "books",
+    # claude-session ticket 03 (ADR 0067): Alfred's tasks for Claude Code on
+    # Kevin's laptops, the machines' heartbeats and their interactive sessions.
+    "claude_session",
 ]
 
 MIDDLEWARE = [
@@ -509,5 +512,14 @@ SPECTACULAR_SETTINGS = {
         # or `kept` anywhere else turns either into `VariantEnum` collisions.
         "BookVariantEnum": "books.models.VARIANTS",
         "BookPositionKeptEnum": "books.reading.KEPT_CHOICES",
+        # claude-session ticket 03: every `status`, `state` and `scope` there
+        # named before the bare names collide with the ones pinned above.
+        "ClaudeTaskStatusEnum": "claude_session.models.TASK_STATUSES",
+        "ClaudeFinishStatusEnum": "claude_session.models.FINISH_STATUSES",
+        "ClaudeTaskOriginEnum": "claude_session.models.ORIGINS",
+        "ClaudeTaskDeliverEnum": "claude_session.models.DELIVERIES",
+        "ClaudeMachineScopeEnum": "claude_session.models.SCOPES",
+        "ClaudeReportedStateEnum": "claude_session.models.REPORTED_MACHINE_STATES",
+        "ClaudeMachineStateEnum": "claude_session.models.SHOWN_MACHINE_STATES",
     },
 }

@@ -7011,3 +7011,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   conversation.
 - Amends the 2026-10-27 entry's "400 ms pre-roll" and the 2026-10-28 entry's "normal starts keep
   400 ms". ADR 0064 amended. Ticket `.scratch/async-lookups/issues/08-run5-6-follow-ups.md` item 3.
+
+## 2026-10-29 - Claude session: Alfred hands tasks to Claude Code on Kevin's laptops (Kevin)
+
+- **Ruled by interview, 2026-10-29** (`.scratch/claude-session/`, ticket 01): headless Claude Code
+  on Kevin's own subscription, never the API; a task is sent only when Kevin named it or said yes
+  to a one-line offer as the very next thing he said; machines "Alienware" (full access, every
+  fixed drive, not elevated) and "work laptop" (repos only, summaries only); the default ask list;
+  locked is on, powered off is off; files only on request; 30 min cap, 30 days kept; several tasks
+  at once through one orchestrating main session; interactive sessions readable; phone screen
+  first. Alfred gets his own Gmail (ruling 14); recurring tasks later (ruling 15).
+- **2026-11-01 (Kevin):** build. Ticket 02's spike confirmed the one-main-session shape. Alienware
+  mode: `dontAsk` + broad allowlist + a `PreToolUse` ask-list hook. WhatsApp delivery chosen, then
+  dropped the same day for Gmail: naming his own email in the request is the yes for that task
+  (`deliver: "email_self"`, rulings 16 and 17), sent from the laptop.
+- **Built, ticket 03:** engine app `server/claude_session/` at `/api/claude/`, tables
+  `claude_tasks`, `claude_task_files`, `claude_machines`, `claude_code_sessions`, born tenanted.
+  ADR 0067 (0066 went to the feed-block branch).

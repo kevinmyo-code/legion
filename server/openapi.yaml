@@ -2612,6 +2612,424 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/claude/machines/heartbeat/:
+    post:
+      operationId: api_claude_machines_heartbeat
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeHeartbeat'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeHeartbeatResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/claude/sessions/:
+    post:
+      operationId: api_claude_sessions_create
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeSessionReport'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeSessionStored'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/claude/status/:
+    get:
+      operationId: api_claude_status
+      tags:
+      - claude
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeStatus'
+          description: ''
+  /api/claude/tasks/:
+    get:
+      operationId: api_claude_tasks_list
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Default 20, at most 100.
+      - in: query
+        name: machine
+        schema:
+          type: string
+        description: A machine's spoken name.
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: One status, as computed at read time.
+      tags:
+      - claude
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClaudeTaskRow'
+          description: ''
+    post:
+      operationId: api_claude_tasks_create
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeTaskCreate'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeTaskCreated'
+          description: queued, or needs_machine when unnamed and more than one is
+            online.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Refused, nothing stored.
+  /api/claude/tasks/{task_id}/:
+    get:
+      operationId: api_claude_tasks_retrieve
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeTaskRow'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/claude/tasks/{task_id}/cancel/:
+    post:
+      operationId: api_claude_tasks_cancel
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeCancelled'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Already finished.
+  /api/claude/tasks/{task_id}/files/:
+    post:
+      operationId: api_claude_tasks_files_upload
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClaudeFileUpload'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeUploadResult'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeUploadResult'
+          description: Already stored.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A listed machine.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not requested.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Over 25 MB.
+  /api/claude/tasks/{task_id}/files/{file_id}/:
+    get:
+      operationId: api_claude_tasks_files_retrieve
+      parameters:
+      - in: path
+        name: file_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          description: The file's bytes.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/claude/tasks/{task_id}/finish/:
+    post:
+      operationId: api_claude_tasks_finish
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeFinish'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeFinishResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A listed machine.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not running.
+  /api/claude/tasks/{task_id}/send-file/:
+    post:
+      operationId: api_claude_tasks_send_file
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeSendFile'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeSendFileResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A listed machine.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/claude/tasks/claim/:
+    post:
+      operationId: api_claude_tasks_claim
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeClaim'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClaudeTaskRow'
+          description: ''
+        '204':
+          description: Nothing queued for this machine.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No heartbeat yet.
   /api/device-logs/:
     post:
       operationId: api_device_logs_create
@@ -9451,6 +9869,535 @@ components:
       - item
       - ticked_at
       - updated_at
+    ClaudeCancelled:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ClaudeTaskStatusEnum'
+        detail:
+          type: string
+      required:
+      - detail
+      - id
+      - status
+    ClaudeClaim:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+      required:
+      - name
+    ClaudeFileRequested:
+      type: object
+      properties:
+        task:
+          type: integer
+        file_id:
+          type: integer
+        path:
+          type: string
+      required:
+      - file_id
+      - path
+      - task
+    ClaudeFileUpload:
+      type: object
+      properties:
+        file_id:
+          type: integer
+        file:
+          type: string
+      required:
+      - file
+      - file_id
+    ClaudeFinish:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeFinishStatusEnum'
+          description: |-
+            cancelled only for a task in cancel_requested.
+
+            * `done` - done
+            * `failed` - failed
+            * `needs_confirmation` - needs_confirmation
+            * `cancelled` - cancelled
+        summary:
+          type: string
+          nullable: true
+        question:
+          type: string
+          nullable: true
+        turns:
+          type: integer
+          minimum: 0
+          nullable: true
+        duration_ms:
+          type: integer
+          minimum: 0
+          nullable: true
+        found:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeFoundFile'
+      required:
+      - status
+    ClaudeFinishResult:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ClaudeTaskStatusEnum'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeTaskFileRow'
+        detail:
+          type: string
+      required:
+      - detail
+      - files
+      - id
+      - status
+    ClaudeFinishStatusEnum:
+      enum:
+      - done
+      - failed
+      - needs_confirmation
+      - cancelled
+      type: string
+      description: |-
+        * `done` - done
+        * `failed` - failed
+        * `needs_confirmation` - needs_confirmation
+        * `cancelled` - cancelled
+    ClaudeFoundFile:
+      type: object
+      properties:
+        path:
+          type: string
+          maxLength: 2000
+        name:
+          type: string
+          maxLength: 500
+        size:
+          type: integer
+          minimum: 0
+          nullable: true
+      required:
+      - name
+      - path
+    ClaudeHeartbeat:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        hostname:
+          type: string
+          default: ''
+          maxLength: 255
+        scope:
+          $ref: '#/components/schemas/ClaudeMachineScopeEnum'
+        state:
+          $ref: '#/components/schemas/ClaudeReportedStateEnum'
+        running:
+          type: array
+          items:
+            type: integer
+          description: Task ids the worker is running. Accepted; the engine's own
+            rows are the truth.
+        claude_version:
+          type: string
+          default: ''
+          maxLength: 64
+        progress:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 120
+          description: Task id to the helper's current step, for tasks running on
+            this machine.
+      required:
+      - name
+      - scope
+      - state
+    ClaudeHeartbeatResult:
+      type: object
+      properties:
+        cancel_requested:
+          type: array
+          items:
+            type: integer
+        files_requested:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeFileRequested'
+      required:
+      - cancel_requested
+      - files_requested
+    ClaudeMachineRef:
+      type: object
+      properties:
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/ClaudeMachineStateEnum'
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - last_seen_at
+      - name
+      - state
+    ClaudeMachineScopeEnum:
+      enum:
+      - full
+      - listed
+      type: string
+      description: |-
+        * `full` - full
+        * `listed` - listed
+    ClaudeMachineStateEnum:
+      enum:
+      - idle
+      - busy
+      - offline
+      type: string
+      description: |-
+        * `idle` - idle
+        * `busy` - busy
+        * `offline` - offline
+    ClaudeReportedStateEnum:
+      enum:
+      - idle
+      - busy
+      type: string
+      description: |-
+        * `idle` - idle
+        * `busy` - busy
+    ClaudeRunningProgress:
+      type: object
+      properties:
+        task:
+          type: integer
+        progress:
+          type: string
+          nullable: true
+        progress_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - progress
+      - progress_at
+      - task
+    ClaudeSendFile:
+      type: object
+      properties:
+        file_id:
+          type: integer
+      required:
+      - file_id
+    ClaudeSendFileResult:
+      type: object
+      properties:
+        file_id:
+          type: integer
+        requested:
+          type: boolean
+        uploaded:
+          type: boolean
+        detail:
+          type: string
+      required:
+      - detail
+      - file_id
+      - requested
+      - uploaded
+    ClaudeSessionReport:
+      type: object
+      properties:
+        machine:
+          type: string
+          maxLength: 100
+        session_id:
+          type: string
+          maxLength: 200
+        project:
+          type: string
+          default: ''
+          maxLength: 500
+        state:
+          type: string
+          maxLength: 32
+        last_prompt_summary:
+          type: string
+          nullable: true
+        at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - machine
+      - session_id
+      - state
+    ClaudeSessionStored:
+      type: object
+      properties:
+        machine:
+          type: string
+        session_id:
+          type: string
+        state:
+          type: string
+        summary_kept:
+          type: boolean
+      required:
+      - machine
+      - session_id
+      - state
+      - summary_kept
+    ClaudeStatus:
+      type: object
+      properties:
+        machines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeStatusMachine'
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeStatusSession'
+      required:
+      - machines
+      - sessions
+    ClaudeStatusMachine:
+      type: object
+      properties:
+        name:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ClaudeMachineScopeEnum'
+        state:
+          $ref: '#/components/schemas/ClaudeMachineStateEnum'
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        running:
+          type: array
+          items:
+            type: integer
+        progress:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeRunningProgress'
+      required:
+      - last_seen_at
+      - name
+      - progress
+      - running
+      - scope
+      - state
+    ClaudeStatusSession:
+      type: object
+      properties:
+        machine:
+          type: string
+        project:
+          type: string
+        state:
+          type: string
+        last_prompt_summary:
+          type: string
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+      required:
+      - last_prompt_summary
+      - last_seen_at
+      - machine
+      - project
+      - state
+    ClaudeTaskCreate:
+      type: object
+      properties:
+        request:
+          type: string
+        machine:
+          type: string
+          nullable: true
+          description: The spoken machine name, or null to let the engine choose.
+          maxLength: 100
+        parent:
+          type: integer
+          nullable: true
+        origin:
+          $ref: '#/components/schemas/ClaudeTaskOriginEnum'
+        deliver:
+          nullable: true
+          description: |-
+            email_self only when Kevin named his own email in the request (ruling 17).
+
+            * `email_self` - email_self
+          oneOf:
+          - $ref: '#/components/schemas/ClaudeTaskDeliverEnum'
+          - $ref: '#/components/schemas/NullEnum'
+      required:
+      - origin
+      - request
+    ClaudeTaskCreated:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ClaudeTaskStatusEnum'
+        machine:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeMachineRef'
+          nullable: true
+      required:
+      - id
+      - machine
+      - status
+    ClaudeTaskDeliverEnum:
+      enum:
+      - email_self
+      type: string
+      description: '* `email_self` - email_self'
+    ClaudeTaskFileRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        size:
+          type: integer
+          nullable: true
+        uploaded:
+          type: boolean
+        requested:
+          type: boolean
+      required:
+      - id
+      - name
+      - requested
+      - size
+      - uploaded
+    ClaudeTaskOriginEnum:
+      enum:
+      - named
+      - offered
+      type: string
+      description: |-
+        * `named` - named
+        * `offered` - offered
+    ClaudeTaskRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        request:
+          type: string
+        machine:
+          type: string
+          nullable: true
+          description: The machine's name, or null.
+        status:
+          $ref: '#/components/schemas/ClaudeTaskStatusEnum'
+        summary:
+          type: string
+          nullable: true
+        question:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeTaskFileRow'
+        parent:
+          type: integer
+          nullable: true
+        origin:
+          $ref: '#/components/schemas/ClaudeTaskOriginEnum'
+        deliver:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ClaudeTaskDeliverEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        progress:
+          type: string
+          nullable: true
+          description: The current step while running.
+        progress_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - deliver
+      - files
+      - finished_at
+      - id
+      - machine
+      - origin
+      - parent
+      - progress
+      - progress_at
+      - question
+      - request
+      - status
+      - summary
+    ClaudeTaskStatusEnum:
+      enum:
+      - queued
+      - needs_machine
+      - running
+      - cancel_requested
+      - done
+      - failed
+      - needs_confirmation
+      - cancelled
+      type: string
+      description: |-
+        * `queued` - queued
+        * `needs_machine` - needs_machine
+        * `running` - running
+        * `cancel_requested` - cancel_requested
+        * `done` - done
+        * `failed` - failed
+        * `needs_confirmation` - needs_confirmation
+        * `cancelled` - cancelled
+    ClaudeUploadResult:
+      type: object
+      properties:
+        file_id:
+          type: integer
+        size:
+          type: integer
+        detail:
+          type: string
+      required:
+      - detail
+      - file_id
+      - size
     CodeClearEvent:
       type: object
       description: |-

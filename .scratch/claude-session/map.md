@@ -143,11 +143,25 @@ States: `queued`, `running`, then `done`, `failed`, `needs_confirmation` or `can
 30 min, or with the machine silent for 10 min, becomes `failed` with the reason in words. Computed
 at read time.
 
+**As built (ticket 03, 2026-11-01), where the table was silent.** Task ids are integers. Task rows
+also carry `parent`, `origin`, `deliver` (null or `email_self`), and each file `requested`; in rows
+`machine` is the name string, on create it is the object. `finish` also accepts `status:
+"cancelled"`, only for a task in `cancel_requested` (the worker's exit after TaskStop). A computed
+failure puts its reason in `summary`; `finish` on it is refused 409. `needs_machine` has no assign
+route: cancel it and re-send named. A follow-up with no machine named goes to its parent's machine.
+Claim needs a prior heartbeat (404 otherwise). `GET status/` shows sessions seen in the last 24 h
+and not `ended`. A `listed` machine: `found` not kept, send-file and upload 403, `deliver` refused
+on create, `last_prompt_summary` dropped. A sessions post for an unknown machine creates it as
+`listed` until a heartbeat says otherwise. Status extras: heartbeat `progress: {"41": "reading
+Downloads"}` (120 chars) lands on that machine's in-flight tasks as `progress`/`progress_at`, shown
+in task rows and as `machines[].progress: [{task, progress, progress_at}]` in `GET status/`,
+cleared on finish; `waiting` sessions sort first.
+
 ## Tickets (all build tickets KIV until Kevin says build)
 
 - 01 decision (resolved 2026-10-29): rulings 1 to 13
 - 02 spike (in progress 2026-11-01): shape confirmed; lock-screen run (Q7) pending
-- 03 build (KIV): engine `claude` app, ADR 0066
+- 03 build (built 2026-11-01, `feat/claude-session-engine`, not deployed): engine `claude_session` app, ADR 0067
 - 04 build (KIV): the worker `tools/claude_session/`
 - 05 build (KIV): phone tools, the offer rule, results, the Claude session screen
 - 06 build (KIV): interactive sessions reporter hooks

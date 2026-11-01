@@ -8,7 +8,7 @@ status-detail: "Kevin 2026-11-01: build. Q1-Q6, Q8 (settings), Q9 answered on th
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: false
+ready: true
 tags: [ticket]
 ---
 

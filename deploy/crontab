@@ -40,3 +40,7 @@
 # morning list, deduped in public.push_sent. Every five minutes. With the
 # VAPID_* keys unset it says push is off and sends nothing.
 */5 * * * * python manage.py push_dispatch
+
+# claude-session ticket 03 (ADR 0067): Claude session tasks, their files and
+# session rows older than 30 days deleted. Daily, 03:30 UTC (after the backup).
+30 3 * * * python manage.py claude_session_prune

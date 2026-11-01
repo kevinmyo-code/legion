@@ -71,6 +71,7 @@ Format and the test for whether something deserves an ADR:
 | 0063 | [[0063-alfred-is-the-only-phone-persona\|The phone has one persona, Alfred]] | accepted | 2026-10-27 | - |
 | 0064 | [[0064-phone-turn-taking-local-end-of-turn-and-barge-in\|The phone ends turns locally, and you can talk over Alfred]] | accepted | 2026-10-27 | - |
 | 0065 | [[0065-read-only-lookups-may-be-non-blocking\|Read-only lookups may run non-blocking; writes stay blocking]] | accepted | 2026-10-28 | - |
+| 0067 | [[0067-claude-session-on-the-laptops\|Claude session: Alfred hands tasks to Claude Code on Kevin's laptops]] | accepted | 2026-10-29 | 2026-11-01 |
 
 ## Superseded
 

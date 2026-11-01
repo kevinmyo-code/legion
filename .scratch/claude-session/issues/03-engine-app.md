@@ -3,8 +3,8 @@ map: claude-session
 ticket: "03"
 title: "Build: engine claude app (tasks, machines, files, sessions, status)"
 type: build
-status: kiv
-status-detail: "Parked with the map (Kevin 2026-10-29: dont build it yet)."
+status: built
+status-detail: "Kevin 2026-11-01: build. Built on feat/claude-session-engine (server/claude_session/, ADR 0067); 38 tests green on a throwaway local Postgres, status extras included. Not deployed (Kevin's call); the prune crontab line owes install_schedule.py on deploy. deliver: email_self carried (rulings 16-17)."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -31,7 +31,7 @@ Server only. Implements the map's API table exactly; the worker and the phone bu
   the work laptop's `scope: listed` refuses `send-file` (ruling 5); session rows without
   `last_prompt_summary` from a `listed` machine; tenancy; files and rows older than 30 days pruned
   by a management command `claude_session_prune` (run from the existing scheduled jobs).
-- ADR 0066 and the `decisions.md` entry (ticket 01).
+- ADR 0067 and the `decisions.md` entry (ticket 01). (0066 went to the feed-block branch.)
 
 ## Rules
 

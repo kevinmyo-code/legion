@@ -69,6 +69,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "62d51cecd0db4977",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/08-whatsapp-delivery.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -112,6 +122,20 @@
       "fromNode": "619e558c5759ad7e",
       "fromSide": "right",
       "toNode": "2e9de5f1214d8c04",
+      "toSide": "left"
+    },
+    {
+      "id": "8bd9a99f607ab59e",
+      "fromNode": "1c27eaf97b90d9ea",
+      "fromSide": "right",
+      "toNode": "62d51cecd0db4977",
+      "toSide": "left"
+    },
+    {
+      "id": "93515e48311e4311",
+      "fromNode": "0fc1be01f882dc59",
+      "fromSide": "right",
+      "toNode": "62d51cecd0db4977",
       "toSide": "left"
     }
   ]
