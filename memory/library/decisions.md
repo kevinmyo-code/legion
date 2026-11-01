@@ -7028,3 +7028,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Built, ticket 03:** engine app `server/claude_session/` at `/api/claude/`, tables
   `claude_tasks`, `claude_task_files`, `claude_machines`, `claude_code_sessions`, born tenanted.
   ADR 0067 (0066 went to the feed-block branch).
+- **2026-11-01, Kevin's answers to ticket 03's open questions:** the work laptop may email Kevin a
+  summary, never a file (ruling 18); a `needs_machine` task is resolved by `POST
+  tasks/{id}/assign/`; any household device token may act as the worker for v1 (later, machine
+  tokens); `install_schedule.py` runs on deploy so the prune is scheduled.

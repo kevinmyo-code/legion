@@ -7,6 +7,7 @@ urlpatterns = [
     path("tasks/claim/", views.ClaimView.as_view(), name="claude-tasks-claim"),
     path("tasks/<int:task_id>/", views.TaskDetailView.as_view(), name="claude-task"),
     path("tasks/<int:task_id>/cancel/", views.TaskCancelView.as_view(), name="claude-task-cancel"),
+    path("tasks/<int:task_id>/assign/", views.TaskAssignView.as_view(), name="claude-task-assign"),
     path(
         "tasks/<int:task_id>/send-file/",
         views.TaskSendFileView.as_view(),

@@ -2768,6 +2768,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/claude/tasks/{task_id}/assign/:
+    post:
+      operationId: api_claude_tasks_assign
+      description: |-
+        `POST tasks/{id}/assign/ {machine}`: Kevin answered "which machine?"
+        for a `needs_machine` task (Kevin 2026-11-01). It becomes `queued` on that
+        machine, exactly as if he had named it.
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeAssign'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeTaskCreated'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such task or machine.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not needs_machine.
   /api/claude/tasks/{task_id}/cancel/:
     post:
       operationId: api_claude_tasks_cancel
@@ -9869,6 +9918,15 @@ components:
       - item
       - ticked_at
       - updated_at
+    ClaudeAssign:
+      type: object
+      properties:
+        machine:
+          type: string
+          description: The spoken machine name.
+          maxLength: 100
+      required:
+      - machine
     ClaudeCancelled:
       type: object
       properties:

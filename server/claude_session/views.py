@@ -7,7 +7,8 @@ defaults) and every read and write goes through the caller's household
 (`household_of` / `scoped`, ADR 0045). The phone, the web, the laptop worker
 and the session hooks all hold ordinary household device tokens; nothing
 here tells them apart, and the "Who" column of the table is the intended
-caller, not an enforced role.
+caller, not an enforced role (Kevin 2026-11-01: accepted for v1; later,
+worker endpoints restricted to machine tokens).
 
 **Nothing here logs.** No logger is imported. A request, a summary, a
 question and a file name are household data; they are stored and returned
@@ -17,9 +18,12 @@ and the limit, never the value.
 Rulings this file enforces, by number in the map:
 - 4: a named machine wins; unnamed goes to the only machine online, or
   comes back `needs_machine` when more than one is online.
-- 5: a `listed` machine (the work laptop) never sends a file back: send-file,
-  upload and a `deliver` task are refused for it, `found` rows are not kept,
-  and its sessions' `last_prompt_summary` is dropped on arrival.
+- 5: a `listed` machine (the work laptop) never sends a file back: send-file
+  and upload are refused for it, `found` rows are not kept, and its sessions'
+  `last_prompt_summary` is dropped on arrival.
+- 18: a `listed` machine MAY take `deliver: email_self`, for the summary text
+  only; the file refusals above still hold, so nothing it found reaches the
+  engine. (The no-attachment half is the worker's, ticket 04.)
 - 9 and the state list: the 30 minute cap and the 10 minute silence are
   computed at read time (`claude_session.state`).
 - 17: `deliver: email_self` is accepted on create and returned on every task
@@ -235,11 +239,6 @@ class TaskListCreateView(APIView):
             elif len(online) > 1:
                 status = NEEDS_MACHINE
 
-        if data["deliver"] and machine is not None and machine.scope == SCOPE_LISTED:
-            return _detail(
-                LISTED_REFUSAL.format(name=machine.name), http.HTTP_400_BAD_REQUEST
-            )
-
         task = ClaudeTask.objects.create(
             household=household,
             user=request.user,
@@ -305,6 +304,53 @@ class TaskCancelView(APIView):
                 detail = "Cancel was already requested."
             task.save(update_fields=["status", "finished_at"])
         return Response({"id": task.id, "status": task.status, "detail": detail})
+
+
+class TaskAssignView(APIView):
+    """`POST tasks/{id}/assign/ {machine}`: Kevin answered "which machine?"
+    for a `needs_machine` task (Kevin 2026-11-01). It becomes `queued` on that
+    machine, exactly as if he had named it."""
+
+    parser_classes = [JSONParser]
+
+    @extend_schema(
+        operation_id="api_claude_tasks_assign",
+        tags=TAGS,
+        request=s.ClaudeAssignSerializer,
+        responses={
+            200: s.ClaudeTaskCreatedSerializer,
+            400: DetailSerializer,
+            404: OpenApiResponse(response=DetailSerializer, description="No such task or machine."),
+            409: OpenApiResponse(response=DetailSerializer, description="Not needs_machine."),
+        },
+    )
+    def post(self, request, task_id: int):
+        serializer = s.ClaudeAssignSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _refused(serializer)
+        now = timezone.now()
+        with transaction.atomic():
+            task = scoped(ClaudeTask, request).select_for_update().filter(pk=task_id).first()
+            if task is None:
+                return _no_task(task_id)
+            if task.status != NEEDS_MACHINE:
+                return _detail(
+                    f"Nothing was changed. Task {task.id} is {effective_status(task, now)}, "
+                    "not waiting for a machine.",
+                    http.HTTP_409_CONFLICT,
+                )
+            machine = _machine_named(request, serializer.validated_data["machine"])
+            if machine is None:
+                return _detail(
+                    "Nothing was changed. No machine has that name here.",
+                    http.HTTP_404_NOT_FOUND,
+                )
+            task.machine = machine
+            task.status = QUEUED
+            task.save(update_fields=["machine", "status"])
+        return Response(
+            {"id": task.id, "status": task.status, "machine": _machine_ref(machine, now)}
+        )
 
 
 class TaskSendFileView(APIView):

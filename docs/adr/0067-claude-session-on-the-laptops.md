@@ -34,13 +34,14 @@ can take several messages, start a background helper per task, stay free, and re
   the yes. A yes covers that one task. ADR 0031's outcome verbs apply: Alfred says "sent" only
   after `POST /api/claude/tasks/` succeeded, and "done" only for a task the engine says is done.
 - **Machines by spoken name.** "Alienware" and "work laptop". A named machine wins. Unnamed goes to
-  the only machine online; with more than one online the task comes back `needs_machine` and
-  Alfred asks which.
+  the only machine online; with more than one online the task comes back `needs_machine`, Alfred
+  asks which, and the answer assigns it (`POST tasks/{id}/assign/`).
 - **Scope per machine.** The Alienware is `full`: every fixed drive, read and write, as Kevin's
   Windows user, not elevated. The work laptop is `listed`: its repos folder only, summaries only.
   The engine enforces the second half: for a `listed` machine it keeps no found-file rows,
-  refuses send-file and upload, refuses a `deliver` task, and drops `last_prompt_summary` from its
-  interactive session rows.
+  refuses send-file and upload, and drops `last_prompt_summary` from its interactive session rows.
+  **The work laptop may email Kevin a summary, never a file** (ruling 18, Kevin 2026-11-01): it
+  takes `deliver: "email_self"`, and the mail carries summary text only.
 - **The ask list.** Deleting or overwriting Kevin's files, sending, booking or paying, installing
   software and changing system settings stop and come back as one question
   (`needs_confirmation`). Everything else runs. On the Alienware (Kevin, 2026-11-01) this is
@@ -59,7 +60,8 @@ can take several messages, start a background helper per task, stay free, and re
 - **Files.** A helper lists what it found; nothing uploads until Kevin says yes to "want it on your
   phone?". Files up to 25 MB, stored in Postgres beside the task because Cloud Run's filesystem
   does not persist. Results and files are deleted after 30 days (`manage.py
-  claude_session_prune`, daily).
+  claude_session_prune`, daily, from `deploy/crontab`). **On deploy,
+  `deploy/cloudrun/install_schedule.py` must be run** or Cloud Scheduler never runs the prune.
 - **Interactive sessions are readable** (machine, project, state, a one-line summary of the last
   prompt, except from a `listed` machine). A session waiting on Kevin is listed first, and a
   running task shows its helper's current step (120 characters, cleared when it finishes).
@@ -70,7 +72,8 @@ can take several messages, start a background helper per task, stay free, and re
 
 - Every laptop worker and hook holds an ordinary household device token. The engine cannot tell a
   worker from the phone; the API's "who" is convention, and a household member's token could
-  finish a task. Acceptable inside a household (ADR 0045: membership is the only authorization).
+  finish a task. Accepted for v1 (Kevin 2026-11-01; ADR 0045: membership is the only
+  authorization). **Later: worker endpoints restricted to machine tokens.**
 - 25 MB rows in Postgres cost database storage for 30 days; a storage backend would replace them
   when the engine gets one.
 - Subscription use is not metered or warned about (*"just run it"*).

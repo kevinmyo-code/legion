@@ -89,6 +89,10 @@ machine. The same is reachable by hand on the Claude session screen.
     me"). Only Kevin's own address; mail to anyone else stays on the ask list (ruling 6). The phone
     sets `deliver: "email_self"` on the task when Kevin names it. The worker's `send_mail.py`
     sends it to Kevin (no cc needed), file attached.
+18. **The work laptop may email Kevin a summary, never a file** (Kevin 2026-11-01). A `listed`
+    machine takes `deliver: "email_self"`; the mail carries the summary text only, no attachment.
+    The engine still refuses every file path for it (send-file, upload, found rows); the worker
+    sends no attachment from it (ticket 04).
 
 ## Shape on each laptop
 
@@ -132,6 +136,7 @@ with `household.tenancy.scoped`. Tables `claude_tasks`, `claude_task_files`, `cl
 | `GET tasks/?limit=&status=&machine=` | phone, web | newest first: `{id, request, machine, status, summary, question, created_at, finished_at, files: [{id, name, size, uploaded}]}` |
 | `GET tasks/{id}/` | all | same shape |
 | `POST tasks/{id}/cancel/` | phone, web | queued becomes `cancelled`; running becomes `cancel_requested` |
+| `POST tasks/{id}/assign/` | phone, web | `{machine}`: Kevin answered "which machine?" for a `needs_machine` task; it becomes `queued` on that machine and returns the create shape; 409 if the task is not `needs_machine`, 404 for an unknown task or machine (Kevin 2026-11-01) |
 | `POST tasks/{id}/send-file/` | phone, web | `{file_id}`: Kevin said yes to "want it on your phone?"; marks the file requested; the worker uploads it on its next heartbeat |
 | `GET status/` | phone | `{machines: [{name, scope, state: "idle", "busy" or "offline", last_seen_at, running: [task ids]}], sessions: [{machine, project, state, last_prompt_summary, last_seen_at}]}`; offline is no heartbeat for 90 s |
 | `POST machines/heartbeat/` | worker | `{name, hostname, scope, state, running, claude_version}` every 20 s; returns `{cancel_requested: [ids], files_requested: [{task, file_id, path}]}` |
@@ -149,15 +154,16 @@ at read time.
 also carry `parent`, `origin`, `deliver` (null or `email_self`), and each file `requested`; in rows
 `machine` is the name string, on create it is the object. `finish` also accepts `status:
 "cancelled"`, only for a task in `cancel_requested` (the worker's exit after TaskStop). A computed
-failure puts its reason in `summary`; `finish` on it is refused 409. `needs_machine` has no assign
-route: cancel it and re-send named. A follow-up with no machine named goes to its parent's machine.
+failure puts its reason in `summary`; `finish` on it is refused 409. `needs_machine` is resolved by
+`assign/`. A follow-up with no machine named goes to its parent's machine.
 Claim needs a prior heartbeat (404 otherwise). `GET status/` shows sessions seen in the last 24 h
-and not `ended`. A `listed` machine: `found` not kept, send-file and upload 403, `deliver` refused
-on create, `last_prompt_summary` dropped. A sessions post for an unknown machine creates it as
+and not `ended`. A `listed` machine: `found` not kept, send-file and upload 403, `deliver:
+email_self` allowed for the summary only (ruling 18), `last_prompt_summary` dropped. A sessions post for an unknown machine creates it as
 `listed` until a heartbeat says otherwise. Status extras: heartbeat `progress: {"41": "reading
 Downloads"}` (120 chars) lands on that machine's in-flight tasks as `progress`/`progress_at`, shown
 in task rows and as `machines[].progress: [{task, progress, progress_at}]` in `GET status/`,
-cleared on finish; `waiting` sessions sort first.
+cleared on finish; `waiting` sessions sort first. Every caller is an ordinary household device
+token in v1 (Kevin 2026-11-01); later, worker endpoints restricted to machine tokens.
 
 ## Tickets (all build tickets KIV until Kevin says build)
 

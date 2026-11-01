@@ -60,6 +60,10 @@ class ClaudeTaskCreateSerializer(serializers.Serializer):
     )
 
 
+class ClaudeAssignSerializer(serializers.Serializer):
+    machine = serializers.CharField(max_length=_NAME_MAX, help_text="The spoken machine name.")
+
+
 class ClaudeSendFileSerializer(serializers.Serializer):
     file_id = serializers.IntegerField()
 

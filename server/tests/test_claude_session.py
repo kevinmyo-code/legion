@@ -157,16 +157,90 @@ def test_a_request_over_4kb_is_refused_without_echoing_it(token_a):
     assert ClaudeTask.objects.count() == 0
 
 
-def test_deliver_email_self_round_trips_and_is_refused_for_a_listed_machine(token_a):
+def test_deliver_email_self_round_trips(token_a):
     _beat(token_a, "Alienware")
-    _beat(token_a, "work laptop", scope="listed")
     ok = _create(token_a, machine="Alienware", deliver="email_self")
     assert ok.status_code == 201
     assert token_a.get(f"{API}tasks/{ok.data['id']}/").data["deliver"] == "email_self"
     assert _claim(token_a).data[0]["deliver"] == "email_self"
-    refused = _create(token_a, machine="work laptop", deliver="email_self")
-    assert refused.status_code == 400
     assert _create(token_a, machine="Alienware", deliver="whatsapp_self").status_code == 400
+
+
+def test_a_listed_machine_may_email_a_summary_but_never_a_file(token_a):
+    """Ruling 18 (Kevin 2026-11-01): the work laptop may email Kevin a summary,
+    never a file. The task is accepted; every file path is still refused."""
+    _beat(token_a, "work laptop", scope="listed")
+    created = _create(token_a, machine="work laptop", deliver="email_self")
+    assert created.status_code == 201, created.data
+    task_id = created.data["id"]
+    assert _claim(token_a, "work laptop").data[0]["deliver"] == "email_self"
+    finished = _finish(token_a, task_id, summary="emailed the summary",
+                       found=[{"path": "C:/repos/x.py", "name": "x.py", "size": 3}])
+    assert finished.status_code == 200
+    assert finished.data["files"] == []
+    assert ClaudeTaskFile.objects.count() == 0
+    row = ClaudeTaskFile.objects.create(
+        household=ClaudeTask.objects.get(pk=task_id).household,
+        task_id=task_id, path="C:/repos/x.py", name="x.py",
+    )
+    assert token_a.post(
+        f"{API}tasks/{task_id}/send-file/", {"file_id": row.id}, format="json"
+    ).status_code == 403
+    assert token_a.post(
+        f"{API}tasks/{task_id}/files/",
+        {"file_id": row.id, "file": SimpleUploadedFile("x.py", b"print()")},
+        format="multipart",
+    ).status_code == 403
+    assert _beat(token_a, "work laptop", scope="listed")["files_requested"] == []
+
+
+# --- assign (Kevin 2026-11-01) -------------------------------------------------------
+
+
+def test_assign_a_needs_machine_task_queues_it_on_that_machine(token_a):
+    _beat(token_a)
+    _beat(token_a, "work laptop", scope="listed")
+    task_id = _create(token_a).data["id"]
+    assigned = token_a.post(f"{API}tasks/{task_id}/assign/", {"machine": "alienware"},
+                            format="json")
+    assert assigned.status_code == 200, assigned.data
+    assert assigned.data["status"] == "queued"
+    assert assigned.data["machine"]["name"] == "Alienware"
+    assert _claim(token_a, "work laptop").status_code == 204
+    assert [t["id"] for t in _claim(token_a).data] == [task_id]
+
+
+def test_assign_refuses_a_task_not_waiting_for_a_machine_and_an_unknown_machine(token_a):
+    _beat(token_a)
+    _beat(token_a, "work laptop", scope="listed")
+    named = _create(token_a, machine="Alienware").data["id"]
+    response = token_a.post(f"{API}tasks/{named}/assign/", {"machine": "work laptop"},
+                            format="json")
+    assert response.status_code == 409
+    assert ClaudeTask.objects.get(pk=named).machine.name == "Alienware"
+
+    waiting = _create(token_a).data["id"]
+    unknown = token_a.post(f"{API}tasks/{waiting}/assign/", {"machine": "toaster"},
+                           format="json")
+    assert unknown.status_code == 404
+    assert ClaudeTask.objects.get(pk=waiting).status == "needs_machine"
+    assert token_a.post(f"{API}tasks/999999/assign/", {"machine": "Alienware"},
+                        format="json").status_code == 404
+
+    token_a.post(f"{API}tasks/{waiting}/cancel/")
+    assert token_a.post(f"{API}tasks/{waiting}/assign/", {"machine": "Alienware"},
+                        format="json").status_code == 409
+
+
+def test_assign_is_scoped_by_household(token_a, token_b):
+    _beat(token_a)
+    _beat(token_a, "work laptop", scope="listed")
+    task_id = _create(token_a).data["id"]
+    _beat(token_b, "Alienware")
+    response = token_b.post(f"{API}tasks/{task_id}/assign/", {"machine": "Alienware"},
+                            format="json")
+    assert response.status_code == 404
+    assert ClaudeTask.objects.get(pk=task_id).status == "needs_machine"
 
 
 # --- finish and the state machine -----------------------------------------------
