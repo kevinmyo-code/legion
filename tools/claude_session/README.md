@@ -52,8 +52,9 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
    stored server-side). The token goes into `%APPDATA%\legion-claude\config.json`, readable by
    Kevin's account only. Revoke it from LEGION's devices list (`/api/auth/devices`) when a laptop
    is retired.
-4. Alienware, optional: Alfred's Gmail address, a Google app password for it, and Kevin's own
-   address. Without them `send_mail.py` refuses and says so.
+4. Optional: Alfred's Gmail address, a Google app password for it, and Kevin's own address.
+   Without them `send_mail.py` refuses and says so. The work laptop only mails Kevin himself,
+   summary text only, no attachments (ruling 18).
 5. **Lid:** Control Panel > Power Options > Choose what closing the lid does > Plugged in:
    **Do nothing.** The worker holds `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)`
    while on mains, which stops idle sleep but not lid-close sleep.
@@ -69,7 +70,7 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `scope` | `full` (every fixed drive, read and write) or `listed` (repos root only, summaries only) |
 | `engine_url`, `token` | Engine base URL and device token |
 | `repos_root` | `listed` only |
-| `mail` | `{address, app_password, kevin, smtp_host, smtp_port}`; `full` only |
+| `mail` | `{address, app_password, kevin, smtp_host, smtp_port}`; on `listed` only text to `kevin` |
 | optional | `claude_cmd`, `heartbeat_s`, `task_cap_s`, `hang_s`, `add_dirs`, `keep_awake` |
 
 ## Rules it enforces
@@ -77,14 +78,14 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 - **report.py is the truth**, not the main session's chat. A helper that ends without reporting
   becomes `failed` "The helper stopped without reporting a result."
 - **Cancel and the 30 minute cap** send `[cancel N]` / `[stop N]` asking the main session to
-  `TaskStop` that one helper, and finish the task `failed` in words. Kill and `--resume` only when
+  `TaskStop` that one helper, and finish the task in words (`cancelled` or `failed`). Kill and `--resume` only when
   the main session does not answer for 10 minutes.
 - **Restart:** the worker resumes the same session id the same day; tasks running at the restart
   are finished `failed` (helpers die with the process). Not re-sent: a re-run could repeat a send.
 - **Rotation:** a new session id each day, at the first idle moment. Follow-ups carry the parent
   task's request, result or question in the message, so continuity does not need the old session.
-- **Confirmations:** a follow-up (`parent`) to a task that stopped at `needs_confirmation` gets a
-  `kind: yes` token for that task: the hook lets that task's helper through the ask list and
+- **Confirmations:** a follow-up with `parent` and `confirms: true` (the phone sets it when Kevin
+  answered a `needs_confirmation` task) gets a `kind: yes` token for that task: the hook lets that task's helper through the ask list and
   `send_mail.py` may send once, Kevin cc'd. A task with `deliver: "email_self"` (ruling 17) gets a
   `kind: email_self` token: one mail to Kevin's own address, nothing else.
 - **Uploads:** only files the engine marks requested **and** the task listed with `--found`, at

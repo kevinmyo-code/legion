@@ -282,7 +282,8 @@ class Worker:
         else:
             scope = (f"Work laptop. Only the repos folder {self.cfg.get('repos_root', '(not set)')}, "
                      "read only, plus the task's work folder for scratch files. Return summaries "
-                     "only: never --found, never upload, never send mail, no web.")
+                     "only: never --found, never upload, no web. Mail only as text to Kevin himself, and only "
+                     "when the task message gives a token.")
         for k, v in {"<<MACHINE>>": self.name, "<<PYTHON>>": cmd_path(helper_python()),
                      "<<REPORT>>": cmd_path(HERE / "report.py"),
                      "<<SEND_MAIL>>": cmd_path(HERE / "send_mail.py"), "<<SCOPE>>": scope}.items():
@@ -520,7 +521,7 @@ class Worker:
                     self._stop_helper(t, "cancel", f"[cancel {t['id']}] Kevin cancelled task "
                                       f"{t['id']}. Stop task {t['id']}'s helper now with TaskStop. "
                                       "Do not report it. One line.")
-                    self.finish(t, "failed", SAY_CANCELLED)
+                    self.finish(t, "cancelled", SAY_CANCELLED)
             for req in reply.get("files_requested") or []:
                 self.upload_requested(req)
             if self.session and self.session.alive():
@@ -584,7 +585,8 @@ class Worker:
         work.mkdir(parents=True, exist_ok=True)
         parent = task.get("parent")
         t = {"id": tid, "parent": parent, "request": task.get("request", ""), "status": "running",
-             "started_at": now, "turns": 0, "deliver": task.get("deliver")}
+             "started_at": now, "turns": 0, "deliver": task.get("deliver"),
+             "confirms": bool(parent) and task.get("confirms") is True}
         self.state["tasks"][str(tid)] = t
         self.dirty = True
         self.pending.append((tid, self.task_message(t, work)))
@@ -606,9 +608,10 @@ class Worker:
                     head += " Files it listed: " + "; ".join(f["path"] for f in p["found"]) + "."
             lines.append(head)
             lines.append(f"Kevin now says: {t['request']}")
-            if p and p["status"] == "needs_confirmation":
+            if t.get("confirms"):  # the phone marked this as Kevin's answer to task P's question
                 tok = self.issue_token(tid, parent, "yes")
-                lines.append(f"If that is a clear yes to task {parent}'s question, the step it asked "
+                lines.append(f"This is Kevin's answer to task {parent}'s question. If it is a clear "
+                             f"yes, the step it asked "
                              f"about may now run, for task {tid} only. Confirmation token: {tok} "
                              f"(send_mail.py takes it as --task {tid} --token {tok}). Not a clear "
                              "yes: do not run it, report what Kevin said.")
@@ -616,12 +619,18 @@ class Worker:
             lines.append(f"[task {tid}] {t['request']}")
         if t.get("deliver") == DELIVER_EMAIL_SELF:
             mail = self.cfg.get("mail") or {}
-            if self.scope == "full" and mail.get("address") and mail.get("kevin"):
+            if mail.get("address") and mail.get("kevin") and self.scope == "full":
                 tok = self.issue_token(tid, parent, "email_self")
                 lines.append("Kevin asked for the result by email; send it to him with send_mail.py "
                              f"--task {tid} --token {tok} --to kevin --attach FILE; that is the yes "
                              "for this one send to Kevin only. Anyone else still needs "
                              "needs_confirmation.")
+            elif mail.get("address") and mail.get("kevin"):  # work laptop, ruling 18
+                tok = self.issue_token(tid, parent, "email_self")
+                lines.append("Kevin asked for the result by email; send him the summary as text "
+                             f"with send_mail.py --task {tid} --token {tok} --to kevin (no "
+                             "attachments from this laptop); that is the yes for this one send "
+                             "to Kevin only.")
             else:
                 lines.append("Kevin asked for the result by email, but this laptop does not send "
                              "mail. Say so in the summary.")

@@ -58,21 +58,21 @@ tags: [ticket]
 
 ## Built (2026-11-01)
 
-`tools/claude_session/`, see its README. Contract choices ticket 03 must match or overrule:
+`tools/claude_session/`, see its README. Contract, reconciled with ticket 03 (2026-11-01):
 
-- **Cancel:** the worker posts `finish` with `status: failed`, summary "Cancelled before it
-  finished, as asked." (the API has no `cancelled` finish status). Engine may map
-  `cancel_requested` + `failed` to `cancelled`.
-- **Confirmation yes:** arrives as a new task with `parent` set to the `needs_confirmation` task
-  (no confirm endpoint). The worker issues a one-task token on any such follow-up; the main
-  session judges whether Kevin's words are a yes. An explicit `confirmed: true` on the claimed
-  task would be stronger.
-- **Claim payload read:** `id`, `request`, `parent`, `deliver`. A dict `{tasks: [...]}` is also
-  accepted.
+- **Cancel:** the worker posts `finish` with `status: cancelled`, summary "Cancelled before it
+  finished, as asked."
+- **Confirmation yes:** a claimed follow-up with `parent` and `confirms: true` gets a one-task
+  token (ask list and one send). Without `confirms` it is a plain follow-up, no token.
+- **Ruling 18:** the work laptop may take `deliver: email_self`; `send_mail.py` there sends only
+  text to Kevin's own address, no attachments.
+- **Claim payload read:** `id`, `request`, `parent`, `confirms`, `deliver`. A dict
+  `{tasks: [...]}` is also accepted. Tasks assigned via `POST tasks/{id}/assign/` arrive the same
+  way.
 - **Heartbeat body adds** `progress: {"<task id>": "<step>"}`.
 - **Upload:** multipart fields `file_id` and `file`. Refused (logged only, nothing told to the
   engine) when the path is not one that task listed, the file is gone, over 25 MB, or the machine
-  is `listed`.
+  is `listed`. Accepted as logged-only for now.
 - **Work laptop:** `found` always sent empty; no WebFetch/WebSearch; shell limited to read-only
-  git, listing/reading commands and report.py by the hook.
+  git, listing/reading commands, report.py and send_mail.py by the hook.
 - Tasks running when the worker restarts finish `failed` ("restarted"); not re-sent.

@@ -9,7 +9,8 @@ Refuses unless the worker issued a confirmation token for that task (`tokens/<ta
   Kevin is always cc'd.
 - `kind: email_self`: Kevin asked for the result by email in the request itself (ruling 17).
   Only to Kevin's own address (`--to kevin`); anything else needs a question first.
-One token, one send. The work laptop (scope `listed`) never sends.
+One token, one send. The work laptop (scope `listed`, ruling 18) sends only text to Kevin's own
+address: no other recipient, no attachments, whatever the token.
 
 Prints one line saying, in words, whether the mail went; the helper puts it in its summary.
 Never prints or logs the app password, the body, or attachment paths.
@@ -68,8 +69,7 @@ def prepare(argv: list[str], paths: Paths, cfg: dict, now: float | None = None):
     ap.add_argument("--attach", action="append", default=[])
     a = ap.parse_args(argv)
 
-    if cfg.get("scope") != "full":
-        raise Refused("this laptop does not send mail")
+    listed = cfg.get("scope") != "full"
     mail = cfg.get("mail") or {}
     kevin = (mail.get("kevin") or "").strip()
     if not (mail.get("address") and mail.get("app_password") and kevin):
@@ -82,6 +82,11 @@ def prepare(argv: list[str], paths: Paths, cfg: dict, now: float | None = None):
             raise Refused("Kevin only asked for it to be sent to himself; anyone else needs his yes")
     elif tok.get("kind") != "yes":
         raise Refused("there is no confirmation from Kevin for this send")
+    if listed:
+        if any(t.lower() != kevin.lower() for t in to):
+            raise Refused("the work laptop only mails Kevin himself")
+        if a.attach:
+            raise Refused("the work laptop sends the summary as text only, no attachments")
 
     msg = EmailMessage()
     msg["From"] = mail["address"]

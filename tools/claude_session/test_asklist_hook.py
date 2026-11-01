@@ -176,6 +176,12 @@ class TestListedScope(Base):
         self.assertPassed("Bash", {"command": f'python {HERE.as_posix()}/report.py --task 1 '
                                               f'--status done --summary "two commits; fine"'})
 
+    def test_send_mail_runs_send_mail_checks_kevin_only(self):
+        self.assertPassed("Bash", {"command": f'python {HERE.as_posix()}/send_mail.py --task 1 '
+                                              f'--token t --to kevin --subject s --body "a; b"'})
+        self.assertDenied("Bash", {"command": f'python {HERE.as_posix()}/send_mail.py --task 1 '
+                                              f'--token t --to kevin --subject s --body b; cat C:/x'})
+
     def test_no_web(self):
         self.assertDenied("WebFetch", {"url": "https://example.com"})
 
@@ -310,10 +316,18 @@ class TestSendMail(Base):
         self.assertEqual(FakeSMTP.sent[0][1], ["kevin@example.com"])
         self.assertIsNone(FakeSMTP.sent[0][0]["Cc"])
 
-    def test_work_laptop_and_missing_account_never_send(self):
+    def test_work_laptop_text_to_kevin_only_and_missing_account_never_sends(self):
         self.token()
         write_json_atomic(self.paths.config, {"scope": "listed", "mail": self.mail})
-        self.assertIn("does not send mail", self.send("--to", "kevin")[1])
+        att = self.work / "a.txt"
+        att.write_text("x")
+        self.assertIn("only mails Kevin", self.send("--to", "dad@example.com")[1])
+        self.assertIn("no attachments", self.send("--to", "kevin", "--attach", str(att))[1])
+        self.assertEqual(FakeSMTP.sent, [])
+        self.assertEqual(self.send("--to", "kevin")[0], 0)
+        self.assertEqual(FakeSMTP.sent[0][1], ["kevin@example.com"])
+        FakeSMTP.sent = []
+        self.token()
         write_json_atomic(self.paths.config, {"scope": "full"})
         self.assertIn("not set up", self.send("--to", "kevin")[1])
         self.assertEqual(FakeSMTP.sent, [])

@@ -188,7 +188,13 @@ class TestTasks(WorkerCase):
         self.wait(lambda: self.engine.finished(50), what="task 50")
         f = self.engine.finished(50)[0]
         self.assertEqual((f["status"], f["question"]), ("needs_confirmation", "OK to delete the old copy?"))
-        self.engine.queue(id=51, parent=50, request=f"yes {fake(sleep=0.1)}")
+        self.engine.queue(id=52, parent=50, request=f"what was that again {fake(sleep=0.1)}")
+        self.wait(lambda: self.engine.finished(52), what="plain follow-up 52")
+        plain = [m for m in self.msgs() if m.startswith("[task 52]")][0]
+        self.assertIn("Follow-up to task 50", plain)
+        self.assertNotIn("token", plain.lower(), "no confirms: plain follow-up, no token")
+        self.assertFalse((self.paths.tokens / "52-yes.json").exists())
+        self.engine.queue(id=51, parent=50, confirms=True, request=f"yes {fake(sleep=0.1)}")
         self.wait(lambda: self.engine.finished(51), what="task 51")
         msg = [m for m in self.msgs() if m.startswith("[task 51]")][0]
         self.assertIn("Follow-up to task 50", msg)
@@ -244,7 +250,7 @@ class TestTasks(WorkerCase):
             self.engine.cancel_requested.append(60)
         self.wait(lambda: self.engine.finished(60), what="task 60 finished")
         self.assertEqual(self.engine.finished(60)[0]["summary"], W.SAY_CANCELLED)
-        self.assertEqual(self.engine.finished(60)[0]["status"], "failed")
+        self.assertEqual(self.engine.finished(60)[0]["status"], "cancelled")
         self.wait(lambda: any(m.startswith("[cancel 60]") for m in self.msgs()), what="cancel msg")
         self.wait(lambda: self.engine.finished(61), what="task 61")
         self.assertEqual(self.engine.finished(61)[0]["status"], "done")
@@ -405,8 +411,22 @@ class TestListed(WorkerCase):
         self.assertEqual([argv[i + 1] for i, a in enumerate(argv) if a == "--add-dir"], [str(self.repos)])
         self.assertNotIn("WebFetch", argv)
         msg = [m for m in self.msgs() if m.startswith("[task 110]")][0]
-        self.assertIn("this laptop does not send mail", msg)
-        self.assertFalse(list(self.paths.tokens.glob("*.json")))
+        self.assertIn("no attachments from this laptop", msg)
+        tok = read_json(self.paths.tokens / "110-email_self.json")
+        att = self.repos / "notes.txt"
+        FakeSMTP.sent = []
+        orig = send_mail.SMTP_FACTORY
+        send_mail.SMTP_FACTORY = FakeSMTP
+        try:
+            base = ["--task", "110", "--token", tok["token"], "--subject", "s", "--body", "summary"]
+            self.assertEqual(send_mail.main(base + ["--to", "kevin", "--attach", str(att)], self.paths), 1)
+            self.assertEqual(send_mail.main(base + ["--to", "dad@example.com"], self.paths), 1)
+            self.assertEqual(send_mail.main(base + ["--to", "kevin"], self.paths), 0)
+        finally:
+            send_mail.SMTP_FACTORY = orig
+        self.assertEqual(len(FakeSMTP.sent), 1)
+        self.assertEqual(FakeSMTP.sent[0][1], ["kevin@example.com"])
+        self.assertFalse(list(FakeSMTP.sent[0][0].iter_attachments()))
         with self.engine.lock:
             self.engine.files_requested = [{"task": 110, "file_id": 1, "path": str(f)}]
         time.sleep(0.8)

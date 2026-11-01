@@ -90,13 +90,18 @@ LISTED_SHELL_OK = re.compile(
 )
 
 
-def _is_lone_report(command: str) -> bool:
-    """`python .../report.py --task N ...` and nothing chained to it. Its free text (the summary)
+def _is_lone_script(command: str, script: str) -> bool:
+    """`python .../<script> ...` and nothing chained to it. Its free text (a summary, a mail body)
     must not trip the ask list, so it is judged with quoted strings removed."""
     bare = re.sub(r'"(?:\\.|[^"\\])*"' + r"|'[^']*'", '""', command)
-    if not re.match(r"^\s*&?\s*\S*python(?:\.exe)?\S*\s+\S*report\.py\b", bare, re.I):
+    pat = r"^\s*&?\s*\S*python(?:\.exe)?\S*\s+\S*" + re.escape(script) + r"\b"
+    if not re.match(pat, bare, re.I):
         return False
-    return not re.search(r"[;&|`<>]|\$\(", bare.split("report.py", 1)[1])
+    return not re.search(r"[;&|`<>]|\$\(", bare.split(script, 1)[1])
+
+
+def _is_lone_report(command: str) -> bool:
+    return _is_lone_script(command, "report.py")
 
 
 def _deny(reason: str) -> dict:
@@ -191,6 +196,8 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
         command = inp.get("command", "") or ""
         if _is_lone_report(command):
             return None
+        if _is_lone_script(command, "send_mail.py"):
+            return None  # ruling 18: send_mail.py itself allows only text to Kevin from here
         for seg in re.split(r"&&|\|\||;|\|", command):
             if not seg.strip():
                 continue

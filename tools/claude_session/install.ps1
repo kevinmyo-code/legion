@@ -9,8 +9,9 @@
   1. Asks the laptop's spoken name ("Alienware" or "work laptop") and scope (full or listed).
   2. Signs in to LEGION once (POST <engine>/api/auth/login) and keeps the device token it returns
      in %APPDATA%\legion-claude\config.json. The password is never written anywhere.
-  3. Alienware only, optional: Alfred's Gmail address, its app password and Kevin's own address,
-     for send_mail.py (ruling 14). Press Enter to skip; mail then stays off.
+  3. Optional: Alfred's Gmail address, its app password and Kevin's own address, for
+     send_mail.py (ruling 14). Press Enter to skip; mail then stays off. On the work laptop
+     (ruling 18) send_mail.py only sends text to Kevin's own address, no attachments.
   4. Checks the config with `worker.py --check` (no Claude call).
   5. Registers the Scheduled Task "LEGION Claude session": at logon, only while Kevin is logged on
      (so it keeps running through Win+L), not elevated, no time limit, restarts on failure,
@@ -114,7 +115,7 @@ if ($NewToken -or -not $cfg.token) {
     Write-Host "Device token issued as 'claude-session-$Name'. Revoke it from LEGION's devices list if this laptop is retired."
 }
 
-if ($Scope -eq 'full' -and ($NewMail -or -not $cfg.mail)) {
+if ($NewMail -or -not $cfg.mail) {
     $addr = Read-Host "Alfred's Gmail address for sending task mail (Enter to skip; mail stays off)"
     if ($addr) {
         $appPw = Read-Plain "App password for $addr (Google account > Security > App passwords)"
@@ -123,7 +124,6 @@ if ($Scope -eq 'full' -and ($NewMail -or -not $cfg.mail)) {
         $appPw = $null
     }
 }
-if ($Scope -ne 'full' -and $cfg.mail) { $cfg.Remove('mail') }  # the work laptop never sends
 
 $json = $cfg | ConvertTo-Json -Depth 5
 [IO.File]::WriteAllText($ConfigPath, $json, (New-Object Text.UTF8Encoding $false))
