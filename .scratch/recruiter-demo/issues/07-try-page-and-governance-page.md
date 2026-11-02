@@ -45,6 +45,7 @@ same day. The canned `demo.js` in the HTML prototypes is a mock for layout only.
   my page"*. `/login` stays the front door and gains an "Have an access code?" field beside sign-in.
   A valid code calls `/api/demo/enter` and lands on the recruiter section (`/try`: about Kevin,
   Quanex case study and report mocks, Alfred). A member's sign-in goes to their app as now. The
-  resume may also carry a direct link `/try?code=...&ref=...` that skips typing. `/try` without a
+  resume carries a direct link `/try?code=...&ref=...` that skips typing (allowed, Kevin
+  2026-11-02). Strip `code` from the address bar after entry (history.replaceState). `/try` without a
   valid recruiter session shows the code box, nothing else.
 - Cold start (~5.4 s at min-instances 0) stays as is while building; always-on is a later call.
