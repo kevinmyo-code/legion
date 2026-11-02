@@ -151,7 +151,15 @@ INSTALLED_APPS = [
     # books ticket 04: `POST /api/books/convert`, PDF in, EPUB out, nothing
     # kept (ticket 03 ruling 1). No models, so no migrations and no tenancy.
     "books",
+    # recruiter-demo ticket 02 (ADR 0068): the shared invite code, hashed, and
+    # one `DemoVisit` per recruiter who enters it (`/api/demo/enter`).
+    "demo",
 ]
+
+# recruiter-demo ticket 02: the household recruiter visitors join, found by
+# name (ticket 03's seed makes it). Optional on purpose: an engine with no demo
+# must still boot, and `/api/demo/enter` refuses in words until it exists.
+LEGION_DEMO_HOUSEHOLD_NAME = os.environ.get("LEGION_DEMO_HOUSEHOLD_NAME", "").strip() or "Demo"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -413,6 +421,10 @@ REST_FRAMEWORK = {
         # refresh is one grounded Gemini call on the household's key. Same
         # per-process LocMemCache caveat as `mcp` above.
         "brief_refresh": os.environ.get("LEGION_BRIEF_REFRESH_RATE", "").strip() or "10/hour",
+        # recruiter-demo ticket 02: `/api/demo/enter`, per IP (the caller has no
+        # identity yet). Every recruiter shares one code, so this is what stops
+        # one address guessing at it. Same per-process LocMemCache caveat.
+        "demo_enter": os.environ.get("LEGION_DEMO_ENTER_RATE", "").strip() or "10/hour",
     },
 }
 

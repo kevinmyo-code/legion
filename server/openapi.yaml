@@ -2612,6 +2612,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/demo/enter:
+    post:
+      operationId: api_demo_enter_create
+      summary: Enter the recruiter demo with the shared invite code
+      tags:
+      - demo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoEnterRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DemoEnterRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DemoEnterRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoVisitIssued'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Wrong code, a retired code, or the demo is closed. Nothing
+            created.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many tries from this IP. Nothing created.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No demo household on this engine. Nothing created.
   /api/device-logs/:
     post:
       operationId: api_device_logs_create
@@ -9672,6 +9724,38 @@ components:
       description: |-
         * `cookie_jar` - Cookie jar
         * `oauth_refresh` - OAuth refresh token
+    DemoEnterRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 64
+        ref:
+          type: string
+          description: Where the visitor came from, as the resume link said (`/try?ref=acme`).
+            Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never
+            shown to the model.
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+      required:
+      - code
+    DemoVisitIssued:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The visitor's read-only device token, shown once. The browser
+            also holds a session for the same visitor, which is what the assistant
+            accepts.
+        expires_at:
+          type: string
+          format: date-time
+          description: The token and the session both stop working at this time.
+        ref:
+          type: string
+      required:
+      - expires_at
+      - ref
+      - token
     Detail:
       type: object
       description: |-

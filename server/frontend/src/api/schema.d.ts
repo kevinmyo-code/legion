@@ -1058,6 +1058,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/enter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enter the recruiter demo with the shared invite code */
+        post: operations["api_demo_enter_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device-logs/": {
         parameters: {
             query?: never;
@@ -4173,6 +4190,21 @@ export interface components {
          * @enum {string}
          */
         CredentialKindEnum: "cookie_jar" | "oauth_refresh";
+        DemoEnterRequest: {
+            code: string;
+            /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
+            ref?: string;
+        };
+        DemoVisitIssued: {
+            /** @description The visitor's read-only device token, shown once. The browser also holds a session for the same visitor, which is what the assistant accepts. */
+            token: string;
+            /**
+             * Format: date-time
+             * @description The token and the session both stop working at this time.
+             */
+            expires_at: string;
+            ref: string;
+        };
         /**
          * @description `{"detail": "..."}` - the shape every hand-written refusal in this API
          *     uses, and the shape DRF itself uses for 401/403/404/405. The strings are
@@ -5876,9 +5908,11 @@ export interface components {
          * @description * `drive_end` - drive_end
          *     * `startup` - startup
          *     * `manual` - manual
+         *     * `periodic` - periodic
+         *     * `conversation` - conversation
          * @enum {string}
          */
-        ReasonEnum: "drive_end" | "startup" | "manual";
+        ReasonEnum: "drive_end" | "startup" | "manual" | "periodic" | "conversation";
         /**
          * @description One `public.receipts` header, with the anchors the gate checked it
          *     against (section 4 rule 8) and the residual it could not explain (rule 7).
@@ -8805,6 +8839,67 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_enter_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoEnterRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["DemoEnterRequest"];
+                "multipart/form-data": components["schemas"]["DemoEnterRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoVisitIssued"];
+                };
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Wrong code, a retired code, or the demo is closed. Nothing created. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many tries from this IP. Nothing created. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No demo household on this engine. Nothing created. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

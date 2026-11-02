@@ -57,6 +57,9 @@ urlpatterns = [
     # Live token per conversation, and the session-authenticated door its tool
     # calls come through (`assistant/views.py`). Session auth only; never `/mcp`.
     path("api/assistant/", include("assistant.urls")),
+    # recruiter-demo ticket 02 (ADR 0068): the shared invite code becomes one
+    # throwaway recruiter visitor (`demo/views.py`). Anonymous, throttled per IP.
+    path("api/demo/", include("demo.urls")),
     # Kevin 2026-10-15: a device (the head unit) uploads its own log after a
     # drive; read back with `manage.py device_logs` (`devicelogs/views.py`).
     path("api/device-logs/", include("devicelogs.urls")),
