@@ -275,8 +275,14 @@ def test_no_route_gives_a_recruiter_more_than_a_stranger(
     opened = {"/api/assistant/session", "/api/assistant/tool"}
     # The recruiter page's own reads (tickets 07 and 10), opened on purpose and
     # pinned in `tests/test_recruiter_content.py`: the visit itself, and the
-    # page content Kevin loaded for strangers to read.
-    opened_reads = {"/api/demo/session", "/api/demo/content", "/api/demo/asset/x"}
+    # page content Kevin loaded for strangers to read; and the companion's name
+    # for the chat header (always Alfred for a recruiter, ticket 05).
+    opened_reads = {
+        "/api/demo/session",
+        "/api/demo/content",
+        "/api/demo/asset/x",
+        "/api/assistant/companion",
+    }
     assert opened_reads <= set(API_ROUTES)
     leaks = []
     for path in API_ROUTES:

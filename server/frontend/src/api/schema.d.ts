@@ -16,6 +16,10 @@ export interface paths {
          * @description Read only. Device tokens may read it too (the API default), so the
          *     phone can show which companion a member has on the web. Setting one is
          *     the admin's or `manage.py set_companion`'s; the REST write is not built.
+         *
+         *     A recruiter's visit may read it too (ADR 0068, ticket 05): the chat header
+         *     shows the companion's name, and for a recruiter that is always Alfred
+         *     (`companions.recruiter_companion`).
          */
         get: operations["api_assistant_companion_retrieve"];
         put?: never;
@@ -4245,6 +4249,12 @@ export interface components {
             code: string;
             /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
             ref?: string;
+        };
+        DemoRefusal: {
+            /** @description What did not happen, in words. Show it. */
+            detail: string;
+            /** @description `demo_visit_ended`: this recruiter visit expired or was closed (enter the code again). `not_signed_in`: no visit and no sign-in at all. Absent for every other refusal (a member who is not an owner, for one). */
+            code?: string;
         };
         DemoSession: {
             /** @description Always "recruiter" here. */
@@ -8983,7 +8993,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["DemoRefusal"];
                 };
             };
             /** @description That file is not loaded. */
@@ -9020,7 +9030,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["DemoRefusal"];
                 };
             };
             /** @description No content loaded yet. */
@@ -9118,7 +9128,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["DemoRefusal"];
                 };
             };
         };

@@ -363,7 +363,13 @@ CompanionResponse = inline_serializer(
 class AssistantCompanionView(APIView):
     """Read only. Device tokens may read it too (the API default), so the
     phone can show which companion a member has on the web. Setting one is
-    the admin's or `manage.py set_companion`'s; the REST write is not built."""
+    the admin's or `manage.py set_companion`'s; the REST write is not built.
+
+    A recruiter's visit may read it too (ADR 0068, ticket 05): the chat header
+    shows the companion's name, and for a recruiter that is always Alfred
+    (`companions.recruiter_companion`)."""
+
+    allows_recruiter = True
 
     @extend_schema(
         tags=ASSISTANT_TAGS,

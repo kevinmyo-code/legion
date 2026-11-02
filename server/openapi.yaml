@@ -11,6 +11,10 @@ paths:
         Read only. Device tokens may read it too (the API default), so the
         phone can show which companion a member has on the web. Setting one is
         the admin's or `manage.py set_companion`'s; the REST write is not built.
+
+        A recruiter's visit may read it too (ADR 0068, ticket 05): the chat header
+        shows the companion's name, and for a recruiter that is always Alfred
+        (`companions.recruiter_companion`).
       summary: Who the signed-in member talks to
       tags:
       - assistant
@@ -2648,7 +2652,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/DemoRefusal'
           description: Neither a recruiter's visit nor a household owner.
         '404':
           content:
@@ -2676,7 +2680,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/DemoRefusal'
           description: Neither a recruiter's visit nor a household owner.
         '404':
           content:
@@ -2757,7 +2761,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/DemoRefusal'
           description: Not a recruiter's live demo visit (signed out, a member, or
             over).
   /api/device-logs/:
@@ -9834,6 +9838,19 @@ components:
           pattern: ^[A-Za-z0-9_.-]{1,64}$
       required:
       - code
+    DemoRefusal:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: What did not happen, in words. Show it.
+        code:
+          type: string
+          description: '`demo_visit_ended`: this recruiter visit expired or was closed
+            (enter the code again). `not_signed_in`: no visit and no sign-in at all.
+            Absent for every other refusal (a member who is not an owner, for one).'
+      required:
+      - detail
     DemoSession:
       type: object
       properties:

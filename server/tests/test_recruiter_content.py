@@ -19,6 +19,7 @@ from demo.content import CONTENT_SCHEMA, problems
 from demo.content_views import NO_CONTENT, NOT_A_READER, NOT_A_VISIT, NOT_SIGNED_IN
 from demo.models import DemoCode, RecruiterContent
 from household.models import Household, HouseholdMember, User
+from household.permissions import RECRUITER_VISIT_OVER
 from tests.conftest import _client_for
 
 pytestmark = pytest.mark.django_db
@@ -194,7 +195,7 @@ def test_session_refuses_everyone_else(token_a, plain_member):
     assert plain_member.get("/api/demo/session").status_code == 403
     anonymous = APIClient().get("/api/demo/session")
     assert anonymous.status_code == 403
-    assert anonymous.data == {"detail": NOT_SIGNED_IN}
+    assert anonymous.data == {"detail": NOT_SIGNED_IN, "code": "not_signed_in"}
 
 
 # =============================================================================
@@ -264,8 +265,19 @@ def test_a_recruiter_whose_visit_ended_is_refused(recruiter, tmp_path):
 
     load_fake(tmp_path)
     DeviceToken.objects.filter(user__email__endswith="@demo.invalid").update(revoked_at=_now())
-    assert recruiter.get("/api/demo/content").status_code == 403
-    assert recruiter.get("/api/demo/session").status_code == 403
+    for path in ("/api/demo/content", "/api/demo/session", "/api/assistant/companion"):
+        ended = recruiter.get(path)
+        assert ended.status_code == 403, path
+        assert ended.json() == {"detail": RECRUITER_VISIT_OVER, "code": "demo_visit_ended"}, path
+
+
+def test_a_recruiter_reads_its_companion_as_alfred(recruiter):
+    from assistant import personas
+
+    response = recruiter.get("/api/assistant/companion")
+    assert response.status_code == 200, response.data
+    assert response.data["name"] == personas.ALFRED.default_name
+    assert response.data["voice_name"] == personas.ALFRED.suggested_voice
 
 
 def _now():

@@ -19,6 +19,7 @@ from assistant.companions import companion_for, set_companion
 from assistant.prompt import (
     RECRUITER_CAPABILITIES,
     RECRUITER_FRAME,
+    RECRUITER_OPENER,
     RECRUITER_REGISTER,
     VISITOR_FACT,
     member_fact,
@@ -75,6 +76,9 @@ def test_the_recruiter_prompt_addresses_a_stranger_and_greets(visitor):
     assert 'never as "sir"' in text
     assert "greet the visitor" in text and "what they would like to try" in text
     assert "made-up household" in text
+    # The page's hidden opener is named as a cue, not the visitor's words.
+    assert f"The line {RECRUITER_OPENER} is sent by the page" in text
+    assert "never quote it" in text
     assert text.endswith(VISITOR_FACT)
     # The visitor's own first name never reaches the prompt.
     assert "Pat" not in text

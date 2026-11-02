@@ -49,6 +49,10 @@ RECRUITER_VISIT_OVER = (
     "invite code again to start a new one."
 )
 
+# Beside the words, so a client can tell a visit that ended from a caller who
+# was never signed in: `{"detail": RECRUITER_VISIT_OVER, "code": ...}`.
+RECRUITER_VISIT_OVER_CODE = "demo_visit_ended"
+
 # The session key `demo/views.py` writes beside `login()`: the id of the visitor
 # token minted in the same request. A recruiter's browser session is honoured
 # only while that token is live, so expiry and revocation reach the cookie too.
@@ -108,7 +112,9 @@ class IsHouseholdMember(permissions.BasePermission):
             if not getattr(view, "allows_recruiter", False):
                 raise exceptions.PermissionDenied(RECRUITER_ROUTE_REFUSAL)
             if not _recruiter_visit_is_live(request):
-                raise exceptions.PermissionDenied(RECRUITER_VISIT_OVER)
+                raise exceptions.PermissionDenied(
+                    {"detail": RECRUITER_VISIT_OVER, "code": RECRUITER_VISIT_OVER_CODE}
+                )
         # engine-mcp ticket 05: a read-scoped token is refused on every unsafe
         # method, here, once, rather than per view - a scope that only the MCP
         # layer honoured would let a leaked read token write through REST.

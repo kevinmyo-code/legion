@@ -29,7 +29,7 @@ from api.schema import DetailSerializer
 from demo.content import ASSET_KINDS, public_content
 from demo.models import DemoVisit, RecruiterContent
 from household.models import HouseholdMember, is_recruiter
-from household.permissions import IsHouseholdMember
+from household.permissions import RECRUITER_VISIT_OVER_CODE, IsHouseholdMember
 
 DEMO_TAGS = ["demo"]
 
@@ -45,6 +45,7 @@ NO_CONTENT = (
 )
 RESUME_DOWNLOAD_NAME = "Kevin-Win-Resume.pdf"
 REPORT_CSP = "sandbox allow-scripts"
+NOT_SIGNED_IN_CODE = "not_signed_in"
 
 
 def _no_such_asset(kind: str) -> str:
@@ -58,7 +59,9 @@ class _SignedInMember(IsHouseholdMember):
     def has_permission(self, request, view) -> bool:
         user = request.user
         if not user or not user.is_authenticated:
-            raise exceptions.PermissionDenied(NOT_SIGNED_IN)
+            raise exceptions.PermissionDenied(
+                {"detail": NOT_SIGNED_IN, "code": NOT_SIGNED_IN_CODE}
+            )
         if not super().has_permission(request, view):
             raise exceptions.PermissionDenied(NOT_A_READER)
         return True
@@ -87,6 +90,20 @@ class RecruiterOrOwner(_SignedInMember):
 # =============================================================================
 # Shapes, for the contract (`openapi.yaml` -> `frontend/src/api/schema.d.ts`)
 # =============================================================================
+
+
+class DemoRefusalSerializer(serializers.Serializer):
+    detail = serializers.CharField(help_text="What did not happen, in words. Show it.")
+    # A CharField, not a ChoiceField: an enum named `code` could rename an
+    # existing schema component, as `role` would have.
+    code = serializers.CharField(
+        required=False,
+        help_text=(
+            f"`{RECRUITER_VISIT_OVER_CODE}`: this recruiter visit expired or was closed (enter "
+            f"the code again). `{NOT_SIGNED_IN_CODE}`: no visit and no sign-in at all. Absent "
+            "for every other refusal (a member who is not an owner, for one)."
+        ),
+    )
 
 
 class DemoSessionSerializer(serializers.Serializer):
@@ -170,7 +187,7 @@ class DemoSessionView(APIView):
         responses={
             200: DemoSessionSerializer,
             403: OpenApiResponse(
-                DetailSerializer,
+                DemoRefusalSerializer,
                 description="Not a recruiter's live demo visit (signed out, a member, or over).",
             ),
         },
@@ -196,7 +213,8 @@ class DemoContentView(APIView):
         responses={
             200: RecruiterPageSerializer,
             403: OpenApiResponse(
-                DetailSerializer, description="Neither a recruiter's visit nor a household owner."
+                DemoRefusalSerializer,
+                description="Neither a recruiter's visit nor a household owner.",
             ),
             404: OpenApiResponse(DetailSerializer, description="No content loaded yet."),
         },
@@ -239,7 +257,8 @@ class DemoAssetView(APIView):
                 OpenApiTypes.BINARY, description=_ASSET_200
             ),
             403: OpenApiResponse(
-                DetailSerializer, description="Neither a recruiter's visit nor a household owner."
+                DemoRefusalSerializer,
+                description="Neither a recruiter's visit nor a household owner.",
             ),
             404: OpenApiResponse(DetailSerializer, description="That file is not loaded."),
         },

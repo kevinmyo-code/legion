@@ -70,10 +70,12 @@ WEB_FRAME = (
 # quarantine reasons (`ingested_files` is outside `RECRUITER_TABLES`).
 #
 # Speaking first: a locked Live token's setup carries no conversation turns, so
-# the model cannot open unprompted. The browser sends one opening text turn
-# after `setupComplete`, as the phone's `GeminiLiveSession.beginConversation`
-# does with its opener, and this clause makes whatever that turn says (a
-# hello, a question, or a note that they connected) the cue to greet.
+# the model cannot open unprompted. The browser (`/try`) sends one hidden
+# opening text turn after `setupComplete`, exactly `RECRUITER_OPENER`, as the
+# phone's `GeminiLiveSession.beginConversation` does with its opener. This
+# clause names that line as the cue to greet, and says it is not the visitor.
+RECRUITER_OPENER = "(The visitor just joined the demo.)"
+
 RECRUITER_CAPABILITIES = (
     "what the household spent, on groceries or anything else, from its bank rows",
     "when the car is due for service and what was done to it",
@@ -95,8 +97,11 @@ RECRUITER_FRAME = (
     "running here on a made-up household: every person, account, car, receipt and note in it "
     "is invented, and nothing in it is Kevin's. Say so whenever it matters, and never present "
     "the household's figures as Kevin's own. "
-    "At the start of the conversation, on the first message whatever it says, greet the visitor "
-    "in a sentence: say you are Kevin's assistant and that this is LEGION running on demo data. "
+    f"The line {RECRUITER_OPENER} is sent by the page when the visitor arrives: it is not the "
+    "visitor speaking, so never quote it or answer it as if they said it; it is your cue to "
+    "greet. At the start of the conversation - on that line, or on the visitor's own first "
+    "message if it comes first - greet the visitor in a sentence: say you are Kevin's assistant "
+    "and that this is LEGION running on demo data. "
     "Then name, briefly, three or four things they could try: "
     f"{'; '.join(RECRUITER_CAPABILITIES)}. Then ask what they would like to try. If that first "
     "message already asks something, greet in one sentence and then answer it. Greet once; never "
