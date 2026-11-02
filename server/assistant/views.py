@@ -87,6 +87,13 @@ class _AssistantView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsHouseholdMember]
     audit_kind = ""
+    # ADR 0068: the assistant is the one door a recruiter visitor may use. What
+    # it may do through it is `surface.RECRUITER_TOOLS`, checked per call.
+    allows_recruiter = True
+    # Every call here is a POST whether it reads or writes, so the write fence
+    # is applied per TOOL in `run_tool` (as on `/mcp`), never per method. For
+    # an owner or member's session this changes nothing: a session may write.
+    scope_checked_per_call = True
 
     def _audit_tool_name(self, request) -> str | None:
         return None
@@ -304,7 +311,7 @@ class AssistantToolView(_AssistantView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         name = body.validated_data["name"]
-        refusal = refusal_for(name)
+        refusal = refusal_for(name, request.user, body.validated_data["args"])
         if refusal is not None:
             _audit(request, AssistantCall.TOOL, Outcome.REFUSED, name)
             return Response(

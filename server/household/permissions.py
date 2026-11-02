@@ -13,18 +13,46 @@ recording rather than the diff.
 `IsHouseholdOwner`, for the four membership verbs ADR 0045's one role
 exists for. It does not weaken the paragraph above - inside a household
 access is still all-or-nothing, and the owner role still gates no data.
+
+**ADR 0068 (2026-11-02) amends that once, and only to narrow:** a member
+whose role is `recruiter` (a throwaway visitor in the demo household,
+recruiter-demo tickets 01 and 02) is refused every route that does not opt
+in with `allows_recruiter = True`, may write nothing by any credential, and
+a browser session it holds dies with the visitor token it was issued
+beside. Owners and members are untouched by every line of that.
 """
 from __future__ import annotations
 
 from rest_framework import exceptions, permissions
 
-from household.models import DeviceToken, HouseholdMember
+from household.models import DeviceToken, HouseholdMember, is_recruiter
 
 READ_SCOPE_REFUSAL = (
     "Nothing was written. This device token is read-only (scope `read`), so it may read "
     "this household's data and change none of it. Use a token issued with scope `write` "
     "to make changes."
 )
+
+
+RECRUITER_WRITE_REFUSAL = (
+    "Nothing was written. This is a recruiter's demo visit, which may read the demo "
+    "household and change none of it."
+)
+
+RECRUITER_ROUTE_REFUSAL = (
+    "Nothing was read or written. This is a recruiter's demo visit: it may use the "
+    "assistant and nothing else on this engine."
+)
+
+RECRUITER_VISIT_OVER = (
+    "Nothing was read or written. This demo visit has ended or was closed. Enter the "
+    "invite code again to start a new one."
+)
+
+# The session key `demo/views.py` writes beside `login()`: the id of the visitor
+# token minted in the same request. A recruiter's browser session is honoured
+# only while that token is live, so expiry and revocation reach the cookie too.
+DEMO_TOKEN_SESSION_KEY = "demo_token_id"
 
 
 def token_may_write(request) -> bool:
@@ -38,6 +66,34 @@ def token_may_write(request) -> bool:
     return not (isinstance(auth, DeviceToken) and not auth.can_write)
 
 
+def write_refusal(request) -> str | None:
+    """Why this request may not write, in words, or None when it may.
+
+    Two fences, checked in this order. A recruiter (ADR 0068) may write
+    nothing whatever credential it carries - a session has no scope, so the
+    token's `read` scope alone would not stop a recruiter's browser. Then the
+    token's own scope (engine-mcp ticket 05)."""
+    if is_recruiter(getattr(request, "user", None)):
+        return RECRUITER_WRITE_REFUSAL
+    if not token_may_write(request):
+        return READ_SCOPE_REFUSAL
+    return None
+
+
+def _recruiter_visit_is_live(request) -> bool:
+    """A recruiter's credential must be its live visitor token, or a session
+    tied to one. `DeviceTokenAuthentication` has already refused a dead token,
+    so only the session needs looking up here."""
+    if isinstance(getattr(request, "auth", None), DeviceToken):
+        return True
+    session = getattr(request, "session", None)
+    token_id = session.get(DEMO_TOKEN_SESSION_KEY) if session is not None else None
+    if token_id is None:
+        return False
+    token = DeviceToken.objects.filter(pk=token_id, user=request.user).first()
+    return token is not None and token.is_live
+
+
 class IsHouseholdMember(permissions.BasePermission):
     def has_permission(self, request, view) -> bool:
         user = request.user
@@ -45,6 +101,14 @@ class IsHouseholdMember(permissions.BasePermission):
             return False
         if not HouseholdMember.objects.filter(user=user).exists():
             return False
+        # ADR 0068: a recruiter is refused every route that has not opted in,
+        # here, once, so a route added next month is closed to it by default.
+        # Checked before the write fence so the refusal names the real reason.
+        if is_recruiter(user):
+            if not getattr(view, "allows_recruiter", False):
+                raise exceptions.PermissionDenied(RECRUITER_ROUTE_REFUSAL)
+            if not _recruiter_visit_is_live(request):
+                raise exceptions.PermissionDenied(RECRUITER_VISIT_OVER)
         # engine-mcp ticket 05: a read-scoped token is refused on every unsafe
         # method, here, once, rather than per view - a scope that only the MCP
         # layer honoured would let a leaked read token write through REST.
@@ -53,9 +117,10 @@ class IsHouseholdMember(permissions.BasePermission):
         if (
             request.method not in permissions.SAFE_METHODS
             and not getattr(view, "scope_checked_per_call", False)
-            and not token_may_write(request)
         ):
-            raise exceptions.PermissionDenied(READ_SCOPE_REFUSAL)
+            refusal = write_refusal(request)
+            if refusal is not None:
+                raise exceptions.PermissionDenied(refusal)
         return True
 
 

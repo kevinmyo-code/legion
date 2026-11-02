@@ -11,7 +11,7 @@ from datetime import datetime
 from assistant import live
 from assistant.companions import ResolvedCompanion, companion_for
 from assistant.prompt import build_system_prompt
-from assistant.surface import web_description, web_tools
+from assistant.surface import tools_for, web_description
 from household.timezones import utc_offset_minutes as zone_offset_minutes
 
 
@@ -42,6 +42,6 @@ def token_request_for(
             offset_from_household=from_household,
         ),
         voice_name=companion.voice_name,
-        declarations=live.function_declarations(web_tools(), web_description),
+        declarations=live.function_declarations(tools_for(user), web_description),
     )
     return live.build_token_request(setup, now), companion

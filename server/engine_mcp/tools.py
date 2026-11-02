@@ -26,7 +26,8 @@ live in one `EngineTool` below; `/mcp`'s `tools/list` and `tools/call` read
 - **No third-party content** (section 7): mail never reaches the server, so no
   tool can expose it. `tests/test_engine_mcp.py` fails on a tool that names it.
 - **A write tool refuses a read-scoped token in words** before it runs
-  (`household.permissions.token_may_write`).
+  (`household.permissions.write_refusal`), and so does every write tool for a
+  recruiter (ADR 0068), whatever credential it carries.
 
 ## The honesty contract, in the result (ticket 06 sub-question 4)
 
@@ -58,7 +59,7 @@ from api.event_columns import KIND_SUGGESTION
 from api.registry import SYNCED_VIEWSETS
 from engine_mcp.dispatch import RouteNotFound, call_route
 from engine_mcp.models import Outcome
-from household.permissions import READ_SCOPE_REFUSAL, token_may_write
+from household.permissions import write_refusal
 from household.tenancy import visible
 
 # =============================================================================
@@ -1171,8 +1172,10 @@ def run_tool(request, name: str, arguments: dict) -> ToolResult:
             f"Nothing was read or written. This engine has no tool called {name!r}. Its "
             f"tools: {', '.join(TOOLS_BY_NAME)}."
         )
-    if tool.writes and not token_may_write(request):
-        return refused(READ_SCOPE_REFUSAL)
+    if tool.writes:
+        refusal = write_refusal(request)
+        if refusal is not None:
+            return refused(refusal)
     if tool.tables is not None:
         allowed, verb = tool.tables
         table = arguments.get("table")
