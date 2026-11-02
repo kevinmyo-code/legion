@@ -764,26 +764,28 @@ class ReceiptIngestView(_IngestView):
     def post(self, request):
         try:
             payload = self._payload(request)
-            with transaction.atomic():
-                return self._commit(payload, household_of(request))
+            return commit_receipt(payload, household_of(request)).response()
         except gate.GateInputError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except DatabaseError as exc:
             return Response({"detail": str(exc).strip()}, status=status.HTTP_400_BAD_REQUEST)
 
-    def _commit(self, payload: dict[str, Any], household) -> Response:
+    @classmethod
+    def commit(cls, payload: dict[str, Any], household) -> CommitResult:
+        """The body of `commit_receipt`; call that, not this, so the commit
+        always runs inside its transaction."""
         sha = _require_sha(payload, "commit_receipt")
 
         existing = _already_committed(sha, household)
         if existing is not None:
-            return Response(
+            return CommitResult(
                 {
                     "outcome": gate.ALREADY_COMMITTED,
                     "content_sha256": sha,
                     "inserted": 0,
                     "note": "This receipt was already committed. Nothing was written again.",
                 },
-                status=status.HTTP_200_OK,
+                status.HTTP_200_OK,
             )
 
         # `coalesce((nullif(payload ->> 'provenance', ''))::public.provenance,
@@ -818,7 +820,7 @@ class ReceiptIngestView(_IngestView):
             other_charges_cents=other,
         )
         if not verdict.committed:
-            return _quarantine(payload, sha, verdict.reason or "", household).response()
+            return _quarantine(payload, sha, verdict.reason or "", household)
 
         file_row = _upsert_file(payload, sha, IngestState.INGESTED, None, household)
 
@@ -878,7 +880,7 @@ class ReceiptIngestView(_IngestView):
         estimated_items = sum(
             1 for item in raw_items if any(item.get(f) is not None for f in ESTIMATE_FIELDS)
         )
-        return Response(
+        return CommitResult(
             {
                 "outcome": gate.COMMITTED,
                 "receipt_id": str(receipt.id),
@@ -901,5 +903,23 @@ class ReceiptIngestView(_IngestView):
                     "note": ESTIMATE_NOTE,
                 },
             },
-            status=status.HTTP_201_CREATED,
+            status.HTTP_201_CREATED,
         )
+
+
+def commit_receipt(payload: dict[str, Any], household) -> CommitResult:
+    """`public.commit_receipt(payload jsonb)`: the ONE receipt commit path.
+
+    `POST /api/ingest/receipt` calls this, and so does
+    `manage.py seed_demo_household` (recruiter-demo ticket 03) for the demo
+    household's receipts, so a seeded receipt meets the same gate, the same
+    idempotency check and the same quarantine as a photographed one. The same
+    shape as `commit_statement`: one piece of code with two callers.
+
+    Its own `transaction.atomic()` block: a verdict (COMMITTED,
+    ALREADY_COMMITTED, QUARANTINED) is returned; a payload the gate cannot run
+    on raises `gate.GateInputError`, and a constraint the payload trips raises
+    `DatabaseError`, both with everything rolled back.
+    """
+    with transaction.atomic():
+        return ReceiptIngestView.commit(payload, household)
