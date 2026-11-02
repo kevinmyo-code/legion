@@ -232,9 +232,9 @@ def _uuids_of(household: Household) -> set[str]:
     return found
 
 
-def _live_count(table: str, household: Household) -> int:
+def _count(table: str, household: Household, *, live: bool = False) -> int:
     viewset = READABLE[table]
-    tombstone = " and deleted_at is null" if viewset.has_tombstones else ""
+    tombstone = " and deleted_at is null" if live and viewset.has_tombstones else ""
     with connection.cursor() as cursor:
         cursor.execute(
             f'select count(*) from public."{table}" where household_id = %s{tombstone}',
@@ -316,10 +316,14 @@ def test_read_records_on_every_recruiter_table_reads_only_the_demo(world):
         for variant in READ_VARIANTS:
             _allowed(world, "read_records", {"table": table, **variant})
         covered.add(table)
-        text = _allowed(world, "read_records", {"table": table, "active_only": False})
-        demo_rows = _live_count(table, world["demo"])
+        # Marker-independent: the count the engine states is exactly the
+        # demo's own row count, so a foreign row carrying neither MARK nor a
+        # uuid still changes the number.
+        text = _allowed(world, "read_records", {"table": table, "active_only": False, "limit": 200})
+        demo_rows = _count(table, world["demo"])
+        assert demo_rows <= 200, (table, demo_rows)
         if demo_rows:
-            assert "found no" not in text, (table, text)
+            assert text.startswith(f"{demo_rows} {table} "), (table, demo_rows, text[:120])
         else:
             assert "found no" in text, (table, text)
     assert covered == set(RECRUITER_TABLES)
@@ -541,7 +545,7 @@ def test_a_write_tool_refused_by_name_leaves_kevins_rows_alone(world, token_a):
         assert response.status_code == 400
         assert response.data["detail"].startswith("Nothing was read or written.")
     assert token_a.get("/api/places/").data["results"] == before
-    assert _live_count("places", world["demo"]) == 4
+    assert _count("places", world["demo"], live=True) == 4
 
 
 # =============================================================================
