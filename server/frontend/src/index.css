@@ -216,3 +216,64 @@
   height: 100%;
   border: 0;
 }
+
+/*
+ * The recruiter section (`/try`, recruiter-demo ticket 07): Kevin's pick,
+ * prototype B "editorial", light only. It is a re-binding of the SAME tokens
+ * on a subtree, not a second stylesheet, so the components inside it (the
+ * buttons, the fields, the mounted assistant) keep their shapes and read these
+ * colours. Every token a component reads is bound here, because a token the
+ * root defines in terms of another (`--card: var(--surface-1)`) resolves at the
+ * root and would otherwise carry the dark value into this light page.
+ */
+.recruiter {
+    color-scheme: light;
+    --font-editorial: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+
+    --background: #faf8f4;
+    --foreground: #1b1b1f;
+    --muted-foreground: #5c5f66;
+
+    --surface-1: #ffffff;
+    --surface-2: #f3f0ea;
+    --surface-3: #ebe7df;
+    --card: #ffffff;
+    --card-foreground: #1b1b1f;
+    --popover: #ffffff;
+    --popover-foreground: #1b1b1f;
+    --muted: #f3f0ea;
+    --accent: #ebe7df;
+    --accent-foreground: #1b1b1f;
+
+    --primary: #1f4fd1;
+    --primary-foreground: #ffffff;
+    --primary-container: #e4eafb;
+    --primary-container-foreground: #16389a;
+    --secondary: #e4eafb;
+    --secondary-foreground: #16389a;
+
+    --outline: #a8a296;
+    --outline-variant: #e4e0d8;
+    --border: #e4e0d8;
+    --input: #a8a296;
+    --ring: #1f4fd1;
+    --scrim: rgb(27 27 31 / 0.4);
+
+    --destructive: #b42318;
+    --destructive-container: #fbe7e4;
+    --destructive-container-foreground: #7a1a12;
+
+    --unverified-bg: #f8ead2;
+    --unverified-fg: #6b4000;
+    --estimate-fg: #9a5b00;
+
+    --done: #127a4a;
+    --done-container: #e1f2e9;
+
+    background-color: var(--background);
+    color: var(--foreground);
+}
+
+.recruiter .font-editorial {
+    font-family: var(--font-editorial);
+}

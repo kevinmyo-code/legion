@@ -19,7 +19,10 @@ export function useMe() {
     queryFn: async () => {
       const { data, error, response } = await api.GET('/api/auth/me')
       if (response.status === 401 || response.status === 403) {
-        return { signedIn: false as const }
+        // 403 is a session the engine knows but refuses here. Today that is a
+        // recruiter's demo visit (ADR 0068: every route but the assistant
+        // refuses it), which belongs on `/try`, not on the sign-in form.
+        return { signedIn: false as const, refused: response.status === 403 }
       }
       if (error || !data) {
         throw new Error(`GET /api/auth/me answered ${response.status}`)

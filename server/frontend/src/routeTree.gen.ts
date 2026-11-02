@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as TryRouteImport } from './routes/try'
 import { Route as AuthedIndexRouteImport } from './routes/_authed.index'
 import { Route as AuthedBodyRouteImport } from './routes/_authed.body'
 import { Route as AuthedBooksRouteImport } from './routes/_authed.books'
@@ -49,6 +50,11 @@ const LoginRoute = LoginRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TryRoute = TryRouteImport.update({
+  id: '/try',
+  path: '/try',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthedIndexRoute = AuthedIndexRouteImport.update({
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/try': typeof TryRoute
   '/body': typeof AuthedBodyRoute
   '/books': typeof AuthedBooksRoute
   '/calendar': typeof AuthedCalendarRoute
@@ -205,6 +212,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/try': typeof TryRoute
   '/body': typeof AuthedBodyRoute
   '/books': typeof AuthedBooksRoute
   '/calendar': typeof AuthedCalendarRoute
@@ -234,6 +242,7 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/try': typeof TryRoute
   '/_authed/body': typeof AuthedBodyRoute
   '/_authed/books': typeof AuthedBooksRoute
   '/_authed/calendar': typeof AuthedCalendarRoute
@@ -265,6 +274,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/signup'
+    | '/try'
     | '/body'
     | '/books'
     | '/calendar'
@@ -292,6 +302,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/signup'
+    | '/try'
     | '/body'
     | '/books'
     | '/calendar'
@@ -320,6 +331,7 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/login'
     | '/signup'
+    | '/try'
     | '/_authed/body'
     | '/_authed/books'
     | '/_authed/calendar'
@@ -350,6 +362,7 @@ export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  TryRoute: typeof TryRoute
   JoinCodeRoute: typeof JoinCodeRoute
 }
 
@@ -374,6 +387,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/try': {
+      id: '/try'
+      path: '/try'
+      fullPath: '/try'
+      preLoaderRoute: typeof TryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authed/': {
@@ -616,6 +636,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  TryRoute: TryRoute,
   JoinCodeRoute: JoinCodeRoute,
 }
 export const routeTree = rootRouteImport

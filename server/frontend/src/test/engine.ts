@@ -3,6 +3,7 @@ import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip, Purchase } from '../api/types'
 import { defaultAssistant, handleAssistant, type AssistantState } from './engine-assistant'
 import { defaultBooks, handleBooks, type BooksState } from './engine-books'
+import { defaultDemo, handleDemo, isRecruiter, RECRUITER_ROUTE_REFUSAL, type DemoState } from './engine-demo'
 import { defaultGames, handleGames, type GamesState } from './engine-games'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
@@ -66,6 +67,8 @@ export interface EngineOptions {
   games?: Partial<GamesState>
   /** Reading position and bookmark sync (`engine-books.ts`, books ticket 08's contract). */
   books?: Partial<BooksState>
+  /** The recruiter demo (`engine-demo.ts`): no visit, a sample page, when absent. */
+  demo?: Partial<DemoState>
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -102,6 +105,8 @@ export interface Engine {
   games: GamesState
   /** Reading sync rows (`engine-books.ts`). */
   books: BooksState
+  /** The recruiter demo (`engine-demo.ts`). */
+  demo: DemoState
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -355,6 +360,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     assistant: { ...defaultAssistant(), ...options.assistant },
     games: { ...defaultGames(), ...options.games },
     books: { ...defaultBooks(), ...options.books },
+    demo: { ...defaultDemo(), ...options.demo },
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -380,6 +386,8 @@ export function createEngine(options: EngineOptions = {}): Engine {
       }
 
       if (method === 'GET' && pathname === '/api/auth/me') {
+        // ADR 0068: a recruiter's visit is a session the engine knows and refuses here.
+        if (isRecruiter(engine)) return { status: 403, body: { detail: RECRUITER_ROUTE_REFUSAL } }
         return engine.signedIn
           ? { status: 200, body: { ...ME, name: engine.settings.name } }
           : { status: 401, body: { detail: 'Not signed in.' } }
@@ -693,6 +701,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
 
       const gamesReply = handleGames(engine, { user_id: ME.user_id, name: ME.name }, method, pathname, body)
       if (gamesReply) return gamesReply
+
+      const demoReply = handleDemo(engine, method, pathname, body)
+      if (demoReply) return demoReply
 
       const assistantReply = handleAssistant(engine, method, pathname, body)
       if (assistantReply) return assistantReply
