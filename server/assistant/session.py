@@ -12,6 +12,7 @@ from assistant import live
 from assistant.companions import ResolvedCompanion, companion_for
 from assistant.prompt import build_system_prompt
 from assistant.surface import tools_for, web_description
+from household.models import is_recruiter
 from household.timezones import utc_offset_minutes as zone_offset_minutes
 
 
@@ -40,6 +41,7 @@ def token_request_for(
             now=now,
             utc_offset_minutes=utc_offset_minutes,
             offset_from_household=from_household,
+            recruiter=is_recruiter(user),
         ),
         voice_name=companion.voice_name,
         declarations=live.function_declarations(tools_for(user), web_description),

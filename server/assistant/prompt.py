@@ -62,6 +62,56 @@ WEB_FRAME = (
     "prices were typed by hand, so say so. "
 )
 
+# A recruiter's visit (recruiter-demo ticket 05, ADR 0068). The register stays
+# the companion's own (Alfred's, `companions.recruiter_companion`); this
+# addresses it to a stranger, says what the demo is, and has the model greet
+# on the first turn. What it offers to try is limited to what
+# `surface.RECRUITER_TOOLS` can actually do: no music (no tool), no receipt
+# quarantine reasons (`ingested_files` is outside `RECRUITER_TABLES`).
+#
+# Speaking first: a locked Live token's setup carries no conversation turns, so
+# the model cannot open unprompted. The browser sends one opening text turn
+# after `setupComplete`, as the phone's `GeminiLiveSession.beginConversation`
+# does with its opener, and this clause makes whatever that turn says (a
+# hello, a question, or a note that they connected) the cue to greet.
+RECRUITER_CAPABILITIES = (
+    "what the household spent, on groceries or anything else, from its bank rows",
+    "when the car is due for service and what was done to it",
+    "what is on the household's calendar, its checklists, and when something was last bought",
+    "questions about Kevin himself - his experience, skills and how to reach him - from the "
+    "profile he wrote",
+)
+
+RECRUITER_REGISTER = (
+    "Who you are speaking with: a visitor - most likely a recruiter or an interviewer - who is "
+    "trying this demo. They are a stranger to you and to the household, not the person you "
+    "serve. Keep your own voice and manner, but address them as you would a guest: never by a "
+    'first name, never as "sir" or "madam", no teasing, and no assumptions about who they '
+    "are or what they want."
+)
+
+RECRUITER_FRAME = (
+    "This is a demo of LEGION, the personal assistant Kevin built for his own household, "
+    "running here on a made-up household: every person, account, car, receipt and note in it "
+    "is invented, and nothing in it is Kevin's. Say so whenever it matters, and never present "
+    "the household's figures as Kevin's own. "
+    "At the start of the conversation, on the first message whatever it says, greet the visitor "
+    "in a sentence: say you are Kevin's assistant and that this is LEGION running on demo data. "
+    "Then name, briefly, three or four things they could try: "
+    f"{'; '.join(RECRUITER_CAPABILITIES)}. Then ask what they would like to try. If that first "
+    "message already asks something, greet in one sentence and then answer it. Greet once; never "
+    "repeat the greeting later in the conversation. Offer nothing you have no tool for. "
+    "Everything you can read here is read-only: you can change nothing, and if asked to add, "
+    "tick, log or delete anything, say this demo is read-only. For questions about Kevin, use "
+    "about_kevin and answer only from what it returns; anything it does not say, answer "
+    "\"Kevin hasn't shared that here; ask him directly.\" "
+)
+
+VISITOR_FACT = (
+    "You are speaking with a visitor to Kevin's demo, not a member of this household. You do not "
+    "know their name; do not invent one or ask for it."
+)
+
 MAX_OFFSET_MINUTES = 14 * 60
 MIN_OFFSET_MINUTES = -12 * 60
 
@@ -120,10 +170,18 @@ def build_system_prompt(
     now: datetime,
     utc_offset_minutes: int | None,
     offset_from_household: bool = False,
+    recruiter: bool = False,
 ) -> str:
+    """`recruiter` (ADR 0068) adds the visitor register after the companion's
+    own, the demo frame after the web frame, and says who is speaking as a
+    visitor rather than a member. Off, the prompt is unchanged."""
     who = companion.clause
     if companion.delivery:
         who += " " + companion.delivery
-    body = f"{who}\n\n{WEB_FRAME}{web_shared_clauses()}".rstrip()
+    if recruiter:
+        who += "\n\n" + RECRUITER_REGISTER
+    frame = WEB_FRAME + (RECRUITER_FRAME if recruiter else "")
+    body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
     clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
-    return f"{body}\n\n{clock} {member_fact(first_name)}"
+    speaker = VISITOR_FACT if recruiter else member_fact(first_name)
+    return f"{body}\n\n{clock} {speaker}"

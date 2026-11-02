@@ -47,9 +47,9 @@ class ResolvedCompanion:
     custom_register: bool = False
 
 
-def resolve(row: Companion | None, user) -> ResolvedCompanion:
+def resolve(row: Companion | None, user, *, persona_key: str | None = None) -> ResolvedCompanion:
     if row is None:
-        persona = personas.persona_for(seed_persona_key(user))
+        persona = personas.persona_for(persona_key or seed_persona_key(user))
         return ResolvedCompanion(
             name=persona.default_name,
             persona_key=persona.key,
@@ -74,10 +74,26 @@ def resolve(row: Companion | None, user) -> ResolvedCompanion:
     )
 
 
+RECRUITER_PERSONA = personas.ALFRED.key
+
+
+def recruiter_companion() -> ResolvedCompanion:
+    """A recruiter's companion (recruiter-demo ticket 05, Kevin 2026-11-02:
+    "same name, same voice as the phone"). Alfred, built exactly as the web
+    builds Kevin's when no row overrides it: the persona's own name and its
+    suggested voice. Fixed by role; a visitor has no row and cannot get one."""
+    return resolve(None, None, persona_key=RECRUITER_PERSONA)
+
+
 def companion_for(user) -> ResolvedCompanion:
     """The signed-in member's companion. Scoped to their own household: a row
     for this user in another household (which the model forbids, and nothing
-    creates) would be ignored rather than read."""
+    creates) would be ignored rather than read. A recruiter gets
+    `recruiter_companion()` whatever rows exist."""
+    from household.models import is_recruiter
+
+    if is_recruiter(user):
+        return recruiter_companion()
     household = user.household
     row = None
     if household is not None:
