@@ -65,7 +65,16 @@ export function useCompanionRead() {
   })
 }
 
-export function AssistantProvider({ children, deps }: { children: ReactNode; deps?: LiveDeps }) {
+export function AssistantProvider({
+  children,
+  deps,
+  openingTurn,
+}: {
+  children: ReactNode
+  deps?: LiveDeps
+  /** Opt-in: a hidden first turn so the assistant speaks first (`LiveOptions.openingTurn`). */
+  openingTurn?: string
+}) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
   useEffect(() => {
@@ -75,8 +84,16 @@ export function AssistantProvider({ children, deps }: { children: ReactNode; dep
   // A phone ends a conversation when the page is hidden (a screen lock or an
   // app switch kills the mic and the socket there anyway, web-assistant 02). A
   // desk tab switch must not: Kevin reading another tab is not a lock.
+  const openingRef = useRef(openingTurn)
+  useEffect(() => {
+    openingRef.current = openingTurn
+  }, [openingTurn])
   const [client] = useState(
-    () => new LiveClient(deps ?? createLiveDeps(), { endOnHidden: () => surfaceRef.current === 'family' }),
+    () =>
+      new LiveClient(deps ?? createLiveDeps(), {
+        endOnHidden: () => surfaceRef.current === 'family',
+        openingTurn: () => openingRef.current ?? null,
+      }),
   )
   useEffect(() => {
     client.attach()

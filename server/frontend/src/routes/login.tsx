@@ -3,6 +3,7 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { api } from '@/api/client'
+import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -60,7 +61,7 @@ function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <Card className="w-full max-w-sm rounded-sheet">
         <CardHeader>
           <CardTitle className="text-2xl">Sign in</CardTitle>
@@ -105,6 +106,25 @@ function Login() {
           </form>
         </CardContent>
       </Card>
+      {/* Secondary to sign-in on purpose: members are who this page is for, and a
+          recruiter's code is one line in a resume (recruiter-demo ticket 07). */}
+      <section
+        aria-labelledby="access-code-heading"
+        className="w-full max-w-sm rounded-card border border-outline-variant px-6 py-5"
+      >
+        <h2 id="access-code-heading" className="text-base font-semibold">
+          Have an access code?
+        </h2>
+        <p className="mt-1 mb-3 text-[0.8125rem] text-muted-foreground">
+          From Kevin's resume. It opens a demo on made-up data, with no account.
+        </p>
+        <AccessCodeForm
+          onEntered={async () => {
+            await queryClient.invalidateQueries()
+            await navigate({ to: '/try' })
+          }}
+        />
+      </section>
     </div>
   )
 }

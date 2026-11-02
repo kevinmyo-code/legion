@@ -1,6 +1,7 @@
 import { Outlet, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
+import { useDemoSession } from '@/api/demo'
 import { useMe } from '@/api/queries'
 import { AppShell } from '@/components/app-shell'
 
@@ -27,11 +28,22 @@ function AuthedLayout() {
   const me = useMe()
   const navigate = useNavigate()
 
+  // A 403 from `auth/me` may be a recruiter's demo visit, which may use the
+  // assistant and nothing else (ADR 0068). Ask the demo door before choosing
+  // where to send them, so a recruiter lands on `/try` instead of a sign-in
+  // form that cannot help them. A plain 401 never asks.
+  const refused = me.data?.signedIn === false && me.data.refused
+  const demo = useDemoSession(refused)
+
   useEffect(() => {
-    if (me.data?.signedIn === false) {
+    if (me.data?.signedIn !== false) return
+    if (!me.data.refused) {
       void navigate({ to: '/login' })
+      return
     }
-  }, [me.data, navigate])
+    if (demo.isPending) return
+    void navigate({ to: demo.data?.role === 'recruiter' ? '/try' : '/login' })
+  }, [me.data, demo.isPending, demo.data, navigate])
 
   if (me.data === undefined) {
     // Only when the engine was never reached. A refetch that fails later (a

@@ -484,3 +484,59 @@ describe('failures before the conversation starts', () => {
     expect(client.getState()).toMatchObject({ mic: 'off', phase: 'idle' })
   })
 })
+
+describe('an opening turn (opt-in, for a page that wants the assistant to speak first)', () => {
+  const OPENING = '(The visitor just joined the demo.)'
+
+  function buildWithOpening(opening: string | null) {
+    const audio = new FakeAudio()
+    const deps: LiveDeps = {
+      startSession: async () => SESSION,
+      runTool: async () => ({ success: true, text: '', forward: { success: true, message: '' } }),
+      openSocket: (url) => new FakeLiveSocket(url),
+      audio: () => audio,
+      now: () => Date.now(),
+      utcOffsetMinutes: () => -300,
+    }
+    const client = new LiveClient(deps, { endOnHidden: () => true, openingTurn: () => opening })
+    client.attach()
+    return { client, audio }
+  }
+
+  it('a voice start sends it once after setup, shows no line for it, and plays the greeting', async () => {
+    const { client, audio } = buildWithOpening(OPENING)
+    const socket = await liveVoice(client)
+    expect(socket.sentOf('clientContent')).toEqual([
+      { clientContent: { turns: [{ role: 'user', parts: [{ text: OPENING }] }], turnComplete: true } },
+    ])
+    expect(client.getState().lines).toEqual([])
+    expect(client.getState().activity).toBe('thinking')
+    socket.serve({ serverContent: { modelTurn: { parts: [audioPart([1, 2, 3])] }, outputTranscription: { text: 'Welcome.' } } })
+    await settle()
+    expect(audio.played).toHaveLength(1)
+    expect(text(client)).toEqual(['ai:Welcome.'])
+  })
+
+  it('a start from a typed message skips it: the message is the first turn', async () => {
+    const { client } = buildWithOpening(OPENING)
+    const socket = await live(client, 'What can you do?')
+    const turns = socket.sentOf('clientContent')
+    expect(turns).toHaveLength(1)
+    expect(JSON.stringify(turns[0])).toContain('What can you do?')
+    expect(JSON.stringify(turns)).not.toContain(OPENING)
+  })
+
+  it('sends it again for a new conversation after a reset', async () => {
+    const { client } = buildWithOpening(OPENING)
+    await liveVoice(client)
+    client.reset()
+    const second = await liveVoice(client)
+    expect(JSON.stringify(second.sentOf('clientContent'))).toContain(OPENING)
+  })
+
+  it('without one, a voice start sends nothing until the person speaks (the member app)', async () => {
+    const { client } = buildWithOpening(null)
+    const socket = await liveVoice(client)
+    expect(socket.sentOf('clientContent')).toEqual([])
+  })
+})

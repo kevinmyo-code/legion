@@ -42,13 +42,22 @@ export function AssistantChat({
   inputRef,
   onMinimise,
   onClose,
+  subtitle = 'Household assistant',
+  intro = 'About the calendar, the lists, or what was bought. Type, or tap the mic to talk.',
+  suggestions = SUGGESTIONS,
 }: {
   layout: 'sheet' | 'panel'
   inputRef: RefObject<HTMLInputElement | null>
   /** Sheet only: hide the sheet, keep the conversation going. */
   onMinimise?: () => void
-  /** Close and clear the conversation. */
-  onClose: () => void
+  /** Close and clear the conversation. Absent where the chat is part of the page and cannot close. */
+  onClose?: () => void
+  /** The line under the companion's name. */
+  subtitle?: string
+  /** What the empty conversation says it can be asked about. */
+  intro?: string
+  /** The tappable first questions. */
+  suggestions?: readonly string[]
 }) {
   const { client, state, name } = useAssistant()
   const [draft, setDraft] = useState('')
@@ -85,7 +94,7 @@ export function AssistantChat({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate leading-tight font-semibold">{name}</p>
-          <p className="text-[0.8125rem] text-muted-foreground">Household assistant</p>
+          <p className="text-[0.8125rem] text-muted-foreground">{subtitle}</p>
         </div>
         {onMinimise && (
           <Button
@@ -98,15 +107,17 @@ export function AssistantChat({
             <Minus className="size-5" />
           </Button>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Close. This clears the conversation."
-          onClick={onClose}
-        >
-          <X className="size-5" />
-        </Button>
+        {onClose && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close. This clears the conversation."
+            onClick={onClose}
+          >
+            <X className="size-5" />
+          </Button>
+        )}
       </header>
 
       {state.lines.length > 0 && (
@@ -144,12 +155,10 @@ export function AssistantChat({
         {state.lines.length === 0 ? (
           <div className="pt-4 pb-1">
             <h2 className="text-[1.375rem]">Ask {name}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              About the calendar, the lists, or what was bought. Type, or tap the mic to talk.
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{intro}</p>
             <SessionLine layout={layout} />
             <div className="mt-3 flex flex-wrap gap-2">
-              {SUGGESTIONS.map((text) => (
+              {suggestions.map((text) => (
                 <button
                   key={text}
                   type="button"

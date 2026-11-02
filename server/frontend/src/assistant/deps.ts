@@ -72,7 +72,10 @@ async function startSession(utcOffsetMinutes: number): Promise<SessionResult> {
       case 503:
         return notice('no-key', `${detail ?? "The assistant isn't set up on this server."} Nothing was started.`)
       case 429:
-        return notice('throttled', `${detail ?? 'Too many conversations were started.'} Try again in a little while.`)
+        // The engine's words when it gave some: a refusal can be "too many just
+        // now" or "today's demo budget is used up", and only the engine knows
+        // which, so a fixed "try again in a little while" would be wrong for one.
+        return notice('throttled', detail ?? 'Too many conversations were started. Try again in a little while.')
       case 401:
       case 403:
         return notice('signed-out', 'You are signed out, so nothing was started. Sign in again.')
