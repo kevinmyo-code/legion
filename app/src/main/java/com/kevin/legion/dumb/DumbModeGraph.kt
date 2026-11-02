@@ -30,6 +30,12 @@ class DumbModeGraph(private val app: Application) {
         FeedPassController(PrefsFeedPassStore(matrixPrefs), matrixOn = { controller.state.value.on })
     }
 
+    /** The wait and sentence in front of turning the feed block down (ADR 0066, 2026-11-02). */
+    val feedOffGate: FeedOffGate by lazy { FeedOffGate(PrefsFeedOffGateStore(matrixPrefs)) }
+
+    /** The "Feed blocker is off" notice (ADR 0066, 2026-11-02). */
+    val feedBlockWatch: FeedBlockWatch by lazy { FeedBlockWatch(app, feedBlock) }
+
     /** The bounce's gate: Matrix mode, or the always-on feed block (ADR 0066). */
     fun bounceActive(): Boolean = controller.state.value.on || feedBlock.get()
 
@@ -104,8 +110,14 @@ class DumbModeGraph(private val app: Application) {
         )
     }
 
-    /** Starts watching the mode. Called once from `Application.onCreate`. */
-    fun start() = effects.start()
+    /**
+     * Starts watching the mode, and checks the feed blocker's accessibility service each time the app
+     * comes to the foreground. Called once from `Application.onCreate`.
+     */
+    fun start() {
+        effects.start()
+        feedBlockWatch.watchAppStarts()
+    }
 
     /**
      * The listener's entry point. Never throws: a failure here must not take the listener, and with

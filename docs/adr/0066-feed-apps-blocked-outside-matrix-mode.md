@@ -65,7 +65,29 @@ Settings to unblock the app (which then stays unblocked).
   level of Settings (same preference as the Matrix mode screen's), and the accessibility service is
   labelled "LEGION blocker" rather than "Matrix mode". The service class and component name are
   unchanged, so an install over the top keeps it enabled.
+- **2026-11-02, Kevin: turning it down costs the same as a pass.** The switch was one tap off, a
+  settings tap unblocked an app for good, and turning the accessibility service off killed the block
+  silently, so the 15 minute pass was never the cheapest way in. Now:
+  - Switch ON to OFF, and a settings tap that would make a blocked app open, both take the pass's 60
+    second wall-clock wait (persisted, clamped, clock-backwards safe, lapsing 10 minutes after the
+    tap), then a typed sentence: "I am choosing to turn off the feed blocker" or "I am choosing to
+    unblock <app>" (case-insensitive, trimmed). The change applies the moment the sentence lands; the
+    switch reads on until then. `dumb/FeedOffGate.kt`, own prefs prefix `feed_off.requested.`, timing
+    rules from `FeedPassRule`.
+  - Turning it ON and blocking an app stay instant. The unblock direction is read without the pass,
+    so an app on a pass is still gated.
+  - The gate applies in Matrix mode too; Matrix's own rules (no pass, leave as the only exit) are
+    unchanged.
+  - Switch on with the LEGION blocker service off posts an ongoing "Feed blocker is off" notice that
+    taps through to Accessibility settings (`dumb/FeedBlockWatch.kt`). Checked when the service
+    unbinds (the moment it is turned off) and connects, on every app foreground
+    (`ProcessLifecycleOwner`), and when a screen with the switch resumes; no polling, no WorkManager.
+    Cleared when the service is back or the switch is off. It needs the notification permission; with
+    it refused nothing shows.
+  - Still friction, not a lock: no device admin, nothing stops an uninstall.
 - The pass's expiry check runs on a `Handler`, which runs on uptime: in deep sleep it fires late, and the
   next window change is the backstop.
 - Compulsion test (CLAUDE.md section 7): nothing here is an unsolicited raise; the bounce answers an app
-  Kevin opened, and the switch silences all of it in one tap.
+  Kevin opened, and the switch silences all of it (since 2026-11-02, behind the same minute and sentence
+  as a pass). The "Feed blocker is off" notice is anchored to a setting he can check, actionable now,
+  and goes away when the switch is off.

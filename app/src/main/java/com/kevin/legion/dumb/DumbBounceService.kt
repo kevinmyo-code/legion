@@ -36,6 +36,18 @@ class DumbBounceService : AccessibilityService() {
         super.onServiceConnected()
         // A restart drops posted callbacks; re-arm for any pass the prefs say is still running.
         graph()?.let { g -> runCatching { g.feedPass.running() }.getOrDefault(emptyMap()).forEach(::armExpiry) }
+        // Back on: take down the "Feed blocker is off" notice (ADR 0066, 2026-11-02).
+        graph()?.let { g -> runCatching { g.feedBlockWatch.sync(accessibilityOn = true) } }
+    }
+
+    /**
+     * The system unbinds when the user turns the service off in Accessibility settings: the one
+     * immediate signal, with no polling. Says so if the feed block is on (ADR 0066, 2026-11-02). Any
+     * other unbind is cleared again by [onServiceConnected] or the next app-foreground check.
+     */
+    override fun onUnbind(intent: Intent?): Boolean {
+        graph()?.let { g -> runCatching { g.feedBlockWatch.sync(accessibilityOn = false) } }
+        return super.onUnbind(intent)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {

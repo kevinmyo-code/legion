@@ -7028,3 +7028,16 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   (NextDNS) himself to close the web hole.
 - Decided by the build: an unfinished request lapses after 10 minutes, and "Go back" drops it.
 - ADR 0066. Branch `feat/feed-block-always`.
+
+## 2026-11-02 - Feed blocker: turning it off costs the same as a pass (Kevin)
+
+- **Switch OFF and unblocking an app take the pass's friction:** 60 s wall-clock wait from the tap,
+  persisted and clamped like the pass and Matrix leave, then a typed sentence ("I am choosing to turn
+  off the feed blocker", "I am choosing to unblock <app>"). Takes effect right after. Lapses after 10 min.
+- **Turning ON and blocking an app stay instant.**
+- **Matrix mode keeps what it enforces**; the gate applies there too.
+- **Accessibility service off while the switch is on:** ongoing notification "Feed blocker is off:
+  LEGION blocker accessibility service was turned off", tap to Accessibility settings. Checked on
+  service unbind/connect, app foreground and settings resume; no background work.
+- **Friction, not a lock:** no device admin, no uninstall block.
+- ADR 0066 (Consequences, 2026-11-02). Branch `fix/feed-block-off-gate`.
