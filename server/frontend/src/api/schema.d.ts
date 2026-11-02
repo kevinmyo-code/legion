@@ -1058,6 +1058,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/asset/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The report (HTML, sandboxed) or the resume (PDF, a download) */
+        get: operations["api_demo_asset_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The recruiter page's content (never the about_kevin profile) */
+        get: operations["api_demo_content_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/enter": {
         parameters: {
             query?: never;
@@ -1069,6 +1103,23 @@ export interface paths {
         put?: never;
         /** Enter the recruiter demo with the shared invite code */
         post: operations["api_demo_enter_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This recruiter visit: its role, when it ends, and its ref */
+        get: operations["api_demo_session_retrieve"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4195,6 +4246,17 @@ export interface components {
             /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
             ref?: string;
         };
+        DemoSession: {
+            /** @description Always "recruiter" here. */
+            role: string;
+            /**
+             * Format: date-time
+             * @description The visit ends at this time.
+             */
+            expires_at: string;
+            /** @description The `ref` the resume link carried, or null. */
+            ref: string | null;
+        };
         DemoVisitIssued: {
             /** @description The visitor's read-only device token, shown once. The browser also holds a session for the same visitor, which is what the assistant accepts. */
             token: string;
@@ -6034,6 +6096,52 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             readonly origin_guid: string | null;
+        };
+        RecruiterAssets: {
+            /** @description `/api/demo/asset/report`, or null when none is loaded. */
+            report: string | null;
+            /** @description `/api/demo/asset/resume`, or null when none is loaded. */
+            resume: string | null;
+        };
+        RecruiterExperience: {
+            when: string;
+            title: string;
+            bullets: string[];
+        };
+        RecruiterHero: {
+            title: string;
+            lead: string;
+            facts: string[];
+        };
+        RecruiterLinks: {
+            linkedin: string;
+            github: string;
+            email: string;
+        };
+        RecruiterPage: {
+            hero: components["schemas"]["RecruiterHero"];
+            look_for: components["schemas"]["RecruiterTitleBody"][];
+            work: components["schemas"]["RecruiterWork"];
+            experience: components["schemas"]["RecruiterExperience"][];
+            links: components["schemas"]["RecruiterLinks"];
+            assets: components["schemas"]["RecruiterAssets"];
+        };
+        RecruiterStat: {
+            value: string;
+            label: string;
+        };
+        RecruiterTitleBody: {
+            title: string;
+            body: string;
+        };
+        RecruiterWork: {
+            title: string;
+            intro: string;
+            stats: components["schemas"]["RecruiterStat"][];
+            /** @description Inline SVG markup, as Kevin wrote it. */
+            diagram_svg: string;
+            diagram_caption: string;
+            cards: components["schemas"]["RecruiterTitleBody"][];
         };
         /**
          * @description * `won` - won
@@ -8848,6 +8956,84 @@ export interface operations {
             };
         };
     };
+    api_demo_asset_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "report" | "resume";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description `report`: the stored HTML, with `Content-Security-Policy: sandbox allow-scripts` and `X-Content-Type-Options: nosniff`. `resume`: the stored PDF, as an attachment named "Kevin-Win-Resume.pdf". */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                    "application/pdf": string;
+                };
+            };
+            /** @description Neither a recruiter's visit nor a household owner. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description That file is not loaded. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_content_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecruiterPage"];
+                };
+            };
+            /** @description Neither a recruiter's visit nor a household owner. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No content loaded yet. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_demo_enter_create: {
         parameters: {
             query?: never;
@@ -8898,8 +9084,36 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
-            /** @description No demo household on this engine. Nothing created. */
+            /** @description No demo household on this engine, or more than one household carries its name. Nothing created. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_session_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoSession"];
+                };
+            };
+            /** @description Not a recruiter's live demo visit (signed out, a member, or over). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

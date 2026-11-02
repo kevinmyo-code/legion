@@ -97,3 +97,47 @@ class DemoVisit(models.Model):
 
     def __str__(self) -> str:
         return f"Demo visit {self.created_at:%Y-%m-%d %H:%M} (ref {self.ref or 'none'})"
+
+
+class RecruiterContent(models.Model):
+    """What the recruiter page shows and what `about_kevin` answers from
+    (recruiter-demo tickets 07 and 10).
+
+    **Stored in the engine, never in the repo.** The repo is public, and Kevin
+    changes a line without a commit: `manage.py load_recruiter_content <dir>`
+    reads his private folder and upserts this row. The two files (a report,
+    HTML; a resume, PDF) are bytes in the database for the same reason: the
+    engine's image carries no private file, and Cloud Run has no disk worth
+    keeping.
+
+    One live row, keyed `CURRENT_KEY`. A reload replaces it in place.
+    """
+
+    CURRENT_KEY = "current"
+
+    key = models.CharField(max_length=32, unique=True, default=CURRENT_KEY)
+    # The validated content.json (`demo.content.CONTENT_SCHEMA`), `profile`
+    # included. `profile` is served to nobody but `about_kevin`.
+    content = models.JSONField()
+    report = models.BinaryField(null=True, blank=True)
+    report_content_type = models.CharField(max_length=100, blank=True, default="")
+    report_filename = models.CharField(max_length=200, blank=True, default="")
+    resume = models.BinaryField(null=True, blank=True)
+    resume_content_type = models.CharField(max_length=100, blank=True, default="")
+    resume_filename = models.CharField(max_length=200, blank=True, default="")
+    loaded_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Recruiter content ({self.key}, loaded {self.loaded_at:%Y-%m-%d %H:%M})"
+
+    @classmethod
+    def current(cls) -> RecruiterContent | None:
+        return cls.objects.filter(key=cls.CURRENT_KEY).first()
+
+    def asset(self, kind: str) -> tuple[bytes, str, str] | None:
+        """(bytes, content type, filename) for `report` or `resume`, or None
+        when that file was not loaded."""
+        data = getattr(self, kind)
+        if data is None:
+            return None
+        return bytes(data), getattr(self, f"{kind}_content_type"), getattr(self, f"{kind}_filename")

@@ -2612,6 +2612,78 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/demo/asset/{kind}:
+    get:
+      operationId: api_demo_asset_retrieve
+      summary: The report (HTML, sandboxed) or the resume (PDF, a download)
+      parameters:
+      - in: path
+        name: kind
+        schema:
+          type: string
+          enum:
+          - report
+          - resume
+        required: true
+      tags:
+      - demo
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            text/html:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          description: '`report`: the stored HTML, with `Content-Security-Policy:
+            sandbox allow-scripts` and `X-Content-Type-Options: nosniff`. `resume`:
+            the stored PDF, as an attachment named "Kevin-Win-Resume.pdf".'
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Neither a recruiter's visit nor a household owner.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: That file is not loaded.
+  /api/demo/content:
+    get:
+      operationId: api_demo_content_retrieve
+      summary: The recruiter page's content (never the about_kevin profile)
+      tags:
+      - demo
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruiterPage'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Neither a recruiter's visit nor a household owner.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No content loaded yet.
   /api/demo/enter:
     post:
       operationId: api_demo_enter_create
@@ -2665,6 +2737,29 @@ paths:
                 $ref: '#/components/schemas/Detail'
           description: No demo household on this engine, or more than one household
             carries its name. Nothing created.
+  /api/demo/session:
+    get:
+      operationId: api_demo_session_retrieve
+      summary: 'This recruiter visit: its role, when it ends, and its ref'
+      tags:
+      - demo
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoSession'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not a recruiter's live demo visit (signed out, a member, or
+            over).
   /api/device-logs/:
     post:
       operationId: api_device_logs_create
@@ -9739,6 +9834,24 @@ components:
           pattern: ^[A-Za-z0-9_.-]{1,64}$
       required:
       - code
+    DemoSession:
+      type: object
+      properties:
+        role:
+          type: string
+          description: Always "recruiter" here.
+        expires_at:
+          type: string
+          format: date-time
+          description: The visit ends at this time.
+        ref:
+          type: string
+          nullable: true
+          description: The `ref` the resume link carried, or null.
+      required:
+      - expires_at
+      - ref
+      - role
     DemoVisitIssued:
       type: object
       properties:
@@ -13550,6 +13663,136 @@ components:
       - reversal_of
       - total_price_cents
       - unit_price_cents
+    RecruiterAssets:
+      type: object
+      properties:
+        report:
+          type: string
+          nullable: true
+          description: '`/api/demo/asset/report`, or null when none is loaded.'
+        resume:
+          type: string
+          nullable: true
+          description: '`/api/demo/asset/resume`, or null when none is loaded.'
+      required:
+      - report
+      - resume
+    RecruiterExperience:
+      type: object
+      properties:
+        when:
+          type: string
+        title:
+          type: string
+        bullets:
+          type: array
+          items:
+            type: string
+      required:
+      - bullets
+      - title
+      - when
+    RecruiterHero:
+      type: object
+      properties:
+        title:
+          type: string
+        lead:
+          type: string
+        facts:
+          type: array
+          items:
+            type: string
+      required:
+      - facts
+      - lead
+      - title
+    RecruiterLinks:
+      type: object
+      properties:
+        linkedin:
+          type: string
+        github:
+          type: string
+        email:
+          type: string
+      required:
+      - email
+      - github
+      - linkedin
+    RecruiterPage:
+      type: object
+      properties:
+        hero:
+          $ref: '#/components/schemas/RecruiterHero'
+        look_for:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecruiterTitleBody'
+        work:
+          $ref: '#/components/schemas/RecruiterWork'
+        experience:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecruiterExperience'
+        links:
+          $ref: '#/components/schemas/RecruiterLinks'
+        assets:
+          $ref: '#/components/schemas/RecruiterAssets'
+      required:
+      - assets
+      - experience
+      - hero
+      - links
+      - look_for
+      - work
+    RecruiterStat:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - value
+    RecruiterTitleBody:
+      type: object
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+      required:
+      - body
+      - title
+    RecruiterWork:
+      type: object
+      properties:
+        title:
+          type: string
+        intro:
+          type: string
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecruiterStat'
+        diagram_svg:
+          type: string
+          description: Inline SVG markup, as Kevin wrote it.
+        diagram_caption:
+          type: string
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecruiterTitleBody'
+      required:
+      - cards
+      - diagram_caption
+      - diagram_svg
+      - intro
+      - stats
+      - title
     ResultEnum:
       enum:
       - won
