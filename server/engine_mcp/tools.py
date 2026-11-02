@@ -1172,6 +1172,15 @@ def run_tool(request, name: str, arguments: dict) -> ToolResult:
             f"Nothing was read or written. This engine has no tool called {name!r}. Its "
             f"tools: {', '.join(TOOLS_BY_NAME)}."
         )
+    return run_engine_tool(request, tool, arguments)
+
+
+def run_engine_tool(request, tool: EngineTool, arguments: dict) -> ToolResult:
+    """`run_tool` for a tool already in hand: the write fence, the table fence,
+    the schema, and the handler, in that order. Also the door for a tool kept
+    OUT of the registry on purpose (`assistant.surface.RECRUITER_ONLY_TOOLS`),
+    so it gets the same checks without being listed on `/mcp`."""
+    name = tool.name
     if tool.writes:
         refusal = write_refusal(request)
         if refusal is not None:

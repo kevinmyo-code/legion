@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from demo.tools import ABOUT_KEVIN
 from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE
 from household.models import is_recruiter
 
@@ -57,9 +58,10 @@ WEB_TOOL_NAMES: tuple[str, ...] = tuple(t.name for t in TOOLS if t.name not in E
 # routes the recruiter fence refuses (`household.permissions.IsHouseholdMember`).
 # A tool that reached any of them would be refused here by default.
 #
-# Not built yet, and NOT added until they are: `about_kevin` (recruiter-demo
-# ticket 10) and `find_track` (ticket 11). Each joins this tuple in its own
-# ticket, once it exists in the registry.
+# `about_kevin` (ticket 10) is the one tool here that is NOT in the registry:
+# it is for strangers reading about Kevin, so `/mcp` and members' web never
+# list it (`RECRUITER_ONLY_TOOLS`, `demo/tools.py`). `find_track` (ticket 11)
+# is not built and joins this tuple in its own ticket.
 RECRUITER_TOOLS: tuple[str, ...] = (
     "read_records",
     "list_events",
@@ -67,7 +69,12 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     "last_ticked",
     "last_bought",
     "list_purchases",
+    "about_kevin",
 )
+
+# Tools a recruiter's assistant may call that no other door has. The tool
+# door runs them through `engine_mcp.tools.run_engine_tool` (`tool_for`).
+RECRUITER_ONLY_TOOLS = {ABOUT_KEVIN.name: ABOUT_KEVIN}
 
 _WRITES = "a write; a recruiter reads a fake household and changes none of it"
 
@@ -116,8 +123,21 @@ def _recruiter_tool(tool):
     return dataclasses.replace(tool, input_schema=schema)
 
 
+def _any_tool(name: str):
+    return RECRUITER_ONLY_TOOLS.get(name) or TOOLS_BY_NAME[name]
+
+
 def recruiter_tools():
-    return [_recruiter_tool(TOOLS_BY_NAME[name]) for name in RECRUITER_TOOLS]
+    return [_recruiter_tool(_any_tool(name)) for name in RECRUITER_TOOLS]
+
+
+def recruiter_only_tool(name: str, user):
+    """The recruiter-only tool `name`, when `user` is a recruiter and it is
+    one; else None, and the door runs the registry's tool by name. Checked
+    after `refusal_for`, so a member never reaches here with one."""
+    if is_recruiter(user):
+        return RECRUITER_ONLY_TOOLS.get(name)
+    return None
 
 
 def tools_for(user):

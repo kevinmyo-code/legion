@@ -366,6 +366,17 @@ def test_the_bought_log_tools_read_only_the_demo(world):
     assert "Hand soap refill" in _allowed(world, "list_purchases", {})
 
 
+def test_about_kevin_reads_the_profile_and_nothing_of_either_household(world):
+    from demo.models import RecruiterContent
+    from tests.test_recruiter_content import fake_content
+
+    RecruiterContent.objects.create(content=fake_content())
+    text = _allowed(world, "about_kevin", {})
+    assert "pretend work at Example Corp" in text
+    # The profile is all it reads: no demo row either.
+    assert "Greenleaf Market" not in text and "Oat milk" not in text
+
+
 def test_every_allowed_tool_was_exercised():
     """The tests above name each tool by hand; a tool added to
     `RECRUITER_TOOLS` fails here until it gets an isolation test."""
@@ -376,6 +387,7 @@ def test_every_allowed_tool_was_exercised():
         "last_ticked",
         "last_bought",
         "list_purchases",
+        "about_kevin",
     }
     assert set(RECRUITER_TOOLS) == exercised
 

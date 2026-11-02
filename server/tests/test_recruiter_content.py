@@ -272,3 +272,63 @@ def _now():
     from django.utils import timezone
 
     return timezone.now()
+
+
+# =============================================================================
+# about_kevin (ticket 10): recruiters only, answers only from the profile
+# =============================================================================
+
+
+def _tool(client, name, args=None):
+    return client.post("/api/assistant/tool", {"name": name, "args": args or {}}, format="json")
+
+
+def test_about_kevin_returns_the_profile_sections(recruiter, tmp_path):
+    load_fake(tmp_path)
+    response = _tool(recruiter, "about_kevin")
+    assert response.status_code == 200, response.data
+    assert response.data["is_error"] is False
+    text = response.data["text"]
+    assert "Experience:\nFake experience: three years of pretend work" in text
+    assert "Location:\nFakeville, Nowhere." in text
+    assert "Kevin hasn't shared that here; ask him directly" in text
+    # Nothing outside `profile` rides along.
+    assert "Fake case study" not in text
+
+
+def test_about_kevin_with_nothing_loaded_says_so_in_words(recruiter):
+    response = _tool(recruiter, "about_kevin")
+    assert response.status_code == 200
+    assert response.data["is_error"] is True
+    assert response.data["text"].startswith("Nothing was read.")
+    assert "Kevin hasn't shared that here; ask him directly" in response.data["text"]
+
+
+def test_about_kevin_refuses_extra_arguments(recruiter, tmp_path):
+    load_fake(tmp_path)
+    response = _tool(recruiter, "about_kevin", {"section": "salary"})
+    assert response.data["is_error"] is True
+    assert "Nothing was read" in response.data["text"]
+
+
+def test_about_kevin_is_never_offered_to_a_member(household_user, tmp_path):
+    from assistant.surface import tools_for
+    from engine_mcp.tools import TOOLS_BY_NAME
+
+    load_fake(tmp_path)
+    assert "about_kevin" not in TOOLS_BY_NAME  # so /mcp never lists it
+    assert "about_kevin" not in [t.name for t in tools_for(household_user)]
+    web = APIClient()
+    web.force_login(household_user)
+    response = _tool(web, "about_kevin")
+    assert response.status_code == 400
+    assert response.data["detail"].startswith("Nothing was read or written.")
+    assert "pretend work" not in str(response.data)
+
+
+def test_about_kevin_is_declared_to_a_recruiter_with_its_rule():
+    from assistant.surface import recruiter_tools
+
+    tool = {t.name: t for t in recruiter_tools()}["about_kevin"]
+    assert "Kevin hasn't shared that here; ask him directly" in tool.description
+    assert not tool.writes

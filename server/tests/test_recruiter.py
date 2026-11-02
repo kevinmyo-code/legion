@@ -24,7 +24,12 @@ from rest_framework.test import APIClient
 
 from assistant import surface
 from assistant.models import AssistantCall
-from assistant.surface import RECRUITER_EXCLUDED, RECRUITER_TABLES, RECRUITER_TOOLS
+from assistant.surface import (
+    RECRUITER_EXCLUDED,
+    RECRUITER_ONLY_TOOLS,
+    RECRUITER_TABLES,
+    RECRUITER_TOOLS,
+)
 from engine_mcp.models import Outcome
 from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME
 from household.models import DeviceToken, Household, HouseholdMember, User, is_recruiter
@@ -118,14 +123,18 @@ def test_every_registry_tool_is_classified_for_recruiters():
     assert not allowed & excluded, allowed & excluded
     unclassified = set(TOOLS_BY_NAME) - allowed - excluded
     assert not unclassified, f"classify for recruiters: {sorted(unclassified)}"
-    assert allowed | excluded == set(TOOLS_BY_NAME), "a name that is not a registry tool"
+    # The one exception: a recruiter-only tool kept out of the registry on
+    # purpose (`about_kevin`, ticket 10), so /mcp and members never see it.
+    only = set(RECRUITER_ONLY_TOOLS)
+    assert not only & set(TOOLS_BY_NAME), only & set(TOOLS_BY_NAME)
+    assert allowed | excluded == set(TOOLS_BY_NAME) | only, "a name that is not a tool"
     for name, reason in RECRUITER_EXCLUDED.items():
         assert reason.strip(), name
 
 
 def test_the_allowlist_is_reads_only():
     for name in RECRUITER_TOOLS:
-        assert not TOOLS_BY_NAME[name].writes, name
+        assert not (RECRUITER_ONLY_TOOLS.get(name) or TOOLS_BY_NAME[name]).writes, name
     for tool in TOOLS:
         if tool.writes:
             assert tool.name in RECRUITER_EXCLUDED, tool.name

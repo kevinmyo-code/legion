@@ -39,9 +39,9 @@ from assistant.companions import companion_for
 from assistant.models import AssistantCall
 from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES
 from assistant.session import token_request_for
-from assistant.surface import refusal_for
+from assistant.surface import recruiter_only_tool, refusal_for
 from engine_mcp.models import Outcome
-from engine_mcp.tools import run_tool
+from engine_mcp.tools import run_engine_tool, run_tool
 from household.permissions import IsHouseholdMember
 from household.tenancy import household_of
 from ingest.statements import gemini_key
@@ -318,7 +318,11 @@ class AssistantToolView(_AssistantView):
                 {"detail": refusal, "response": _forward(False, refusal)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        result = run_tool(request, name, body.validated_data["args"])
+        only_here = recruiter_only_tool(name, request.user)
+        if only_here is not None:
+            result = run_engine_tool(request, only_here, body.validated_data["args"])
+        else:
+            result = run_tool(request, name, body.validated_data["args"])
         _audit(request, AssistantCall.TOOL, result.outcome, name)
         return Response(
             {
