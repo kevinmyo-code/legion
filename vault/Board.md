@@ -60,9 +60,10 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[01-recruiter-role-and-allowlist\|01]] | build | Recruiter role and tool allowlist (default deny) |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[03-demo-household-seed\|03]] | build | Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset |
-| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, barge-in |
+| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, receipt scan |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[09-resume-and-quanex-text\|09]] | content | Resume page and Quanex text |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[10-about-kevin-profile\|10]] | decision | about_kevin: recruiters ask about Kevin himself |
+| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[12-phone-turn-taking-in-the-browser\|12]] | build | The phone's tuned turn-taking and barge-in, in the browser |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
@@ -356,7 +357,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | 9 | 4 | [[.scratch/purchase-log/purchase-log.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
-| [[.scratch/recruiter-demo/map\|recruiter-demo]] | 11 | 11 | [[.scratch/recruiter-demo/recruiter-demo.canvas\|open]] |
+| [[.scratch/recruiter-demo/map\|recruiter-demo]] | 12 | 12 | [[.scratch/recruiter-demo/recruiter-demo.canvas\|open]] |
 | [[.scratch/retro-games/map\|retro-games]] | 6 | 2 | [[.scratch/retro-games/retro-games.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |

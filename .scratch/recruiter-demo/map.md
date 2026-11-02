@@ -4,8 +4,8 @@ title: "Recruiters try LEGION: one shared invite code, a fake household, a guide
 charted: 2026-11-02
 charted-by: "Kevin + Opus"
 effort: "`.scratch/recruiter-demo/`"
-tickets: 11
-open: 11
+tickets: 12
+open: 12
 status: open
 tags: [map]
 ---
@@ -90,12 +90,13 @@ web assistant (existing, ADR 0056)
 |---|---|---|---|
 | 01 | Recruiter role and tool allowlist (default deny) | build | - |
 | 02 | Invite code -> per-visitor read token, `ref`, per-IP limit, rotation | build | 01 |
+| 12 | Phone's tuned turn-taking and barge-in in the browser (spike first) | build | - |
 | 03 | Demo household seed (fake bank, car, receipts, one failing receipt), nightly reset | build | - |
 | 04 | Global daily demo budget ($5), reserve-before-mint, "budget used today" message | build | 02 |
 | 05 | Guide persona and greeting on connect, capability card, suggested prompts | build | 01 |
 | 06 | Isolation tests: recruiter cannot reach Kevin's household or excluded tools, incl. prompt injection | build | 01, 02, 03 |
 | 07 | `/try` page + "What this key can't see" governance page | build | 02, 05 |
-| 08 | Demo videos (phone, head unit, barge-in) embedded on the LEGION page | content | Kevin records |
+| 08 | Demo videos (phone, head unit, receipt scan) embedded on the LEGION page | content | Kevin records |
 | 09 | Resume page + Quanex text | content | Kevin: page location, dates |
 | 10 | `about_kevin`: recruiters ask about Kevin (experience, location, work authorisation) from a profile he writes | decision | Kevin writes the profile |
 | 11 | Music: "play X" by voice, plays in the page via Spotify embed (not App Remote, not Kevin's account) | build | 01 |

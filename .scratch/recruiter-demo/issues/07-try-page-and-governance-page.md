@@ -22,6 +22,17 @@ tags: [ticket]
   how tenancy and the allowlist enforce it, why the model cannot leak what it never receives, the
   reconciliation gate in one diagram. The data-governance showcase.
 
+## One assistant, not two (Kevin, 2026-11-02)
+
+*"it has to be the same [voice] that i talk to on the legion web app, the one that recruiters talk
+to. same code"*
+
+`/try` mounts the EXISTING web assistant (`server/frontend/src/assistant/`, same live-client, same
+audio, same `/api/assistant/*` endpoints). No demo-only voice or chat implementation. Everything a
+recruiter gets differently is decided on the server by role: tool allowlist (01), greeting (05),
+household (03), budget (04). A fix or tuning to the web assistant (e.g. ticket 12) reaches both the
+same day. The canned `demo.js` in the HTML prototypes is a mock for layout only.
+
 ## Open
 
 - Engine web app or Pages (`docs/`)? Pages is already public and needs no engine deploy.

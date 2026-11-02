@@ -51,6 +51,16 @@
       "color": "1"
     },
     {
+      "id": "e6f8be121ff0172d",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/12-phone-turn-taking-in-the-browser.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "b6632b93b93ccbf1",
       "type": "file",
       "file": ".scratch/recruiter-demo/issues/02-invite-code-to-visitor-token.md",

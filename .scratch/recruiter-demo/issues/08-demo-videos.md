@@ -1,7 +1,7 @@
 ---
 map: recruiter-demo
 ticket: "08"
-title: "Demo videos: phone, head unit, barge-in"
+title: "Demo videos: phone, head unit, receipt scan"
 type: content
 status: open
 status-detail: "Kevin records"
@@ -12,10 +12,10 @@ ready: true
 tags: [ticket]
 ---
 
-# Demo videos: phone, head unit, barge-in
+# Demo videos: phone, head unit, receipt scan
 
 ## What
 
-What a browser cannot show: the phone app, the car head unit, barge-in mid-reply, a receipt photo
+What a browser cannot show: the phone app, the car head unit, a receipt photo
 going through the gate. 30-90 s each, unlisted YouTube, embedded on `/try` and the LEGION page.
 Record against the demo household: no real data on screen.
