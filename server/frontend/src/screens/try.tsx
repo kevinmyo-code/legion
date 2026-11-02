@@ -377,7 +377,7 @@ function Diagram({ svg, caption }: { svg: string; caption: string }) {
   const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
   return (
     <figure className="my-6">
-      <div className="overflow-x-auto rounded-card border border-outline-variant bg-card p-3" tabIndex={0} aria-label="Diagram, scrolls sideways">
+      <div role="region" className="overflow-x-auto rounded-card border border-outline-variant bg-card p-3" tabIndex={0} aria-label="Diagram, scrolls sideways">
         <img src={src} alt={caption || 'Diagram'} className="block h-auto w-full min-w-[760px]" />
       </div>
       {caption && <figcaption className="mt-2 text-[0.8125rem] text-muted-foreground">{caption}</figcaption>}
