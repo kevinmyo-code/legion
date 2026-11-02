@@ -49,7 +49,6 @@ from household.demo_seed import seed
 from household.models import Household, HouseholdMember
 from household.tenancy import TENANT_TABLES
 from legacy.models.ingest import IngestedFile
-from tests.conftest import _client_for, _member
 from tests.test_assistant import _tool
 from tests.test_fleet_api import TABLES as FLEET_TABLES
 from tests.test_fleet_api import Fleet, a_vehicle
@@ -179,28 +178,6 @@ def _kevin_rows(client) -> None:
     _ok(client.post("/api/purchases/", {"item": f"{MARK} soap", "bought_on": DAY}, format="json"))
 
 
-def _demo_extras(demo: Household) -> None:
-    """Ticket 03's seed builds no checklist and no bought log, so a demo
-    owner adds one of each here: without them the four checklist and bought-
-    log tools could pass only by returning nothing. Reported as a seed gap."""
-    owner = _member(demo, "demo-owner@demo.invalid")
-    client = _client_for(owner)
-    checklist = _ok(client.post("/api/checklists/", {"name": "Demo weekly shop"}, format="json"))
-    item = _ok(
-        client.post(
-            f"/api/checklists/{checklist['id']}/items", {"text": "Demo oat milk"}, format="json"
-        )
-    )
-    _ok(
-        client.post(
-            f"/api/checklists/{checklist['id']}/items/{item['id']}/tick",
-            {"day": DAY},
-            format="json",
-        )
-    )
-    _ok(client.post("/api/purchases/", {"item": "Demo dish soap", "bought_on": DAY}, format="json"))
-
-
 def _tenant_tables() -> list[str]:
     with connection.cursor() as cursor:
         cursor.execute(
@@ -250,7 +227,6 @@ def world(token_a, household_a):
     _kevin_rows(token_a)
     report = seed(today=TODAY)
     demo = report.household
-    _demo_extras(demo)
 
     _row, code = DemoCode.rotate()
     browser = APIClient(enforce_csrf_checks=True)
@@ -359,7 +335,7 @@ def test_list_checklists_reads_only_the_demo(world):
     for args in ({}, {"include_archived": True}, {"date": str(TODAY)}, {"date": "2000-01-01"}):
         _allowed(world, "list_checklists", args)
     text = _allowed(world, "list_checklists", {"date": str(TODAY), "include_archived": True})
-    assert "Demo weekly shop" in text and "Demo oat milk" in text
+    assert "Morning routine" in text and "Oat milk" in text
 
 
 def test_last_ticked_never_finds_the_other_households_line(world):
@@ -367,9 +343,7 @@ def test_last_ticked_never_finds_the_other_households_line(world):
         text = _allowed(world, "last_ticked", {"item": item}, echoed=item)
         if MARK in item.lower():
             assert "no record" in text, text
-    assert (
-        "Demo oat milk".lower() in _allowed(world, "last_ticked", {"item": "Demo oat milk"}).lower()
-    )
+    assert "oat milk" in _allowed(world, "last_ticked", {"item": "Oat milk"}).lower()
 
 
 def test_the_bought_log_tools_read_only_the_demo(world):
@@ -377,7 +351,7 @@ def test_the_bought_log_tools_read_only_the_demo(world):
         text = _allowed(world, "last_bought", {"item": item}, echoed=item)
         if MARK in item:
             assert "no record" in text.lower() or "absence of a record" in text, text
-    assert "Demo dish soap" in _allowed(world, "last_bought", {"item": "soap"})
+    assert "Hand soap refill" in _allowed(world, "last_bought", {"item": "soap"})
 
     variants = [
         {},
@@ -389,7 +363,7 @@ def test_the_bought_log_tools_read_only_the_demo(world):
     ]
     for args in variants:
         _allowed(world, "list_purchases", args, echoed=args.get("query", ""))
-    assert "Demo dish soap" in _allowed(world, "list_purchases", {})
+    assert "Hand soap refill" in _allowed(world, "list_purchases", {})
 
 
 def test_every_allowed_tool_was_exercised():

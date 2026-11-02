@@ -149,6 +149,35 @@ def test_the_seed_creates_no_users_and_no_members():
     assert HouseholdMember.objects.count() == members
 
 
+def test_checklists_ticks_and_the_bought_log_are_seeded():
+    from checklists.models import Checklist, ChecklistItem, ChecklistTick
+    from household.demo_seed import GROCERY_TICKS, MANUAL_PURCHASES, ROUTINE_TICKS
+    from purchases.models import Purchase
+
+    demo = seed(today=TODAY).household
+    lists = Checklist.objects.filter(household=demo, deleted_at__isnull=True)
+    assert set(lists.values_list("name", flat=True)) == {"Groceries", "Morning routine"}
+    assert set(lists.values_list("owner_user_id", flat=True)) == {None}
+    assert ChecklistItem.objects.filter(household=demo).count() == len(GROCERY_TICKS) + len(
+        ROUTINE_TICKS
+    )
+    ticks = sum(len(days) for _, _, days in GROCERY_TICKS + ROUTINE_TICKS)
+    assert ChecklistTick.objects.filter(household=demo).count() == ticks
+
+    # Every Groceries tick became a bought entry through the engine's own hook.
+    grocery_ticks = sum(len(days) for _, _, days in GROCERY_TICKS)
+    from_ticks = Purchase.objects.filter(household=demo, source="GROCERIES_TICK")
+    assert from_ticks.count() == grocery_ticks
+    assert not from_ticks.filter(tick__isnull=True).exists()
+    assert set(from_ticks.values_list("created_by_id", flat=True)) == {None}
+    manual = Purchase.objects.filter(household=demo, source="MANUAL")
+    assert manual.count() == len(MANUAL_PURCHASES)
+    assert not manual.filter(price_cents__isnull=True).exists()
+    # The newest oat milk tick is two days before TODAY.
+    newest = from_ticks.filter(item="Oat milk").order_by("-bought_on").first()
+    assert newest.bought_on == (TODAY - dt.date(1970, 1, 1)).days - 2
+
+
 def test_the_car_has_a_maintenance_item_coming_due():
     """Read the way the morning brief reads it, so "due" is the engine's
     verdict and not the seed's own arithmetic."""

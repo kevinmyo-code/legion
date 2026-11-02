@@ -26,6 +26,12 @@ real household.
   this seed creates no users (tickets 01/02 own those), so it is handed
   `NO_MEMBER`, whose pk is None: `events.created_by_id` is nullable (ON DELETE
   SET NULL, attribution only) and a NULL owner is a shared row (ADR 0052).
+- **Checklists and the bought log:** items and ticks on the built-in Groceries
+  list and on a daily routine, as the checklist routes write them (models,
+  `sync_id`-keyed). A Groceries tick goes through `purchases.groceries.on_tick`,
+  the hook the tick route calls, so its bought entry is the engine's own
+  (`GROCERIES_TICK`, who-ticked "not recorded"). A few `MANUAL` entries with
+  hand-typed prices sit beside them.
 
 ## Idempotent, and what `--reset` can and cannot wipe
 
@@ -583,6 +589,98 @@ def events(today: dt.date, zone) -> list[dict]:
 
 
 # =============================================================================
+# Checklists and the bought log
+# =============================================================================
+
+# Items on the household's built-in Groceries list (`checklists.builtin`), and
+# the days ago each was ticked. A tick on Groceries is a purchase (ADR 0055):
+# `purchases.groceries.on_tick` logs it, the same call the tick route makes.
+GROCERY_TICKS = (
+    ("demo-item-oatmilk", "Oat milk", (9, 2)),
+    ("demo-item-coffee", "Coffee beans", (11,)),
+    ("demo-item-bananas", "Bananas", (4,)),
+    ("demo-item-towels", "Paper towels", ()),
+)
+
+# A daily routine, ticked on some days and not others.
+ROUTINE_SYNC = "demo-chk-routine"
+ROUTINE_NAME = "Morning routine"
+ROUTINE_TICKS = (
+    ("demo-item-stretch", "Stretch ten minutes", (0, 1, 2, 4)),
+    ("demo-item-plants", "Water the plants", (1, 3)),
+    ("demo-item-vitamins", "Take vitamins", (0, 1, 2, 3, 5)),
+)
+
+# Typed by hand (`MANUAL`), so the price is someone's entry, never reconciled.
+MANUAL_PURCHASES = (
+    ("demo-buy-wipers", "Wiper blades", 6, "Brightline Hardware", 2_499, "pair"),
+    ("demo-buy-notebook", "Spiral notebook", 13, "Paper Crane Books", 649, None),
+    ("demo-buy-soap", "Hand soap refill", 20, "Pine Street Pharmacy", 579, "1L"),
+)
+
+
+def _epoch_day(day: dt.date) -> int:
+    return (day - dt.date(1970, 1, 1)).days
+
+
+def _seed_list(checklist, rows, today: dt.date, report: SeedReport) -> None:
+    """Items upserted on `sync_id`, one tick per (item, day): the tick table's
+    own unique key, so a rerun finds each tick rather than adding one."""
+    from checklists.models import ChecklistItem, ChecklistTick
+    from purchases.groceries import on_tick
+
+    for order, (sync_id, text, days_ago) in enumerate(rows):
+        item, _ = ChecklistItem.objects.update_or_create(
+            household=checklist.household,
+            sync_id=sync_id,
+            defaults={"checklist": checklist, "text": text, "sort_order": order},
+        )
+        report.upserts["checklist_items"] = report.upserts.get("checklist_items", 0) + 1
+        for ago in days_ago:
+            tick, created = ChecklistTick.objects.get_or_create(
+                item=item, day=_epoch_day(today - dt.timedelta(days=ago))
+            )
+            if created:
+                tick.refresh_from_db()
+            # No member ticked it, so `user` is None: the bought log says
+            # "not recorded" for who, which is true.
+            on_tick(tick, item, None)
+            report.upserts["checklist_ticks"] = report.upserts.get("checklist_ticks", 0) + 1
+
+
+def seed_checklists_and_purchases(household: Household, today: dt.date, report: SeedReport):
+    from checklists.builtin import ensure_builtin_lists
+    from checklists.models import Checklist
+    from purchases.models import Purchase
+
+    groceries = ensure_builtin_lists(household)
+    _seed_list(groceries, GROCERY_TICKS, today, report)
+
+    routine, _ = Checklist.objects.update_or_create(
+        household=household,
+        sync_id=ROUTINE_SYNC,
+        defaults={"name": ROUTINE_NAME, "schedule_kind": "DAILY", "sort_order": 1},
+    )
+    report.upserts["checklists"] = 2
+    _seed_list(routine, ROUTINE_TICKS, today, report)
+
+    for sync_id, item, ago, store, cents, note in MANUAL_PURCHASES:
+        Purchase.objects.update_or_create(
+            household=household,
+            sync_id=sync_id,
+            defaults={
+                "item": item,
+                "bought_on": _epoch_day(today - dt.timedelta(days=ago)),
+                "store": store,
+                "price_cents": cents,
+                "quantity_note": note,
+                "source": "MANUAL",
+            },
+        )
+    report.upserts["purchases (manual)"] = len(MANUAL_PURCHASES)
+
+
+# =============================================================================
 # The run
 # =============================================================================
 
@@ -622,6 +720,19 @@ def reset(household: Household, report: SeedReport) -> None:
     wipe("events", Event.objects.filter(household=household))
     wipe("places", Place.objects.filter(household=household))
     wipe("voice_notes", VoiceNote.objects.filter(household=household))
+    # Purchases before ticks: `Purchase.tick` is SET_NULL, so a tick deleted
+    # first would leave its bought entry behind. The built-in Groceries list
+    # itself is kept (only its items go): nothing but household creation makes
+    # one, and the reseed puts its items back.
+    from checklists.models import Checklist, ChecklistItem
+    from purchases.models import Purchase
+
+    wipe("purchases", Purchase.objects.filter(household=household))
+    wipe("checklist_items (and ticks)", ChecklistItem.objects.filter(household=household))
+    wipe(
+        "checklists (not built in)",
+        Checklist.objects.filter(household=household, system_key__isnull=True),
+    )
     wipe(
         "ledger_transactions (UNRECONCILED)",
         LedgerTransaction.objects.filter(household=household, provenance="UNRECONCILED"),
@@ -743,6 +854,8 @@ def seed(*, reset_first: bool = False, today: dt.date | None = None) -> SeedRepo
             ).first()
             _save(EventSerializer, event_context, row, existing)
         report.upserts["events"] = len(planned)
+
+        seed_checklists_and_purchases(household, today, report)
 
     return report
 
