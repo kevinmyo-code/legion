@@ -106,12 +106,25 @@ describe('the family surface', () => {
     expect(FakeLiveSocket.instances).toHaveLength(0)
   })
 
-  test('a throttled start says to try again later, in the engine words', async () => {
-    const engine = engineWith({ assistant: { mint: { status: 429, body: { detail: 'Too many conversations started.' } } } })
+  test('a throttled start says so in the engine words, and nothing is added to them', async () => {
+    const detail = 'Nothing was read, written or started. Too many conversations started; try again in a minute.'
+    const engine = engineWith({ assistant: { mint: { status: 429, body: { detail } } } })
     renderApp('/', engine, 'family')
     const sheet = await openFamilyChat()
     typeAndSend(within(sheet).getByRole('textbox', { name: 'Message Dorothy' }), 'hello')
-    expect(await within(sheet).findByRole('alert')).toHaveTextContent('Too many conversations started. Try again in a little while.')
+    const alert = await within(sheet).findByRole('alert')
+    expect(alert).toHaveTextContent(detail)
+    expect(alert).not.toHaveTextContent('in a little while')
+  })
+
+  test('a throttled start with no words from the engine still says what to do', async () => {
+    const engine = engineWith({ assistant: { mint: { status: 429, body: {} } } })
+    renderApp('/', engine, 'family')
+    const sheet = await openFamilyChat()
+    typeAndSend(within(sheet).getByRole('textbox', { name: 'Message Dorothy' }), 'hello')
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent(
+      'Too many conversations were started. Try again in a little while.',
+    )
   })
 
   test('an unreachable engine says nothing was started', async () => {

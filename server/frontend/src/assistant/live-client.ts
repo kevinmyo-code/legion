@@ -108,6 +108,15 @@ export interface LiveDeps {
 export interface LiveOptions {
   /** End the conversation when the page is hidden (a screen lock or an app switch on a phone). */
   endOnHidden: () => boolean
+  /**
+   * Opt-in: a client turn sent once when a conversation connects with nothing
+   * typed yet, so the assistant speaks first. The token's setup is locked and a
+   * Live model says nothing until it hears something, so a page that wants a
+   * greeting has to send one turn. It is never shown as a line: the person did
+   * not say it. Skipped when the conversation starts from a typed message, which
+   * is already the first turn. Null or absent sends nothing (the member app).
+   */
+  openingTurn?: () => string | null
 }
 
 export const ENDED_LOCKED = 'Conversation ended when the screen locked.'
@@ -547,6 +556,16 @@ export class LiveClient {
     this.set({ phase: 'live' })
     const queued = this.queued
     this.queued = []
+    if (queued.length === 0) {
+      const opening = this.options.openingTurn?.()?.trim()
+      if (opening) {
+        // A voice start hears the greeting; a start with the mic off reads it.
+        this.typedTurn = this.state.mic === 'off'
+        this.awaiting = true
+        this.sendTyped(opening)
+        this.refresh()
+      }
+    }
     for (const text of queued) this.sendTyped(text)
   }
 
