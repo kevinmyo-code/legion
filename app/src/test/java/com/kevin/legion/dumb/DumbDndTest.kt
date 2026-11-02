@@ -17,15 +17,17 @@ private class FakeDndGateway(
     var failNextApply: Boolean = false,
 ) : DndGateway {
     val applied = mutableListOf<DndSnapshot>()
+    val filterWrites = mutableListOf<Int>()
     override fun hasAccess() = access
     override fun read() = live
-    override fun apply(snapshot: DndSnapshot) {
+    override fun apply(snapshot: DndSnapshot, writeFilter: Boolean) {
         if (failNextApply) {
             failNextApply = false
             throw SecurityException("access revoked")
         }
         applied += snapshot
-        live = snapshot
+        if (writeFilter) filterWrites += snapshot.filter
+        live = if (writeFilter) snapshot else snapshot.copy(filter = live.filter)
     }
 }
 
@@ -131,6 +133,105 @@ class DumbDndTest {
         gateway.failNextApply = true
         assertEquals(DndResult.NoAccess, dnd.exit())
         assertNotNull(store.saved)
+    }
+}
+
+/**
+ * The stuck-DND bug (Kevin, 2026-11-02): Quiet off, Matrix off, and a manual Do Not Disturb that
+ * LEGION made still silencing calls and messages. Filters: 1 = ALL, 2 = PRIORITY.
+ */
+class DumbDndQuietTest {
+    private val users = DndSnapshot(1, Policy.PRIORITY_CATEGORY_ALARMS, Policy.PRIORITY_SENDERS_STARRED,
+        Policy.PRIORITY_SENDERS_STARRED, 0, 3)
+    private var quietOn = false
+    private var quietUserFilter: Int? = null
+    private val gateway = FakeDndGateway(live = users)
+    private val store = FakeSavedStore()
+    private val dnd = DumbDnd(gateway, store, quietOn = { quietOn }, quietUserFilter = { quietUserFilter })
+
+    /** Quiet's automatic rule on: the consolidated filter the gateway reads becomes PRIORITY. */
+    private fun quietGoesOn(recorded: Int) {
+        quietOn = true
+        quietUserFilter = recorded
+        gateway.live = gateway.live.copy(filter = 2)
+    }
+
+    @Test
+    fun `entering Matrix while Quiet is on saves the user's filter, not Quiet's priority`() {
+        quietGoesOn(recorded = 1)
+        dnd.enter()
+        assertEquals(1, store.saved?.filter)
+    }
+
+    @Test
+    fun `Quiet on, Matrix on, Quiet off, Matrix off leaves no Do Not Disturb`() {
+        quietGoesOn(recorded = 1)
+        dnd.enter()
+        quietOn = false
+        quietUserFilter = null
+        dnd.exit()
+        assertEquals(listOf(2, 1), gateway.filterWrites) // dumb policy on, then ALL: never PRIORITY on the way out
+        assertEquals(users, gateway.live)
+    }
+
+    @Test
+    fun `leaving Matrix while Quiet is still on restores the policy but leaves the filter to Quiet`() {
+        quietGoesOn(recorded = 1)
+        dnd.enter()
+        assertEquals(DndResult.Applied, dnd.exit())
+        assertEquals(listOf(2), gateway.filterWrites) // ALL now would snooze Quiet's rule
+        assertEquals(users.policyOnly(), gateway.live.policyOnly())
+        assertNull(store.saved)
+    }
+
+    @Test
+    fun `a user's own Do Not Disturb from before Quiet is still restored exactly`() {
+        gateway.live = users.copy(filter = 2)
+        quietGoesOn(recorded = 2)
+        dnd.enter()
+        dnd.exit()
+        assertEquals(listOf(2, 2), gateway.filterWrites)
+        assertEquals(users.copy(filter = 2), gateway.live)
+    }
+
+    private fun DndSnapshot.policyOnly() = copy(filter = 0)
+}
+
+class DndOwnershipTest {
+    private val save = DndSnapshot(1, 0, 0, 0, 0, -1)
+
+    @Test
+    fun `the user's filter is the other mode's save first, then Quiet's record, then the live one`() {
+        assertEquals(1, DndOwnership.userFilter(live = 2, matrixSaved = save, quietRecorded = 2))
+        assertEquals(1, DndOwnership.userFilter(live = 2, matrixSaved = null, quietRecorded = 1))
+        assertEquals(2, DndOwnership.userFilter(live = 2, matrixSaved = null, quietRecorded = null))
+    }
+
+    @Test
+    fun `Quiet off clears a Do Not Disturb the user did not have`() {
+        // The A25 on 2026-11-02: manual rule on (PRIORITY), enabler LEGION, user had none.
+        assertTrue(DndOwnership.clearAfterQuietOff(matrixSaved = null, userFilter = 1, live = 2))
+        assertTrue(DndOwnership.clearAfterQuietOff(matrixSaved = null, userFilter = 0, live = 3))
+    }
+
+    @Test
+    fun `a Quiet started by an older build that recorded nothing still clears`() {
+        assertTrue(DndOwnership.clearAfterQuietOff(matrixSaved = null, userFilter = null, live = 2))
+    }
+
+    @Test
+    fun `Quiet off leaves the user's own Do Not Disturb alone`() {
+        assertFalse(DndOwnership.clearAfterQuietOff(matrixSaved = null, userFilter = 2, live = 2))
+    }
+
+    @Test
+    fun `Quiet off leaves Do Not Disturb to Matrix while Matrix holds a save`() {
+        assertFalse(DndOwnership.clearAfterQuietOff(matrixSaved = save, userFilter = 1, live = 2))
+    }
+
+    @Test
+    fun `nothing to clear when Do Not Disturb is already off`() {
+        assertFalse(DndOwnership.clearAfterQuietOff(matrixSaved = null, userFilter = 1, live = 1))
     }
 }
 

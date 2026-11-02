@@ -11,6 +11,8 @@ import android.service.notification.Condition
 import android.service.notification.ZenPolicy
 import android.util.Log
 import androidx.annotation.RequiresApi
+import com.kevin.legion.dumb.DndOwnership
+import com.kevin.legion.dumb.PrefsDndSavedStore
 import com.kevin.legion.ui.MainActivity
 
 /**
@@ -51,6 +53,7 @@ object QuietMode {
     private const val KEY_ON = "on"
     private const val KEY_PREVIOUS_RINGER = "previous_ringer"
     private const val KEY_RULE_ID = "rule_id"
+    private const val KEY_USER_FILTER = "user_filter"
     private const val KEY_VOLUME_PREFIX = "volume_"
     private const val TAG = "QuietMode"
 
@@ -99,6 +102,8 @@ object QuietMode {
         if (!p.getBoolean(KEY_ON, false)) {
             val e = p.edit()
             for (stream in RESTORED_STREAMS) e.putInt(KEY_VOLUME_PREFIX + stream, audio.getStreamVolume(stream))
+            // The user's own DND, read before our rule is on (2026-11-02): what "off" may leave on.
+            e.putInt(KEY_USER_FILTER, DndOwnership.userFilter(nm.currentInterruptionFilter, matrixSave(context), null))
             e.apply()
         }
         // Media to half, System to 0. Read and written before vibrate and the rule go on, so the
@@ -133,9 +138,41 @@ object QuietMode {
         // Keys the pre-2026-10-11 build wrote for the two streams that moved to QuietVolumes. A
         // phone that upgraded while Quiet was on still carries them, and nothing else reads them.
         e.remove(KEY_VOLUME_PREFIX + AudioManager.STREAM_MUSIC).remove(KEY_VOLUME_PREFIX + AudioManager.STREAM_SYSTEM)
-        e.putBoolean(KEY_ON, false).remove(KEY_PREVIOUS_RINGER).apply()
+        val userFilter = if (p.contains(KEY_USER_FILTER)) p.getInt(KEY_USER_FILTER, 0) else null
+        e.putBoolean(KEY_ON, false).remove(KEY_PREVIOUS_RINGER).remove(KEY_USER_FILTER).apply()
         withVolumes(context, "Quiet off") { it.onQuietOff() }
+        clearLeftoverDnd(context, nm, userFilter)
         return Result.Off
+    }
+
+    /**
+     * The filter Quiet recorded as the user's own when it went on, or null when Quiet is off (or
+     * was turned on by a build that recorded none). Dumb mode saves this, not the live filter.
+     */
+    fun userFilter(context: Context): Int? {
+        val p = prefs(context)
+        return if (p.getBoolean(KEY_ON, false) && p.contains(KEY_USER_FILTER)) p.getInt(KEY_USER_FILTER, 0) else null
+    }
+
+    private fun matrixSave(context: Context) = runCatching { PrefsDndSavedStore(context).load() }.getOrNull()
+
+    /**
+     * Quiet is off; if a Do Not Disturb is still on that is LEGION's, not the user's, end it
+     * (Kevin, 2026-11-02: *"when i take it off quiet mode, its still in do not disturb and i dont
+     * get calls or message notifications"*). Restoring a SILENT ringer above makes Android turn on
+     * its MANUAL DND rule with LEGION as the enabler (the A25's audio log: `setRingerMode external
+     * to 0, caller=com.kevin.legion` at Quiet off), and that rule outlives Quiet's own. Which DND is
+     * LEGION's is decided by [DndOwnership.clearAfterQuietOff]; a DND the user had before Quiet is
+     * left exactly as it was. Never throws: a tap must survive it.
+     */
+    private fun clearLeftoverDnd(context: Context, nm: NotificationManager, userFilter: Int?) {
+        runCatching {
+            val live = nm.currentInterruptionFilter
+            if (DndOwnership.clearAfterQuietOff(matrixSave(context), userFilter, live)) {
+                Log.i(TAG, "Quiet off left DND on (filter $live) that the user did not have; setting it back to all")
+                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+            }
+        }.onFailure { Log.w(TAG, "Could not clear a leftover Do Not Disturb", it) }
     }
 
     /**

@@ -7041,3 +7041,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   service unbind/connect, app foreground and settings resume; no background work.
 - **Friction, not a lock:** no device admin, no uninstall block.
 - ADR 0066 (Consequences, 2026-11-02). Branch `fix/feed-block-off-gate`.
+
+## 2026-11-02 - LEGION never leaves its own Do Not Disturb on (Kevin's bug)
+
+- **Bug:** Quiet off, phone stuck in DND for six days (calls and messages silenced). The A25's manual DND
+  rule had `enabler=com.kevin.legion`.
+- **Cause (traced in `dumpsys audio`):** Quiet off restored a SILENT ringer; Android's ringer delegate
+  turned manual DND on as LEGION. Self-feeding: DND makes the ringer read SILENT, so the next Quiet on
+  saves SILENT. Start on 10-27 is older than the logs (reasoned).
+- **Also fixed:** Matrix saved the filter with Quiet's rule counted in (PRIORITY), and restored it as manual DND.
+- **Rule:** restore the filter the user had before LEGION touched DND. Quiet records it on first "on";
+  Matrix uses that record while Quiet is on. Quiet off with Matrix holding no save: user had none and DND
+  is on, so set ALL. The user's own DND is kept exactly (ADR 0062 rule).
+- **Matrix off while Quiet is on:** policy restored, filter left for Quiet's off (ALL would snooze Quiet's rule).
+- **Known edge:** a schedule that starts during Quiet is ended by Quiet off (enabler is not readable).
+- ADR 0062 (Amendment, 2026-11-02). Branch `fix/quiet-dnd-stuck`.

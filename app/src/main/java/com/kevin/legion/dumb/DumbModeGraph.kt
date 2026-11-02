@@ -52,7 +52,14 @@ class DumbModeGraph(private val app: Application) {
     val people: ChosenPeople by lazy { ChosenPeople(PrefsChosenPeopleStore(app)) }
     val digest: HeldDigest by lazy { HeldDigest(PrefsDigestPersistence(app)) }
     val alertSwitch: AlertFallbackSwitch by lazy { AlertFallbackSwitch(app) }
-    val dnd: DumbDnd by lazy { DumbDnd(AndroidDndGateway(app), PrefsDndSavedStore(app)) }
+    val dnd: DumbDnd by lazy {
+        DumbDnd(
+            AndroidDndGateway(app),
+            PrefsDndSavedStore(app),
+            quietOn = { com.kevin.legion.quiet.QuietMode.isOn(app) },
+            quietUserFilter = { com.kevin.legion.quiet.QuietMode.userFilter(app) },
+        )
+    }
 
     val callScreener: DumbCallScreener by lazy {
         DumbCallScreener(
