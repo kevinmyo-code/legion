@@ -35,4 +35,9 @@ same day. The canned `demo.js` in the HTML prototypes is a mock for layout only.
 
 ## Open
 
-- Engine web app or Pages (`docs/`)? Pages is already public and needs no engine deploy.
+- RESOLVED (Kevin, 2026-11-02): *"we dont use github pages. we only share the legion web app
+  frontend"*. The recruiter page is a public route (`/try`) in the engine's React app
+  (`server/frontend`, TanStack routes), on Cloud Run at the run.app URL until Kevin buys a domain.
+  Same origin as the assistant, so the visitor session cookie just works. Layout = prototype B
+  (editorial) with the Quanex case study and report mocks, rebuilt as React components.
+- Cold start (~5.4 s at min-instances 0) stays as is while building; always-on is a later call.
