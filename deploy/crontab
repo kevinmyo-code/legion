@@ -40,3 +40,9 @@
 # morning list, deduped in public.push_sent. Every five minutes. With the
 # VAPID_* keys unset it says push is off and sends nothing.
 */5 * * * * python manage.py push_dispatch
+
+# recruiter-demo ticket 03: rebuild the FAKE demo household recruiters read, so
+# its dates stay relative to today. --reset deletes what the engine allows
+# deleting; gated rows are immutable and are found already committed. 04:15 UTC,
+# clear of backup_nightly.
+15 4 * * * python manage.py seed_demo_household --reset
