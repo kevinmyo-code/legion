@@ -457,6 +457,12 @@ LEGION_MCP = os.environ.get("LEGION_MCP", "").strip().lower() in {
     "on",
 }
 
+# recruiter-demo ticket 03: the name of the FAKE household recruiters read
+# (`household/demo.py`, `manage.py seed_demo_household`). Optional, "Demo" by
+# default. Only the seed creates it and only `demo_household()` looks it up;
+# nothing else on the engine treats a household specially by name.
+LEGION_DEMO_HOUSEHOLD_NAME = os.environ.get("LEGION_DEMO_HOUSEHOLD_NAME", "").strip() or "Demo"
+
 # ADR 0057 (Kevin, 2026-10-09): the bank's own transaction feed, through the
 # household's OWN Plaid team. Optional: with either key unset the bank
 # connection says it is not set up, and `manage.py plaid_sync` records
