@@ -1,0 +1,179 @@
+{
+  "nodes": [
+    {
+      "id": "7b81231f18d21aa5",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/01-recruiter-role-and-allowlist.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "fe4c24ee44c4dc32",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/03-demo-household-seed.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c09c41891fdf1ce9",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/08-demo-videos.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "eea1d0c633756758",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/09-resume-and-quanex-text.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "dff9803adbfe8cda",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/10-about-kevin-profile.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b6632b93b93ccbf1",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/02-invite-code-to-visitor-token.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "beea6156aa65de73",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/05-guide-persona-and-greeting.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "497c35bd841690d8",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/11-music-in-the-browser.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ca8d0e365ec6dbd3",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/04-global-daily-budget.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d23af93327c647d9",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/06-isolation-tests.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ccafbdf22be58505",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/07-try-page-and-governance-page.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "35167734857d3e8c",
+      "fromNode": "7b81231f18d21aa5",
+      "fromSide": "right",
+      "toNode": "b6632b93b93ccbf1",
+      "toSide": "left"
+    },
+    {
+      "id": "65c0fdeefb22699c",
+      "fromNode": "b6632b93b93ccbf1",
+      "fromSide": "right",
+      "toNode": "ca8d0e365ec6dbd3",
+      "toSide": "left"
+    },
+    {
+      "id": "657ef90e2cdc4130",
+      "fromNode": "7b81231f18d21aa5",
+      "fromSide": "right",
+      "toNode": "beea6156aa65de73",
+      "toSide": "left"
+    },
+    {
+      "id": "6fbc26f0f9ed8519",
+      "fromNode": "7b81231f18d21aa5",
+      "fromSide": "right",
+      "toNode": "d23af93327c647d9",
+      "toSide": "left"
+    },
+    {
+      "id": "6f7a5295d728de38",
+      "fromNode": "b6632b93b93ccbf1",
+      "fromSide": "right",
+      "toNode": "d23af93327c647d9",
+      "toSide": "left"
+    },
+    {
+      "id": "6308002127d23114",
+      "fromNode": "fe4c24ee44c4dc32",
+      "fromSide": "right",
+      "toNode": "d23af93327c647d9",
+      "toSide": "left"
+    },
+    {
+      "id": "61bab8e2e63b591e",
+      "fromNode": "b6632b93b93ccbf1",
+      "fromSide": "right",
+      "toNode": "ccafbdf22be58505",
+      "toSide": "left"
+    },
+    {
+      "id": "4bc103f85e89945f",
+      "fromNode": "beea6156aa65de73",
+      "fromSide": "right",
+      "toNode": "ccafbdf22be58505",
+      "toSide": "left"
+    },
+    {
+      "id": "f8434888985a31cd",
+      "fromNode": "7b81231f18d21aa5",
+      "fromSide": "right",
+      "toNode": "497c35bd841690d8",
+      "toSide": "left"
+    }
+  ]
+}
