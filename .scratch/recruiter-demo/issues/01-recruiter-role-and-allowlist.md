@@ -14,6 +14,13 @@ tags: [ticket]
 
 # Recruiter role and tool allowlist (default deny)
 
+## Role (decided, 2026-11-02)
+
+`HouseholdMember.role` gains `recruiter` (widen `max_length` 8 -> 16, AlterField migration). Role follows
+the USER, so a web session cookie and a token for that user are both recruiter: no way to escape it by
+changing how you sign in. Only throwaway visitor users in the demo household carry it. ADR 0068 records
+this as an amendment to ADR 0045: the first role that touches data, and only to narrow it.
+
 ## What
 
 A recruiter caller is identified by its token (role `recruiter`), never by anything the browser says.

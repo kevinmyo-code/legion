@@ -23,7 +23,8 @@ One budget across ALL recruiter traffic (ruling 4: $5/day).
 - Reserve before acting: a mint reserves its full max cost first; if that would cross the cap, no
   token is minted. The cap cannot be overshot.
 - Cap hit: `/try` and the assistant say "Today's demo budget is used up. Try again tomorrow, or watch
-  the videos below." Text and voice share the cap (open: Kevin may want text to outlive voice).
+  the videos below." Text outlives voice (Kevin, 2026-11-02): voice stops at $5 minus a text reserve
+  (setting, default $1); text runs until the full $5.
 - Optional: a separate Gemini key for demo traffic, so Google's side has a ceiling too.
 
 ## Verify

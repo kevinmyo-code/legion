@@ -4,7 +4,7 @@ ticket: "09"
 title: "Resume page and Quanex text"
 type: content
 status: open
-status-detail: "Kevin: page location, dates"
+status-detail: "page location after the frontend prototype"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -28,4 +28,5 @@ Web CV plus PDF, from the relay brief (work-PC session, 2026-11-02).
 
 ## Open
 
-- Internship dates. Page location: separate site or a tab on the LEGION page.
+- Dates settled: Process & Data Intern, 2026-06-01 to 2026-11-27 (Kevin).
+- Page location: after a frontend look prototype (Kevin, 2026-11-02: "lets prototype the frontend look later").

@@ -33,6 +33,12 @@ Kevin's household, his accounts, his machines, or spend more than $5 a day in to
 3. One invite code shared with every recruiter.
 4. Global Gemini cap $5/day across all recruiters.
 5. The engine knows the caller is a recruiter from the code; the assistant greets accordingly.
+6. The guide is Alfred: same name, same voice as the phone.
+7. Text chat keeps working after the voice budget runs out.
+8. Quanex internship: 2026-06-01 to 2026-11-27.
+9. Resume placement decided after a frontend prototype, later.
+10. Recruiter is a third `HouseholdMember.role` (ADR 0068 amends ADR 0045: the first role that governs
+   data, and only to NARROW it). Set on throwaway visitor users in the demo household only.
 
 ## Shape
 

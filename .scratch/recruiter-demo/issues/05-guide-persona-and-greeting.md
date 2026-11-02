@@ -19,8 +19,9 @@ tags: [ticket]
 *"legion should know its a recruiter from the key, and so on connect it would tell users like >
 welcome to kevin's voice app ... 'i can do xxx i can do yyy' what would u like to try today"*
 
-- Role `recruiter` gets its own companion (slot exists: `assistant/companions.py`), name TBD by Kevin.
-  The engine picks it from the token; the browser cannot pick another.
+- Companion is Alfred, same name and voice as the phone (Kevin, 2026-11-02). Register stays Alfred's
+  but addressed to a stranger: no first-name teasing, no assumptions about who they are. The engine
+  picks it from the role; the browser cannot pick another.
 - Voice: on connect the assistant speaks first. Greeting names Kevin, says it is a demo on fake data,
   lists 3-4 things it can do, asks what to try.
 - Text chat: same greeting as the first message, plus tappable suggestions, e.g.
@@ -30,6 +31,5 @@ welcome to kevin's voice app ... 'i can do xxx i can do yyy' what would u like t
 
 ## Open
 
-- Companion name and voice (Kevin).
 - Can a locked Live token make the model speak first? Trace `live.py` and live-client; fallback is
   the browser sending one opening client turn.
