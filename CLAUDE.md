@@ -78,7 +78,10 @@ device model in a prompt had three separate agents reporting work on a phone tha
   shared unless it is private to one member** (Kevin, 2026-10-03, ADR 0052: Canvas coursework and
   class schedule are Kevin's alone; hand-made rows default to shared). Privacy is ownership of a
   row, enforced at `household.tenancy.visible()`, never a client-side hide. One role, `owner`,
-  exists only to invite and remove members. No approval workflows, ever.
+  exists only to invite and remove members. **One more, `recruiter` (Kevin, 2026-11-02, ADR 0068),
+  exists only on throwaway visitors in the demo household and only ever NARROWS access:** default
+  deny on routes and assistant tools, no writes by any credential. No role widens access. No
+  approval workflows, ever.
 - **Register: Alfred/JARVIS is a BAND, not a name.** A tool with a personality. Not a mascot, not
   the car. Competent, dry, useful. The register copy lives in `ai/Personas.kt`; `AssistantIdentity`
   resolves it. **LEGION is the app; the phone has one companion persona, Alfred** (Kevin,

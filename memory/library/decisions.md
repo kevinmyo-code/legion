@@ -7011,3 +7011,15 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   conversation.
 - Amends the 2026-10-27 entry's "400 ms pre-roll" and the 2026-10-28 entry's "normal starts keep
   400 ms". ADR 0064 amended. Ticket `.scratch/async-lookups/issues/08-run5-6-follow-ups.md` item 3.
+
+## 2026-11-02 - Recruiter is a third household role, and it only narrows (Kevin)
+
+- Ruling (map `.scratch/recruiter-demo/`, ruling 10): recruiters reach the live engine through one
+  shared invite code; each entry becomes a throwaway visitor `User` whose `HouseholdMember.role` is
+  `recruiter`, in the fake demo household only. Amends ADR 0045's "no roles inside a household
+  except `owner`": the first role that touches data, and only to narrow it. ADR 0068.
+- Built (tickets 01, 02, branch `feat/recruiter-access`): `assistant.surface.RECRUITER_TOOLS`
+  (default deny, read tools only), every REST route refuses a recruiter unless it opts in, a
+  recruiter writes nothing by any credential, `POST /api/demo/enter` (hashed code, per-IP throttle,
+  2 h read token plus a session tied to it, `ref` stored), `manage.py demo_code rotate|off`,
+  `manage.py prune_demo_visitors`. `DeviceToken.expires_at` added (null = never).

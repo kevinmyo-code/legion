@@ -1,7 +1,8 @@
 ---
-status: accepted
+status: amended
 decided: 2026-09-08
 decided-by: Kevin
+amended: 2026-11-02
 supersedes: []
 source: "[[decisions#2026-09-08 - One engine, many households: the web-and-households map]]"
 tags: [adr]
@@ -10,6 +11,10 @@ tags: [adr]
 # 45. Households are tenants
 
 ## Standing
+
+**AMENDED 2026-11-02 by [[0068-recruiter-role-narrows-only]]:** a third role, `recruiter`, exists
+on throwaway visitor users in the demo household. It is the one role that touches data, and only to
+narrow it. Everything below still holds for `owner` and `member`.
 
 **ACCEPTED 2026-09-08 by Kevin, as proposed.** One Django
 engine holds more than one household. Every data row belongs to exactly one household; every user

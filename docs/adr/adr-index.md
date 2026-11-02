@@ -52,7 +52,7 @@ Format and the test for whether something deserves an ADR:
 | 0041 | [[0041-a-recording-kevin-starts-is-first-party\|A recording Kevin starts is first-party, and its transcript is kept]] | accepted | 2026-09-01 | - |
 | 0042 | [[0042-business-rules-live-in-postgres\|Business rules live in Postgres, not in either client]] | amended | 2026-09-05 | 2026-09-05 |
 | 0044 | [[0044-django-is-the-engine\|Django is the engine]] | accepted | 2026-09-05 | - |
-| 0045 | [[0045-households-are-tenants\|Households are tenants]] | accepted | 2026-09-08 | - |
+| 0045 | [[0045-households-are-tenants\|Households are tenants]] | amended | 2026-09-08 | 2026-11-02 |
 | 0046 | [[0046-fixed-wake-and-sleep-phrases\|A fixed wake and sleep phrase pair, implemented in two different places]] | accepted | 2026-09-10 | - |
 | 0049 | [[0049-a-tick-is-a-tap-not-a-purchase\|A tick is a tap, not a purchase]] | accepted | 2026-09-16 | - |
 | 0050 | [[0050-legion-may-be-the-home-app\|LEGION may be the phone's home app]] | accepted | 2026-09-27 | - |
@@ -71,6 +71,7 @@ Format and the test for whether something deserves an ADR:
 | 0063 | [[0063-alfred-is-the-only-phone-persona\|The phone has one persona, Alfred]] | accepted | 2026-10-27 | - |
 | 0064 | [[0064-phone-turn-taking-local-end-of-turn-and-barge-in\|The phone ends turns locally, and you can talk over Alfred]] | accepted | 2026-10-27 | - |
 | 0065 | [[0065-read-only-lookups-may-be-non-blocking\|Read-only lookups may run non-blocking; writes stay blocking]] | accepted | 2026-10-28 | - |
+| 0068 | [[0068-recruiter-role-narrows-only\|Recruiter is a third household role, and it only narrows]] | accepted | 2026-11-02 | - |
 
 ## Superseded
 
