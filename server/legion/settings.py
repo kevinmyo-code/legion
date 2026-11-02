@@ -156,9 +156,12 @@ INSTALLED_APPS = [
     "demo",
 ]
 
-# recruiter-demo ticket 02: the household recruiter visitors join, found by
-# name (ticket 03's seed makes it). Optional on purpose: an engine with no demo
-# must still boot, and `/api/demo/enter` refuses in words until it exists.
+# recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter
+# visitors join. `manage.py seed_demo_household` creates it, and
+# `household.demo.find_demo_household()` is the one lookup both the seed and
+# `/api/demo/enter` use. Optional on purpose: an engine with no demo must still
+# boot, and `/enter` refuses in words until it exists. Nothing else on the
+# engine treats a household specially by name.
 LEGION_DEMO_HOUSEHOLD_NAME = os.environ.get("LEGION_DEMO_HOUSEHOLD_NAME", "").strip() or "Demo"
 
 MIDDLEWARE = [
@@ -456,12 +459,6 @@ LEGION_MCP = os.environ.get("LEGION_MCP", "").strip().lower() in {
     "yes",
     "on",
 }
-
-# recruiter-demo ticket 03: the name of the FAKE household recruiters read
-# (`household/demo.py`, `manage.py seed_demo_household`). Optional, "Demo" by
-# default. Only the seed creates it and only `demo_household()` looks it up;
-# nothing else on the engine treats a household specially by name.
-LEGION_DEMO_HOUSEHOLD_NAME = os.environ.get("LEGION_DEMO_HOUSEHOLD_NAME", "").strip() or "Demo"
 
 # ADR 0057 (Kevin, 2026-10-09): the bank's own transaction feed, through the
 # household's OWN Plaid team. Optional: with either key unset the bank

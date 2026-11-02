@@ -17,8 +17,11 @@ What a successful entry leaves behind:
 - a `DemoVisit` row carrying the `ref`.
 
 The demo household is found by name (`settings.LEGION_DEMO_HOUSEHOLD_NAME`,
-default "Demo"; recruiter-demo ticket 03 seeds it). With no such household
-the door refuses in words and creates nothing.
+default "Demo") through ticket 03's own lookup,
+`household.demo.find_demo_household`, the one the seed uses to find what it
+built. With no such household, or with two households carrying the name, the
+door refuses in words and creates nothing: a visitor put into the wrong one of
+two same-named households is the failure this map exists to make impossible.
 """
 
 from __future__ import annotations
@@ -26,7 +29,6 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib.auth import login
 from django.db import transaction
 from django.utils import timezone
@@ -39,6 +41,7 @@ from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
 from demo.models import DemoCode, DemoVisit
+from household.demo import DemoHouseholdError, find_demo_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
 
@@ -53,6 +56,10 @@ DOOR_CLOSED = "The demo is closed right now. Nothing was created."
 NO_DEMO_HOUSEHOLD = (
     "The demo household is not set up on this engine yet. Nothing was created; the "
     "operator has to seed it first."
+)
+AMBIGUOUS_DEMO_HOUSEHOLD = (
+    "More than one household carries the demo household's name on this engine, so there "
+    "is no single demo to join. Nothing was created; the operator has to fix the name first."
 )
 TOO_MANY = (
     "Too many tries from this network in a short time. Nothing was created; wait a while "
@@ -119,7 +126,11 @@ class DemoEnterView(APIView):
                 DetailSerializer, description="Too many tries from this IP. Nothing created."
             ),
             503: OpenApiResponse(
-                DetailSerializer, description="No demo household on this engine. Nothing created."
+                DetailSerializer,
+                description=(
+                    "No demo household on this engine, or more than one household carries "
+                    "its name. Nothing created."
+                ),
             ),
         },
     )
@@ -141,7 +152,10 @@ class DemoEnterView(APIView):
         if code.revoked_at is not None:
             return _refuse(RETIRED_CODE, status.HTTP_403_FORBIDDEN)
 
-        household = demo_household()
+        try:
+            household = find_demo_household()
+        except DemoHouseholdError:
+            return _refuse(AMBIGUOUS_DEMO_HOUSEHOLD, status.HTTP_503_SERVICE_UNAVAILABLE)
         if household is None:
             return _refuse(NO_DEMO_HOUSEHOLD, status.HTTP_503_SERVICE_UNAVAILABLE)
 
@@ -164,13 +178,6 @@ class DemoEnterView(APIView):
 
 def _refuse(message: str, code: int) -> Response:
     return Response({"detail": message}, status=code)
-
-
-def demo_household() -> Household | None:
-    """The demo household, by name, or None. Oldest first, so a second row
-    with the same name (a seed run twice by hand) never moves visitors."""
-    name = getattr(settings, "LEGION_DEMO_HOUSEHOLD_NAME", "Demo")
-    return Household.objects.filter(name=name).order_by("created_at").first()
 
 
 def _make_visitor(household: Household, ref: str, expires_at):

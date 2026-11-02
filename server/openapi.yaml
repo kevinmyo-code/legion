@@ -2663,7 +2663,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Detail'
-          description: No demo household on this engine. Nothing created.
+          description: No demo household on this engine, or more than one household
+            carries its name. Nothing created.
   /api/device-logs/:
     post:
       operationId: api_device_logs_create
