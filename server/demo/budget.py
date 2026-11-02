@@ -30,7 +30,7 @@ typed chat rides the same Live session as voice (`frontend/src/assistant/
 live-client.ts` `send()`, and a typed-first session can turn its mic on
 later). A mint cannot be told apart by use, and a text-only Live setup
 (`responseModalities: ["TEXT"]`) was not adopted: it is untested against the
-live model (native-audio Live models have refused TEXT output), the browser
+live model (`reasoned`, not tested: native-audio Live models have refused TEXT output), the browser
 client renders audio and its transcription only, and the token would still
 accept microphone audio, so "text only" would not be enforced. So every
 recruiter Live mint, voice or typed, is checked against the VOICE cap, and
