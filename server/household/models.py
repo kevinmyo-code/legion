@@ -7,7 +7,9 @@ list of tables carrying the column); every user belongs to exactly one
 household; a member sees everything in their household and nothing outside
 it. There are no roles inside a household except `owner`, which exists only
 to invite and remove members, and there are no approval workflows: an
-invite is a code, not a request.
+invite is a code, not a request. **Amended by ADR 0068 (2026-11-02):** a
+third role, `recruiter`, exists only on throwaway visitor users in the demo
+household, and it only ever NARROWS what its user may reach.
 
 **This docstring used to say** "One household per server (ADR 0044,
 CLAUDE.md section 1: two adults, no roles, no tenancy, ever). There is no
@@ -198,6 +200,13 @@ class DeviceToken(models.Model):
     last_seen_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     scope = models.CharField(max_length=8, choices=SCOPE_CHOICES, default=SCOPE_WRITE)
+    # recruiter-demo ticket 02 (Kevin, 2026-11-02): a token that dies on its
+    # own. Null is "never", which is what every token was before this column
+    # existed, so the phone, the head unit and every dev token are untouched.
+    # A recruiter's visitor token is minted with two hours. Checked by
+    # `DeviceTokenAuthentication` beside `revoked_at`, so an expired token is
+    # refused at the door, in words, the same way a revoked one is.
+    expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=["key_hash"])]
@@ -210,25 +219,48 @@ class DeviceToken(models.Model):
         return self.revoked_at is not None
 
     @property
+    def is_expired(self) -> bool:
+        from django.utils import timezone
+
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_live(self) -> bool:
+        return not self.is_revoked and not self.is_expired
+
+    @property
     def can_write(self) -> bool:
         return self.scope == self.SCOPE_WRITE
 
     @classmethod
-    def issue(cls, user: User, name: str, scope: str = SCOPE_WRITE) -> tuple[DeviceToken, str]:
+    def issue(
+        cls,
+        user: User,
+        name: str,
+        scope: str = SCOPE_WRITE,
+        *,
+        expires_at: datetime.datetime | None = None,
+    ) -> tuple[DeviceToken, str]:
         """Create a token and return it alongside the raw key. The raw key
         is the return value, never a model field - callers must hand it to
         the device immediately and cannot fetch it again later.
 
         `scope` defaults to `write` because every existing caller - login,
         signup, the test fixtures - is a device the person is signing in on.
-        A token minted for a tool rather than a person passes `read`."""
+        A token minted for a tool rather than a person passes `read`.
+        `expires_at` is None (never) unless the caller says otherwise; only
+        a recruiter's visitor token sets it today."""
         if scope not in {cls.SCOPE_READ, cls.SCOPE_WRITE}:
             raise ValueError(
                 f"Nothing was issued. {scope!r} is not a token scope; use read or write."
             )
         raw_key = _generate_device_key()
         token = cls.objects.create(
-            user=user, name=name, key_hash=hash_device_key(raw_key), scope=scope
+            user=user,
+            name=name,
+            key_hash=hash_device_key(raw_key),
+            scope=scope,
+            expires_at=expires_at,
         )
         return token, raw_key
 
@@ -252,16 +284,23 @@ class HouseholdMember(models.Model):
 
     OWNER = "owner"
     MEMBER = "member"
-    ROLE_CHOICES = [(OWNER, "owner"), (MEMBER, "member")]
+    RECRUITER = "recruiter"
+    ROLE_CHOICES = [(OWNER, "owner"), (MEMBER, "member"), (RECRUITER, "recruiter")]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="household_member")
     household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="members")
-    # The ONE role, and it governs membership only - never data. ADR 0045:
-    # "There are no roles inside a household except `owner`, which exists only
-    # to invite and remove members." An owner and a member see exactly the same
-    # rows; nothing in `api/` reads this column, and if something ever does,
-    # that is a new ruling and not a refactor.
-    role = models.CharField(max_length=8, choices=ROLE_CHOICES, default=MEMBER)
+    # ADR 0045: `owner` governs membership only, never data - an owner and a
+    # member see exactly the same rows. **ADR 0068 (Kevin, 2026-11-02) amends
+    # that with one role that DOES touch data, and only to narrow it:
+    # `recruiter`.** It is set on throwaway visitor users in the demo household
+    # (`demo/`), never on a person in a real one. A recruiter is refused every
+    # route except the ones that opt in (`IsHouseholdMember`), may not write by
+    # any credential (`household.permissions.may_write`), and sees only the
+    # assistant tools in `assistant.surface.RECRUITER_TOOLS`. Nothing reads this
+    # column to WIDEN access; a role that did would be a new ruling, not a
+    # refactor. Role follows the USER, so a session and a token for the same
+    # visitor are both recruiter.
+    role = models.CharField(max_length=16, choices=ROLE_CHOICES, default=MEMBER)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
@@ -287,6 +326,16 @@ def generate_invite_code() -> str:
     uses, and is only ever redeemed through a throttled endpoint needs.
     """
     return secrets.token_urlsafe(9)[:INVITE_CODE_LENGTH]
+
+
+def is_recruiter(user) -> bool:
+    """True when `user` is a recruiter visitor (ADR 0068). One query, never
+    cached on the user: the fence must read the row as it is now."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    return HouseholdMember.objects.filter(
+        user=user, role=HouseholdMember.RECRUITER
+    ).exists()
 
 
 class Invite(models.Model):

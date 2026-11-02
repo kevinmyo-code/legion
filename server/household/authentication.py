@@ -37,6 +37,13 @@ class DeviceTokenAuthentication(authentication.BaseAuthentication):
 
         if token.is_revoked:
             raise exceptions.AuthenticationFailed("Token has been revoked.")
+        # recruiter-demo ticket 02: a token with an `expires_at` dies on its
+        # own. Null is "never", so no token minted before the column existed
+        # is touched.
+        if token.is_expired:
+            raise exceptions.AuthenticationFailed(
+                "Token has expired. Nothing was read or written; ask for a new one."
+            )
         if not token.user.is_active:
             raise exceptions.AuthenticationFailed("User is inactive.")
 
