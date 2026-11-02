@@ -40,7 +40,11 @@ same day. The canned `demo.js` in the HTML prototypes is a mock for layout only.
   (`server/frontend`, TanStack routes), on Cloud Run at the run.app URL until Kevin buys a domain.
   Same origin as the assistant, so the visitor session cookie just works. Layout = prototype B
   (editorial) with the Quanex case study and report mocks, rebuilt as React components.
-- Root (default taken 2026-11-02, Kevin "ok", reversible): a LOGGED-OUT visitor at `/` sees the
-  recruiter page (today `_authed` redirects to `/login`); a small "Sign in" link goes to `/login`.
-  Logged-in members see the app exactly as now. `/try` stays as the page's own path.
+- Root (Kevin, 2026-11-02, replaces the earlier default): *"landing page should be a login page.
+  recruiters use the code in my resume, that brings them to the recruiter section. i log in > goes to
+  my page"*. `/login` stays the front door and gains an "Have an access code?" field beside sign-in.
+  A valid code calls `/api/demo/enter` and lands on the recruiter section (`/try`: about Kevin,
+  Quanex case study and report mocks, Alfred). A member's sign-in goes to their app as now. The
+  resume may also carry a direct link `/try?code=...&ref=...` that skips typing. `/try` without a
+  valid recruiter session shows the code box, nothing else.
 - Cold start (~5.4 s at min-instances 0) stays as is while building; always-on is a later call.
