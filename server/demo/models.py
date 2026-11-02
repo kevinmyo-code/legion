@@ -141,3 +141,26 @@ class RecruiterContent(models.Model):
         if data is None:
             return None
         return bytes(data), getattr(self, f"{kind}_content_type"), getattr(self, f"{kind}_filename")
+
+
+class DemoBudgetDay(models.Model):
+    """One UTC day of recruiter Gemini spend, as RESERVED before acting
+    (recruiter-demo ticket 04, `demo/budget.py`). Integer cents (CLAUDE.md
+    section 4 rule 3). Only ever grows by a reservation that fits under the
+    cap, in one conditional UPDATE, and shrinks only when a mint that reserved
+    failed at Google. Members are never counted here."""
+
+    day = models.DateField(unique=True)
+    reserved_cents = models.BigIntegerField(default=0)
+    voice_mints = models.IntegerField(default=0)
+    text_calls = models.IntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(reserved_cents__gte=0), name="demo_budget_reserved_nonneg"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Demo budget {self.day}: {self.reserved_cents} cents reserved"

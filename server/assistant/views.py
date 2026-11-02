@@ -40,8 +40,10 @@ from assistant.models import AssistantCall
 from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES
 from assistant.session import token_request_for
 from assistant.surface import recruiter_only_tool, refusal_for
+from demo import budget as demo_budget
 from engine_mcp.models import Outcome
 from engine_mcp.tools import run_engine_tool, run_tool
+from household.models import is_recruiter
 from household.permissions import IsHouseholdMember
 from household.tenancy import household_of
 from ingest.statements import gemini_key
@@ -174,7 +176,13 @@ class AssistantSessionView(_AssistantView):
         responses={
             200: SessionResponse,
             400: OpenApiResponse(DetailSerializer, description="The body did not fit."),
-            429: OpenApiResponse(DetailSerializer, description="Too many starts; nothing started."),
+            429: OpenApiResponse(
+                DetailSerializer,
+                description=(
+                    "Too many starts; nothing started. For a recruiter's demo visit, also: "
+                    "\"Today's demo budget is used up. Try again tomorrow.\""
+                ),
+            ),
             502: OpenApiResponse(
                 DetailSerializer, description="Google refused the key or the session, in words."
             ),
@@ -200,6 +208,19 @@ class AssistantSessionView(_AssistantView):
             _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
             return Response({"detail": KEY_ABSENT}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
+        # recruiter-demo ticket 04: a recruiter's mint reserves its worst case
+        # against the global daily demo budget first, and no token is minted
+        # when it does not fit. Members never reach the budget.
+        reservation = None
+        if is_recruiter(request.user):
+            reservation = demo_budget.reserve_voice_mint()
+            if reservation is None:
+                _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
+                return Response(
+                    {"detail": demo_budget.BUDGET_USED_UP},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
         token_request, companion = token_request_for(
             request.user,
             now=datetime.now(UTC),
@@ -208,6 +229,8 @@ class AssistantSessionView(_AssistantView):
         try:
             minted = live.mint(key, token_request)
         except live.MintFailed as exc:
+            if reservation is not None:
+                demo_budget.release(reservation)
             _audit(request, AssistantCall.SESSION, Outcome.FAILED)
             return Response({"detail": exc.message}, status=exc.status)
         _audit(request, AssistantCall.SESSION, Outcome.OK)

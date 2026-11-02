@@ -65,7 +65,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Detail'
-          description: Too many starts; nothing started.
+          description: 'Too many starts; nothing started. For a recruiter''s demo
+            visit, also: "Today''s demo budget is used up. Try again tomorrow."'
         '502':
           content:
             application/json:

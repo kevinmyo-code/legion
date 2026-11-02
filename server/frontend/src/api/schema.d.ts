@@ -6892,7 +6892,7 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
-            /** @description Too many starts; nothing started. */
+            /** @description Too many starts; nothing started. For a recruiter's demo visit, also: "Today's demo budget is used up. Try again tomorrow." */
             429: {
                 headers: {
                     [name: string]: unknown;

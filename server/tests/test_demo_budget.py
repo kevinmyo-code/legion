@@ -1,0 +1,213 @@
+"""recruiter-demo ticket 04: the global daily demo budget, reserved before minting.
+
+The ticket's own Verify line: concurrent mints at the edge of the cap never sum
+past it (`test_concurrent_reservations_never_exceed_the_cap`).
+"""
+
+from __future__ import annotations
+
+import threading
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from django.core.cache import cache
+from django.db import connection
+from rest_framework.test import APIClient
+
+from demo import budget
+from demo.models import DemoBudgetDay, DemoCode
+from household.models import Household
+from ingest.drive import Response
+from tests.test_assistant import google  # noqa: F401 - fixture
+
+NOON = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_throttle():
+    cache.clear()
+    yield
+    cache.clear()
+
+
+def _limits(settings, *, budget_usd="5", reserve="1", minute="0.10", text="0.01"):
+    settings.LEGION_DEMO_DAILY_BUDGET_USD = budget_usd
+    settings.LEGION_DEMO_TEXT_RESERVE_USD = reserve
+    settings.LEGION_DEMO_COST_PER_VOICE_MINUTE_USD = minute
+    settings.LEGION_DEMO_COST_PER_TEXT_CALL_USD = text
+
+
+def _reserved(day=None) -> int:
+    row = DemoBudgetDay.objects.filter(day=day or NOON.date()).first()
+    return row.reserved_cents if row else 0
+
+
+# =============================================================================
+# The arithmetic
+# =============================================================================
+
+
+def test_defaults_are_the_rulings_and_round_up_to_the_cent(settings):
+    lim = budget.limits()
+    assert lim.budget_cents == 500
+    assert lim.text_reserve_cents == 100
+    assert lim.voice_cap_cents == 400
+    assert lim.voice_mint_cents == budget.VOICE_MINT_MINUTES * 10 == 100
+    _limits(settings, minute="0.001")
+    assert budget.limits().voice_minute_cents == 1  # never rounds down to free
+
+
+def test_a_bad_setting_refuses_in_words(settings):
+    from django.core.exceptions import ImproperlyConfigured
+
+    _limits(settings, budget_usd="five")
+    with pytest.raises(ImproperlyConfigured, match="LEGION_DEMO_DAILY_BUDGET_USD"):
+        budget.limits()
+
+
+@pytest.mark.django_db
+def test_voice_stops_at_budget_less_reserve_and_text_runs_to_the_full_budget(settings):
+    _limits(settings)
+    mints = [budget.reserve_voice_mint(NOON) for _ in range(5)]
+    assert [m is not None for m in mints] == [True, True, True, True, False]
+    assert _reserved() == 400
+    texts = [budget.charge_text_call(NOON) for _ in range(101)]
+    assert sum(t is not None for t in texts) == 100
+    assert _reserved() == 500
+    row = DemoBudgetDay.objects.get(day=NOON.date())
+    assert (row.voice_mints, row.text_calls) == (4, 100)
+
+
+@pytest.mark.django_db
+def test_the_day_turns_at_utc_midnight(settings):
+    _limits(settings, budget_usd="2", reserve="1")
+    late = datetime(2026, 11, 2, 23, 59, 59, tzinfo=UTC)
+    assert budget.reserve_voice_mint(late) is not None
+    assert budget.reserve_voice_mint(late) is None
+    # 23:59:59 in UTC-06:00 is already tomorrow in UTC.
+    houston = late.astimezone(UTC) + timedelta(seconds=1)
+    assert budget.reserve_voice_mint(houston) is not None
+    assert _reserved(late.date()) == 100
+    assert _reserved(houston.date()) == 100
+
+
+@pytest.mark.django_db
+def test_release_gives_a_failed_mint_back(settings):
+    _limits(settings, budget_usd="2", reserve="1")
+    held = budget.reserve_voice_mint(NOON)
+    budget.release(held)
+    assert _reserved() == 0
+    assert budget.reserve_voice_mint(NOON) is not None
+
+
+@pytest.mark.django_db
+def test_a_mint_bigger_than_the_cap_never_fits(settings):
+    _limits(settings, budget_usd="1.50", reserve="1")
+    assert budget.reserve_voice_mint(NOON) is None
+    assert _reserved() == 0
+
+
+# =============================================================================
+# Concurrency: the ticket's Verify line
+# =============================================================================
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_reservations_never_exceed_the_cap(settings):
+    _limits(settings, budget_usd="4", reserve="1")  # voice cap 300: three mints fit
+    DemoBudgetDay.objects.create(day=NOON.date())
+    start = threading.Barrier(12)
+    results: list[bool] = []
+    lock = threading.Lock()
+
+    def mint():
+        try:
+            start.wait()
+            got = budget.reserve_voice_mint(NOON) is not None
+            with lock:
+                results.append(got)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=mint) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(results) == 12
+    assert sum(results) == 3
+    assert _reserved() == 300
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_first_reservations_of_a_day_make_one_row(settings):
+    _limits(settings, budget_usd="4", reserve="1")
+    start = threading.Barrier(6)
+
+    def mint():
+        try:
+            start.wait()
+            budget.reserve_voice_mint(NOON)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=mint) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert DemoBudgetDay.objects.filter(day=NOON.date()).count() == 1
+    assert _reserved() == 300
+
+
+# =============================================================================
+# At the door: POST /api/assistant/session
+# =============================================================================
+
+
+@pytest.fixture
+def recruiter(db):
+    Household.objects.create(name="Demo")
+    _row, code = DemoCode.rotate()
+    browser = APIClient()
+    assert browser.post("/api/demo/enter", {"code": code}, format="json").status_code == 201
+    return browser
+
+
+def _today() -> int:
+    return _reserved(datetime.now(UTC).date())
+
+
+def test_a_recruiter_mint_reserves_and_the_cap_refuses_in_words(
+    recruiter, google, settings  # noqa: F811
+):
+    _limits(settings, budget_usd="3", reserve="1")  # two mints
+    for _ in range(2):
+        assert recruiter.post("/api/assistant/session", {}, format="json").status_code == 200
+    assert _today() == 200
+    sent = len(google.sent)
+    refused = recruiter.post("/api/assistant/session", {}, format="json")
+    assert refused.status_code == 429
+    assert refused.data == {"detail": "Today's demo budget is used up. Try again tomorrow."}
+    assert len(google.sent) == sent  # no token was asked for
+    from assistant.models import AssistantCall
+    from engine_mcp.models import Outcome
+
+    refusals = AssistantCall.objects.filter(kind=AssistantCall.SESSION, outcome=Outcome.REFUSED)
+    assert refusals.exists()
+
+
+def test_a_mint_google_refuses_gives_its_reservation_back(recruiter, google, settings):  # noqa: F811
+    _limits(settings)
+    google.reply = Response(503, {}, b"{}")
+    assert recruiter.post("/api/assistant/session", {}, format="json").status_code == 503
+    assert _today() == 0
+
+
+def test_members_are_never_counted_or_blocked(household_user, google, settings):  # noqa: F811
+    _limits(settings, budget_usd="0", reserve="0")
+    web = APIClient()
+    web.force_login(household_user)
+    for _ in range(3):
+        assert web.post("/api/assistant/session", {}, format="json").status_code == 200
+    assert not DemoBudgetDay.objects.exists()

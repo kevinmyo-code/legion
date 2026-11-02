@@ -164,6 +164,19 @@ INSTALLED_APPS = [
 # engine treats a household specially by name.
 LEGION_DEMO_HOUSEHOLD_NAME = os.environ.get("LEGION_DEMO_HOUSEHOLD_NAME", "").strip() or "Demo"
 
+# recruiter-demo ticket 04: one daily Gemini budget across every recruiter
+# visit (map ruling 4: $5/day), and the units it is counted in. Strings in USD,
+# parsed by `demo/budget.py` through Decimal into whole cents (rounded UP).
+# Members are never counted. The defaults and why are in `demo/budget.py`.
+LEGION_DEMO_DAILY_BUDGET_USD = os.environ.get("LEGION_DEMO_DAILY_BUDGET_USD", "").strip() or "5"
+LEGION_DEMO_TEXT_RESERVE_USD = os.environ.get("LEGION_DEMO_TEXT_RESERVE_USD", "").strip() or "1"
+LEGION_DEMO_COST_PER_VOICE_MINUTE_USD = (
+    os.environ.get("LEGION_DEMO_COST_PER_VOICE_MINUTE_USD", "").strip() or "0.10"
+)
+LEGION_DEMO_COST_PER_TEXT_CALL_USD = (
+    os.environ.get("LEGION_DEMO_COST_PER_TEXT_CALL_USD", "").strip() or "0.01"
+)
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     # Immediately after SecurityMiddleware, which is where WhiteNoise's own
