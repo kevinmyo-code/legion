@@ -119,6 +119,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "81836cc3299ba05b",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/13-per-visitor-demo-household.md",
+      "x": 1040,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -183,6 +193,27 @@
       "fromNode": "7b81231f18d21aa5",
       "fromSide": "right",
       "toNode": "497c35bd841690d8",
+      "toSide": "left"
+    },
+    {
+      "id": "618111e8821448b3",
+      "fromNode": "7b81231f18d21aa5",
+      "fromSide": "right",
+      "toNode": "81836cc3299ba05b",
+      "toSide": "left"
+    },
+    {
+      "id": "574fdcdd4be4aa76",
+      "fromNode": "b6632b93b93ccbf1",
+      "fromSide": "right",
+      "toNode": "81836cc3299ba05b",
+      "toSide": "left"
+    },
+    {
+      "id": "a5a3782ca81d4969",
+      "fromNode": "fe4c24ee44c4dc32",
+      "fromSide": "right",
+      "toNode": "81836cc3299ba05b",
       "toSide": "left"
     }
   ]

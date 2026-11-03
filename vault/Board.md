@@ -259,6 +259,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[06-isolation-tests\|06]] | build | Isolation tests: recruiter cannot reach Kevin's household or excluded tools, incl. prompt injection  waiting on [[01-recruiter-role-and-allowlist\|01]], [[02-invite-code-to-visitor-token\|02]], [[03-demo-household-seed\|03]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[07-try-page-and-governance-page\|07]] | build | Try page and the 'What this key can't see' governance page  waiting on [[02-invite-code-to-visitor-token\|02]], [[05-guide-persona-and-greeting\|05]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[11-music-in-the-browser\|11]] | build | Music demo: 'play X' by voice, plays in the page via a Spotify embed  waiting on [[01-recruiter-role-and-allowlist\|01]] |
+| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[13-per-visitor-demo-household\|13]] | build | Each recruiter visit gets its own copy of the demo household, writes allowed  waiting on [[01-recruiter-role-and-allowlist\|01]], [[02-invite-code-to-visitor-token\|02]], [[03-demo-household-seed\|03]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[03-transcribe-and-summarize\|03]] | build | One upload, a transcript and a summary out  waiting on [[01-the-recorder-and-the-mic\|01]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
@@ -357,7 +358,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | 9 | 4 | [[.scratch/purchase-log/purchase-log.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
-| [[.scratch/recruiter-demo/map\|recruiter-demo]] | 12 | 12 | [[.scratch/recruiter-demo/recruiter-demo.canvas\|open]] |
+| [[.scratch/recruiter-demo/map\|recruiter-demo]] | 13 | 13 | [[.scratch/recruiter-demo/recruiter-demo.canvas\|open]] |
 | [[.scratch/retro-games/map\|retro-games]] | 6 | 2 | [[.scratch/retro-games/retro-games.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
