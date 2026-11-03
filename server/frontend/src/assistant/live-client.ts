@@ -206,8 +206,17 @@ export class LiveClient {
   /** When each transcript line started, for the record. */
   private readonly lineStarted = new Map<number, number>()
   private connectStarted = 0
-  /** When the person's turn last ended (typed, or the last word heard), until a reply starts. */
+  /** When a typed turn was sent, until its reply starts. */
   private replyFrom: number | null = null
+  /**
+   * When the last voiced microphone chunk was sent (`isVoiced`), since the last
+   * reply started: the person's end of speech, as near as the browser can tell.
+   * The input transcription is NOT used: it arrives at the end of the turn,
+   * often just before the reply, so timing from it read 2-15 ms.
+   */
+  private lastVoiceAt: number | null = null
+  /** Whether the model's current turn has produced its first audio or words yet. */
+  private replyStarted = false
   private readonly callNames = new Map<string, string>()
   private readonly onPageHide = () => {
     // The page may be closing: hand what is not yet stored to the browser to deliver.
@@ -257,6 +266,7 @@ export class LiveClient {
     this.lineStarted.clear()
     this.callNames.clear()
     this.replyFrom = null
+    this.lastVoiceAt = null
     if (beacon) record.beacon()
     else void record.flush()
   }
@@ -321,6 +331,7 @@ export class LiveClient {
     this.push({ kind: 'me', text, via: 'typed', open: false })
     this.rec({ kind: 'user', text, typed: true })
     this.replyFrom = this.deps.now()
+    this.replyStarted = false
     if (wasSpeaking) this.push({ kind: 'sys', text: 'Stopped speaking because you typed.' })
     this.typedTurn = true
     this.awaiting = true
@@ -529,7 +540,11 @@ export class LiveClient {
       return
     }
     if (this.state.phase === 'live') {
-      this.end(reason ? `The conversation closed: ${reason}. Start a new one.` : ENDED_CLOSED)
+      // A conversation with a session limit (the recruiter demo) ends in its own
+      // words, whichever comes first: this close at token expiry, or the timer.
+      const limit = this.options.sessionLimit?.()?.trim()
+      if (limit) this.end(limit)
+      else this.end(reason ? `The conversation closed: ${reason}. Start a new one.` : ENDED_CLOSED)
     }
   }
 
@@ -558,6 +573,7 @@ export class LiveClient {
     this.lineStarted.clear()
     this.callNames.clear()
     this.replyFrom = null
+    this.lastVoiceAt = null
   }
 
   /** Close the socket and timers without touching what is shown. */
@@ -608,6 +624,7 @@ export class LiveClient {
 
   private sendAudio(pcm: Int16Array) {
     if (this.state.phase !== 'live' || this.state.mic !== 'on' || !this.session) return
+    if (isVoiced(pcm)) this.lastVoiceAt = this.deps.now()
     this.write({
       realtimeInput: {
         audio: { mimeType: this.session.inputAudioMime, data: pcm16ToBase64(pcm) },
@@ -645,7 +662,7 @@ export class LiveClient {
         this.rec({ kind: 'tool_cancelled', id, name: this.callNames.get(id) ?? '' })
       }
     }
-    if (message.goAway !== undefined) this.end(ENDED_TIME_LIMIT)
+    if (message.goAway !== undefined) this.end(this.options.sessionLimit?.()?.trim() || ENDED_TIME_LIMIT)
   }
 
   private onSetupComplete() {
@@ -685,6 +702,13 @@ export class LiveClient {
       this.appendMe(heard)
     }
     const said = content.outputTranscription?.text
+    const sound = (content.modelTurn?.parts ?? []).some(
+      (part) => part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/'),
+    )
+    if ((said || sound) && !this.replyStarted) {
+      this.replyStarted = true
+      this.markReply()
+    }
     if (said) this.appendAi(said)
     const audible = this.state.mic === 'on' && !this.typedTurn
     for (const part of content.modelTurn?.parts ?? []) {
@@ -697,6 +721,7 @@ export class LiveClient {
         this.audioIO.play(base64ToPcm16(inline.data), rate)
       }
     }
+    if (content.turnComplete || content.interrupted) this.replyStarted = false
     if (content.turnComplete) {
       this.closeAi(false)
       this.closeMe()
@@ -709,7 +734,6 @@ export class LiveClient {
   }
 
   private appendMe(text: string) {
-    this.replyFrom = this.deps.now()
     const last = this.last()
     if (last?.kind === 'me' && last.open) {
       this.update(last.id, { text: last.text + text })
@@ -729,12 +753,23 @@ export class LiveClient {
     this.closeMe()
     const spoken = this.state.mic === 'on' && !this.typedTurn
     const now = this.deps.now()
-    if (this.replyFrom !== null) {
-      this.rec({ kind: 'latency', metric: 'reply', ms: Math.max(now - this.replyFrom, 0) }, now)
-      this.replyFrom = null
-    }
     this.push({ kind: 'ai', text, via: spoken ? 'spoken' : 'typed', open: true, cut: false })
     this.lineStarted.set(this.nextId - 1, now)
+  }
+
+  /**
+   * `reply` latency: from the end of the person's turn to the model's first audio
+   * or words. A typed turn ends when it is sent; a spoken one at the last voiced
+   * chunk sent. With neither (the opening greeting, or speech too quiet to tell)
+   * nothing is recorded rather than a made-up number.
+   */
+  private markReply() {
+    const now = this.deps.now()
+    const from = this.replyFrom ?? this.lastVoiceAt
+    this.replyFrom = null
+    this.lastVoiceAt = null
+    if (from === null) return
+    this.rec({ kind: 'latency', metric: 'reply', ms: Math.max(now - from, 0) }, now)
   }
 
   private closeAi(cut: boolean, source: 'server' | 'barge_in' = 'server') {
@@ -792,6 +827,19 @@ export class LiveClient {
     this.refresh()
   }
 }
+
+/**
+ * Whether a 16 kHz PCM16 chunk carries speech-level sound: RMS above about
+ * -40 dBFS. The capture has echo cancellation and noise suppression on, so a
+ * silent room sits well below this.
+ */
+export function isVoiced(pcm: Int16Array): boolean {
+  if (pcm.length === 0) return false
+  let sum = 0
+  for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i]
+  return Math.sqrt(sum / pcm.length) > VOICE_RMS
+}
+const VOICE_RMS = 330
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 

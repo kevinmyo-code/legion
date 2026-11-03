@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { RecordEvent, RecordTransport } from './conversation-record'
 import { recordForm, recordTransport } from './deps'
-import { LiveClient, type LiveDeps, type SessionResult, type ToolResult } from './live-client'
+import { ENDED_CLOSED, LiveClient, isVoiced, type LiveDeps, type SessionResult, type ToolResult } from './live-client'
 import { FakeAudio, FakeLiveSocket, settle } from '../test/fake-live'
 
 /**
@@ -39,7 +39,7 @@ class FakeTransport implements RecordTransport {
   }
 }
 
-function build() {
+function build(options: { sessionLimit?: string } = {}) {
   let clock = 1_000_000
   const transport = new FakeTransport()
   const runTool = vi.fn(
@@ -59,9 +59,12 @@ function build() {
     utcOffsetMinutes: () => -300,
     record: transport,
   }
-  const client = new LiveClient(deps, { endOnHidden: () => false })
+  const client = new LiveClient(deps, {
+    endOnHidden: () => false,
+    sessionLimit: options.sessionLimit ? () => options.sessionLimit ?? null : undefined,
+  })
   client.attach()
-  return { client, transport, runTool, tick: (ms: number) => (clock += ms) }
+  return { client, transport, runTool, audio, tick: (ms: number) => (clock += ms) }
 }
 
 async function live(client: LiveClient, tick: (ms: number) => number, text = 'What lists do we have?') {
@@ -76,6 +79,101 @@ async function live(client: LiveClient, tick: (ms: number) => number, text = 'Wh
 
 beforeEach(() => FakeLiveSocket.reset())
 afterEach(() => vi.unstubAllGlobals())
+
+async function liveVoice(client: LiveClient, tick: (ms: number) => number) {
+  await client.startVoice()
+  await settle()
+  tick(400)
+  FakeLiveSocket.last.open()
+  FakeLiveSocket.last.serve({ setupComplete: {} })
+  await settle()
+  return FakeLiveSocket.last
+}
+
+const SPEECH = new Int16Array(320).fill(3000)
+const QUIET = new Int16Array(320).fill(20)
+const DEMO_ENDED = 'Demo sessions last 5 minutes. Start another any time.'
+
+describe('reply latency and how a demo conversation ends', () => {
+  it('tells speech from a quiet room', () => {
+    expect(isVoiced(SPEECH)).toBe(true)
+    expect(isVoiced(QUIET)).toBe(false)
+    expect(isVoiced(new Int16Array(0))).toBe(false)
+  })
+
+  it('times a spoken reply from the end of speech, not from when the transcription arrives', async () => {
+    const { client, transport, audio, tick } = build()
+    const socket = await liveVoice(client, tick)
+    audio.handlers?.onChunk(SPEECH)
+    tick(200)
+    audio.handlers?.onChunk(SPEECH) // the last word
+    tick(100)
+    audio.handlers?.onChunk(QUIET)
+    tick(900)
+    // The transcription arrives at the end of the turn, a few ms before the reply.
+    socket.serve({ serverContent: { inputTranscription: { text: 'What is on today?' } } })
+    await settle()
+    tick(3)
+    socket.serve({ serverContent: { outputTranscription: { text: 'Two things.' } } })
+    socket.serve({ serverContent: { turnComplete: true } })
+    await settle()
+    const replies = transport.uploads.flatMap((u) => u.events).filter((e) => e.kind === 'latency' && e.metric === 'reply')
+    expect(replies).toEqual([{ kind: 'latency', metric: 'reply', ms: 1003, at_ms: expect.any(Number) }])
+  })
+
+  it('starts the clock at the first reply audio, even before its words', async () => {
+    const { client, transport, audio, tick } = build()
+    const socket = await liveVoice(client, tick)
+    audio.handlers?.onChunk(SPEECH)
+    tick(600)
+    socket.serve({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'AAAA' } }] } } })
+    await settle()
+    tick(500)
+    socket.serve({ serverContent: { outputTranscription: { text: 'Yes.' }, turnComplete: true } })
+    await settle()
+    const replies = transport.uploads.flatMap((u) => u.events).filter((e) => e.kind === 'latency' && e.metric === 'reply')
+    expect(replies.map((e) => (e.kind === 'latency' ? e.ms : null))).toEqual([600])
+  })
+
+  it('records no reply time when no speech was heard (a greeting), rather than a made-up one', async () => {
+    const { client, transport, audio, tick } = build()
+    const socket = await liveVoice(client, tick)
+    audio.handlers?.onChunk(QUIET)
+    tick(50)
+    socket.serve({ serverContent: { outputTranscription: { text: 'Good afternoon.' }, turnComplete: true } })
+    await settle()
+    const kinds = transport.uploads.flatMap((u) => u.events).map((e) => (e.kind === 'latency' ? e.metric : e.kind))
+    expect(kinds).not.toContain('reply')
+  })
+
+  it("a demo conversation closed at token expiry ends in the demo's words, not the server's", async () => {
+    const { client, transport, tick } = build({ sessionLimit: DEMO_ENDED })
+    const socket = await live(client, tick)
+    socket.drop(1008, 'auth token has expired')
+    await settle()
+    expect(client.getState().ended).toBe(DEMO_ENDED)
+    const all = JSON.stringify([...transport.uploads, ...transport.beacons])
+    expect(all).not.toContain('auth token has expired')
+    expect(all).toContain(DEMO_ENDED)
+  })
+
+  it('so does a demo conversation the server warns is going away', async () => {
+    const { client, tick } = build({ sessionLimit: DEMO_ENDED })
+    const socket = await live(client, tick)
+    socket.serve({ goAway: { timeLeft: '1s' } })
+    await settle()
+    expect(client.getState().ended).toBe(DEMO_ENDED)
+  })
+
+  it("a member's conversation keeps the server's reason", async () => {
+    const { client, tick } = build()
+    const socket = await live(client, tick)
+    socket.drop(1011, 'internal error')
+    await settle()
+    expect(client.getState().ended).toBe('The conversation closed: internal error. Start a new one.')
+    expect(ENDED_CLOSED).toBe('The conversation closed. Start a new one.')
+  })
+})
 
 describe('the conversation record', () => {
   it('sends the words, the turn end and the timings after each turn, to the minted conversation', async () => {
