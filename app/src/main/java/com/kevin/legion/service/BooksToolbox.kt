@@ -27,16 +27,17 @@ object BooksToolbox {
     internal var controllerFactory: (Context) -> BooksController = { BooksController.forContext(it) }
 
     private const val DESCRIPTION =
-        "Open a book from the phone's Books folder in the reader. action=open needs title; " +
-            "action=continue reopens the last book read. listen=true also reads it aloud (ebooks only). " +
-            "Say only the result: opened only if success is true; otherwise nothing was opened."
+        "The phone's Books folder. action=status says the last book read and where (what am I reading, " +
+            "last book, where was I) and opens nothing; action=continue opens it (pull it up, open it, " +
+            "keep reading); action=open needs title. listen=true reads aloud (ebooks only). " +
+            "Say only the result: opened only if success is true."
 
     fun declarations(): JSONArray = JSONArray().put(
         fn(
             name = "books",
             description = DESCRIPTION,
             params = JSONObject()
-                .put("action", prop("string", "open or continue", listOf("open", "continue")))
+                .put("action", prop("string", "status, open or continue", listOf("status", "open", "continue")))
                 .put("title", prop("string", "Book name, for open."))
                 .put("listen", prop("boolean", "True to read it aloud.")),
             required = listOf("action"),
@@ -60,9 +61,21 @@ object BooksToolbox {
             .apply { if (enum != null) put("enum", JSONArray(enum)) }
 
     /** Null when [name] is not this tool, so [LiveToolbox.dispatch] can fall through. */
+    @Suppress("ReturnCount")
     suspend fun dispatch(context: Context, name: String, args: JSONObject): JSONObject? {
         if (name != TOOL_NAME) return null
         val controller = controllerFactory(context)
+        if (args.optString("action") == "status") {
+            val status = controller.lastRead(System.currentTimeMillis())
+            return result(status.found, status.sentence).apply {
+                status.item?.let { item ->
+                    put("title", item.title)
+                    item.author?.takeIf { it.isNotBlank() }?.let { put("author", it) }
+                    put("position", item.positionLabel())
+                    put("percent", item.percent)
+                }
+            }
+        }
         val listen = args.optBoolean("listen", false)
         val outcome = when (args.optString("action")) {
             "open" -> controller.openByName(args.optString("title"), listen)
@@ -72,7 +85,10 @@ object BooksToolbox {
         return when (outcome) {
             is BookOutcome.Opened -> result(true, outcome.sentence)
             is BookOutcome.Failed -> result(false, outcome.sentence)
-            null -> result(false, "Say whether to open a named book or continue the last one. Nothing was opened.")
+            null -> result(
+                false,
+                "Say whether to open a named book, continue the last one, or ask what it was. Nothing was opened.",
+            )
         }
     }
 
