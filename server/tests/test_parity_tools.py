@@ -24,13 +24,19 @@ from brief.compose import money
 from engine_mcp import recalls
 from household import demo_seed
 from legacy.models.pantry import Receipt
-from tests.test_engine_mcp import call, mcp_on, mcp_write  # noqa: F401
+from tests.test_engine_mcp import call, client_with
 from tests.test_spend_api import line, provisional, statement
 
 pytestmark = pytest.mark.django_db
 
 TODAY = dt.date.today()
 REAL_FETCH = recalls.fetch_recalls
+
+
+@pytest.fixture
+def mcp_write(settings, household_user):
+    settings.LEGION_MCP = True
+    return client_with(household_user)
 
 
 @pytest.fixture
@@ -312,7 +318,9 @@ def test_grocery_spend_keeps_currencies_apart_and_names_the_unverified(
     assert [c["currency"] for c in structured["currencies"]] == ["SGD"]
     assert structured["currencies"][0]["total_cents"] == 500
 
-    is_error, text, _ = call(mcp_write, "grocery_spend", {"from": "2026-08-01", "to": "2026-07-01"})
+    is_error, text, _ = call(
+        mcp_write, "grocery_spend", {"from": "2026-08-01", "to": "2026-07-01"}
+    )
     assert is_error and text.startswith("Nothing was read.")
 
 
@@ -597,7 +605,9 @@ def test_skip_one_occurrence_of_a_weekly_event(mcp_write, auth_client):
     )
     assert not is_error and "already skipped" in text and structured["changed"] is False
     # Wednesday is not an occurrence.
-    is_error, text, _ = call(mcp_write, "skip_event_occurrence", {"id": event, "date": "2026-10-14"})
+    is_error, text, _ = call(
+        mcp_write, "skip_event_occurrence", {"id": event, "date": "2026-10-14"}
+    )
     assert is_error and text.startswith("Nothing was written.") and "no occurrence" in text
     assert len(auth_client.get(f"/api/events/{event}/skips").data) == 1
 

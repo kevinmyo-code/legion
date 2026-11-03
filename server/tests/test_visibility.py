@@ -525,6 +525,20 @@ def test_every_mcp_tool_respects_member_privacy(settings, kevin_client, kevin, m
         "tick_checklist_item",
         {"checklist_id": ids["checklist"], "item_id": ids["item"], "date": "2026-10-07"},
     )
+    # Parity quick wins (2026-11-02): the checklist and skip writes.
+    mia_refused(
+        "untick_checklist_item",
+        {"checklist_id": ids["checklist"], "item_id": ids["item"], "date": "2026-10-07"},
+    )
+    mia_refused("remove_checklist_item", {"checklist_id": ids["checklist"], "item_id": ids["item"]})
+    mia_refused("archive_checklist", {"checklist_id": ids["checklist"]})
+    mia_refused("skip_event_occurrence", {"id": ids["event"], "date": "2026-10-05"})
+    covered.add("create_checklist")
+    is_error, text, _ = call(mcp_mia, "create_checklist", {"name": "mia list"})
+    assert not is_error, text
+    assert Checklist.objects.get(name="mia list").owner_user_id is None
+    assert Checklist.objects.get(pk=ids["checklist"]).archived is False
+    assert ChecklistItem.objects.get(pk=ids["item"]).deleted_at is None
     covered.add("add_event")
     is_error, text, structured = call(mcp_mia, "add_event", {"fields": {"title": "via mcp"}})
     assert not is_error, text

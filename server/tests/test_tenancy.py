@@ -1301,10 +1301,9 @@ def test_every_mcp_tool_is_scoped_by_household(
     from engine_mcp import recalls
     from engine_mcp.models import McpCall
     from engine_mcp.tools import READABLE, TOOLS_BY_NAME
+    from engine_mcp.views import McpTokenThrottle
     from tests.test_engine_mcp import call, client_with
     from tests.test_spend_api import line, statement
-
-    from engine_mcp.views import McpTokenThrottle
 
     settings.LEGION_MCP = True
     # This test makes more calls per token than the 60/min budget allows; the
@@ -1323,7 +1322,8 @@ def test_every_mcp_tool_is_scoped_by_household(
     for client, tag in ((token_a, "alpha"), (token_b, "bravo")):
         car = {"name": f"{tag} car", "make": "BMW", "model": "M3", "year": 2003,
                "confirmed": True, "archived": False}
-        assert client.put(f"/api/fleet/vehicles/{tag}-car/", car, format="json").status_code == 200
+        response = client.put(f"/api/fleet/vehicles/{tag}-car/", car, format="json")
+        assert response.status_code == 200, response.data
     asked_nhtsa = []
     monkeypatch.setattr(
         recalls, "fetch_recalls", lambda *car: asked_nhtsa.append(car) or []
