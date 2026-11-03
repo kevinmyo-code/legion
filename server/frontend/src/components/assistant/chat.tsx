@@ -1,6 +1,5 @@
 import {
   ArrowUp,
-  Check,
   CloudOff,
   Lock,
   Mic,
@@ -27,9 +26,12 @@ import { cn } from '@/lib/utils'
  *
  * Rules this screen keeps, each of them a CLAUDE.md or ticket ruling:
  *  - The companion's name is the engine's, never typed into this file.
- *  - A tool line says `Done:` only after the engine said `success: true`; every
- *    other result says `Did not run:` and the engine's words. Colour is never
- *    the only signal: both carry a word and an icon.
+ *  - No tool name, argument, result or JSON is ever on screen (Kevin,
+ *    2026-11-03: "i can see tool calls and code"). The engine's tool text is
+ *    written for the model, often a JSON dump, so it stays in the client and the
+ *    engine's conversation record. While a tool runs the status says
+ *    "<name> is checking…"; a success shows nothing (the reply says it); a
+ *    failure is one neutral, centred sentence: `TOOL_FAILED`.
  *  - Failures, an ended conversation, a blocked microphone are sentences, not a
  *    silent dead button.
  *  - What closing does is on screen: it clears the conversation from the screen.
@@ -265,25 +267,18 @@ function SessionLine({ layout }: { layout: 'sheet' | 'panel' }) {
   )
 }
 
+/** What a failed tool call says on screen: no tool name, no engine words. */
+export const TOOL_FAILED = "Couldn't check that."
+
 function Bubble({ line }: { line: Line }) {
   if (line.kind === 'tool') {
+    // `line.text` is the engine's text for the model (names, args, JSON). Never rendered.
+    if (line.ok) return null
     return (
-      <div
-        role="status"
-        className={cn(
-          'flex max-w-[92%] items-start gap-2 self-start rounded-2xl px-3 py-2 text-[0.84375rem]',
-          line.ok
-            ? 'bg-done-container text-foreground'
-            : 'bg-destructive-container text-destructive-container-foreground',
-        )}
-      >
-        {line.ok ? (
-          <Check className="mt-0.5 size-4 flex-none" aria-hidden="true" />
-        ) : (
-          <TriangleAlert className="mt-0.5 size-4 flex-none" aria-hidden="true" />
-        )}
-        <span>{line.text}</span>
-      </div>
+      <p role="status" className="flex items-center gap-1.5 self-center px-2 text-center text-[0.8125rem] text-muted-foreground">
+        <TriangleAlert className="size-3.5 flex-none" aria-hidden="true" />
+        {TOOL_FAILED}
+      </p>
     )
   }
   if (line.kind === 'sys') {
