@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { RECRUITER_DENIED_SCREENS, recruiterRefusal, visitEndsAt } from '@/lib/recruiter'

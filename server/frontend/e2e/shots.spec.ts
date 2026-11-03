@@ -62,6 +62,13 @@ export interface Shot {
 
 const seeded = () => createEngine({ ...seedHousehold(), householdName: 'The Test House' })
 
+/** A recruiter's demo visit on the sample page. */
+const visitor = () => {
+  const engine = createEngine({ signedIn: false })
+  engine.demo.session = { role: 'recruiter', expires_at: new Date(Date.now() + 2 * 3_600_000).toISOString(), ref: 'shots' }
+  return engine
+}
+
 const CARD = 'This page is made for a bigger screen.'
 
 /** The household plus the Pantry, Body, Fleet, Places and Notes tables. */
@@ -86,6 +93,23 @@ const ROUTES: Shot[] = [
   },
   { name: 'home', url: '/', ready: /Next up|On today/, engine: seeded },
   { name: 'lists', url: '/lists', ready: 'Oat milk', engine: seeded },
+  // One place to type (Kevin, 2026-11-03): the desk dock open on load, pinned on
+  // /try; a phone's one Ask bar on /try, and the sheet it opens.
+  { name: 'home-dock', url: '/', ready: /Next up|On today/, engine: seeded, labels: ['try-dock'], viewportOnly: true },
+  { name: 'try-dock', url: '/try', ready: 'What to look for', engine: visitor, labels: ['try-dock'], viewportOnly: true },
+  {
+    name: 'try-sheet',
+    url: '/try',
+    ready: 'What to look for',
+    engine: visitor,
+    labels: ['try-dock'],
+    viewportOnly: true,
+    familyOnly: true,
+    after: async (page) => {
+      await page.getByRole('button', { name: /^Ask / }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+    },
+  },
   // The states a screenshot of the happy path never shows (ticket 04).
   {
     name: 'home-unreachable',
