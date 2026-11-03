@@ -20,9 +20,23 @@ const ICON = { system: Monitor, light: Sun, dark: Moon } as const
  * "Theme: System" is not. `compact` drops the visible word for the family top
  * bar, where the icon is the whole button, and keeps it as the accessible name.
  */
-export function ThemeToggle({ compact = false }: { compact?: boolean }) {
+export function ThemeToggle({ compact = false, rail = false }: { compact?: boolean; rail?: boolean }) {
   const pref = useSyncExternalStore(subscribeThemePref, getThemePref, () => 'system' as const)
   const Icon = ICON[pref]
+  if (rail) {
+    // The slim desk rail: icon over the word, like the rail's own entries.
+    return (
+      <button
+        type="button"
+        aria-label={`Theme: ${THEME_LABEL[pref]}. Tap to change.`}
+        onClick={() => setThemePref(nextThemePref(pref))}
+        className="flex min-h-[3.375rem] w-full flex-col items-center justify-center gap-1 rounded-2xl py-1.5 text-[0.71875rem] font-medium text-muted-foreground transition-colors outline-none hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        <Icon aria-hidden="true" className="size-5" />
+        {THEME_LABEL[pref]}
+      </button>
+    )
+  }
   return (
     <Button
       type="button"

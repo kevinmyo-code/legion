@@ -15,23 +15,29 @@ export function AssistantRailEntry() {
   const { state, name, ui } = useAssistant()
   const status = statusWords(state, name)
   const busy = state.phase !== 'idle' && state.phase !== 'ended'
+  // The slim rail (recruiter-demo 14): icon over the companion's name, like
+  // every other rail entry; a live conversation's status shows as its tooltip
+  // and in words under the name while the panel is closed.
   return (
     <button
       type="button"
       aria-expanded={ui.open}
       aria-controls="assistant-dock"
       onClick={() => (ui.open ? ui.setOpen(false) : ui.focusBox())}
-      className={`flex h-12 w-full items-center gap-3 rounded-full px-4 text-left text-[0.9375rem] font-medium transition-colors ${
-        ui.open ? 'bg-primary-container text-primary-container-foreground' : 'bg-surface-3 hover:bg-surface-2'
+      className={`flex min-h-[3.375rem] w-full flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 text-center text-[0.71875rem] font-medium transition-colors outline-none focus-visible:outline-2 focus-visible:outline-primary ${
+        ui.open ? 'text-foreground' : 'text-muted-foreground hover:bg-surface-3'
       }`}
     >
-      <Sparkles className="size-5 flex-none" aria-hidden="true" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate">{name}</span>
-        {busy && !ui.open && status && (
-          <span className="block truncate text-[0.75rem] font-normal opacity-80">{status.replace(/…$/, '')}</span>
-        )}
+      <span
+        aria-hidden="true"
+        className={`grid h-7 w-12 place-items-center rounded-full ${ui.open ? 'bg-primary-container text-primary-container-foreground' : 'bg-surface-3'}`}
+      >
+        <Sparkles className="size-5" />
       </span>
+      <span className="w-full truncate">{name}</span>
+      {busy && !ui.open && status && (
+        <span className="block w-full truncate text-[0.6875rem] font-normal opacity-80">{status.replace(/…$/, '')}</span>
+      )}
     </button>
   )
 }

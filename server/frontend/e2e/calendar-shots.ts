@@ -21,7 +21,8 @@ export const calendarShots: Shot[] = [
   {
     name: 'home-shared-private',
     url: '/',
-    ready: 'Soccer pickup',
+    // Not a time of day: the desk briefing shows only what is still ahead.
+    ready: /Next up|On today/,
     engine: calendar,
     labels: ['07', '09', '13'],
   },
@@ -37,7 +38,8 @@ export const calendarShots: Shot[] = [
   {
     name: 'sheet-new',
     url: '/',
-    ready: 'Soccer pickup',
+    // Not a time of day: the desk briefing shows only what is still ahead.
+    ready: /Next up|On today/,
     engine: calendar,
     after: openNew,
     labels: ['09'],
@@ -46,7 +48,8 @@ export const calendarShots: Shot[] = [
   {
     name: 'sheet-weekly',
     url: '/',
-    ready: 'Soccer pickup',
+    // Not a time of day: the desk briefing shows only what is still ahead.
+    ready: /Next up|On today/,
     engine: calendar,
     after: async (page) => {
       await openNew(page)
@@ -65,7 +68,8 @@ export const calendarShots: Shot[] = [
   {
     name: 'sheet-which',
     url: '/',
-    ready: 'Soccer pickup',
+    // Not a time of day: the desk briefing shows only what is still ahead.
+    ready: /Next up|On today/,
     engine: calendar,
     after: async (page) => {
       await page.getByRole('button', { name: 'Edit Water the ferns' }).first().click()
@@ -76,11 +80,14 @@ export const calendarShots: Shot[] = [
     },
     labels: ['09'],
     viewportOnly: true,
+    // The desk Home (the briefing, recruiter-demo 14) has no editable agenda row.
+    familyOnly: true,
   },
   {
     name: 'sheet-error',
     url: '/',
-    ready: 'Soccer pickup',
+    // Not a time of day: the desk briefing shows only what is still ahead.
+    ready: /Next up|On today/,
     engine: () => {
       const engine = calendar()
       engine.refusals['POST /api/events'] = {

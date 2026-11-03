@@ -73,6 +73,7 @@ export const TABLE_SPECS: Record<string, Spec> = {
   // The ledger (web-revamp 12). Transactions and files are the gate's: GET only.
   // Transaction categories are keyed by the transaction they sit over.
   'ledger/transactions': gated,
+  'ledger/statements': gated,
   'ledger/categories': synced(),
   'ledger/category_rules': synced(),
   'ledger/budget_targets': synced(),

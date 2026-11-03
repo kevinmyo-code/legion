@@ -35,10 +35,9 @@ test('Home does not list a suggestion among today, and the desk agenda does not 
   expect(screen.queryByText('Riverfest')).not.toBeInTheDocument()
 })
 
-test('the desk Home agenda does not list one', async () => {
+test('the desk Home does not list one', async () => {
   renderApp('/', engineWithSuggestion(), 'workbench')
-  await screen.findByRole('heading', { name: 'Today and the next 7 days' })
-  await screen.findByText('Dentist')
+  await screen.findByRole('region', { name: /Next up/ })
   expect(screen.queryByText('Riverfest')).not.toBeInTheDocument()
 })
 

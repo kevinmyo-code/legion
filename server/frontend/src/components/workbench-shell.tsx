@@ -7,8 +7,8 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { isActive, type NavItem } from '@/lib/nav'
 
 /**
- * The workbench surface's chrome (1024 px and up): a 232 px left rail listing
- * every area that exists, and content that uses the width, capped at 1440 px so
+ * The workbench surface's chrome (1024 px and up): a slim 92 px labelled icon
+ * rail listing every area that exists (recruiter-demo 14, prototype A's rail), and content that uses the width, capped at 1440 px so
  * a line of text never runs the length of an ultrawide.
  *
  * Kevin's desk, not a stretched phone: the rail is persistent and labelled
@@ -22,27 +22,34 @@ export function WorkbenchShell({ items, children }: { items: NavItem[]; children
 
   return (
     <div className="flex min-h-dvh">
-      <aside className="sticky top-0 flex h-dvh w-[232px] shrink-0 flex-col bg-surface-1 px-3 py-5">
-        <HouseholdName className="mb-6 px-3" />
+      <aside className="sticky top-0 flex h-dvh w-[92px] shrink-0 flex-col items-center gap-2 bg-surface-1 px-2 py-4">
+        <HouseholdName rail className="mb-1.5" />
 
-        <nav aria-label="Sections" className="flex-1 overflow-y-auto">
-          <ul className="flex flex-col gap-1">
+        <nav aria-label="Sections" className="w-full flex-1 overflow-y-auto [scrollbar-width:none]">
+          <ul className="flex flex-col gap-0.5">
             {items.map((item) => {
               const Icon = item.icon
               const active = isActive(item, pathname)
               return (
                 <li key={item.to}>
-                  {item.separated && <hr className="mx-3 my-2 border-outline-variant" />}
+                  {item.separated && <hr className="mx-2.5 my-1.5 border-outline-variant" />}
                   <Link
                     to={item.to as '/'}
                     aria-current={active ? 'page' : undefined}
-                    className={`flex h-12 items-center gap-3 rounded-full px-4 text-[0.9375rem] transition-colors ${
-                      active
-                        ? 'bg-primary-container font-semibold text-primary-container-foreground'
-                        : 'font-medium text-muted-foreground hover:bg-surface-3'
+                    className={`flex min-h-[3.375rem] flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 text-center text-[0.71875rem] transition-colors outline-none focus-visible:outline-2 focus-visible:outline-primary ${
+                      active ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground hover:bg-surface-3'
                     }`}
                   >
-                    <Icon className="size-5" />
+                    {/* The pill behind the icon is the active marker; the label is
+                        bolder too, so the current page is told by more than a tint. */}
+                    <span
+                      aria-hidden="true"
+                      className={`grid h-7 w-12 place-items-center rounded-full ${
+                        active ? 'bg-primary-container text-primary-container-foreground' : ''
+                      }`}
+                    >
+                      <Icon className="size-5" />
+                    </span>
                     {item.label}
                   </Link>
                 </li>
@@ -51,9 +58,9 @@ export function WorkbenchShell({ items, children }: { items: NavItem[]; children
           </ul>
         </nav>
 
-        <div className="flex flex-col items-start gap-2 px-1 pt-3">
+        <div className="flex w-full flex-col items-center gap-0.5 pt-2">
           <AssistantRailEntry />
-          <ThemeToggle />
+          <ThemeToggle rail />
         </div>
       </aside>
 

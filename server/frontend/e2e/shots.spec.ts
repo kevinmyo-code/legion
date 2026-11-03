@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { seedAspects } from '../src/test/aspects-seed'
 import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
+import { briefingShots } from './briefing-shots'
 import { calendarShots } from './calendar-shots'
 import { familyShots } from './family-shots'
 import { tetrisShots } from './tetris-shots'
@@ -83,13 +84,13 @@ const ROUTES: Shot[] = [
     ready: 'Sign in',
     engine: () => createEngine({ signedIn: false }),
   },
-  { name: 'home', url: '/', ready: 'Soccer pickup', engine: seeded },
+  { name: 'home', url: '/', ready: /Next up|On today/, engine: seeded },
   { name: 'lists', url: '/lists', ready: 'Oat milk', engine: seeded },
   // The states a screenshot of the happy path never shows (ticket 04).
   {
     name: 'home-unreachable',
     url: '/',
-    ready: /Could not reach the engine, so this is not today's real list/,
+    ready: /is not known/,
     engine: () => {
       const engine = seeded()
       engine.changesFailing = true
@@ -100,7 +101,7 @@ const ROUTES: Shot[] = [
   {
     name: 'home-stale',
     url: '/',
-    ready: 'Soccer pickup',
+    ready: /Next up|On today/,
     engine: seeded,
     // The page loaded fine, then the next refresh fails. Becoming visible again is
     // what makes the app refetch, so fire exactly that.
@@ -258,6 +259,7 @@ const ROUTES: Shot[] = [
   },
 
   // Tickets 07, 09, 13: the calendar. Rows live in `calendar-shots.ts`.
+  ...briefingShots,
   ...calendarShots,
   // Ticket 10: Mia's Home and the family Lists. Rows live in `family-shots.ts`.
   ...familyShots,
@@ -377,7 +379,7 @@ const ROUTES: Shot[] = [
     labels: ['12'],
     workbenchOnly: true,
   },
-  { name: 'home-money', url: '/', ready: '7 transactions need a category', engine: withLedger, labels: ['12', '10'], workbenchOnly: true },
+  { name: 'home-money', url: '/', ready: /need a category/, engine: withLedger, labels: ['12', '10'], workbenchOnly: true },
 ]
 
 /** Answer every `/api` call from the fake engine. */

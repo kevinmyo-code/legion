@@ -3,8 +3,8 @@ map: recruiter-demo
 ticket: "14"
 title: "Web Home becomes a household dashboard: the Morning briefing"
 type: build
-status: open
-status-detail: "after ticket 13 lands (same shell and routes)"
+status: built
+status-detail: "owing a look on Kevin's real data"
 blockers: ["13"]
 blocked-by: ["[[13-per-visitor-demo-household]]"]
 open-blockers: 1
@@ -50,3 +50,19 @@ Rebuild `/` (`routes/_authed.index.tsx`) to direction A, on real data, for membe
 
 - vitest for each section's states (data, empty, unreadable, demo visitor).
 - Screenshots at 1440 and 390, light and dark, member and recruiter, compared against the prototype.
+
+## Built (2026-11-02, branch `feat/home-briefing`)
+
+- Desk Home (`/` at 1024 px and up) is the briefing: `screens/home-briefing.tsx`, sections in
+  `components/briefing/`, pure rules in `lib/briefing.ts` (day sentence, service due ported from
+  `brief/compose.py`, running total, balances, next up, closing line). The family Home below
+  1024 px is unchanged (ADR 0053: two trees; ticket 10 owns Mia's Home).
+- Slim labelled icon rail on the desk (`workbench-shell.tsx`), the companion and the theme as rail entries.
+- Data: `/api/changes`, ledger transactions, spend, `ledger/statements` (read-only table, new on the
+  web), fleet vehicles / service history / schedules, ingest files and the bank link (members
+  only), receipts and line items, voice notes, places, book positions and body (members only).
+  No new endpoint. Gaps: no source of recurring bills (said in words); book positions carry no
+  title; odometer is the vehicle baseline or a service record (code events not read).
+- Verify: vitest per section (`routes/-home-briefing.test.tsx`, `lib/briefing.test.ts`), full
+  suite green; shots `SHOTS_LABEL=14 npm run shots` at 1440 and 390, light and dark, member and
+  recruiter, plus the docked assistant open. Owed: a look on Kevin's real household.

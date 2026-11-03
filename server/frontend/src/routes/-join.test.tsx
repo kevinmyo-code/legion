@@ -42,7 +42,7 @@ describe('an invite that works', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Join the household' }))
 
     // Home, behind `_authed`, which needs a session the signup flow just made.
-    expect(await screen.findByText('Soccer pickup')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: /^(Good|Hello)/ })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
     expect(engine.signedIn).toBe(true)
 
