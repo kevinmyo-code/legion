@@ -129,6 +129,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "81221debd7ee7ab3",
+      "type": "file",
+      "file": ".scratch/recruiter-demo/issues/14-home-dashboard-morning-briefing.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -214,6 +224,13 @@
       "fromNode": "fe4c24ee44c4dc32",
       "fromSide": "right",
       "toNode": "81836cc3299ba05b",
+      "toSide": "left"
+    },
+    {
+      "id": "4d76e08c91adc468",
+      "fromNode": "81836cc3299ba05b",
+      "fromSide": "right",
+      "toNode": "81221debd7ee7ab3",
       "toSide": "left"
     }
   ]

@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>272 tickets open</h1>
+<h1>273 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 45 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 56 are waiting on another ticket first. <b>145 are already built</b> and owe nothing but a run on the phone. 17 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 45 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 57 are waiting on another ticket first. <b>145 are already built</b> and owe nothing but a run on the phone. 17 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">272</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">273</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">54</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">145</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">56</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n amber">57</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">100</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">101</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">17</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -165,6 +165,30 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
+<h2>recruiter-demo</h2>
+<span class="counts"><span class="k">14</span> open<span class="sep">&middot;</span><span class="k mint">6</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="k amber">7</span> blocked<span class="sep">&middot;</span><span class="dim">of 14 tickets</span></span>
+<span class="bar"><i style="flex:7"></i><b style="flex:7"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">Recruiter role and tool allowlist (default deny)</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Demo videos: phone, head unit, receipt scan</span><span class="det">Kevin records</span></span><span class="chip c-content">content</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">09</span><span class="body"><span class="tt">Resume page and Quanex text</span><span class="det">page location after the frontend prototype</span></span><span class="chip c-content">content</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">10</span><span class="body"><span class="tt">about_kevin: recruiters ask about Kevin himself</span><span class="det">Kevin writes the profile</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">12</span><span class="body"><span class="tt">The phone&#x27;s tuned turn-taking and barge-in, in the browser</span><span class="det">spike first: Silero + Smart Turn in onnxruntime-web on a mid-range phone</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">13</span><span class="body"><span class="tt">Each recruiter visit gets its own copy of the demo household, writes allowed</span><span class="det">server and web built on docs/recruiter-demo, suites green; owes deploy (Kevin&#x27;s call) and a visit on the live engine</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">Invite code to per-visitor read token, ref tag, per-IP limit, rotation</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">Global daily demo budget ($5), reserve before mint, budget-used message</span></span><span class="chip c-build">build</span><span class="state">waiting on #02</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Guide persona: greet on connect, say what it can do, offer things to try</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Isolation tests: recruiter cannot reach Kevin&#x27;s household or excluded tools, incl. prompt injection</span><span class="det">gate before the code goes out</span></span><span class="chip c-build">build</span><span class="state">waiting on #01, #02, #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Try page and the &#x27;What this key can&#x27;t see&#x27; governance page</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Music demo: &#x27;play X&#x27; by voice, plays in the page via a Spotify embed</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Web Home becomes a household dashboard: the Morning briefing</span><span class="det">after ticket 13 lands (same shell and routes)</span></span><span class="chip c-build">build</span><span class="state">waiting on #13</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
 <h2>backend-etl</h2>
 <span class="counts"><span class="k">13</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">8</span> built<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
 <span class="bar"><i style="flex:8"></i><b style="flex:5"></b></span>
@@ -206,29 +230,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-built" data-type="built" data-state="built"><span class="num">11</span><span class="body"><span class="tt">Three small writes: memory, proposals, pendings</span><span class="det">Built: memory add, pending add (Long cents), and the CRED advisor-proposal panel over a real store that was voice-only app-wide. Other aspects&#x27; panels are follow-up. TTL constant now shared, not copied.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">12</span><span class="body"><span class="tt">Newsletters summarize themselves, no setup required</span><span class="det">Built: no-config Gmail query plus the DEFAULT_ON fix that would have defeated it. Owes a real tap on the phone. Flag: scheduled sitreps now fetch Gmail by default.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">14</span><span class="body"><span class="tt">The app learns to move</span><span class="det">Built: motion tokens, route fade, press response, pane entrance, animateContentSize. Alarm panes never animate. Owes the on-phone look including animator-scale-0.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
-<h2>recruiter-demo</h2>
-<span class="counts"><span class="k">13</span> open<span class="sep">&middot;</span><span class="k mint">6</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">of 13 tickets</span></span>
-<span class="bar"><i style="flex:7"></i><b style="flex:6"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">Recruiter role and tool allowlist (default deny)</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Demo videos: phone, head unit, receipt scan</span><span class="det">Kevin records</span></span><span class="chip c-content">content</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">09</span><span class="body"><span class="tt">Resume page and Quanex text</span><span class="det">page location after the frontend prototype</span></span><span class="chip c-content">content</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">10</span><span class="body"><span class="tt">about_kevin: recruiters ask about Kevin himself</span><span class="det">Kevin writes the profile</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">12</span><span class="body"><span class="tt">The phone&#x27;s tuned turn-taking and barge-in, in the browser</span><span class="det">spike first: Silero + Smart Turn in onnxruntime-web on a mid-range phone</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">13</span><span class="body"><span class="tt">Each recruiter visit gets its own copy of the demo household, writes allowed</span><span class="det">server and web built on docs/recruiter-demo, suites green; owes deploy (Kevin&#x27;s call) and a visit on the live engine</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">Invite code to per-visitor read token, ref tag, per-IP limit, rotation</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">Global daily demo budget ($5), reserve before mint, budget-used message</span></span><span class="chip c-build">build</span><span class="state">waiting on #02</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Guide persona: greet on connect, say what it can do, offer things to try</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Isolation tests: recruiter cannot reach Kevin&#x27;s household or excluded tools, incl. prompt injection</span><span class="det">gate before the code goes out</span></span><span class="chip c-build">build</span><span class="state">waiting on #01, #02, #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Try page and the &#x27;What this key can&#x27;t see&#x27; governance page</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #05</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Music demo: &#x27;play X&#x27; by voice, plays in the page via a Spotify embed</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
 </ul>
 </section>
 <section class="map">

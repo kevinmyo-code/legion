@@ -4,8 +4,8 @@ title: "Recruiters try LEGION: one shared invite code, a fake household, a guide
 charted: 2026-11-02
 charted-by: "Kevin + Opus"
 effort: "`.scratch/recruiter-demo/`"
-tickets: 13
-open: 13
+tickets: 14
+open: 14
 status: open
 tags: [map]
 ---
@@ -96,6 +96,7 @@ web assistant (existing, ADR 0056)
 |---|---|---|---|
 | 01 | Recruiter role and tool allowlist (default deny) | build | - |
 | 02 | Invite code -> per-visitor read token, `ref`, per-IP limit, rotation | build | 01 |
+| 14 | Web Home becomes a household dashboard: Morning briefing (Kevin chose A) | build | 13 |
 | 13 | Each visit gets its own demo household copy, writes allowed; demo-visit delete exemption (Kevin ok) | build | 01, 02, 03 |
 | 12 | Phone's tuned turn-taking and barge-in in the browser (spike first) | build | - |
 | 03 | Demo household seed (fake bank, car, receipts, one failing receipt), nightly reset | build | - |
