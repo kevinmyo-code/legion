@@ -135,6 +135,13 @@ def test_real_questions_find_their_adr(query, adr, within):
     assert adr in _top(query, within), (query, _top(query, 4))
 
 
+@pytest.mark.parametrize("query", ["What is LEGION?", "Tell me about LEGION", "legion"])
+def test_a_question_about_legion_itself_gets_the_readme_overview(query):
+    hits = search(query)
+    assert hits and all(p.path == "README.md" for p in hits)
+    assert [p.heading for p in hits][:2] == ["LEGION", "LEGION > At a glance"]
+
+
 def test_voice_questions_reach_the_voice_docs():
     hits = [p.path for p in search("how does the voice loop work")]
     assert "docs/architecture/c3-voice-loop.md" in hits

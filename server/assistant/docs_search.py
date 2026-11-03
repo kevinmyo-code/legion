@@ -54,11 +54,15 @@ B = 0.75
 STOPWORDS = frozenset(
     """
     a an and are as at be been but by can could do does did for from had has have how i if in
-    into is it its legion legions me my of on or our so than that the their them then there these
+    into is it its me my of on or our so than that the their them then there these
     they this those to was we were what when where which who whom why will with would you your
     about tell explain describe work works working use used using get got
     """.split()
 )
+
+# A question whose only subject is LEGION itself gets the README's overview.
+OVERVIEW_WORDS = frozenset({"legion"})
+OVERVIEW_PATH = "README.md"
 
 _WORD = re.compile(r"[a-z0-9]+")
 # A light suffix strip, so "tenancy" meets "tenants" and "gated" meets "gate".
@@ -188,6 +192,12 @@ def search(query: str, limit: int = LIMIT_DEFAULT) -> list[Passage]:
         if chunk.get("snapshot"):
             score *= SNAPSHOT_FACTOR
         scored.append((score, i))
+    if words and words <= OVERVIEW_WORDS:
+        # "What is LEGION?": every doc names LEGION, so BM25 has nothing to
+        # rank on. The README is the overview; give it in its own order.
+        scored = [
+            (1.0 - i / n, i) for i, c in enumerate(index.chunks) if c["path"] == OVERVIEW_PATH
+        ]
     scored.sort(key=lambda s: (-s[0], index.chunks[s[1]]["id"]))
 
     out: list[Passage] = []
