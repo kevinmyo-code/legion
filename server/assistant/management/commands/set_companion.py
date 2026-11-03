@@ -7,7 +7,7 @@ read (`assistant/companions.py`); this is for changing either, until the phone
 pushes its roster up. Idempotent: running it twice leaves one row.
 
     manage.py set_companion mia@example.com dorothy
-    manage.py set_companion kevin@example.com alfred --voice Charon
+    manage.py set_companion kevin@example.com alfred --voice Puck
 """
 
 from __future__ import annotations

@@ -45,7 +45,7 @@ def _clause(raw: str) -> str:
 ALFRED = Persona(
     key="alfred",
     default_name="Alfred",
-    suggested_voice="Charon",
+    suggested_voice="Puck",
     clause=_clause(
         """
         You are Alfred, the household's butler, in service to this one person - their day, their

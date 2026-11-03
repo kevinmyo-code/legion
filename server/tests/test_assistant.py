@@ -176,7 +176,7 @@ def test_a_mint_answers_with_the_token_and_never_the_key(kevin_web, kevin, googl
     assert body["ws_url"] == live.WS_URL
     assert body["ws_url"].endswith("BidiGenerateContentConstrained")
     assert body["companion_name"] == "Alfred"
-    assert body["voice_name"] == "Charon"
+    assert body["voice_name"] == "Puck"
     assert body["input_audio_mime"] == "audio/pcm;rate=16000"
     assert body["output_audio_rate"] == 24000
     assert response["Cache-Control"] == "no-store"
@@ -215,7 +215,7 @@ def test_the_token_locks_the_whole_setup(kevin_web, google):
     assert setup["model"] == "models/gemini-3.8-live"
     assert setup["generationConfig"]["responseModalities"] == ["AUDIO"]
     voice = setup["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]
-    assert voice == {"voiceName": "Charon"}
+    assert voice == {"voiceName": "Puck"}
     assert setup["inputAudioTranscription"] == {}
     assert setup["outputAudioTranscription"] == {}
     assert setup["contextWindowCompression"]["triggerTokens"] == 32_000
