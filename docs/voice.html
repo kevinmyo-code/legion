@@ -59,10 +59,10 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <section><h2>The cars</h2>
 <p class="blurb">Diagnostics, maintenance and history. Most of it needs the OBD dongle plugged in.</p>
 <dl>
-<dt>&ldquo;Any trouble codes?&rdquo;</dt><dd>Reads fault codes stored in the car right now.<span class="hands">By hand: Fleet tab, trouble-code panel.</span></dd>
+<dt>&ldquo;Any trouble codes?&rdquo;</dt><dd>Reads fault codes stored in the car right now, with the freeze frame saved for each, and pops up the codes card.<span class="hands">By hand: Fleet tab, trouble-code panel.</span></dd>
 <dt>&ldquo;What&#x27;s wrong with the car?&rdquo;</dt><dd>Digs into the stored codes and explains them. Takes a few seconds.<span class="hands">By hand: Fleet tab, code diagnosis drilldown.</span></dd>
 <dt>&ldquo;Clear the codes&rdquo;</dt><dd>Clears stored fault codes. Asks you to confirm first.<span class="hands">By hand: Fleet tab, clear-codes action, confirm-gated.</span></dd>
-<dt>&ldquo;Has that code come back before?&rdquo;</dt><dd>The history of faults this car has thrown.<span class="hands">By hand: Fleet tab, code history view.</span></dd>
+<dt>&ldquo;Show me the freeze frames&rdquo;</dt><dd>The history of faults this car has thrown, each with its freeze frame (engine speed, coolant, speed, load, fuel trims and more, or &#x27;no snapshot was saved&#x27;). A codes card pops up on screen; tap a code to see its snapshot.<span class="hands">By hand: Fleet tab, Faults page, &#x27;Codes card with freeze frames&#x27;.</span></dd>
 <dt>&ldquo;It&#x27;s making a whining noise on turns&rdquo;</dt><dd>Describe how the car is behaving and it works from that, not from a code.<span class="hands">By hand: Voice only - a free-text symptom description has no form equivalent.</span></dd>
 <dt>&ldquo;Is it ready for emissions?&rdquo;</dt><dd>Whether the car&#x27;s self-tests have run - the emissions readiness monitors.<span class="hands">By hand: Fleet tab, readiness/emissions panel.</span></dd>
 <dt>&ldquo;Did it do a cold start test?&rdquo;</dt><dd>Whether the cold-start monitor has completed.<span class="hands">By hand: Fleet tab, readiness panel.</span></dd>
@@ -73,8 +73,8 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <dt>&ldquo;Is the voltage getting worse?&rdquo;</dt><dd>How a reading has moved over time.<span class="hands">By hand: Fleet tab, trend drilldown.</span></dd>
 <dt>&ldquo;What oil does it take?&rdquo;</dt><dd>Factory specs for the car - engine, drivetrain, fluids.<span class="hands">By hand: Fleet &gt; Vehicle specs screen.</span></dd>
 <dt>&ldquo;Look up this VIN&rdquo;</dt><dd>Decodes a VIN into make, model and year.<span class="hands">By hand: Fleet tab, add/register-a-car flow&#x27;s VIN lookup.</span></dd>
-<dt>&ldquo;Any recalls on it?&rdquo;</dt><dd>Open safety recalls, from the NHTSA database.<span class="hands">By hand: Fleet tab, recalls panel.</span></dd>
-<dt>&ldquo;What&#x27;s due next?&rdquo;</dt><dd>The next maintenance item, by miles or by date.<span class="hands">By hand: Fleet tab, next-due panel.</span></dd>
+<dt>&ldquo;Any recalls on the Jeep?&rdquo;</dt><dd>Open safety recalls, from the NHTSA database. If the car&#x27;s year, make or model isn&#x27;t saved, say them (&#x27;it&#x27;s a 1998 Jeep Cherokee&#x27;) and it checks anyway, then asks before saving them to the car.<span class="hands">By hand: Fleet tab, recalls panel.</span></dd>
+<dt>&ldquo;When&#x27;s the Jeep due for service?&rdquo;</dt><dd>The next maintenance item, by miles or by date, for the car you name, or the car you&#x27;re connected to or last picked. With several cars and none named it asks which; a car with no schedule set up is told so.<span class="hands">By hand: Fleet tab, next-due panel.</span></dd>
 <dt>&ldquo;When did I last do the brakes?&rdquo;</dt><dd>Questions about your service history.<span class="hands">By hand: Fleet &gt; Service history screen.</span></dd>
 <dt>&ldquo;I changed the oil today&rdquo;</dt><dd>Records a service you just did.<span class="hands">By hand: Fleet &gt; Service history screen - marking an item done now writes the service record and its cost.</span></dd>
 <dt>&ldquo;I did the plugs back in June&rdquo;</dt><dd>Records a service from the past.<span class="hands">By hand: Fleet &gt; Service history screen, log a past service.</span></dd>
@@ -173,7 +173,7 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <section><h2>Books</h2>
 <p class="blurb">EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.</p>
 <dl>
-<dt>&ldquo;Read me Moby-Dick&rdquo;</dt><dd>Opens a book from your Books folder in the reader, or carries on with the last one you were reading. Say &#x27;read aloud&#x27; to have the phone&#x27;s own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.<span class="hands">By hand: HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card.</span></dd>
+<dt>&ldquo;What&#x27;s the last book I read?&rdquo;</dt><dd>Tells you the last book you were reading and where you left off, without opening it; say &#x27;pull it up&#x27; to open it there. Also opens a named book from your Books folder in the reader (&#x27;Read me Moby-Dick&#x27;). Say &#x27;read aloud&#x27; to have the phone&#x27;s own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.<span class="hands">By hand: HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card.</span></dd>
 </dl></section>
 <section><h2>Phone calls</h2>
 <p class="blurb">Needs phone permissions granted in Setup.</p>
