@@ -1015,10 +1015,17 @@ def _next_service(request, args) -> ToolResult:
         if not said:
             said.append("Nothing on the schedule can be timed from the records on file.")
         paragraphs.append(f"{name}: " + " ".join(said))
+    offset = datetime.now(UTC).astimezone(_household_zone(request)).utcoffset()
     return ok(
         f"Maintenance as of {_long_date(today)}, from the records on file (schedules and "
         f"service history; nothing here was read from the car):\n" + "\n".join(paragraphs),
-        structured={"as_of": today.isoformat(), "vehicles": out},
+        structured={
+            "as_of": today.isoformat(),
+            # For a procedure step that dates other rows in the household's day (car_check's
+            # trouble codes). An offset, never a zone id (CLAUDE.md section 1).
+            "utc_offset_minutes": int(offset.total_seconds() // 60),
+            "vehicles": out,
+        },
     )
 
 
@@ -1591,6 +1598,90 @@ def _monthly_spend(request, args) -> ToolResult:
     return ok(" ".join(parts), structured=body)
 
 
+def _local_day_window(request) -> dict:
+    """The household's local today as a date and as the instants it starts and ends, plus the
+    UTC offset now (never a zone id: CLAUDE.md section 1)."""
+    zone = _household_zone(request)
+    local = datetime.now(UTC).astimezone(zone)
+    today = local.date()
+    return {
+        "today": today.isoformat(),
+        "today_start": datetime.combine(today, time.min, tzinfo=zone).isoformat(),
+        "today_end": datetime.combine(today, time.max, tzinfo=zone).isoformat(),
+        "utc_offset_minutes": int(local.utcoffset().total_seconds() // 60),
+    }
+
+
+def _brief_latest(request, args) -> ToolResult:
+    """The signed-in member's latest daily brief, as written by `brief/compose.py`: the same row
+    `GET /api/brief/latest` serves, never rebuilt here. News is web text (ruling 06 of the
+    procedures map keeps web text out of a run trace), so its lines are not repeated."""
+    from django.utils import timezone as dj_timezone
+
+    from brief.build import age_sentence
+    from brief.models import Brief
+    from household.tenancy import scoped
+
+    window = _local_day_window(request)
+    brief = (
+        scoped(Brief, request).filter(user=request.user).order_by("-built_at").first()
+        if getattr(request.user, "is_authenticated", False)
+        else None
+    )
+    if brief is None:
+        return ok(
+            "No daily brief has been built for you yet, so there is none to read. That is a real "
+            "empty result, not a failure to read: the 05:00 job builds one, or Refresh on the "
+            "Brief page.",
+            structured={**window, "brief": None},
+        )
+    stale = brief.brief_date.isoformat() != window["today"]
+    head = (
+        f"Your latest daily brief is for {_long_date(brief.brief_date)}. "
+        f"{age_sentence(brief, dj_timezone.now())}"
+    )
+    if stale:
+        head += " It is not today's brief: nothing has been built for today yet."
+    paragraphs = [head]
+    for note in brief.notes or []:
+        paragraphs.append(str(note))
+    sections = []
+    for sec in brief.sections or []:
+        key = sec.get("key")
+        sections.append({"key": key, "status": sec.get("status")})
+        if key == "news":
+            # A built News section is web text and stays out. One that was not built has no
+            # lines, only the engine's own sentence saying why (`brief/news.py`): that is said.
+            if sec.get("status") != "ok" and not sec.get("lines"):
+                paragraphs.append(f"News: not built. {sec.get('note') or ''}".strip())
+            else:
+                paragraphs.append(
+                    "News: not repeated here, because it is text from the web; it is on the "
+                    "Brief page."
+                )
+            continue
+        said = []
+        for item in sec.get("lines") or []:
+            text = item.get("text", "")
+            said.append(f"{text} (UNVERIFIED)" if item.get("unverified") else text)
+        if sec.get("note"):
+            said.append(f"({sec['note']})")
+        paragraphs.append(f"{sec.get('title', key)}: " + " ".join(said))
+    return ok(
+        "\n".join(paragraphs),
+        structured={
+            **window,
+            "brief": {
+                "brief_date": brief.brief_date.isoformat(),
+                "built_at": brief.built_at.isoformat(),
+                "trigger": brief.trigger,
+                "is_today": not stale,
+                "sections": sections,
+            },
+        },
+    )
+
+
 # =============================================================================
 # legion_docs: how LEGION is built, from its own public docs (Kevin, 2026-11-03)
 #
@@ -1901,6 +1992,19 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"vehicle": {"type": "string"}}),
         handler=_vehicle_recalls,
+    ),
+    EngineTool(
+        name="brief_latest",
+        title="The latest daily brief",
+        description=(
+            "The signed-in member's latest daily brief, exactly as the 05:00 build (or a "
+            "Refresh) wrote it: its Canvas, Money and Car sections, and how old it is. It is NOT "
+            "rebuilt here, so it can be from an earlier day: say its date when it is not today's. "
+            "Say UNVERIFIED wherever the result does. News is not repeated (it is web text); it "
+            "is on the Brief page. Also gives the household's today, for other lookups."
+        ),
+        input_schema=_object({}),
+        handler=_brief_latest,
     ),
     EngineTool(
         name="write_record",

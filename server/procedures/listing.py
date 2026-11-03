@@ -34,14 +34,19 @@ def recruiter_may_run(definition: dict) -> bool:
 
 def recruiter_refusal(definition: dict) -> str | None:
     """Why a recruiter may not run this procedure, in words, or None."""
-    from assistant.surface import RECRUITER_TOOLS
+    from assistant.surface import RECRUITER_EXCLUDED, RECRUITER_TOOLS
 
     outside = sorted({n for n in tool_names(definition) if n not in RECRUITER_TOOLS})
     if not outside:
         return None
+    # The classified reason when there is one (`surface.RECRUITER_EXCLUDED`), so the visitor
+    # hears why, not only what.
+    named = ", ".join(
+        f"{n} ({RECRUITER_EXCLUDED[n]})" if n in RECRUITER_EXCLUDED else n for n in outside
+    )
     return (
         f"Nothing ran. The procedure {definition.get('name')!r} is not available on this demo "
-        f"visit: it uses {', '.join(outside)}, which a visit cannot use."
+        f"visit: it uses {named}, which a visit cannot use."
     )
 
 

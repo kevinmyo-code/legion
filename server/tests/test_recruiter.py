@@ -145,10 +145,15 @@ def test_every_registry_tool_is_classified_for_recruiters():
         assert reason.strip(), name
 
 
-def test_the_allowlist_is_the_member_surface_less_list_tables():
+def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
     """Ticket 13 (ADR 0069): writes over the household's own rows are in; the
-    only registry tool out is the one that names body and memory tables."""
-    assert set(RECRUITER_EXCLUDED) == {"list_tables"}
+    registry tools out are the one that names body and memory tables, and the
+    daily brief (procedures ticket 15), which the visit's routes refuse too."""
+    assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest"}
+    assert (
+        RECRUITER_EXCLUDED["brief_latest"]
+        == RECRUITER_DENIED["brief.views.BriefLatestView"]
+    )
     for tool in TOOLS:
         if tool.writes:
             assert tool.name in RECRUITER_TOOLS, tool.name

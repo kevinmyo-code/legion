@@ -45,6 +45,7 @@ import dataclasses
 from demo.tools import ABOUT_KEVIN
 from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE
 from household.models import is_recruiter
+from household.recruiter_routes import RECRUITER_DENIED
 
 EXCLUDED_FROM_WEB: frozenset[str] = frozenset()
 
@@ -130,6 +131,9 @@ RECRUITER_EXCLUDED: dict[str, str] = {
         "for a recruiter that is false. The record tools' own table enums, narrowed below, "
         "say what it may touch"
     ),
+    # The visit's REST fence's own reason for `/api/brief/latest`, so the tool
+    # door and the route cannot disagree (procedures ticket 15).
+    "brief_latest": RECRUITER_DENIED["brief.views.BriefLatestView"],
 }
 
 # The aspects whose tables the record tools may read, write or delete for a
