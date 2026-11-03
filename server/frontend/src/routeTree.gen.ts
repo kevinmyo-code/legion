@@ -29,6 +29,8 @@ import { Route as AuthedBoughtIndexRouteImport } from './routes/_authed.bought.i
 import { Route as AuthedBoughtLogRouteImport } from './routes/_authed.bought.log'
 import { Route as AuthedGamesIndexRouteImport } from './routes/_authed.games.index'
 import { Route as AuthedGamesSoloRouteImport } from './routes/_authed.games.solo'
+import { Route as AuthedRunsIndexRouteImport } from './routes/_authed.runs.index'
+import { Route as AuthedRunsIdRouteImport } from './routes/_authed.runs.$id'
 import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed.settings.index'
 import { Route as AuthedSettingsAccountRouteImport } from './routes/_authed.settings.account'
 import { Route as AuthedSettingsAppearanceRouteImport } from './routes/_authed.settings.appearance'
@@ -37,6 +39,7 @@ import { Route as AuthedSettingsDevicesRouteImport } from './routes/_authed.sett
 import { Route as AuthedSettingsHouseholdRouteImport } from './routes/_authed.settings.household'
 import { Route as AuthedSettingsNotificationsRouteImport } from './routes/_authed.settings.notifications'
 import { Route as AuthedGamesMatchIdRouteImport } from './routes/_authed.games.match.$id'
+import { Route as AuthedRunsReportNameRouteImport } from './routes/_authed.runs.report.$name'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -137,6 +140,16 @@ const AuthedGamesSoloRoute = AuthedGamesSoloRouteImport.update({
   path: '/games/solo',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedRunsIndexRoute = AuthedRunsIndexRouteImport.update({
+  id: '/runs/',
+  path: '/runs/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedRunsIdRoute = AuthedRunsIdRouteImport.update({
+  id: '/runs/$id',
+  path: '/runs/$id',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedSettingsIndexRoute = AuthedSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -179,6 +192,11 @@ const AuthedGamesMatchIdRoute = AuthedGamesMatchIdRouteImport.update({
   path: '/games/match/$id',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedRunsReportNameRoute = AuthedRunsReportNameRouteImport.update({
+  id: '/runs/report/$name',
+  path: '/runs/report/$name',
+  getParentRoute: () => AuthedRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
@@ -198,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/join/$code': typeof JoinCodeRoute
   '/bought/log': typeof AuthedBoughtLogRoute
   '/games/solo': typeof AuthedGamesSoloRoute
+  '/runs/$id': typeof AuthedRunsIdRoute
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/bank': typeof AuthedSettingsBankRoute
@@ -206,8 +225,10 @@ export interface FileRoutesByFullPath {
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
   '/bought/': typeof AuthedBoughtIndexRoute
   '/games/': typeof AuthedGamesIndexRoute
+  '/runs/': typeof AuthedRunsIndexRoute
   '/settings/': typeof AuthedSettingsIndexRoute
   '/games/match/$id': typeof AuthedGamesMatchIdRoute
+  '/runs/report/$name': typeof AuthedRunsReportNameRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -226,6 +247,7 @@ export interface FileRoutesByTo {
   '/': typeof AuthedIndexRoute
   '/bought/log': typeof AuthedBoughtLogRoute
   '/games/solo': typeof AuthedGamesSoloRoute
+  '/runs/$id': typeof AuthedRunsIdRoute
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/bank': typeof AuthedSettingsBankRoute
@@ -234,8 +256,10 @@ export interface FileRoutesByTo {
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
   '/bought': typeof AuthedBoughtIndexRoute
   '/games': typeof AuthedGamesIndexRoute
+  '/runs': typeof AuthedRunsIndexRoute
   '/settings': typeof AuthedSettingsIndexRoute
   '/games/match/$id': typeof AuthedGamesMatchIdRoute
+  '/runs/report/$name': typeof AuthedRunsReportNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -257,6 +281,7 @@ export interface FileRoutesById {
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/bought/log': typeof AuthedBoughtLogRoute
   '/_authed/games/solo': typeof AuthedGamesSoloRoute
+  '/_authed/runs/$id': typeof AuthedRunsIdRoute
   '/_authed/settings/account': typeof AuthedSettingsAccountRoute
   '/_authed/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/_authed/settings/bank': typeof AuthedSettingsBankRoute
@@ -265,8 +290,10 @@ export interface FileRoutesById {
   '/_authed/settings/notifications': typeof AuthedSettingsNotificationsRoute
   '/_authed/bought/': typeof AuthedBoughtIndexRoute
   '/_authed/games/': typeof AuthedGamesIndexRoute
+  '/_authed/runs/': typeof AuthedRunsIndexRoute
   '/_authed/settings/': typeof AuthedSettingsIndexRoute
   '/_authed/games/match/$id': typeof AuthedGamesMatchIdRoute
+  '/_authed/runs/report/$name': typeof AuthedRunsReportNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -288,6 +315,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/bought/log'
     | '/games/solo'
+    | '/runs/$id'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/bank'
@@ -296,8 +324,10 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/bought/'
     | '/games/'
+    | '/runs/'
     | '/settings/'
     | '/games/match/$id'
+    | '/runs/report/$name'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -316,6 +346,7 @@ export interface FileRouteTypes {
     | '/'
     | '/bought/log'
     | '/games/solo'
+    | '/runs/$id'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/bank'
@@ -324,8 +355,10 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/bought'
     | '/games'
+    | '/runs'
     | '/settings'
     | '/games/match/$id'
+    | '/runs/report/$name'
   id:
     | '__root__'
     | '/_authed'
@@ -346,6 +379,7 @@ export interface FileRouteTypes {
     | '/_authed/'
     | '/_authed/bought/log'
     | '/_authed/games/solo'
+    | '/_authed/runs/$id'
     | '/_authed/settings/account'
     | '/_authed/settings/appearance'
     | '/_authed/settings/bank'
@@ -354,8 +388,10 @@ export interface FileRouteTypes {
     | '/_authed/settings/notifications'
     | '/_authed/bought/'
     | '/_authed/games/'
+    | '/_authed/runs/'
     | '/_authed/settings/'
     | '/_authed/games/match/$id'
+    | '/_authed/runs/report/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -508,6 +544,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedGamesSoloRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/runs/': {
+      id: '/_authed/runs/'
+      path: '/runs'
+      fullPath: '/runs/'
+      preLoaderRoute: typeof AuthedRunsIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/runs/$id': {
+      id: '/_authed/runs/$id'
+      path: '/runs/$id'
+      fullPath: '/runs/$id'
+      preLoaderRoute: typeof AuthedRunsIdRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/settings/': {
       id: '/_authed/settings/'
       path: '/'
@@ -564,6 +614,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedGamesMatchIdRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/runs/report/$name': {
+      id: '/_authed/runs/report/$name'
+      path: '/runs/report/$name'
+      fullPath: '/runs/report/$name'
+      preLoaderRoute: typeof AuthedRunsReportNameRouteImport
+      parentRoute: typeof AuthedRoute
+    }
   }
 }
 
@@ -605,9 +662,12 @@ interface AuthedRouteChildren {
   AuthedIndexRoute: typeof AuthedIndexRoute
   AuthedBoughtLogRoute: typeof AuthedBoughtLogRoute
   AuthedGamesSoloRoute: typeof AuthedGamesSoloRoute
+  AuthedRunsIdRoute: typeof AuthedRunsIdRoute
   AuthedBoughtIndexRoute: typeof AuthedBoughtIndexRoute
   AuthedGamesIndexRoute: typeof AuthedGamesIndexRoute
+  AuthedRunsIndexRoute: typeof AuthedRunsIndexRoute
   AuthedGamesMatchIdRoute: typeof AuthedGamesMatchIdRoute
+  AuthedRunsReportNameRoute: typeof AuthedRunsReportNameRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
@@ -624,9 +684,12 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedIndexRoute: AuthedIndexRoute,
   AuthedBoughtLogRoute: AuthedBoughtLogRoute,
   AuthedGamesSoloRoute: AuthedGamesSoloRoute,
+  AuthedRunsIdRoute: AuthedRunsIdRoute,
   AuthedBoughtIndexRoute: AuthedBoughtIndexRoute,
   AuthedGamesIndexRoute: AuthedGamesIndexRoute,
+  AuthedRunsIndexRoute: AuthedRunsIndexRoute,
   AuthedGamesMatchIdRoute: AuthedGamesMatchIdRoute,
+  AuthedRunsReportNameRoute: AuthedRunsReportNameRoute,
 }
 
 const AuthedRouteWithChildren =

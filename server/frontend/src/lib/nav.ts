@@ -12,6 +12,7 @@ import {
   ShoppingBag,
   ShoppingBasket,
   Wallet,
+  Workflow,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -74,6 +75,9 @@ export const NAV: readonly NavItem[] = [
   { to: '/games', label: 'Games', icon: Gamepad2, surfaces: DESK, built: true },
   // Books ticket 10: the laptop reader. Desk only: files live in a folder on the laptop.
   { to: '/books', label: 'Books', icon: BookOpen, surfaces: DESK, built: true },
+  // Procedures ticket 14: the run inspector and branch report. Desk rail only (spec D1 fixes
+  // the family tabs at four); the page itself works at phone width.
+  { to: '/runs', label: 'Runs', icon: Workflow, surfaces: DESK, built: true },
   {
     to: '/settings',
     label: 'Settings',

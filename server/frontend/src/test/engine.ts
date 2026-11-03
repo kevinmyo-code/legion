@@ -12,6 +12,7 @@ import {
   type DemoState,
 } from './engine-demo'
 import { defaultGames, handleGames, type GamesState } from './engine-games'
+import { defaultProcedures, handleProcedures, type ProceduresState } from './engine-procedures'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
 
@@ -86,6 +87,8 @@ export interface EngineOptions {
   books?: Partial<BooksState>
   /** The recruiter demo (`engine-demo.ts`): no visit, a sample page, when absent. */
   demo?: Partial<DemoState>
+  /** Procedure runs and branch reports (`engine-procedures.ts`); none when absent. */
+  procedures?: Partial<ProceduresState>
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -124,6 +127,8 @@ export interface Engine {
   books: BooksState
   /** The recruiter demo (`engine-demo.ts`). */
   demo: DemoState
+  /** Procedure runs and branch reports (`engine-procedures.ts`). */
+  procedures: ProceduresState
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -378,6 +383,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     games: { ...defaultGames(), ...options.games },
     books: { ...defaultBooks(), ...options.books },
     demo: { ...defaultDemo(), ...options.demo },
+    procedures: { ...defaultProcedures(), ...options.procedures },
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -719,6 +725,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
       if (method === 'GET' && pathname === '/api/ledger/spend') {
         return { status: 200, body: spendWithTargets(engine) }
       }
+
+      const proceduresReply = handleProcedures(engine, method, pathname, search)
+      if (proceduresReply) return proceduresReply
 
       const booksReply = handleBooks(engine, method, pathname, search, body)
       if (booksReply) return booksReply
