@@ -69,6 +69,9 @@ urlpatterns = [
     # ai-upgrade ticket 02: the daily brief, built at 05:00 household-local
     # time and on Refresh (`brief/views.py`).
     path("api/brief/", include("brief.urls")),
+    # procedures ticket 14: the run inspector and the branch report, read-only, scoped by
+    # household (`procedures/views.py`).
+    path("api/procedures/", include("procedures.urls")),
     # books ticket 04: a PDF converted to an EPUB and handed straight back,
     # nothing kept on the server (`books/views.py`).
     path("api/books/", include("books.urls")),

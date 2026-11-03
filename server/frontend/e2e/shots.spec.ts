@@ -7,6 +7,7 @@ import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
 import { briefingShots } from './briefing-shots'
 import { calendarShots } from './calendar-shots'
 import { familyShots } from './family-shots'
+import { runsShots } from './runs-shots'
 import { tetrisShots } from './tetris-shots'
 import { notificationShots, settingsShots } from './settings-shots'
 import { seedLedger, seedSpend } from '../src/test/ledger-seed'
@@ -289,6 +290,7 @@ const ROUTES: Shot[] = [
   ...familyShots,
   // PWA Tetris polish: themes, pause. Rows live in `tetris-shots.ts`.
   ...tetrisShots,
+  ...runsShots,
   // Tickets 05 and 15: join, signup and Settings. Rows live in `settings-shots.ts`.
   ...settingsShots,
   ...notificationShots,

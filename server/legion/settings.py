@@ -547,6 +547,14 @@ SPECTACULAR_SETTINGS = {
         "BriefSectionStatusEnum": "brief.models.SECTION_STATUSES",
         "BriefSectionKeyEnum": "brief.models.SECTION_KEYS",
         "BriefTriggerEnum": "brief.models.Trigger",
+        # procedures ticket 14: a run's `status` would collide with the games' and the
+        # brief's; the inspector's other choice sets named for what they are before they can.
+        # The tool door's `outcome` was `OutcomeEnum` before a step's `outcome` collided with it.
+        "OutcomeEnum": "engine_mcp.models.Outcome",
+        "ProcedureRunStatusEnum": "procedures.models.RunStatus",
+        "ProcedureCallerKindEnum": "procedures.models.CallerKind",
+        "ProcedureStepOutcomeEnum": "procedures.models.StepOutcome",
+        "ProcedureChosenByEnum": "procedures.models.ChosenBy",
         # books ticket 04: a refusal's `code`. Named before a generic `CodeEnum`
         # can collide with the next `code` field and get renamed under ticket
         # 05's client.

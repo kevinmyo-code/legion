@@ -3293,6 +3293,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/procedures/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_procedures_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/procedures/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_procedures_report_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/procedures/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_procedures_runs_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/procedures/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_procedures_runs_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/purchases/": {
         parameters: {
             query?: never;
@@ -3853,6 +3917,22 @@ export interface components {
          * @enum {string}
          */
         BookVariantEnum: "original" | "resizable";
+        BranchReport: {
+            procedure: string;
+            version: number;
+            writes: boolean;
+            /** @description Runs older than this are pruned. */
+            window_days: number;
+            /** @description This household's runs of this version. */
+            runs: number;
+            /** Format: date-time */
+            last_run_at: string | null;
+            steps: components["schemas"]["ReportStep"][];
+            /** @description "step:branch" for every branch no run took. */
+            never_taken: string[];
+            /** @description The report in one sentence. */
+            summary: string;
+        };
         Brief: {
             /** Format: uuid */
             id: string;
@@ -5968,6 +6048,52 @@ export interface components {
             /** Format: time */
             morning_time: string;
         };
+        /**
+         * @description * `phone` - Phone
+         *     * `headunit` - Head unit
+         *     * `web` - Web assistant
+         *     * `recruiter` - Recruiter visit
+         *     * `mcp` - MCP client
+         * @enum {string}
+         */
+        ProcedureCallerKindEnum: "phone" | "headunit" | "web" | "recruiter" | "mcp";
+        /**
+         * @description * `code` - Code
+         *     * `model` - A model
+         *     * `user` - The user
+         * @enum {string}
+         */
+        ProcedureChosenByEnum: "code" | "model" | "user";
+        /**
+         * @description * `ok` - OK
+         *     * `partial` - Partial
+         *     * `failed` - Failed
+         *     * `waiting` - Waiting for an answer
+         *     * `cancelled` - Cancelled
+         * @enum {string}
+         */
+        ProcedureRunStatusEnum: "ok" | "partial" | "failed" | "waiting" | "cancelled";
+        /**
+         * @description * `ok` - OK
+         *     * `refused` - Refused
+         *     * `failed` - Failed
+         *     * `asked` - Asked
+         * @enum {string}
+         */
+        ProcedureStepOutcomeEnum: "ok" | "refused" | "failed" | "asked";
+        ProcedureVersion: {
+            procedure: string;
+            version: number;
+            description: string;
+            writes: boolean;
+            is_active: boolean;
+            /** @description builtin, distilled or hand. */
+            source: string;
+            /** @description This household's runs of this version. */
+            runs: number;
+            /** Format: date-time */
+            last_run_at: string | null;
+        };
         ProgressRequest: {
             score: number;
             lines: number;
@@ -6220,6 +6346,37 @@ export interface components {
             diagram_caption: string;
             cards: components["schemas"]["RecruiterTitleBody"][];
         };
+        ReportBranch: {
+            branch: string;
+            /** @description The step it leads to; null when it ends the run. */
+            target: string | null;
+            /** @description Runs that took it. */
+            taken: number;
+            /** @description Of those, runs where a model chose it. */
+            by_model: number;
+            /** Format: date-time */
+            last_taken_at: string | null;
+            never_taken: boolean;
+        };
+        ReportStep: {
+            step_id: string;
+            kind: string;
+            tool: string;
+            /** @description Runs in which the step ran. */
+            reached: number;
+            /** @description Runs in which the step failed. */
+            failed: number;
+            /** @description Runs in which the step was refused. */
+            refused: number;
+            /** Format: date-time */
+            last_seen_at: string | null;
+            /**
+             * Format: date-time
+             * @description Last failure or refusal.
+             */
+            last_failed_at: string | null;
+            branches: components["schemas"]["ReportBranch"][];
+        };
         /**
          * @description * `won` - won
          *     * `lost` - lost
@@ -6233,6 +6390,104 @@ export interface components {
          * @enum {string}
          */
         RoleEnum: "inviter" | "invitee";
+        RunDetail: {
+            /** Format: uuid */
+            id: string;
+            /** @description The procedure's name. */
+            procedure: string;
+            version: number;
+            caller_kind: components["schemas"]["ProcedureCallerKindEnum"];
+            /** @description Which client asked, in words ("Phone"). */
+            caller: string;
+            /** @description "You", the member's first name, "Another member", or "An account since removed". */
+            who: string;
+            status: components["schemas"]["ProcedureRunStatusEnum"];
+            /** @description The status in words ("Partial"). */
+            status_label: string;
+            /** Format: date-time */
+            started_at: string;
+            /** @description Engine-side time across every call of the run. */
+            ms: number;
+            /** @description Step rows recorded for the run. */
+            step_count: number;
+            /**
+             * Format: uuid
+             * @description The caller's conversation record, when it named one.
+             */
+            conversation_id: string | null;
+            /** @description True when the version has a writing step. */
+            writes: boolean;
+            /** @description The caller's inputs, as JSON. */
+            inputs: string | null;
+            /** @description The answer as returned, trimmed. */
+            result: string;
+            steps: components["schemas"]["RunStep"][];
+            /** @description Step ids in the definition that did not run. */
+            not_run: string[];
+            /** @description The steps that did not run, in words. */
+            not_run_sentence: string;
+        };
+        RunList: {
+            results: components["schemas"]["RunSummary"][];
+            /** @description True when more runs match than `limit`; the list holds the newest. */
+            more: boolean;
+            /** @description Runs older than this are pruned, so nothing older is listed. */
+            retention_days: number;
+        };
+        RunStep: {
+            seq: number;
+            step_id: string;
+            /** @description tool, compute, decide, ask, check or say. */
+            kind: string;
+            /** @description The engine tool, for a `tool` step; else empty. */
+            tool: string;
+            /** @description The arguments as sent, as JSON, trimmed; null when none. */
+            args: string | null;
+            /** @description What the step said, trimmed. */
+            result: string;
+            outcome: components["schemas"]["ProcedureStepOutcomeEnum"];
+            outcome_label: string;
+            /** @description The way out the step took; empty when the run stopped here. */
+            branch: string;
+            chosen_by: components["schemas"]["ProcedureChosenByEnum"];
+            /** @description "Code chose", "A model chose" (a decide step, ruling 02) or "The user chose". */
+            chosen_by_label: string;
+            /** Format: date-time */
+            started_at: string;
+            ms: number;
+            /** @description A decide step's model; else empty. */
+            model: string;
+            prompt_tokens: number | null;
+            output_tokens: number | null;
+            /** @description An ESTIMATE in micro-dollars from named rate constants, never a billed figure. */
+            cost_estimate_micro_usd: number | null;
+        };
+        RunSummary: {
+            /** Format: uuid */
+            id: string;
+            /** @description The procedure's name. */
+            procedure: string;
+            version: number;
+            caller_kind: components["schemas"]["ProcedureCallerKindEnum"];
+            /** @description Which client asked, in words ("Phone"). */
+            caller: string;
+            /** @description "You", the member's first name, "Another member", or "An account since removed". */
+            who: string;
+            status: components["schemas"]["ProcedureRunStatusEnum"];
+            /** @description The status in words ("Partial"). */
+            status_label: string;
+            /** Format: date-time */
+            started_at: string;
+            /** @description Engine-side time across every call of the run. */
+            ms: number;
+            /** @description Step rows recorded for the run. */
+            step_count: number;
+            /**
+             * Format: uuid
+             * @description The caller's conversation record, when it named one.
+             */
+            conversation_id: string | null;
+        };
         /**
          * @description Field-for-field `RemoteServiceHistory` / `ServiceHistoryUpload`.
          *
@@ -13008,6 +13263,138 @@ export interface operations {
             };
             /** @description A live place already has the new label, or the two labels are the same. Nothing was renamed. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_procedures_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Versions this household can see that are active or ran here. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcedureVersion"][];
+                };
+            };
+        };
+    };
+    api_procedures_report_retrieve: {
+        parameters: {
+            query: {
+                /** @description The procedure's name. */
+                name: string;
+                /** @description Defaults to the active version, else the newest. */
+                version?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchReport"];
+                };
+            };
+            /** @description A filter was refused. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such procedure. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_procedures_runs_list: {
+        parameters: {
+            query?: {
+                caller_kind?: "headunit" | "mcp" | "phone" | "recruiter" | "web";
+                /** @description 1 to 200; 50. */
+                limit?: number;
+                /** @description Only runs of this procedure name. */
+                procedure?: string;
+                /** @description Started at or after. */
+                since?: string;
+                status?: "cancelled" | "failed" | "ok" | "partial" | "waiting";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunList"];
+                };
+            };
+            /** @description A filter was refused. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_procedures_runs_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One run, its steps. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description No such run here. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

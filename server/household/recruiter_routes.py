@@ -88,11 +88,19 @@ RECRUITER_ALLOWED: frozenset[str] = frozenset(
 )
 
 _SETTINGS = "the household's own settings are not part of the demo"
+_INSPECTOR = "the run inspector only reads the visit's own runs"
 
 RECRUITER_READ_ONLY: dict[str, str] = {
     # The app shell reads both; neither may be changed on a visit.
     "household.views.MeView": "the visitor's account is made by the demo and cannot be renamed",
     "household.households.HouseholdMeView": _SETTINGS,
+    # procedures ticket 14 (ruling 07): the run inspector and branch report, on the visit's
+    # own runs. Tenancy scopes them to the visit household, and the views narrow a recruiter to
+    # their own runs on top. GET only today; a write added later refuses here.
+    "procedures.views.ProcedureListView": _INSPECTOR,
+    "procedures.views.RunListView": _INSPECTOR,
+    "procedures.views.RunDetailView": _INSPECTOR,
+    "procedures.views.BranchReportView": _INSPECTOR,
 }
 
 _BANK = "linking or syncing a bank (Plaid) reaches an outside account"
