@@ -4,17 +4,23 @@
 # whether a freeze frame was stored, then NHTSA recalls LAST, because it is the one network read:
 # when it fails the run ends there and every household read above is already in the answer,
 # with the recall tool's own "not known" sentence. Recalls are looked up for one car at a time
-# (vehicle_recalls refuses several), so with several cars on file and no `vehicle` input the run
-# stops at recalls, saying so; the runner has no fan-out in v1.
+# (vehicle_recalls refuses several) and the runner has no fan-out in v1, so with several cars on
+# file and no `vehicle` input the `which_car` check fails: the run ends ok with the service and
+# codes for every car and a sentence asking which car, and recalls are not looked up (Kevin,
+# 2026-11-03, ticket 15's open item, option a).
 name: car_check
 description: >-
   How the car is: which car, anything past due, the next service by date and by mileage (miles
   to go is an estimate), trouble codes the OBD dongle logged, and NHTSA recalls for its model.
+  Pass the car the person named as inputs.vehicle. With several cars on file and none named,
+  service and codes cover every car and recalls are skipped; ask which car, then run it again
+  with that car for its recalls.
 inputs:
   vehicle:
     description: >-
-      Which car, as an id or words from its name, make or model. Leave it out when one car is
-      on file; with several, recalls need it.
+      Which car, as an id or words from its name, make or model: the car the person named.
+      Leave it out when they named none; with several cars on file, recalls are then skipped
+      and the answer asks which car.
 steps:
   - id: service
     kind: tool
@@ -51,6 +57,20 @@ steps:
       clears: $steps.clears.structured.rows
       utc_offset_minutes: $steps.service.structured.utc_offset_minutes
       limit: 200
+    next: which_car
+  - id: which_car
+    kind: check
+    function: one_car
+    args:
+      vehicles: $steps.service.structured.vehicles
+    fail_sentence: |-
+      {$steps.lead}
+
+      {$steps.service}
+
+      {$steps.trouble}
+
+      Recalls are looked up for one car at a time: say which car.
     next: recalls
   - id: recalls
     kind: tool

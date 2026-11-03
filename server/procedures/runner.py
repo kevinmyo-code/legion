@@ -21,7 +21,8 @@ A recruiter is also refused, before any step, a procedure that uses any tool out
 ## Step kinds
 
 `tool` (above), `compute` (a `procedures/steps.py` function over filled-in args), `check` (a
-function; false ends the run with its `fail_sentence`, which is an answer, not a failure),
+function; false ends the run with its `fail_sentence`, which is an answer, not a failure, and
+is rendered like a `say` template, so it may carry what the steps before it said),
 `decide` (`procedures/decide.py`; the model picks a named branch, else `on_fail`, chosen by code;
 labelled "a model chose" in the result and `chosen_by = model` on the trace), `ask` (returns
 `needs_answer` with a resume token and ends the call; ruling 03), `say` (the answer, composed
@@ -329,6 +330,9 @@ def _function_step(walk: _Walk, step: dict, started, t0):
         return step["next"]
     passed = bool(value)
     walk.values[step["id"]] = passed
+    # The fail sentence is the run's answer, so `{$steps.x}` in it reads like a say template
+    # (car_check's one-car-at-a-time recalls keep the service and codes already read).
+    sentence = "" if passed else _render(walk, step["fail_sentence"])
     _record(
         walk,
         step,
@@ -336,12 +340,12 @@ def _function_step(walk: _Walk, step: dict, started, t0):
         t0,
         outcome=StepOutcome.OK,
         branch="pass" if passed else "fail",
-        result="passed" if passed else step["fail_sentence"],
+        result="passed" if passed else sentence,
         args=args,
     )
     if passed:
         return step["next"]
-    return _Stop(status=RunStatus.OK, text=step["fail_sentence"])
+    return _Stop(status=RunStatus.OK, text=sentence)
 
 
 def _decide_step(walk: _Walk, step: dict, started, t0):

@@ -360,6 +360,7 @@ def test_the_steps_are_ticket_09s():
         ("clears", "tool", "read_records"),
         ("lead", "compute", "car_lead"),
         ("trouble", "compute", "trouble_codes"),
+        ("which_car", "check", "one_car"),
         ("recalls", "tool", "vehicle_recalls"),
         ("answer", "say", None),
     ]
@@ -514,7 +515,9 @@ def test_car_check_on_the_demo_seed_is_the_same_text_every_run(mcp, demo, monkey
         "Trouble codes, as the OBD dongle logged them when it last connected (not read from the "
         "car now): The Wagon: no trouble-code reads are on file.\n\n"
         f"Recalls: {recall_text}\n\n"
-        + footer("car_check", "service, codes, clears, lead, trouble, recalls, answer")
+        + footer(
+            "car_check", "service, codes, clears, lead, trouble, which_car, recalls, answer"
+        )
     )
     # Every caveat the tools state rides along: the estimate, the scope of the recall list.
     assert "about 670 mi to go. That distance is an ESTIMATE" in text
@@ -576,23 +579,49 @@ def test_the_m3_is_past_due_and_its_code_read_had_no_freeze_frame(mcp, kevin, mo
     assert "and no freeze frame came back with it." in text
 
 
-def test_several_cars_and_none_named_stops_at_recalls_saying_so(mcp, kevin, monkeypatch):
-    """The v1 runner has no fan-out and vehicle_recalls takes one car (ticket 09 asked for "per
-    vehicle, parallel"): the household reads are said, recalls are not looked up, in words."""
+def test_one_car_passes_with_one_or_none_and_fails_with_several():
+    assert steps.one_car([{"vehicle_id": "a"}]) is True
+    assert steps.one_car([]) is True and steps.one_car(None) is True
+    assert steps.one_car([{"vehicle_id": "a"}, {"vehicle_id": "b"}]) is False
+
+
+def test_several_cars_and_none_named_skips_recalls_and_asks_which_car(mcp, kevin, monkeypatch):
+    """Kevin, 2026-11-03 (ticket 15's open item, option a): the v1 runner has no fan-out and
+    vehicle_recalls takes one car, so with several cars and none named the run is ok, service
+    and codes cover every car, and recalls are skipped with a sentence asking which car."""
     asked = fake_recalls(monkeypatch)
     is_error, text, structured, row = run(mcp, "car_check")
-    assert is_error and row.status == "partial" and asked == []
-    assert (
-        "Step 'recalls' (vehicle_recalls) was refused: Nothing was read. Recalls are looked up "
-        "for one vehicle at a time, and several are on file: Bucky, Daily, M3."
-    ) in text
-    assert (
-        "lead: 3 vehicles are on file: Bucky, Daily and M3. Past due by the records on file: "
-        "oil change on M3 (due Thu Jul 10, 2025)."
-    ) in text
+    assert not is_error, text
+    assert row.status == "ok" and structured["status"] == "ok" and asked == []
+    _, service, _ = call(mcp, "next_service", {})
+    assert text.startswith(
+        "3 vehicles are on file: Bucky, Daily and M3. Past due by the records on file: "
+        "oil change on M3 (due Thu Jul 10, 2025).\n\n"
+        f"{service}\n\n"
+        "Trouble codes, as the OBD dongle logged them when it last connected (not read from the "
+        "car now): "
+    )
     assert "Daily: no trouble-code reads are on file." in text
     assert "M3: trouble codes on record: P0171." in text
-    assert "no recalls" not in text.lower()
+    assert "Bucky: trouble codes since the last clear (" in text
+    assert (
+        "\n\nRecalls are looked up for one car at a time: say which car.\n\n"
+        "(Procedure car_check v1; ran service, codes, clears, lead, trouble, which_car; not on "
+        "this path: recalls, answer. Nothing was written.)"
+    ) in text
+    assert "no recalls" not in text.lower() and "refused" not in text
+    assert structured["not_run"] == ["recalls", "answer"]
+    (check,) = [s for s in structured["steps"] if s["step_id"] == "which_car"]
+    assert check["branch"] == "fail" and check["chosen_by"] == "code"
+
+
+def test_several_cars_and_one_named_looks_up_that_cars_recalls(mcp, kevin, monkeypatch):
+    asked = fake_recalls(monkeypatch, answer=[])
+    is_error, text, structured, row = run(mcp, "car_check", vehicle="Daily")
+    assert not is_error and row.status == "ok", text
+    assert len(asked) == 1
+    assert "say which car" not in text and "Recalls: NHTSA's recall list" in text
+    assert structured["not_run"] == []
 
 
 def test_a_car_that_is_not_on_file_reads_nothing_and_says_so(mcp, kevin):
