@@ -216,7 +216,13 @@ class SessionLoginView(APIView):
 
         login(request, user)
         body = MeResponseSerializer(
-            {"user_id": user.id, "email": user.email, "device_name": "", "name": user.first_name}
+            {
+                "user_id": user.id,
+                "email": user.email,
+                "device_name": "",
+                "name": user.first_name,
+                "role": _role_of(user),
+            }
         ).data
         return Response(body, status=status.HTTP_200_OK)
 
@@ -351,8 +357,14 @@ def _me_body(request) -> dict:
             "email": request.user.email,
             "device_name": device_name,
             "name": request.user.first_name,
+            "role": _role_of(request.user),
         }
     ).data
+
+
+def _role_of(user) -> str:
+    member = HouseholdMember.objects.filter(user=user).only("role").first()
+    return member.role if member is not None else ""
 
 
 WRONG_CURRENT_PASSWORD = "Your current password is not right. Nothing was changed."

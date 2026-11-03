@@ -26,7 +26,6 @@ from demo.views import (
     WRONG_CODE,
 )
 from household.models import DeviceToken, Household, HouseholdMember, User
-from household.permissions import RECRUITER_ROUTE_REFUSAL
 from tests.test_assistant import _tool
 
 pytestmark = pytest.mark.django_db
@@ -116,7 +115,10 @@ def test_the_token_reads_and_the_browser_session_reaches_the_assistant(code):
     response = _enter(client, code=code)
     token_client = APIClient()
     token_client.credentials(HTTP_AUTHORIZATION=f"Token {response.data['token']}")
-    assert token_client.get("/api/places/").data["detail"] == RECRUITER_ROUTE_REFUSAL
+    # Ticket 13: the token reads the visit's own household on the app's routes.
+    places = token_client.get("/api/places/")
+    assert places.status_code == 200, places.data
+    assert places.data["results"], "the visit household is seeded"
 
     client.credentials(HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value)
     result = _tool(client, "list_events", {})

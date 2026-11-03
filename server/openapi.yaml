@@ -2070,6 +2070,13 @@ paths:
                 $ref: '#/components/schemas/Detail'
           description: An aspect name this server does not know. `detail` names it
             and lists the ones that exist.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A recruiter's demo visit asked by name for an aspect it may
+            not read (body, memory, ingest). Nothing was read.
   /api/checklists/:
     get:
       operationId: api_checklists_list
@@ -2740,8 +2747,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Detail'
-          description: No demo household on this engine, or more than one household
-            carries its name. Nothing created.
+          description: The visit's demo household could not be seeded. Nothing created.
   /api/demo/session:
     get:
       operationId: api_demo_session_retrieve
@@ -11148,10 +11154,15 @@ components:
           type: string
         name:
           type: string
+        role:
+          type: string
+          description: 'This user''s role in their household: `owner`, `member`, or
+            `recruiter` for a demo visit. Empty for a user in no household.'
       required:
       - device_name
       - email
       - name
+      - role
       - user_id
     MealLog:
       type: object

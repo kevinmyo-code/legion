@@ -186,7 +186,8 @@ def _drop_sql() -> str:
     the ledger guard as `ingest/bank_api_sql.py` left it."""
     from ingest.bank_api_sql import LEDGER_BANK_ROWS_SQL
 
-    start = LEDGER_BANK_ROWS_SQL.index("create or replace function public.ledger_transactions_guard")
+    marker = "create or replace function public.ledger_transactions_guard"
+    start = LEDGER_BANK_ROWS_SQL.index(marker)
     ledger_guard = LEDGER_BANK_ROWS_SQL[start:]
     triggers = "\n".join(
         f"""drop trigger if exists forbid_mutation on public.{table};

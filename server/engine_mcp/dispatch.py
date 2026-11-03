@@ -65,4 +65,13 @@ def call_route(outer, method: str, path: str, data: dict | None = None):
     )
     request._force_auth_user = outer.user
     request._force_auth_token = outer.auth
+    # The caller's session rides along (recruiter-demo ticket 13): a
+    # recruiter's browser session is honoured only while the visitor token it
+    # was issued beside is live (`household.permissions`), and that check
+    # reads the session. Without it the inner route would see a visit with no
+    # token and refuse it as ended. A token caller has no session; nothing
+    # changes for it.
+    session = getattr(getattr(outer, "_request", outer), "session", None)
+    if session is not None:
+        request.session = session
     return match.func(request, *match.args, **match.kwargs)

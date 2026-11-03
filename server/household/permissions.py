@@ -15,17 +15,27 @@ exists for. It does not weaken the paragraph above - inside a household
 access is still all-or-nothing, and the owner role still gates no data.
 
 **ADR 0068 (2026-11-02) amends that once, and only to narrow:** a member
-whose role is `recruiter` (a throwaway visitor in the demo household,
-recruiter-demo tickets 01 and 02) is refused every route that does not opt
-in with `allows_recruiter = True`, may write nothing by any credential, and
-a browser session it holds dies with the visitor token it was issued
-beside. Owners and members are untouched by every line of that.
+whose role is `recruiter` (a throwaway visitor, recruiter-demo tickets 01
+and 02) is fenced, and a browser session it holds dies with the visitor
+token it was issued beside. Owners and members are untouched by every line
+of that.
+
+**ADR 0069 (ticket 13, Kevin 2026-11-02) moved the fence, and it still only
+narrows.** Each visit now has its own throwaway household
+(`Household.is_demo_visit`) with the visitor as its only member, so the
+recruiter uses the normal app on it: every route named in
+`household.recruiter_routes` as allowed, reads and writes, and nothing named
+there as denied (outside accounts, devices, body, settings, `/mcp`). A view
+in neither list is refused. A recruiter whose household is NOT a demo visit
+(one made before ticket 13, in the shared demo household) is refused
+everything, as an ended visit.
 """
 from __future__ import annotations
 
 from rest_framework import exceptions, permissions
 
 from household.models import DeviceToken, HouseholdMember, is_recruiter
+from household.recruiter_routes import route_refusal
 
 READ_SCOPE_REFUSAL = (
     "Nothing was written. This device token is read-only (scope `read`), so it may read "
@@ -35,13 +45,8 @@ READ_SCOPE_REFUSAL = (
 
 
 RECRUITER_WRITE_REFUSAL = (
-    "Nothing was written. This is a recruiter's demo visit, which may read the demo "
-    "household and change none of it."
-)
-
-RECRUITER_ROUTE_REFUSAL = (
-    "Nothing was read or written. This is a recruiter's demo visit: it may use the "
-    "assistant and nothing else on this engine."
+    "Nothing was written. This is a recruiter's demo visit, and it may change only its "
+    "own copy of the demo household, which this is not."
 )
 
 RECRUITER_VISIT_OVER = (
@@ -73,15 +78,24 @@ def token_may_write(request) -> bool:
 def write_refusal(request) -> str | None:
     """Why this request may not write, in words, or None when it may.
 
-    Two fences, checked in this order. A recruiter (ADR 0068) may write
-    nothing whatever credential it carries - a session has no scope, so the
-    token's `read` scope alone would not stop a recruiter's browser. Then the
-    token's own scope (engine-mcp ticket 05)."""
-    if is_recruiter(getattr(request, "user", None)):
+    Two fences, checked in this order. A recruiter (ADR 0068) may write only
+    inside its own demo-visit household (ADR 0069: `is_demo_visit`, a
+    household it alone belongs to), whatever credential it carries. Then the
+    token's own scope (engine-mcp ticket 05): the visitor token is `read`, so
+    a visit writes through its browser session only."""
+    if is_recruiter(getattr(request, "user", None)) and not _on_a_demo_visit(request.user):
         return RECRUITER_WRITE_REFUSAL
     if not token_may_write(request):
         return READ_SCOPE_REFUSAL
     return None
+
+
+def _on_a_demo_visit(user) -> bool:
+    """The recruiter's household is a per-visit copy (ADR 0069). Read from the
+    row as it is now, never cached."""
+    return HouseholdMember.objects.filter(
+        user=user, role=HouseholdMember.RECRUITER, household__is_demo_visit=True
+    ).exists()
 
 
 def _recruiter_visit_is_live(request) -> bool:
@@ -105,16 +119,19 @@ class IsHouseholdMember(permissions.BasePermission):
             return False
         if not HouseholdMember.objects.filter(user=user).exists():
             return False
-        # ADR 0068: a recruiter is refused every route that has not opted in,
-        # here, once, so a route added next month is closed to it by default.
+        # ADR 0068/0069: a recruiter's visit must be live and on its own
+        # per-visit household, and the route must be one
+        # `household.recruiter_routes` opens to it - here, once, so a route
+        # added next month is closed to it until someone classifies it.
         # Checked before the write fence so the refusal names the real reason.
         if is_recruiter(user):
-            if not getattr(view, "allows_recruiter", False):
-                raise exceptions.PermissionDenied(RECRUITER_ROUTE_REFUSAL)
-            if not _recruiter_visit_is_live(request):
+            if not _recruiter_visit_is_live(request) or not _on_a_demo_visit(user):
                 raise exceptions.PermissionDenied(
                     {"detail": RECRUITER_VISIT_OVER, "code": RECRUITER_VISIT_OVER_CODE}
                 )
+            refusal = route_refusal(view, request.method, permissions.SAFE_METHODS)
+            if refusal is not None:
+                raise exceptions.PermissionDenied(refusal)
         # engine-mcp ticket 05: a read-scoped token is refused on every unsafe
         # method, here, once, rather than per view - a scope that only the MCP
         # layer honoured would let a leaked read token write through REST.

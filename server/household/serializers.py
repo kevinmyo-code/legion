@@ -59,6 +59,15 @@ class MeResponseSerializer(serializers.Serializer):
     # web-revamp ticket 05. `User.first_name`, the one name field this server
     # keeps (`SignupRequestSerializer` writes it the same way).
     name = serializers.CharField(allow_blank=True)
+    # recruiter-demo ticket 13: the web app hides what a recruiter's visit may
+    # not use (ADR 0069). Display only; the engine fences by the same row.
+    role = serializers.CharField(
+        allow_blank=True,
+        help_text=(
+            "This user's role in their household: `owner`, `member`, or `recruiter` "
+            "for a demo visit. Empty for a user in no household."
+        ),
+    )
 
 
 class MeUpdateSerializer(serializers.Serializer):

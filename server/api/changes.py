@@ -86,6 +86,8 @@ from checklists.serializers import (
     ChecklistSerializer,
     ChecklistTickSerializer,
 )
+from household.models import is_recruiter
+from household.recruiter_routes import RECRUITER_DENIED_ASPECTS, denied_refusal
 from household.tenancy import feed_rows, render_feed, scoped
 from legacy.models.dates import Event, EventSkip, SuggestionPin
 
@@ -176,6 +178,11 @@ class ChangesView(APIView):
                 description="An aspect name this server does not know. `detail` names it and "
                 "lists the ones that exist.",
             ),
+            403: OpenApiResponse(
+                response=DetailSerializer,
+                description="A recruiter's demo visit asked by name for an aspect it may not "
+                "read (body, memory, ingest). Nothing was read.",
+            ),
         },
     )
     def get(self, request):
@@ -205,10 +212,22 @@ class ChangesView(APIView):
             for aspect in raw.split(",")
             if aspect.strip()
         ]
-        if not requested:
+        defaulted = not requested
+        if defaulted:
             requested = list(KNOWN_ASPECTS)
 
         unknown = sorted(set(requested) - set(KNOWN_ASPECTS))
+        if not unknown and is_recruiter(request.user):
+            # ADR 0069: a recruiter's visit pulls no body, memory or ingestion
+            # rows. Asked for by name, that is refused in words; "everything"
+            # just means everything it may see.
+            closed = [a for a in requested if a in RECRUITER_DENIED_ASPECTS]
+            if closed and not defaulted:
+                return Response(
+                    {"detail": denied_refusal(RECRUITER_DENIED_ASPECTS[closed[0]])},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            requested = [a for a in requested if a not in RECRUITER_DENIED_ASPECTS]
         if unknown:
             return Response(
                 {
