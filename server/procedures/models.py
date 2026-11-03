@@ -15,7 +15,15 @@ Two tables, both in `public` and both carrying `household_id`, so both are in
 `writes` is COMPUTED by the validator, never declared by a definition (ruling 01): a client
 stamps BLOCKING from it.
 
-Runs and their step traces are ticket 13; nothing here runs anything.
+Two more tables hold what RAN (procedures ticket 13, ruling 06): `procedure_runs`, one row per
+`run_procedure` call (a resume continues its run's row), and `procedure_steps`, one row per step
+that ran. Both carry `household_id` and are tenant tables; a run is always ONE household's, even
+of a built-in. They follow the conversation record's posture, not `McpCall`'s: a step's arguments
+and its result, trimmed to the record's cap (`devicelogs.web_conversation.CAP_TOOL`). Members'
+runs go after `RETENTION_DAYS` (pruned inline at each new run, the way `devicelogs.views.prune`
+runs on each upload); a recruiter visit's runs go with the visit household (`demo.visit_cleanup`
+reads the foreign keys) and never outlive `VISIT_RETENTION_DAYS` (`manage.py
+prune_demo_visitors`). The runner is `procedures/runner.py`.
 """
 
 from __future__ import annotations
@@ -126,3 +134,164 @@ class ProcedureVersion(models.Model):
 def visible_to(household) -> models.QuerySet[Procedure]:
     """Every procedure a household may see: the built-ins and its own, never another's."""
     return Procedure.objects.filter(Q(household__isnull=True) | Q(household=household))
+
+
+# =============================================================================
+# Runs and their step traces (procedures ticket 13, ruling 06)
+# =============================================================================
+
+# Ruling 06: the conversation record's retention, both of them.
+RETENTION_DAYS = 60
+VISIT_RETENTION_DAYS = 30
+
+
+class CallerKind(models.TextChoices):
+    PHONE = "phone", "Phone"
+    HEADUNIT = "headunit", "Head unit"
+    WEB = "web", "Web assistant"
+    RECRUITER = "recruiter", "Recruiter visit"
+    # A device token on `/mcp` that did not say which client it is (Claude Code, a script).
+    MCP = "mcp", "MCP client"
+
+
+class RunStatus(models.TextChoices):
+    # Every step on the path ran and the answer was composed.
+    OK = "ok", "OK"
+    # Stopped part way (a step failed or was refused, or the time budget ran out) after at
+    # least one step answered; the result names what ran and what did not.
+    PARTIAL = "partial", "Partial"
+    # Stopped before any step produced anything usable.
+    FAILED = "failed", "Failed"
+    # An `ask` step is waiting for the next utterance (ruling 03).
+    WAITING = "waiting", "Waiting for an answer"
+    # The answer was no, something else, or did not come in time. Nothing after the ask ran.
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class StepOutcome(models.TextChoices):
+    OK = "ok", "OK"
+    REFUSED = "refused", "Refused"
+    FAILED = "failed", "Failed"
+    # An `ask` that returned its question; its answer is a later row for the same step.
+    ASKED = "asked", "Asked"
+
+
+class ChosenBy(models.TextChoices):
+    # The definition's own edge, or a check's result.
+    CODE = "code", "Code"
+    # A `decide` step's small model (ruling 02): labelled, never silent.
+    MODEL = "model", "A model"
+    # The user's answer to an `ask`.
+    USER = "user", "The user"
+
+
+class ProcedureRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Always the caller's household, a built-in's run included. CASCADE (ruling 06): a recruiter
+    # visit's runs are deleted with the visit household.
+    household = models.ForeignKey(
+        "household.Household", on_delete=models.CASCADE, related_name="+"
+    )
+    # SET_NULL: a trace outlives its account, as a conversation record does.
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    # PROTECT: a version is history and is never deleted while a run points at it.
+    version = models.ForeignKey(ProcedureVersion, on_delete=models.PROTECT, related_name="runs")
+    caller_kind = models.TextField(choices=CallerKind.choices)
+    # The caller's conversation record (`DeviceLog.batch_id`), when it named one.
+    conversation_id = models.UUIDField(null=True, blank=True)
+    status = models.TextField(choices=RunStatus.choices)
+    # The caller's inputs, as given.
+    inputs = models.JSONField(default=dict)
+    started_at = models.DateTimeField()
+    # Engine-side time across every call of the run (a resume adds its own).
+    ms = models.IntegerField(default=0)
+    # The answer as returned, trimmed like a step's result.
+    result = models.TextField(blank=True, default="")
+    # While `waiting` only (ruling 03): which ask, the SHA-256 of the resume token, when it
+    # expires, and the step values the rest of the run reads. Cleared the moment the run leaves
+    # `waiting`, so untrimmed values live at most `runner.ASK_EXPIRY` (two minutes).
+    waiting_step = models.TextField(blank=True, default="")
+    resume_token_sha256 = models.CharField(max_length=64, blank=True, default="")
+    resume_expires_at = models.DateTimeField(null=True, blank=True)
+    resume_state = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "procedure_runs"
+        indexes = [
+            models.Index(fields=["started_at"], name="procedure_runs_started_idx"),
+            models.Index(fields=["conversation_id"], name="procedure_runs_convo_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(caller_kind__in=[k.value for k in CallerKind]),
+                name="procedure_runs_caller_kind_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(status__in=[s.value for s in RunStatus]),
+                name="procedure_runs_status_valid",
+            ),
+            # Untrimmed values exist only while a run waits.
+            models.CheckConstraint(
+                condition=Q(status="waiting") | Q(resume_state__isnull=True),
+                name="procedure_runs_state_only_while_waiting",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"run {self.id} ({self.status})"
+
+
+class ProcedureStep(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    run = models.ForeignKey(ProcedureRun, on_delete=models.CASCADE, related_name="steps")
+    # Always its run's household; carried so the table is tenant-scoped on its own.
+    household = models.ForeignKey(
+        "household.Household", on_delete=models.CASCADE, related_name="+"
+    )
+    # Order within the run.
+    seq = models.PositiveIntegerField()
+    step_id = models.TextField()
+    kind = models.TextField()
+    # `tool` steps only.
+    tool = models.TextField(blank=True, default="")
+    # The arguments as sent, after `$inputs` / `$steps` were filled in.
+    args = models.JSONField(null=True, blank=True)
+    # What the step said, trimmed to `devicelogs.web_conversation.CAP_TOOL`.
+    result = models.TextField(blank=True, default="")
+    outcome = models.TextField(choices=StepOutcome.choices)
+    # The edge taken out of the step: "next", a decide branch, an ask answer, a check's
+    # "pass" / "fail". Empty when the run stopped here.
+    branch = models.TextField(blank=True, default="")
+    chosen_by = models.TextField(choices=ChosenBy.choices, default=ChosenBy.CODE)
+    started_at = models.DateTimeField()
+    ms = models.IntegerField()
+    # `decide` only (ruling 02): the model, Gemini's token counts, and an ESTIMATED cost in
+    # integer micro-dollars from `brief.news`'s named rate constants, never a billed figure.
+    model = models.TextField(blank=True, default="")
+    prompt_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
+    cost_estimate_micro_usd = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "procedure_steps"
+        ordering = ["run", "seq"]
+        constraints = [
+            models.UniqueConstraint(fields=("run", "seq"), name="procedure_steps_seq_uniq"),
+            models.CheckConstraint(
+                condition=Q(outcome__in=[o.value for o in StepOutcome]),
+                name="procedure_steps_outcome_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(chosen_by__in=[c.value for c in ChosenBy]),
+                name="procedure_steps_chosen_by_valid",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.step_id} ({self.outcome})"

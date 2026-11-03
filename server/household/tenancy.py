@@ -142,6 +142,10 @@ TENANT_TABLES: tuple[str, ...] = (
     # distilled one is one household's.
     "procedures",
     "procedure_versions",
+    # procedures ticket 13 (ruling 06): run traces. Always one household's,
+    # a built-in's run included; a visit's go with the visit household.
+    "procedure_runs",
+    "procedure_steps",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -193,6 +197,8 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "book_bookmarks",
         "procedures",
         "procedure_versions",
+        "procedure_runs",
+        "procedure_steps",
     }
 )
 
