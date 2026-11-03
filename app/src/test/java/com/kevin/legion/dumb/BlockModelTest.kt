@@ -57,6 +57,22 @@ class BlockModelTest {
     }
 
     @Test
+    fun `viber is a messenger, open even though Android tags it Social`() {
+        val s = Sources(categories = mapOf("com.viber.voip" to AppCategoryTag.SOCIAL))
+        assertEquals(BlockVerdict(false, BlockReason.MESSENGER), decide("com.viber.voip", s = s))
+        assertEquals("messaging app, never blocked", decide("com.viber.voip", s = s).words)
+    }
+
+    @Test
+    fun `a manual block still beats the messenger seed`() {
+        val s = Sources(categories = mapOf("com.viber.voip" to AppCategoryTag.SOCIAL))
+        assertEquals(
+            BlockVerdict(true, BlockReason.MANUAL_BLOCK),
+            decide("com.viber.voip", AppOverride.BLOCK, s = s),
+        )
+    }
+
+    @Test
     fun `games are not blocked`() {
         assertEquals(BlockVerdict(false, BlockReason.OPEN), decide("me.magnum.melonds"))
     }

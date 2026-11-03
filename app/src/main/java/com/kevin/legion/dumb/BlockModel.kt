@@ -21,6 +21,8 @@ enum class BlockReason(val words: String) {
     MANUAL_BLOCK("you blocked it"),
     MANUAL_ALLOW("you allowed it"),
     KEPT("on the Matrix home list"),
+    /** [BlockSeed.MESSENGERS]: Android tags them Social, but they carry messages, not a feed. */
+    MESSENGER("messaging app, never blocked"),
     SEED("known feed app"),
     EXEMPT("opens links, mail or messages"),
     CATEGORY_SOCIAL("tagged Social"),
@@ -53,6 +55,13 @@ object BlockSeed {
         "com.pinterest",
         "com.linkedin.android",
     )
+
+    /**
+     * Messaging apps that Android tags Social and are never blocked by seed or category (Kevin,
+     * 2026-11-03: "viber shouldnt be blcoked btw"). A manual block still wins. WhatsApp is not here:
+     * it is already kept on the Matrix home list.
+     */
+    val MESSENGERS: Set<String> = setOf("com.viber.voip")
 }
 
 /** The facts the decision reads, all resolved at run time (clone-and-run: no OEM package is named). */
@@ -99,8 +108,8 @@ class PrefsAppOverrides(private val prefs: SharedPreferences) : AppOverrides {
  *
  * Order matters: LEGION, Settings and the Home app are never blocked (bouncing Home would loop);
  * then a running 15 minute pass, outside Matrix mode only (ADR 0066); then a manual block, then a
- * manual allow; then kept externals (never blocked by seed or category);
- * then the seed list; then the link, mail and SMS exemption (beats category, never seed or a manual
+ * manual allow; then kept externals (never blocked by seed or category); then the messenger allow
+ * seed ([BlockSeed.MESSENGERS], same: never blocked by seed or category); then the seed list; then the link, mail and SMS exemption (beats category, never seed or a manual
  * block); then category Social, Video and News. Anything else, games included, is open.
  */
 object BlockModel {
@@ -120,6 +129,7 @@ object BlockModel {
         if (override == AppOverride.BLOCK) return BlockVerdict(true, BlockReason.MANUAL_BLOCK)
         if (override == AppOverride.ALLOW) return BlockVerdict(false, BlockReason.MANUAL_ALLOW)
         if (packageName in sources.keptPackages()) return BlockVerdict(false, BlockReason.KEPT)
+        if (packageName in BlockSeed.MESSENGERS) return BlockVerdict(false, BlockReason.MESSENGER)
         if (packageName in BlockSeed.PACKAGES) return BlockVerdict(true, BlockReason.SEED)
         if (packageName in sources.exemptPackages()) return BlockVerdict(false, BlockReason.EXEMPT)
         return when (sources.category(packageName)) {
