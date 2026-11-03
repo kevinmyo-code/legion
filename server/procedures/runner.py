@@ -411,6 +411,21 @@ def _ask_step(walk: _Walk, step: dict, started, t0):
     )
 
 
+def _safe_walk(walk: _Walk, current: str) -> _Stop:
+    """`_walk_from`, but an unexpected error still ends in `_finish`, so the result names any
+    write that already committed from the rows observed, rather than the registry's generic
+    "nothing is known" (a write may have happened before the error)."""
+    try:
+        return _walk_from(walk, current)
+    except Exception as exc:  # noqa: BLE001 - the result must say what did and did not happen
+        last = walk.done[-1]["step_id"] if walk.done else "the start"
+        return _Stop(
+            status=RunStatus.FAILED,
+            text=f"The engine hit an error after {last} ({type(exc).__name__}).",
+            outcome=Outcome.FAILED,
+        )
+
+
 def _walk_from(walk: _Walk, current: str) -> _Stop:
     while True:
         step = walk.by_id[current]
@@ -659,7 +674,7 @@ def run_procedure(request, args: dict) -> ToolResult:
             f"(A question from {', '.join(cancelled)} was waiting; it was cancelled, and nothing "
             "after it ran.)"
         )
-    stop = _walk_from(walk, definition["steps"][0]["id"])
+    stop = _safe_walk(walk, definition["steps"][0]["id"])
     return _finish(walk, stop, (_clock() - began) * 1000)
 
 
@@ -748,5 +763,5 @@ def _resume(request, household, args: dict, began: float) -> ToolResult:
         branch=answer,
         chosen_by=ChosenBy.USER,
     )
-    stop = _walk_from(walk, step["answers"][answer])
+    stop = _safe_walk(walk, step["answers"][answer])
     return _finish(walk, stop, (_clock() - began) * 1000)

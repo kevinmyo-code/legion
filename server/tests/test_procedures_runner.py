@@ -599,3 +599,20 @@ def test_an_older_postgres_is_refused_in_words(monkeypatch):
     (error,) = postgres_is_15_or_newer(databases=["default"])
     assert error.id == "procedures.E001"
     assert "Postgres 14 is too old" in error.msg and "Nothing was migrated" in error.msg
+
+
+def test_an_engine_error_after_a_write_still_names_the_write(member_web, monkeypatch):
+    install(writing())
+    token = _token_of(run(member_web, "add_reminder", inputs={"title": "Dentist"}).data["text"])
+
+    def broken(walk, template):
+        raise KeyError("template")
+
+    monkeypatch.setattr(runner, "_render", broken)
+    response = run(member_web, "add_reminder", resume_token=token, answer="yes")
+    assert response.data["is_error"] is True
+    text = response.data["text"]
+    assert "The engine hit an error after add (KeyError)" in text
+    assert "Written (the tool said committed): add (add_event)" in text
+    assert "Nothing was written" not in text
+    assert last_run().status == RunStatus.PARTIAL

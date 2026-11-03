@@ -58,8 +58,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
-| [[.scratch/procedures/map\|procedures]] | [[12-build-runner-and-tool\|12]] | build | Build: engine runner and the run_procedure MCP tool |
-| [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[01-recruiter-role-and-allowlist\|01]] | build | Recruiter role and tool allowlist (default deny) |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[03-demo-household-seed\|03]] | build | Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, receipt scan |
@@ -174,6 +172,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[13-silent-after-focus-loss\|13]] | bug | It speaks and you hear nothing, once Spotify takes audio focus |
 | [[.scratch/procedures/map\|procedures]] | [[10-baseline-round-trips\|10]] | task | Baseline: measure round trips, latency and tool errors from recorded conversations |
+| [[.scratch/procedures/map\|procedures]] | [[12-build-runner-and-tool\|12]] | build | Build: engine runner and the run_procedure MCP tool |
+| [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[06-server\|06]] | build | Server: table, API, tenancy, the Groceries hook, /mcp tools |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 | [[.scratch/retro-games/map\|retro-games]] | [[05-build-race-engine-pwa\|05]] | build | Build: engine match API + game_invite push, PWA Tetris solo and race |

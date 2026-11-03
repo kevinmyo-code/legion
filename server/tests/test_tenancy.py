@@ -926,6 +926,43 @@ def test_procedures_are_scoped_by_household(household_a, household_b):
         assert version.household_id == version.procedure.household_id
 
 
+def test_procedure_runs_are_scoped_by_household(household_a, household_b, household_user):
+    """procedures ticket 13 (ruling 06). No route reads traces yet (the inspector is ticket 14),
+    so this pins the rows: a run of a BUILT-IN (no household) made in household A carries A on
+    the run and on every step row, and nothing of it is household B's."""
+    from django.utils import timezone
+
+    from procedures.models import Procedure, ProcedureRun, ProcedureStep, ProcedureVersion, Source
+    from tests.test_assistant import browser
+
+    definition = {
+        "name": "lists_check",
+        "description": "The checklists.",
+        "steps": [
+            {"id": "lists", "kind": "tool", "tool": "list_checklists", "next": "answer"},
+            {"id": "answer", "kind": "say", "template": "{$steps.lists}"},
+        ],
+    }
+    procedure = Procedure.objects.create(household=None, name="lists_check")
+    ProcedureVersion.objects.create(
+        procedure=procedure, household=None, version=1, definition=definition,
+        source=Source.BUILTIN, content_sha256="0" * 64, writes=False, is_active=True,
+        approved_at=timezone.now(),
+    )
+    client = browser(household_user)
+    response = client.post(
+        "/api/assistant/tool",
+        {"name": "run_procedure", "args": {"name": "lists_check"}},
+        format="json",
+    )
+    assert response.data["is_error"] is False, response.data
+    (run,) = ProcedureRun.objects.all()
+    assert run.household_id == household_a.id
+    assert set(ProcedureStep.objects.values_list("household_id", flat=True)) == {household_a.id}
+    assert not ProcedureRun.objects.filter(household=household_b).exists()
+    assert not ProcedureStep.objects.filter(household=household_b).exists()
+
+
 def test_every_registered_table_has_a_leak_test():
     """The generation, made real.
 
@@ -1409,6 +1446,34 @@ def test_every_mcp_tool_is_scoped_by_household(
     covered.add("web_search")
     is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})
     assert is_error and text.startswith("Nothing was"), text
+    # run_procedure (procedures ticket 12): a built-in reads B's own rows only, and A's own
+    # procedure is not there for B at all.
+    from django.utils import timezone
+
+    from procedures.models import Procedure, ProcedureVersion, Source
+
+    def _install(name, household):
+        definition = {
+            "name": name,
+            "description": "The places.",
+            "steps": [
+                {"id": "rows", "kind": "tool", "tool": "read_records",
+                 "args": {"table": "places", "active_only": False}, "next": "answer"},
+                {"id": "answer", "kind": "say", "template": "{$steps.rows}"},
+            ],
+        }
+        procedure = Procedure.objects.create(household=household, name=name)
+        ProcedureVersion.objects.create(
+            procedure=procedure, household=household, version=1, definition=definition,
+            source=Source.HAND if household else Source.BUILTIN, content_sha256="0" * 64,
+            writes=False, is_active=True, approved_at=timezone.now(),
+        )
+
+    _install("places_all", None)
+    _install("alpha_only", household_user.household)
+    assert "bravo-place" in b_reads("run_procedure", {"name": "places_all"})
+    is_error, text, _ = call(mcp_b, "run_procedure", {"name": "alpha_only"})
+    assert is_error and "no procedure called 'alpha_only'" in text, text
     assert call(mcp_b, "next_service", {"vehicle": "alpha"})[0] is True
     assert "alpha checking" in call(mcp_a, "account_balances", {})[1]
     assert "10.00 USD" in call(mcp_a, "monthly_spend", {"month": "2026-09"})[1]
