@@ -176,3 +176,27 @@ def test_the_setup_says_english_in_the_prompt_and_sends_no_language_code(who, re
     assert "Speak and answer in English" in text
     assert '"money" heard as "monnaie"' in text
     assert "whole sentence in another language and asks you to answer in it" in text
+
+
+# =============================================================================
+# "Kevin hasn't shared that" is for facts about Kevin only (audit 2026-11-03:
+# "What is the H1B1?" got it)
+# =============================================================================
+
+
+def test_the_not_shared_rule_is_scoped_to_facts_about_kevin(visitor):
+    from demo.tools import ABOUT_KEVIN, NOT_SHARED
+
+    text, _ = _prompt(visitor)
+    assert "anything about Kevin it does not say" in text
+    assert "That rule is for facts about Kevin only" in text
+    assert "what a visa, a law or a term is" in text
+    assert "is not about Kevin, so answer it plainly from general knowledge" in text
+    # The tool's own description carries the same scope, and still the sentence.
+    description = ABOUT_KEVIN.description
+    assert NOT_SHARED in description
+    assert "facts ABOUT KEVIN only" in description
+    assert "H-1B1" in description and "never answer it with that sentence" in description
+    # The old unscoped wording is gone from both.
+    assert "anything it does not say, answer" not in text
+    assert "Anything it does not say" not in description
